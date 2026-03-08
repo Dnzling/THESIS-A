@@ -137,33 +137,39 @@ class InventoryService {
     return response.data
   }
 
-  // GET /inventory/items/{id}
+  // GET /inventory
+  async getInventoryItems(params?: any) {
+    const response = await axiosClient.get(this.baseUrl, { params })
+    return response.data
+  }
+
+  // GET /inventory/{id}
   async getInventoryItem(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/items/${id}`)
+    const response = await axiosClient.get(`${this.baseUrl}/${id}`)
     return response.data
   }
 
-  // POST /inventory/items
+  // POST /inventory
   async createInventoryItem(data: Partial<BranchInventoryItem>) {
-    const response = await axiosClient.post(`${this.baseUrl}/items`, data)
+    const response = await axiosClient.post(this.baseUrl, data)
     return response.data
   }
 
-  // PUT /inventory/items/{id}
+  // PUT /inventory/{id}
   async updateInventoryItem(id: number, data: Partial<BranchInventoryItem>) {
-    const response = await axiosClient.put(`${this.baseUrl}/items/${id}`, data)
+    const response = await axiosClient.put(`${this.baseUrl}/${id}`, data)
     return response.data
   }
 
-  // DELETE /inventory/items/{id}
+  // DELETE /inventory/{id}
   async deleteInventoryItem(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/items/${id}`)
+    const response = await axiosClient.delete(`${this.baseUrl}/${id}`)
     return response.data
   }
 
-  // POST /inventory/items/{id}/update-status
+  // POST /inventory/{id}/update-status
   async updateItemStatus(id: number, status: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/items/${id}/update-status`, { status })
+    const response = await axiosClient.post(`${this.baseUrl}/${id}/update-status`, { status })
     return response.data
   }
 
@@ -180,6 +186,16 @@ class InventoryService {
 
   async createAdjustment(data: StockAdjustment) {
     const response = await axiosClient.post(`${this.baseUrl}/adjustments`, data)
+    return response.data
+  }
+
+  async updateAdjustment(id: number, data: Partial<StockAdjustment>) {
+    const response = await axiosClient.put(`${this.baseUrl}/adjustments/${id}`, data)
+    return response.data
+  }
+
+  async cancelAdjustment(id: number) {
+    const response = await axiosClient.delete(`${this.baseUrl}/adjustments/${id}`)
     return response.data
   }
 
@@ -211,6 +227,11 @@ class InventoryService {
 
   async createTransfer(data: StockTransfer) {
     const response = await axiosClient.post(`${this.baseUrl}/transfers`, data)
+    return response.data
+  }
+
+  async updateTransfer(id: number, data: Partial<StockTransfer>) {
+    const response = await axiosClient.put(`${this.baseUrl}/transfers/${id}`, data)
     return response.data
   }
 

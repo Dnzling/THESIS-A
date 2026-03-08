@@ -70,16 +70,30 @@
                   @click="router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })"
                   v-tooltip="'View details'" />
                 <Button v-if="data.status === 'draft'" icon="pi pi-pencil" size="small" text severity="warning"
-                  @click="router.push({ name: 'inventory.adjustments.edit', params: { id: data.id } })"
+                  @click="router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })"
                   v-tooltip="'Edit'" />
-                <Button v-if="data.status === 'draft'" icon="pi pi-check" size="small" text severity="success"
-                  @click="submitAdjustment(data.id)" v-tooltip="'Submit'" />
+                <Button v-if="data.status === 'draft'" icon="pi pi-times" size="small" text severity="danger"
+                  @click="confirmCancel(data)" v-tooltip="'Cancel'" />
               </div>
             </template>
           </Column>
         </DataTable>
       </template>
     </Card>
+
+    <!-- Cancel Confirmation Dialog -->
+    <Dialog
+      v-model:visible="showCancelDialog"
+      header="Cancel Adjustment"
+      :modal="true"
+      :style="{ width: '400px' }"
+    >
+      <p class="text-gray-600">Are you sure you want to cancel this adjustment? This action cannot be undone.</p>
+      <template #footer>
+        <Button label="No, Keep" severity="secondary" outlined @click="showCancelDialog = false" />
+        <Button label="Yes, Cancel" severity="danger" :loading="cancelling" @click="doCancel" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -87,19 +101,24 @@
 import { onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
 interface Pagination {
   current_page: number
   last_page: number
   per_page: number
   total: number
+  from?: number
+  to?: number
 }
 
 const router = useRouter()
 const toast = useToast()
 const loading = ref(false)
+const cancelling = ref(false)
 const adjustments = ref<any[]>([])
+const showCancelDialog = ref(false)
+const cancelTarget = ref<any>(null)
 
 const pagination = reactive<Pagination>({
   current_page: 1,
@@ -139,17 +158,15 @@ const formatDate = (date: string) => {
   })
 }
 
-const capitalizeFirstLetter = (string) => {
+const capitalizeFirstLetter = (string: string) => {
   if (!string) return 'N/A'
   return string.charAt(0).toUpperCase() + string.slice(1)
 }
 
-const formatStatus = (status) => {
+const formatStatus = (status: string) => {
   if (!status) return 'N/A'
-  
-  // Replace underscores with spaces and capitalize each word
   return status.split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }
 
@@ -163,32 +180,24 @@ const loadAdjustments = async (page = pagination.current_page) => {
 
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
-    if (filters.start_date) params.start_date = filters.start_date.toISOString().split('T')[0]
+    if (filters.start_date) params.start_date = (filters.start_date as Date).toISOString().split('T')[0]
 
-    const response = await axios.get('/api/inventory/adjustments', { params })
+    const response = await inventoryService.getAdjustments(params)
 
     // Handle Laravel pagination format
-    if (response.data?.success && response.data?.data) {
-      // Extract the paginated data from the nested structure
-      const paginatedData = response.data.data
-
-      // The actual adjustments array is in paginatedData.data
+    if (response?.success && response?.data) {
+      const paginatedData = response.data
       adjustments.value = paginatedData.data || []
-
-      // Update pagination metadata
       pagination.current_page = paginatedData.current_page || page
       pagination.last_page = paginatedData.last_page || 1
       pagination.per_page = paginatedData.per_page || pagination.per_page
       pagination.total = paginatedData.total || 0
-      pagination.from = paginatedData.from || 0
-      pagination.to = paginatedData.to || 0
     }
     // Handle direct array response (fallback)
-    else if (Array.isArray(response.data)) {
-      adjustments.value = response.data
-      pagination.total = response.data.length
+    else if (Array.isArray(response)) {
+      adjustments.value = response
+      pagination.total = response.length
     }
-    // Handle empty response
     else {
       adjustments.value = []
     }
@@ -199,7 +208,7 @@ const loadAdjustments = async (page = pagination.current_page) => {
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load adjustments',
+      detail: error?.response?.data?.message || 'Failed to load adjustments',
       life: 3000
     })
   } finally {
@@ -213,24 +222,34 @@ const onPageChange = (event: any) => {
   loadAdjustments()
 }
 
-const submitAdjustment = async (id: number) => {
+const confirmCancel = (adjustment: any) => {
+  cancelTarget.value = adjustment
+  showCancelDialog.value = true
+}
+
+const doCancel = async () => {
+  if (!cancelTarget.value) return
+  cancelling.value = true
   try {
-    await axios.post(`/api/inventory/adjustments/${id}/submit`)
+    await inventoryService.cancelAdjustment(cancelTarget.value.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: 'Adjustment submitted successfully',
+      detail: 'Adjustment cancelled successfully',
       life: 2000
     })
+    showCancelDialog.value = false
     loadAdjustments(pagination.current_page)
   } catch (error: any) {
-    console.error('Failed to submit adjustment', error)
+    console.error('Failed to cancel adjustment', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to submit adjustment',
+      detail: error?.response?.data?.message || 'Failed to cancel adjustment',
       life: 3000
     })
+  } finally {
+    cancelling.value = false
   }
 }
 

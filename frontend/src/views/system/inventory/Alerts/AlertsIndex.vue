@@ -158,7 +158,7 @@
             </template>
           </Column>
 
-          <Column header="Actions" style="width: 150px">
+          <Column header="Actions" style="width: 120px">
             <template #body="{ data }">
               <div class="flex gap-2">
                 <Button
@@ -169,15 +169,6 @@
                   severity="success"
                   @click="acknowledgeAlert(data.id)"
                   v-tooltip="'Acknowledge alert'"
-                />
-                <Button
-                  v-if="data.status !== 'resolved'"
-                  icon="pi pi-check-circle"
-                  size="small"
-                  text
-                  severity="help"
-                  @click="resolveAlert(data.id)"
-                  v-tooltip="'Resolve alert'"
                 />
               </div>
             </template>
@@ -191,7 +182,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
 const toast = useToast()
 const loading = ref(false)
@@ -232,6 +223,13 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+const computeStats = (alertList: any[]) => {
+  stats.active = alertList.filter(a => a.status === 'active').length
+  stats.critical = alertList.filter(a => a.severity === 'critical').length
+  stats.acknowledged = alertList.filter(a => a.status === 'acknowledged').length
+  stats.resolved = alertList.filter(a => a.status === 'resolved').length
+}
+
 const loadAlerts = async () => {
   loading.value = true
   try {
@@ -240,12 +238,21 @@ const loadAlerts = async () => {
     if (filters.severity) params.severity = filters.severity
     if (filters.search) params.search = filters.search
 
-    const response = await axios.get('/api/inventory/alert-management', { params })
-    alerts.value = response.data?.data || []
+    const response = await inventoryService.getAlerts(params)
+    const alertList = response?.data || []
+    alerts.value = alertList
 
-    // Load statistics
-    const statsResponse = await axios.get('/api/inventory/alert-management/statistics')
-    Object.assign(stats, statsResponse.data?.data || {})
+    // Try to load summary stats from dedicated endpoint, fall back to computing locally
+    try {
+      const summaryResponse = await inventoryService.getAlertSummary()
+      const summaryData = summaryResponse?.data || summaryResponse || {}
+      stats.active = summaryData.active ?? alertList.filter((a: any) => a.status === 'active').length
+      stats.critical = summaryData.critical ?? alertList.filter((a: any) => a.severity === 'critical').length
+      stats.acknowledged = summaryData.acknowledged ?? alertList.filter((a: any) => a.status === 'acknowledged').length
+      stats.resolved = summaryData.resolved ?? alertList.filter((a: any) => a.status === 'resolved').length
+    } catch {
+      computeStats(alertList)
+    }
   } catch (error) {
     console.error('Failed to load alerts', error)
     toast.add({
@@ -261,7 +268,7 @@ const loadAlerts = async () => {
 
 const acknowledgeAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/acknowledge`)
+    await inventoryService.acknowledgeAlert(id)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -275,27 +282,6 @@ const acknowledgeAlert = async (id: number) => {
       severity: 'error',
       summary: 'Error',
       detail: 'Failed to acknowledge alert',
-      life: 3000
-    })
-  }
-}
-
-const resolveAlert = async (id: number) => {
-  try {
-    await axios.post(`/api/inventory/alert-management/${id}/resolve`)
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Alert resolved',
-      life: 2000
-    })
-    loadAlerts()
-  } catch (error) {
-    console.error('Failed to resolve alert', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to resolve alert',
       life: 3000
     })
   }

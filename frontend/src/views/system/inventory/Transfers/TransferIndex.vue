@@ -3,7 +3,7 @@
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-3xl font-bold text-gray-800">Stock Transfers</h1>
-        <p class="text-gray-600 mt-1">Manage inter-store stock movements and approvals</p>
+        <p class="text-gray-600 mt-1">Manage inter-store stock movements</p>
       </div>
       <Button label="Create Transfer" icon="pi pi-plus" severity="success" @click="router.push({ name: 'inventory.transfers.create' })" />
     </div>
@@ -94,7 +94,7 @@
             </template>
           </Column>
 
-          <Column header="Actions" style="width: 12%">
+          <Column header="Actions" style="width: 18%">
             <template #body="{ data }">
               <div class="flex gap-2">
                 <Button
@@ -106,13 +106,22 @@
                   v-tooltip="'View details'"
                 />
                 <Button
-                  v-if="data.status === 'submitted'"
-                  icon="pi pi-check"
+                  v-if="data.status === 'draft'"
+                  icon="pi pi-pencil"
                   size="small"
                   text
-                  severity="success"
-                  @click="approveTransfer(data.id)"
-                  v-tooltip="'Approve transfer'"
+                  severity="warning"
+                  @click="router.push({ name: 'inventory.transfers.detail', params: { id: data.id } })"
+                  v-tooltip="'Edit transfer'"
+                />
+                <Button
+                  v-if="data.status === 'draft'"
+                  icon="pi pi-times"
+                  size="small"
+                  text
+                  severity="danger"
+                  @click="confirmCancel(data)"
+                  v-tooltip="'Cancel transfer'"
                 />
               </div>
             </template>
@@ -138,6 +147,20 @@
         </div>
       </template>
     </Card>
+
+    <!-- Cancel Confirmation Dialog -->
+    <Dialog
+      v-model:visible="showCancelDialog"
+      header="Cancel Transfer"
+      :modal="true"
+      :style="{ width: '400px' }"
+    >
+      <p class="text-gray-600">Are you sure you want to cancel this transfer? This action cannot be undone.</p>
+      <template #footer>
+        <Button label="No, Keep" severity="secondary" outlined @click="showCancelDialog = false" />
+        <Button label="Yes, Cancel" severity="danger" :loading="cancelling" @click="doCancel" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -145,7 +168,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
 interface Transfer {
   id: number
@@ -169,7 +192,10 @@ interface PaginationMeta {
 const router = useRouter()
 const toast = useToast()
 const loading = ref(false)
+const cancelling = ref(false)
 const transfers = ref<Transfer[]>([])
+const showCancelDialog = ref(false)
+const cancelTarget = ref<Transfer | null>(null)
 
 const pagination = reactive<PaginationMeta>({
   current_page: 1,
@@ -225,39 +251,36 @@ const loadTransfers = async (page = pagination.current_page) => {
     
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
-    if (filters.start_date) params.start_date = filters.start_date.toISOString().split('T')[0]
+    if (filters.start_date) params.start_date = (filters.start_date as Date).toISOString().split('T')[0]
 
-    const response = await axios.get('/api/inventory/transfers', { params })
+    const response = await inventoryService.getTransfers(params)
     
-    // Handle different API response structures
-    if (response.data?.data) {
-      // Handle { success: true, data: items, meta: pagination } format
-      if (Array.isArray(response.data.data)) {
-        transfers.value = response.data.data
-        if (response.data.meta) {
-          pagination.current_page = response.data.meta.current_page || page
-          pagination.last_page = response.data.meta.last_page || 1
-          pagination.per_page = response.data.meta.per_page || pagination.per_page
-          pagination.total = response.data.meta.total || 0
-          pagination.from = response.data.meta.from || 0
-          pagination.to = response.data.meta.to || 0
-        }
-      } 
-      // Handle Laravel pagination format { data: items, current_page, etc }
-      else if (response.data.data && response.data.current_page) {
-        transfers.value = response.data.data
-        pagination.current_page = response.data.current_page
-        pagination.last_page = response.data.last_page
-        pagination.per_page = response.data.per_page
-        pagination.total = response.data.total
-        pagination.from = response.data.from
-        pagination.to = response.data.to
-      }
-    } 
-    // Handle direct array response
-    else if (Array.isArray(response.data)) {
+    // Handle { success: true, data: items, meta: pagination } format
+    if (response?.data && Array.isArray(response.data)) {
       transfers.value = response.data
-      pagination.total = response.data.length
+      if (response.meta) {
+        pagination.current_page = response.meta.current_page || page
+        pagination.last_page = response.meta.last_page || 1
+        pagination.per_page = response.meta.per_page || pagination.per_page
+        pagination.total = response.meta.total || 0
+        pagination.from = response.meta.from || 0
+        pagination.to = response.meta.to || 0
+      }
+    }
+    // Handle Laravel pagination format { data: items, current_page, etc }
+    else if (response?.data?.data && response.data.current_page) {
+      transfers.value = response.data.data
+      pagination.current_page = response.data.current_page
+      pagination.last_page = response.data.last_page
+      pagination.per_page = response.data.per_page
+      pagination.total = response.data.total
+      pagination.from = response.data.from || 0
+      pagination.to = response.data.to || 0
+    }
+    // Handle direct array response
+    else if (Array.isArray(response)) {
+      transfers.value = response
+      pagination.total = response.length
     }
     
   } catch (error) {
@@ -273,24 +296,34 @@ const loadTransfers = async (page = pagination.current_page) => {
   }
 }
 
-const approveTransfer = async (id: number) => {
+const confirmCancel = (transfer: Transfer) => {
+  cancelTarget.value = transfer
+  showCancelDialog.value = true
+}
+
+const doCancel = async () => {
+  if (!cancelTarget.value) return
+  cancelling.value = true
   try {
-    await axios.post(`/api/inventory/transfers/${id}/approve`)
+    await inventoryService.cancelTransfer(cancelTarget.value.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: 'Transfer approved successfully',
+      detail: 'Transfer cancelled successfully',
       life: 2000
     })
+    showCancelDialog.value = false
     loadTransfers(pagination.current_page)
   } catch (error) {
-    console.error('Failed to approve transfer', error)
+    console.error('Failed to cancel transfer', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to approve transfer',
+      detail: 'Failed to cancel transfer',
       life: 3000
     })
+  } finally {
+    cancelling.value = false
   }
 }
 
