@@ -87,13 +87,15 @@
 import { onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
 interface Pagination {
   current_page: number
   last_page: number
   per_page: number
   total: number
+  from: number
+  to: number
 }
 
 const router = useRouter()
@@ -105,7 +107,9 @@ const pagination = reactive<Pagination>({
   current_page: 1,
   last_page: 1,
   per_page: 15,
-  total: 0
+  total: 0,
+  from: 0,
+  to: 0
 })
 
 const filters = reactive({
@@ -139,17 +143,17 @@ const formatDate = (date: string) => {
   })
 }
 
-const capitalizeFirstLetter = (string) => {
+const capitalizeFirstLetter = (string: string) => {
   if (!string) return 'N/A'
   return string.charAt(0).toUpperCase() + string.slice(1)
 }
 
-const formatStatus = (status) => {
+const formatStatus = (status: string) => {
   if (!status) return 'N/A'
   
   // Replace underscores with spaces and capitalize each word
   return status.split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }
 
@@ -163,33 +167,27 @@ const loadAdjustments = async (page = pagination.current_page) => {
 
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
-    if (filters.start_date) params.start_date = filters.start_date.toISOString().split('T')[0]
+    if (filters.start_date) params.start_date = (filters.start_date as Date).toISOString().split('T')[0]
 
-    const response = await axios.get('/api/inventory/adjustments', { params })
+    const response = await inventoryService.getAdjustments(params)
 
     // Handle Laravel pagination format
-    if (response.data?.success && response.data?.data) {
-      // Extract the paginated data from the nested structure
+    if (response.data?.data) {
       const paginatedData = response.data.data
-
-      // The actual adjustments array is in paginatedData.data
       adjustments.value = paginatedData.data || []
-
-      // Update pagination metadata
       pagination.current_page = paginatedData.current_page || page
       pagination.last_page = paginatedData.last_page || 1
       pagination.per_page = paginatedData.per_page || pagination.per_page
       pagination.total = paginatedData.total || 0
       pagination.from = paginatedData.from || 0
       pagination.to = paginatedData.to || 0
-    }
-    // Handle direct array response (fallback)
-    else if (Array.isArray(response.data)) {
+    } else if (response.data?.data && Array.isArray(response.data.data)) {
+      adjustments.value = response.data.data
+      pagination.total = response.data.data.length
+    } else if (Array.isArray(response.data)) {
       adjustments.value = response.data
       pagination.total = response.data.length
-    }
-    // Handle empty response
-    else {
+    } else {
       adjustments.value = []
     }
 
@@ -215,7 +213,7 @@ const onPageChange = (event: any) => {
 
 const submitAdjustment = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/adjustments/${id}/submit`)
+    await inventoryService.submitAdjustment(id)
     toast.add({
       severity: 'success',
       summary: 'Success',

@@ -191,7 +191,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
 const toast = useToast()
 const loading = ref(false)
@@ -240,12 +240,13 @@ const loadAlerts = async () => {
     if (filters.severity) params.severity = filters.severity
     if (filters.search) params.search = filters.search
 
-    const response = await axios.get('/api/inventory/alert-management', { params })
-    alerts.value = response.data?.data || []
+    const response = await inventoryService.getAlerts(params)
+    alerts.value = response.data?.data || response.data || []
 
     // Load statistics
-    const statsResponse = await axios.get('/api/inventory/alert-management/statistics')
-    Object.assign(stats, statsResponse.data?.data || {})
+    const statsResponse = await inventoryService.getAlertSummary()
+    const statsData = statsResponse.data?.data || statsResponse.data || {}
+    Object.assign(stats, statsData)
   } catch (error) {
     console.error('Failed to load alerts', error)
     toast.add({
@@ -261,7 +262,7 @@ const loadAlerts = async () => {
 
 const acknowledgeAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/acknowledge`)
+    await inventoryService.acknowledgeAlert(id)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -282,7 +283,7 @@ const acknowledgeAlert = async (id: number) => {
 
 const resolveAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/resolve`)
+    await inventoryService.resolveAlert(id)
     toast.add({
       severity: 'success',
       summary: 'Success',

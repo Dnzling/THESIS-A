@@ -145,7 +145,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
 interface Transfer {
   id: number
@@ -225,13 +225,11 @@ const loadTransfers = async (page = pagination.current_page) => {
     
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
-    if (filters.start_date) params.start_date = filters.start_date.toISOString().split('T')[0]
+    if (filters.start_date) params.start_date = (filters.start_date as Date).toISOString().split('T')[0]
 
-    const response = await axios.get('/api/inventory/transfers', { params })
+    const response = await inventoryService.getTransfers(params)
     
-    // Handle different API response structures
     if (response.data?.data) {
-      // Handle { success: true, data: items, meta: pagination } format
       if (Array.isArray(response.data.data)) {
         transfers.value = response.data.data
         if (response.data.meta) {
@@ -242,9 +240,7 @@ const loadTransfers = async (page = pagination.current_page) => {
           pagination.from = response.data.meta.from || 0
           pagination.to = response.data.meta.to || 0
         }
-      } 
-      // Handle Laravel pagination format { data: items, current_page, etc }
-      else if (response.data.data && response.data.current_page) {
+      } else if (response.data.data && response.data.current_page) {
         transfers.value = response.data.data
         pagination.current_page = response.data.current_page
         pagination.last_page = response.data.last_page
@@ -253,9 +249,7 @@ const loadTransfers = async (page = pagination.current_page) => {
         pagination.from = response.data.from
         pagination.to = response.data.to
       }
-    } 
-    // Handle direct array response
-    else if (Array.isArray(response.data)) {
+    } else if (Array.isArray(response.data)) {
       transfers.value = response.data
       pagination.total = response.data.length
     }
@@ -275,7 +269,7 @@ const loadTransfers = async (page = pagination.current_page) => {
 
 const approveTransfer = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/transfers/${id}/approve`)
+    await inventoryService.approveTransfer(id)
     toast.add({
       severity: 'success',
       summary: 'Success',

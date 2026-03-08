@@ -5,6 +5,7 @@
         <h1 class="text-3xl font-bold text-gray-800">Inventory Items</h1>
         <p class="text-gray-600 mt-1">View and manage inventory across all branches</p>
       </div>
+      <Button icon="pi pi-plus" label="Add Item" @click="router.push({ name: 'inventory.items.create' })" />
     </div>
 
     <!-- Filters -->
@@ -96,26 +97,43 @@
           <Column header="Actions" style="width: 14%">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button icon="pi pi-eye" size="small" text severity="info" @click="viewDetails(data)" v-tooltip="'View details'" />
-                <Button icon="pi pi-pencil" size="small" text severity="warning" @click="editItem(data)" v-tooltip="'Adjust stock'" />
+                <Button icon="pi pi-eye" size="small" text severity="info" @click="router.push({ name: 'inventory.items.detail', params: { id: data.id } })" v-tooltip="'View details'" />
+                <Button icon="pi pi-pencil" size="small" text severity="warning" @click="router.push({ name: 'inventory.items.edit', params: { id: data.id } })" v-tooltip="'Edit item'" />
+                <Button icon="pi pi-trash" size="small" text severity="danger" @click="confirmDelete(data)" v-tooltip="'Delete item'" />
               </div>
             </template>
           </Column>
         </DataTable>
       </template>
     </Card>
+
+    <!-- Delete Confirmation Dialog -->
+    <Dialog v-model:visible="showDeleteDialog" header="Confirm Delete" :modal="true" class="w-full sm:w-96">
+      <div class="space-y-4">
+        <p class="text-gray-600">Are you sure you want to delete <strong>{{ itemToDelete?.product?.product_name }}</strong>? This action cannot be undone.</p>
+        <div class="flex justify-end gap-2">
+          <Button label="Cancel" severity="secondary" outlined @click="showDeleteDialog = false" />
+          <Button label="Delete" severity="danger" :loading="deleting" @click="deleteItem" />
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../../services/inventory.service'
 
+const router = useRouter()
 const loading = ref(false)
+const deleting = ref(false)
 const items = ref<any[]>([])
 const totalRecords = ref(0)
 const toast = useToast()
+const showDeleteDialog = ref(false)
+const itemToDelete = ref<any>(null)
 
 const filters = reactive({
   search: '',
@@ -141,11 +159,14 @@ const loadItems = async () => {
     if (filters.search) params.search = filters.search
     if (filters.stock_status) params.stock_status = filters.stock_status
 
-    const response = await axios.get('/api/inventory/items', { params })
+    const response = await inventoryService.getInventoryItems(params)
 
     if (response.data?.data) {
       items.value = response.data.data
       totalRecords.value = response.data.total || items.value.length
+    } else if (Array.isArray(response.data)) {
+      items.value = response.data
+      totalRecords.value = response.data.length
     } else {
       items.value = []
       totalRecords.value = 0
@@ -197,14 +218,30 @@ const getStockSeverity = (item: any) => {
   return 'success'
 }
 
-const viewDetails = (item: any) => {
-  console.log('View item details:', item)
-  // Can navigate to detail view if needed
+const confirmDelete = (item: any) => {
+  itemToDelete.value = item
+  showDeleteDialog.value = true
 }
 
-const editItem = (item: any) => {
-  console.log('Edit item:', item)
-  router.push({ name: 'inventory.items.edit', params: { id: item.id } })
+const deleteItem = async () => {
+  if (!itemToDelete.value) return
+  deleting.value = true
+  try {
+    await inventoryService.deleteInventoryItem(itemToDelete.value.id)
+    toast.add({ severity: 'success', summary: 'Deleted', detail: 'Item deleted successfully', life: 2000 })
+    showDeleteDialog.value = false
+    itemToDelete.value = null
+    loadItems()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to delete item',
+      life: 3000
+    })
+  } finally {
+    deleting.value = false
+  }
 }
 
 onMounted(() => {

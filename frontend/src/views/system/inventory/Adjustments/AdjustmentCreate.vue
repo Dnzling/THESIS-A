@@ -663,7 +663,7 @@ const saveAdjustment = async (submit: boolean) => {
       })
     }
 
-    const response = await inventoryService.createAdjustment(adjustmentData)
+    const response = await inventoryService.createAdjustment(adjustmentData as any)
     const adjustmentId = response.data?.id || response.data?.data?.id
 
     if (!adjustmentId) {

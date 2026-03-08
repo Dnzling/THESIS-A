@@ -475,7 +475,7 @@ const submitTransfer = async () => {
       }))
     }
 
-    const response = await inventoryService.createTransfer(payload)
+    const response = await inventoryService.createTransfer(payload as any)
     const transferId = response.data?.id || response.data?.data?.id
     
     toast.add({ 

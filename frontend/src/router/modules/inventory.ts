@@ -45,6 +45,48 @@ const inventoryRoutes: RouteRecordRaw[] = [
           ],
         },
       },
+      {
+        path: 'items/create',
+        name: 'inventory.items.create',
+        component: () => import('../../views/system/inventory/Items/ItemsCreate.vue'),
+        meta: {
+          title: 'Add Inventory Item',
+          permission: 'inventory.items.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Branch Inventory', to: '/inventory/items' },
+            { label: 'Add Item' },
+          ],
+        },
+      },
+      {
+        path: 'items/:id',
+        name: 'inventory.items.detail',
+        component: () => import('../../views/system/inventory/Items/ItemsDetail.vue'),
+        meta: {
+          title: 'Item Details',
+          permission: 'inventory.items.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Branch Inventory', to: '/inventory/items' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'items/:id/edit',
+        name: 'inventory.items.edit',
+        component: () => import('../../views/system/inventory/Items/ItemsEdit.vue'),
+        meta: {
+          title: 'Edit Inventory Item',
+          permission: 'inventory.items.edit',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Branch Inventory', to: '/inventory/items' },
+            { label: 'Edit' },
+          ],
+        },
+      },
 
       // ==================== STOCK ADJUSTMENTS ====================
       {

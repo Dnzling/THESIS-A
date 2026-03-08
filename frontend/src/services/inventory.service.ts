@@ -143,6 +143,12 @@ class InventoryService {
     return response.data
   }
 
+  // GET /inventory/items
+  async getInventoryItems(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/items`, { params })
+    return response.data
+  }
+
   // POST /inventory/items
   async createInventoryItem(data: Partial<BranchInventoryItem>) {
     const response = await axiosClient.post(`${this.baseUrl}/items`, data)

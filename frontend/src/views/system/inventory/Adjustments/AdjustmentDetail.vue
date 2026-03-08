@@ -137,6 +137,25 @@
               </div>
             </div>
           </div>
+
+          <!-- Approval Actions -->
+          <div v-if="canAction" class="pt-4 flex gap-2 justify-end border-t border-gray-200">
+            <Button
+              label="Reject"
+              icon="pi pi-times"
+              severity="danger"
+              outlined
+              :loading="processing"
+              @click="rejectAdjustment"
+            />
+            <Button
+              label="Approve"
+              icon="pi pi-check"
+              severity="success"
+              :loading="processing"
+              @click="approveAdjustment"
+            />
+          </div>
         </template>
       </Card>
     </div>
@@ -270,6 +289,42 @@ const statusSeverity = (status: string) => {
 }
 
 // API calls
+const approveAdjustment = async () => {
+  processing.value = true
+  try {
+    await inventoryService.approveAdjustment(adjustmentId.value)
+    toast.add({ severity: 'success', summary: 'Approved', detail: 'Adjustment approved successfully', life: 2000 })
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to approve adjustment',
+      life: 3000
+    })
+  } finally {
+    processing.value = false
+  }
+}
+
+const rejectAdjustment = async () => {
+  processing.value = true
+  try {
+    await inventoryService.rejectAdjustment(adjustmentId.value)
+    toast.add({ severity: 'success', summary: 'Rejected', detail: 'Adjustment rejected', life: 2000 })
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to reject adjustment',
+      life: 3000
+    })
+  } finally {
+    processing.value = false
+  }
+}
+
 const loadDetail = async () => {
   loading.value = true
   try {

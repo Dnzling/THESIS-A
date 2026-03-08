@@ -5,5 +5,5 @@
 </template>
 
 <script setup lang="ts">
-import ConfigurationSettings from '../../../components/Inventory/ConfigurationSettings.vue'
+import ConfigurationSettings from '../../../../components/Inventory/ConfigurationSettings.vue'
 </script>

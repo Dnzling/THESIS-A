@@ -198,7 +198,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import axiosClient from '../../../axios'
+import axiosClient from '../../../../axios'
 
 interface Notification {
   id: number

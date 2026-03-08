@@ -134,7 +134,7 @@
       <!-- Period Info -->
       <div class="text-xs text-gray-400 text-right">
         Data for {{ dashboardData.period?.range || 'current' }} period:
-        {{ formatDate(dashboardData.period?.start_date) }} - {{ formatDate(dashboardData.period?.end_date) }}
+        {{ dashboardData.period?.start_date ? formatDate(dashboardData.period.start_date) : '-' }} - {{ dashboardData.period?.end_date ? formatDate(dashboardData.period.end_date) : '-' }}
       </div>
     </div>
   </div>
@@ -144,7 +144,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import inventoryService from '../../../services/inventory.service'
 
 const router = useRouter()
 const toast = useToast()
@@ -171,22 +171,23 @@ const dashboardData = ref({
     in_transit: 0,
     completed: 0
   },
-  recent_transactions: [] as any[]
+  adjustments: {
+    pending_approvals: 0
+  },
+  recent_transactions: [] as any[],
+  period: null as { range?: string; start_date?: string; end_date?: string } | null
 })
 
 const loadDashboard = async () => {
   loading.value = true
   try {
-    // Load main dashboard data
-    const response = await axios.get('/api/inventory/dashboard/stats')
+    const response = await inventoryService.getDashboardStats()
 
-    if (response.data?.data) {
+    if (response.data) {
       dashboardData.value = {
         ...dashboardData.value,
-        ...response.data.data
+        ...response.data
       }
-
-      console.log('Dashboard loaded:', dashboardData.value)
     }
   } catch (error: any) {
     console.error('Failed to load inventory dashboard', error)
