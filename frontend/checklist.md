@@ -1,0 +1,13 @@
+After generating the component, ensure:
+- [ ] TypeScript types are properly imported and used
+- [ ] All props have proper TypeScript interfaces
+- [ ] Emits are typed with defineEmits<{}>()
+- [ ] Permission checks are implemented
+- [ ] Loading states are handled
+- [ ] Error handling with try/catch and Toast
+- [ ] Responsive design with Tailwind breakpoints
+- [ ] PrimeVue components are used correctly
+- [ ] Currency formatted with ₱ symbol
+- [ ] Dates formatted consistently
+- [ ] No console.log in production code
+- [ ] Proper ARIA labels for accessibility
