@@ -141,11 +141,11 @@ const loadItems = async () => {
     if (filters.search) params.search = filters.search
     if (filters.stock_status) params.stock_status = filters.stock_status
 
-    const response = await axios.get('/api/inventory/items', { params })
+    const response = await axios.get('/api/inventory', { params })
 
     if (response.data?.data) {
       items.value = response.data.data
-      totalRecords.value = response.data.total || items.value.length
+      totalRecords.value = response.data.meta?.total || response.data.total || items.value.length
     } else {
       items.value = []
       totalRecords.value = 0

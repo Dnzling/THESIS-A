@@ -240,12 +240,16 @@ const loadAlerts = async () => {
     if (filters.severity) params.severity = filters.severity
     if (filters.search) params.search = filters.search
 
-    const response = await axios.get('/api/inventory/alert-management', { params })
+    const response = await axios.get('/api/inventory/alerts', { params })
     alerts.value = response.data?.data || []
 
     // Load statistics
-    const statsResponse = await axios.get('/api/inventory/alert-management/statistics')
-    Object.assign(stats, statsResponse.data?.data || {})
+    const statsResponse = await axios.get('/api/inventory/alerts/summary')
+    const summaryData = statsResponse.data?.data || {}
+    stats.active = summaryData.total_active ?? 0
+    stats.critical = summaryData.out_of_stock ?? 0
+    stats.acknowledged = summaryData.acknowledged ?? 0
+    stats.resolved = summaryData.resolved ?? 0
   } catch (error) {
     console.error('Failed to load alerts', error)
     toast.add({
@@ -261,7 +265,7 @@ const loadAlerts = async () => {
 
 const acknowledgeAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/acknowledge`)
+    await axios.post(`/api/inventory/alerts/${id}/acknowledge`)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -282,7 +286,7 @@ const acknowledgeAlert = async (id: number) => {
 
 const resolveAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/resolve`)
+    await axios.post(`/api/inventory/alerts/${id}/resolve`)
     toast.add({
       severity: 'success',
       summary: 'Success',

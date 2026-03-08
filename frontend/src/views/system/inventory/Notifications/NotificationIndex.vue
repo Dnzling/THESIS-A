@@ -198,6 +198,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useToast } from 'primevue/usetoast'
 import axiosClient from '../../../axios'
 
 interface Notification {
@@ -211,6 +212,7 @@ interface Notification {
 }
 
 const loading = ref(false)
+const toast = useToast()
 const notifications = ref<Notification[]>([])
 const unreadCount = ref(0)
 const totalRecords = ref(0)
@@ -319,8 +321,10 @@ const markAllAsRead = async () => {
       read_at: new Date().toISOString()
     }))
     unreadCount.value = 0
+    toast.add({ severity: 'success', summary: 'Success', detail: 'All notifications marked as read', life: 2000 })
   } catch (error) {
     console.error('Failed to mark all as read:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to mark all as read', life: 3000 })
   }
 }
 
@@ -344,8 +348,10 @@ const deleteAll = async () => {
     notifications.value = []
     totalRecords.value = 0
     unreadCount.value = 0
+    toast.add({ severity: 'success', summary: 'Success', detail: 'All notifications deleted', life: 2000 })
   } catch (error) {
     console.error('Failed to delete all:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete notifications', life: 3000 })
   }
 }
 

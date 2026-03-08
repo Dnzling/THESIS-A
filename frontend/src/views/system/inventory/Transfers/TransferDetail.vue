@@ -55,9 +55,9 @@
           </DataTable>
 
           <div v-if="canAction" class="pt-4 flex gap-2 justify-end">
-            <Button label="Cancel" icon="pi pi-times" severity="danger" outlined :loading="processing" @click="cancelTransfer" />
-            <Button label="Ship" icon="pi pi-send" severity="info" :loading="processing" @click="shipTransfer" />
-            <Button label="Receive" icon="pi pi-check" severity="success" :loading="processing" @click="receiveTransfer" />
+            <Button v-if="canCancel" label="Cancel" icon="pi pi-times" severity="danger" outlined :loading="processing" @click="cancelTransfer" />
+            <Button v-if="canShip" label="Ship" icon="pi pi-send" severity="info" :loading="processing" @click="shipTransfer" />
+            <Button v-if="canReceive" label="Receive" icon="pi pi-check" severity="success" :loading="processing" @click="receiveTransfer" />
           </div>
         </template>
       </Card>
@@ -68,10 +68,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
 
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
 
 const loading = ref(false)
 const processing = ref(false)
@@ -79,6 +81,9 @@ const detail = ref<any>(null)
 
 const transferId = computed(() => Number(route.params.id))
 const canAction = computed(() => ['approved', 'shipped'].includes(detail.value?.status))
+const canCancel = computed(() => detail.value?.status === 'approved')
+const canShip = computed(() => detail.value?.status === 'approved')
+const canReceive = computed(() => detail.value?.status === 'shipped')
 
 const loadDetail = async () => {
   loading.value = true
@@ -97,9 +102,11 @@ const shipTransfer = async () => {
   processing.value = true
   try {
     await inventoryService.shipTransfer(transferId.value)
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Transfer shipped successfully', life: 2000 })
     await loadDetail()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to ship transfer', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to ship transfer', life: 3000 })
   } finally {
     processing.value = false
   }
@@ -109,9 +116,11 @@ const receiveTransfer = async () => {
   processing.value = true
   try {
     await inventoryService.receiveTransfer(transferId.value)
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Transfer received successfully', life: 2000 })
     await loadDetail()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to receive transfer', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to receive transfer', life: 3000 })
   } finally {
     processing.value = false
   }
@@ -121,9 +130,11 @@ const cancelTransfer = async () => {
   processing.value = true
   try {
     await inventoryService.cancelTransfer(transferId.value)
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Transfer cancelled successfully', life: 2000 })
     await loadDetail()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to cancel transfer', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to cancel transfer', life: 3000 })
   } finally {
     processing.value = false
   }
