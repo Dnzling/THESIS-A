@@ -205,6 +205,662 @@ const inventoryRoutes: RouteRecordRaw[] = [
           ],
         },
       },
+
+      // ==================== PRODUCTS ====================
+      {
+        path: 'products',
+        name: 'inventory.products',
+        component: () => import('../../views/system/inventory/Products/ProductIndex.vue'),
+        meta: {
+          title: 'Products',
+          permission: 'inventory.products.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Products' },
+          ],
+        },
+      },
+      {
+        path: 'products/create',
+        name: 'inventory.products.create',
+        component: () => import('../../views/system/inventory/Products/ProductCreate.vue'),
+        meta: {
+          title: 'Create Product',
+          permission: 'inventory.products.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Products', to: '/inventory/products' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'products/:id',
+        name: 'inventory.products.detail',
+        component: () => import('../../views/system/inventory/Products/ProductDetail.vue'),
+        meta: {
+          title: 'Product Details',
+          permission: 'inventory.products.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Products', to: '/inventory/products' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'products/:id/edit',
+        name: 'inventory.products.edit',
+        component: () => import('../../views/system/inventory/Products/ProductEdit.vue'),
+        meta: {
+          title: 'Edit Product',
+          permission: 'inventory.products.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Products', to: '/inventory/products' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== CATEGORIES ====================
+      {
+        path: 'categories',
+        name: 'inventory.categories',
+        component: () => import('../../views/system/inventory/Categories/CategoryIndex.vue'),
+        meta: {
+          title: 'Categories',
+          permission: 'inventory.categories.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Categories' },
+          ],
+        },
+      },
+      {
+        path: 'categories/create',
+        name: 'inventory.categories.create',
+        component: () => import('../../views/system/inventory/Categories/CategoryCreate.vue'),
+        meta: {
+          title: 'Create Category',
+          permission: 'inventory.categories.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Categories', to: '/inventory/categories' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'categories/:id',
+        name: 'inventory.categories.detail',
+        component: () => import('../../views/system/inventory/Categories/CategoryDetail.vue'),
+        meta: {
+          title: 'Category Details',
+          permission: 'inventory.categories.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Categories', to: '/inventory/categories' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'categories/:id/edit',
+        name: 'inventory.categories.edit',
+        component: () => import('../../views/system/inventory/Categories/CategoryEdit.vue'),
+        meta: {
+          title: 'Edit Category',
+          permission: 'inventory.categories.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Categories', to: '/inventory/categories' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== UNITS ====================
+      {
+        path: 'units',
+        name: 'inventory.units',
+        component: () => import('../../views/system/inventory/Units/UnitIndex.vue'),
+        meta: {
+          title: 'Units',
+          permission: 'inventory.units.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Units' },
+          ],
+        },
+      },
+      {
+        path: 'units/create',
+        name: 'inventory.units.create',
+        component: () => import('../../views/system/inventory/Units/UnitCreate.vue'),
+        meta: {
+          title: 'Create Unit',
+          permission: 'inventory.units.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Units', to: '/inventory/units' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'units/:id',
+        name: 'inventory.units.detail',
+        component: () => import('../../views/system/inventory/Units/UnitDetail.vue'),
+        meta: {
+          title: 'Unit Details',
+          permission: 'inventory.units.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Units', to: '/inventory/units' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'units/:id/edit',
+        name: 'inventory.units.edit',
+        component: () => import('../../views/system/inventory/Units/UnitEdit.vue'),
+        meta: {
+          title: 'Edit Unit',
+          permission: 'inventory.units.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Units', to: '/inventory/units' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== STOCK ISSUES ====================
+      {
+        path: 'stock-issues',
+        name: 'inventory.stock-issues',
+        component: () => import('../../views/system/inventory/StockIssues/StockIssueIndex.vue'),
+        meta: {
+          title: 'Stock Issues',
+          permission: 'inventory.stock-issues.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Issues' },
+          ],
+        },
+      },
+      {
+        path: 'stock-issues/create',
+        name: 'inventory.stock-issues.create',
+        component: () => import('../../views/system/inventory/StockIssues/StockIssueCreate.vue'),
+        meta: {
+          title: 'Create Stock Issue',
+          permission: 'inventory.stock-issues.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Issues', to: '/inventory/stock-issues' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'stock-issues/:id',
+        name: 'inventory.stock-issues.detail',
+        component: () => import('../../views/system/inventory/StockIssues/StockIssueDetail.vue'),
+        meta: {
+          title: 'Stock Issue Details',
+          permission: 'inventory.stock-issues.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Issues', to: '/inventory/stock-issues' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'stock-issues/:id/edit',
+        name: 'inventory.stock-issues.edit',
+        component: () => import('../../views/system/inventory/StockIssues/StockIssueEdit.vue'),
+        meta: {
+          title: 'Edit Stock Issue',
+          permission: 'inventory.stock-issues.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Issues', to: '/inventory/stock-issues' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== STOCK RETURNS ====================
+      {
+        path: 'stock-returns',
+        name: 'inventory.stock-returns',
+        component: () => import('../../views/system/inventory/StockReturns/StockReturnIndex.vue'),
+        meta: {
+          title: 'Stock Returns',
+          permission: 'inventory.stock-returns.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Returns' },
+          ],
+        },
+      },
+      {
+        path: 'stock-returns/create',
+        name: 'inventory.stock-returns.create',
+        component: () => import('../../views/system/inventory/StockReturns/StockReturnCreate.vue'),
+        meta: {
+          title: 'Create Stock Return',
+          permission: 'inventory.stock-returns.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Returns', to: '/inventory/stock-returns' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'stock-returns/:id',
+        name: 'inventory.stock-returns.detail',
+        component: () => import('../../views/system/inventory/StockReturns/StockReturnDetail.vue'),
+        meta: {
+          title: 'Stock Return Details',
+          permission: 'inventory.stock-returns.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Returns', to: '/inventory/stock-returns' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'stock-returns/:id/edit',
+        name: 'inventory.stock-returns.edit',
+        component: () => import('../../views/system/inventory/StockReturns/StockReturnEdit.vue'),
+        meta: {
+          title: 'Edit Stock Return',
+          permission: 'inventory.stock-returns.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Returns', to: '/inventory/stock-returns' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== STOCK COUNTS ====================
+      {
+        path: 'stock-counts',
+        name: 'inventory.stock-counts',
+        component: () => import('../../views/system/inventory/StockCounts/StockCountIndex.vue'),
+        meta: {
+          title: 'Stock Counts',
+          permission: 'inventory.stock-counts.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Counts' },
+          ],
+        },
+      },
+      {
+        path: 'stock-counts/create',
+        name: 'inventory.stock-counts.create',
+        component: () => import('../../views/system/inventory/StockCounts/StockCountCreate.vue'),
+        meta: {
+          title: 'Create Stock Count',
+          permission: 'inventory.stock-counts.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Counts', to: '/inventory/stock-counts' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'stock-counts/:id',
+        name: 'inventory.stock-counts.detail',
+        component: () => import('../../views/system/inventory/StockCounts/StockCountDetail.vue'),
+        meta: {
+          title: 'Stock Count Details',
+          permission: 'inventory.stock-counts.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Counts', to: '/inventory/stock-counts' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'stock-counts/:id/edit',
+        name: 'inventory.stock-counts.edit',
+        component: () => import('../../views/system/inventory/StockCounts/StockCountEdit.vue'),
+        meta: {
+          title: 'Edit Stock Count',
+          permission: 'inventory.stock-counts.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Counts', to: '/inventory/stock-counts' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== WAREHOUSES ====================
+      {
+        path: 'warehouses',
+        name: 'inventory.warehouses',
+        component: () => import('../../views/system/inventory/Warehouses/WarehouseIndex.vue'),
+        meta: {
+          title: 'Warehouses',
+          permission: 'inventory.warehouses.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Warehouses' },
+          ],
+        },
+      },
+      {
+        path: 'warehouses/create',
+        name: 'inventory.warehouses.create',
+        component: () => import('../../views/system/inventory/Warehouses/WarehouseCreate.vue'),
+        meta: {
+          title: 'Create Warehouse',
+          permission: 'inventory.warehouses.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Warehouses', to: '/inventory/warehouses' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'warehouses/:id',
+        name: 'inventory.warehouses.detail',
+        component: () => import('../../views/system/inventory/Warehouses/WarehouseDetail.vue'),
+        meta: {
+          title: 'Warehouse Details',
+          permission: 'inventory.warehouses.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Warehouses', to: '/inventory/warehouses' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'warehouses/:id/edit',
+        name: 'inventory.warehouses.edit',
+        component: () => import('../../views/system/inventory/Warehouses/WarehouseEdit.vue'),
+        meta: {
+          title: 'Edit Warehouse',
+          permission: 'inventory.warehouses.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Warehouses', to: '/inventory/warehouses' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== LOCATIONS ====================
+      {
+        path: 'locations',
+        name: 'inventory.locations',
+        component: () => import('../../views/system/inventory/Locations/LocationIndex.vue'),
+        meta: {
+          title: 'Locations',
+          permission: 'inventory.locations.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Locations' },
+          ],
+        },
+      },
+      {
+        path: 'locations/create',
+        name: 'inventory.locations.create',
+        component: () => import('../../views/system/inventory/Locations/LocationCreate.vue'),
+        meta: {
+          title: 'Create Location',
+          permission: 'inventory.locations.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Locations', to: '/inventory/locations' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'locations/:id',
+        name: 'inventory.locations.detail',
+        component: () => import('../../views/system/inventory/Locations/LocationDetail.vue'),
+        meta: {
+          title: 'Location Details',
+          permission: 'inventory.locations.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Locations', to: '/inventory/locations' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'locations/:id/edit',
+        name: 'inventory.locations.edit',
+        component: () => import('../../views/system/inventory/Locations/LocationEdit.vue'),
+        meta: {
+          title: 'Edit Location',
+          permission: 'inventory.locations.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Locations', to: '/inventory/locations' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== REORDER RULES ====================
+      {
+        path: 'reorder-rules',
+        name: 'inventory.reorder-rules',
+        component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleIndex.vue'),
+        meta: {
+          title: 'Reorder Rules',
+          permission: 'inventory.reorder-rules.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reorder Rules' },
+          ],
+        },
+      },
+      {
+        path: 'reorder-rules/create',
+        name: 'inventory.reorder-rules.create',
+        component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleCreate.vue'),
+        meta: {
+          title: 'Create Reorder Rule',
+          permission: 'inventory.reorder-rules.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reorder Rules', to: '/inventory/reorder-rules' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'reorder-rules/:id',
+        name: 'inventory.reorder-rules.detail',
+        component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleDetail.vue'),
+        meta: {
+          title: 'Reorder Rule Details',
+          permission: 'inventory.reorder-rules.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reorder Rules', to: '/inventory/reorder-rules' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'reorder-rules/:id/edit',
+        name: 'inventory.reorder-rules.edit',
+        component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleEdit.vue'),
+        meta: {
+          title: 'Edit Reorder Rule',
+          permission: 'inventory.reorder-rules.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reorder Rules', to: '/inventory/reorder-rules' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== REORDER SUGGESTIONS ====================
+      {
+        path: 'reorder-suggestions',
+        name: 'inventory.reorder-suggestions',
+        component: () => import('../../views/system/inventory/ReorderSuggestions/ReorderSuggestionIndex.vue'),
+        meta: {
+          title: 'Reorder Suggestions',
+          permission: 'inventory.reorder-suggestions.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reorder Suggestions' },
+          ],
+        },
+      },
+      {
+        path: 'reorder-suggestions/:id',
+        name: 'inventory.reorder-suggestions.detail',
+        component: () => import('../../views/system/inventory/ReorderSuggestions/ReorderSuggestionDetail.vue'),
+        meta: {
+          title: 'Reorder Suggestion Details',
+          permission: 'inventory.reorder-suggestions.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reorder Suggestions', to: '/inventory/reorder-suggestions' },
+            { label: 'Details' },
+          ],
+        },
+      },
+
+      // ==================== SERIAL NUMBERS ====================
+      {
+        path: 'serial-numbers',
+        name: 'inventory.serial-numbers',
+        component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberIndex.vue'),
+        meta: {
+          title: 'Serial Numbers',
+          permission: 'inventory.serial-numbers.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Serial Numbers' },
+          ],
+        },
+      },
+      {
+        path: 'serial-numbers/create',
+        name: 'inventory.serial-numbers.create',
+        component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberCreate.vue'),
+        meta: {
+          title: 'Create Serial Number',
+          permission: 'inventory.serial-numbers.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Serial Numbers', to: '/inventory/serial-numbers' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'serial-numbers/:id',
+        name: 'inventory.serial-numbers.detail',
+        component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberDetail.vue'),
+        meta: {
+          title: 'Serial Number Details',
+          permission: 'inventory.serial-numbers.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Serial Numbers', to: '/inventory/serial-numbers' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'serial-numbers/:id/edit',
+        name: 'inventory.serial-numbers.edit',
+        component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberEdit.vue'),
+        meta: {
+          title: 'Edit Serial Number',
+          permission: 'inventory.serial-numbers.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Serial Numbers', to: '/inventory/serial-numbers' },
+            { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== BATCHES ====================
+      {
+        path: 'batches',
+        name: 'inventory.batches',
+        component: () => import('../../views/system/inventory/Batches/BatchIndex.vue'),
+        meta: {
+          title: 'Batches',
+          permission: 'inventory.batches.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Batches' },
+          ],
+        },
+      },
+      {
+        path: 'batches/create',
+        name: 'inventory.batches.create',
+        component: () => import('../../views/system/inventory/Batches/BatchCreate.vue'),
+        meta: {
+          title: 'Create Batch',
+          permission: 'inventory.batches.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Batches', to: '/inventory/batches' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'batches/:id',
+        name: 'inventory.batches.detail',
+        component: () => import('../../views/system/inventory/Batches/BatchDetail.vue'),
+        meta: {
+          title: 'Batch Details',
+          permission: 'inventory.batches.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Batches', to: '/inventory/batches' },
+            { label: 'Details' },
+          ],
+        },
+      },
+      {
+        path: 'batches/:id/edit',
+        name: 'inventory.batches.edit',
+        component: () => import('../../views/system/inventory/Batches/BatchEdit.vue'),
+        meta: {
+          title: 'Edit Batch',
+          permission: 'inventory.batches.update',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Batches', to: '/inventory/batches' },
+            { label: 'Edit' },
+          ],
+        },
+      },
     ],
   },
 ];

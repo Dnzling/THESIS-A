@@ -1,19 +1,20 @@
 <?php
-// backend/app/Http/Controllers/Inventory/InventoryTransactionController.php
 
 namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Models\Core\ApprovalWorkflow;
 use App\Models\Inventory\InventoryTransaction;
-use Illuminate\Http\Request;
+use App\Services\Core\ApprovalEngine;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class InventoryTransactionController extends Controller
 {
-    /**
-     * List all inventory transactions
-     * GET /api/inventory/transactions
-     */
+    public function __construct(protected ApprovalEngine $approvalEngine) {}
+
     public function index(Request $request): JsonResponse
     {
         $query = InventoryTransaction::with([
@@ -81,11 +82,163 @@ class InventoryTransactionController extends Controller
             'data' => $transaction,
         ]);
     }
+    /**
+     * Create an inventory transaction and evaluate approval workflow.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'transaction_number' => ['required', 'string', 'max:50', 'unique:inventory_transactions,transaction_number'],
+            'store_id' => ['required', 'exists:stores,id'],
+            'branch_id' => ['required', 'exists:branches,id'],
+            'product_id' => ['required', 'exists:products,id'],
+            'variation_id' => ['nullable', 'exists:product_variations,id'],
+            'transaction_type' => ['required', 'string', 'max:50'],
+            'quantity_before' => ['required', 'integer'],
+            'quantity_change' => ['required', 'integer', 'not_in:0'],
+            'quantity_after' => ['required', 'integer'],
+            'related_branch_id' => ['nullable', 'exists:branches,id'],
+            'reference_type' => ['nullable', 'string', 'max:50'],
+            'reference_id' => ['nullable', 'integer'],
+            'notes' => ['nullable', 'string'],
+            'unit_cost' => ['nullable', 'numeric'],
+            'total_value' => ['nullable', 'numeric'],
+            'created_by' => ['nullable', 'exists:employees,id'],
+            'transaction_date' => ['required', 'date'],
+        ]);
+
+        $authUser = Auth::user();
+
+        $validated['created_by'] = $validated['created_by']
+            ?? $authUser?->employee?->id
+            ?? null;
+
+        if (!$validated['created_by']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to resolve creator employee id. Provide created_by explicitly.',
+            ], 422);
+        }
+
+        $payload = DB::transaction(function () use ($validated, $authUser): array {
+            $transaction = InventoryTransaction::create($validated);
+
+            $approval = $this->approvalEngine->process(
+                $transaction,
+                'inventory.adjust',
+                $authUser,
+                (int) $validated['store_id']
+            );
+
+            return [
+                'transaction' => $transaction->fresh(['approvalWorkflow']),
+                'approval' => $approval,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $payload,
+        ], 201);
+    }
 
     /**
-     * Get transaction summary/statistics
-     * GET /api/inventory/transactions/summary
+     * Manually approve a pending transaction workflow.
      */
+    public function approve(Request $request, InventoryTransaction $inventoryTransaction): JsonResponse
+    {
+        if (!$inventoryTransaction->approval_workflow_id) {
+            return response()->json(['success' => false, 'message' => 'No approval workflow found.'], 404);
+        }
+
+        DB::transaction(function () use ($inventoryTransaction): void {
+            $workflow = ApprovalWorkflow::query()->findOrFail($inventoryTransaction->approval_workflow_id);
+            $workflow->update([
+                'status' => 'approved',
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+
+            $workflow->tasks()->where('status', 'pending')->update([
+                'status' => 'completed',
+                'completed_at' => now(),
+                'notes' => 'Completed by manual approval.',
+            ]);
+
+            $inventoryTransaction->update([
+                'requires_approval' => false,
+                'approval_status' => 'approved',
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory transaction approved.',
+            'data' => $inventoryTransaction->fresh(['approvalWorkflow.tasks']),
+        ]);
+    }
+
+    /**
+     * Manually reject a pending transaction workflow.
+     */
+    public function reject(Request $request, InventoryTransaction $inventoryTransaction): JsonResponse
+    {
+        $validated = $request->validate([
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        if (!$inventoryTransaction->approval_workflow_id) {
+            return response()->json(['success' => false, 'message' => 'No approval workflow found.'], 404);
+        }
+
+        DB::transaction(function () use ($inventoryTransaction, $validated): void {
+            $workflow = ApprovalWorkflow::query()->findOrFail($inventoryTransaction->approval_workflow_id);
+            $workflow->update([
+                'status' => 'rejected',
+                'notes' => $validated['notes'] ?? 'Rejected manually.',
+            ]);
+
+            $workflow->tasks()->where('status', 'pending')->update([
+                'status' => 'rejected',
+                'completed_at' => now(),
+                'notes' => $validated['notes'] ?? 'Rejected by approver.',
+            ]);
+
+            $inventoryTransaction->update([
+                'requires_approval' => true,
+                'approval_status' => 'rejected',
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory transaction rejected.',
+            'data' => $inventoryTransaction->fresh(['approvalWorkflow.tasks']),
+        ]);
+    }
+
+    /**
+     * List pending approvals for the authenticated approver.
+     */
+    public function pendingApprovals(Request $request): JsonResponse
+    {
+        $storeId = Auth::user()?->store_id;
+
+        $query = InventoryTransaction::query()
+            ->with(['product', 'branch', 'approvalWorkflow.tasks'])
+            ->pendingApproval();
+
+        if ($storeId) {
+            $query->where('store_id', $storeId);
+        }
+
+        $data = $query->orderByDesc('transaction_date')
+            ->paginate((int) $request->input('per_page', 20));
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
     public function summary(Request $request): JsonResponse
     {
         $query = InventoryTransaction::where('store_id', auth()->user()->store_id);
@@ -127,175 +280,6 @@ class InventoryTransactionController extends Controller
         return response()->json([
             'success' => true,
             'data' => $summary,
-        ]);
-    }
-
-    /**
-     * Get transaction history for a specific product
-     * GET /api/inventory/transactions/product/{productId}
-     */
-    public function productHistory(Request $request, int $productId): JsonResponse
-    {
-        $query = InventoryTransaction::with([
-            'branch',
-            'variation',
-            'createdBy'
-        ])
-        ->where('product_id', $productId)
-        ->where('store_id', auth()->user()->store_id);
-
-        if ($request->has('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
-
-        if ($request->has('variation_id')) {
-            $query->where('variation_id', $request->variation_id);
-        }
-
-        if ($request->has('start_date') && $request->has('end_date')) {
-            $query->whereBetween('transaction_date', [
-                $request->start_date,
-                $request->end_date
-            ]);
-        }
-
-        $transactions = $query->orderBy('transaction_date', 'desc')
-            ->paginate($request->get('per_page', 20));
-
-        return response()->json([
-            'success' => true,
-            'data' => $transactions,
-        ]);
-    }
-
-    /**
-     * Export transactions to CSV
-     * GET /api/inventory/transactions/export
-     */
-    public function export(Request $request): JsonResponse
-    {
-        $query = InventoryTransaction::with([
-            'branch',
-            'product',
-            'variation'
-        ])->where('store_id', auth()->user()->store_id);
-
-        // Apply filters
-        if ($request->has('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
-
-        if ($request->has('start_date') && $request->has('end_date')) {
-            $query->whereBetween('transaction_date', [
-                $request->start_date,
-                $request->end_date
-            ]);
-        }
-
-        if ($request->has('transaction_type')) {
-            $query->where('transaction_type', $request->transaction_type);
-        }
-
-        $transactions = $query->orderBy('transaction_date', 'desc')->get();
-
-        // Format for export
-        $exportData = $transactions->map(function ($transaction) {
-            return [
-                'transaction_number' => $transaction->transaction_number,
-                'date' => $transaction->transaction_date->format('Y-m-d H:i:s'),
-                'branch' => $transaction->branch->name,
-                'product' => $transaction->product->product_name,
-                'variation' => $transaction->variation?->variation_name ?? 'N/A',
-                'transaction_type' => $transaction->transaction_type,
-                'quantity_before' => $transaction->quantity_before,
-                'quantity_change' => $transaction->quantity_change,
-                'quantity_after' => $transaction->quantity_after,
-                'unit_cost' => number_format($transaction->unit_cost ?? 0, 2),
-                'total_value' => number_format($transaction->total_value ?? 0, 2),
-                'reference_type' => $transaction->reference_type ?? 'N/A',
-                'notes' => $transaction->notes ?? '',
-            ];
-        });
-
-        return response()->json([
-            'success' => true,
-            'data' => $exportData,
-            'filename' => 'inventory_transactions_' . date('Y-m-d') . '.csv',
-        ]);
-    }
-
-    /**
-     * Get stock movement chart data
-     * GET /api/inventory/transactions/chart
-     */
-    public function chartData(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'branch_id' => 'nullable|exists:branches,id',
-            'product_id' => 'nullable|exists:products,id',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after:start_date',
-            'group_by' => 'nullable|in:day,week,month',
-        ]);
-
-        $groupBy = $validated['group_by'] ?? 'day';
-        $dateFormat = match($groupBy) {
-            'day' => '%Y-%m-%d',
-            'week' => '%Y-%u',
-            'month' => '%Y-%m',
-            default => '%Y-%m-%d',
-        };
-
-        $query = InventoryTransaction::selectRaw("
-                DATE_FORMAT(transaction_date, '{$dateFormat}') as period,
-                transaction_type,
-                SUM(CASE WHEN quantity_change > 0 THEN quantity_change ELSE 0 END) as quantity_in,
-                SUM(CASE WHEN quantity_change < 0 THEN ABS(quantity_change) ELSE 0 END) as quantity_out,
-                SUM(total_value) as total_value
-            ")
-            ->where('store_id', auth()->user()->store_id)
-            ->whereBetween('transaction_date', [$validated['start_date'], $validated['end_date']]);
-
-        if (isset($validated['branch_id'])) {
-            $query->where('branch_id', $validated['branch_id']);
-        }
-
-        if (isset($validated['product_id'])) {
-            $query->where('product_id', $validated['product_id']);
-        }
-
-        $chartData = $query->groupBy('period', 'transaction_type')
-            ->orderBy('period')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $chartData,
-        ]);
-    }
-
-    /**
-     * Get recent transactions (for dashboard)
-     * GET /api/inventory/transactions/recent
-     */
-    public function recent(Request $request): JsonResponse
-    {
-        $limit = $request->get('limit', 10);
-
-        $transactions = InventoryTransaction::with([
-            'branch',
-            'product',
-            'variation',
-            'createdBy'
-        ])
-        ->where('store_id', auth()->user()->store_id)
-        ->orderBy('transaction_date', 'desc')
-        ->limit($limit)
-        ->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $transactions,
         ]);
     }
 }

@@ -111,11 +111,14 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
+import { useRouter } from 'vue-router'
+
 
 const loading = ref(false)
 const items = ref<any[]>([])
 const totalRecords = ref(0)
 const toast = useToast()
+const router = useRouter()
 
 const filters = reactive({
   search: '',

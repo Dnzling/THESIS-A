@@ -22,70 +22,136 @@ class InventoryNavigationSeeder extends Seeder
                 'meta' => json_encode(['subtitle' => 'Overview of your inventory status'])
             ],
             [
-                'name' => 'inventory.items',
-                'display_name' => 'Branch Inventory',
+                'name' => 'inventory.products',
+                'display_name' => 'Products',
                 'module' => 'inventory',
-                'route_name' => 'inventory.items',
-                'route_path' => '/inventory/items',
+                'route_name' => 'inventory.products',
+                'route_path' => '/inventory/products',
                 'icon' => 'pi pi-box',
                 'parent_id' => null,
                 'display_order' => 2,
-                'meta' => json_encode(['subtitle' => 'Manage stock levels across branches'])
+                'meta' => json_encode(['subtitle' => 'Manage product catalog and details'])
             ],
             [
-                'name' => 'inventory.adjustments',
-                'display_name' => 'Stock Adjustments',
+                'name' => 'inventory.categories',
+                'display_name' => 'Categories',
                 'module' => 'inventory',
-                'route_name' => 'inventory.adjustments',
-                'route_path' => '/inventory/adjustments',
-                'icon' => 'pi pi-sync',
+                'route_name' => 'inventory.categories',
+                'route_path' => '/inventory/categories',
+                'icon' => 'pi pi-tags',
                 'parent_id' => null,
                 'display_order' => 3,
-                'meta' => json_encode(['subtitle' => 'Physical counts & corrections'])
+                'meta' => json_encode(['subtitle' => 'Organize products by categories'])
             ],
             [
-                'name' => 'inventory.transfers',
-                'display_name' => 'Stock Transfers',
+                'name' => 'inventory.units',
+                'display_name' => 'Units',
                 'module' => 'inventory',
-                'route_name' => 'inventory.transfers',
-                'route_path' => '/inventory/transfers',
-                'icon' => 'pi pi-arrow-right-arrow-left',
+                'route_name' => 'inventory.units',
+                'route_path' => '/inventory/units',
+                'icon' => 'pi pi-calculator',
                 'parent_id' => null,
                 'display_order' => 4,
-                'meta' => json_encode(['subtitle' => 'Move stock between branches'])
+                'meta' => json_encode(['subtitle' => 'Define measurement units'])
             ],
             [
-                'name' => 'inventory.alerts',
-                'display_name' => 'Stock Alerts',
+                'name' => 'inventory.stock-issues',
+                'display_name' => 'Stock Issues',
                 'module' => 'inventory',
-                'route_name' => 'inventory.alerts',
-                'route_path' => '/inventory/alerts',
-                'icon' => 'pi pi-bell',
+                'route_name' => 'inventory.stock-issues',
+                'route_path' => '/inventory/stock-issues',
+                'icon' => 'pi pi-minus-circle',
                 'parent_id' => null,
                 'display_order' => 5,
-                'meta' => json_encode(['subtitle' => 'Low stock & reorder notifications', 'badge' => 'count'])
+                'meta' => json_encode(['subtitle' => 'Track stock issues and deductions'])
             ],
             [
-                'name' => 'inventory.transactions',
-                'display_name' => 'Transactions',
+                'name' => 'inventory.stock-returns',
+                'display_name' => 'Stock Returns',
                 'module' => 'inventory',
-                'route_name' => 'inventory.transactions',
-                'route_path' => '/inventory/transactions',
-                'icon' => 'pi pi-history',
+                'route_name' => 'inventory.stock-returns',
+                'route_path' => '/inventory/stock-returns',
+                'icon' => 'pi pi-refresh',
                 'parent_id' => null,
                 'display_order' => 6,
-                'meta' => json_encode(['subtitle' => 'Complete inventory movement history'])
+                'meta' => json_encode(['subtitle' => 'Manage stock returns and credits'])
             ],
             [
-                'name' => 'inventory.reports',
-                'display_name' => 'Reports',
+                'name' => 'inventory.stock-counts',
+                'display_name' => 'Stock Counts',
                 'module' => 'inventory',
-                'route_name' => 'inventory.reports',
-                'route_path' => '/inventory/reports',
-                'icon' => 'pi pi-chart-bar',
+                'route_name' => 'inventory.stock-counts',
+                'route_path' => '/inventory/stock-counts',
+                'icon' => 'pi pi-check-circle',
                 'parent_id' => null,
                 'display_order' => 7,
-                'meta' => json_encode(['subtitle' => 'Inventory analytics & insights'])
+                'meta' => json_encode(['subtitle' => 'Physical inventory counts and audits'])
+            ],
+            [
+                'name' => 'inventory.warehouses',
+                'display_name' => 'Warehouses',
+                'module' => 'inventory',
+                'route_name' => 'inventory.warehouses',
+                'route_path' => '/inventory/warehouses',
+                'icon' => 'pi pi-building',
+                'parent_id' => null,
+                'display_order' => 8,
+                'meta' => json_encode(['subtitle' => 'Manage warehouse locations'])
+            ],
+            [
+                'name' => 'inventory.locations',
+                'display_name' => 'Locations',
+                'module' => 'inventory',
+                'route_name' => 'inventory.locations',
+                'route_path' => '/inventory/locations',
+                'icon' => 'pi pi-map-marker',
+                'parent_id' => null,
+                'display_order' => 9,
+                'meta' => json_encode(['subtitle' => 'Define storage locations within warehouses'])
+            ],
+            [
+                'name' => 'inventory.reorder-rules',
+                'display_name' => 'Reorder Rules',
+                'module' => 'inventory',
+                'route_name' => 'inventory.reorder-rules',
+                'route_path' => '/inventory/reorder-rules',
+                'icon' => 'pi pi-exclamation-triangle',
+                'parent_id' => null,
+                'display_order' => 10,
+                'meta' => json_encode(['subtitle' => 'Set automatic reorder thresholds'])
+            ],
+            [
+                'name' => 'inventory.reorder-suggestions',
+                'display_name' => 'Reorder Suggestions',
+                'module' => 'inventory',
+                'route_name' => 'inventory.reorder-suggestions',
+                'route_path' => '/inventory/reorder-suggestions',
+                'icon' => 'pi pi-lightbulb',
+                'parent_id' => null,
+                'display_order' => 11,
+                'meta' => json_encode(['subtitle' => 'View automated reorder recommendations'])
+            ],
+            [
+                'name' => 'inventory.serial-numbers',
+                'display_name' => 'Serial Numbers',
+                'module' => 'inventory',
+                'route_name' => 'inventory.serial-numbers',
+                'route_path' => '/inventory/serial-numbers',
+                'icon' => 'pi pi-hashtag',
+                'parent_id' => null,
+                'display_order' => 12,
+                'meta' => json_encode(['subtitle' => 'Track individual item serial numbers'])
+            ],
+            [
+                'name' => 'inventory.batches',
+                'display_name' => 'Batches',
+                'module' => 'inventory',
+                'route_name' => 'inventory.batches',
+                'route_path' => '/inventory/batches',
+                'icon' => 'pi pi-layer-group',
+                'parent_id' => null,
+                'display_order' => 13,
+                'meta' => json_encode(['subtitle' => 'Manage product batches and lots'])
             ],
         ];
 
@@ -110,12 +176,18 @@ class InventoryNavigationSeeder extends Seeder
     {
         $mappings = [
             'inventory.dashboard' => ['inventory.dashboard.view'],
-            'inventory.items' => ['inventory.items.view'],
-            'inventory.adjustments' => ['inventory.adjustments.view'],
-            'inventory.transfers' => ['inventory.transfers.view'],
-            'inventory.alerts' => ['inventory.alerts.view'],
-            'inventory.transactions' => ['inventory.transactions.view'],
-            'inventory.reports' => ['inventory.reports.view'],
+            'inventory.products' => ['inventory.products.view'],
+            'inventory.categories' => ['inventory.categories.view'],
+            'inventory.units' => ['inventory.units.view'],
+            'inventory.stock-issues' => ['inventory.stock-issues.view'],
+            'inventory.stock-returns' => ['inventory.stock-returns.view'],
+            'inventory.stock-counts' => ['inventory.stock-counts.view'],
+            'inventory.warehouses' => ['inventory.warehouses.view'],
+            'inventory.locations' => ['inventory.locations.view'],
+            'inventory.reorder-rules' => ['inventory.reorder-rules.view'],
+            'inventory.reorder-suggestions' => ['inventory.reorder-suggestions.view'],
+            'inventory.serial-numbers' => ['inventory.serial-numbers.view'],
+            'inventory.batches' => ['inventory.batches.view'],
         ];
 
         foreach ($mappings as $navName => $permissionNames) {

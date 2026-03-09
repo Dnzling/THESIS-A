@@ -468,11 +468,16 @@ const submitTransfer = async () => {
       transfer_date: form.transfer_date.toISOString().split('T')[0],
       expected_receive_date: form.expected_receive_date?.toISOString().split('T')[0],
       remarks: form.remarks || undefined,
-      items: form.items.map(item => ({
-        inventory_item_id: item.inventory_item_id,
-        quantity: item.quantity,
-        notes: item.notes
-      }))
+      items: form.items.map(item => {
+        const inventoryItem = inventoryItems.value.find(inv => inv.id === item.inventory_item_id)
+        return {
+          product_id: inventoryItem?.product_id,
+          variation_id: inventoryItem?.variation_id || null,
+          quantity: item.quantity,
+          unit_value: inventoryItem?.unit_cost || null,
+          notes: item.notes
+        }
+      })
     }
 
     const response = await inventoryService.createTransfer(payload)
