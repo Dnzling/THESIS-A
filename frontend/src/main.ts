@@ -44,6 +44,7 @@ import Skeleton from 'primevue/skeleton'
 import Paginator from 'primevue/paginator'
 import FileUpload from 'primevue/fileupload'
 import Tree from 'primevue/tree'
+import Divider from 'primevue/divider'
 
 
 
@@ -124,6 +125,7 @@ app.use(router)
 
 // Register PrimeVue components
 const components = {
+  Divider,
   Tree,
   FileUpload,
   Paginator,

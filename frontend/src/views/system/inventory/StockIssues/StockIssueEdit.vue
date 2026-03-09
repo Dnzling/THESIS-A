@@ -3,7 +3,7 @@
     <div class="max-w-4xl mx-auto">
       <div class="mb-6">
         <h1 class="text-3xl font-bold text-gray-800">Edit Stock Issue</h1>
-        <p class="text-gray-600 mt-1">Update stock issue information</p>
+        <p class="text-gray-600 mt-1">Update stock issue information - {{ stockIssue?.issue_number }}</p>
       </div>
 
       <div v-if="loading" class="flex justify-center py-12">
@@ -20,122 +20,176 @@
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Type *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Issue Type *</label>
                 <Select
-                  v-model="form.type"
+                  v-model="form.issue_type"
                   :options="typeOptions"
                   optionLabel="label"
                   optionValue="value"
                   placeholder="Select issue type"
                   class="w-full"
-                  :class="{ 'p-invalid': errors.type }"
+                  :class="{ 'p-invalid': errors.issue_type }"
                 />
-                <small v-if="errors.type" class="p-error">{{ errors.type[0] }}</small>
+                <small v-if="errors.issue_type" class="p-error">{{ errors.issue_type[0] }}</small>
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Reference Number</label>
-                <InputText
-                  v-model="form.reference_number"
-                  placeholder="Auto-generated if empty"
+                <label class="block text-sm font-medium text-gray-700 mb-2">Issue Date</label>
+                <Calendar
+                  v-model="form.issue_date"
+                  dateFormat="yy-mm-dd"
+                  showTime
+                  hourFormat="24"
                   class="w-full"
-                  :class="{ 'p-invalid': errors.reference_number }"
+                  :class="{ 'p-invalid': errors.issue_date }"
                 />
-                <small v-if="errors.reference_number" class="p-error">{{ errors.reference_number[0] }}</small>
-                <small class="text-gray-500 mt-1">Leave empty for auto-generation</small>
+                <small v-if="errors.issue_date" class="p-error">{{ errors.issue_date[0] }}</small>
               </div>
 
               <!-- Product Selection -->
               <div class="md:col-span-2">
-                <h3 class="text-lg font-semibold mb-4">Product Selection</h3>
+                <h3 class="text-lg font-semibold mb-4">Items to Issue</h3>
               </div>
 
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Product *</label>
-                <Select
-                  v-model="form.product_id"
-                  :options="products"
-                  optionLabel="name"
-                  optionValue="id"
-                  placeholder="Select product"
-                  class="w-full"
-                  :class="{ 'p-invalid': errors.product_id }"
-                  showClear
-                  @change="onProductChange"
-                />
-                <small v-if="errors.product_id" class="p-error">{{ errors.product_id[0] }}</small>
+              <div v-for="(item, index) in form.items" :key="index" class="md:col-span-2 border p-4 rounded-lg mb-4">
+                <div class="flex justify-between items-center mb-3">
+                  <h4 class="font-medium">Item #{{ index + 1 }}</h4>
+                  <Button
+                    v-if="form.items.length > 1"
+                    icon="pi pi-trash"
+                    severity="danger"
+                    text
+                    @click="removeItem(index)"
+                  />
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Product *</label>
+                    <Select
+                      v-model="item.product_id"
+                      :options="products"
+                      optionLabel="product_name"
+                      optionValue="id"
+                      placeholder="Select product"
+                      class="w-full"
+                      :class="{ 'p-invalid': errors[`items.${index}.product_id`] }"
+                      @change="() => onProductChange(index)"
+                    />
+                    <small v-if="errors[`items.${index}.product_id`]" class="p-error">
+                      {{ errors[`items.${index}.product_id`][0] }}
+                    </small>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Inventory Item *</label>
+                    <Select
+                      v-model="item.inventory_item_id"
+                      :options="getAvailableInventory(item.product_id)"
+                      optionLabel="label"
+                      optionValue="id"
+                      placeholder="Select inventory item"
+                      class="w-full"
+                      :class="{ 'p-invalid': errors[`items.${index}.inventory_item_id`] }"
+                    >
+                      <template #option="slotProps">
+                        <div>
+                          <div>{{ slotProps.option.label }}</div>
+                          <div class="text-xs text-gray-500">
+                            Available: {{ slotProps.option.quantity_available }} | 
+                            Location: {{ formatLocation(slotProps.option) }}
+                          </div>
+                        </div>
+                      </template>
+                    </Select>
+                    <small v-if="errors[`items.${index}.inventory_item_id`]" class="p-error">
+                      {{ errors[`items.${index}.inventory_item_id`][0] }}
+                    </small>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
+                    <InputNumber
+                      v-model="item.quantity"
+                      placeholder="0"
+                      class="w-full"
+                      :class="{ 'p-invalid': errors[`items.${index}.quantity`] }"
+                      :min="1"
+                      :max="getMaxQuantity(item)"
+                    />
+                    <small v-if="errors[`items.${index}.quantity`]" class="p-error">
+                      {{ errors[`items.${index}.quantity`][0] }}
+                    </small>
+                    <small v-if="item.inventory_item_id" class="text-gray-500">
+                      Available: {{ getItemAvailableQuantity(item.inventory_item_id) }}
+                    </small>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Unit Cost</label>
+                    <InputNumber
+                      v-model="item.unit_cost"
+                      mode="currency"
+                      currency="PHP"
+                      locale="en-PH"
+                      placeholder="0.00"
+                      class="w-full"
+                      :class="{ 'p-invalid': errors[`items.${index}.unit_cost`] }"
+                    />
+                    <small v-if="errors[`items.${index}.unit_cost`]" class="p-error">
+                      {{ errors[`items.${index}.unit_cost`][0] }}
+                    </small>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reason *</label>
+                    <Select
+                      v-model="item.reason"
+                      :options="reasonOptions"
+                      optionLabel="label"
+                      optionValue="value"
+                      placeholder="Select reason"
+                      class="w-full"
+                      :class="{ 'p-invalid': errors[`items.${index}.reason`] }"
+                    />
+                    <small v-if="errors[`items.${index}.reason`]" class="p-error">
+                      {{ errors[`items.${index}.reason`][0] }}
+                    </small>
+                  </div>
+
+                  <div class="md:col-span-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+                    <InputText
+                      v-model="item.remarks"
+                      placeholder="Optional remarks for this item"
+                      class="w-full"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Warehouse *</label>
-                <Select
-                  v-model="form.warehouse_id"
-                  :options="warehouses"
-                  optionLabel="name"
-                  optionValue="id"
-                  placeholder="Select warehouse"
-                  class="w-full"
-                  :class="{ 'p-invalid': errors.warehouse_id }"
-                  showClear
-                  @change="onWarehouseChange"
-                />
-                <small v-if="errors.warehouse_id" class="p-error">{{ errors.warehouse_id[0] }}</small>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
-                <Select
-                  v-model="form.location_id"
-                  :options="locations"
-                  optionLabel="name"
-                  optionValue="id"
-                  placeholder="Select location (optional)"
-                  class="w-full"
-                  :class="{ 'p-invalid': errors.location_id }"
-                  showClear
-                />
-                <small v-if="errors.location_id" class="p-error">{{ errors.location_id[0] }}</small>
-              </div>
-
-              <!-- Quantity and Cost -->
               <div class="md:col-span-2">
-                <h3 class="text-lg font-semibold mb-4">Quantity & Cost</h3>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
-                <InputNumber
-                  v-model="form.quantity"
-                  placeholder="0"
-                  class="w-full"
-                  :class="{ 'p-invalid': errors.quantity }"
-                  :max="maxQuantity"
+                <Button
+                  type="button"
+                  label="Add Another Item"
+                  icon="pi pi-plus"
+                  severity="secondary"
+                  @click="addItem"
+                  :disabled="!canAddMoreItems"
                 />
-                <small v-if="errors.quantity" class="p-error">{{ errors.quantity[0] }}</small>
-                <small v-if="maxQuantity" class="text-gray-500 mt-1">Available: {{ maxQuantity }}</small>
               </div>
 
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Unit Cost</label>
-                <InputNumber
-                  v-model="form.unit_cost"
-                  mode="currency"
-                  currency="USD"
-                  locale="en-US"
-                  placeholder="0.00"
-                  class="w-full"
-                  :class="{ 'p-invalid': errors.unit_cost }"
-                />
-                <small v-if="errors.unit_cost" class="p-error">{{ errors.unit_cost[0] }}</small>
-                <small class="text-gray-500 mt-1">Cost per unit (optional)</small>
-              </div>
-
+              <!-- Totals -->
               <div class="md:col-span-2">
                 <div class="bg-gray-50 p-4 rounded-lg">
                   <div class="flex justify-between items-center">
-                    <span class="font-medium">Total Cost:</span>
+                    <span class="font-medium">Total Items:</span>
+                    <span class="text-xl font-bold">{{ totalItems }}</span>
+                  </div>
+                  <div class="flex justify-between items-center mt-2">
+                    <span class="font-medium">Total Value:</span>
                     <span class="text-xl font-bold text-red-600">
-                      ${{ totalCost.toFixed(2) }}
+                      ₱{{ formatNumber(totalValue) }}
                     </span>
                   </div>
                 </div>
@@ -147,15 +201,27 @@
               </div>
 
               <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
                 <Textarea
-                  v-model="form.notes"
-                  placeholder="Enter any additional notes"
+                  v-model="form.description"
+                  placeholder="Enter description or reason for this stock issue"
                   class="w-full"
                   rows="3"
-                  :class="{ 'p-invalid': errors.notes }"
+                  :class="{ 'p-invalid': errors.description }"
                 />
-                <small v-if="errors.notes" class="p-error">{{ errors.notes[0] }}</small>
+                <small v-if="errors.description" class="p-error">{{ errors.description[0] }}</small>
+              </div>
+
+              <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+                <Textarea
+                  v-model="form.remarks"
+                  placeholder="Enter any additional remarks"
+                  class="w-full"
+                  rows="2"
+                  :class="{ 'p-invalid': errors.remarks }"
+                />
+                <small v-if="errors.remarks" class="p-error">{{ errors.remarks[0] }}</small>
               </div>
             </div>
 
@@ -166,12 +232,12 @@
                 label="Cancel"
                 severity="secondary"
                 @click="goBack"
-                :disabled="loading"
+                :disabled="submitting"
               />
               <Button
                 type="submit"
                 label="Update Stock Issue"
-                :loading="loading"
+                :loading="submitting"
                 class="bg-blue-600 hover:bg-blue-700"
               />
             </div>
@@ -187,51 +253,69 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 
 const loading = ref(false)
+const submitting = ref(false)
 const products = ref<any[]>([])
-const warehouses = ref<any[]>([])
-const locations = ref<any[]>([])
-const stockLevels = ref<any>({})
-const errors = ref<any>({})
+const inventoryItems = ref<any[]>([])
 const stockIssue = ref<any>(null)
+const errors = ref<any>({})
 const toast = useToast()
 const router = useRouter()
 const route = useRoute()
 
+interface IssueItem {
+  id?: number
+  product_id: number | null
+  inventory_item_id: number | null
+  quantity: number | null
+  unit_cost: number | null
+  reason: string
+  remarks: string
+}
+
 const form = reactive({
-  type: '',
-  reference_number: '',
-  product_id: null as number | null,
-  warehouse_id: null as number | null,
-  location_id: null as number | null,
-  quantity: null as number | null,
-  unit_cost: null as number | null,
-  notes: ''
+  issue_type: '',
+  issue_date: new Date(),
+  description: '',
+  remarks: '',
+  items: [] as IssueItem[]
 })
 
 const typeOptions = [
-  { label: 'Sale', value: 'sale' },
-  { label: 'Damage', value: 'damage' },
-  { label: 'Loss', value: 'loss' },
-  { label: 'Transfer', value: 'transfer' },
-  { label: 'Return', value: 'return' },
+  { label: 'Expired', value: 'expired' },
+  { label: 'Damaged', value: 'damaged' },
+  { label: 'Lost', value: 'lost' },
+  { label: 'Internal Use', value: 'internal_use' },
+  { label: 'Sample', value: 'sample' },
+  { label: 'Quality Issue', value: 'quality_issue' },
   { label: 'Other', value: 'other' }
 ]
 
-const maxQuantity = computed(() => {
-  if (!form.product_id || !form.warehouse_id) return null
-  const key = `${form.product_id}-${form.warehouse_id}`
-  return (stockLevels.value[key] || 0) + (stockIssue.value?.quantity || 0) // Add back the original quantity
+const reasonOptions = [
+  { label: 'Quality Issue', value: 'quality_issue' },
+  { label: 'Damaged', value: 'damaged' },
+  { label: 'Expired', value: 'expired' },
+  { label: 'Lost', value: 'lost' },
+  { label: 'Internal Use', value: 'internal_use' },
+  { label: 'Sample', value: 'sample' },
+  { label: 'Other', value: 'other' }
+]
+
+const totalItems = computed(() => {
+  return form.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
 })
 
-const totalCost = computed(() => {
-  if (!form.quantity || !form.unit_cost) return 0
-  return form.quantity * form.unit_cost
+const totalValue = computed(() => {
+  return form.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unit_cost || 0)), 0)
+})
+
+const canAddMoreItems = computed(() => {
+  return form.items.length < 10 // Limit to 10 items per issue
 })
 
 const loadStockIssue = async () => {
@@ -264,101 +348,155 @@ const loadStockIssue = async () => {
 const loadProducts = async () => {
   try {
     const response = await inventoryService.getProducts({
-      status: 'active',
+      is_active: true,
       per_page: 1000
     })
     if (response.success) {
-      products.value = response.data || []
+      if (response.data && Array.isArray(response.data.data)) {
+        products.value = response.data.data
+      } else if (Array.isArray(response.data)) {
+        products.value = response.data
+      } else {
+        products.value = []
+      }
     }
   } catch (error) {
     console.error('Failed to load products', error)
   }
 }
 
-const loadWarehouses = async () => {
+const loadInventoryItems = async () => {
   try {
-    const response = await inventoryService.getWarehouses({
-      status: 'active'
+    const response = await inventoryService.getBranchInventory(1, {
+      per_page: 1000
     })
     if (response.success) {
-      warehouses.value = response.data || []
+      if (response.data && Array.isArray(response.data.data)) {
+        inventoryItems.value = response.data.data
+      } else if (Array.isArray(response.data)) {
+        inventoryItems.value = response.data
+      } else {
+        inventoryItems.value = []
+      }
     }
   } catch (error) {
-    console.error('Failed to load warehouses', error)
+    console.error('Failed to load inventory items', error)
   }
 }
 
-const loadLocations = async (warehouseId: number) => {
-  try {
-    const response = await inventoryService.getLocations({
-      warehouse_id: warehouseId,
-      status: 'active'
-    })
-    if (response.success) {
-      locations.value = response.data || []
-    }
-  } catch (error) {
-    console.error('Failed to load locations', error)
-  }
+const getAvailableInventory = (productId: number | null) => {
+  if (!productId) return []
+  
+  return inventoryItems.value
+    .filter(item => 
+      item.product_id === productId && 
+      item.quantity_available > 0
+    )
+    .map(item => ({
+      id: item.id,
+      label: `${item.product?.product_name || 'Unknown'} - ${formatLocation(item)}`,
+      quantity_available: item.quantity_available,
+      warehouse_section: item.warehouse_section,
+      aisle: item.aisle,
+      rack: item.rack,
+      shelf: item.shelf,
+      bin_code: item.bin_code
+    }))
 }
 
-const loadStockLevels = async () => {
-  if (!form.product_id) return
+const getItemAvailableQuantity = (inventoryItemId: number | null) => {
+  if (!inventoryItemId) return 0
+  const item = inventoryItems.value.find(i => i.id === inventoryItemId)
+  return item?.quantity_available || 0
+}
 
-  try {
-    const response = await inventoryService.getProductStockLevels(form.product_id)
-    if (response.success) {
-      // Transform stock levels into a lookup object
-      const levels: any = {}
-      response.data.forEach((level: any) => {
-        const key = `${level.product_id}-${level.warehouse_id}`
-        levels[key] = level.quantity
-      })
-      stockLevels.value = levels
-    }
-  } catch (error) {
-    console.error('Failed to load stock levels', error)
-  }
+const getMaxQuantity = (item: IssueItem) => {
+  if (!item.inventory_item_id) return 1
+  return getItemAvailableQuantity(item.inventory_item_id) + (getOriginalItemQuantity(item) || 0)
+}
+
+const getOriginalItemQuantity = (item: IssueItem) => {
+  if (!item.id || !stockIssue.value?.items) return 0
+  const originalItem = stockIssue.value.items.find((i: any) => i.id === item.id)
+  return originalItem?.quantity || 0
+}
+
+const formatLocation = (item: any) => {
+  if (!item) return 'No Location'
+  const parts = []
+  if (item.warehouse_section) parts.push(item.warehouse_section)
+  if (item.aisle) parts.push(item.aisle)
+  if (item.rack) parts.push(item.rack)
+  if (item.shelf) parts.push(item.shelf)
+  return parts.join('-') || item.bin_code || 'No Location'
 }
 
 const populateForm = () => {
   if (!stockIssue.value) return
 
-  form.type = stockIssue.value.type || ''
-  form.reference_number = stockIssue.value.reference_number || ''
-  form.product_id = stockIssue.value.product_id || null
-  form.warehouse_id = stockIssue.value.warehouse_id || null
-  form.location_id = stockIssue.value.location_id || null
-  form.quantity = stockIssue.value.quantity || null
-  form.unit_cost = stockIssue.value.unit_cost || null
-  form.notes = stockIssue.value.notes || ''
+  form.issue_type = stockIssue.value.issue_type || ''
+  form.issue_date = stockIssue.value.issue_date ? new Date(stockIssue.value.issue_date) : new Date()
+  form.description = stockIssue.value.description || ''
+  form.remarks = stockIssue.value.remarks || ''
 
-  // Load locations for the selected warehouse
-  if (form.warehouse_id) {
-    loadLocations(form.warehouse_id)
+  // Populate items
+  if (stockIssue.value.items && stockIssue.value.items.length > 0) {
+    form.items = stockIssue.value.items.map((item: any) => ({
+      id: item.id,
+      product_id: item.inventory_item?.product_id || null,
+      inventory_item_id: item.inventory_item_id,
+      quantity: item.quantity,
+      unit_cost: parseFloat(item.unit_cost) || null,
+      reason: item.reason || 'other',
+      remarks: item.remarks || ''
+    }))
   }
 }
 
-const onProductChange = () => {
-  loadStockLevels()
+const onProductChange = (index: number) => {
+  // Reset inventory item when product changes
+  form.items[index].inventory_item_id = null
+  form.items[index].quantity = null
+  form.items[index].unit_cost = null
 }
 
-const onWarehouseChange = () => {
-  if (form.warehouse_id) {
-    loadLocations(form.warehouse_id)
-    form.location_id = null // Reset location when warehouse changes
-  } else {
-    locations.value = []
-  }
-  loadStockLevels()
+const addItem = () => {
+  form.items.push({
+    id: undefined,
+    product_id: null,
+    inventory_item_id: null,
+    quantity: null,
+    unit_cost: null,
+    reason: 'other',
+    remarks: ''
+  })
+}
+
+const removeItem = (index: number) => {
+  form.items.splice(index, 1)
 }
 
 const submitForm = async () => {
-  loading.value = true
+  submitting.value = true
   errors.value = {}
 
   try {
-    const response = await inventoryService.updateStockIssue(stockIssue.value.id, form)
+    const payload = {
+      issue_type: form.issue_type,
+      issue_date: form.issue_date.toISOString().split('T')[0],
+      description: form.description,
+      remarks: form.remarks,
+      items: form.items.map(item => ({
+        id: item.id, // Include ID for existing items
+        inventory_item_id: item.inventory_item_id,
+        quantity: item.quantity,
+        unit_cost: item.unit_cost,
+        reason: item.reason,
+        remarks: item.remarks
+      }))
+    }
+
+    const response = await inventoryService.updateStockIssue(stockIssue.value.id, payload)
 
     if (response.success) {
       toast.add({
@@ -389,7 +527,7 @@ const submitForm = async () => {
       })
     }
   } finally {
-    loading.value = false
+    submitting.value = false
   }
 }
 
@@ -397,12 +535,15 @@ const goBack = () => {
   router.push({ name: 'inventory.stock-issues.detail', params: { id: stockIssue.value.id } })
 }
 
-watch(() => form.product_id, onProductChange)
-watch(() => form.warehouse_id, onWarehouseChange)
+const formatNumber = (value: number) => {
+  return value.toFixed(2)
+}
 
 onMounted(async () => {
-  await loadStockIssue()
-  loadProducts()
-  loadWarehouses()
+  await Promise.all([
+    loadStockIssue(),
+    loadProducts(),
+    loadInventoryItems()
+  ])
 })
 </script>

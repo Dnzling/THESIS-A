@@ -84,44 +84,45 @@
             :value="stockIssues"
             :loading="loading"
             paginator
-            :rows="10"
+            :rows="filters.per_page"
             :rowsPerPageOptions="[5, 10, 25, 50]"
             :totalRecords="totalRecords"
             :lazy="true"
             @page="onPage"
             @sort="onSort"
+            :sortField="filters.sort_field"
+            :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
             tableStyle="min-width: 50rem"
             class="p-datatable-sm"
-            :globalFilterFields="['reference_number', 'notes']"
           >
-            <Column field="reference_number" header="Reference" style="width: 140px" sortable />
-            <Column field="type" header="Type" style="width: 120px">
+            <Column field="issue_number" header="Issue Number" style="width: 140px" sortable />
+            <Column field="issue_type" header="Type" style="width: 120px">
               <template #body="slotProps">
                 <Tag
-                  :value="slotProps.data.type"
-                  :severity="getTypeSeverity(slotProps.data.type)"
+                  :value="slotProps.data.issue_type"
+                  :severity="getTypeSeverity(slotProps.data.issue_type)"
                   class="capitalize"
                 />
               </template>
             </Column>
-            <Column field="product.name" header="Product" style="min-width: 200px" />
-            <Column field="warehouse.name" header="Warehouse" style="min-width: 150px" />
-            <Column field="location.name" header="Location" style="min-width: 150px" />
-            <Column field="quantity" header="Quantity" style="width: 100px" sortable>
+            <Column field="description" header="Description" style="min-width: 200px">
               <template #body="slotProps">
-                <span class="font-medium text-red-600">
-                  -{{ slotProps.data.quantity }}
-                </span>
+                {{ slotProps.data.description || 'N/A' }}
               </template>
             </Column>
-            <Column field="unit_cost" header="Unit Cost" style="width: 120px">
+            <Column field="branch" header="Branch" style="min-width: 150px">
               <template #body="slotProps">
-                ${{ slotProps.data.unit_cost?.toFixed(2) || '0.00' }}
+                {{ slotProps.data.branch?.name || 'N/A' }}
               </template>
             </Column>
-            <Column field="total_cost" header="Total Cost" style="width: 120px" sortable>
+            <Column field="requester" header="Requested By" style="min-width: 150px">
               <template #body="slotProps">
-                ${{ slotProps.data.total_cost?.toFixed(2) || '0.00' }}
+                {{ slotProps.data.requester?.full_name || 'N/A' }}
+              </template>
+            </Column>
+            <Column field="total_value" header="Total Value" style="width: 120px" sortable>
+              <template #body="slotProps">
+                ₱{{ formatNumber(slotProps.data.total_value) }}
               </template>
             </Column>
             <Column field="status" header="Status" style="width: 120px">
@@ -133,9 +134,9 @@
                 />
               </template>
             </Column>
-            <Column field="issued_at" header="Issued Date" style="width: 150px" sortable>
+            <Column field="issue_date" header="Issue Date" style="width: 150px" sortable>
               <template #body="slotProps">
-                {{ formatDate(slotProps.data.issued_at) }}
+                {{ formatDate(slotProps.data.issue_date) }}
               </template>
             </Column>
             <Column header="Actions" style="width: 150px">
@@ -154,7 +155,7 @@
                     outlined
                     @click="editStockIssue(slotProps.data)"
                     v-tooltip.top="'Edit Issue'"
-                    :disabled="slotProps.data.status === 'completed'"
+                    :disabled="slotProps.data.status === 'completed' || slotProps.data.status === 'approved'"
                   />
                   <Button
                     icon="pi pi-times"
@@ -162,11 +163,17 @@
                     outlined
                     @click="confirmCancel(slotProps.data)"
                     v-tooltip.top="'Cancel Issue'"
-                    :disabled="slotProps.data.status === 'cancelled' || slotProps.data.status === 'completed'"
+                    :disabled="slotProps.data.status === 'cancelled' || slotProps.data.status === 'approved' || slotProps.data.status === 'completed'"
                   />
                 </div>
               </template>
             </Column>
+            <template #empty>
+              <div class="text-center py-8">
+                <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
+                <p class="text-gray-500">No stock issues found</p>
+              </div>
+            </template>
           </DataTable>
         </template>
       </Card>
@@ -185,7 +192,7 @@
       <div>
         <p class="font-medium">Are you sure you want to cancel this stock issue?</p>
         <p class="text-sm text-gray-600 mt-1">
-          Reference: <strong>{{ selectedStockIssue?.reference_number }}</strong>
+          Reference: <strong>{{ selectedStockIssue?.issue_number }}</strong>
         </p>
         <p class="text-sm text-gray-600 mt-1">
           This will reverse the stock reduction and mark the issue as cancelled.
@@ -194,12 +201,12 @@
     </div>
     <template #footer>
       <Button
-        label="Cancel"
+        label="No, Keep It"
         severity="secondary"
         @click="cancelDialog = false"
       />
       <Button
-        label="Confirm Cancellation"
+        label="Yes, Cancel Issue"
         severity="danger"
         @click="cancelStockIssue"
         :loading="cancelLoading"
@@ -231,47 +238,76 @@ const filters = reactive({
   warehouse_id: null as number | null,
   page: 1,
   per_page: 10,
-  sort_field: 'issued_at',
-  sort_direction: 'desc'
+  sort_field: 'issue_date',
+  sort_direction: 'desc' as 'asc' | 'desc'
 })
 
 const statusOptions = [
+  { label: 'Draft', value: 'draft' },
   { label: 'Pending', value: 'pending' },
+  { label: 'Approved', value: 'approved' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' }
 ]
 
 const typeOptions = [
-  { label: 'Sale', value: 'sale' },
-  { label: 'Damage', value: 'damage' },
-  { label: 'Loss', value: 'loss' },
-  { label: 'Transfer', value: 'transfer' },
-  { label: 'Return', value: 'return' },
+  { label: 'Expired', value: 'expired' },
+  { label: 'Damaged', value: 'damaged' },
+  { label: 'Lost', value: 'lost' },
+  { label: 'Internal Use', value: 'internal_use' },
+  { label: 'Sample', value: 'sample' },
   { label: 'Other', value: 'other' }
 ]
 
 const loadStockIssues = async () => {
   loading.value = true
   try {
-    const response = await inventoryService.getStockIssues({
-      ...filters,
-      search: filters.search || undefined,
-      status: filters.status || undefined,
-      type: filters.type || undefined,
-      warehouse_id: filters.warehouse_id || undefined
-    })
+    const params: any = {
+      page: filters.page,
+      per_page: filters.per_page,
+      sort_by: filters.sort_field,
+      sort_order: filters.sort_direction
+    }
+    
+    if (filters.search) params.search = filters.search
+    if (filters.status) params.status = filters.status
+    if (filters.type) params.type = filters.type
+    if (filters.warehouse_id) params.warehouse_id = filters.warehouse_id
+
+    const response = await inventoryService.getStockIssues(params)
 
     if (response.success) {
-      stockIssues.value = response.data || []
-      totalRecords.value = response.meta?.total || 0
+      // Handle paginated response
+      if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        stockIssues.value = response.data.data
+        totalRecords.value = response.data.total || 0
+      } else if (Array.isArray(response.data)) {
+        stockIssues.value = response.data
+        totalRecords.value = response.data.length
+      } else {
+        stockIssues.value = []
+        totalRecords.value = 0
+      }
+      
+      console.log('Loaded stock issues:', stockIssues.value)
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Failed to load stock issues',
+        life: 3000
+      })
     }
   } catch (error: any) {
+    console.error('Error loading stock issues:', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error.response?.data?.message || 'Failed to load stock issues',
       life: 3000
     })
+    stockIssues.value = []
+    totalRecords.value = 0
   } finally {
     loading.value = false
   }
@@ -281,10 +317,19 @@ const loadWarehouses = async () => {
   try {
     const response = await inventoryService.getWarehouses()
     if (response.success) {
-      warehouses.value = response.data || []
+      if (response.data && Array.isArray(response.data.data)) {
+        warehouses.value = response.data.data
+      } else if (Array.isArray(response.data)) {
+        warehouses.value = response.data
+      } else {
+        warehouses.value = []
+      }
+    } else {
+      warehouses.value = []
     }
   } catch (error) {
     console.error('Failed to load warehouses', error)
+    warehouses.value = []
   }
 }
 
@@ -370,30 +415,48 @@ const cancelStockIssue = async () => {
 
 const getStatusSeverity = (status: string) => {
   switch (status) {
-    case 'completed': return 'success'
-    case 'pending': return 'warning'
-    case 'cancelled': return 'danger'
-    default: return 'secondary'
+    case 'approved':
+    case 'completed': 
+      return 'success'
+    case 'pending': 
+      return 'warning'
+    case 'draft': 
+      return 'info'
+    case 'cancelled': 
+      return 'danger'
+    default: 
+      return 'secondary'
   }
 }
 
 const getTypeSeverity = (type: string) => {
   switch (type) {
-    case 'sale': return 'success'
-    case 'damage': return 'danger'
-    case 'loss': return 'warning'
-    case 'transfer': return 'info'
-    case 'return': return 'secondary'
-    default: return 'secondary'
+    case 'expired': 
+    case 'damaged': 
+      return 'danger'
+    case 'lost': 
+      return 'warning'
+    case 'internal_use': 
+      return 'info'
+    case 'sample': 
+      return 'success'
+    default: 
+      return 'secondary'
   }
 }
 
 const formatDate = (date: string) => {
+  if (!date) return 'N/A'
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
   })
+}
+
+const formatNumber = (value: string | number | null | undefined) => {
+  if (value === null || value === undefined) return '0.00'
+  return parseFloat(value.toString()).toFixed(2)
 }
 
 onMounted(() => {

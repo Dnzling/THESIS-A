@@ -14,7 +14,7 @@ class Product extends Model
     use SoftDeletes;
 
     protected $table = 'products';
-    
+
     protected $fillable = [
         'store_id',
         'sku',
@@ -68,6 +68,14 @@ class Product extends Model
         return $this->belongsTo(Store::class);
     }
 
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class, 'unit_id');
+    }
+    public function inventory()
+    {
+        return $this->hasMany(\App\Models\Inventory\BranchInventory::class, 'product_id', 'id');
+    }
     public function category()
     {
         return $this->belongsTo(Category::class, 'category_id');
@@ -101,7 +109,7 @@ class Product extends Model
     public function tags()
     {
         return $this->belongsToMany(Tag::class, 'product_tags')
-                    ->withTimestamps();
+            ->withTimestamps();
     }
 
     public function relatedProducts()
@@ -143,7 +151,7 @@ class Product extends Model
     public function scopeByCategory($query, $categoryId)
     {
         return $query->where('category_id', $categoryId)
-                     ->orWhere('subcategory_id', $categoryId);
+            ->orWhere('subcategory_id', $categoryId);
     }
 
     public function scopePriceRange($query, $min, $max)
@@ -200,15 +208,15 @@ class Product extends Model
     public function getPrimary3dModelAttribute()
     {
         return $this->assets()
-                    ->where('asset_type', '3D_Model')
-                    ->where('is_primary', true)
-                    ->first();
+            ->where('asset_type', '3D_Model')
+            ->where('is_primary', true)
+            ->first();
     }
 
     public function getAll3dAssetsAttribute()
     {
         return $this->assets()
-                    ->whereIn('asset_type', ['3D_Model', '3D_Thumbnail'])
-                    ->get();
+            ->whereIn('asset_type', ['3D_Model', '3D_Thumbnail'])
+            ->get();
     }
 }

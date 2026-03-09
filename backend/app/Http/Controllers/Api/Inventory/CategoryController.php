@@ -33,23 +33,34 @@ class CategoryController extends Controller
             $query = Category::where('store_id', $context['store_id'])
                 ->withCount('products');
 
-            // Filters
+            // Filters - Using correct column names from your table
             if ($request->has('parent_id')) {
-                $query->where('parent_id', $request->parent_id);
+                // Your table uses 'parent_category_id', not 'parent_id'
+                $query->where('parent_category_id', $request->parent_id);
             } else {
-                $query->whereNull('parent_id'); // Root categories by default
+                // Root categories (no parent)
+                $query->whereNull('parent_category_id');
             }
 
             if ($request->has('search')) {
                 $search = $request->search;
-                $query->where('category_name', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('category_name', 'like', "%{$search}%")
+                        ->orWhere('category_code', 'like', "%{$search}%"); // Also search by code
+                });
             }
 
             if ($request->has('is_active')) {
                 $query->where('is_active', $request->boolean('is_active'));
             }
 
-            $categories = $query->orderBy('sort_order')
+            // Filter by level if provided
+            if ($request->has('level')) {
+                $query->where('level', $request->level);
+            }
+
+            // Sorting - Using 'display_order' instead of 'sort_order'
+            $categories = $query->orderBy('display_order')
                 ->orderBy('category_name')
                 ->get();
 
@@ -65,7 +76,6 @@ class CategoryController extends Controller
             ], 500);
         }
     }
-
     /**
      * Create new category
      * POST /api/inventory/categories

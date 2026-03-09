@@ -21,6 +21,7 @@ use Database\Seeders\Permission\Inventory\InventoryRolePermissionsSeeder;
 use Database\Seeders\Permission\Merchandise\MerchandisingPermissionsSeeder;
 use Database\Seeders\Permission\Merchandise\NavigationItemsSeeder;
 use Database\Seeders\Permission\Merchandise\RolePermissionSeeder;
+use Database\Seeders\InventoryInitialSeeder;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -52,9 +53,10 @@ class DatabaseSeeder extends Seeder
             // RolePermissionSeeder::class,
             // NavigationItemsSeeder::class,
             // InventoryPermissionsSeeder::class,
-            PermissionSeeder::class,
-            InventoryRolePermissionsSeeder::class,
-            InventoryNavigationSeeder::class,
+            // PermissionSeeder::class,
+            // InventoryRolePermissionsSeeder::class,
+            // InventoryNavigationSeeder::class,
+            InventoryInitialSeeder::class,
         ]);
     }
 }

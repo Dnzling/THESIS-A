@@ -29,13 +29,11 @@ const inventoryRoutes: RouteRecordRaw[] = [
         },
       },
 
-
-
       // ==================== BRANCH INVENTORY ====================
       {
         path: 'items',
         name: 'inventory.items',
-        component: () => import('../../views/system/inventory/Items/ItemsIndex.vue'),
+        component: () => import('../../views/system/inventory/Stocks/StocksIndex.vue'),
         meta: {
           title: 'Branch Inventory',
           permission: 'inventory.items.view',
@@ -45,192 +43,18 @@ const inventoryRoutes: RouteRecordRaw[] = [
           ],
         },
       },
-
-      // ==================== STOCK ADJUSTMENTS ====================
-      {
-        path: 'adjustments',
-        name: 'inventory.adjustments',
-        component: () => import('../../views/system/inventory/Adjustments/AdjustmentIndex.vue'),
-        meta: {
-          title: 'Stock Adjustments',
-          permission: 'inventory.adjustments.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Adjustments' },
-          ],
-        },
-      },
-      {
-        path: 'adjustments/create',
-        name: 'inventory.adjustments.create',
-        component: () => import('../../views/system/inventory/Adjustments/AdjustmentCreate.vue'),
-        meta: {
-          title: 'Create Stock Adjustment',
-          permission: 'inventory.adjustments.create',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Adjustments', to: '/inventory/adjustments' },
-            { label: 'Create' },
-          ],
-        },
-      },
-      {
-        path: 'adjustments/:id',
-        name: 'inventory.adjustments.detail',
-        component: () => import('../../views/system/inventory/Adjustments/AdjustmentDetail.vue'),
-        meta: {
-          title: 'Adjustment Details',
-          permission: 'inventory.adjustments.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Adjustments', to: '/inventory/adjustments' },
-            { label: 'Details' },
-          ],
-        },
-      },
-
-      // ==================== STOCK TRANSFERS ====================
-      {
-        path: 'transfers',
-        name: 'inventory.transfers',
-        component: () => import('../../views/system/inventory/Transfers/TransferIndex.vue'),
-        meta: {
-          title: 'Stock Transfers',
-          permission: 'inventory.transfers.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Transfers' },
-          ],
-        },
-      },
-      {
-        path: 'transfers/create',
-        name: 'inventory.transfers.create',
-        component: () => import('../../views/system/inventory/Transfers/TransferCreate.vue'),
-        meta: {
-          title: 'Create Stock Transfer',
-          permission: 'inventory.transfers.create',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Transfers', to: '/inventory/transfers' },
-            { label: 'Create' },
-          ],
-        },
-      },
-      {
-        path: 'transfers/:id',
-        name: 'inventory.transfers.detail',
-        component: () => import('../../views/system/inventory/Transfers/TransferDetail.vue'),
-        meta: {
-          title: 'Transfer Details',
-          permission: 'inventory.transfers.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Transfers', to: '/inventory/transfers' },
-            { label: 'Details' },
-          ],
-        },
-      },
-
-      // ==================== STOCK ALERTS ====================
-      {
-        path: 'alerts',
-        name: 'inventory.alerts',
-        component: () => import('../../views/system/inventory/Alerts/AlertsIndex.vue'),
-        meta: {
-          title: 'Stock Alerts',
-          permission: 'inventory.alerts.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Alerts' },
-          ],
-        },
-      },
-      // ==================== INVENTORY TRANSACTIONS ====================
-      {
-        path: 'transactions',
-        name: 'inventory.transactions',
-        component: () => import('../../views/system/inventory/Transactions/TransactionIndex.vue'),
-        meta: {
-          title: 'Inventory Transactions',
-          permission: 'inventory.transactions.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Transactions' },
-          ],
-        },
-      },
-
-      // ==================== REPORTS ====================
-      {
-        path: 'reports',
-        name: 'inventory.reports',
-        component: () => import('../../views/system/inventory/Reports/ReportsIndex.vue'),
-        meta: {
-          title: 'Inventory Reports',
-          permission: 'inventory.reports.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Reports' },
-          ],
-        },
-      },
-
-      // ==================== NOTIFICATIONS ====================
-      {
-        path: 'notifications',
-        name: 'inventory.notifications',
-        component: () => import('../../views/system/inventory/Notifications/NotificationIndex.vue'),
-        meta: {
-          title: 'Notifications',
-          permission: 'inventory.notifications.view',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Notifications' },
-          ],
-        },
-      },
-
-      // ==================== CONFIGURATION ====================
-      {
-        path: 'configuration',
-        name: 'inventory.configuration',
-        component: () => import('../../views/system/inventory/Configuration/ConfigIndex.vue'),
-        meta: {
-          title: 'Inventory Configuration',
-          permission: 'inventory.configuration.manage',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Configuration' },
-          ],
-        },
-      },
-
+      
       // ==================== PRODUCTS ====================
       {
         path: 'products',
         name: 'inventory.products',
         component: () => import('../../views/system/inventory/Products/ProductIndex.vue'),
         meta: {
-          title: 'Products',
+          title: 'Product Catalog',
           permission: 'inventory.products.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Products' },
-          ],
-        },
-      },
-      {
-        path: 'products/create',
-        name: 'inventory.products.create',
-        component: () => import('../../views/system/inventory/Products/ProductCreate.vue'),
-        meta: {
-          title: 'Create Product',
-          permission: 'inventory.products.create',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Products', to: '/inventory/products' },
-            { label: 'Create' },
           ],
         },
       },
@@ -248,21 +72,6 @@ const inventoryRoutes: RouteRecordRaw[] = [
           ],
         },
       },
-      {
-        path: 'products/:id/edit',
-        name: 'inventory.products.edit',
-        component: () => import('../../views/system/inventory/Products/ProductEdit.vue'),
-        meta: {
-          title: 'Edit Product',
-          permission: 'inventory.products.update',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Products', to: '/inventory/products' },
-            { label: 'Edit' },
-          ],
-        },
-      },
-
       // ==================== CATEGORIES ====================
       {
         path: 'categories',
@@ -278,20 +87,6 @@ const inventoryRoutes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'categories/create',
-        name: 'inventory.categories.create',
-        component: () => import('../../views/system/inventory/Categories/CategoryCreate.vue'),
-        meta: {
-          title: 'Create Category',
-          permission: 'inventory.categories.create',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Categories', to: '/inventory/categories' },
-            { label: 'Create' },
-          ],
-        },
-      },
-      {
         path: 'categories/:id',
         name: 'inventory.categories.detail',
         component: () => import('../../views/system/inventory/Categories/CategoryDetail.vue'),
@@ -302,20 +97,6 @@ const inventoryRoutes: RouteRecordRaw[] = [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Categories', to: '/inventory/categories' },
             { label: 'Details' },
-          ],
-        },
-      },
-      {
-        path: 'categories/:id/edit',
-        name: 'inventory.categories.edit',
-        component: () => import('../../views/system/inventory/Categories/CategoryEdit.vue'),
-        meta: {
-          title: 'Edit Category',
-          permission: 'inventory.categories.update',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Categories', to: '/inventory/categories' },
-            { label: 'Edit' },
           ],
         },
       },
@@ -419,17 +200,17 @@ const inventoryRoutes: RouteRecordRaw[] = [
           ],
         },
       },
-      {
-        path: 'stock-issues/:id/edit',
+          {
+        path: 'stock-issues/:id',
         name: 'inventory.stock-issues.edit',
         component: () => import('../../views/system/inventory/StockIssues/StockIssueEdit.vue'),
         meta: {
-          title: 'Edit Stock Issue',
-          permission: 'inventory.stock-issues.update',
+          title: 'Stock Issue Edit',
+          permission: 'inventory.stock-issues.edit',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Issues', to: '/inventory/stock-issues' },
-            { label: 'Edit' },
+            { label: 'Details' },
           ],
         },
       },
@@ -476,20 +257,6 @@ const inventoryRoutes: RouteRecordRaw[] = [
           ],
         },
       },
-      {
-        path: 'stock-returns/:id/edit',
-        name: 'inventory.stock-returns.edit',
-        component: () => import('../../views/system/inventory/StockReturns/StockReturnEdit.vue'),
-        meta: {
-          title: 'Edit Stock Return',
-          permission: 'inventory.stock-returns.update',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Returns', to: '/inventory/stock-returns' },
-            { label: 'Edit' },
-          ],
-        },
-      },
 
       // ==================== STOCK COUNTS ====================
       {
@@ -530,20 +297,6 @@ const inventoryRoutes: RouteRecordRaw[] = [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Counts', to: '/inventory/stock-counts' },
             { label: 'Details' },
-          ],
-        },
-      },
-      {
-        path: 'stock-counts/:id/edit',
-        name: 'inventory.stock-counts.edit',
-        component: () => import('../../views/system/inventory/StockCounts/StockCountEdit.vue'),
-        meta: {
-          title: 'Edit Stock Count',
-          permission: 'inventory.stock-counts.update',
-          breadcrumb: [
-            { label: 'Inventory', to: '/inventory' },
-            { label: 'Stock Counts', to: '/inventory/stock-counts' },
-            { label: 'Edit' },
           ],
         },
       },
@@ -858,6 +611,180 @@ const inventoryRoutes: RouteRecordRaw[] = [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Batches', to: '/inventory/batches' },
             { label: 'Edit' },
+          ],
+        },
+      },
+
+      // ==================== STOCK ADJUSTMENTS ====================
+      {
+        path: 'adjustments',
+        name: 'inventory.adjustments',
+        component: () => import('../../views/system/inventory/Adjustments/AdjustmentIndex.vue'),
+        meta: {
+          title: 'Stock Adjustments',
+          permission: 'inventory.adjustments.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Adjustments' },
+          ],
+        },
+      },
+      {
+        path: 'adjustments/create',
+        name: 'inventory.adjustments.create',
+        component: () => import('../../views/system/inventory/Adjustments/AdjustmentCreate.vue'),
+        meta: {
+          title: 'Create Stock Adjustment',
+          permission: 'inventory.adjustments.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Adjustments', to: '/inventory/adjustments' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'adjustments/:id',
+        name: 'inventory.adjustments.detail',
+        component: () => import('../../views/system/inventory/Adjustments/AdjustmentDetail.vue'),
+        meta: {
+          title: 'Adjustment Details',
+          permission: 'inventory.adjustments.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Adjustments', to: '/inventory/adjustments' },
+            { label: 'Details' },
+          ],
+        },
+      },
+
+      // ==================== STOCK TRANSFERS ====================
+      {
+        path: 'transfers',
+        name: 'inventory.transfers',
+        component: () => import('../../views/system/inventory/Transfers/TransferIndex.vue'),
+        meta: {
+          title: 'Stock Transfers',
+          permission: 'inventory.transfers.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Transfers' },
+          ],
+        },
+      },
+      {
+        path: 'transfers/create',
+        name: 'inventory.transfers.create',
+        component: () => import('../../views/system/inventory/Transfers/TransferCreate.vue'),
+        meta: {
+          title: 'Create Stock Transfer',
+          permission: 'inventory.transfers.create',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Transfers', to: '/inventory/transfers' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'transfers/:id',
+        name: 'inventory.transfers.detail',
+        component: () => import('../../views/system/inventory/Transfers/TransferDetail.vue'),
+        meta: {
+          title: 'Transfer Details',
+          permission: 'inventory.transfers.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Transfers', to: '/inventory/transfers' },
+            { label: 'Details' },
+          ],
+        },
+      },
+
+      // ==================== STOCK ALERTS ====================
+      {
+        path: 'alerts',
+        name: 'inventory.alerts',
+        component: () => import('../../views/system/inventory/Alerts/AlertsIndex.vue'),
+        meta: {
+          title: 'Stock Alerts',
+          permission: 'inventory.alerts.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Stock Alerts' },
+          ],
+        },
+      },
+      
+      // ==================== INVENTORY TRANSACTIONS ====================
+      {
+        path: 'transactions',
+        name: 'inventory.transactions',
+        component: () => import('../../views/system/inventory/Transactions/TransactionIndex.vue'),
+        meta: {
+          title: 'Inventory Transactions',
+          permission: 'inventory.transactions.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Transactions' },
+          ],
+        },
+      },
+       {
+        path: 'transactions/:id',
+        name: 'inventory.transactions.detail',
+        component: () => import('../../views/system/inventory/Transactions/TransactionDetail.vue'),
+        meta: {
+          title: 'Inventory Transactions',
+          permission: 'inventory.transactions.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Transactions' },
+          ],
+        },
+      },
+
+      // ==================== REPORTS ====================
+      {
+        path: 'reports',
+        name: 'inventory.reports',
+        component: () => import('../../views/system/inventory/Reports/ReportsIndex.vue'),
+        meta: {
+          title: 'Inventory Reports',
+          permission: 'inventory.reports.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Reports' },
+          ],
+        },
+      },
+
+      // ==================== NOTIFICATIONS ====================
+      {
+        path: 'notifications',
+        name: 'inventory.notifications',
+        component: () => import('../../views/system/inventory/Notifications/NotificationIndex.vue'),
+        meta: {
+          title: 'Notifications',
+          permission: 'inventory.notifications.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Notifications' },
+          ],
+        },
+      },
+
+      // ==================== CONFIGURATION ====================
+      {
+        path: 'configuration',
+        name: 'inventory.configuration',
+        component: () => import('../../views/system/inventory/Configuration/ConfigIndex.vue'),
+        meta: {
+          title: 'Inventory Configuration',
+          permission: 'inventory.configuration.manage',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Configuration' },
           ],
         },
       },

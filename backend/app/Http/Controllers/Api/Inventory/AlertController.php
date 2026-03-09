@@ -7,6 +7,7 @@ use App\Models\Inventory\StockAlert;
 use App\Services\Inventory\AlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AlertController extends Controller
 {
@@ -40,8 +41,8 @@ class AlertController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
             $status = $request->get('status', null); // acknowledged, resolved, null=all
 
-            $query = StockAlert::where('branch_id', $branch->id)
-                ->where('store_id', $user->store_id);
+            $query = StockAlert::where('branch_id', operator: $branch->id)
+                ->where('branch_id', $user->branch_id);
 
             if ($status === 'acknowledged') {
                 $query->where('is_acknowledged', true)->where('is_resolved', false);
@@ -327,27 +328,72 @@ class AlertController extends Controller
             }
 
             $baseQuery = StockAlert::where('branch_id', $branch->id)
-                ->where('store_id', $user->store_id);
+                ->where('branch_id', $user->branch_id);
+
+            // Get counts by status (using your actual status enum)
+            $active = (clone $baseQuery)->where('status', 'active')->count();
+            $acknowledged = (clone $baseQuery)->where('status', 'acknowledged')->count();
+            $resolved = (clone $baseQuery)->where('status', 'resolved')->count();
+
+            // Get counts by alert_type (using your actual enum values)
+            $byType = [
+                'low_stock' => (clone $baseQuery)->where('alert_type', 'low_stock')->count(),
+                'out_of_stock' => (clone $baseQuery)->where('alert_type', 'out_of_stock')->count(),
+                'overstock' => (clone $baseQuery)->where('alert_type', 'overstock')->count(),
+                'reorder_needed' => (clone $baseQuery)->where('alert_type', 'reorder_needed')->count(),
+                'expired_soon' => (clone $baseQuery)->where('alert_type', 'expired_soon')->count(),
+            ];
+
+            // Get counts by status (more detailed)
+            $byStatus = [
+                'active' => $active,
+                'acknowledged' => $acknowledged,
+                'resolved' => $resolved,
+            ];
+
+            // Get counts by product (top 5 products with most alerts)
+            $byProduct = (clone $baseQuery)
+                ->with('product')
+                ->select('product_id', DB::raw('count(*) as total'))
+                ->whereNotNull('product_id')
+                ->groupBy('product_id')
+                ->orderByDesc('total')
+                ->limit(5)
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'product_id' => $item->product_id,
+                        'product_name' => $item->product->product_name ?? 'Unknown',
+                        'total' => $item->total
+                    ];
+                });
+
+            // Recent unresolved alerts (active and acknowledged)
+            $recentUnresolved = (clone $baseQuery)
+                ->with(['product', 'branch'])
+                ->whereIn('status', ['active', 'acknowledged'])
+                ->orderByDesc('created_at')
+                ->limit(10)
+                ->get();
 
             $statistics = [
                 'total' => (clone $baseQuery)->count(),
-                'active' => (clone $baseQuery)->where('is_resolved', false)->count(),
-                'acknowledged' => (clone $baseQuery)->where('is_acknowledged', true)->where('is_resolved', false)->count(),
-                'resolved' => (clone $baseQuery)->where('is_resolved', true)->count(),
-                'by_type' => [
-                    'low_stock' => (clone $baseQuery)->where('alert_type', 'low_stock')->count(),
-                    'out_of_stock' => (clone $baseQuery)->where('alert_type', 'out_of_stock')->count(),
-                    'overstock' => (clone $baseQuery)->where('alert_type', 'overstock')->count(),
-                    'expiring_soon' => (clone $baseQuery)->where('alert_type', 'expiring_soon')->count(),
-                    'damaged' => (clone $baseQuery)->where('alert_type', 'damaged')->count(),
-                    'slow_moving' => (clone $baseQuery)->where('alert_type', 'slow_moving')->count(),
-                ],
-                'by_severity' => [
-                    'critical' => (clone $baseQuery)->where('severity', 'critical')->count(),
-                    'high' => (clone $baseQuery)->where('severity', 'high')->count(),
-                    'medium' => (clone $baseQuery)->where('severity', 'medium')->count(),
-                    'low' => (clone $baseQuery)->where('severity', 'low')->count(),
-                ],
+                'active' => $active,
+                'acknowledged' => $acknowledged,
+                'resolved' => $resolved,
+                'unresolved' => $active + $acknowledged,
+                'by_type' => $byType,
+                'by_status' => $byStatus,
+                'by_product' => $byProduct,
+                'recent_unresolved' => $recentUnresolved,
+                'summary' => [
+                    'critical_alerts' => $active, // Treat active as critical
+                    'needs_attention' => $active,
+                    'total_alerts' => (clone $baseQuery)->count(),
+                    'resolved_rate' => (clone $baseQuery)->count() > 0
+                        ? round(($resolved / (clone $baseQuery)->count()) * 100, 2)
+                        : 0
+                ]
             ];
 
             return response()->json([

@@ -14,12 +14,12 @@
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-            placeholder="All Statuses" showClear @change="() => loadAdjustments(1)" />
+            placeholder="All Statuses" showClear @change="() => loadAdjustments(1)" fluid />
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search reference no..." @keyup.enter="loadAdjustments(1)" />
+            <InputText v-model="filters.search" placeholder="Search reference no..." fluid @keyup.enter="loadAdjustments(1)" />
           </IconField>
-          <Calendar v-model="filters.start_date" dateFormat="yy-mm-dd" placeholder="From Date"
+          <DatePicker v-model="filters.start_date" dateFormat="yy-mm-dd" placeholder="From Date" fluid
             @date-select="() => loadAdjustments(1)" />
           <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters" />
         </div>
