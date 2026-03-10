@@ -106,13 +106,22 @@
                   v-tooltip="'View details'"
                 />
                 <Button
-                  v-if="data.status === 'submitted'"
-                  icon="pi pi-check"
+                  v-if="data.status === 'draft'"
+                  icon="pi pi-pencil"
                   size="small"
                   text
-                  severity="success"
-                  @click="approveTransfer(data.id)"
-                  v-tooltip="'Approve transfer'"
+                  severity="warning"
+                  @click="router.push({ name: 'inventory.transfers.create', query: { edit: data.id } })"
+                  v-tooltip="'Edit draft'"
+                />
+                <Button
+                  v-if="data.status === 'draft'"
+                  icon="pi pi-times"
+                  size="small"
+                  text
+                  severity="danger"
+                  @click="confirmCancel(data)"
+                  v-tooltip="'Cancel transfer'"
                 />
               </div>
             </template>
@@ -138,6 +147,7 @@
         </div>
       </template>
     </Card>
+    <ConfirmDialog />
   </div>
 </template>
 
@@ -145,6 +155,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import axios from 'axios'
 
 interface Transfer {
@@ -168,6 +179,7 @@ interface PaginationMeta {
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const loading = ref(false)
 const transfers = ref<Transfer[]>([])
 
@@ -273,22 +285,32 @@ const loadTransfers = async (page = pagination.current_page) => {
   }
 }
 
-const approveTransfer = async (id: number) => {
+const confirmCancel = (transfer: any) => {
+  confirm.require({
+    message: `Are you sure you want to cancel transfer "${transfer.reference_no}"?`,
+    header: 'Cancel Transfer',
+    icon: 'pi pi-exclamation-triangle',
+    acceptSeverity: 'danger',
+    accept: () => cancelTransfer(transfer.id)
+  })
+}
+
+const cancelTransfer = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/transfers/${id}/approve`)
+    await axios.delete(`/api/inventory/transfers/${id}`)
     toast.add({
       severity: 'success',
-      summary: 'Success',
-      detail: 'Transfer approved successfully',
+      summary: 'Cancelled',
+      detail: 'Transfer cancelled successfully',
       life: 2000
     })
     loadTransfers(pagination.current_page)
   } catch (error) {
-    console.error('Failed to approve transfer', error)
+    console.error('Failed to cancel transfer', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to approve transfer',
+      detail: 'Failed to cancel transfer',
       life: 3000
     })
   }
