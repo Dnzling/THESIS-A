@@ -43,5 +43,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        // Register Inventory Observers
+        \App\Models\ProductCatalog\Product::observe(\App\Observers\ProductObserver::class);
+        \App\Models\Inventory\BranchInventory::observe(\App\Observers\BranchInventoryObserver::class);
     }
 }
