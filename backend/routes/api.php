@@ -201,6 +201,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     require __DIR__ . '/attendance_routes.php';
     require __DIR__ . '/product_routes.php';
     require __DIR__ . '/procurement_routes.php';
+    require __DIR__ . '/supplier_routes.php';
     require __DIR__ . '/inventory_routes.php';
 
     // ========== TEST ROUTES (Remove in production) ==========

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Inventory\ReportingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class InventoryReportController extends Controller
 {
@@ -21,8 +22,8 @@ class InventoryReportController extends Controller
     public function branchSummary(?int $days = null): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId =  Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
 
             $summary = $this->reportingService->getBranchSummary($storeId, $branchId, $days);
 
@@ -44,7 +45,7 @@ class InventoryReportController extends Controller
     public function storeSummary(?int $days = null): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
+            $storeId =  Auth::user()->store_id;
 
             $this->authorize('inventory.view_all_branches');
 
@@ -68,8 +69,8 @@ class InventoryReportController extends Controller
     public function movements(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId =  Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 30);
 
             $trends = $this->reportingService->getMovementTrends($storeId, $branchId, $days);
@@ -92,8 +93,8 @@ class InventoryReportController extends Controller
     public function valueByCategory(): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId =  Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
 
             $values = $this->reportingService->getValueByCategory($storeId, $branchId);
 
@@ -115,8 +116,8 @@ class InventoryReportController extends Controller
     public function slowMovers(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId =  Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 90);
             $minValue = $request->query('min_value', 5000);
 
@@ -140,8 +141,8 @@ class InventoryReportController extends Controller
     public function fastMovers(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId = Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 30);
             $minQty = $request->query('min_qty', 50);
 
@@ -165,8 +166,8 @@ class InventoryReportController extends Controller
     public function transfers(Request $request): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId =  Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 30);
 
             $metrics = $this->reportingService->getTransferMetrics($storeId, $branchId, $days);
@@ -189,8 +190,8 @@ class InventoryReportController extends Controller
     public function aging(): JsonResponse
     {
         try {
-            $storeId = auth()->user()->store_id;
-            $branchId = auth()->user()->branch_id;
+            $storeId =  Auth::user()->store_id;
+            $branchId =  Auth::user()->branch_id;
 
             $aging = $this->reportingService->getAgingReport($storeId, $branchId);
 

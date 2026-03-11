@@ -1,6 +1,7 @@
 <?php
 // backend/routes/api.php
 
+use App\Http\Controllers\Api\Inventory\BranchInventoryController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -14,11 +15,13 @@ use App\Http\Controllers\Api\Procurement\Requisition\PurchaseRequisitionControll
 use App\Http\Controllers\Api\Procurement\RFQ\RequestForQuotationController;
 use App\Http\Controllers\Api\Procurement\RFQ\SupplierQuotationController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
+use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 use App\Http\Controllers\Api\Procurement\Config\ProcurementSettingsController;
 use App\Http\Controllers\Api\Procurement\Config\RoleApprovalLimitController;
 use App\Http\Controllers\Api\Procurement\DashboardController as ProcurementDashboardController;
-
+use App\Http\Controllers\Api\Procurement\Inventory\ProcurementInventoryController;
+use App\Http\Controllers\Api\ProductCatalog\ProductController;
 
 // ============================================
 // PROCUREMENT MANAGEMENT ROUTES
@@ -36,6 +39,7 @@ Route::prefix('procurement')->group(function () {
         Route::delete('/{id}', [SupplierController::class, 'destroy']);
         Route::post('/{id}/products', [SupplierController::class, 'attachProducts']);
         Route::get('/{id}/performance', [SupplierController::class, 'performance']);
+        Route::get('/{id}/delivery-history', [PurchaseOrderPrintEmailController::class, 'getSupplierDeliveryHistory']);
         Route::post('/{id}/update-rating', [SupplierController::class, 'updateRating']);
     });
 
@@ -92,13 +96,19 @@ Route::prefix('procurement')->group(function () {
     // Purchase Orders
     Route::prefix('purchase-orders')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index']);
+        Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders']);
         Route::get('/{id}', [PurchaseOrderController::class, 'show']);
         Route::post('/', [PurchaseOrderController::class, 'store']);
+        Route::put('/{id}', [PurchaseOrderController::class, 'update']);
         Route::delete('/{id}', [PurchaseOrderController::class, 'destroy']);
         Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve']);
         Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject']);
         Route::post('/{id}/send', [PurchaseOrderController::class, 'send']);
         Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
+        Route::get('/{id}/print', [PurchaseOrderPrintEmailController::class, 'generatePdf']);
+        Route::post('/{id}/email', [PurchaseOrderPrintEmailController::class, 'emailPo']);
+        Route::get('/{id}/label', [PurchaseOrderPrintEmailController::class, 'generateLabel']);
+        Route::post('/{id}/request-revision', [PurchaseOrderPrintEmailController::class, 'requestRevision']);
         Route::get('/summary', [PurchaseOrderController::class, 'summary']);
 
         // Pending receipt
@@ -145,5 +155,36 @@ Route::prefix('procurement')->group(function () {
         Route::delete('/{id}', [RoleApprovalLimitController::class, 'destroy']);
         Route::get('/role/{roleId}', [RoleApprovalLimitController::class, 'getByRole']);
         Route::post('/check', [RoleApprovalLimitController::class, 'checkApproval']);
+    });
+
+    // Procurement Inventory Management
+    Route::prefix('inventory')->group(function () {
+        Route::get('/', [ProcurementInventoryController::class, 'index']);
+        Route::get('/summary', [ProcurementInventoryController::class, 'summary']);
+        Route::get('/low-stock', [ProcurementInventoryController::class, 'lowStock']);
+        Route::get('/{id}', [ProcurementInventoryController::class, 'show']);
+        Route::post('/init', [ProcurementInventoryController::class, 'initialize']);
+        Route::put('/{id}', [ProcurementInventoryController::class, 'update']);
+    });
+
+    // Products (automation features)
+    Route::prefix('product-inventory')->group(function () {
+        Route::get('/', [BranchInventoryController::class, 'index']);
+        Route::get('/{id}', [BranchInventoryController::class, 'show']);
+        Route::get('/history', [PurchaseOrderPrintEmailController::class, 'getProductHistory']);
+        Route::get('/{productId}/alternative-suppliers', [PurchaseOrderPrintEmailController::class, 'getAlternativeSuppliers']);
+    });
+
+    Route::prefix('products')->group(function () {
+        Route::get('/', [ProductController::class, 'index']);
+        Route::get('/{id}', [ProductController::class, 'show']);
+        Route::post('/', [ProductController::class, 'store']);
+        Route::put('/{id}', [ProductController::class, 'update']);
+        Route::delete('/{id}', [ProductController::class, 'destroy']);
+    });
+
+    // Branches (budget checking)
+    Route::prefix('branches')->group(function () {
+        Route::get('/{branchId}/budget', [PurchaseOrderPrintEmailController::class, 'getBranchBudget']);
     });
 });

@@ -273,4 +273,223 @@ class SupplierController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Manage supplier contacts
+     * GET /api/procurement/suppliers/{id}/contacts
+     */
+    public function getContacts(int $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        $contacts = $supplier->contacts()->orderBy('is_primary', 'desc')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $contacts,
+        ]);
+    }
+
+    /**
+     * Add supplier contact
+     * POST /api/procurement/suppliers/{id}/contacts
+     */
+    public function addContact(Request $request, int $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        $validated = $request->validate([
+            'contact_name' => 'required|string|max:255',
+            'contact_title' => 'nullable|string|max:100',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'mobile' => 'nullable|string|max:50',
+            'fax' => 'nullable|string|max:50',
+            'contact_type' => 'required|in:Sales,Technical,Support,Billing,Logistics',
+            'preferred_contact_method' => 'nullable|in:Email,Phone,Mobile,WhatsApp,Fax',
+            'is_primary' => 'nullable|boolean',
+            'is_emergency_contact' => 'nullable|boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        $contact = $supplier->contacts()->create($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contact added successfully',
+            'data' => $contact,
+        ], 201);
+    }
+
+    /**
+     * Update supplier contact
+     * PUT /api/procurement/suppliers/{id}/contacts/{contactId}
+     */
+    public function updateContact(Request $request, int $id, int $contactId): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        $contact = $supplier->contacts()->findOrFail($contactId);
+
+        $validated = $request->validate([
+            'contact_name' => 'nullable|string|max:255',
+            'contact_title' => 'nullable|string|max:100',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+            'mobile' => 'nullable|string|max:50',
+            'fax' => 'nullable|string|max:50',
+            'contact_type' => 'nullable|in:Sales,Technical,Support,Billing,Logistics',
+            'preferred_contact_method' => 'nullable|in:Email,Phone,Mobile,WhatsApp,Fax',
+            'is_primary' => 'nullable|boolean',
+            'is_emergency_contact' => 'nullable|boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        $contact->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contact updated successfully',
+            'data' => $contact,
+        ]);
+    }
+
+    /**
+     * Delete supplier contact
+     * DELETE /api/procurement/suppliers/{id}/contacts/{contactId}
+     */
+    public function deleteContact(int $id, int $contactId): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        $contact = $supplier->contacts()->findOrFail($contactId);
+        $contact->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contact deleted successfully',
+        ]);
+    }
+
+    /**
+     * Get supplier pricing history
+     * GET /api/procurement/suppliers/{id}/pricing-history
+     */
+    public function getPricingHistory(Request $request, int $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        
+        $query = $supplier->priceHistory();
+
+        if ($request->has('product_id')) {
+            $query->where('product_id', $request->product_id);
+        }
+
+        $prices = $query->with('product:id,product_name,sku')
+            ->orderBy('effective_date', 'desc')
+            ->paginate($request->get('per_page', 15));
+
+        return response()->json([
+            'success' => true,
+            'data' => $prices,
+        ]);
+    }
+
+    /**
+     * Update supplier pricing
+     * POST /api/procurement/suppliers/{id}/update-price
+     */
+    public function updatePrice(Request $request, int $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'unit_price' => 'required|numeric|min:0',
+            'minimum_order_quantity' => 'nullable|integer|min:1',
+            'lead_time_days' => 'nullable|integer|min:1',
+            'pack_size' => 'nullable|integer|min:1',
+            'effective_date' => 'nullable|date',
+            'expiry_date' => 'nullable|date|after_or_equal:effective_date',
+        ]);
+
+        // Create new price record (deactivate old one if exists)
+        \App\Models\Procurement\Supplier\SupplierPrice::where('supplier_id', $id)
+            ->where('product_id', $validated['product_id'])
+            ->active()
+            ->update(['is_active' => false]);
+
+        $price = \App\Models\Procurement\Supplier\SupplierPrice::create([
+            'supplier_id' => $id,
+            'product_id' => $validated['product_id'],
+            'unit_price' => $validated['unit_price'],
+            'minimum_order_quantity' => $validated['minimum_order_quantity'] ?? 1,
+            'lead_time_days' => $validated['lead_time_days'] ?? 7,
+            'pack_size' => $validated['pack_size'] ?? 1,
+            'effective_date' => $validated['effective_date'] ?? now(),
+            'expiry_date' => $validated['expiry_date'],
+            'is_active' => true,
+            'currency' => 'PHP',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier price updated successfully',
+            'data' => $price,
+        ], 201);
+    }
+
+    /**
+     * Blacklist supplier
+     * POST /api/procurement/suppliers/{id}/blacklist
+     */
+    public function blacklist(Request $request, int $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        $validated = $request->validate([
+            'reason' => 'required|in:quality_issues,late_delivery,non_payment,other',
+            'notes' => 'nullable|string',
+        ]);
+
+        $supplier->update([
+            'status' => 'blacklisted',
+        ]);
+
+        // Log the blacklist action
+        \Illuminate\Support\Facades\Log::info("Supplier blacklisted: {$supplier->supplier_name}", [
+            'supplier_id' => $id,
+            'reason' => $validated['reason'],
+            'notes' => $validated['notes'],
+            'blacklisted_by' => auth()->id(),
+            'blacklisted_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier blacklisted successfully',
+            'data' => $supplier,
+        ]);
+    }
+
+    /**
+     * Activate blacklisted supplier
+     * POST /api/procurement/suppliers/{id}/activate
+     */
+    public function activate(int $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        if ($supplier->status !== 'blacklisted') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Supplier is not blacklisted',
+            ], 422);
+        }
+
+        $supplier->update(['status' => 'active']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier activated successfully',
+            'data' => $supplier,
+        ]);
+    }
 }

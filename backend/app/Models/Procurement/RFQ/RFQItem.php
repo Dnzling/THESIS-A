@@ -18,12 +18,15 @@ class RFQItem extends Model
         'product_id',
         'variation_id',
         'quantity',
+        'unit',
+        'target_price',
         'specifications',
-        'requirements',
+        'notes',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
+        'target_price' => 'decimal:2',
     ];
 
     // Relationships

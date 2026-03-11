@@ -37,7 +37,6 @@ class Product extends Model
         'is_new_arrival',
         'is_bestseller',
         'is_active',
-        'stock_status',
         'meta_title',
         'meta_description',
         'meta_keywords',
@@ -127,12 +126,6 @@ class Product extends Model
     {
         return $query->where('is_active', true);
     }
-
-    public function scopeInStock($query)
-    {
-        return $query->whereIn('stock_status', ['In Stock', 'Low Stock']);
-    }
-
     public function scopeByStore($query, $storeId)
     {
         return $query->where('store_id', $storeId);

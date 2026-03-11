@@ -12,6 +12,7 @@ use App\Models\Store\Store;
 use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\RFQ\SupplierQuotation;
+use App\Models\Procurement\Analytics\SupplierPerformance;
 
 class Supplier extends Model
 {
@@ -89,6 +90,21 @@ class Supplier extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(SupplierPayment::class);
+    }
+
+    public function priceHistory(): HasMany
+    {
+        return $this->hasMany(SupplierPrice::class);
+    }
+
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(SupplierContact::class);
+    }
+
+    public function performanceMetrics(): HasMany
+    {
+        return $this->hasMany(SupplierPerformance::class);
     }
 
     // Scopes

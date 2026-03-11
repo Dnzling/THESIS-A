@@ -15,16 +15,16 @@ class RFQSupplier extends Model
         'rfq_id',
         'supplier_id',
         'status',
-        'sent_at',
+        'invited_at',
         'viewed_at',
-        'submitted_at',
+        'responded_at',
         'decline_reason',
     ];
 
     protected $casts = [
-        'sent_at' => 'datetime',
+        'invited_at' => 'datetime',
         'viewed_at' => 'datetime',
-        'submitted_at' => 'datetime',
+        'responded_at' => 'datetime',
     ];
 
     // Relationships

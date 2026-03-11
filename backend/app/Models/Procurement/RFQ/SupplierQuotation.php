@@ -1,5 +1,4 @@
 <?php
-// backend/app/Models/Procurement/RFQ/SupplierQuotation.php
 
 namespace App\Models\Procurement\RFQ;
 
@@ -14,33 +13,28 @@ class SupplierQuotation extends Model
         'quotation_number',
         'rfq_id',
         'supplier_id',
-        'quotation_date',
-        'valid_until',
-        'subtotal',
-        'tax_amount',
-        'shipping_cost',
-        'total_amount',
-        'payment_terms',
+        'total_price',
         'delivery_days',
+        'payment_terms',
+        'validity_date',
+        'price_per_unit',
         'notes',
-        'attachment_path',
         'status',
-        'evaluation_score',
-        'evaluation_notes',
+        'submitted_date',
+        'score',
+        'rank',
     ];
 
     protected $casts = [
-        'quotation_date' => 'date',
-        'valid_until' => 'date',
-        'subtotal' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'shipping_cost' => 'decimal:2',
-        'total_amount' => 'decimal:2',
+        'total_price' => 'decimal:2',
+        'price_per_unit' => 'decimal:2',
         'delivery_days' => 'integer',
-        'evaluation_score' => 'decimal:2',
+        'validity_date' => 'date',
+        'submitted_date' => 'datetime',
+        'score' => 'decimal:2',
+        'rank' => 'integer',
     ];
 
-    // Relationships
     public function rfq(): BelongsTo
     {
         return $this->belongsTo(RequestForQuotation::class, 'rfq_id');
@@ -48,7 +42,7 @@ class SupplierQuotation extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
     public function items(): HasMany
@@ -86,10 +80,10 @@ class SupplierQuotation extends Model
     public function accept(): void
     {
         $this->update(['status' => 'accepted']);
-        
+
         // Mark supplier as awarded in RFQ
         $this->rfq->awardToSupplier($this->supplier_id);
-        
+
         // Reject other quotations
         $this->rfq->quotations()
             ->where('id', '!=', $this->id)

@@ -54,7 +54,7 @@ class RequestForQuotationController extends Controller
             'purchaseRequisition',
             'items.product',
             'items.variation',
-            'suppliers',
+            'suppliers.supplier',
             'quotations.supplier',
             'createdBy',
             'awardedToSupplier'
@@ -76,8 +76,16 @@ class RequestForQuotationController extends Controller
             'purchase_requisition_id' => 'nullable|exists:purchase_requisitions,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'rfq_type' => 'nullable|string|in:purchase,service,both',
+            'currency' => 'nullable|string|max:3',
+            'payment_terms' => 'nullable|string',
+            'shipping_terms' => 'nullable|string',
+            'instructions' => 'nullable|string',
+            'qualification_requirements' => 'nullable|string',
+            'assigned_to' => 'nullable|exists:employees,id',
             'issue_date' => 'required|date',
             'deadline_date' => 'required|date|after:issue_date',
+            'expected_delivery_date' => 'nullable|date',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
@@ -94,15 +102,23 @@ class RequestForQuotationController extends Controller
             $lastRFQ = RequestForQuotation::latest()->first();
             $rfqNumber = 'RFQ-' . date('Y') . '-' . str_pad(($lastRFQ?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
 
-            // Create RFQ
+            // Create RFQ with all fields
             $rfq = RequestForQuotation::create([
                 'rfq_number' => $rfqNumber,
                 'store_id' => auth()->user()->store_id,
                 'purchase_requisition_id' => $validated['purchase_requisition_id'] ?? null,
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
+                'rfq_type' => $validated['rfq_type'] ?? 'purchase',
+                'currency' => $validated['currency'] ?? 'PHP',
+                'payment_terms' => $validated['payment_terms'] ?? null,
+                'shipping_terms' => $validated['shipping_terms'] ?? null,
+                'instructions' => $validated['instructions'] ?? null,
+                'qualification_requirements' => $validated['qualification_requirements'] ?? null,
+                'assigned_to' => $validated['assigned_to'] ?? null,
                 'issue_date' => $validated['issue_date'],
                 'deadline_date' => $validated['deadline_date'],
+                'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
                 'status' => 'draft',
                 'created_by' => auth()->id(),
             ]);
@@ -129,15 +145,19 @@ class RequestForQuotationController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'RFQ created successfully',
-                'data' => $rfq->load(['items.product', 'suppliers']),
+                'data' => $rfq->load(['items.product', 'items.variation', 'suppliers']),
             ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('RFQ Creation Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create RFQ',
-                'error' => $e->getMessage(),
+                'message' => 'Failed to create RFQ: ' . $e->getMessage(),
+                'error' => config('app.debug') ? $e->getMessage() : 'An error occurred',
             ], 500);
         }
     }
