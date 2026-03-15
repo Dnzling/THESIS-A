@@ -30,7 +30,7 @@ const handleLogin = async (formData: LoginFormData) => {
 
   try {
     // Let authStore handle the entire login process
-    await authStore.login(formData.email, formData.password)
+    await authStore.login(formData.login, formData.password)
 
     console.log('✅ Login successful')
     console.log('User role:', authStore.user?.role)
@@ -44,7 +44,7 @@ const handleLogin = async (formData: LoginFormData) => {
       life: 2000
     })
 
-    // ✅ Role-based routing (using authStore.defaultRoute)
+    // ✅ Default routing (SystemLayout)
     let redirectTo = authStore.defaultRoute
 
     // Override with query redirect if available

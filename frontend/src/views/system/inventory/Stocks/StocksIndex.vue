@@ -5,7 +5,7 @@
         <h1 class="text-3xl font-bold text-gray-800">Inventory Items</h1>
         <p class="text-gray-600 mt-1">View and manage inventory in your branch</p>
       </div>
-      <Button label="+ Add Item" icon="pi pi-plus" severity="success" @click="router.push({ name: 'inventory.items.create' })" />
+      <Button label="Add Item" icon="pi pi-plus" severity="success" @click="router.push({ name: 'inventory.items.create' })" />
     </div>
 
     <!-- Filters -->
@@ -48,7 +48,7 @@
           dataKey="id"
           :rowsPerPageOptions="[15, 25, 50]"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
-          paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+          paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
           class="p-datatable-sm"
           stripedRows
         >
@@ -103,7 +103,7 @@
             </template>
           </Column>
 
-          <Column header="Actions" style="width: 10%">
+          <Column header="Actions" style="width: 15%">
             <template #body="{ data }">
               <div class="flex gap-1">
                 <Button
@@ -113,6 +113,15 @@
                   severity="warning"
                   @click="router.push({ name: 'inventory.items.edit', params: { id: data.id } })"
                   v-tooltip="'Edit item'"
+                />
+                <Button
+                  icon="pi pi-plus-circle"
+                  size="small"
+                  text
+                  severity="info"
+                  @click="createPurchaseRequisition(data)"
+                  v-tooltip="'Create Purchase Requisition'"
+                  v-if="['low_stock', 'out_of_stock'].includes(data.stock_status)"
                 />
                 <Button
                   icon="pi pi-trash"
@@ -258,6 +267,17 @@ const deleteItem = async (id: number) => {
       life: 3000
     })
   }
+}
+
+const createPurchaseRequisition = (item: any) => {
+  router.push({
+    name: 'procurement.purchase-requisitions.create',
+    query: {
+      branch_inventory_id: item.id,
+      branch_id: item.branch_id,
+      product_id: item.product_id,
+    }
+  })
 }
 
 onMounted(() => {

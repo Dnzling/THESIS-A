@@ -71,7 +71,7 @@
                     <div class="space-y-4">
                         <!-- 3D Viewer Container -->
                         <div :ref="el => setModelRef(model.id, el)"
-                            class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden"
+                            class="relative bg-linear-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden"
                             style="height: 300px;">
                             <!-- Loading Indicator -->
                             <div v-if="!modelStates[model.id]?.loaded"
@@ -166,7 +166,7 @@
             class="w-full max-w-4xl">
             <div v-if="currentModel" class="space-y-4">
                 <!-- Fullscreen 3D Viewer -->
-                <div ref="dialogViewerContainer" class="bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg"
+                <div ref="dialogViewerContainer" class="bg-linear-to-br from-gray-100 to-gray-200 rounded-lg"
                     style="height: 500px;"></div>
     
                 <!-- Model Details -->

@@ -101,7 +101,7 @@ const authStore = useAuthStore()
 const countdown = ref(5)
 const progressWidth = ref(100)
 const isLoggingOut = ref(false)
-// let countdownInterval: number | null = null
+let countdownInterval: number | null = null
 
 const handleLogout = async () => {
   if (isLoggingOut.value) return

@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import HumanResourcesLayout from '../layouts/HumanResourcesLayout.vue'
 import { useAuthStore } from '../stores/auth'
-import InventoryLayout from '../layouts/InventoryLayout.vue'
-import inventoryRoutes from './modules/inventory'
+import { useJobPortalAuthStore } from '../stores/jobPortalAuth'
+import inventoryRoutes from './modules/inventory.router'
+import hrPortalRoutes from './modules/hr.router'
+import { supplierRoutes } from './modules/supplier.router'
 
 // Lazy load components for better performance
 const Home = () => import('../views/marketing/Home.vue')
@@ -15,7 +16,8 @@ const Unauthorized = () => import('../views/Unauthorized.vue')
 const VerifyOtp = () => import('../views/auth/VerifyOtp.vue')
 const Verification = () => import('../views/auth/VerifyStore.vue')
 
-// Import the AdminLayout (your sidebar parent component)
+// Import the unified SystemLayout for all authenticated modules
+const SystemLayout = () => import('../layouts/SystemLayout.vue')
 const StoreAdminLayout = () => import('../layouts/StoreAdminLayout.vue')
 const AdminLayout = () => import('../layouts/AdminLayout.vue')
 // const ManagerLayout = () => import('../layouts/ManagerLayout.vue')
@@ -32,6 +34,17 @@ const AdminDashboard = () => import('../views/system/admin/Dashboard.vue')
 const AdminSubscription = () => import('../views/system/admin/Subscriptions.vue')
 const AdminStoreValidation = () => import('../views/system/admin/Storevalidation.vue')
 const AdminCustomerValidation = () => import('../views/system/admin/Customervalidation.vue')
+const AdminCustomerManagement = () => import('../views/system/admin/CustomerManagement.vue')
+const SupplierList = () => import('../views/system/supplier/SupplierList.vue')
+const SupplierDetail = () => import('../views/system/supplier/SupplierDetail.vue')
+const SupplierDashboard = () => import('../views/system/supplier/SupplierDashboard.vue')
+const SupplierPortalDashboard = () => import('../views/system/supplier/SupplierPortalDashboard.vue')
+const SupplierPortalRegistration = () => import('../views/system/supplier/SupplierPortalRegistration.vue')
+const SupplierRFQIndex = () => import('../views/system/supplier/SupplierRFQIndex.vue')
+const SupplierRFQDetail = () => import('../views/system/supplier/SupplierRFQDetail.vue')
+const SupplierPOIndex = () => import('../views/system/supplier/SupplierPOIndex.vue')
+const SupplierPODetail = () => import('../views/system/supplier/SupplierPODetail.vue')
+const SupplierTransactions = () => import('../views/system/supplier/SupplierTransactions.vue')
 
 // Store Admin Views
 // const Sales = () => import('../views/system/inventory/Sales.vue')
@@ -63,7 +76,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/system',
     component: StoreAdminLayout,
-    meta: { requiresAuth: true, role: ['store_admin', 'owner', 'super_admin'] },
+    meta: { requiresAuth: true },
     children: [
       { path: 'index', name: 'store.dashboard', component: Dashboard, meta: { title: 'Dashboard' } },
       // { path: 'sales', name: 'Sales', component: Sales, meta: { title: 'Sales & Reports' } },
@@ -76,7 +89,7 @@ const routes: RouteRecordRaw[] = [
       // { path: 'users', name: 'Users', component: Users, meta: { title: 'Users', subtitle: 'User Management & Permissions' } },
       // { path: 'productRegistration', name: 'ProductRegistration', component: ProductRegistration },
       // { path: 'profile', name: 'ProductRegistration', component: ProductRegistration },
-      { path: 'roles-permissions', name: 'store.role-permissions', component: () => import('../views/system/admin/RolePermissions.vue'), meta: { title: 'Role Permissions',  permissions: ['store.role.permission'] } },
+      { path: 'roles-permissions', name: 'store.role-permissions', component: () => import('../views/system/storeAdmin/RolePermissions.vue'), meta: { title: 'Role Permissions',  permissions: ['store.role.permission'] } },
       { path: 'store', children: [{ path: 'verification', name: 'StoreVerification', component: Verification, meta: { title: 'Store Verification' } }] }
     ]
   },
@@ -90,12 +103,48 @@ const routes: RouteRecordRaw[] = [
       { path: 'subscription', name: 'AdminSubscription', component: AdminSubscription },
       { path: 'store-validation', name: 'AdminStoreValidation', component: AdminStoreValidation },
       { path: 'customer-validation', name: 'AdminCustomerValidation', component: AdminCustomerValidation },
+      { path: 'customer-management', name: 'admin.customer-management', component: AdminCustomerManagement },
+      {
+        path: 'suppliers',
+        redirect: '/admin/suppliers/list',
+        meta: { title: 'Supplier Management', breadcrumb: 'Suppliers' },
+      },
+      {
+        path: 'suppliers/list',
+        component: SupplierList,
+        meta: { title: 'Supplier List', breadcrumb: 'Suppliers', requiresAuth: true },
+      },
+      {
+        path: 'suppliers/:id',
+        component: SupplierDetail,
+        meta: { title: 'Supplier Details', breadcrumb: 'Supplier Details', requiresAuth: true },
+      },
+      {
+        path: 'suppliers/dashboard',
+        component: SupplierDashboard,
+        meta: { title: 'Supplier Dashboard', breadcrumb: 'Dashboard', requiresAuth: true },
+      },
+    ]
+  },
+  {
+    path: '/supplier-portal',
+    component: SystemLayout,
+    meta: { requiresAuth: true, roles: ['supplier', 'supplier_portal'] },
+    children: [
+      { path: 'dashboard', name: 'supplier.dashboard', component: SupplierPortalDashboard, meta: { title: 'Supplier Dashboard' } },
+      { path: 'registration', name: 'supplier.registration', component: SupplierPortalRegistration, meta: { title: 'Supplier Registration' } },
+      { path: 'rfqs', name: 'supplier.rfqs', component: SupplierRFQIndex, meta: { title: 'RFQs' } },
+      { path: 'rfqs/:id', name: 'supplier.rfqs.detail', component: SupplierRFQDetail, meta: { title: 'RFQ Details' } },
+      { path: 'pos', name: 'supplier.pos', component: SupplierPOIndex, meta: { title: 'Purchase Orders' } },
+      { path: 'pos/:id', name: 'supplier.pos.detail', component: SupplierPODetail, meta: { title: 'Purchase Order Details' } },
+      { path: 'transactions', name: 'supplier.transactions', component: SupplierTransactions, meta: { title: 'Transactions' } },
+      { path: '', redirect: { name: 'supplier.dashboard' } },
     ]
   },
   {
     path: '/hr',
-    component: HumanResourcesLayout,
-    meta: { requiresAuth: true, preload: true, cache: true, role: ['hr_manager'] },
+    component: SystemLayout,
+    meta: { requiresAuth: true},
     children: [
       { path: 'index', name: 'hr.dashboard', component: HrDashboard, meta: { title: 'HR Dashboard' } },
       {
@@ -131,12 +180,24 @@ const routes: RouteRecordRaw[] = [
           { path: 'edit/:id', name: 'hr.payroll.edit', component: () => import('../views/system/hr/PayrollEdit.vue'), meta: { title: 'Edit Payroll' } },
         ]
       },
+      {
+        path: 'job-hiring', children: [
+          { path: '', name: 'hr.job-postings', component: () => import('../views/system/hr/JobPostings/JobPostingsIndex.vue'), meta: { title: 'Job Postings', permissions: ['view-job-postings'] } },
+          { path: 'postings/:postingId', name: 'hr.job-postings.detail', component: () => import('../views/system/hr/JobPostings/JobPostingDetailView.vue'), meta: { title: 'Job Posting Overview', permissions: ['view-job-postings'] } },
+          { path: 'postings/:postingId/applicants', name: 'hr.job-postings.applicants', component: () => import('../views/system/hr/JobPostings/JobPostingApplicantsList.vue'), meta: { title: 'Applicants', permissions: ['view-job-applications'] } },
+          { path: 'postings/:postingId/screening', name: 'hr.screening-pipeline', component: () => import('../views/system/hr/JobPostings/JobPostingsScreening.vue'), meta: { title: 'Screening Pipeline', permissions: ['view-job-applications'] } },
+          { path: 'postings/:postingId/apply', name: 'hr.apply-job', component: () => import('../views/system/hr/JobPostings/JobPostingsApply.vue'), meta: { title: 'Apply for Job', public: true } },
+          { path: 'applications/:applicationId/review', name: 'hr.job-applications.review', component: () => import('../views/system/hr/JobPostings/ApplicantReviewDetail.vue'), meta: { title: 'Applicant Review', permissions: ['view-job-applications'] } },
+          { path: 'applications/:applicationId/decision', name: 'hr.job-applications.decision', component: () => import('../views/system/hr/JobPostings/ApplicantDecision.vue'), meta: { title: 'Applicant Decision', permissions: ['view-job-applications'] } },
+          { path: 'applications/:applicationId/onboarding', name: 'hr.job-applications.onboarding', component: () => import('../views/system/hr/JobPostings/EmployeeOnboardingCreate.vue'), meta: { title: 'Employee Onboarding', permissions: ['update-application-status'] } },
+        ]
+      },
       { path: ':pathMatch(.*)*', redirect: { name: 'hr.dashboard' } }
     ]
   },
   {
     path: '/merchandising',
-    component: () => import('../layouts/MerchandisingLayout.vue'),
+    component: SystemLayout,
     meta: { requiresAuth: true, roles: ['super_admin', 'store_admin', 'store_manager', 'warehouse_manager', 'inventory_staff', 'sales_staff', 'supplier_coordinator'] },
     children: [
       { path: 'dashboard', name: 'merchandising.dashboard', component: () => import('../views/system/merchandising/Dashboard.vue'), meta: { title: 'Product Catalog Dashboard', subtitle: 'Overview of your product catalog and inventory', permissions: ['merchandising.dashboard.view'] } },
@@ -166,37 +227,85 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/procurement',
-    component: () => import('../layouts/ProcurementLayout.vue'),
-    meta: { requiresAuth: true, roles: ['super_admin', 'store_admin', 'store_manager', 'warehouse_manager', 'inventory_staff', 'sales_staff', 'supplier_coordinator'] },
+    component: SystemLayout,
+    meta: { requiresAuth: true},
     children: [
       { path: 'dashboard', name: 'procurement.dashboard', component: () => import('../views/system/procurement/Dashboard.vue'), meta: { title: 'Procurement Dashboard', subtitle: 'Overview of procurement operations' } },
-      { path: 'suppliers', name: 'procurement.suppliers', component: () => import('../views/system/procurement/Suppliers/Index.vue'), meta: { title: 'Suppliers', subtitle: 'Manage supplier records' } },
-      { path: 'suppliers/create', name: 'procurement.suppliers.create', component: () => import('../views/system/procurement/Suppliers/Create.vue'), meta: { title: 'Create Supplier', subtitle: 'Add a supplier profile' } },
-      { path: 'suppliers/:id', name: 'procurement.suppliers.detail', component: () => import('../views/system/procurement/Suppliers/Detail.vue'), meta: { title: 'Supplier Details', subtitle: 'View supplier information' } },
-      { path: 'suppliers/:id/edit', name: 'procurement.suppliers.edit', component: () => import('../views/system/procurement/Suppliers/Edit.vue'), meta: { title: 'Edit Supplier', subtitle: 'Update supplier information' } },
-      { path: 'purchase-requisitions', name: 'procurement.purchase-requisitions', component: () => import('../views/system/procurement/PurchaseRequisitions/Index.vue'), meta: { title: 'Purchase Requisitions', subtitle: 'Manage requisitions' } },
-      { path: 'purchase-requisitions/create', name: 'procurement.purchase-requisitions.create', component: () => import('../views/system/procurement/PurchaseRequisitions/Create.vue'), meta: { title: 'Create Requisition', subtitle: 'Create a purchase requisition' } },
-      { path: 'purchase-requisitions/:id', name: 'procurement.purchase-requisitions.detail', component: () => import('../views/system/procurement/PurchaseRequisitions/Detail.vue'), meta: { title: 'Requisition Details', subtitle: 'Review requisition details' } },
-      { path: 'rfqs', name: 'procurement.rfqs', component: () => import('../views/system/procurement/RFQs/Index.vue'), meta: { title: 'RFQs', subtitle: 'Manage requests for quotations' } },
-      { path: 'rfqs/create', name: 'procurement.rfqs.create', component: () => import('../views/system/procurement/RFQs/Create.vue'), meta: { title: 'Create RFQ', subtitle: 'Create a request for quotation' } },
-      { path: 'rfqs/:id', name: 'procurement.rfqs.detail', component: () => import('../views/system/procurement/RFQs/Detail.vue'), meta: { title: 'RFQ Details', subtitle: 'Review RFQ details' } },
-      { path: 'purchase-orders', name: 'procurement.purchase-orders', component: () => import('../views/system/procurement/PurchaseOrders/Index.vue'), meta: { title: 'Purchase Orders', subtitle: 'Manage purchase orders' } },
-      { path: 'purchase-orders/create', name: 'procurement.purchase-orders.create', component: () => import('../views/system/procurement/PurchaseOrders/Create.vue'), meta: { title: 'Create Purchase Order', subtitle: 'Create a purchase order' } },
-      { path: 'purchase-orders/:id', name: 'procurement.purchase-orders.detail', component: () => import('../views/system/procurement/PurchaseOrders/Detail.vue'), meta: { title: 'Purchase Order Details', subtitle: 'Review purchase order details' } },
-      { path: 'goods-receipts', name: 'procurement.goods-receipts', component: () => import('../views/system/procurement/GoodsReceipts/Index.vue'), meta: { title: 'Goods Receipts', subtitle: 'Track incoming goods' } },
-      { path: 'payments', name: 'procurement.payments', component: () => import('../views/system/procurement/Payments/Index.vue'), meta: { title: 'Supplier Payments', subtitle: 'Manage supplier payments' } },
-      { path: 'reports', name: 'procurement.reports', component: () => import('../views/system/procurement/Reports/Index.vue'), meta: { title: 'Procurement Reports', subtitle: 'Analyze procurement performance' } },
+      { path: 'suppliers', name: 'procurement.suppliers', component: () => import('../views/system/procurement/Suppliers/SupplierIndex.vue'), meta: { title: 'Suppliers', subtitle: 'Manage supplier records' } },
+      { path: 'suppliers/create', name: 'procurement.suppliers.create', component: () => import('../views/system/procurement/Suppliers/SupplierCreate.vue'), meta: { title: 'Create Supplier', subtitle: 'Add a supplier profile' } },
+      { path: 'suppliers/:id', name: 'procurement.suppliers.detail', component: () => import('../views/system/procurement/Suppliers/SupplierDetail.vue'), meta: { title: 'Supplier Details', subtitle: 'View supplier information' } },
+      { path: 'suppliers/:id/edit', name: 'procurement.suppliers.edit', component: () => import('../views/system/procurement/Suppliers/SupplierEdit.vue'), meta: { title: 'Edit Supplier', subtitle: 'Update supplier information' } },
+      { path: 'supplier-contracts', name: 'procurement.supplier-contracts.index', component: () => import('../views/system/procurement/SupplierContracts/SupplierContractIndex.vue'), meta: { title: 'Supplier Contracts', subtitle: 'Manage supplier contracts with terms and documents' } },
+      { path: 'supplier-contracts/create', name: 'procurement.supplier-contracts.create', component: () => import('../views/system/procurement/SupplierContracts/SupplierContractCreate.vue'), meta: { title: 'Create Contract', subtitle: 'Create a new supplier contract' } },
+      { path: 'supplier-contracts/:id', name: 'procurement.supplier-contracts.detail', component: () => import('../views/system/procurement/SupplierContracts/SupplierContractDetail.vue'), meta: { title: 'Contract Details', subtitle: 'View contract information' } },
+      { path: 'supplier-contracts/:id/edit', name: 'procurement.supplier-contracts.edit', component: () => import('../views/system/procurement/SupplierContracts/SupplierContractEdit.vue'), meta: { title: 'Edit Contract', subtitle: 'Update contract details' } },
+      { path: 'purchase-requisitions', name: 'procurement.purchase-requisitions', component: () => import('../views/system/procurement/PurchaseRequisitions/PurchaseRequisitionIndex.vue'), meta: { title: 'Purchase Requisitions', subtitle: 'Manage requisitions' } },
+      { path: 'purchase-requisitions/create', name: 'procurement.purchase-requisitions.create', component: () => import('../views/system/procurement/PurchaseRequisitions/PurchaseRequisitionCreate.vue'), meta: { title: 'Create Requisition', subtitle: 'Create a purchase requisition' } },
+      { path: 'purchase-requisitions/:id', name: 'procurement.purchase-requisitions.detail', component: () => import('../views/system/procurement/PurchaseRequisitions/PurchaseRequisitionDetail.vue'), meta: { title: 'Requisition Details', subtitle: 'Review requisition details' } },
+      { path: 'stock-order-requests', name: 'stock-order-requests.index', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestIndex.vue'), meta: { title: 'Stock Order Requests', subtitle: 'Manage stock order requests for low stock items' } },
+      { path: 'stock-order-requests/create', name: 'stock-order-requests.create', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestCreate.vue'), meta: { title: 'Create Stock Order Request', subtitle: 'Request inventory for low stock items' } },
+      { path: 'stock-order-requests/:id', name: 'stock-order-requests.detail', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestDetail.vue'), meta: { title: 'Stock Order Request Details', subtitle: 'View stock order request details' } },
+      { path: 'stock-order-requests/:id/edit', name: 'stock-order-requests.edit', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestEdit.vue'), meta: { title: 'Edit Stock Order Request', subtitle: 'Update stock order request details' } },
+      { path: 'rfqs', name: 'procurement.rfqs', component: () => import('../views/system/procurement/RFQs/RFQIndex.vue'), meta: { title: 'RFQs', subtitle: 'Manage requests for quotations' } },
+      { path: 'rfqs/create', name: 'procurement.rfqs.create', component: () => import('../views/system/procurement/RFQs/RFQCreate.vue'), meta: { title: 'Create RFQ', subtitle: 'Create a request for quotation' } },
+      { path: 'rfqs/:id', name: 'procurement.rfqs.detail', component: () => import('../views/system/procurement/RFQs/RFQDetail.vue'), meta: { title: 'RFQ Details', subtitle: 'Review RFQ details' } },
+      { path: 'purchase-orders', name: 'procurement.purchase-orders', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderIndex.vue'), meta: { title: 'Purchase Orders', subtitle: 'Manage purchase orders' } },
+      { path: 'purchase-orders/create', name: 'procurement.purchase-orders.create', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderCreateNew.vue'), meta: { title: 'Create Purchase Order', subtitle: 'Create a purchase order from stock requests' } },
+      { path: 'purchase-orders/create-legacy', name: 'procurement.purchase-orders.create-legacy', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderCreate.vue'), meta: { title: 'Create Purchase Order (Legacy)', subtitle: 'Create a purchase order (legacy mode)' } },
+      { path: 'purchase-orders/:id', name: 'procurement.purchase-orders.detail', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderDetail.vue'), meta: { title: 'Purchase Order Details', subtitle: 'Review purchase order details' } },
+      { path: 'invoices', name: 'procurement.invoices', component: () => import('../views/system/procurement/Invoices/InvoiceIndex.vue'), meta: { title: 'Invoices', subtitle: 'Manage supplier invoices and 3-way matching' } },
+      { path: 'invoices/create', name: 'procurement.invoices.create', component: () => import('../views/system/procurement/Invoices/InvoiceCreate.vue'), meta: { title: 'Create Invoice', subtitle: 'Create a new invoice' } },
+      { path: 'invoices/:id', name: 'procurement.invoices.detail', component: () => import('../views/system/procurement/Invoices/InvoiceDetail.vue'), meta: { title: 'Invoice Details', subtitle: 'View invoice details and 3-way match status' } },
+      { path: 'invoices/:id/edit', name: 'procurement.invoices.edit', component: () => import('../views/system/procurement/Invoices/InvoiceEdit.vue'), meta: { title: 'Edit Invoice', subtitle: 'Edit invoice information' } },
+      { path: 'goods-receipts', name: 'procurement.goods-receipts', component: () => import('../views/system/procurement/GoodsReceipts/GoodsReceiptIndex.vue'), meta: { title: 'Goods Receipts', subtitle: 'Track incoming goods' } },
+      { path: 'goods-receipts/create', name: 'procurement.goods-receipts.create', component: () => import('../views/system/procurement/GoodsReceipts/GoodsReceiptCreate.vue'), meta: { title: 'Create Goods Receipt', subtitle: 'Record incoming goods' } },
+      { path: 'goods-receipts/:id', name: 'procurement.goods-receipts.detail', component: () => import('../views/system/procurement/GoodsReceipts/GoodsReceiptDetail.vue'), meta: { title: 'Goods Receipt Details', subtitle: 'View receipt details' } },
+      { path: 'products', name: 'procurement.products', component: () => import('../views/system/procurement/ProductsIndex.vue'), meta: { title: 'Products', subtitle: 'Procurement product catalog with supplier pricing' } },
+      // Analytics Routes
+      { path: 'analytics/reorder-suggestions', name: 'procurement.analytics.reorder-suggestions', component: () => import('../views/system/procurement/Analytics/ReorderSuggestions.vue'), meta: { title: 'Reorder Suggestions', subtitle: 'Products below reorder point' } },
+      { path: 'analytics/spend', name: 'procurement.analytics.spend', component: () => import('../views/system/procurement/Analytics/SpendAnalytics.vue'), meta: { title: 'Spend Analytics', subtitle: 'Analyze spending trends and patterns' } },
+      { path: 'analytics/budget', name: 'procurement.analytics.budget', component: () => import('../views/system/procurement/Analytics/BudgetTracking.vue'), meta: { title: 'Budget Tracking', subtitle: 'Monitor spending against budgets' } },
+      { path: 'analytics/suppliers', name: 'procurement.analytics.suppliers', component: () => import('../views/system/procurement/Analytics/SupplierPerformance.vue'), meta: { title: 'Supplier Performance', subtitle: 'Track supplier metrics and ratings' } },
+      { path: 'analytics/lead-time', name: 'procurement.analytics.lead-time', component: () => import('../views/system/procurement/Analytics/LeadTimeMonitoring.vue'), meta: { title: 'Lead Time Monitoring', subtitle: 'Track delivery performance and trends' } },
+      { path: 'payments', name: 'procurement.payments', component: () => import('../views/system/procurement/Payments/PaymentIndex.vue'), meta: { title: 'Supplier Payments', subtitle: 'Manage supplier payments' } },
+      { path: 'reports', name: 'procurement.reports', component: () => import('../views/system/procurement/Reports/ReportIndex.vue'), meta: { title: 'Procurement Reports', subtitle: 'Analyze procurement performance' } },
       { path: '', redirect: { name: 'procurement.dashboard' } },
     ]
   },
+  {
+    path: '/finance',
+    component: SystemLayout,
+    meta: { requiresAuth: true },
+    children: [
+      { path: 'dashboard', name: 'finance.dashboard', component: () => import('../views/system/finance/FinanceDashboard.vue'), meta: { title: 'Finance Dashboard' } },
+      { path: 'payables', name: 'finance.payables', component: () => import('../views/system/finance/FinancePayablesIndex.vue'), meta: { title: 'Accounts Payable' } },
+      { path: 'receivables', name: 'finance.receivables', component: () => import('../views/system/finance/FinanceReceivablesIndex.vue'), meta: { title: 'Accounts Receivable' } },
+      { path: 'expenses', name: 'finance.expenses', component: () => import('../views/system/finance/FinanceExpensesIndex.vue'), meta: { title: 'Expenses' } },
+      { path: 'payroll', name: 'finance.payroll', component: () => import('../views/system/finance/FinancePayrollIndex.vue'), meta: { title: 'Payroll' } },
+      { path: 'budgets', name: 'finance.budgets', component: () => import('../views/system/finance/FinanceBudgetsIndex.vue'), meta: { title: 'Budgets' } },
+      { path: 'reports', name: 'finance.reports', component: () => import('../views/system/finance/FinanceReportsIndex.vue'), meta: { title: 'Reports' } },
+      { path: '', redirect: { name: 'finance.dashboard' } },
+    ],
+  },
+  ...hrPortalRoutes,
   ...inventoryRoutes,
+  ...supplierRoutes,
   {
     path: '/unauthorized',
     name: 'Unauthorized',
     component: Unauthorized,
     meta: { requiresAuth: false }
   },
-  { path: '/dashboard', redirect: '/system' }
+  {
+    path: '/dashboard',
+    redirect: () => {
+      const authStore = useAuthStore()
+      if (authStore.userRole === 'super_admin') {
+        return '/admin/dashboard'
+      }
+      return '/system'
+    }
+  }
 ]
 
 const router = createRouter({
@@ -206,7 +315,9 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
+  const portalAuthStore = useJobPortalAuthStore()
   const isAuthenticated = authStore.isAuthenticated
+  const isPortalAuthenticated = portalAuthStore.isAuthenticated
 
   console.log('🔍 Router guard:', {
     to: to.path,
@@ -222,6 +333,11 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     console.log('❌ Not authenticated')
     return next({ name: 'Login', query: { redirect: to.fullPath } })
+  }
+
+  if (to.meta.portalAuth && !isPortalAuthenticated) {
+    portalAuthStore.setPendingRedirect(to.fullPath)
+    return next({ name: 'job-portal.login' })
   }
 
   // Load permissions if authenticated
@@ -267,6 +383,10 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresGuest && isAuthenticated) {
     console.log('ℹ️ Redirecting authenticated user')
     return next(authStore.defaultRoute)
+  }
+
+  if (to.meta.portalGuestOnly && isPortalAuthenticated) {
+    return next(portalAuthStore.pendingRedirect || '/job-portal/applications')
   }
 
   console.log('✅ Navigation allowed')

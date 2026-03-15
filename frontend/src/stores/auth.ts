@@ -43,6 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
     const navigation = ref<NavigationItem[]>([])
     const permissionsLoaded = ref(false)
     const isLoadingPermissions = ref(false)
+    let permissionsPromise: Promise<void> | null = null
 
     // ==========================================
     // GETTERS
@@ -52,25 +53,44 @@ export const useAuthStore = defineStore('auth', () => {
     const userRole = computed(() => user.value?.role || null)
     const userAbilities = computed(() => user.value?.abilities || [])
 
-    // Default route based on role
-    const defaultRoute = computed(() => {
-        switch (user.value?.role) {
-            case 'super_admin':
-                return '/admin/dashboard'
-            case 'store_admin':
-            case 'store_manager':
-                return '/system/index'
-            case 'hr_manager':
-                return '/hr/index'
-            case 'warehouse_manager':
-            case 'inventory_staff':
-                return '/merchandising/products'
-            case 'sales_staff':
-                return '/merchandising/products'
-            default:
-                return '/login'
+    const isRoleAllowedForRoute = (routePath: string): boolean => {
+        const resolved = router.resolve(routePath)
+        if (!resolved.matched.length) return false
+
+        const userRoleValue = user.value?.role
+
+        for (const record of resolved.matched) {
+            const requiredRoles = (record.meta.role || record.meta.roles) as string[] | string | undefined
+            if (requiredRoles) {
+                const hasRole = Array.isArray(requiredRoles)
+                    ? requiredRoles.includes(userRoleValue || '')
+                    : requiredRoles === userRoleValue
+                if (!hasRole) return false
+            }
+            const permission = record.meta.permission as string | undefined
+            if (permission && !permissions.value.includes(permission)) {
+                return false
+            }
         }
-    })
+
+        return true
+    }
+
+    const getFirstNavigationRoute = (): string => {
+        if (user.value?.role === 'super_admin') {
+            return '/admin/dashboard'
+        }
+
+        const activeNav = navigation.value
+            .filter(item => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
+            .sort((a, b) => a.display_order - b.display_order)
+
+        const firstAllowed = activeNav.find(item => isRoleAllowedForRoute(item.route_path))
+        return firstAllowed?.route_path || '/system/index'
+    }
+
+    // Default route: first active navigation item that matches role/permission (fallback to /system/index)
+    const defaultRoute = computed(() => getFirstNavigationRoute())
 
     // ==========================================
     // RBAC ACTIONS
@@ -80,61 +100,60 @@ export const useAuthStore = defineStore('auth', () => {
      * Load user permissions and navigation from backend
      */
     const loadPermissions = async () => {
-        // Prevent duplicate calls
-        if (isLoadingPermissions.value) {
-            console.log('⏸️ Permissions already loading, skipping...')
+        if (permissionsLoaded.value) {
+            console.log('??? Permissions already loaded, skipping...')
             return
         }
 
-        if (permissionsLoaded.value) {
-            console.log('✅ Permissions already loaded, skipping...')
-            return
+        if (permissionsPromise) {
+            return permissionsPromise
         }
 
         if (!token.value) {
-            console.warn('⚠️ Cannot load permissions - no token')
+            console.warn('?????? Cannot load permissions - no token')
             return
         }
 
         isLoadingPermissions.value = true
+        permissionsPromise = (async () => {
+            try {
+                console.log('???? Loading user permissions and navigation...')
+                const response = await axios.get('/api/user/navigation')
 
-        try {
-            console.log('📥 Loading user permissions and navigation...')
-            const response = await axios.get('/api/user/navigation')
-
-            // ✅ Direct assignment from API response
-            permissions.value = response.data.permissions || []
-            navigation.value = response.data.navigation || []
-            permissionsLoaded.value = true
-
-            // Cache in localStorage
-            localStorage.setItem('navigation', JSON.stringify(navigation.value))
-            localStorage.setItem('permissions', JSON.stringify(permissions.value))
-
-            console.log('✅ Permissions loaded:', permissions.value.length, 'permissions')
-            console.log('✅ Navigation loaded:', navigation.value.length, 'items')
-        } catch (err: any) {
-            console.error('❌ Failed to load permissions:', err)
-            
-            // Try to load from localStorage if API fails
-            const cachedNav = localStorage.getItem('navigation')
-            const cachedPerms = localStorage.getItem('permissions')
-            
-            if (cachedNav && cachedPerms) {
-                console.log('📦 Loading navigation from cache...')
-                navigation.value = JSON.parse(cachedNav)
-                permissions.value = JSON.parse(cachedPerms)
+                permissions.value = response.data.permissions || []
+                navigation.value = response.data.navigation || []
                 permissionsLoaded.value = true
-            } else {
-                permissionsLoaded.value = false
-            }
 
-            if (err.response?.status === 401) {
-                await logout()
+                localStorage.setItem('navigation', JSON.stringify(navigation.value))
+                localStorage.setItem('permissions', JSON.stringify(permissions.value))
+
+                console.log('??? Permissions loaded:', permissions.value.length, 'permissions')
+                console.log('??? Navigation loaded:', navigation.value.length, 'items')
+            } catch (err: any) {
+                console.error('??? Failed to load permissions:', err)
+
+                const cachedNav = localStorage.getItem('navigation')
+                const cachedPerms = localStorage.getItem('permissions')
+
+                if (cachedNav && cachedPerms) {
+                    console.log('???? Loading navigation from cache...')
+                    navigation.value = JSON.parse(cachedNav)
+                    permissions.value = JSON.parse(cachedPerms)
+                    permissionsLoaded.value = true
+                } else {
+                    permissionsLoaded.value = false
+                }
+
+                if (err.response?.status === 401) {
+                    await logout()
+                }
+            } finally {
+                isLoadingPermissions.value = false
+                permissionsPromise = null
             }
-        } finally {
-            isLoadingPermissions.value = false
-        }
+        })()
+
+        return permissionsPromise
     }
 
     /**
@@ -247,7 +266,7 @@ export const useAuthStore = defineStore('auth', () => {
     /**
      * Login user
      */
-    const login = async (email: string, password: string) => {
+    const login = async (login: string, password: string) => {
         loading.value = true
         error.value = null
 
@@ -257,7 +276,7 @@ export const useAuthStore = defineStore('auth', () => {
 
             // Make login request
             const response = await axios.post('/api/auth/login', {
-                email,
+                login,
                 password,
                 device_name: 'web_browser',
             })

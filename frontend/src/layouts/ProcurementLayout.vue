@@ -16,52 +16,24 @@
 
       <!-- Navigation -->
       <nav class="flex-1 overflow-y-auto py-4">
-        <!-- Product Management Menu -->
-        <div v-if="filteredProductMenu.length > 0" class="px-4 space-y-1 pb-4">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-3 mb-3">
-            Product Management
-          </div>
+        <!-- All Procurement Navigation Items -->
+        <div v-if="procurementNavigation.length > 0" class="px-4 space-y-1 pb-4">
           <router-link
-            v-for="item in filteredProductMenu"
-            :key="item.to"
-            :to="item.to"
+            v-for="item in procurementNavigation"
+            :key="item.id"
+            :to="item.route_path"
             class="text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-500 hover:bg-blue-50 transition-colors"
           >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
+            <i :class="[item.icon || 'pi pi-circle', 'w-5']"></i>
+            <span>{{ item.display_name }}</span>
           </router-link>
         </div>
 
-        <!-- Catalog Settings Menu -->
-        <div v-if="filteredCatalogMenu.length > 0" class="px-4 space-y-1 pb-4 border-t border-gray-200 pt-4">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-3 mb-3">
-            Catalog Settings
-          </div>
-          <router-link
-            v-for="item in filteredCatalogMenu"
-            :key="item.to"
-            :to="item.to"
-            class="text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-500 hover:bg-blue-50 transition-colors"
-          >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </router-link>
-        </div>
-
-        <!-- Analytics Menu -->
-        <div v-if="filteredAnalyticsMenu.length > 0" class="px-4 space-y-1 pb-4 border-t border-gray-200 pt-4">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-3 mb-3">
-            Analytics
-          </div>
-          <router-link
-            v-for="item in filteredAnalyticsMenu"
-            :key="item.to"
-            :to="item.to"
-            class="text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-500 hover:bg-blue-50 transition-colors"
-          >
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </router-link>
+        <!-- Empty State -->
+        <div v-else class="px-4 py-8 text-center">
+          <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
+          <p class="text-sm text-gray-500">No menu items available</p>
+          <p class="text-xs text-gray-400 mt-1">Contact your administrator</p>
         </div>
       </nav>
 
@@ -123,13 +95,11 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
-import { usePermissions, ROLES } from '../composables/usePermissions.vue'
 import { startCase, toLower } from 'lodash'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const router = useRouter()
-const permissions = usePermissions()
 
 type User = {
   id: number
@@ -150,137 +120,43 @@ const roleLabel = startCase(user?.role?.replace(/_/g, ' '))
 
 // Role badge for display
 const roleBadge = computed(() => {
-  switch (permissions.userRole.value) {
-    case ROLES.SUPER_ADMIN:
+  switch (authStore.userRole) {
+    case 'super_admin':
       return 'Super Admin'
-    case ROLES.STORE_ADMIN:
+    case 'store_admin':
       return 'Store Admin'
-    case ROLES.STORE_MANAGER:
+    case 'store_manager':
       return 'Manager'
-    case ROLES.WAREHOUSE_MANAGER:
+    case 'warehouse_manager':
       return 'Warehouse'
-    case ROLES.INVENTORY_STAFF:
+    case 'inventory_staff':
       return 'Inventory'
-    case ROLES.SALES_STAFF:
+    case 'sales_staff':
       return 'Sales'
+    case 'supplier_coordinator':
+      return 'Supplier'
+    case 'hr_manager':
+      return 'HR'
+    case 'accountant':
+      return 'Accountant'
+    case 'cashier':
+      return 'Cashier'
     default:
       return 'Staff'
   }
 })
 
 // ==========================================
-// MENU DEFINITIONS WITH ROLE REQUIREMENTS
+// Fetch procurement navigation from database
 // ==========================================
-interface MenuItem {
-  to: string
-  label: string
-  icon: string
-  requiredRoles?: typeof ROLES[keyof typeof ROLES][]
-}
-
-const productMenu: MenuItem[] = [
-  {
-    to: "/procurement/dashboard",
-    label: "Dashboard",
-    icon: "pi pi-home text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  },
-  {
-    to: "/procurement/suppliers",
-    label: "Suppliers",
-    icon: "pi pi-users text-gray-500 w-5"
-    // No requiredRoles = everyone can see
-  },
-  {
-    to: "/procurement/purchase-requisitions",
-    label: "Purchase Requisitions",
-    icon: "pi pi-file-edit text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  },
-  {
-    to: "/procurement/rfqs",
-    label: "RFQs",
-    icon: "pi pi-send text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.WAREHOUSE_MANAGER, ROLES.SALES_STAFF]
-  },
-  {
-    to: "/procurement/purchase-orders",
-    label: "Purchase Orders",
-    icon: "pi pi-shopping-cart text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.SALES_STAFF]
-  },
-  {
-    to: "/procurement/goods-receipts",
-    label: "Goods Receipts",
-    icon: "pi pi-inbox text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.WAREHOUSE_MANAGER, ROLES.INVENTORY_STAFF, ROLES.SUPPLIER_COORDINATOR]
-  }
-]
-
-const catalogMenu: MenuItem[] = [
-  {
-    to: "/procurement/payments",
-    label: "Supplier Payments",
-    icon: "pi pi-wallet text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  },
-  {
-    to: "/procurement/suppliers/create",
-    label: "Add Supplier",
-    icon: "pi pi-user-plus text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  },
-  {
-    to: "/procurement/purchase-requisitions/create",
-    label: "Create Requisition",
-    icon: "pi pi-plus-circle text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  },
-  {
-    to: "/procurement/rfqs/create",
-    label: "Create RFQ",
-    icon: "pi pi-plus text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  }
-]
-
-const analyticsMenu: MenuItem[] = [
-  {
-    to: "/procurement/reports",
-    label: "Procurement Reports",
-    icon: "pi pi-chart-line text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  },
-  {
-    to: "/procurement/dashboard",
-    label: "Pending Approvals",
-    icon: "pi pi-history text-gray-500 w-5",
-    requiredRoles: [ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]
-  }
-]
-
-// ==========================================
-// FILTER MENUS BASED ON USER ROLE
-// ==========================================
-const filteredProductMenu = computed(() => {
-  return productMenu.filter(item => {
-    if (!item.requiredRoles) return true // No restrictions
-    return permissions.hasAnyRole(item.requiredRoles)
-  })
-})
-
-const filteredCatalogMenu = computed(() => {
-  return catalogMenu.filter(item => {
-    if (!item.requiredRoles) return true
-    return permissions.hasAnyRole(item.requiredRoles)
-  })
-})
-
-const filteredAnalyticsMenu = computed(() => {
-  return analyticsMenu.filter(item => {
-    if (!item.requiredRoles) return true
-    return permissions.hasAnyRole(item.requiredRoles)
-  })
+const procurementNavigation = computed(() => {
+  return authStore.navigation
+    .filter(item =>
+      item.module === 'procurement' &&
+      !item.parent_id &&
+      item.is_active
+    )
+    .sort((a, b) => a.display_order - b.display_order)
 })
 
 // ==========================================

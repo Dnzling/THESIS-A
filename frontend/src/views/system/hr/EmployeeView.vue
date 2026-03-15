@@ -1,13 +1,14 @@
 <!-- views/system/employees/EmployeeInformation.vue -->
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
+  <div class="min-h-screen bg-slate-50/70">
+    <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center h-96">
       <ProgressSpinner />
     </div>
   
     <!-- Error State -->
-    <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
+    <div v-else-if="error" class="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
       <i class="pi pi-exclamation-triangle text-4xl text-red-500 mb-3"></i>
       <h3 class="text-lg font-medium text-red-800 mb-2">Failed to Load Employee Data</h3>
       <p class="text-red-600 mb-4">{{ error }}</p>
@@ -16,73 +17,70 @@
   
     <!-- Main Content -->
     <template v-else>
-      <!-- Header with back button and employee name -->
-      <div class="flex justify-between items-center mb-6">
-        <div class="flex items-center gap-4">
-          <Button icon="pi pi-arrow-left" text rounded severity="info" @click="goBack" />
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <Button icon="pi pi-arrow-left" text rounded severity="secondary" @click="goBack" />
           <div>
-            <h1 class="text-2xl font-semibold text-gray-800">Employee Information</h1>
-            <p class="text-sm text-gray-500">View complete employee details and history</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Employee Profile</p>
+            <h1 class="text-2xl font-semibold text-slate-900">Employee Information</h1>
+            <p class="text-sm text-slate-500">Complete record, activity, and payroll summary in one view.</p>
           </div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="editEmployee" />
           <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" />
         </div>
       </div>
   
       <!-- Employee Profile Summary Card -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div class="flex items-start gap-6">
-          <!-- Avatar with employee photo/initials -->
+      <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
+        <div class="flex flex-wrap items-start gap-6">
           <div class="relative">
             <Avatar :label="getInitials(employeeInfo.basic_info?.name)" size="xlarge"
-              class="bg-blue-100 text-blue-600 text-2xl font-medium" />
-            <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+              class="bg-blue-100 text-blue-600 text-2xl font-semibold" />
+            <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500"></div>
           </div>
-  
-          <!-- Basic Info -->
+
           <div class="flex-1">
-            <div class="flex justify-between items-start">
-              <div>
-                <h2 class="text-2xl font-semibold text-gray-800">{{ employeeInfo.basic_info?.name }}</h2>
-                <div class="flex items-center gap-3 mt-1">
-                  <Tag :value="employeeInfo.employment_details?.status || 'Active'"
-                    :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
-                  <span class="text-sm text-gray-500">{{ employeeInfo.employment_details?.role || '—' }}</span>
-                  <span class="text-sm text-gray-400">•</span>
-                  <span class="text-sm text-gray-500">{{ employeeInfo.basic_info?.employee_number }}</span>
-                </div>
-              </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <h2 class="text-2xl font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
+              <Tag :value="employeeInfo.employment_details?.status || 'Active'"
+                :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
             </div>
-  
-            <!-- Quick Info Grid -->
-            <div class="grid grid-cols-4 gap-4 mt-4">
-              <div class="border-r border-gray-100 pr-4">
-                <div class="text-xs text-gray-500">Department</div>
-                <div class="text-sm font-medium mt-1">{{ employeeInfo.employment_details?.department || '—' }}</div>
+            <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+              <span>{{ employeeInfo.employment_details?.role || '-' }}</span>
+              <span class="text-slate-300">|</span>
+              <span>{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
+              <span class="text-slate-300">|</span>
+              <span>{{ employeeInfo.employment_details?.department || '-' }}</span>
+            </div>
+
+            <div class="mt-5 grid gap-3 md:grid-cols-4">
+              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <div class="text-xs text-slate-500">Join Date</div>
+                <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</div>
               </div>
-              <div class="border-r border-gray-100 pr-4">
-                <div class="text-xs text-gray-500">Join Date</div>
-                <div class="text-sm font-medium mt-1">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</div>
+              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <div class="text-xs text-slate-500">Employment</div>
+                <div class="mt-1 text-sm font-semibold text-slate-900">{{ employeeInfo.employment_details?.type || '-' }}</div>
               </div>
-              <div class="border-r border-gray-100 pr-4">
-                <div class="text-xs text-gray-500">Leave Balance</div>
-                <div class="text-sm font-medium mt-1">{{ leaveBalance }} days</div>
+              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <div class="text-xs text-slate-500">Leave Balance</div>
+                <div class="mt-1 text-sm font-semibold text-slate-900">{{ leaveBalance }} days</div>
               </div>
-              <div>
-                <div class="text-xs text-gray-500">Attendance Rate</div>
-                <div class="text-sm font-medium mt-1">{{ attendanceRate }}%</div>
+              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <div class="text-xs text-slate-500">Attendance Rate</div>
+                <div class="mt-1 text-sm font-semibold text-slate-900">{{ attendanceRate }}%</div>
               </div>
             </div>
           </div>
         </div>
       </div>
-  
+
       <!-- Main Tabs -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 shadow-sm">
         <Tabs v-model:value="activeTab">
-          <TabList class="px-6 pt-2">
+          <TabList class="px-6 pt-3">
             <Tab value="info">
               <div class="flex items-center gap-2">
                 <span>Full Information</span>
@@ -151,6 +149,7 @@
         </Tabs>
       </div>
     </template>
+    </div>
   </div>
 </template>
 
@@ -239,7 +238,7 @@ const getInitials = (name: string) => {
 }
 
 const formatDate = (date: string) => {
-  if (!date) return '—'
+  if (!date) return '-'
   return new Date(date).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',

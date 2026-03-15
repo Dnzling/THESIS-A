@@ -55,7 +55,7 @@
 import OverlayPanel from "primevue/overlaypanel";
 import Dialog from "primevue/dialog";
 import ProgressSpinner from "primevue/progressspinner";
-import { ref, defineExpose } from "vue";
+import { ref } from "vue";
 import { useAuthStore } from "../../stores/auth";
 import { useRouter } from "vue-router";
 import axios from "axios";

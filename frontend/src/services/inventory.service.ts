@@ -35,7 +35,7 @@ export interface BranchInventoryItem {
   unit_cost?: number | null
   average_cost?: number | null
   total_value: string | number
-  
+
   // Relationships
   product?: {
     id: number
@@ -138,14 +138,13 @@ class InventoryService {
   }
 
   // GET /inventory/{id}
-  async getInventoryItem(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/${id}`)
+  async getInventoryItems() {
+    const response = await axiosClient.get(`${this.baseUrl}/items`)
     return response.data
   }
 
-  // GET /inventory (list with pagination)
-  async getInventoryItems(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}`, { params })
+  async getInventoryItem(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/items/${id}`)
     return response.data
   }
 
@@ -298,9 +297,9 @@ class InventoryService {
   }
 
   async exportTransactions(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/transactions/export`, { 
+    const response = await axiosClient.get(`${this.baseUrl}/transactions/export`, {
       params,
-      responseType: 'blob' 
+      responseType: 'blob'
     })
     return response.data
   }
@@ -563,6 +562,16 @@ class InventoryService {
 
   async getCountStatuses() {
     const response = await axiosClient.get(`${this.baseUrl}/counts/statuses`)
+    return response.data
+  }
+
+  async getStockCountSuggestions(params: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/counts/suggestions`, { params })
+    return response.data
+  }
+
+  async autoScheduleStockCounts(data: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/counts/auto-schedule`, data)
     return response.data
   }
 

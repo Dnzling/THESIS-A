@@ -23,17 +23,17 @@
   
         <!-- Login Form -->
         <form @submit.prevent="handleSubmit" class="space-y-6">
-          <!-- User ID Field -->
+          <!-- Login Field -->
           <div class="space-y-2">
-            <label for="email" class="block text-sm font-medium text-gray-700">
-              Email Address <span class="text-red-500">*</span>
+            <label for="login" class="block text-sm font-medium text-gray-700">
+              Email or ID <span class="text-red-500">*</span>
             </label>
             <div class="p-inputgroup">
-              <InputText id="email" v-model="formData.email" type="text" placeholder="ex. john@example.com"
-                :class="{ 'p-invalid': validationErrors.email }" class="w-full" autocomplete="email" />
+              <InputText id="login" v-model="formData.login" type="text" placeholder="Email, employee ID, or supplier code"
+                :class="{ 'p-invalid': validationErrors.login }" class="w-full" autocomplete="username" />
             </div>
-            <small v-if="validationErrors.email" class="p-error">
-              {{ validationErrors.email }}
+            <small v-if="validationErrors.login" class="p-error">
+              {{ validationErrors.login }}
             </small>
           </div>
   
@@ -127,14 +127,14 @@ const emit = defineEmits<{
 }>()
 
 // Types
-interface LoginFormData {
-  email: string
+export interface LoginFormData {
+  login: string
   password: string
   rememberMe: boolean
 }
 
 interface ValidationErrors {
-  email?: string
+  login?: string
   password?: string
 }
 
@@ -144,7 +144,7 @@ const route = useRoute()
 
 // State
 const formData = reactive<LoginFormData>({
-  email: '',
+  login: '',
   password: '',
   rememberMe: false
 })
@@ -163,9 +163,9 @@ onMounted(() => {
   }
 
   // Load remembered user ID if exists
-  const rememberedEmail = localStorage.getItem('rememberedEmail')
-  if (rememberedEmail) {
-    formData.email = rememberedEmail
+  const rememberedLogin = localStorage.getItem('rememberedLogin')
+  if (rememberedLogin) {
+    formData.login = rememberedLogin
     formData.rememberMe = true
   }
 })
@@ -175,16 +175,12 @@ const validateForm = (): boolean => {
   let isValid = true
 
   // Clear previous errors
-  validationErrors.email = ''
+  validationErrors.login = ''
   validationErrors.password = ''
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-  // User ID validation
-  if (!formData.email.trim()) {
-    validationErrors.email = 'Email is required'
-    isValid = false
-  } else if (!emailRegex.test(formData.email)) {
-    validationErrors.email = 'Please enter valid email address (e.g., user@example.com)'
+  // Login validation
+  if (!formData.login.trim()) {
+    validationErrors.login = 'Email or ID is required'
     isValid = false
   }
 
@@ -205,6 +201,12 @@ const handleSubmit = async () => {
   if (!validateForm()) {
     emit('error', 'Please fix the form errors')
     return
+  }
+
+  if (formData.rememberMe) {
+    localStorage.setItem('rememberedLogin', formData.login)
+  } else {
+    localStorage.removeItem('rememberedLogin')
   }
 
   emit('submit', formData)

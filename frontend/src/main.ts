@@ -9,6 +9,7 @@ import 'primeicons/primeicons.css'
 import App from './App.vue'
 import router from './router'
 import axios from 'axios'
+import './axios'
 
 import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
@@ -45,62 +46,18 @@ import Paginator from 'primevue/paginator'
 import FileUpload from 'primevue/fileupload'
 import Tree from 'primevue/tree'
 import Divider from 'primevue/divider'
-
-
-
-
-
+import Toast from 'primevue/toast'
+import MultiSelect from 'primevue/multiselect'
+import Steps from 'primevue/steps'
+import ProgressBar from 'primevue/progressbar'
+import ConfirmDialog from 'primevue/confirmdialog'
+import Primechart from 'primevue/chart'
+import MeterGroup from 'primevue/metergroup'
+import InputOtp from 'primevue/inputotp'
+import Menu from 'primevue/menu'
 
 // ==================== AXIOS CONFIGURATION ====================
-axios.defaults.baseURL = 'http://localhost:8000'
-axios.defaults.withCredentials = true
 axios.defaults.withXSRFToken = true
-
-// ==================== DUPLICATE REQUEST PREVENTION ====================
-const pendingRequests = new Map<string, AbortController>()
-
-const generateRequestKey = (config: any): string => {
-  // ✅ Deduplicate ALL requests (not just GET)
-  return `${config.method?.toUpperCase()}:${config.url}:${JSON.stringify(config.data ?? config.params ?? {})}`
-}
-
-axios.interceptors.request.use((config) => {
-  const key = generateRequestKey(config)
-
-  if (pendingRequests.has(key)) {
-    console.warn('⚠️ Duplicate request detected:', key)
-    const controller = new AbortController()
-    controller.abort()
-    config.signal = controller.signal
-  } else {
-    const controller = new AbortController()
-    pendingRequests.set(key, controller)
-    config.signal = controller.signal
-  }
-
-  return config
-})
-
-axios.interceptors.response.use(
-  (response) => {
-    const key = generateRequestKey(response.config)
-    pendingRequests.delete(key)
-    return response
-  },
-  (error) => {
-    if (error.config) {
-      const key = generateRequestKey(error.config)
-      pendingRequests.delete(key)
-    }
-
-    if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
-      console.log('🚫 Duplicate request cancelled:', error.config?.url)
-      return new Promise(() => { })
-    }
-
-    return Promise.reject(error)
-  }
-)
 
 // ==================== APP INITIALIZATION ====================
 const app = createApp(App)
@@ -125,6 +82,15 @@ app.use(router)
 
 // Register PrimeVue components
 const components = {
+  MeterGroup,
+  Primechart,
+  Menu,
+  InputOtp,
+  ConfirmDialog,
+  ProgressBar,
+  Steps,
+  MultiSelect,
+  Toast,
   Divider,
   Tree,
   FileUpload,
@@ -173,6 +139,7 @@ const authStore = useAuthStore()
 if (authStore.token) {
   axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
   console.log('🔐 Token restored from localStorage')
+  console.log(`Bearer ${authStore.token}`)
 
   // Initialize permissions (async, but don't wait)
   authStore.initialize().catch(err => {

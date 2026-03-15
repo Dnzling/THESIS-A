@@ -1,0 +1,429 @@
+<template>
+    <div class="flex h-screen w-full max-w-[100vw] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_38%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_42%,_#ffffff_100%)]">
+        <!-- Sidebar -->
+        <aside class="sidebar bg-white w-64 flex flex-col z-30 overflow-y-auto shadow-lg"
+            :class="{ 'open': sidebarOpen, 'closed': !sidebarOpen }">
+            <!-- Logo section -->
+            <div class="px-5 py-4 border-b border-gray-200">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-lg">
+                        <img src="/F.svg" alt="Furnisync" class="w-20 h-20" />
+                    </div>
+                    <div class="leading-tight" style="font-family: 'Poppins'">
+                        <h1 class="text-lg font-semibold text-gray-900">Furnisync</h1>
+                        <p class="text-xs text-gray-600">Platform</p>
+                    </div>
+                </div>
+            </div>
+    
+            <!-- Navigation by Module -->
+            <nav class="flex-1 overflow-y-auto py-4">
+                <!-- Loading State -->
+                <div v-if="loadingNavigation" class="px-4 space-y-2">
+                    <Skeleton height="40px" class="rounded-lg" />
+                    <Skeleton height="40px" class="rounded-lg" />
+                    <Skeleton height="40px" class="rounded-lg" />
+                </div>
+    
+                <!-- Module Accordions -->
+                <template v-else>
+                    <div v-if="groupedNavigation.length > 0" class="px-2 space-y-1">
+                        <div v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" class="mb-3">
+                            <!-- Module Header (Accordion Toggle) -->
+                            <button v-if="moduleGroup.items.length > 0" @click="toggleModule(moduleGroup.module)"
+                                class="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors group">
+                                <div class="flex items-center space-x-2">
+                                    <i :class="[getModuleIcon(moduleGroup.module), 'text-gray-500 w-5']"></i>
+                                    <span class="uppercase tracking-wider text-xs font-bold">{{
+                                        formatModuleName(moduleGroup.module) }}</span>
+                                </div>
+                                <i :class="[
+                        'pi transition-transform',
+                        expandedModules[moduleGroup.module] ? 'pi-chevron-down' : 'pi-chevron-right'
+                      ]"></i>
+                            </button>
+    
+                            <!-- Module Items (Accordion Content) -->
+                            <transition name="accordion">
+                                <div v-if="expandedModules[moduleGroup.module]" class="space-y-1 mt-1">
+                                    <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
+                                        <button v-if="item.children?.length" @click="toggleSection(item.id)"
+                                            class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
+                                            <div class="flex items-center space-x-3">
+                                                <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>
+                                                <span>{{ item.display_name }}</span>
+                                            </div>
+                                            <i :class="[
+                                                'pi text-xs transition-transform',
+                                                expandedSections[item.id] ? 'pi-chevron-down' : 'pi-chevron-right'
+                                            ]"></i>
+                                        </button>
+
+                                        <router-link v-else :to="item.route_path"
+                                            class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors group"
+                                            :class="{ 'bg-blue-50 text-blue-600': isActive(item.route_path) }">
+                                            <div class="flex items-center space-x-3 flex-1">
+                                                <i
+                                                    :class="[item.icon || 'pi pi-circle', 'w-4 text-gray-400 group-hover:text-blue-500']"></i>
+                                                <span>{{ item.display_name }}</span>
+                                            </div>
+                                            <Badge v-if="item.badge_count && item.badge_count > 0" :value="item.badge_count"
+                                                severity="danger" size="small" />
+                                        </router-link>
+
+                                        <div v-if="item.children?.length && expandedSections[item.id]" class="space-y-1 ml-5">
+                                            <router-link v-for="child in item.children" :key="child.id" :to="child.route_path"
+                                                class="flex items-center justify-between px-6 py-2 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors group"
+                                                :class="{ 'bg-blue-50 text-blue-600': isActive(child.route_path) }">
+                                                <div class="flex items-center space-x-3 flex-1">
+                                                    <i
+                                                        :class="[child.icon || 'pi pi-circle', 'w-4 text-gray-300 group-hover:text-blue-500']"></i>
+                                                    <span>{{ child.display_name }}</span>
+                                                </div>
+                                                <Badge v-if="child.badge_count && child.badge_count > 0" :value="child.badge_count"
+                                                    severity="danger" size="small" />
+                                            </router-link>
+                                        </div>
+                                    </div>
+                                </div>
+                            </transition>
+                        </div>
+                    </div>
+    
+                    <!-- Empty State -->
+                    <div v-else class="px-4 py-8 text-center">
+                        <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
+                        <p class="text-sm text-gray-500">No modules available</p>
+                        <p class="text-xs text-gray-400 mt-1">Contact your administrator</p>
+                    </div>
+                </template>
+            </nav>
+        </aside>
+    
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col h-screen overflow-hidden">
+            <!-- Top Header -->
+            <header
+                class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-end sticky top-0 z-20 shadow-sm">
+        
+    
+                <!-- Header Actions -->
+                <div class="flex items-center space-x-4">
+                    <!-- User Profile -->
+                    <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
+                        <div class="flex items-center space-x-3 hover:bg-gray-50 px-2 py-1 rounded-lg transition">
+                            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                <span class="text-sm font-semibold text-blue-600">{{ userInitials }}</span>
+                            </div>
+                            <div>
+                                <h2 class="font-semibold text-gray-800 text-sm">{{ fullName }}</h2>
+                                <p class="text-xs text-gray-500">{{ roleDisplay }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+    
+            <!-- Main Content Area -->
+            <main class="flex-1 overflow-y-auto p-6 bg-transparent">
+                <router-view />
+            </main>
+        </div>
+    
+        <!-- User Dialog -->
+        <UserDialog ref="userDialogRef" />
+    </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { startCase, toLower, groupBy } from 'lodash'
+import Skeleton from 'primevue/skeleton'
+import Badge from 'primevue/badge'
+import { useAuthStore } from '../stores/auth'
+import UserDialog from '../components/dialogs/UserDialog.vue'
+
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+const userDialogRef = ref(null)
+const loadingNavigation = ref(false)
+const sidebarOpen = ref(localStorage.getItem('sidebarOpen') !== 'false')
+
+// Track expanded/collapsed modules
+const expandedModules = ref<Record<string, boolean>>({
+  procurement: true,
+  inventory: true,
+  merchandising: true,
+  hr: false,
+  admin: false,
+  supplier: true,
+})
+const expandedSections = ref<Record<string, boolean>>({})
+
+// Load saved state on mount
+onMounted(() => {
+  const saved = localStorage.getItem('expandedModules')
+  if (saved) {
+    try {
+      expandedModules.value = JSON.parse(saved)
+    } catch (e) {
+      // Use defaults
+    }
+  }
+  const savedSections = localStorage.getItem('expandedSections')
+  if (savedSections) {
+    try {
+      expandedSections.value = JSON.parse(savedSections)
+    } catch (e) {
+      // ignore
+    }
+  }
+  window.addEventListener('keydown', handleKeyboardShortcut)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyboardShortcut)
+})
+
+// Toggle module accordion
+const toggleModule = (module: string) => {
+  expandedModules.value[module] = !expandedModules.value[module]
+  localStorage.setItem('expandedModules', JSON.stringify(expandedModules.value))
+}
+
+const toggleSection = (sectionId: number) => {
+  expandedSections.value[sectionId] = !expandedSections.value[sectionId]
+  localStorage.setItem('expandedSections', JSON.stringify(expandedSections.value))
+}
+
+// Keyboard shortcut: Ctrl+B to toggle sidebar
+const handleKeyboardShortcut = (event: KeyboardEvent) => {
+  if (event.ctrlKey && event.key === 'b') {
+    event.preventDefault()
+    sidebarOpen.value = !sidebarOpen.value
+    localStorage.setItem('sidebarOpen', sidebarOpen.value.toString())
+  }
+}
+
+// Group navigation items by module
+const supplierFallbackNavigation = [
+  {
+    id: -101,
+    display_name: "Supplier's Dashboard",
+    module: 'supplier',
+    route_path: '/supplier-portal/dashboard',
+    icon: 'pi pi-home',
+    parent_id: null,
+    display_order: 1,
+    is_active: true,
+  },
+  {
+    id: -102,
+    display_name: 'Purchase Orders',
+    module: 'supplier',
+    route_path: '/supplier-portal/pos',
+    icon: 'pi pi-shopping-cart',
+    parent_id: null,
+    display_order: 2,
+    is_active: true,
+  },
+  {
+    id: -103,
+    display_name: 'RFQs',
+    module: 'supplier',
+    route_path: '/supplier-portal/rfqs',
+    icon: 'pi pi-file',
+    parent_id: null,
+    display_order: 3,
+    is_active: true,
+  },
+  {
+    id: -104,
+    display_name: 'Transactions',
+    module: 'supplier',
+    route_path: '/supplier-portal/transactions',
+    icon: 'pi pi-credit-card',
+    parent_id: null,
+    display_order: 4,
+    is_active: true,
+  },
+]
+
+const groupedNavigation = computed(() => {
+  const isSupplierRole = (authStore.userRole || '').toLowerCase().includes('supplier')
+  const baseNavigation = authStore.navigation.length > 0
+    ? authStore.navigation
+    : (isSupplierRole ? supplierFallbackNavigation : [])
+
+  const activeItems = baseNavigation.filter((item: any) => item.is_active)
+
+  const itemsById = new Map<number, any>()
+  activeItems.forEach((item: any) => itemsById.set(item.id, item))
+
+  const childrenByParent: Record<number, any[]> = {}
+  activeItems.forEach((item: any) => {
+    if (item.parent_id) {
+      if (!childrenByParent[item.parent_id]) {
+        childrenByParent[item.parent_id] = []
+      }
+      childrenByParent[item.parent_id].push(item)
+    }
+  })
+
+  Object.values(childrenByParent).forEach((children) => {
+    children.sort((a, b) => a.display_order - b.display_order)
+  })
+
+  const parents = activeItems.filter((item: any) => !item.parent_id)
+  const orphans = activeItems.filter((item: any) => item.parent_id && !itemsById.has(item.parent_id))
+
+  const filtered = [...parents, ...orphans].map((item: any) => ({
+    ...item,
+    children: childrenByParent[item.id] || [],
+  }))
+    .filter((item: any) => {
+      if (item.meta?.is_group && (!item.children || item.children.length === 0)) {
+        return false
+      }
+      return true
+    })
+
+  const grouped: Array<{ module: string; items: any[] }> = []
+  const itemsByModule = groupBy(filtered, 'module')
+
+  const moduleOrder = ['supplier', 'procurement', 'inventory', 'merchandising', 'hr', 'admin']
+
+  for (const module of moduleOrder) {
+    if (itemsByModule[module]) {
+      grouped.push({
+        module,
+        items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
+      })
+    }
+  }
+
+  // Add any custom modules not in moduleOrder
+  for (const module in itemsByModule) {
+    if (!moduleOrder.includes(module)) {
+      grouped.push({
+        module,
+        items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
+      })
+    }
+  }
+
+  return grouped
+})
+
+// Get icon by module
+const getModuleIcon = (module: string): string => {
+  const icons: Record<string, string> = {
+    procurement: 'pi pi-shopping-cart text-amber-600',
+    inventory: 'pi pi-inbox text-emerald-600',
+    merchandising: 'pi pi-image text-purple-600',
+    hr: 'pi pi-users text-rose-600',
+    admin: 'pi pi-cog text-gray-600',
+    system: 'pi pi-home text-blue-600',
+    supplier: 'pi pi-briefcase text-slate-600',
+  }
+  return icons[module] || 'pi pi-circle text-gray-500'
+}
+
+// Format module name
+const formatModuleName = (module: string): string => {
+  return module
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(word => startCase(toLower(word)))
+    .join(' ')
+}
+
+// Check if route is active
+const isActive = (routePath: string): boolean => {
+  return route.path === routePath
+}
+
+// User data
+type User = {
+  id: number
+  user_id: string
+  first_name: string
+  last_name: string
+  full_name: string
+  role: string
+  email: string
+}
+
+const userData = localStorage.getItem('user')
+const user: User | null = userData ? JSON.parse(userData) : null
+
+const fullName = computed(() => {
+  const first = startCase(toLower(authStore.user?.first_name || ''))
+  const last = startCase(toLower(authStore.user?.last_name || ''))
+  return `${first} ${last}`.trim() || 'User'
+})
+
+const userInitials = computed(() => {
+  const first = authStore.user?.first_name?.[0] || ''
+  const last = authStore.user?.last_name?.[0] || ''
+  return (first + last).toUpperCase() || 'U'
+})
+
+const roleDisplay = computed(() => startCase(authStore.user?.role || 'User'))
+
+// Breadcrumbs
+const breadcrumbs = computed(() => {
+  const crumbs = []
+  const title = route.meta.title as string
+
+  if (title && !['Dashboard', 'Home'].includes(title)) {
+    crumbs.push({
+      name: title,
+      path: null
+    })
+  }
+
+  return crumbs
+})
+
+// User dialog
+const openUserDialog = (event: MouseEvent) => {
+  if (userDialogRef.value) {
+    (userDialogRef.value as any).toggle(event)
+  }
+}
+
+</script>
+
+<style scoped>
+.sidebar {
+    transition: all 0.3s ease;
+}
+
+/* .router-link-active {
+  @apply bg-blue-50 text-blue-600 font-semibold;
+} */
+
+/* Accordion animation */
+.accordion-enter-active,
+.accordion-leave-active {
+    transition: all 0.2s ease;
+    max-height: 500px;
+    overflow: hidden;
+}
+
+.accordion-enter-from,
+.accordion-leave-to {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+}
+
+.accordion-enter-to,
+.accordion-leave-from {
+    opacity: 1;
+    max-height: 500px;
+}
+</style>

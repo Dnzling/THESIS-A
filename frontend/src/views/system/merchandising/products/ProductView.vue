@@ -16,6 +16,13 @@
       </div>
       <div class="flex gap-2">
         <Button 
+          v-if="primary3DModel"
+          label="View 3D" 
+          icon="pi pi-cube" 
+          severity="info"
+          @click="openView3DModal" 
+        />
+        <Button 
           label="Edit" 
           icon="pi pi-pencil" 
           severity="warning"
@@ -32,21 +39,14 @@
     </div>
 
     <!-- Loading Skeleton -->
-    <div v-if="loading" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 space-y-6">
-        <Skeleton height="400px" class="rounded-lg" />
-        <Skeleton height="300px" class="rounded-lg" />
-      </div>
-      <div class="lg:col-span-1">
-        <Skeleton height="600px" class="rounded-lg" />
-      </div>
+    <div v-if="loading" class="space-y-6">
+      <Skeleton height="400px" class="rounded-lg" />
+      <Skeleton height="300px" class="rounded-lg" />
+      <Skeleton height="300px" class="rounded-lg" />
     </div>
 
     <!-- Product Content -->
-    <div v-else-if="product" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
-      <!-- LEFT COLUMN (2/3) - Product Information -->
-      <div class="lg:col-span-2 space-y-6">
+    <div v-else-if="product" class="space-y-6">
         
         <!-- Product Header Card -->
         <Card>
@@ -266,233 +266,163 @@
           </template>
         </Card>
 
-      </div>
-
-      <!-- RIGHT COLUMN (1/3) - 3D Viewer & Assets -->
-      <div class="lg:col-span-1">
-        <div class="sticky top-6 space-y-6">
-          
-          <!-- 3D Model Viewer Card -->
-          <Card>
-            <template #title>
-              <div class="flex items-center gap-2">
-                <i class="pi pi-cube text-indigo-600"></i>
-                <span>3D Model Viewer</span>
-              </div>
-            </template>
-            <template #content>
-              <div class="space-y-4">
-                <!-- ✅ 3D Viewer Container -->
-                <div 
-                  v-if="primary3DModel"
-                  ref="viewer3DContainer"
-                  class="relative bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden"
-                  style="height: 400px;"
-                >
-                  <!-- Loading Indicator -->
-                  <div v-if="loading3D" class="absolute inset-0 flex items-center justify-center bg-white/90 z-10">
-                    <div class="text-center">
-                      <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" />
-                      <p class="text-sm text-gray-600 mt-2">Loading 3D Model...</p>
-                    </div>
-                  </div>
-
-                  <!-- Error Message -->
-                  <div v-if="model3DError" class="absolute inset-0 flex items-center justify-center bg-red-50 z-10">
-                    <div class="text-center p-4">
-                      <i class="pi pi-exclamation-triangle text-4xl text-red-500 mb-2"></i>
-                      <p class="text-sm text-red-700">Failed to load 3D model</p>
-                      <Button label="Retry" size="small" class="mt-2" @click="retryLoad3D" />
-                    </div>
-                  </div>
-                  
-                  <!-- Controls Overlay -->
-                  <div v-if="!loading3D && !model3DError" class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg z-20">
-                    <div class="flex items-center justify-between gap-2">
-                      <Button 
-                        icon="pi pi-replay" 
-                        v-tooltip.top="'Reset View'"
-                        text 
-                        rounded 
-                        size="small"
-                        @click="reset3DView"
-                      />
-                      <Button 
-                        icon="pi pi-camera" 
-                        v-tooltip.top="'Screenshot'"
-                        text 
-                        rounded 
-                        size="small"
-                        @click="take3DScreenshot"
-                      />
-                      <Button 
-                        icon="pi pi-sync" 
-                        v-tooltip.top="'Auto Rotate'"
-                        text 
-                        rounded 
-                        size="small"
-                        :class="{ 'bg-blue-100': autoRotate }"
-                        @click="toggleAutoRotate"
-                      />
-                      <Button 
-                        icon="pi pi-external-link" 
-                        v-tooltip.top="'Fullscreen'"
-                        text 
-                        rounded 
-                        size="small"
-                        @click="toggle3DFullscreen"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <!-- No 3D Model -->
-                <div v-else class="bg-gray-100 rounded-lg p-8 text-center" style="height: 400px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                  <i class="pi pi-cube text-6xl text-gray-400 mb-4"></i>
-                  <p class="text-gray-600 font-medium">No 3D Model Available</p>
-                  <p class="text-sm text-gray-500 mt-2">Upload a 3D model to preview</p>
-                  <Button 
-                    label="Upload 3D Model" 
-                    icon="pi pi-upload" 
-                    size="small"
-                    class="mt-4"
-                    @click="router.push({ name: 'merchandising.assets.upload' })"
-                  />
-                </div>
-
-                <!-- Model Info -->
-                <div v-if="primary3DModel" class="bg-gray-50 rounded-lg p-3">
-                  <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-semibold text-gray-700">Model Information</span>
-                    <Tag :value="primary3DModel.model_format?.toUpperCase()" severity="info" size="small" />
-                  </div>
-                  <div class="space-y-1 text-xs text-gray-600">
-                    <div class="flex justify-between">
-                      <span>File Size:</span>
-                      <span class="font-medium">{{ formatFileSize(primary3DModel.file_size_kb * 1024) }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span>Uploaded:</span>
-                      <span class="font-medium">{{ formatDate(primary3DModel.created_at) }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span>AR Compatible:</span>
-                      <Tag :value="primary3DModel.is_ar_compatible ? 'Yes' : 'No'" 
-                           :severity="primary3DModel.is_ar_compatible ? 'success' : 'secondary'" 
-                           size="small" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </Card>
-
-          <!-- Product Images Gallery -->
-          <Card>
-            <template #title>
-              <div class="flex items-center gap-2">
-                <i class="pi pi-images text-pink-600"></i>
-                <span>Product Images</span>
-              </div>
-            </template>
-            <template #content>
-              <div v-if="productImages && productImages.length > 0" class="space-y-4">
-                <!-- Main Image -->
-                <div class="relative rounded-lg overflow-hidden bg-gray-100" style="height: 300px;">
-                  <img 
-                    :src="selectedImage || productImages[0]?.url" 
-                    :alt="product.product_name"
-                    class="w-full h-full object-cover"
-                    @error="handleImageError"
-                  />
-                  <Button 
-                    icon="pi pi-search-plus" 
-                    class="absolute top-2 right-2"
-                    rounded
-                    @click="openImageGallery"
-                  />
-                </div>
-
-                <!-- Thumbnail Strip -->
-                <div class="grid grid-cols-4 gap-2">
-                  <div 
-                    v-for="(image, index) in productImages.slice(0, 4)" 
-                    :key="index"
-                    class="relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all"
-                    :class="selectedImage === image.url ? 'border-blue-500' : 'border-transparent hover:border-gray-300'"
-                    @click="selectedImage = image.url"
-                  >
-                    <img 
-                      :src="image.thumbnail_url || image.url" 
-                      :alt="`Thumbnail ${index + 1}`"
-                      class="w-full h-20 object-cover"
-                      @error="handleImageError"
-                    />
-                    <Badge v-if="image.is_primary" value="Main" severity="success" class="absolute top-1 left-1 text-xs" />
-                  </div>
-                </div>
-              </div>
-
-              <!-- No Images -->
-              <div v-else class="text-center py-8">
-                <i class="pi pi-image text-4xl text-gray-400 mb-3 block"></i>
-                <p class="text-gray-600">No product images</p>
+      <!-- Product Images Gallery -->
+      <Card v-if="productImages && productImages.length > 0">
+        <template #title>
+          <div class="flex items-center gap-2">
+            <i class="pi pi-images text-pink-600"></i>
+            <span>Product Images</span>
+          </div>
+        </template>
+        <template #content>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div 
+              v-for="image in productImages" 
+              :key="image.id"
+              class="relative rounded-lg overflow-hidden bg-gray-100 group cursor-pointer"
+              style="aspect-ratio: 1 / 1;"
+            >
+              <img 
+                :src="image.auth_url || image.url" 
+                :alt="image.file_name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                @error="handleImageError"
+              />
+              <Badge v-if="image.is_primary" value="Primary" severity="success" class="absolute top-2 left-2" />
+              
+              <!-- Overlay Actions -->
+              <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <Button 
-                  label="Upload Images" 
-                  icon="pi pi-upload" 
-                  size="small"
-                  class="mt-3"
-                  @click="router.push({ name: 'merchandising.assets.upload' })"
+                  icon="pi pi-search-plus"
+                  rounded
+                  severity="info"
+                  text
+                  @click="openImagePreview(image)"
+                />
+                <Button 
+                  icon="pi pi-download"
+                  rounded
+                  severity="info"
+                  text
+                  @click.stop="downloadImageAsset(image)"
                 />
               </div>
-            </template>
-          </Card>
+            </div>
+          </div>
+        </template>
+      </Card>
 
-          <!-- All Assets List -->
-          <Card>
-            <template #title>
-              <div class="flex items-center gap-2">
-                <i class="pi pi-folder text-yellow-600"></i>
-                <span>All Assets ({{ allAssets.length }})</span>
+      <!-- 3D Model Viewer Modal -->
+      <Dialog 
+        v-model:visible="view3DModalVisible" 
+        :header="primary3DModel?.file_name || '3D Model'" 
+        :modal="true" 
+        class="w-full max-w-4xl"
+        @hide="onModal3DViewerClose"
+      >
+        <div v-if="primary3DModel" class="space-y-4">
+          <!-- 3D Viewer Container -->
+          <div 
+            ref="modal3DViewerContainer"
+            class="relative bg-linear-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden"
+            style="height: 500px;"
+          >
+            <!-- Loading Indicator -->
+            <div v-if="loading3DModal" class="absolute inset-0 flex items-center justify-center bg-white/90 z-10">
+              <div class="text-center">
+                <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" />
+                <p class="text-sm text-gray-600 mt-2">Loading 3D Model...</p>
               </div>
-            </template>
-            <template #content>
-              <div class="space-y-2 max-h-96 overflow-y-auto">
-                <div v-if="!allAssets || allAssets.length === 0" class="text-center py-4 text-gray-500 text-sm">
-                  No assets uploaded
-                </div>
-                <div 
-                  v-else
-                  v-for="asset in allAssets" 
-                  :key="asset.id"
-                  class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div class="flex items-center gap-2 flex-1 min-w-0">
-                    <i :class="getAssetIcon(asset.asset_type)" class="text-gray-600 flex-shrink-0"></i>
-                    <div class="min-w-0 flex-1">
-                      <p class="text-sm font-medium text-gray-900 truncate">{{ asset.file_name }}</p>
-                      <p class="text-xs text-gray-500">{{ getAssetTypeLabel(asset.asset_type) }} • {{ formatFileSize(asset.file_size_kb * 1024) }}</p>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-1 flex-shrink-0">
-                    <Tag v-if="asset.is_primary" value="Primary" severity="success" size="small" />
-                    <Button 
-                      icon="pi pi-download" 
-                      text 
-                      rounded 
-                      size="small"
-                      v-tooltip.top="'Download'"
-                      @click="downloadAsset(asset)"
-                    />
-                  </div>
-                </div>
-              </div>
-            </template>
-          </Card>
+            </div>
 
+            <!-- Error State -->
+            <div v-if="model3DModalError" class="absolute inset-0 flex items-center justify-center bg-red-50 z-10">
+              <div class="text-center p-4">
+                <i class="pi pi-exclamation-triangle text-4xl text-red-500 mb-2"></i>
+                <p class="text-sm text-red-700">Failed to load 3D model</p>
+                <Button label="Retry" size="small" class="mt-2" @click="retryLoad3DModal" />
+              </div>
+            </div>
+
+            <!-- Controls -->
+            <div v-if="!loading3DModal && !model3DModalError" class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg z-20">
+              <div class="flex items-center justify-between gap-2">
+                <Button 
+                  icon="pi pi-replay" 
+                  v-tooltip.top="'Reset View'"
+                  text 
+                  rounded 
+                  size="small"
+                  @click="reset3DModalView"
+                />
+                <Button 
+                  icon="pi pi-sync" 
+                  v-tooltip.top="'Auto Rotate'"
+                  text 
+                  rounded 
+                  size="small"
+                  :class="{ 'bg-blue-100': autoRotateModal }"
+                  @click="toggleAutoRotateModal"
+                />
+                <Button 
+                  icon="pi pi-camera" 
+                  v-tooltip.top="'Screenshot'"
+                  text 
+                  rounded 
+                  size="small"
+                  @click="take3DScreenshotModal"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Model Details -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div>
+              <p class="text-xs text-gray-600 mb-1">Format</p>
+              <Tag :value="primary3DModel.model_format?.toUpperCase()" severity="info" />
+            </div>
+            <div>
+              <p class="text-xs text-gray-600 mb-1">File Size</p>
+              <p class="text-sm font-semibold">{{ formatFileSize(primary3DModel.file_size_kb * 1024) }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-600 mb-1">AR Compatible</p>
+              <Tag :value="primary3DModel.is_ar_compatible ? 'Yes' : 'No'" 
+                   :severity="primary3DModel.is_ar_compatible ? 'success' : 'secondary'" />
+            </div>
+            <div>
+              <p class="text-xs text-gray-600 mb-1">Uploaded</p>
+              <p class="text-sm font-semibold">{{ formatDate(primary3DModel.created_at) }}</p>
+            </div>
+          </div>
         </div>
-      </div>
 
+        <template #footer>
+          <Button label="Download" icon="pi pi-download" @click="downloadModel" severity="info" />
+          <Button label="Close" severity="secondary" outlined @click="view3DModalVisible = false" />
+        </template>
+      </Dialog>
+
+      <!-- Image Gallery Preview Modal -->
+      <Dialog 
+        v-model:visible="imagePreviewVisible" 
+        :header="previewImage?.file_name" 
+        :modal="true" 
+        class="w-full max-w-4xl"
+      >
+        <div v-if="previewImage" class="text-center bg-gray-100 rounded-lg p-8">
+          <img 
+          :src="previewImage.auth_url || previewImage.url" 
+            @error="handleImageError"
+          />
+        </div>
+
+        <template #footer>
+          <Button label="Download" icon="pi pi-download" @click="downloadImageAsset(previewImage)" severity="info" />
+          <Button label="Close" severity="secondary" outlined @click="imagePreviewVisible = false" />
+        </template>
+      </Dialog>
     </div>
 
     <!-- Error State -->
@@ -555,6 +485,7 @@
 import { ref, onMounted, computed, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useAuthStore } from '../../../../stores/auth'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
@@ -574,31 +505,39 @@ import ProgressSpinner from 'primevue/progressspinner'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const productId = computed(() => Number(route.params.id))
 const loading = ref(false)
-const loading3D = ref(false)
-const model3DError = ref(false)
 const deleting = ref(false)
 const deleteDialogVisible = ref(false)
 const galleryVisible = ref(false)
-const autoRotate = ref(false)
 
-const product = ref(null)
-const variations = ref([])
-const allAssets = ref([])
-const primary3DModel = ref(null)
-const productImages = ref([])
+// Modal 3D Viewer
+const view3DModalVisible = ref(false)
+const loading3DModal = ref(false)
+const model3DModalError = ref(false)
+const autoRotateModal = ref(false)
+
+// Image Preview
+const imagePreviewVisible = ref(false)
+const previewImage = ref<any>(null)
+
+const product = ref<any>(null)
+const variations = ref<any[]>([])
+const allAssets = ref<any[]>([])
+const primary3DModel = ref<any>(null)
+const productImages = ref<any[]>([])
 const selectedImage = ref(null)
 
 // 3D Viewer refs
-const viewer3DContainer = ref<HTMLElement | null>(null)
-let scene: THREE.Scene | null = null
-let camera: THREE.PerspectiveCamera | null = null
-let renderer: THREE.WebGLRenderer | null = null
-let controls: OrbitControls | null = null
-let model: THREE.Object3D | null = null
-let animationId: number | null = null
+const modal3DViewerContainer = ref<HTMLElement | null>(null)
+let modalScene: THREE.Scene | null = null
+let modalCamera: THREE.PerspectiveCamera | null = null
+let modalRenderer: THREE.WebGLRenderer | null = null
+let modalControls: OrbitControls | null = null
+let modalModel: THREE.Object3D | null = null
+let modalAnimationId: number | null = null
 
 const loadProduct = async () => {
   loading.value = true
@@ -634,6 +573,32 @@ const loadVariations = async () => {
   }
 }
 
+// Load images with authentication
+const loadImageWithAuth = async (image: any) => {
+  if (!image.url) return null
+
+  try {
+    const token = authStore.token || localStorage.getItem('auth_token')
+    
+    const response = await fetch(image.url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'image/*'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    return URL.createObjectURL(blob)
+  } catch (error) {
+    console.error('Failed to load image:', error)
+    return null
+  }
+}
+
 const loadAssets = async () => {
   try {
     const response = await merchandisingService.getAssetsByProduct(productId.value)
@@ -646,165 +611,258 @@ const loadAssets = async () => {
     // Extract images
     const mainImages = response.data.assets_by_type?.['Image_Main'] || []
     const galleryImages = response.data.assets_by_type?.['Image_Gallery'] || []
-    productImages.value = [...mainImages, ...galleryImages]
+    const allImages = [...mainImages, ...galleryImages]
+    productImages.value = allImages
     
-    // Initialize 3D viewer if model exists
-    if (primary3DModel.value && viewer3DContainer.value) {
-      nextTick(() => {
-        init3DViewer()
-      })
+    // Load images with auth
+    for (const image of productImages.value) {
+      if (image.url) {
+        image.auth_url = await loadImageWithAuth(image)
+      }
     }
   } catch (error) {
     console.error('Failed to load assets:', error)
   }
 }
 
-const init3DViewer = () => {
-  if (!viewer3DContainer.value || !primary3DModel.value) {
-    console.warn('Cannot init 3D viewer: missing container or model')
+// Watch for 3D modal open to initialize viewer
+watch(view3DModalVisible, (isOpen) => {
+  if (isOpen && primary3DModel.value) {
+    nextTick(() => {
+      const container = modal3DViewerContainer.value
+      if (container) {
+        init3DViewerModal(container, primary3DModel.value?.url || '')
+      }
+    })
+  }
+})
+
+const openView3DModal = () => {
+  if (!primary3DModel.value) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'No 3D model available for this product',
+      life: 3000
+    })
+    return
+  }
+  view3DModalVisible.value = true
+}
+
+const init3DViewerModal = (container: HTMLElement, modelUrl: string) => {
+  if (!container || !modelUrl) {
+    console.warn('Cannot init 3D viewer modal: missing container or model URL')
     return
   }
 
-  loading3D.value = true
-  model3DError.value = false
+  loading3DModal.value = true
+  model3DModalError.value = false
 
   try {
     // Cleanup existing scene
-    cleanup3DScene()
+    cleanup3DViewerModal()
 
-    const container = viewer3DContainer.value
     const width = container.clientWidth
     const height = container.clientHeight
 
     // Scene setup
-    scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xf5f5f5)
+    modalScene = new THREE.Scene()
+    modalScene.background = new THREE.Color(0xf5f5f5)
 
     // Camera
-    camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000)
-    camera.position.set(
-      primary3DModel.value.camera_settings?.angle_x || 2,
-      primary3DModel.value.camera_settings?.angle_y || 2,
-      primary3DModel.value.camera_settings?.zoom || 5
+    modalCamera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000)
+    modalCamera.position.set(
+      primary3DModel.value?.camera_settings?.angle_x || 2,
+      primary3DModel.value?.camera_settings?.angle_y || 2,
+      primary3DModel.value?.camera_settings?.zoom || 5
     )
 
     // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(window.devicePixelRatio)
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    container.appendChild(renderer.domElement)
+    modalRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    modalRenderer.setSize(width, height)
+    modalRenderer.setPixelRatio(window.devicePixelRatio)
+    modalRenderer.shadowMap.enabled = true
+    modalRenderer.shadowMap.type = THREE.PCFSoftShadowMap
+    container.appendChild(modalRenderer.domElement)
 
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
-    scene.add(ambientLight)
+    modalScene.add(ambientLight)
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
     directionalLight.position.set(5, 10, 7.5)
     directionalLight.castShadow = true
-    scene.add(directionalLight)
+    modalScene.add(directionalLight)
 
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.3)
     fillLight.position.set(-5, 0, -5)
-    scene.add(fillLight)
+    modalScene.add(fillLight)
 
     // Controls
-    controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
-    controls.dampingFactor = 0.05
-    controls.minDistance = 1
-    controls.maxDistance = 20
-    controls.maxPolarAngle = Math.PI / 2
+    modalControls = new OrbitControls(modalCamera, modalRenderer.domElement)
+    modalControls.enableDamping = true
+    modalControls.dampingFactor = 0.05
+    modalControls.minDistance = 1
+    modalControls.maxDistance = 20
+    modalControls.maxPolarAngle = Math.PI / 2
 
-    // Load 3D model
-    const modelFormat = primary3DModel.value.model_format?.toLowerCase()
-    const loader = modelFormat === 'obj' ? new OBJLoader() : new GLTFLoader()
+    // Get auth token
+    const token = authStore.token || localStorage.getItem('auth_token')
+    const modelFormat = primary3DModel.value?.model_format?.toLowerCase()
     
-    console.log('Loading 3D model:', primary3DModel.value.url, 'Format:', modelFormat)
+    console.log('Loading 3D model modal:', modelUrl, 'Format:', modelFormat)
 
-    loader.load(
-      primary3DModel.value.url,
-      (loadedModel: any) => {
-        model = modelFormat === 'obj' ? loadedModel : loadedModel.scene
-        
-        // Center and scale model
-        const box = new THREE.Box3().setFromObject(model)
-        const center = box.getCenter(new THREE.Vector3())
-        const size = box.getSize(new THREE.Vector3())
-        const maxDim = Math.max(size.x, size.y, size.z)
-        const scale = 3 / maxDim
-        
-        model.scale.multiplyScalar(scale)
-        model.position.sub(center.multiplyScalar(scale))
-        
-        // Enable shadows
-        model.traverse((child: any) => {
-          if (child.isMesh) {
-            child.castShadow = true
-            child.receiveShadow = true
+    if (modelFormat === 'obj') {
+      // OBJ Loader with auth using fetch
+      fetch(modelUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': '*/*'
+        }
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
           }
+          return response.text()
         })
-        
-        scene?.add(model)
-        loading3D.value = false
-        console.log('3D model loaded successfully')
-        
-        // Start animation
-        animate()
-      },
-      (progress: any) => {
-        const percent = (progress.loaded / progress.total * 100).toFixed(0)
-        console.log(`Loading 3D model: ${percent}%`)
-      },
-      (error: any) => {
-        console.error('Error loading 3D model:', error)
-        loading3D.value = false
-        model3DError.value = true
-        toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to load 3D model',
-          life: 3000
+        .then(objText => {
+          const loader = new OBJLoader()
+          const object = loader.parse(objText)
+
+          // Center and scale
+          const box = new THREE.Box3().setFromObject(object)
+          const center = box.getCenter(new THREE.Vector3())
+          const size = box.getSize(new THREE.Vector3())
+          const maxDim = Math.max(size.x, size.y, size.z)
+          const scale = 3 / maxDim
+
+          object.scale.multiplyScalar(scale)
+          object.position.sub(center.multiplyScalar(scale))
+
+          if (modalScene) {
+            modalScene.add(object)
+          }
+          modalModel = object
+          loading3DModal.value = false
+
+          console.log('3D model modal loaded successfully')
+
+          // Animation loop
+          animateModal()
         })
-      }
-    )
+        .catch((error: any) => {
+          console.error('Failed to load OBJ model:', error)
+          loading3DModal.value = false
+          model3DModalError.value = true
+          toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Failed to load 3D model',
+            life: 3000
+          })
+        })
+
+    } else {
+      // GLTF/GLB Loader with auth using fetch
+      fetch(modelUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/octet-stream, application/json, */*'
+        }
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          }
+          return response.arrayBuffer()
+        })
+        .then(buffer => {
+          const loader = new GLTFLoader()
+          loader.parse(buffer, '', (gltf: any) => {
+            const object = gltf.scene
+
+            // Center and scale
+            const box = new THREE.Box3().setFromObject(object)
+            const center = box.getCenter(new THREE.Vector3())
+            const size = box.getSize(new THREE.Vector3())
+            const maxDim = Math.max(size.x, size.y, size.z)
+            const scale = 3 / maxDim
+
+            object.scale.multiplyScalar(scale)
+            object.position.sub(center.multiplyScalar(scale))
+
+            if (modalScene) {
+              modalScene.add(object)
+            }
+            modalModel = object
+            loading3DModal.value = false
+
+            console.log('3D model modal loaded successfully')
+
+            // Animation loop
+            animateModal()
+          }, (error: any) => {
+            console.error('Failed to parse GLTF model:', error)
+            loading3DModal.value = false
+            model3DModalError.value = true
+            toast.add({
+              severity: 'error',
+              summary: 'Error',
+              detail: 'Failed to load 3D model',
+              life: 3000
+            })
+          })
+        })
+        .catch((error: any) => {
+          console.error('Failed to load GLTF model:', error)
+          loading3DModal.value = false
+          model3DModalError.value = true
+          toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Failed to load 3D model',
+            life: 3000
+          })
+        })
+    }
   } catch (error) {
-    console.error('Error initializing 3D viewer:', error)
-    loading3D.value = false
-    model3DError.value = true
+    console.error('Error initializing 3D viewer modal:', error)
+    loading3DModal.value = false
+    model3DModalError.value = true
   }
 }
 
-const animate = () => {
-  if (!scene || !camera || !renderer || !controls) return
+const animateModal = () => {
+  if (!modalScene || !modalCamera || !modalRenderer || !modalControls) return
 
-  animationId = requestAnimationFrame(animate)
+  modalAnimationId = requestAnimationFrame(animateModal)
   
-  if (autoRotate.value && model) {
-    model.rotation.y += 0.005
+  if (autoRotateModal.value && modalModel) {
+    modalModel.rotation.y += 0.005
   }
   
-  controls.update()
-  renderer.render(scene, camera)
+  modalControls.update()
+  modalRenderer.render(modalScene, modalCamera)
 }
 
-const reset3DView = () => {
-  if (controls) {
-    controls.reset()
+const reset3DModalView = () => {
+  if (modalControls) {
+    modalControls.reset()
   }
 }
 
-const toggleAutoRotate = () => {
-  autoRotate.value = !autoRotate.value
+const toggleAutoRotateModal = () => {
+  autoRotateModal.value = !autoRotateModal.value
 }
 
-const take3DScreenshot = () => {
-  if (!renderer) return
+const take3DScreenshotModal = () => {
+  if (!modalRenderer) return
   
-  const dataURL = renderer.domElement.toDataURL('image/png')
+  const dataURL = modalRenderer.domElement.toDataURL('image/png')
   const link = document.createElement('a')
-  link.download = `${product.value.sku}-3d-preview.png`
+  link.download = `${product.value?.sku || 'product'}-3d-preview.png`
   link.href = dataURL
   link.click()
   
@@ -816,41 +874,55 @@ const take3DScreenshot = () => {
   })
 }
 
-const toggle3DFullscreen = () => {
-  if (!viewer3DContainer.value) return
-  
-  if (viewer3DContainer.value.requestFullscreen) {
-    viewer3DContainer.value.requestFullscreen()
+const retryLoad3DModal = () => {
+  model3DModalError.value = false
+  if (modal3DViewerContainer.value) {
+    init3DViewerModal(modal3DViewerContainer.value, primary3DModel.value?.url || '')
   }
 }
 
-const retryLoad3D = () => {
-  model3DError.value = false
-  init3DViewer()
+const cleanup3DViewerModal = () => {
+  if (modalAnimationId) {
+    cancelAnimationFrame(modalAnimationId)
+    modalAnimationId = null
+  }
+  
+  if (modalRenderer) {
+    modalRenderer.dispose()
+    if (modal3DViewerContainer.value && modalRenderer.domElement.parentNode === modal3DViewerContainer.value) {
+      modal3DViewerContainer.value.removeChild(modalRenderer.domElement)
+    }
+    modalRenderer = null
+  }
+  
+  if (modalControls) {
+    modalControls.dispose()
+    modalControls = null
+  }
+  
+  modalScene = null
+  modalCamera = null
+  modalModel = null
+}
+
+const onModal3DViewerClose = () => {
+  cleanup3DViewerModal()
+}
+
+const downloadModel = () => {
+  if (!primary3DModel.value) return
+  
+  window.open(primary3DModel.value.url, '_blank')
+  toast.add({
+    severity: 'success',
+    summary: 'Download Started',
+    detail: `Downloading ${primary3DModel.value.file_name}`,
+    life: 2000
+  })
 }
 
 const cleanup3DScene = () => {
-  if (animationId) {
-    cancelAnimationFrame(animationId)
-    animationId = null
-  }
-  
-  if (renderer) {
-    renderer.dispose()
-    if (viewer3DContainer.value && renderer.domElement.parentNode === viewer3DContainer.value) {
-      viewer3DContainer.value.removeChild(renderer.domElement)
-    }
-    renderer = null
-  }
-  
-  if (controls) {
-    controls.dispose()
-    controls = null
-  }
-  
-  scene = null
-  camera = null
-  model = null
+  // Legacy cleanup function - now handled by cleanup3DViewerModal
 }
 
 const confirmDelete = () => {
@@ -936,6 +1008,28 @@ const getStockSeverity = (status: string) => {
   return severities[status] || 'secondary'
 }
 
+const openImagePreview = async (image: any) => {
+  previewImage.value = { ...image }
+  
+  // Load auth URL if not already loaded
+  if (image.url && !image.auth_url) {
+    previewImage.value.auth_url = await loadImageWithAuth(image)
+  }
+  
+  imagePreviewVisible.value = true
+}
+
+const downloadImageAsset = (image: any) => {
+  if (!image) return
+  window.open(image.url, '_blank')
+  toast.add({
+    severity: 'success',
+    summary: 'Download Started',
+    detail: `Downloading ${image.file_name}`,
+    life: 2000
+  })
+}
+
 const formatPrice = (price: number) => {
   return new Intl.NumberFormat('en-PH', { 
     minimumFractionDigits: 2,
@@ -960,22 +1054,13 @@ const formatDate = (date: string) => {
   })
 }
 
-// Watch for 3D model changes
-watch(primary3DModel, (newModel) => {
-  if (newModel && viewer3DContainer.value) {
-    nextTick(() => {
-      init3DViewer()
-    })
-  }
-})
-
 onMounted(() => {
   loadProduct()
 })
 
 // Cleanup on unmount
 onBeforeUnmount(() => {
-  cleanup3DScene()
+  cleanup3DViewerModal()
 })
 </script>
 

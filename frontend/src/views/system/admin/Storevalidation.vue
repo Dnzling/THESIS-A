@@ -621,6 +621,80 @@
                 <Button label="Approve Store" icon="pi pi-check" @click="approveStore(selectedReviewStore)" />
             </template>
         </Dialog>
+
+        <!-- View Store Dialog -->
+        <Dialog v-model:visible="showViewDialog" modal
+            :header="selectedViewStore ? `Store Details: ${selectedViewStore.storeName}` : 'Store Details'"
+            :style="{ width: '800px' }">
+            <div v-if="selectedViewStore" class="space-y-6">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="font-medium text-gray-800 mb-3">Store Information</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Store Name</p>
+                            <p class="font-medium">{{ selectedViewStore.storeName }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Store Type</p>
+                            <p class="font-medium">{{ selectedViewStore.storeType }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Address</p>
+                            <p class="font-medium">{{ selectedViewStore.address }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Contact Number</p>
+                            <p class="font-medium">{{ selectedViewStore.contactNumber }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-medium text-gray-800 mb-3">Owner Information</h4>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-500">Owner Name</p>
+                                <p class="font-medium">{{ selectedViewStore.ownerName }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Owner Email</p>
+                                <p class="font-medium">{{ selectedViewStore.ownerEmail }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Owner Phone</p>
+                                <p class="font-medium">{{ selectedViewStore.ownerPhone }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Registration Date</p>
+                                <p class="font-medium">{{ formatDate(selectedViewStore.registrationDate) }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-medium text-gray-800 mb-3">Documents</h4>
+                    <div v-if="selectedViewStore.documents?.length" class="space-y-3">
+                        <div v-for="doc in selectedViewStore.documents" :key="doc.name"
+                            class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div class="flex items-center space-x-3">
+                                <i :class="`pi ${getDocumentTypeIcon(doc.type)} ${getDocumentTypeColor(doc.type)}`"></i>
+                                <div>
+                                    <p class="font-medium">{{ doc.name }}</p>
+                                    <p class="text-xs text-gray-500">Status: {{ doc.status || 'Pending' }}</p>
+                                </div>
+                            </div>
+                            <Button label="View" size="small" icon="pi pi-eye" @click="viewDocument(doc)" />
+                        </div>
+                    </div>
+                    <div v-else class="text-sm text-gray-500">No documents uploaded.</div>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Close" severity="secondary" @click="showViewDialog = false" />
+            </template>
+        </Dialog>
     
         <!-- Reject Store Dialog -->
         <Dialog v-model:visible="showRejectDialog" header="Reject Store Application" :style="{ width: '600px' }">
@@ -752,6 +826,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import axiosClient from '../../../axios'
+import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -772,13 +848,17 @@ const activeView = ref('pending')
 const loading = ref(false)
 const searchTerm = ref('')
 const showReviewDialog = ref(false)
+const showViewDialog = ref(false)
 const showRejectDialog = ref(false)
 const showBulkApproveDialog = ref(false)
 const showBulkRejectDialog = ref(false)
 const showSettingsDialog = ref(false)
+
+const toast = useToast()
 const showPendingFilters = ref(false)
 const selectedStores = ref<any[]>([])
 const selectedReviewStore = ref<any>(null)
+const selectedViewStore = ref<any>(null)
 const storeToReject = ref<any>(null)
 const reviewNotes = ref('')
 const rejectionReason = ref(null)
@@ -1116,6 +1196,93 @@ const delayOptions = ref([
   { name: '3 days', value: '72' }
 ])
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/, '')
+
+const buildFileUrl = (path: string | null) => {
+  if (!path) return ''
+  return `${apiBaseUrl}/storage/${path}`
+}
+
+const mapVerification = (verification: any) => {
+  const store = verification.store || {}
+  const docs = [
+    { name: 'Business Registration', path: verification.business_registration_file },
+    { name: 'Business Permit', path: verification.business_permit_file },
+    { name: 'Tax Certificate', path: verification.tax_certificate_file },
+    { name: 'Gov ID Front', path: verification.gov_id_front_file },
+    { name: 'Gov ID Back', path: verification.gov_id_back_file },
+    { name: 'Selfie with ID', path: verification.selfie_with_id_file },
+  ].filter(d => d.path).map(d => ({
+    name: d.name,
+    status: 'Submitted',
+    verificationStatus: 'pending',
+    path: d.path,
+    url: buildFileUrl(d.path)
+  }))
+
+  if (Array.isArray(verification.other_documents)) {
+    verification.other_documents.forEach((path: string, index: number) => {
+      docs.push({
+        name: `Other Document ${index + 1}`,
+        status: 'Submitted',
+        verificationStatus: 'pending',
+        path,
+        url: buildFileUrl(path)
+      })
+    })
+  }
+
+  const requiredFields = [
+    verification.business_registration_file,
+    verification.gov_id_front_file,
+    verification.gov_id_back_file,
+    verification.selfie_with_id_file
+  ]
+  const documentStatus = requiredFields.every(Boolean) ? 'Complete' : 'Incomplete'
+
+  return {
+    id: verification.id,
+    verificationId: verification.id,
+    storeId: store.id ? `STORE-${String(store.id).padStart(6, '0')}` : `STORE-${verification.store_id}`,
+    storeName: store.store_name || 'Unknown Store',
+    ownerName: store.contact_person || 'N/A',
+    ownerEmail: store.email || 'N/A',
+    ownerPhone: store.contact_number || 'N/A',
+    storeType: store.settings?.store_type || 'General',
+    address: store.address || 'N/A',
+    contactNumber: store.contact_number || 'N/A',
+    registrationDate: verification.submitted_at || store.created_at,
+    waitingTime: verification.submitted_at ? `${Math.max(0, Math.floor((Date.now() - new Date(verification.submitted_at).getTime()) / 86400000))} days` : 'N/A',
+    documentStatus,
+    priority: 'Medium',
+    documents: docs,
+    approvalDate: verification.reviewed_at || null,
+    approvedBy: verification.reviewer ? `${verification.reviewer.fname} ${verification.reviewer.lname}` : '—',
+    rejectionDate: verification.reviewed_at || null,
+    rejectedBy: verification.reviewer ? `${verification.reviewer.fname} ${verification.reviewer.lname}` : '—',
+    rejectionReason: verification.rejection_reason || '',
+    status: store.status || (verification.rejection_reason ? 'Rejected' : verification.reviewed_at ? 'Verified' : 'Pending'),
+    productsCount: store.products_count || 0,
+    revenue: 0
+  }
+}
+
+const loadStoreVerifications = async () => {
+  try {
+    const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
+      axiosClient.get('/api/pending-verification', { params: { per_page: 100 } }),
+      axiosClient.get('/api/store-verifications', { params: { status: 'approved', per_page: 100 } }),
+      axiosClient.get('/api/store-verifications', { params: { status: 'rejected', per_page: 100 } }),
+    ])
+
+    pendingStores.value = (pendingRes.data?.data?.data || pendingRes.data?.data || []).map(mapVerification)
+    approvedStores.value = (approvedRes.data?.data?.data || approvedRes.data?.data || []).map(mapVerification)
+    rejectedStores.value = (rejectedRes.data?.data?.data || rejectedRes.data?.data || []).map(mapVerification)
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load store verifications', life: 3000 })
+  }
+}
+
 // Computed Properties
 const filteredPendingStores = computed(() => {
   let filtered = pendingStores.value
@@ -1305,24 +1472,18 @@ const reviewStore = (store: any) => {
   showReviewDialog.value = true
 }
 
-const approveStore = (store: any) => {
-  if (!store) return
-
-  // Move from pending to approved
-  const pendingIndex = pendingStores.value.findIndex(s => s.id === store.id)
-  if (pendingIndex !== -1) {
-    const approvedStore = { ...pendingStores.value[pendingIndex] }
-    approvedStore.approvalDate = new Date().toISOString().split('T')[0]
-    approvedStore.approvedBy = 'Current Admin'
-    approvedStore.status = 'Active'
-    approvedStore.productsCount = 0
-    approvedStore.revenue = 0
-
-    pendingStores.value.splice(pendingIndex, 1)
-    approvedStores.value.unshift(approvedStore)
+const approveStore = async (store: any) => {
+  if (!store?.verificationId) return
+  try {
+    await axiosClient.post(`/api/store-verification/${store.verificationId}/review`, {
+      action: 'approve'
+    })
+    toast.add({ severity: 'success', summary: 'Approved', detail: 'Store approved', life: 3000 })
+    showReviewDialog.value = false
+    await loadStoreVerifications()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to approve store', life: 3000 })
   }
-
-  showReviewDialog.value = false
 }
 
 const rejectStore = (store: any) => {
@@ -1330,31 +1491,29 @@ const rejectStore = (store: any) => {
   showRejectDialog.value = true
 }
 
-const confirmReject = () => {
-  if (!storeToReject.value) return
+const confirmReject = async () => {
+  if (!storeToReject.value?.verificationId) return
 
-  const pendingIndex = pendingStores.value.findIndex(s => s.id === storeToReject.value.id)
-  if (pendingIndex !== -1) {
-    const rejectedStore = { ...pendingStores.value[pendingIndex] }
-    rejectedStore.rejectionDate = new Date().toISOString().split('T')[0]
-    rejectedStore.rejectedBy = 'Current Admin'
-    rejectedStore.status = 'Rejected'
-    rejectedStore.rejectionReason = rejectionReason.value?.name || 'Other'
-    rejectedStore.notes = rejectionNotes.value
-
-    pendingStores.value.splice(pendingIndex, 1)
-    rejectedStores.value.unshift(rejectedStore)
+  try {
+    await axiosClient.post(`/api/store-verification/${storeToReject.value.verificationId}/review`, {
+      action: 'reject',
+      rejection_reason: rejectionNotes.value || 'Rejected'
+    })
+    toast.add({ severity: 'success', summary: 'Rejected', detail: 'Store rejected', life: 3000 })
+    await loadStoreVerifications()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to reject store', life: 3000 })
+  } finally {
+    showRejectDialog.value = false
+    rejectionReason.value = null
+    rejectionNotes.value = ''
+    storeToReject.value = null
   }
-
-  showRejectDialog.value = false
-  rejectionReason.value = null
-  rejectionNotes.value = ''
-  storeToReject.value = null
 }
 
 const viewStore = (store: any) => {
-  console.log('View store:', store)
-  // Navigate to store details page
+  selectedViewStore.value = store
+  showViewDialog.value = true
 }
 
 const suspendStore = (store: any) => {
@@ -1363,7 +1522,8 @@ const suspendStore = (store: any) => {
 }
 
 const viewRejectedStore = (store: any) => {
-  console.log('View rejected store:', store)
+  selectedViewStore.value = store
+  showViewDialog.value = true
 }
 
 const rereviewStore = (store: any) => {
@@ -1384,8 +1544,11 @@ const rereviewStore = (store: any) => {
 }
 
 const viewDocument = (doc: any) => {
-  console.log('View document:', doc)
-  // Open document viewer
+  if (doc?.url) {
+    window.open(doc.url, '_blank')
+    return
+  }
+  toast.add({ severity: 'info', summary: 'No Document', detail: 'Document not available', life: 2000 })
 }
 
 const requestMoreInfo = () => {
@@ -1425,7 +1588,10 @@ const saveSettings = () => {
   showSettingsDialog.value = false
 }
 
-onMounted(() => {
-  console.log('Store Validation Management loaded')
+onMounted(async () => {
+  pendingStores.value = []
+  approvedStores.value = []
+  rejectedStores.value = []
+  await loadStoreVerifications()
 })
 </script>

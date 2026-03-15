@@ -95,15 +95,6 @@
                   </div>
                 </div>
   
-                <!-- Stock Status -->
-                <div class="flex flex-col gap-2">
-                  <label for="stock_status" class="text-sm font-semibold text-gray-700">
-                    Stock Status <span class="text-red-500">*</span>
-                  </label>
-                  <Select id="stock_status" v-model="form.stock_status" :options="stockStatusOptions"
-                    placeholder="Select stock status" />
-                </div>
-  
                 <!-- Description -->
                 <div class="flex flex-col gap-2">
                   <label for="description" class="text-sm font-semibold text-gray-700">
@@ -152,7 +143,7 @@
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="flex flex-col gap-2">
                   <label for="base_price" class="text-sm font-semibold text-gray-700">
-                    Base Price (₱) <span class="text-red-500">*</span>
+                    Base Price (₱)
                   </label>
                   <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH"
                     :class="{ 'p-invalid': errors.base_price }" :min="0" fluid />
@@ -494,8 +485,6 @@ const subcategories = computed(() => {
   return categories.value.filter((c: any) => c.parent_category_id === form.value.category_id)
 })
 
-const stockStatusOptions = ['In Stock', 'Low Stock', 'Out of Stock', 'Pre-order']
-
 const loadCategories = async () => {
   loadingCategories.value = true
   try {
@@ -735,20 +724,17 @@ const validateForm = () => {
   if (!form.value.product_name) errors.value.product_name = 'Product name is required'
   if (!form.value.sku) errors.value.sku = 'SKU is required'
   if (!form.value.category_id) errors.value.category_id = 'Category is required'
-  if (!form.value.base_price || form.value.base_price <= 0) errors.value.base_price = 'Base price must be greater than 0'
-
-  if (isEditMode.value && originalBasePrice.value !== form.value.base_price && !form.value.price_change_reason) {
-    errors.value.price_change_reason = 'Price change reason is required'
+  if (form.value.base_price != null && form.value.base_price < 0) {
+    errors.value.base_price = 'Base price must be 0 or greater'
   }
 
-  if (!isEditMode.value && !form.value.modelFile && !existingModel.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Missing 3D Model',
-      detail: 'Please upload a primary 3D model',
-      life: 3000
-    })
-    return false
+  if (
+    isEditMode.value &&
+    form.value.base_price != null &&
+    originalBasePrice.value !== form.value.base_price &&
+    !form.value.price_change_reason
+  ) {
+    errors.value.price_change_reason = 'Price change reason is required'
   }
 
   return Object.keys(errors.value).length === 0

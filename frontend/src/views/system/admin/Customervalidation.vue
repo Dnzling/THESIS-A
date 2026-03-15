@@ -661,7 +661,81 @@
                 <Button label="Verify Customer" icon="pi pi-check" @click="verifyCustomer(selectedReviewCustomer)" />
             </template>
         </Dialog>
-    
+
+        <!-- View Customer Dialog -->
+        <Dialog v-model:visible="showViewDialog" modal
+            :header="selectedViewCustomer ? `Customer Details: ${selectedViewCustomer.fullName}` : 'Customer Details'"
+            :style="{ width: '800px' }">
+            <div v-if="selectedViewCustomer" class="space-y-6">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="font-medium text-gray-800 mb-3">Customer Information</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Full Name</p>
+                            <p class="font-medium">{{ selectedViewCustomer.fullName }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Date of Birth</p>
+                            <p class="font-medium">{{ formatDate(selectedViewCustomer.dateOfBirth) }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Gender</p>
+                            <p class="font-medium">{{ selectedViewCustomer.gender || '—' }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Nationality</p>
+                            <p class="font-medium">{{ selectedViewCustomer.nationality || '—' }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-medium text-gray-800 mb-3">Contact Information</h4>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-500">Email Address</p>
+                                <p class="font-medium">{{ selectedViewCustomer.email }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Phone Number</p>
+                                <p class="font-medium">{{ selectedViewCustomer.phone }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Address</p>
+                                <p class="font-medium">{{ selectedViewCustomer.address }}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Registration Date</p>
+                                <p class="font-medium">{{ formatDate(selectedViewCustomer.registrationDate) }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-medium text-gray-800 mb-3">Documents</h4>
+                    <div v-if="selectedViewCustomer.documents?.length" class="space-y-3">
+                        <div v-for="doc in selectedViewCustomer.documents" :key="doc.name"
+                            class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                            <div class="flex items-center space-x-3">
+                                <i :class="`pi ${getDocumentTypeIcon(doc.type)} ${getDocumentTypeColor(doc.type)}`"></i>
+                                <div>
+                                    <p class="font-medium">{{ doc.name }}</p>
+                                    <p class="text-xs text-gray-500">Status: {{ doc.status || 'Pending' }}</p>
+                                </div>
+                            </div>
+                            <Button label="View" size="small" icon="pi pi-eye" @click="viewDocument(doc)" />
+                        </div>
+                    </div>
+                    <div v-else class="text-sm text-gray-500">No documents uploaded.</div>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Close" severity="secondary" @click="showViewDialog = false" />
+            </template>
+        </Dialog>
+
         <!-- Reject Customer Dialog -->
         <Dialog v-model:visible="showRejectDialog" header="Reject Customer Application" :style="{ width: '600px' }">
             <div class="space-y-4">
@@ -796,6 +870,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import axiosClient from '../../../axios'
+import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -816,13 +892,17 @@ const activeView = ref('pending')
 const loading = ref(false)
 const searchTerm = ref('')
 const showReviewDialog = ref(false)
+const showViewDialog = ref(false)
 const showRejectDialog = ref(false)
 const showBulkVerifyDialog = ref(false)
 const showBulkRejectDialog = ref(false)
 const showSettingsDialog = ref(false)
+
+const toast = useToast()
 const showPendingFilters = ref(false)
 const selectedCustomers = ref<any[]>([])
 const selectedReviewCustomer = ref<any>(null)
+const selectedViewCustomer = ref<any>(null)
 const customerToReject = ref<any>(null)
 const reviewNotes = ref('')
 const rejectionReason = ref(null)
@@ -851,268 +931,10 @@ const mediumRiskThreshold = ref(40)
 const emailNotifications = ref(true)
 
 // Customer Data
-const pendingCustomers = ref([
-  {
-    id: 1,
-    customerId: 'CUST-2024-001',
-    fullName: 'Juan Dela Cruz',
-    email: 'juan@email.com',
-    phone: '+639123456789',
-    dateOfBirth: '1990-05-15',
-    gender: 'Male',
-    nationality: 'Filipino',
-    address: '123 Main St, Manila',
-    registrationDate: '2024-01-15',
-    waitingTime: '2 days',
-    verificationLevel: 'Basic',
-    documentStatus: 'Complete',
-    riskLevel: 'Low',
-    riskScore: 25,
-    customerType: 'Individual',
-    documents: [
-      { name: 'Government ID', type: 'id', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Proof of Address', type: 'address', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Selfie Photo', type: 'photo', status: 'Pending', verificationStatus: 'pending' }
-    ]
-  },
-  {
-    id: 2,
-    customerId: 'CUST-2024-002',
-    fullName: 'Maria Santos',
-    email: 'maria@email.com',
-    phone: '+639234567890',
-    dateOfBirth: '1985-08-22',
-    gender: 'Female',
-    nationality: 'Filipino',
-    address: '456 Oak Ave, Quezon City',
-    registrationDate: '2024-01-16',
-    waitingTime: '1 day',
-    verificationLevel: 'Enhanced',
-    documentStatus: 'Incomplete',
-    riskLevel: 'Medium',
-    riskScore: 55,
-    customerType: 'Business',
-    documents: [
-      { name: 'Government ID', type: 'id', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Proof of Address', type: 'address', status: 'Missing', verificationStatus: 'missing' }
-    ]
-  },
-  {
-    id: 3,
-    customerId: 'CUST-2024-003',
-    fullName: 'Robert Lim',
-    email: 'robert@email.com',
-    phone: '+639345678901',
-    dateOfBirth: '1978-12-10',
-    gender: 'Male',
-    nationality: 'Chinese',
-    address: '789 Luxury Blvd, Makati',
-    registrationDate: '2024-01-14',
-    waitingTime: '3 days',
-    verificationLevel: 'Full',
-    documentStatus: 'Complete',
-    riskLevel: 'High',
-    riskScore: 85,
-    customerType: 'VIP',
-    documents: [
-      { name: 'Government ID', type: 'id', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Proof of Address', type: 'address', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Income Proof', type: 'financial', status: 'Verified', verificationStatus: 'verified' }
-    ]
-  },
-  {
-    id: 4,
-    customerId: 'CUST-2024-004',
-    fullName: 'Sarah Chen',
-    email: 'sarah@email.com',
-    phone: '+639456789012',
-    dateOfBirth: '1992-03-30',
-    gender: 'Female',
-    nationality: 'Chinese-Filipino',
-    address: '101 Corporate St, Taguig',
-    registrationDate: '2024-01-17',
-    waitingTime: 'Just now',
-    verificationLevel: 'Basic',
-    documentStatus: 'Pending Review',
-    riskLevel: 'Low',
-    riskScore: 20,
-    customerType: 'Individual',
-    documents: [
-      { name: 'Government ID', type: 'id', status: 'Pending', verificationStatus: 'pending' },
-      { name: 'Proof of Address', type: 'address', status: 'Pending', verificationStatus: 'pending' }
-    ]
-  },
-  {
-    id: 5,
-    customerId: 'CUST-2024-005',
-    fullName: 'David Green',
-    email: 'david@email.com',
-    phone: '+639567890123',
-    dateOfBirth: '1988-07-18',
-    gender: 'Male',
-    nationality: 'American',
-    address: '202 Green St, Pasig',
-    registrationDate: '2024-01-13',
-    waitingTime: '4 days',
-    verificationLevel: 'Enhanced',
-    documentStatus: 'Complete',
-    riskLevel: 'Medium',
-    riskScore: 60,
-    customerType: 'Business',
-    documents: [
-      { name: 'Passport', type: 'id', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Visa', type: 'id', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Proof of Address', type: 'address', status: 'Verified', verificationStatus: 'verified' }
-    ]
-  }
-])
-
-const verifiedCustomers = ref([
-  {
-    id: 6,
-    customerId: 'CUST-2023-101',
-    fullName: 'James Wilson',
-    email: 'james@email.com',
-    phone: '+639678901234',
-    customerType: 'VIP',
-    address: '303 Heritage Rd, Cebu',
-    registrationDate: '2023-12-10',
-    verificationDate: '2023-12-15',
-    verifiedBy: 'Admin 1',
-    verificationLevel: 'Full',
-    riskLevel: 'Low',
-    riskScore: 15,
-    status: 'Active',
-    totalOrders: 45,
-    totalSpent: 1250000
-  },
-  {
-    id: 7,
-    customerId: 'CUST-2023-102',
-    fullName: 'Lisa Garcia',
-    email: 'lisa@email.com',
-    phone: '+639789012345',
-    customerType: 'Individual',
-    address: '404 Modern Ave, Davao',
-    registrationDate: '2023-11-25',
-    verificationDate: '2023-11-30',
-    verifiedBy: 'Admin 2',
-    verificationLevel: 'Enhanced',
-    riskLevel: 'Medium',
-    riskScore: 45,
-    status: 'Active',
-    totalOrders: 32,
-    totalSpent: 980000
-  },
-  {
-    id: 8,
-    customerId: 'CUST-2023-103',
-    fullName: 'Michael Tan',
-    email: 'michael@email.com',
-    phone: '+639890123456',
-    customerType: 'Business',
-    address: '505 Playground St, Iloilo',
-    registrationDate: '2023-12-05',
-    verificationDate: '2023-12-10',
-    verifiedBy: 'Admin 1',
-    verificationLevel: 'Full',
-    riskLevel: 'Low',
-    riskScore: 20,
-    status: 'Active',
-    totalOrders: 67,
-    totalSpent: 750000
-  },
-  {
-    id: 9,
-    customerId: 'CUST-2024-006',
-    fullName: 'Anna Lee',
-    email: 'anna@email.com',
-    phone: '+639901234567',
-    customerType: 'Individual',
-    address: '606 Garden St, Baguio',
-    registrationDate: '2024-01-05',
-    verificationDate: '2024-01-10',
-    verifiedBy: 'Admin 3',
-    verificationLevel: 'Basic',
-    riskLevel: 'Medium',
-    riskScore: 55,
-    status: 'Active',
-    totalOrders: 12,
-    totalSpent: 560000
-  },
-  {
-    id: 10,
-    customerId: 'CUST-2024-007',
-    fullName: 'Paul Rivera',
-    email: 'paul@email.com',
-    phone: '+639012345678',
-    customerType: 'VIP',
-    address: '707 Tech Blvd, Pasay',
-    registrationDate: '2024-01-08',
-    verificationDate: '2024-01-12',
-    verifiedBy: 'Admin 2',
-    verificationLevel: 'Full',
-    riskLevel: 'Low',
-    riskScore: 10,
-    status: 'Active',
-    totalOrders: 89,
-    totalSpent: 420000
-  }
-])
-
-const rejectedCustomers = ref([
-  {
-    id: 11,
-    customerId: 'CUST-2023-201',
-    fullName: 'John Doe',
-    email: 'john@email.com',
-    phone: '+639123987654',
-    customerType: 'Individual',
-    address: '808 Fast St, Mandaluyong',
-    registrationDate: '2023-11-20',
-    rejectionDate: '2023-11-25',
-    rejectedBy: 'Admin 1',
-    status: 'Rejected',
-    rejectionReason: 'Fake Documents',
-    riskLevel: 'High',
-    riskScore: 90,
-    notes: 'Submitted forged identification documents'
-  },
-  {
-    id: 12,
-    customerId: 'CUST-2023-202',
-    fullName: 'Jane Smith',
-    email: 'jane@email.com',
-    phone: '+639234876543',
-    customerType: 'Business',
-    address: '909 Budget Rd, Paranaque',
-    registrationDate: '2023-12-01',
-    rejectionDate: '2023-12-05',
-    rejectedBy: 'Admin 2',
-    status: 'Rejected',
-    rejectionReason: 'Suspicious Activity',
-    riskLevel: 'High',
-    riskScore: 85,
-    notes: 'Multiple failed verification attempts'
-  },
-  {
-    id: 13,
-    customerId: 'CUST-2024-008',
-    fullName: 'Carlos Reyes',
-    email: 'carlos@email.com',
-    phone: '+639345765432',
-    customerType: 'Individual',
-    address: '1010 Sleep St, Alabang',
-    registrationDate: '2024-01-10',
-    rejectionDate: '2024-01-14',
-    rejectedBy: 'Admin 3',
-    status: 'Rejected',
-    rejectionReason: 'Incomplete Information',
-    riskLevel: 'Medium',
-    riskScore: 60,
-    notes: 'Missing required personal information'
-  }
-])
+const pendingCustomers = ref<any[]>([])
+const verifiedCustomers = ref<any[]>([])
+const rejectedCustomers = ref<any[]>([])
+const unverifiedCustomers = ref<any[]>([])
 
 // Filter Options
 const dateFilterOptions = ref([
@@ -1175,8 +997,7 @@ const customerStatusOptions = ref([
   { name: 'Pending', value: 'pending' },
   { name: 'Verified', value: 'verified' },
   { name: 'Rejected', value: 'rejected' },
-  { name: 'Suspended', value: 'suspended' },
-  { name: 'Active', value: 'active' }
+  { name: 'Unverified', value: 'unverified' }
 ])
 
 const riskLevelOptions = ref([
@@ -1197,6 +1018,75 @@ const thresholdOptions = ref([
   { name: 'Medium (31-60)', value: 'medium' },
   { name: 'High (61-100)', value: 'high' }
 ])
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
+
+const toFileUrl = (path: string) => {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  return `${apiBaseUrl}/storage/${path.replace(/^\\/+/, '')}`
+}
+
+const mapCustomer = (user: any) => {
+  const status = user.customer_verification_status
+    ? user.customer_verification_status.charAt(0).toUpperCase() + user.customer_verification_status.slice(1)
+    : user.customer_verification_required ? 'Pending' : 'Unverified'
+  const rawDocs = user.documents || user.attachments || []
+  const documents = rawDocs.map((doc: any) => ({
+    name: doc.name || doc.document_type || 'Document',
+    type: doc.type || doc.document_type || 'file',
+    status: doc.status || 'Pending',
+    verificationStatus: doc.verification_status || doc.status || 'pending',
+    uploadDate: doc.created_at || '',
+    url: doc.url ? doc.url : doc.path ? toFileUrl(doc.path) : ''
+  }))
+
+  return {
+    id: user.id,
+    customerId: `CUST-${String(user.id).padStart(6, '0')}`,
+    fullName: `${user.fname || ''} ${user.lname || ''}`.trim() || user.name || 'Unknown',
+    email: user.email,
+    phone: user.phone_number || user.phone || 'N/A',
+    dateOfBirth: user.date_of_birth || '',
+    gender: user.gender || '',
+    nationality: user.nationality || '',
+    address: user.address || 'N/A',
+    registrationDate: user.created_at,
+    waitingTime: user.created_at ? `${Math.max(0, Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86400000))} days` : 'N/A',
+    verificationLevel: status === 'Verified' ? 'Verified' : status,
+    documentStatus: documents.length > 0 ? 'Complete' : status === 'Unverified' ? 'Not Required' : 'No Documents',
+    riskLevel: 'Low',
+    riskScore: 0,
+    customerType: 'Individual',
+    documents,
+    verificationDate: user.email_verified_at,
+    verifiedBy: user.email_verified_at ? 'System' : '',
+    rejectionDate: !user.is_active ? user.updated_at : '',
+    rejectedBy: !user.is_active ? 'System' : '',
+    rejectionReason: !user.is_active ? 'Rejected' : '',
+    totalOrders: user.total_orders || 0,
+    totalSpent: user.total_spent || 0,
+    status
+  }
+}
+
+const loadCustomers = async () => {
+  try {
+    const [pendingRes, verifiedRes, rejectedRes, unverifiedRes] = await Promise.all([
+      axiosClient.get('/api/admin/customer-validations', { params: { status: 'pending', per_page: 100 } }),
+      axiosClient.get('/api/admin/customer-validations', { params: { status: 'verified', per_page: 100 } }),
+      axiosClient.get('/api/admin/customer-validations', { params: { status: 'rejected', per_page: 100 } }),
+      axiosClient.get('/api/admin/customer-validations', { params: { status: 'unverified', per_page: 100 } }),
+    ])
+
+    pendingCustomers.value = (pendingRes.data?.data?.data || pendingRes.data?.data || []).map(mapCustomer)
+    verifiedCustomers.value = (verifiedRes.data?.data?.data || verifiedRes.data?.data || []).map(mapCustomer)
+    rejectedCustomers.value = (rejectedRes.data?.data?.data || rejectedRes.data?.data || []).map(mapCustomer)
+    unverifiedCustomers.value = (unverifiedRes.data?.data?.data || unverifiedRes.data?.data || []).map(mapCustomer)
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load customers', life: 3000 })
+  }
+}
 
 // Computed Properties
 const filteredPendingCustomers = computed(() => {
@@ -1275,7 +1165,12 @@ const filteredRejectedCustomers = computed(() => {
 })
 
 const filteredAllCustomers = computed(() => {
-  const allCustomers = [...pendingCustomers.value, ...verifiedCustomers.value, ...rejectedCustomers.value]
+  const allCustomers = [
+    ...pendingCustomers.value,
+    ...verifiedCustomers.value,
+    ...rejectedCustomers.value,
+    ...unverifiedCustomers.value
+  ]
   let filtered = allCustomers
 
   if (searchTerm.value && activeView.value === 'all') {
@@ -1309,7 +1204,10 @@ const rejectedTodayCount = computed(() => {
 })
 
 const totalCustomers = computed(() => {
-  return pendingCustomers.value.length + verifiedCustomers.value.length + rejectedCustomers.value.length
+  return pendingCustomers.value.length
+    + verifiedCustomers.value.length
+    + rejectedCustomers.value.length
+    + unverifiedCustomers.value.length
 })
 
 // Helper Functions
@@ -1332,6 +1230,7 @@ const getCustomerStatusSeverity = (status: string) => {
     case 'verified':
     case 'active': return 'success'
     case 'rejected': return 'danger'
+    case 'unverified': return 'info'
     case 'suspended': return 'secondary'
     default: return 'info'
   }
@@ -1343,6 +1242,7 @@ const getCustomerStatusIcon = (status: string) => {
     case 'verified':
     case 'active': return 'pi-user-check'
     case 'rejected': return 'pi-user-times'
+    case 'unverified': return 'pi-user'
     case 'suspended': return 'pi-user-minus'
     default: return 'pi-user'
   }
@@ -1354,6 +1254,7 @@ const getCustomerStatusColor = (status: string) => {
     case 'verified':
     case 'active': return 'bg-green-100 text-green-600'
     case 'rejected': return 'bg-red-100 text-red-600'
+    case 'unverified': return 'bg-blue-100 text-blue-600'
     case 'suspended': return 'bg-gray-100 text-gray-600'
     default: return 'bg-blue-100 text-blue-600'
   }
@@ -1434,24 +1335,18 @@ const reviewCustomer = (customer: any) => {
   showReviewDialog.value = true
 }
 
-const verifyCustomer = (customer: any) => {
+const verifyCustomer = async (customer: any) => {
   if (!customer) return
-
-  // Move from pending to verified
-  const pendingIndex = pendingCustomers.value.findIndex(c => c.id === customer.id)
-  if (pendingIndex !== -1) {
-    const verifiedCustomer = { ...pendingCustomers.value[pendingIndex] }
-    verifiedCustomer.verificationDate = new Date().toISOString().split('T')[0]
-    verifiedCustomer.verifiedBy = 'Current Admin'
-    verifiedCustomer.status = 'Active'
-    verifiedCustomer.totalOrders = 0
-    verifiedCustomer.totalSpent = 0
-
-    pendingCustomers.value.splice(pendingIndex, 1)
-    verifiedCustomers.value.unshift(verifiedCustomer)
+  try {
+    await axiosClient.post(`/api/admin/customer-validations/${customer.id}/review`, {
+      action: 'approve'
+    })
+    toast.add({ severity: 'success', summary: 'Customer Approved', detail: 'Customer has been verified.', life: 3000 })
+    showReviewDialog.value = false
+    await loadCustomers()
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to approve customer', life: 3000 })
   }
-
-  showReviewDialog.value = false
 }
 
 const rejectCustomer = (customer: any) => {
@@ -1459,94 +1354,93 @@ const rejectCustomer = (customer: any) => {
   showRejectDialog.value = true
 }
 
-const confirmReject = () => {
+const confirmReject = async () => {
   if (!customerToReject.value) return
-
-  const pendingIndex = pendingCustomers.value.findIndex(c => c.id === customerToReject.value.id)
-  if (pendingIndex !== -1) {
-    const rejectedCustomer = { ...pendingCustomers.value[pendingIndex] }
-    rejectedCustomer.rejectionDate = new Date().toISOString().split('T')[0]
-    rejectedCustomer.rejectedBy = 'Current Admin'
-    rejectedCustomer.status = 'Rejected'
-    rejectedCustomer.rejectionReason = rejectionReason.value?.name || 'Other'
-    rejectedCustomer.notes = rejectionNotes.value
-
-    pendingCustomers.value.splice(pendingIndex, 1)
-    rejectedCustomers.value.unshift(rejectedCustomer)
+  try {
+    await axiosClient.post(`/api/admin/customer-validations/${customerToReject.value.id}/review`, {
+      action: 'reject',
+      rejection_reason: rejectionReason.value?.name || rejectionNotes.value || ''
+    })
+    toast.add({ severity: 'success', summary: 'Customer Rejected', detail: 'Customer has been rejected.', life: 3000 })
+    showRejectDialog.value = false
+    rejectionReason.value = null
+    rejectionNotes.value = ''
+    customerToReject.value = null
+    await loadCustomers()
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to reject customer', life: 3000 })
   }
-
-  showRejectDialog.value = false
-  rejectionReason.value = null
-  rejectionNotes.value = ''
-  customerToReject.value = null
 }
 
 const viewCustomer = (customer: any) => {
-  console.log('View customer:', customer)
-  // Navigate to customer details page
+  selectedViewCustomer.value = customer
+  showViewDialog.value = true
 }
 
-const suspendCustomer = (customer: any) => {
-  console.log('Suspend customer:', customer)
-  // Implement suspension logic
+const suspendCustomer = () => {
+  toast.add({ severity: 'info', summary: 'Not Available', detail: 'Suspension is not implemented yet.', life: 3000 })
 }
 
-const reverifyCustomer = (customer: any) => {
-  console.log('Re-verify customer:', customer)
-  // Move from verified to pending for re-verification
+const reverifyCustomer = () => {
+  toast.add({ severity: 'info', summary: 'Not Available', detail: 'Re-verification is not implemented yet.', life: 3000 })
 }
 
 const viewRejectedCustomer = (customer: any) => {
-  console.log('View rejected customer:', customer)
+  selectedViewCustomer.value = customer
+  showViewDialog.value = true
 }
 
-const rereviewCustomer = (customer: any) => {
-  // Move from rejected to pending
-  const rejectedIndex = rejectedCustomers.value.findIndex(c => c.id === customer.id)
-  if (rejectedIndex !== -1) {
-    const pendingCustomer = { ...rejectedCustomers.value[rejectedIndex] }
-    delete pendingCustomer.rejectionDate
-    delete pendingCustomer.rejectedBy
-    delete pendingCustomer.rejectionReason
-    delete pendingCustomer.notes
-    pendingCustomer.status = 'Pending'
-    pendingCustomer.documentStatus = 'Pending Review'
-
-    rejectedCustomers.value.splice(rejectedIndex, 1)
-    pendingCustomers.value.push(pendingCustomer)
-  }
+const rereviewCustomer = () => {
+  toast.add({ severity: 'info', summary: 'Not Available', detail: 'Re-review is not implemented yet.', life: 3000 })
 }
 
 const viewDocument = (doc: any) => {
-  console.log('View document:', doc)
-  // Open document viewer
+  if (doc?.url) {
+    window.open(doc.url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  toast.add({ severity: 'info', summary: 'No Document', detail: 'No document file available.', life: 2500 })
 }
 
 const requestMoreInfo = () => {
-  console.log('Request more info for customer:', selectedReviewCustomer.value)
-  // Implement request more info logic
+  toast.add({ severity: 'info', summary: 'Not Available', detail: 'Request more info is not implemented yet.', life: 3000 })
 }
 
 const requestDocuments = () => {
-  console.log('Request documents from selected customers:', selectedCustomers.value)
-  // Implement document request logic
+  toast.add({ severity: 'info', summary: 'Not Available', detail: 'Document request is not implemented yet.', life: 3000 })
 }
 
-const bulkVerify = () => {
-  selectedCustomers.value.forEach(customer => {
-    verifyCustomer(customer)
-  })
-  selectedCustomers.value = []
-  showBulkVerifyDialog.value = false
+const bulkVerify = async () => {
+  if (selectedCustomers.value.length === 0) return
+  try {
+    for (const customer of selectedCustomers.value) {
+      await axiosClient.post(`/api/admin/customer-validations/${customer.id}/review`, { action: 'approve' })
+    }
+    toast.add({ severity: 'success', summary: 'Customers Approved', detail: 'Selected customers were verified.', life: 3000 })
+    showBulkVerifyDialog.value = false
+    selectedCustomers.value = []
+    await loadCustomers()
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Bulk approval failed.', life: 3000 })
+  }
 }
 
-const bulkReject = () => {
-  selectedCustomers.value.forEach(customer => {
-    customerToReject.value = customer
-    confirmReject()
-  })
-  selectedCustomers.value = []
-  showBulkRejectDialog.value = false
+const bulkReject = async () => {
+  if (selectedCustomers.value.length === 0) return
+  try {
+    for (const customer of selectedCustomers.value) {
+      await axiosClient.post(`/api/admin/customer-validations/${customer.id}/review`, {
+        action: 'reject',
+        rejection_reason: bulkRejectionReason.value?.name || ''
+      })
+    }
+    toast.add({ severity: 'success', summary: 'Customers Rejected', detail: 'Selected customers were rejected.', life: 3000 })
+    showBulkRejectDialog.value = false
+    selectedCustomers.value = []
+    await loadCustomers()
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Bulk rejection failed.', life: 3000 })
+  }
 }
 
 const exportReport = () => {
@@ -1560,6 +1454,6 @@ const saveSettings = () => {
 }
 
 onMounted(() => {
-  console.log('Customer Validation Management loaded')
+  loadCustomers()
 })
 </script>

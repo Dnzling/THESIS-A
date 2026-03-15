@@ -135,6 +135,16 @@
                 <h3 class="text-lg font-semibold text-gray-800">Products to Count</h3>
                 <div class="flex gap-2">
                   <Button
+                    label="Auto-Suggest Cycle"
+                    icon="pi pi-bolt"
+                    severity="warning"
+                    outlined
+                    @click="applyCycleSuggestions"
+                    type="button"
+                    :loading="suggestLoading"
+                    :disabled="!form.warehouse_id"
+                  />
+                  <Button
                     label="Add All Products"
                     icon="pi pi-plus"
                     severity="info"
@@ -291,6 +301,7 @@ const warehouses = ref<any[]>([])
 const locations = ref<any[]>([])
 const availableProducts = ref<any[]>([])
 const selectedProducts = ref<any[]>([])
+const suggestLoading = ref(false)
 const toast = useToast()
 const router = useRouter()
 
@@ -384,6 +395,61 @@ const loadProducts = async () => {
     })
   } finally {
     productsLoading.value = false
+  }
+}
+
+const applyCycleSuggestions = async () => {
+  if (!form.warehouse_id) return
+
+  suggestLoading.value = true
+  try {
+    const response = await inventoryService.getStockCountSuggestions({
+      branch_id: form.warehouse_id,
+      limit: 50
+    })
+
+    if (response.success) {
+      const suggestions = response.data?.items || []
+      form.count_type = 'cycle'
+
+      const newItems = suggestions
+        .filter((item: any) => !form.items.some(existing => existing.product_id === item.product_id))
+        .map((item: any) => ({
+          product_id: item.product_id,
+          product: {
+            id: item.product_id,
+            name: item.product_name,
+            code: item.sku
+          },
+          expected_quantity: item.current_stock || 0,
+          counted_quantity: null,
+          discrepancy: 0
+        }))
+
+      form.items.push(...newItems)
+      toast.add({
+        severity: 'success',
+        summary: 'Suggestions Applied',
+        detail: `Added ${newItems.length} products to cycle count`,
+        life: 3000
+      })
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: response.message || 'Failed to load suggestions',
+        life: 3000
+      })
+    }
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to load suggestions',
+      life: 3000
+    })
+  } finally {
+    suggestLoading.value = false
   }
 }
 

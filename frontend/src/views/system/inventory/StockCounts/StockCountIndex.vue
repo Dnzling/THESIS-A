@@ -8,12 +8,21 @@
             <h1 class="text-3xl font-bold text-gray-800">Stock Counts</h1>
             <p class="text-gray-600 mt-1">Manage inventory stock counts and audits</p>
           </div>
-          <Button
-            label="New Stock Count"
-            icon="pi pi-plus"
-            @click="createStockCount"
-            class="bg-blue-600 hover:bg-blue-700"
-          />
+          <div class="flex items-center gap-2">
+            <Button
+              label="Auto Schedule Cycle Counts"
+              icon="pi pi-calendar-plus"
+              severity="warning"
+              outlined
+              @click="showScheduleDialog = true"
+            />
+            <Button
+              label="New Stock Count"
+              icon="pi pi-plus"
+              @click="createStockCount"
+              class="bg-blue-600 hover:bg-blue-700"
+            />
+          </div>
         </div>
       </div>
 
@@ -211,6 +220,49 @@
           />
         </template>
       </Dialog>
+
+      <Dialog
+        v-model:visible="showScheduleDialog"
+        modal
+        header="Auto Schedule Cycle Counts"
+        :style="{ width: '500px' }"
+      >
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Warehouse</label>
+            <Select
+              v-model="scheduleForm.branch_id"
+              :options="warehouses"
+              optionLabel="name"
+              optionValue="id"
+              placeholder="Select warehouse"
+              class="w-full"
+              :loading="warehousesLoading"
+            />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Weeks</label>
+              <InputNumber v-model="scheduleForm.weeks" :min="1" :max="12" class="w-full" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Items per Count</label>
+              <InputNumber v-model="scheduleForm.per_count" :min="10" :max="200" class="w-full" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <Calendar v-model="scheduleForm.start_date" class="w-full" showIcon dateFormat="yy-mm-dd" />
+          </div>
+          <div class="bg-yellow-50 p-4 rounded-lg text-sm text-yellow-800">
+            This will create weekly cycle counts using auto-suggested items.
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" @click="showScheduleDialog = false" />
+          <Button label="Schedule" severity="warning" :loading="scheduling" @click="autoScheduleCounts" />
+        </template>
+      </Dialog>
     </div>
   </div>
 </template>
@@ -221,11 +273,15 @@ import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 import { debounce } from 'lodash'
+import InputNumber from 'primevue/inputnumber'
+import Calendar from 'primevue/calendar'
 
 const loading = ref(false)
 const deleting = ref(false)
 const warehousesLoading = ref(false)
 const deleteDialog = ref(false)
+const showScheduleDialog = ref(false)
+const scheduling = ref(false)
 const selectedStockCount = ref<any>(null)
 const stockCounts = ref<any[]>([])
 const warehouses = ref<any[]>([])
@@ -239,6 +295,13 @@ const filters = reactive({
   status: null as string | null,
   warehouse_id: null as number | null,
   date_range: null as Date[] | null
+})
+
+const scheduleForm = reactive({
+  branch_id: null as number | null,
+  weeks: 4,
+  per_count: 50,
+  start_date: null as Date | null
 })
 
 const statusOptions = [
@@ -404,6 +467,57 @@ const deleteStockCount = async () => {
     })
   } finally {
     deleting.value = false
+  }
+}
+
+const autoScheduleCounts = async () => {
+  if (!scheduleForm.branch_id) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Select Warehouse',
+      detail: 'Please select a warehouse to schedule counts.',
+      life: 3000
+    })
+    return
+  }
+
+  scheduling.value = true
+  try {
+    const payload = {
+      branch_id: scheduleForm.branch_id,
+      weeks: scheduleForm.weeks,
+      per_count: scheduleForm.per_count,
+      start_date: scheduleForm.start_date
+        ? scheduleForm.start_date.toISOString().split('T')[0]
+        : undefined
+    }
+    const response = await inventoryService.autoScheduleStockCounts(payload)
+    if (response.success) {
+      toast.add({
+        severity: 'success',
+        summary: 'Scheduled',
+        detail: response.message || 'Cycle counts scheduled.',
+        life: 3000
+      })
+      showScheduleDialog.value = false
+      loadStockCounts()
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: response.message || 'Failed to schedule counts',
+        life: 3000
+      })
+    }
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to schedule counts',
+      life: 3000
+    })
+  } finally {
+    scheduling.value = false
   }
 }
 

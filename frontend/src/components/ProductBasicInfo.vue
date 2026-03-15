@@ -46,7 +46,7 @@
         <label class="block text-sm font-medium text-gray-700">
           Category *
         </label>
-        <Dropdown 
+        <Select 
           v-model="localForm.categoryId"
           :options="categories"
           optionLabel="category_name"
@@ -65,7 +65,7 @@
         <label class="block text-sm font-medium text-gray-700">
           Product Type
         </label>
-        <Dropdown 
+        <Select 
           v-model="localForm.productType"
           :options="productTypes"
           placeholder="Select Type"
@@ -79,7 +79,7 @@
       <label class="block text-sm font-medium text-gray-700">
         Supplier
       </label>
-      <Dropdown 
+      <Select 
         v-model="localForm.supplierId"
         :options="suppliers"
         optionLabel="supplier_name"
@@ -190,7 +190,7 @@
           <label class="block text-sm font-medium text-gray-700">
             Warranty Period (Months)
           </label>
-          <Dropdown 
+          <Select 
             v-model="localForm.warrantyMonths"
             :options="warrantyOptions"
             class="w-full"
@@ -238,7 +238,7 @@
 <script setup>
 import { ref, computed, watch, defineProps, defineEmits } from 'vue'
 import InputText from 'primevue/inputtext'
-import Dropdown from 'primevue/dropdown'
+import Select from 'primevue/Select'
 import Textarea from 'primevue/textarea'
 import InputNumber from 'primevue/inputnumber'
 import Checkbox from 'primevue/checkbox'
@@ -267,7 +267,7 @@ const localForm = ref({ ...props.formData })
 // Error tracking
 const errors = ref({})
 
-// Dropdown options
+// Select options
 const productTypes = ref([
   { label: 'Furniture', value: 'furniture' },
   { label: 'Accessory', value: 'accessory' },

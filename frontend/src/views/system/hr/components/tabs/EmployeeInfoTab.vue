@@ -1,134 +1,130 @@
-<!-- views/system/employees/components/tabs/EmployeeInfoTab.vue -->
 <template>
-  <div class="grid grid-cols-3 gap-6">
-    <!-- Personal Information -->
-    <div class="col-span-1 space-y-4">
-      <div class="border border-gray-100 rounded-lg p-4">
-        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="pi pi-user text-blue-500"></i>
-          Personal Information
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <div class="text-xs text-gray-500">Full Name</div>
-            <div class="text-sm font-medium">{{ employeeInfo.basic_info?.name }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Birth Date</div>
-            <div class="text-sm">{{ formatDate(employeeInfo.basic_info?.birthday) || '—' }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Gender</div>
-            <div class="text-sm capitalize">{{ employeeInfo.basic_info?.gender || '—' }}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="border border-gray-100 rounded-lg p-4">
-        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="pi pi-phone text-blue-500"></i>
-          Contact Information
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <div class="text-xs text-gray-500">Phone Number</div>
-            <div class="text-sm">{{ employeeInfo.contact_info?.phone || '—' }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Address</div>
-            <div class="text-sm">{{ employeeInfo.contact_info?.address || '—' }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Emergency Contact</div>
-            <div class="text-sm">{{ employeeInfo.contact_info?.emergency_contact?.name || '—' }}</div>
-            <div class="text-xs text-gray-500">
-              {{ employeeInfo.contact_info?.emergency_contact?.relationship }}: 
-              {{ employeeInfo.contact_info?.emergency_contact?.phone }}
+  <div class="grid gap-6 lg:grid-cols-3">
+    <div class="space-y-6">
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Personal</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Full Name</span>
+              <span class="text-sm font-semibold text-slate-900 text-right">{{ employeeInfo.basic_info?.name || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Birth Date</span>
+              <span class="text-sm text-slate-700">{{ formatDate(employeeInfo.basic_info?.birthday) }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Gender</span>
+              <span class="text-sm text-slate-700 capitalize">{{ employeeInfo.basic_info?.gender || '-' }}</span>
             </div>
           </div>
-        </div>
-      </div>
+        </template>
+      </Card>
+
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Contact</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Phone</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.contact_info?.phone || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Address</span>
+              <span class="text-sm text-slate-700 text-right">{{ employeeInfo.contact_info?.address || '-' }}</span>
+            </div>
+          </div>
+        </template>
+      </Card>
+
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Emergency Contact</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Name</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.contact_info?.emergency_contact?.name || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Relationship</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.contact_info?.emergency_contact?.relationship || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Phone</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.contact_info?.emergency_contact?.phone || '-' }}</span>
+            </div>
+          </div>
+        </template>
+      </Card>
     </div>
 
-    <!-- Employment Details -->
-    <div class="col-span-1 space-y-4">
-      <div class="border border-gray-100 rounded-lg p-4">
-        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="pi pi-briefcase text-blue-500"></i>
-          Employment Details
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <div class="text-xs text-gray-500">Employee ID</div>
-            <div class="text-sm font-mono">{{ employeeInfo.basic_info?.employee_number }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Department</div>
-            <div class="text-sm">{{ employeeInfo.employment_details?.department || '—' }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Position / Role</div>
-            <div class="text-sm">{{ employeeInfo.employment_details?.role || '—' }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-gray-500">Employment Type</div>
-            <div class="text-sm">
+    <div class="space-y-6">
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Employment</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Employee Number</span>
+              <span class="text-sm font-mono text-slate-700">{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Department</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.employment_details?.department || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Role</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.employment_details?.role || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Employment Type</span>
               <Tag :value="employeeInfo.employment_details?.type || 'Regular'"
                 :severity="getEmploymentTypeSeverity(employeeInfo.employment_details?.type)" rounded />
             </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Hire Date</span>
+              <span class="text-sm text-slate-700">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</span>
+            </div>
           </div>
-          <div>
-            <div class="text-xs text-gray-500">Hire Date</div>
-            <div class="text-sm">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</div>
-          </div>
-        </div>
-      </div>
+        </template>
+      </Card>
 
-      <div class="border border-gray-100 rounded-lg p-4">
-        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="pi pi-building text-blue-500"></i>
-          Branch / Location
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <div class="text-xs text-gray-500">Branch</div>
-            <div class="text-sm">{{ employeeInfo.employment_details?.branch || '—' }}</div>
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Branch</template>
+        <template #content>
+          <div class="flex items-start justify-between gap-4">
+            <span class="text-xs text-slate-500">Assigned Branch</span>
+            <span class="text-sm text-slate-700">{{ employeeInfo.employment_details?.branch || '-' }}</span>
           </div>
-        </div>
-      </div>
+        </template>
+      </Card>
     </div>
 
-    <!-- Government IDs & Compensation -->
-    <div class="col-span-1 space-y-4">
-      <div class="border border-gray-100 rounded-lg p-4">
-        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="pi pi-id-card text-blue-500"></i>
-          Government IDs
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <div class="text-xs text-gray-500">TIN Number</div>
-            <div class="text-sm font-mono">{{ employeeInfo.employment_details?.tax_id || '—' }}</div>
+    <div class="space-y-6">
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Compensation</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Monthly Salary</span>
+              <span class="text-base font-semibold text-blue-600">PHP {{ formatNumber(employeeInfo.employment_details?.monthly_salary || 0) }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Bank Account</span>
+              <span class="text-sm text-slate-700">{{ employeeInfo.employment_details?.bank_account || '-' }}</span>
+            </div>
           </div>
-        </div>
-      </div>
+        </template>
+      </Card>
 
-      <div class="border border-gray-100 rounded-lg p-4">
-        <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <i class="pi pi-money-bill text-blue-500"></i>
-          Compensation
-        </h3>
-        <div class="space-y-3">
-          <div>
-            <div class="text-xs text-gray-500">Monthly Salary</div>
-            <div class="text-lg font-semibold text-blue-600">₱{{ formatNumber(employeeInfo.employment_details?.monthly_salary || 0) }}</div>
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Government IDs</template>
+        <template #content>
+          <div class="flex items-start justify-between gap-4">
+            <span class="text-xs text-slate-500">TIN</span>
+            <span class="text-sm font-mono text-slate-700">{{ employeeInfo.employment_details?.tax_id || '-' }}</span>
           </div>
-          <div>
-            <div class="text-xs text-gray-500">Bank Account</div>
-            <div class="text-sm">{{ employeeInfo.employment_details?.bank_account || '—' }}</div>
-          </div>
-        </div>
-      </div>
+        </template>
+      </Card>
     </div>
   </div>
 </template>
@@ -139,7 +135,7 @@ defineProps<{
 }>()
 
 const formatDate = (date: string) => {
-  if (!date) return '—'
+  if (!date) return '-'
   return new Date(date).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -153,10 +149,10 @@ const formatNumber = (num: number) => {
 
 const getEmploymentTypeSeverity = (type: string) => {
   const map: Record<string, string> = {
-    'full_time': 'success',
-    'part_time': 'warning',
-    'contract': 'info',
-    'intern': 'secondary'
+    full_time: 'success',
+    part_time: 'warning',
+    contract: 'info',
+    intern: 'secondary'
   }
   return map[type?.toLowerCase()] || 'info'
 }

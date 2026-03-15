@@ -162,7 +162,14 @@
               </div>
             </template>
             <template #content>
-              <DataTable :value="navigationItems" :loading="loadingNavigation" paginator :rows="20" stripedRows>
+              <div class="mb-4 flex flex-wrap items-center gap-3">
+                <div class="flex-1 min-w-[220px]">
+                  <InputText v-model="navigationSearch" placeholder="Search navigation items..." class="w-full" />
+                </div>
+                <Button v-if="navigationSearch" label="Clear" icon="pi pi-times" text @click="navigationSearch = ''" />
+              </div>
+
+              <DataTable :value="filteredNavigationItems" :loading="loadingNavigation" paginator :rows="20" stripedRows>
                 <Column field="display_name" header="Navigation Item" sortable style="min-width: 200px">
                   <template #body="{ data }">
                     <div class="flex items-center gap-2">
@@ -443,6 +450,7 @@ const loadingPermissions = ref(false)
 const loadingNavigation = ref(false)
 
 const selectedModule = ref(null)
+const navigationSearch = ref('')
 const selectedRole = ref(null)
 const selectedRolePermissions = ref([])
 const expandedModules = ref([])
@@ -516,7 +524,10 @@ const modules = ref([
   { label: 'Merchandising', value: 'merchandising' },
   { label: 'Inventory', value: 'inventory' },
   { label: 'Sales', value: 'sales' },
-  { label: 'Accounting', value: 'accounting' }
+  { label: 'Accounting', value: 'accounting' },
+  { label: 'Procurement', value: 'procurement' },
+  { label: 'Supplier', value: 'supplier' },
+  { label: 'Store Manager', value: 'store_manager' }
 ])
 
 // Computed
@@ -549,6 +560,25 @@ const permissionsByModule = computed(() => {
 
 const parentNavigationOptions = computed(() => {
   return navigationItems.value.filter(nav => !nav.parent_id)
+})
+
+const filteredNavigationItems = computed(() => {
+  const query = navigationSearch.value.trim().toLowerCase()
+  if (!query) return navigationItems.value
+
+  return navigationItems.value.filter((item: any) => {
+    const haystack = [
+      item.display_name,
+      item.name,
+      item.route_path,
+      item.module,
+      item.section,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(query)
+  })
 })
 
 // Methods
