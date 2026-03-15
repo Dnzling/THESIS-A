@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,5 +48,16 @@ class AppServiceProvider extends ServiceProvider
         // Register Inventory Observers
         \App\Models\ProductCatalog\Product::observe(\App\Observers\ProductObserver::class);
         \App\Models\Inventory\BranchInventory::observe(\App\Observers\BranchInventoryObserver::class);
+
+        // Global permission gate check (RBAC)
+        Gate::before(function ($user, string $ability) {
+            if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+                return true;
+            }
+            if (method_exists($user, 'hasPermissionTo')) {
+                return $user->hasPermissionTo($ability);
+            }
+            return null;
+        });
     }
 }

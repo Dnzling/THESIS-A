@@ -6,10 +6,14 @@ namespace App\Services\Inventory;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\Inventory\ReorderRule;
 use App\Models\ProductCatalog\Product;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
+use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
+use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Store\Branch;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class ReorderSuggestionService
@@ -132,6 +136,16 @@ class ReorderSuggestionService
 
         // Log the approval action
         // You might want to add activity logging here
+        try {
+            if ($approvedBy) {
+                $this->createPurchaseRequisitionFromSuggestion($suggestion, $approvedBy);
+            }
+        } catch (Exception $e) {
+            Log::error('Failed to auto-create PR from suggestion', [
+                'suggestion_id' => $suggestion->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return true;
     }
@@ -388,6 +402,89 @@ class ReorderSuggestionService
             'total_approved' => count($approved),
             'total_failed' => count($failed),
         ];
+    }
+
+    /**
+     * Auto-create Purchase Requisition from an approved suggestion.
+     */
+    public function createPurchaseRequisitionFromSuggestion(ReorderSuggestion $suggestion, int $userId): ?PurchaseRequisition
+    {
+        $existingId = $suggestion->getMetadataValue('purchase_requisition_id');
+        if ($existingId) {
+            return PurchaseRequisition::find($existingId);
+        }
+
+        $suggestion->loadMissing(['product', 'branch']);
+
+        $storeId = $suggestion->branch?->store_id;
+        if (!$storeId) {
+            return null;
+        }
+
+        $product = $suggestion->product;
+        if (!$product) {
+            return null;
+        }
+
+        $estimatedAmount = ($suggestion->suggested_quantity ?? 0) * (float) ($product->cost_price ?? 0);
+
+        $settings = ProcurementSettings::where('store_id', $storeId)->first();
+        $procurementRoute = 'branch_direct';
+        if ($settings) {
+            if ($estimatedAmount >= $settings->procurement_threshold) {
+                $procurementRoute = 'centralized';
+            }
+            if ($settings->shouldRequireRFQ($estimatedAmount)) {
+                $procurementRoute = 'rfq_required';
+            }
+        }
+
+        $requiredApprovals = ['warehouse_manager'];
+        if ($estimatedAmount >= 100000) {
+            $requiredApprovals[] = 'branch_manager';
+        }
+        if ($estimatedAmount >= 500000) {
+            $requiredApprovals[] = 'finance_manager';
+        }
+
+        $priorityMap = [
+            'low' => 2,
+            'medium' => 3,
+            'high' => 4,
+            'critical' => 5,
+        ];
+
+        $prNumber = 'PR-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+
+        return DB::transaction(function () use ($suggestion, $userId, $storeId, $estimatedAmount, $procurementRoute, $requiredApprovals, $priorityMap, $prNumber, $product) {
+            $pr = PurchaseRequisition::create([
+                'pr_number' => $prNumber,
+                'store_id' => $storeId,
+                'branch_id' => $suggestion->branch_id,
+                'requisition_type' => 'regular',
+                'status' => 'draft',
+                'estimated_amount' => $estimatedAmount,
+                'procurement_route' => $procurementRoute,
+                'required_approvals' => $requiredApprovals,
+                'required_date' => now()->addDays(7),
+                'reason' => "Auto-created from reorder suggestion #{$suggestion->id}",
+                'priority' => $priorityMap[$suggestion->priority] ?? 3,
+                'requested_by' => $userId,
+            ]);
+
+            PurchaseRequisitionItem::create([
+                'requisition_id' => $pr->id,
+                'product_id' => $suggestion->product_id,
+                'variation_id' => null,
+                'quantity_requested' => (int) ($suggestion->suggested_quantity ?? 1),
+                'estimated_unit_cost' => $product->cost_price ?? null,
+                'specifications' => null,
+            ]);
+
+            $suggestion->setMetadataValue('purchase_requisition_id', $pr->id);
+
+            return $pr;
+        });
     }
 
     /**

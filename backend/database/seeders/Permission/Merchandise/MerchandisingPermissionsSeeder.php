@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders\Permission;
+namespace Database\Seeders\Permission\Merchandise;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -55,7 +55,10 @@ class MerchandisingPermissionsSeeder extends Seeder
             $permission['is_active'] = true;
             $permission['created_at'] = $now;
             $permission['updated_at'] = $now;
-            DB::table('permissions')->insert($permission);
+            DB::table('permissions')->updateOrInsert(
+                ['name' => $permission['name']],
+                $permission
+            );
         }
     }
 }

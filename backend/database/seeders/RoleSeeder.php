@@ -18,6 +18,12 @@ class RoleSeeder extends Seeder
                 'code' => 'ADM'
             ],
             [
+                'name' => 'applicant',
+                'display_name' => 'Applicant',
+                'description' => 'Public applicant for the job portal',
+                'code' => 'APP'
+            ],
+            [
                 'name' => 'store_admin',
                 'display_name' => 'Store Administrator',
                 'description' => 'Manages store configuration and administrators',

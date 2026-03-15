@@ -6,8 +6,10 @@ namespace App\Services\Inventory;
 use App\Models\Inventory\StockCount;
 use App\Models\Inventory\CountSheet;
 use App\Models\Inventory\BranchInventory;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class StockCountService
 {
@@ -227,7 +229,11 @@ class StockCountService
 
             case 'cycle_count':
                 // Cycle counts typically focus on high-value or fast-moving items
-                $query->orderBy('total_value', 'desc')->limit(50);
+                if ($count->product_ids) {
+                    $query->whereIn('product_id', $count->product_ids);
+                } else {
+                    $query->orderBy('total_value', 'desc')->limit(50);
+                }
                 break;
 
             case 'full_inventory':
@@ -262,6 +268,97 @@ class StockCountService
         $count->update([
             'total_items_expected' => $totalItems,
         ]);
+    }
+
+    /**
+     * Suggest items for cycle count based on value and discrepancy history.
+     */
+    public function getCycleCountSuggestions(int $storeId, int $branchId, int $limit = 50, int $days = 90): array
+    {
+        $inventory = BranchInventory::with('product')
+            ->where('store_id', $storeId)
+            ->where('branch_id', $branchId)
+            ->where('quantity_on_hand', '>', 0)
+            ->get();
+
+        $discrepancies = CountSheet::whereHas('stockCount', function ($q) use ($storeId, $branchId, $days) {
+                $q->where('store_id', $storeId)
+                    ->where('branch_id', $branchId)
+                    ->whereNotNull('completed_date')
+                    ->where('completed_date', '>=', now()->subDays($days));
+            })
+            ->selectRaw('product_id, SUM(ABS(discrepancy_value)) as discrepancy_value_sum, COUNT(*) as discrepancy_count')
+            ->groupBy('product_id')
+            ->get()
+            ->keyBy('product_id');
+
+        $items = $inventory->map(function ($item) use ($discrepancies, $days) {
+            $disc = $discrepancies->get($item->product_id);
+            $discValue = (float) ($disc?->discrepancy_value_sum ?? 0);
+            $discCount = (int) ($disc?->discrepancy_count ?? 0);
+            $value = (float) ($item->total_value ?? 0);
+            $score = ($discValue * 2) + $value;
+
+            $reasons = [];
+            if ($discCount > 0) {
+                $reasons[] = "Discrepancy history (₱" . number_format($discValue, 2) . " over {$days}d)";
+            }
+            if ($value > 0) {
+                $reasons[] = "High value stock (₱" . number_format($value, 2) . ")";
+            }
+
+            return [
+                'product_id' => $item->product_id,
+                'product_name' => $item->product?->product_name,
+                'sku' => $item->product?->sku,
+                'current_stock' => $item->quantity_on_hand,
+                'total_value' => $value,
+                'score' => $score,
+                'reasons' => $reasons,
+            ];
+        });
+
+        $sorted = $items->sortByDesc('score')->values()->take($limit);
+
+        return [
+            'items' => $sorted->values()->all(),
+            'product_ids' => $sorted->pluck('product_id')->all(),
+            'limit' => $limit,
+            'days' => $days,
+        ];
+    }
+
+    /**
+     * Auto-schedule weekly cycle counts.
+     */
+    public function autoScheduleCycleCounts(int $storeId, int $branchId, int $assignedBy, int $assignedTo, int $weeks = 4, int $perCount = 50, ?string $startDate = null): array
+    {
+        $suggestions = $this->getCycleCountSuggestions($storeId, $branchId, $weeks * $perCount);
+        $chunks = array_chunk($suggestions['product_ids'], $perCount);
+
+        $created = [];
+        $start = $startDate ? Carbon::parse($startDate) : now()->addDay();
+
+        foreach ($chunks as $index => $productIds) {
+            $count = $this->createStockCount([
+                'store_id' => $storeId,
+                'branch_id' => $branchId,
+                'count_type' => 'cycle_count',
+                'scheduled_date' => $start->copy()->addWeeks($index)->toDateString(),
+                'assigned_by' => $assignedBy,
+                'assigned_to' => $assignedTo,
+                'product_ids' => $productIds,
+                'instructions' => 'Auto-scheduled cycle count',
+                'notes' => 'Auto-scheduled from cycle count suggestions',
+            ]);
+
+            $created[] = $count;
+        }
+
+        return [
+            'scheduled' => $created,
+            'total_scheduled' => count($created),
+        ];
     }
 
     /**

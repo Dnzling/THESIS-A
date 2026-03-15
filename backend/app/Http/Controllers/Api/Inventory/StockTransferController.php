@@ -12,6 +12,7 @@ use App\Models\Inventory\InventoryTransaction;
 use App\Models\Procurement\Config\ProcurementSettings;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class StockTransferController extends Controller
@@ -26,7 +27,7 @@ class StockTransferController extends Controller
             'fromBranch',
             'toBranch',
             'requestedBy'
-        ])->where('store_id', auth()->user()->store_id);
+        ])->where('store_id', Auth::user()->store_id);
 
         // Filters
         if ($request->has('from_branch_id')) {
@@ -96,11 +97,10 @@ class StockTransferController extends Controller
         DB::beginTransaction();
         try {
             // Get procurement settings
-            $settings = ProcurementSettings::where('store_id', auth()->user()->store_id)->first();
+            $settings = ProcurementSettings::where('store_id', Auth::user()->store_id)->first();
 
-            // Generate transfer number
-            $lastTransfer = StockTransfer::latest()->first();
-            $number = 'TRF-' . date('Y') . '-' . str_pad(($lastTransfer?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+            // Generate transfer number using datetime for uniqueness
+            $number = 'TRF-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             // Calculate goods value and distance
             $goodsValue = 0;
@@ -122,7 +122,7 @@ class StockTransferController extends Controller
             // Create transfer
             $transfer = StockTransfer::create([
                 'transfer_number' => $number,
-                'store_id' => auth()->user()->store_id,
+                'store_id' => Auth::user()->store_id,
                 'from_branch_id' => $validated['from_branch_id'],
                 'to_branch_id' => $validated['to_branch_id'],
                 'status' => 'requested',
@@ -134,7 +134,7 @@ class StockTransferController extends Controller
                 'cost_calculation_notes' => "Calculated using {$settings?->transfer_cost_method} method",
                 'reason' => $validated['reason'],
                 'expected_delivery_date' => $validated['expected_delivery_date'],
-                'requested_by' => auth()->id(),
+                'requested_by' => Auth::id(),
                 'requested_date' => now(),
             ]);
 
@@ -207,7 +207,7 @@ class StockTransferController extends Controller
 
             $transfer->update([
                 'status' => 'sender_approved',
-                'sender_approved_by' => auth()->id(),
+                'sender_approved_by' => Auth::id(),
                 'sender_approved_date' => now(),
             ]);
 
@@ -261,8 +261,8 @@ class StockTransferController extends Controller
                 $inventory->updateStockStatus();
                 $inventory->calculateTotalValue();
 
-                // Create transaction
-                $transactionNumber = 'TXN-' . date('Y') . '-' . str_pad(InventoryTransaction::count() + 1, 5, '0', STR_PAD_LEFT);
+                // Create transaction with unique datetime-based number
+                $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
                 InventoryTransaction::create([
                     'transaction_number' => $transactionNumber,
@@ -277,7 +277,7 @@ class StockTransferController extends Controller
                     'related_branch_id' => $transfer->to_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
-                    'created_by' => auth()->id(),
+                    'created_by' => Auth::id(),
                     'transaction_date' => now(),
                 ]);
 
@@ -287,7 +287,7 @@ class StockTransferController extends Controller
 
             $transfer->update([
                 'status' => 'in_transit',
-                'shipped_by' => auth()->id(),
+                'shipped_by' => Auth::id(),
                 'shipped_date' => now(),
                 'vehicle_type' => $validated['vehicle_type'] ?? null,
                 'driver_name' => $validated['driver_name'] ?? null,
@@ -374,8 +374,8 @@ class StockTransferController extends Controller
                 $inventory->updateStockStatus();
                 $inventory->calculateTotalValue();
 
-                // Create transaction
-                $transactionNumber = 'TXN-' . date('Y') . '-' . str_pad(InventoryTransaction::count() + 1, 5, '0', STR_PAD_LEFT);
+                // Create transaction with unique datetime-based number
+                $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
                 InventoryTransaction::create([
                     'transaction_number' => $transactionNumber,
@@ -390,14 +390,14 @@ class StockTransferController extends Controller
                     'related_branch_id' => $transfer->from_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
-                    'created_by' => auth()->id(),
+                    'created_by' => Auth::id(),
                     'transaction_date' => now(),
                 ]);
             }
 
             $transfer->update([
                 'status' => 'received',
-                'received_by' => auth()->id(),
+                'received_by' => Auth::id(),
                 'received_date' => now(),
             ]);
 

@@ -8,6 +8,7 @@ use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Procurement\Supplier\Supplier;
 
 class Product extends Model
 {
@@ -74,6 +75,13 @@ class Product extends Model
     public function inventory()
     {
         return $this->hasMany(\App\Models\Inventory\BranchInventory::class, 'product_id', 'id');
+    }
+
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'supplier_products')
+            ->withPivot('supplier_sku', 'supplier_price', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
+            ->withTimestamps();
     }
     public function category()
     {

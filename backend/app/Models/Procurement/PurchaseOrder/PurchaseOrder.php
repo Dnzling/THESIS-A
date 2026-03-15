@@ -16,6 +16,7 @@ use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Supplier\SupplierPayment;
+use App\Models\Procurement\StockOrder\StockOrderRequest;
 
 class PurchaseOrder extends Model
 {
@@ -97,6 +98,11 @@ class PurchaseOrder extends Model
     public function supplierQuotation(): BelongsTo
     {
         return $this->belongsTo(SupplierQuotation::class);
+    }
+
+    public function stockOrderRequest(): BelongsTo
+    {
+        return $this->belongsTo(StockOrderRequest::class);
     }
 
     public function createdBy(): BelongsTo

@@ -166,6 +166,37 @@ class StoreVerificationController extends Controller
     }
 
     /**
+     * Admin: Get verifications by status
+     * GET /api/store-verifications?status=pending|approved|rejected|all
+     */
+    public function index(Request $request)
+    {
+        if (!Auth::user()->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $status = $request->get('status', 'pending');
+
+        $query = StoreVerification::with(['store', 'reviewer:id,fname,lname,email'])
+            ->latest('submitted_at');
+
+        if ($status === 'pending') {
+            $query->whereNull('reviewed_at');
+        } elseif ($status === 'approved') {
+            $query->whereNotNull('reviewed_at')->whereNull('rejection_reason');
+        } elseif ($status === 'rejected') {
+            $query->whereNotNull('reviewed_at')->whereNotNull('rejection_reason');
+        }
+
+        $verifications = $query->paginate($request->per_page ?? 20);
+
+        return response()->json([
+            'success' => true,
+            'data' => $verifications
+        ]);
+    }
+
+    /**
      * Admin: Review verification
      */
     public function reviewVerification(Request $request, StoreVerification $verification)

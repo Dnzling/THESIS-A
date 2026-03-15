@@ -19,7 +19,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = PurchaseRequisition::with(['branch', 'requestedBy'])
+        $query = PurchaseRequisition::with(['branch', 'requestedBy', 'items.product.suppliers'])
             ->where('store_id', auth()->user()->store_id);
 
         // Filters
@@ -46,6 +46,15 @@ class PurchaseRequisitionController extends Controller
         $requisitions = $query->orderBy('created_at', 'desc')
             ->paginate($request->get('per_page', 15));
 
+        $requisitions->getCollection()->transform(function ($pr) {
+            $allHaveSuppliers = $pr->items->every(function ($item) {
+                return $item->product && $item->product->suppliers->count() > 0;
+            });
+            $pr->setAttribute('all_items_have_suppliers', $allHaveSuppliers);
+            $pr->setAttribute('any_item_missing_supplier', !$allHaveSuppliers);
+            return $pr;
+        });
+
         return response()->json([
             'success' => true,
             'data' => $requisitions,
@@ -62,6 +71,7 @@ class PurchaseRequisitionController extends Controller
             'branch',
             'requestedBy',
             'items.product',
+            'items.product.suppliers',
             'items.variation',
             'purchaseOrders',
             'rfqs'
@@ -95,9 +105,8 @@ class PurchaseRequisitionController extends Controller
 
         DB::beginTransaction();
         try {
-            // Generate PR number
-            $lastPR = PurchaseRequisition::latest()->first();
-            $prNumber = 'PR-' . date('Y') . '-' . str_pad(($lastPR?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+            // Generate PR number using datetime for uniqueness
+            $prNumber = 'PR-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             // Calculate estimated amount
             $estimatedAmount = 0;

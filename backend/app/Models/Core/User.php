@@ -7,6 +7,7 @@ use App\Models\Core\Role;
 use App\Models\Hr\Employee;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Store\Store;
+use App\Models\Customer\CustomerVerificationDocument;
 use App\Services\Core\PermissionService;
 use App\Models\Store\Branch;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -30,6 +31,13 @@ class User extends Authenticatable
         'password',
         'role_id',
         'is_active',
+        'customer_verification_status',
+        'customer_verification_required',
+        'customer_verification_trigger_amount',
+        'customer_verification_triggered_at',
+        'customer_verification_rejection_reason',
+        'customer_verification_reviewed_by',
+        'customer_verification_reviewed_at',
         'phone_number',
         'otp_code',
         'otp_expires_at',
@@ -55,6 +63,9 @@ class User extends Authenticatable
             'otp_expires_at' => 'datetime',
             'deleted_at' => 'datetime',
             'is_active' => 'boolean',
+            'customer_verification_required' => 'boolean',
+            'customer_verification_triggered_at' => 'datetime',
+            'customer_verification_reviewed_at' => 'datetime',
         ];
     }
 
@@ -120,6 +131,11 @@ class User extends Authenticatable
     public function employee()
     {
         return $this->hasOne(Employee::class, 'user_id');
+    }
+
+    public function customerVerificationDocuments()
+    {
+        return $this->hasMany(CustomerVerificationDocument::class, 'user_id');
     }
 
     // ✅ Fixed: Role Check Methods

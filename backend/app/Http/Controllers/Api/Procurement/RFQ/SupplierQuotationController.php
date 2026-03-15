@@ -86,9 +86,8 @@ class SupplierQuotationController extends Controller
 
         DB::beginTransaction();
         try {
-            // Generate quotation number
-            $lastQuotation = SupplierQuotation::latest()->first();
-            $quotationNumber = 'QUO-' . date('Y') . '-' . str_pad(($lastQuotation?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+            // Generate quotation number using datetime for uniqueness
+            $quotationNumber = 'QUO-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             // Calculate totals
             $subtotal = 0;

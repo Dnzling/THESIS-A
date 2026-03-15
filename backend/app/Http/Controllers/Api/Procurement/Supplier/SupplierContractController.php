@@ -84,9 +84,8 @@ class SupplierContractController extends Controller
             'contract_file_path' => 'nullable|string',
         ]);
 
-        // Generate contract number
-        $lastContract = SupplierContract::latest()->first();
-        $contractNumber = 'CON-' . date('Y') . '-' . str_pad(($lastContract?->id ?? 0) + 1, 3, '0', STR_PAD_LEFT);
+        // Generate contract number using datetime for uniqueness
+        $contractNumber = 'CON-' . date('YmdHis') . '-' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
 
         $validated['contract_number'] = $contractNumber;
         $validated['store_id'] = auth()->user()->store_id;

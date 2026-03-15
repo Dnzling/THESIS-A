@@ -101,9 +101,8 @@ class GoodsReceiptController extends Controller
         try {
             $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
 
-            // Generate GRN number
-            $lastGRN = GoodsReceipt::latest()->first();
-            $grnNumber = 'GRN-' . date('Y') . '-' . str_pad(($lastGRN?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+            // Generate GRN number using datetime for uniqueness
+            $grnNumber = 'GRN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             // Determine receipt status
             $receiptStatus = 'full';
@@ -206,8 +205,8 @@ class GoodsReceiptController extends Controller
                 $inventory->updateStockStatus();
                 $inventory->calculateTotalValue();
 
-                // Create inventory transaction
-                $transactionNumber = 'TXN-' . date('Y') . '-' . str_pad(InventoryTransaction::count() + 1, 5, '0', STR_PAD_LEFT);
+                // Create inventory transaction with unique datetime-based number
+                $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
                 InventoryTransaction::create([
                     'transaction_number' => $transactionNumber,
@@ -228,9 +227,9 @@ class GoodsReceiptController extends Controller
                     'transaction_date' => now(),
                 ]);
 
-                // If damaged, create damage transaction
+                // If damaged, create damage transaction with unique datetime-based number
                 if ($itemData['quantity_damaged'] > 0) {
-                    $damageTransactionNumber = 'TXN-' . date('Y') . '-' . str_pad(InventoryTransaction::count() + 1, 5, '0', STR_PAD_LEFT);
+                    $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
                     InventoryTransaction::create([
                         'transaction_number' => $damageTransactionNumber,

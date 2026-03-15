@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Api\ProductCatalog;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\PricingHistory;
+use App\Models\Procurement\RFQ\RequestForQuotation;
+use App\Models\Procurement\RFQ\RFQItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -99,8 +101,8 @@ class ProductController extends BaseController
                 'subcategory_id' => 'nullable|exists:categories,id',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
-                'base_price' => 'required|numeric|min:0',
-                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
+                'base_price' => 'nullable|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0',
                 'tax_rate' => 'nullable|numeric|min:0|max:100',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
@@ -136,13 +138,19 @@ class ProductController extends BaseController
                     return $this->errorResponse('SKU already exists for this store', 422);
                 }
 
-                $data = $validated;
-                $data['store_id'] = $this->getStoreId();
-                $data['stock_status'] = 'In Stock';
+            if (!empty($validated['discounted_price']) && !empty($validated['base_price']) && $validated['discounted_price'] >= $validated['base_price']) {
+                DB::rollBack();
+                return $this->errorResponse('Discounted price must be less than base price', 422);
+            }
+
+            $data = $validated;
+            $data['store_id'] = $this->getStoreId();
+            $data['stock_status'] = 'In Stock';
                 
                 $product = Product::create($data);
 
                 // Create pricing history entry
+            if (!is_null($product->base_price)) {
                 PricingHistory::create([
                     'store_id' => $this->getStoreId(),
                     'product_id' => $product->id,
@@ -153,8 +161,43 @@ class ProductController extends BaseController
                     'effective_date' => now(),
                     'created_by' => $this->getUserId()
                 ]);
+            }
 
                 DB::commit();
+
+                try {
+                    $product->loadMissing('suppliers');
+                    if ($product->suppliers->count() === 0) {
+                        $rfqNumber = 'RFQ-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+                        $rfq = RequestForQuotation::create([
+                            'rfq_number' => $rfqNumber,
+                            'store_id' => $this->getStoreId(),
+                            'purchase_requisition_id' => null,
+                            'title' => "New Product Sourcing: {$product->product_name}",
+                            'description' => 'Auto-created RFQ for new product without suppliers.',
+                            'rfq_type' => 'purchase',
+                            'currency' => 'PHP',
+                            'issue_date' => now()->toDateString(),
+                            'deadline_date' => now()->addDays(7)->toDateString(),
+                            'status' => 'draft',
+                            'created_by' => $this->getUserId(),
+                        ]);
+
+                        RFQItem::create([
+                            'rfq_id' => $rfq->id,
+                            'product_id' => $product->id,
+                            'variation_id' => null,
+                            'quantity' => 1,
+                            'specifications' => null,
+                            'requirements' => null,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Auto RFQ creation failed', [
+                        'product_id' => $product->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
 
                 return $this->successResponse(
                     $product->load('category'),

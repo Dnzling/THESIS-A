@@ -21,6 +21,10 @@ use App\Http\Controllers\Api\Hr\DeductionTypeController;
 use App\Http\Controllers\Api\Hr\PayrollController;
 use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
+use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
+use App\Http\Controllers\Api\Admin\CustomerValidationController;
+use App\Http\Controllers\Api\Admin\CustomerManagementController;
+use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 
 
 // ========== RATE LIMITING ==========
@@ -42,10 +46,20 @@ Route::prefix('auth')->group(function () {
     Route::post('resend-otp', [VerifyEmailController::class, 'resendOtpApi']);
 });
 
+require __DIR__ . '/job_portal_routes.php';
+
 // ========== PROTECTED ROUTES ==========
+
+Route::prefix('locations')->group(function () {
+    Route::get('/provinces', [\App\Http\Controllers\Api\Location\PSGCController::class, 'provinces']);
+    Route::get('/cities', [\App\Http\Controllers\Api\Location\PSGCController::class, 'cities']);
+    Route::get('/barangays', [\App\Http\Controllers\Api\Location\PSGCController::class, 'barangays']);
+});
+
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
+    Route::post('/customer-verification/trigger', [CustomerVerificationTriggerController::class, 'trigger']);
 
     Route::prefix('admin')->group(function () {
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
@@ -63,6 +77,27 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/navigation-items', [RolePermissionController::class, 'createNavigationItem']);
         Route::put('/navigation-items/{id}', [RolePermissionController::class, 'updateNavigationItem']);
         Route::delete('/navigation-items/{id}', [RolePermissionController::class, 'deleteNavigationItem']);
+
+        // Customer Validation
+        Route::get('/customer-validations', [CustomerValidationController::class, 'index']);
+        Route::get('/customer-validations/{id}', [CustomerValidationController::class, 'show']);
+        Route::post('/customer-validations/{id}/review', [CustomerValidationController::class, 'review']);
+
+        // Customer Management
+        Route::get('/customers', [CustomerManagementController::class, 'index']);
+        Route::post('/customers/{id}/require-verification', [CustomerManagementController::class, 'requireVerification']);
+        Route::post('/customers/require-verification-bulk', [CustomerManagementController::class, 'requireVerificationBulk']);
+});
+
+    // ========== STORE ROLES & PERMISSIONS ==========
+    Route::prefix('store')->group(function () {
+        Route::get('/roles', [StoreRoleController::class, 'index']);
+        Route::post('/roles', [StoreRoleController::class, 'store']);
+        Route::put('/roles/{id}', [StoreRoleController::class, 'update']);
+        Route::delete('/roles/{id}', [StoreRoleController::class, 'destroy']);
+        Route::get('/permissions', [StoreRoleController::class, 'getPermissions']);
+        Route::get('/roles/{id}/permissions', [StoreRoleController::class, 'getRolePermissions']);
+        Route::post('/roles/{id}/permissions', [StoreRoleController::class, 'updateRolePermissions']);
     });
 
 
@@ -164,6 +199,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // ========== STORE MANAGEMENT ==========
     Route::get('pending-verification', [StoreVerificationController::class, 'getPendingVerifications']);
+    Route::get('store-verifications', [StoreVerificationController::class, 'index']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::prefix('stores')->controller(StoreController::class)->group(function () {
         Route::get('hasStore', 'hasStore');
@@ -202,7 +238,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     require __DIR__ . '/product_routes.php';
     require __DIR__ . '/procurement_routes.php';
     require __DIR__ . '/supplier_routes.php';
+    require __DIR__ . '/supplier_portal_routes.php';
     require __DIR__ . '/inventory_routes.php';
+    require __DIR__ . '/job_hiring_routes.php';
+    require __DIR__ . '/finance_routes.php';
 
     // ========== TEST ROUTES (Remove in production) ==========
     Route::prefix('test')->group(function () {

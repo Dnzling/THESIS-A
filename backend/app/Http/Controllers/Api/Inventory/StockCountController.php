@@ -489,4 +489,65 @@ class StockCountController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Suggest items for cycle counts
+     * GET /api/inventory/counts/suggestions
+     */
+    public function suggestions(Request $request): JsonResponse
+    {
+        $request->validate([
+            'branch_id' => 'required|integer|exists:branches,id',
+            'limit' => 'nullable|integer|min:1|max:200',
+            'days' => 'nullable|integer|min:7|max:365',
+        ]);
+
+        $context = $this->getUserContext();
+
+        $result = $this->stockCountService->getCycleCountSuggestions(
+            $context['store_id'],
+            (int) $request->branch_id,
+            (int) ($request->limit ?? 50),
+            (int) ($request->days ?? 90)
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Auto-schedule weekly cycle counts
+     * POST /api/inventory/counts/auto-schedule
+     */
+    public function autoSchedule(Request $request): JsonResponse
+    {
+        $request->validate([
+            'branch_id' => 'required|integer|exists:branches,id',
+            'weeks' => 'nullable|integer|min:1|max:12',
+            'per_count' => 'nullable|integer|min:10|max:200',
+            'start_date' => 'nullable|date|after:today',
+        ]);
+
+        $context = $this->getUserContext();
+        $assignedBy = auth()->id();
+        $assignedTo = auth()->id();
+
+        $result = $this->stockCountService->autoScheduleCycleCounts(
+            $context['store_id'],
+            (int) $request->branch_id,
+            $assignedBy,
+            $assignedTo,
+            (int) ($request->weeks ?? 4),
+            (int) ($request->per_count ?? 50),
+            $request->start_date
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => "Scheduled {$result['total_scheduled']} cycle counts.",
+            'data' => $result,
+        ]);
+    }
 }

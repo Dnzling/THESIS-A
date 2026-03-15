@@ -30,15 +30,16 @@ class Employee extends Model
     protected $fillable = [
         'user_id',
         'store_id',
+        'branch_id',
+        'role_id',
         'employee_number',
-        'first_name',
-        'last_name',
+        'fname',
+        'lname',
         'phone',
         'address',
         'date_of_birth',
         'gender',
         'hire_date',
-        'position',
         'department',
         'employment_type',
         'salary',
@@ -120,7 +121,7 @@ class Employee extends Model
      */
     public function getFullNameAttribute(): string
     {
-        return "{$this->first_name} {$this->last_name}";
+        return "{$this->fname} {$this->lname}";
     }
 
     /**
@@ -136,7 +137,7 @@ class Employee extends Model
      */
     public function isStoreManager(): bool
     {
-        return $this->position === 'store_manager';
+        return $this->role?->name === 'store_manager';
     }
 
     /**
@@ -144,7 +145,7 @@ class Employee extends Model
      */
     public function isHr(): bool
     {
-        return $this->position === 'hr_manager' || $this->department === 'hr';
+        return $this->role?->name === 'hr_manager' || $this->department === 'hr';
     }
 
     /**
@@ -152,7 +153,7 @@ class Employee extends Model
      */
     public function isAccountant(): bool
     {
-        return $this->position === 'accountant' || $this->department === 'accounting';
+        return $this->role?->name === 'accountant' || $this->department === 'accounting';
     }
 
     /**
@@ -160,7 +161,7 @@ class Employee extends Model
      */
     public function isSalesStaff(): bool
     {
-        return in_array($this->position, ['sales_assistant', 'cashier']);
+        return in_array($this->role?->name, ['sales_assistant', 'cashier']);
     }
 
     /**
@@ -184,7 +185,9 @@ class Employee extends Model
      */
     public function scopeByPosition($query, $position)
     {
-        return $query->where('position', $position);
+        return $query->whereHas('role', function ($roleQuery) use ($position) {
+            $roleQuery->where('name', $position);
+        });
     }
 
     /**
@@ -219,7 +222,8 @@ class Employee extends Model
             'other' => 'Other',
         ];
 
-        return $positions[$this->position] ?? ucfirst(str_replace('_', ' ', $this->position));
+        $roleName = $this->role?->name;
+        return $positions[$roleName] ?? ucfirst(str_replace('_', ' ', $roleName ?? 'employee'));
     }
 
     /**
@@ -239,30 +243,19 @@ class Employee extends Model
 
     public static function generateEmployeeNumber($roleId)
     {
-        // Get role with code from database
-        $role = Role::find($roleId);
+        $yearPrefix = now()->format('Y') . '-';
 
-        if (!$role || !$role->code) {
-            // Fallback to default prefix
-            return null;
-        } else {
-            // Use the role code as prefix (e.g., HR, SA, ADM, EMP)
-            $prefix = strtoupper($role->code);
-        }
-
-        // Find the last employee number for this role prefix
-        $lastEmployee = self::where('employee_number', 'like', $prefix . '%')
+        $lastEmployee = self::where('employee_number', 'like', $yearPrefix . '%')
             ->orderBy('employee_number', 'desc')
             ->first();
 
-        if ($lastEmployee) {
-            // Extract the numeric part
-            $lastNumber = (int) preg_replace('/[^0-9]/', '', $lastEmployee->employee_number);
-            $nextNumber = str_pad($lastNumber + 1, 5, '0', STR_PAD_LEFT);
+        if ($lastEmployee && is_string($lastEmployee->employee_number)) {
+            $lastSequence = (int) substr($lastEmployee->employee_number, strlen($yearPrefix));
+            $nextNumber = str_pad($lastSequence + 1, 5, '0', STR_PAD_LEFT);
         } else {
             $nextNumber = '00001';
         }
 
-        return $prefix . "-" . $nextNumber;
+        return $yearPrefix . $nextNumber;
     }
 }

@@ -12,6 +12,7 @@ use App\Models\Store\Store;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 
 class RequestForQuotation extends Model
 {
@@ -91,6 +92,11 @@ class RequestForQuotation extends Model
         return $this->hasMany(SupplierQuotation::class, 'rfq_id');
     }
 
+    public function supplierPortalFeedbacks(): HasMany
+    {
+        return $this->hasMany(SupplierRFQFeedback::class, 'rfq_id');
+    }
+
     public function evaluationCriteria(): HasMany
     {
         return $this->hasMany(RfqEvaluationCriterion::class, 'rfq_id');
@@ -104,14 +110,14 @@ class RequestForQuotation extends Model
     // Scopes
     public function scopeOpen($query)
     {
-        return $query->where('status', 'sent')
+        return $query->whereIn('status', ['sent', 'receiving', 'partially_approved'])
             ->where('deadline_date', '>=', now());
     }
 
     public function scopeClosed($query)
     {
-        return $query->where('deadline_date', '<', now())
-            ->whereIn('status', ['sent', 'quotes_received']);
+        return $query->whereIn('status', ['completed', 'rejected', 'cancelled', 'awarded'])
+            ->orWhere('deadline_date', '<', now());
     }
 
     public function scopeAwarded($query)
@@ -127,7 +133,7 @@ class RequestForQuotation extends Model
 
     public function isClosed(): bool
     {
-        return $this->deadline_date < now() || in_array($this->status, ['awarded', 'cancelled']);
+        return $this->deadline_date < now() || in_array($this->status, ['completed', 'rejected', 'cancelled', 'awarded']);
     }
 
     public function getDaysRemainingAttribute(): int
@@ -186,18 +192,14 @@ class RequestForQuotation extends Model
     {
         $this->update([
             'status' => 'awarded',
-            'awarded_to_supplier_id' => $supplierId,
-            'awarded_at' => now(),
+            'awarded_supplier_id' => $supplierId,
+            'awarded_date' => now(),
             'evaluation_notes' => $notes,
         ]);
     }
 
     public function close(): void
     {
-        if ($this->quotations_received_count > 0) {
-            $this->update(['status' => 'quotes_received']);
-        } else {
-            $this->update(['status' => 'cancelled']);
-        }
+        $this->update(['status' => 'cancelled']);
     }
 }

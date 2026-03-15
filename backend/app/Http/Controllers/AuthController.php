@@ -12,6 +12,8 @@ use Illuminate\Validation\Rules;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Employee;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Hr\ShiftSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -99,23 +101,57 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
+            if (!$request->filled('login') && $request->filled('email')) {
+                $request->merge(['login' => $request->input('email')]);
+            }
             // Validate input
             $credentials = $request->validate([
-                'email' => 'required|email',
+                'login' => 'required|string',
                 'password' => 'required|string|min:6',
                 'device_name' => 'required|string|max:100'
             ]);
 
-            // Attempt authentication
-            if (!Auth::attempt($request->only('email', 'password'))) {
+            $identifier = $credentials['login'] ?? $request->input('email');
+            $email = null;
+
+            if ($identifier && filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+                $email = $identifier;
+            } else {
+                // Try employee number first
+                $employee = Employee::where('employee_number', $identifier)->first();
+                if (!$employee && is_numeric($identifier)) {
+                    $employee = Employee::where('id', (int) $identifier)->first();
+                }
+                if ($employee?->user?->email) {
+                    $email = $employee->user->email;
+                } else {
+                    // Try supplier code (e.g., SUPP-2026-00001)
+                    $supplier = Supplier::where('supplier_code', $identifier)->first();
+                    if ($supplier) {
+                        $portal = SupplierPortal::where('supplier_id', $supplier->id)->first();
+                        if ($portal?->user?->email) {
+                            $email = $portal->user->email;
+                        }
+                    }
+                }
+            }
+
+            if (!$email) {
                 throw ValidationException::withMessages([
-                    'email' => ['Invalid credentials.']
+                    'login' => ['Invalid credentials.']
+                ]);
+            }
+
+            // Attempt authentication
+            if (!Auth::attempt(['email' => $email, 'password' => $credentials['password']])) {
+                throw ValidationException::withMessages([
+                    'login' => ['Invalid credentials.']
                 ]);
             }
 
             // Get authenticated user
             $user = User::with(['role', 'store', 'branch'])
-                ->where('email', $credentials['email'])
+                ->where('email', $email)
                 ->firstOrFail();
 
             // Check if user is active
@@ -180,8 +216,11 @@ class AuthController extends Controller
      */
     public function loginWithClockIn(Request $request)
     {
+        if (!$request->filled('login') && $request->filled('email')) {
+            $request->merge(['login' => $request->input('email')]);
+        }
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
+            'login' => 'required|string',
             'password' => 'required|string',
         ]);
 
@@ -192,9 +231,30 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $credentials = $request->only('email', 'password');
+        $identifier = $request->input('login') ?? $request->input('email');
+        $email = null;
 
-        if (!Auth::attempt($credentials)) {
+        if ($identifier && filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+            $email = $identifier;
+        } else {
+            $employee = Employee::where('employee_number', $identifier)->first();
+            if (!$employee && is_numeric($identifier)) {
+                $employee = Employee::where('id', (int) $identifier)->first();
+            }
+            if ($employee?->user?->email) {
+                $email = $employee->user->email;
+            } else {
+                $supplier = Supplier::where('supplier_code', $identifier)->first();
+                if ($supplier) {
+                    $portal = SupplierPortal::where('supplier_id', $supplier->id)->first();
+                    if ($portal?->user?->email) {
+                        $email = $portal->user->email;
+                    }
+                }
+            }
+        }
+
+        if (!$email || !Auth::attempt(['email' => $email, 'password' => $request->input('password')])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid credentials'

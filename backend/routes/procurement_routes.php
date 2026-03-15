@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\Procurement\Config\ProcurementSettingsController;
 use App\Http\Controllers\Api\Procurement\Config\RoleApprovalLimitController;
 use App\Http\Controllers\Api\Procurement\DashboardController as ProcurementDashboardController;
 use App\Http\Controllers\Api\Procurement\Inventory\ProcurementInventoryController;
+use App\Http\Controllers\Api\Procurement\StockOrder\StockOrderRequestController;
 use App\Http\Controllers\Api\ProductCatalog\ProductController;
 
 // ============================================
@@ -44,7 +45,7 @@ Route::prefix('procurement')->group(function () {
     });
 
     // Supplier Contracts
-    Route::prefix('contracts')->group(function () {
+    Route::prefix('supplier-contracts')->group(function () {
         Route::get('/', [SupplierContractController::class, 'index']);
         Route::get('/{id}', [SupplierContractController::class, 'show']);
         Route::post('/', [SupplierContractController::class, 'store']);
@@ -68,6 +69,21 @@ Route::prefix('procurement')->group(function () {
         Route::post('/{id}/cancel', [PurchaseRequisitionController::class, 'cancel']);
     });
 
+    // Stock Order Requests (from Branch Inventory low stock)
+    Route::prefix('stock-order-requests')->group(function () {
+        Route::get('/', [StockOrderRequestController::class, 'index']);
+        Route::post('/', [StockOrderRequestController::class, 'store']);
+        Route::put('/{id}', [StockOrderRequestController::class, 'update']);
+        // Named routes MUST come before wildcard {id} routes
+        Route::post('/bulk/create-from-low-stock', [StockOrderRequestController::class, 'createFromLowStock']);
+        Route::get('/pending/for-conversion', [StockOrderRequestController::class, 'pendingForConversion']);
+        Route::get('/summary', [StockOrderRequestController::class, 'summary']);
+        // Wildcard routes last
+        Route::get('/{id}', [StockOrderRequestController::class, 'show']);
+        Route::post('/{id}/approve', [StockOrderRequestController::class, 'approve']);
+        Route::post('/{id}/reject', [StockOrderRequestController::class, 'reject']);
+    });
+
     // Request for Quotations (RFQ)
     Route::prefix('rfqs')->group(function () {
         Route::get('/', [RequestForQuotationController::class, 'index']);
@@ -78,6 +94,9 @@ Route::prefix('procurement')->group(function () {
         Route::post('/{id}/close', [RequestForQuotationController::class, 'close']);
         Route::post('/{id}/award', [RequestForQuotationController::class, 'award']);
         Route::post('/{id}/cancel', [RequestForQuotationController::class, 'cancel']);
+        Route::post('/{id}/portal-feedbacks/{feedbackId}/review', [RequestForQuotationController::class, 'reviewPortalFeedback']);
+        Route::post('/{id}/portal-feedbacks/{feedbackId}/negotiate', [RequestForQuotationController::class, 'negotiatePortalFeedback']);
+        Route::post('/{id}/portal-feedbacks/bulk-approve', [RequestForQuotationController::class, 'bulkApprovePortalFeedbacks']);
 
         // Compare quotations
         Route::get('/{rfqId}/quotations/compare', [SupplierQuotationController::class, 'compare']);

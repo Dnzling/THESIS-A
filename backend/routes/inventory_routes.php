@@ -149,6 +149,8 @@ Route::prefix('inventory')->group(function () {
     Route::prefix('counts')->group(function () {
         Route::get('/', [StockCountController::class, 'index']);
         Route::post('/', [StockCountController::class, 'store']);
+        Route::get('/suggestions', [StockCountController::class, 'suggestions']);
+        Route::post('/auto-schedule', [StockCountController::class, 'autoSchedule']);
         Route::get('/{count}', [StockCountController::class, 'show']);
         Route::put('/{count}', [StockCountController::class, 'update']);
         Route::delete('/{count}', [StockCountController::class, 'destroy']);

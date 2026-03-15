@@ -9,6 +9,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -20,8 +21,8 @@ class StockIssueController extends Controller
     private function getUserContext(): array
     {
         return [
-            'store_id' => auth()->user()->store_id,
-            'branch_id' => auth()->user()->branch_id,
+            'store_id' => Auth::user()->store_id,
+            'branch_id' => Auth::user()->branch_id,
         ];
     }
 
@@ -130,13 +131,8 @@ class StockIssueController extends Controller
 
             DB::beginTransaction();
 
-            // Generate issue number
-            $issueNumber = 'SI-' . date('Y') . '-' . str_pad(
-                StockIssue::where('store_id', $context['store_id'])
-                    ->whereYear('created_at', date('Y'))
-                    ->count() + 1,
-                4, '0', STR_PAD_LEFT
-            );
+            // Generate issue number using datetime for uniqueness
+            $issueNumber = 'SI-' . date('YmdHis') . '-' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
 
             $issue = StockIssue::create([
                 'store_id' => $context['store_id'],
@@ -147,8 +143,8 @@ class StockIssueController extends Controller
                 'description' => $validated['description'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
                 'status' => 'draft',
-                'requested_by' => auth()->id(),
-                'created_by' => auth()->id(),
+                'requested_by' => Auth::id(),
+                'created_by' => Auth::id(),
             ]);
 
             $totalValue = 0;
@@ -229,10 +225,10 @@ class StockIssueController extends Controller
 
             $issue->update([
                 'status' => 'approved',
-                'approved_by' => auth()->id(),
+                'approved_by' => Auth::id(),
                 'approved_at' => now(),
                 'approval_notes' => $validated['notes'] ?? null,
-                'updated_by' => auth()->id(),
+                'updated_by' => Auth::id(),
             ]);
 
             DB::commit();

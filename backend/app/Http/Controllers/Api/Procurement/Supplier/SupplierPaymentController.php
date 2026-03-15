@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Procurement\Supplier;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\SupplierPayment;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -88,12 +89,12 @@ class SupplierPaymentController extends Controller
 
         $po = PurchaseOrder::with('supplier')->findOrFail($validated['purchase_order_id']);
 
-        // Generate payment number
-        $lastPayment = SupplierPayment::latest()->first();
-        $paymentNumber = 'PAY-' . date('Y') . '-' . str_pad(($lastPayment?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+        // Generate payment number using datetime for uniqueness
+        $paymentNumber = 'PAY-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
         $payment = SupplierPayment::create([
             'payment_number' => $paymentNumber,
+            'store_id' => $po->store_id,
             'purchase_order_id' => $validated['purchase_order_id'],
             'supplier_id' => $po->supplier_id,
             'payment_amount' => $validated['payment_amount'],
@@ -105,6 +106,25 @@ class SupplierPaymentController extends Controller
             'account_number' => $validated['account_number'] ?? null,
             'notes' => $validated['notes'] ?? null,
         ]);
+
+        $financeService = new FinanceExpenseService();
+        $requiresFinance = $financeService->requiresFinanceApproval($po->store_id, (float) $validated['payment_amount']);
+
+        $financeService->ensureExpense([
+            'store_id' => $po->store_id,
+            'department' => 'procurement',
+            'category' => 'supplier_payment',
+            'amount' => $validated['payment_amount'],
+            'expense_date' => $validated['payment_date'],
+            'status' => 'pending_approval',
+            'reference_number' => $paymentNumber,
+            'reference_type' => 'supplier_payment',
+            'reference_id' => $payment->id,
+            'currency' => 'PHP',
+            'description' => "Supplier payment {$paymentNumber} for PO {$po->po_number}",
+            'notes' => $validated['notes'] ?? null,
+            'requested_by' => auth()->id(),
+        ], !$requiresFinance, auth()->id());
 
         return response()->json([
             'success' => true,
@@ -152,6 +172,32 @@ class SupplierPaymentController extends Controller
             ], 422);
         }
 
+        $financeService = new FinanceExpenseService();
+        $requiresFinance = $financeService->requiresFinanceApproval($payment->purchaseOrder->store_id, (float) $payment->payment_amount);
+
+        $expense = $financeService->ensureExpense([
+            'store_id' => $payment->purchaseOrder->store_id,
+            'department' => 'procurement',
+            'category' => 'supplier_payment',
+            'amount' => $payment->payment_amount,
+            'expense_date' => $payment->payment_date,
+            'status' => 'pending_approval',
+            'reference_number' => $payment->payment_number,
+            'reference_type' => 'supplier_payment',
+            'reference_id' => $payment->id,
+            'currency' => 'PHP',
+            'description' => "Supplier payment {$payment->payment_number} for PO {$payment->purchaseOrder->po_number}",
+            'notes' => $payment->notes,
+            'requested_by' => auth()->id(),
+        ], !$requiresFinance, auth()->id());
+
+        if ($requiresFinance && $expense->status !== 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Finance approval is required before processing this payment.',
+            ], 422);
+        }
+
         DB::beginTransaction();
         try {
             $payment->process(auth()->id());
@@ -163,6 +209,17 @@ class SupplierPaymentController extends Controller
 
             // Update supplier balance
             $payment->supplier->decrement('current_balance', $payment->payment_amount);
+
+            if ($expense->status !== 'paid') {
+                $expense->update([
+                    'status' => 'paid',
+                    'payment_method' => $payment->payment_method,
+                    'payment_date' => $payment->payment_date,
+                    'reference_number' => $payment->reference_number,
+                    'paid_by' => auth()->id(),
+                    'paid_at' => now(),
+                ]);
+            }
 
             DB::commit();
 

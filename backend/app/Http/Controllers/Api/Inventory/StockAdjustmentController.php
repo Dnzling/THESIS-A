@@ -10,6 +10,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class StockAdjustmentController extends Controller
@@ -21,7 +22,7 @@ class StockAdjustmentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = StockAdjustment::with(['branch', 'createdBy', 'approvedBy'])
-            ->where('store_id', auth()->user()->store_id);
+            ->where('store_id', Auth::user()->store_id);
 
         // Filters
         if ($request->has('branch_id')) {
@@ -86,20 +87,19 @@ class StockAdjustmentController extends Controller
 
         DB::beginTransaction();
         try {
-            // Generate adjustment number
-            $lastAdjustment = StockAdjustment::latest()->first();
-            $number = 'ADJ-' . date('Y') . '-' . str_pad(($lastAdjustment?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+            // Generate adjustment number using datetime for uniqueness
+            $number = 'ADJ-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             // Create adjustment
             $adjustment = StockAdjustment::create([
                 'adjustment_number' => $number,
-                'store_id' => auth()->user()->store_id,
+                'store_id' => Auth::user()->store_id,
                 'branch_id' => $validated['branch_id'],
                 'type' => $validated['type'],
                 'status' => 'draft',
                 'reason' => $validated['reason'],
                 'adjustment_date' => $validated['adjustment_date'],
-                'created_by' => auth()->id(),
+                'created_by' => Auth::id(),
             ]);
 
             // Create items
@@ -166,7 +166,7 @@ class StockAdjustmentController extends Controller
 
         DB::beginTransaction();
         try {
-            $this->applyApprovedAdjustment($adjustment, $validated['approval_notes'] ?? null, auth()->id());
+            $this->applyApprovedAdjustment($adjustment, $validated['approval_notes'] ?? null, Auth::id());
 
             DB::commit();
 
@@ -234,7 +234,7 @@ class StockAdjustmentController extends Controller
                 $adjustment->update(['status' => 'pending_approval']);
                 $adjustment->load('items');
 
-                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory + finance permissions)', auth()->id());
+                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory + finance permissions)', Auth::id());
 
                 DB::commit();
 
@@ -286,8 +286,8 @@ class StockAdjustmentController extends Controller
             $inventory->updateStockStatus();
             $inventory->calculateTotalValue();
 
-            // Create inventory transaction
-            $transactionNumber = 'TXN-' . date('Y') . '-' . str_pad(InventoryTransaction::count() + 1, 5, '0', STR_PAD_LEFT);
+            // Create inventory transaction with unique datetime-based number
+            $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             InventoryTransaction::create([
                 'transaction_number' => $transactionNumber,
@@ -314,7 +314,7 @@ class StockAdjustmentController extends Controller
 
     protected function userHasPermissions(array $permissions, $user = null): bool
     {
-        $user = $user ?? auth()->user();
+        $user = $user ?? Auth::user();
         if (!$user || !$user->role_id) {
             return false;
         }

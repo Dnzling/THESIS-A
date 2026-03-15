@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class SupplierController extends Controller
@@ -17,7 +18,7 @@ class SupplierController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::where('store_id', auth()->user()->store_id);
+        $query = Supplier::where('store_id', Auth::user()->store_id);
 
         // Filters
         if ($request->has('status')) {
@@ -103,11 +104,10 @@ class SupplierController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        // Generate supplier code
-        $lastSupplier = Supplier::latest()->first();
-        $supplierCode = 'SUP-' . date('Y') . '-' . str_pad(($lastSupplier?->id ?? 0) + 1, 3, '0', STR_PAD_LEFT);
+        // Generate supplier code using datetime for uniqueness
+        $supplierCode = 'SUP-' . date('YmdHis') . '-' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
 
-        $validated['store_id'] = auth()->user()->store_id;
+        $validated['store_id'] = Auth::user()->store_id;
         $validated['supplier_code'] = $supplierCode;
         $validated['status'] = 'active';
         $validated['rating'] = 5.00;
@@ -458,7 +458,7 @@ class SupplierController extends Controller
             'supplier_id' => $id,
             'reason' => $validated['reason'],
             'notes' => $validated['notes'],
-            'blacklisted_by' => auth()->id(),
+            'blacklisted_by' => Auth::id(),
             'blacklisted_at' => now(),
         ]);
 

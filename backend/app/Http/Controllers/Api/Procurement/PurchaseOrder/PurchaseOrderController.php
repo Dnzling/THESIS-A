@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
 use App\Models\Procurement\Config\ProcurementSettings;
+use App\Models\Procurement\StockOrder\StockOrderRequest;
+use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -95,25 +97,45 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * Create purchase order
+     * Create purchase order from stock order requests
+     * PO can no longer be created from scratch - must come from stock requests
      * POST /api/procurement/purchase-orders
+     * 
+     * Request body:
+     * {
+     *   "stock_order_request_ids": [1, 2, 3],
+     *   "supplier_id": 5,
+     *   "payment_terms": "net_30",
+     *   "shipping_cost": 500,
+     *   "discount_amount": 100,
+     *   "notes": "...",
+     *   "terms_conditions": "..."
+     * }
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'branch_id' => 'required|exists:branches,id',
+        $hasStockRequests = $request->filled('stock_order_request_ids');
+
+        $validated = $request->validate($hasStockRequests ? [
+            'stock_order_request_ids' => 'required|array|min:1',
+            'stock_order_request_ids.*' => 'exists:stock_order_requests,id',
             'supplier_id' => 'required|exists:suppliers,id',
-            'purchase_requisition_id' => 'nullable|exists:purchase_requisitions,id',
-            'rfq_id' => 'nullable|exists:request_for_quotations,id',
-            'supplier_quotation_id' => 'nullable|exists:supplier_quotations,id',
-            'status' => 'nullable|in:draft,pending_approval',
-            'order_date' => 'required|date',
-            'expected_delivery_date' => 'required|date|after:order_date',
             'payment_terms' => 'required|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'shipping_cost' => 'nullable|numeric|min:0',
             'discount_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
+        ] : [
+            'branch_id' => 'required|exists:branches,id',
+            'supplier_id' => 'required|exists:suppliers,id',
+            'order_date' => 'required|date',
+            'expected_delivery_date' => 'required|date|after_or_equal:order_date',
+            'payment_terms' => 'required|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'terms_conditions' => 'nullable|string',
+            'status' => 'nullable|in:draft,pending_approval',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
@@ -121,119 +143,237 @@ class PurchaseOrderController extends Controller
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
-            'items.*.notes' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
         try {
-            // Generate unique PO number using date/time  
+            $storeId = auth()->user()->store_id;
+
+            // Generate PO number
             $timestamp = now()->format('YmdHis');
             $randomSuffix = str_pad(mt_rand(0, 9999), 4, '0', STR_PAD_LEFT);
             $poNumber = 'PO-' . $timestamp . '-' . $randomSuffix;
 
-            // Calculate totals
             $subtotal = 0;
             $taxAmount = 0;
+            $items = [];
 
-            foreach ($validated['items'] as $item) {
-                $itemSubtotal = $item['unit_cost'] * $item['quantity_ordered'];
-                
-                // Apply discount
-                if (isset($item['discount_percent'])) {
-                    $itemSubtotal -= $itemSubtotal * ($item['discount_percent'] / 100);
+            if ($hasStockRequests) {
+                // Fetch all stock order requests
+                $stockOrderRequests = StockOrderRequest::where('store_id', $storeId)
+                    ->whereIn('id', $validated['stock_order_request_ids'])
+                    ->with('branchInventory.product')
+                    ->get();
+
+                if ($stockOrderRequests->count() !== count($validated['stock_order_request_ids'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'One or more stock order requests not found or belong to different store',
+                    ], 404);
                 }
 
-                $subtotal += $itemSubtotal;
-
-                // Calculate tax
-                $taxRate = $item['tax_rate'] ?? 12.00;
-                $taxAmount += $itemSubtotal * ($taxRate / 100);
-            }
-
-            $shippingCost = $validated['shipping_cost'] ?? 0;
-            $discountAmount = $validated['discount_amount'] ?? 0;
-            $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
-
-            // Get procurement settings for approval tiers
-            $settings = ProcurementSettings::where('store_id', auth()->user()->store_id)->first();
-            $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);
-
-            // Check if RFQ is required
-            $rfqRequired = $settings?->shouldRequireRFQ($totalAmount) ?? false;
-
-            // Create PO
-            $po = PurchaseOrder::create([
-                'po_number' => $poNumber,
-                'store_id' => auth()->user()->store_id,
-                'branch_id' => $validated['branch_id'],
-                'supplier_id' => $validated['supplier_id'],
-                'purchase_requisition_id' => $validated['purchase_requisition_id'] ?? null,
-                'rfq_id' => $validated['rfq_id'] ?? null,
-                'supplier_quotation_id' => $validated['supplier_quotation_id'] ?? null,
-                'status' => $validated['status'] ?? 'draft',
-                'subtotal' => $subtotal,
-                'tax_amount' => $taxAmount,
-                'shipping_cost' => $shippingCost,
-                'discount_amount' => $discountAmount,
-                'total_amount' => $totalAmount,
-                'approval_tier_level' => $approvalTier['level'] ?? null,
-                'required_approvers' => $approvalTier['approvers'] ?? [],
-                'rfq_required' => $rfqRequired,
-                'payment_status' => 'pending',
-                'payment_terms' => $validated['payment_terms'],
-                'order_date' => $validated['order_date'],
-                'expected_delivery_date' => $validated['expected_delivery_date'],
-                'created_by' => auth()->id(),
-                'notes' => $validated['notes'] ?? null,
-                'terms_conditions' => $validated['terms_conditions'] ?? null,
-            ]);
-
-            // Calculate payment due date
-            $paymentDueDays = match($validated['payment_terms']) {
-                'net_7' => 7,
-                'net_15' => 15,
-                'net_30' => 30,
-                'net_60' => 60,
-                default => 0,
-            };
-            $po->payment_due_date = now()->addDays($paymentDueDays);
-            $po->save();
-
-            // Create items
-            foreach ($validated['items'] as $item) {
-                $lineTotal = $item['unit_cost'] * $item['quantity_ordered'];
-                
-                if (isset($item['discount_percent'])) {
-                    $lineTotal -= $lineTotal * ($item['discount_percent'] / 100);
+                // Verify all requests are approved
+                $unapproved = $stockOrderRequests->where('status', '!=', 'approved');
+                if ($unapproved->isNotEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'All stock order requests must be approved before converting to PO',
+                    ], 400);
                 }
 
-                PurchaseOrderItem::create([
-                    'purchase_order_id' => $po->id,
-                    'product_id' => $item['product_id'],
-                    'variation_id' => $item['variation_id'] ?? null,
-                    'quantity_ordered' => $item['quantity_ordered'],
-                    'unit_cost' => $item['unit_cost'],
-                    'tax_rate' => $item['tax_rate'] ?? 12.00,
-                    'discount_percent' => $item['discount_percent'] ?? 0,
-                    'line_total' => $lineTotal,
-                    'notes' => $item['notes'] ?? null,
+                // Get the branch from first stock request
+                $branchId = $stockOrderRequests->first()->branchInventory->branch_id;
+
+                foreach ($stockOrderRequests as $stockRequest) {
+                    $product = $stockRequest->branchInventory->product;
+                    
+                    // Use product's unit cost as default
+                    $unitCost = $product->unit_cost ?? 0;
+                    $taxRate = 12.00; // Default tax rate
+                    
+                    $itemSubtotal = $unitCost * $stockRequest->requested_quantity;
+                    $itemTax = $itemSubtotal * ($taxRate / 100);
+                    
+                    $subtotal += $itemSubtotal;
+                    $taxAmount += $itemTax;
+
+                    $items[] = [
+                        'stock_order_request_id' => $stockRequest->id,
+                        'product_id' => $product->id,
+                        'variation_id' => $stockRequest->branchInventory->variation_id,
+                        'quantity_ordered' => $stockRequest->requested_quantity,
+                        'unit_cost' => $unitCost,
+                        'tax_rate' => $taxRate,
+                        'discount_percent' => 0,
+                    ];
+                }
+
+                $shippingCost = $validated['shipping_cost'] ?? 0;
+                $discountAmount = $validated['discount_amount'] ?? 0;
+                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+
+                // Get procurement settings for approval tiers
+                $settings = ProcurementSettings::where('store_id', $storeId)->first();
+                $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);
+
+                // Check if RFQ is required
+                $rfqRequired = $settings?->shouldRequireRFQ($totalAmount) ?? false;
+
+                // Create PO linking first stock order request
+                $po = PurchaseOrder::create([
+                    'po_number' => $poNumber,
+                    'store_id' => $storeId,
+                    'branch_id' => $branchId,
+                    'supplier_id' => $validated['supplier_id'],
+                    'stock_order_request_id' => $stockOrderRequests->first()->id,
+                    'status' => 'draft',
+                    'subtotal' => $subtotal,
+                    'tax_amount' => $taxAmount,
+                    'shipping_cost' => $shippingCost,
+                    'discount_amount' => $discountAmount,
+                    'total_amount' => $totalAmount,
+                    'approval_tier_level' => $approvalTier['level'] ?? null,
+                    'required_approvers' => $approvalTier['approvers'] ?? [],
+                    'rfq_required' => $rfqRequired,
+                    'payment_status' => 'pending',
+                    'payment_terms' => $validated['payment_terms'],
+                    'order_date' => now()->toDateString(),
+                    'expected_delivery_date' => now()->addDays(7)->toDateString(),
+                    'created_by' => auth()->id(),
+                    'notes' => $validated['notes'] ?? null,
+                    'terms_conditions' => $validated['terms_conditions'] ?? null,
                 ]);
+
+                // Calculate payment due date
+                $paymentDueDays = match($validated['payment_terms']) {
+                    'net_7' => 7,
+                    'net_15' => 15,
+                    'net_30' => 30,
+                    'net_60' => 60,
+                    default => 0,
+                };
+                $po->payment_due_date = now()->addDays($paymentDueDays);
+                $po->save();
+
+                // Create PO items
+                foreach ($items as $item) {
+                    PurchaseOrderItem::create([
+                        'purchase_order_id' => $po->id,
+                        'product_id' => $item['product_id'],
+                        'variation_id' => $item['variation_id'],
+                        'quantity_ordered' => $item['quantity_ordered'],
+                        'quantity_received' => 0,
+                        'quantity_cancelled' => 0,
+                        'unit_cost' => $item['unit_cost'],
+                        'tax_rate' => $item['tax_rate'],
+                        'discount_percent' => $item['discount_percent'] ?? 0,
+                        'line_total' => $item['unit_cost'] * $item['quantity_ordered'],
+                    ]);
+                }
+
+                // Mark stock order requests as converted
+                foreach ($stockOrderRequests as $stockRequest) {
+                    $stockRequest->markConverted();
+                }
+            } else {
+                // Manual PO creation from items
+                foreach ($validated['items'] as $item) {
+                    $itemSubtotal = $item['unit_cost'] * $item['quantity_ordered'];
+                    if (isset($item['discount_percent'])) {
+                        $itemSubtotal -= $itemSubtotal * ($item['discount_percent'] / 100);
+                    }
+                    $subtotal += $itemSubtotal;
+                    $taxRate = $item['tax_rate'] ?? 12.00;
+                    $taxAmount += $itemSubtotal * ($taxRate / 100);
+
+                    $items[] = [
+                        'product_id' => $item['product_id'],
+                        'variation_id' => $item['variation_id'] ?? null,
+                        'quantity_ordered' => $item['quantity_ordered'],
+                        'unit_cost' => $item['unit_cost'],
+                        'tax_rate' => $taxRate,
+                        'discount_percent' => $item['discount_percent'] ?? 0,
+                        'line_total' => $itemSubtotal,
+                    ];
+                }
+
+                $shippingCost = $validated['shipping_cost'] ?? 0;
+                $discountAmount = $validated['discount_amount'] ?? 0;
+                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+
+                // Get procurement settings for approval tiers
+                $settings = ProcurementSettings::where('store_id', $storeId)->first();
+                $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);
+                $rfqRequired = $settings?->shouldRequireRFQ($totalAmount) ?? false;
+
+                $po = PurchaseOrder::create([
+                    'po_number' => $poNumber,
+                    'store_id' => $storeId,
+                    'branch_id' => $validated['branch_id'],
+                    'supplier_id' => $validated['supplier_id'],
+                    'status' => $validated['status'] ?? 'pending_approval',
+                    'subtotal' => $subtotal,
+                    'tax_amount' => $taxAmount,
+                    'shipping_cost' => $shippingCost,
+                    'discount_amount' => $discountAmount,
+                    'total_amount' => $totalAmount,
+                    'approval_tier_level' => $approvalTier['level'] ?? null,
+                    'required_approvers' => $approvalTier['approvers'] ?? [],
+                    'rfq_required' => $rfqRequired,
+                    'payment_status' => 'pending',
+                    'payment_terms' => $validated['payment_terms'],
+                    'order_date' => $validated['order_date'],
+                    'expected_delivery_date' => $validated['expected_delivery_date'],
+                    'created_by' => auth()->id(),
+                    'notes' => $validated['notes'] ?? null,
+                    'terms_conditions' => $validated['terms_conditions'] ?? null,
+                ]);
+
+                $paymentDueDays = match($validated['payment_terms']) {
+                    'net_7' => 7,
+                    'net_15' => 15,
+                    'net_30' => 30,
+                    'net_60' => 60,
+                    default => 0,
+                };
+                $po->payment_due_date = now()->addDays($paymentDueDays);
+                $po->save();
+
+                foreach ($items as $item) {
+                    PurchaseOrderItem::create([
+                        'purchase_order_id' => $po->id,
+                        'product_id' => $item['product_id'],
+                        'variation_id' => $item['variation_id'],
+                        'quantity_ordered' => $item['quantity_ordered'],
+                        'quantity_received' => 0,
+                        'quantity_cancelled' => 0,
+                        'unit_cost' => $item['unit_cost'],
+                        'tax_rate' => $item['tax_rate'],
+                        'discount_percent' => $item['discount_percent'] ?? 0,
+                        'line_total' => $item['line_total'],
+                    ]);
+                }
             }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Purchase order created successfully',
-                'data' => $po->load('items.product'),
+                'message' => 'Purchase order created successfully from stock order requests',
+                'data' => $po->load(['supplier', 'items.product', 'createdBy']),
             ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('PO Creation Error', [
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create purchase order',
-                'error' => $e->getMessage(),
+                'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
@@ -449,11 +589,41 @@ class PurchaseOrderController extends Controller
             ], 422);
         }
 
+        $financeService = new FinanceExpenseService();
+        $requiresFinance = $financeService->requiresFinanceApproval($po->store_id, (float) $po->total_amount);
+
+        $expense = $financeService->ensureExpense([
+            'store_id' => $po->store_id,
+            'department' => 'procurement',
+            'category' => 'purchase_order_commitment',
+            'amount' => $po->total_amount,
+            'expense_date' => now()->toDateString(),
+            'status' => 'pending_approval',
+            'reference_number' => $po->po_number,
+            'reference_type' => 'purchase_order',
+            'reference_id' => $po->id,
+            'currency' => 'PHP',
+            'description' => "Purchase order commitment {$po->po_number}",
+            'notes' => null,
+            'requested_by' => auth()->id(),
+        ], !$requiresFinance, auth()->id());
+
+        if ($requiresFinance && $expense->status !== 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Finance approval is required before sending this purchase order.',
+            ], 422);
+        }
+
         DB::beginTransaction();
         try {
             $po->sendToSupplier();
 
             // TODO: Send email to supplier
+
+            if ($expense->status === 'approved') {
+                $po->update(['payment_status' => 'finance_approved']);
+            }
 
             DB::commit();
 

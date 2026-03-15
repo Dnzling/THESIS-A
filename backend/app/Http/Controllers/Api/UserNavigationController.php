@@ -108,6 +108,9 @@ class UserNavigationController extends Controller
      */
     private function getUserNavigationItems($user, array $permissions): array
     {
+        $roleName = strtolower($user->role->name ?? '');
+        $isSupplierRole = str_contains($roleName, 'supplier');
+
         // Get all active navigation items
         $navigationItems = NavigationItem::where('is_active', true)
             ->whereNull('deleted_at')
@@ -118,6 +121,29 @@ class UserNavigationController extends Controller
         $accessibleNavigation = [];
 
         foreach ($navigationItems as $navItem) {
+            // Module-level gating to avoid showing routes for unrelated roles
+            if ($navItem->module === 'hr' && ($navItem->section === 'job_hiring')) {
+                if (!in_array($roleName, ['hr_manager', 'hr_admin', 'hr'])) {
+                    continue;
+                }
+            }
+
+            if ($navItem->module === 'merchandising') {
+                $allowedRoles = [
+                    'super_admin',
+                    'owner',
+                    'store_admin',
+                    'store_manager',
+                    'warehouse_manager',
+                    'inventory_staff',
+                    'sales_staff',
+                    'supplier_coordinator',
+                ];
+                if (!in_array($roleName, $allowedRoles)) {
+                    continue;
+                }
+            }
+
             // Check if user has permission to access this navigation item
             if ($this->canAccessNavigationItem($navItem, $permissions)) {
                 $accessibleNavigation[] = [
@@ -146,6 +172,13 @@ class UserNavigationController extends Controller
      */
     private function canAccessNavigationItem($navItem, array $userPermissions): bool
     {
+        $roleName = strtolower(auth()->user()?->role?->name ?? '');
+
+        // Supplier portal should always be visible to supplier roles
+        if ($navItem->module === 'supplier' && str_contains($roleName, 'supplier')) {
+            return true;
+        }
+
         // If no permissions required, everyone can access
         if ($navItem->permissions->isEmpty()) {
             return true;

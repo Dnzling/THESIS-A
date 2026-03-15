@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders\Permission;
+namespace Database\Seeders\Permission\Merchandise;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -81,12 +81,16 @@ class RolePermissionSeeder extends Seeder
             if (!isset($roles[$roleName])) continue;
 
             foreach ($permissions as $permissionId) {
-                DB::table('role_permissions')->insert([
-                    'role_id' => $roles[$roleName],
-                    'permission_id' => $permissionId,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
+                DB::table('role_permissions')->updateOrInsert(
+                    [
+                        'role_id' => $roles[$roleName],
+                        'permission_id' => $permissionId,
+                    ],
+                    [
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]
+                );
             }
         }
     }

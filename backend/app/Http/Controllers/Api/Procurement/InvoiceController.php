@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Invoice\InvoiceItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -139,6 +140,29 @@ class InvoiceController extends Controller
             DB::beginTransaction();
 
             try {
+                $po = PurchaseOrder::where('store_id', auth()->user()->store_id)
+                    ->findOrFail($validated['purchase_order_id']);
+
+                if (!in_array($po->status, ['ordered', 'partially_received', 'received'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invoice can only be created for ordered or received purchase orders',
+                    ], 422);
+                }
+
+                if (!empty($validated['goods_receipt_id'])) {
+                    $grnValid = \App\Models\Procurement\Receiving\GoodsReceipt::where('id', $validated['goods_receipt_id'])
+                        ->where('purchase_order_id', $po->id)
+                        ->exists();
+
+                    if (!$grnValid) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Selected goods receipt does not belong to this purchase order',
+                        ], 422);
+                    }
+                }
+
                 // Calculate net amount
                 $taxAmount = $validated['tax_amount'] ?? 0;
                 $shippingCost = $validated['shipping_cost'] ?? 0;
@@ -300,6 +324,32 @@ class InvoiceController extends Controller
                 ], 422);
             }
 
+            $financeService = new FinanceExpenseService();
+            $requiresFinance = $financeService->requiresFinanceApproval($invoice->store_id, (float) $invoice->net_amount);
+
+            $expense = $financeService->ensureExpense([
+                'store_id' => $invoice->store_id,
+                'department' => 'procurement',
+                'category' => 'supplier_invoice',
+                'amount' => $invoice->net_amount ?? $invoice->invoice_amount,
+                'expense_date' => $invoice->invoice_date,
+                'status' => 'pending_approval',
+                'reference_number' => $invoice->invoice_number,
+                'reference_type' => 'invoice',
+                'reference_id' => $invoice->id,
+                'currency' => $invoice->currency ?? 'PHP',
+                'description' => "Supplier invoice {$invoice->invoice_number}",
+                'notes' => $invoice->remarks,
+                'requested_by' => auth()->id(),
+            ], !$requiresFinance, auth()->id());
+
+            if ($requiresFinance && $expense->status !== 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Finance approval is required before approving this invoice.',
+                ], 422);
+            }
+
             if ($invoice->approve()) {
                 Log::info("Invoice approved: {$invoice->invoice_number}", [
                     'invoice_id' => $id,
@@ -377,6 +427,37 @@ class InvoiceController extends Controller
             ]);
 
             if ($invoice->markAsPaid($validated['payment_method'], $validated['payment_amount'])) {
+                $financeService = new FinanceExpenseService();
+                $expense = $financeService->ensureExpense([
+                    'store_id' => $invoice->store_id,
+                    'department' => 'procurement',
+                    'category' => 'supplier_invoice',
+                    'amount' => $invoice->net_amount ?? $invoice->invoice_amount,
+                    'expense_date' => $invoice->invoice_date,
+                    'status' => 'pending_approval',
+                    'reference_number' => $invoice->invoice_number,
+                    'reference_type' => 'invoice',
+                    'reference_id' => $invoice->id,
+                    'currency' => $invoice->currency ?? 'PHP',
+                    'description' => "Supplier invoice {$invoice->invoice_number}",
+                    'notes' => $invoice->remarks,
+                    'requested_by' => auth()->id(),
+                ], true, auth()->id());
+
+                if ($expense->status !== 'paid') {
+                    $expense->update([
+                        'status' => 'paid',
+                        'payment_method' => $validated['payment_method'],
+                        'payment_date' => now()->toDateString(),
+                        'paid_by' => auth()->id(),
+                        'paid_at' => now(),
+                    ]);
+                }
+
+                if ($invoice->purchaseOrder) {
+                    $invoice->purchaseOrder->update(['payment_status' => 'paid']);
+                }
+
                 Log::info("Invoice marked as paid: {$invoice->invoice_number}", [
                     'invoice_id' => $id,
                     'paid_by' => auth()->id(),

@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
+use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +59,10 @@ class RequestForQuotationController extends Controller
             'items.variation',
             'suppliers.supplier',
             'quotations.supplier',
+            'supplierPortalFeedbacks.supplierPortal.supplier',
+            'supplierPortalFeedbacks.rfqItem.product',
+            'supplierPortalFeedbacks.rfqItem.variation',
+            'supplierPortalFeedbacks.negotiations',
             'createdBy',
             'awardedToSupplier'
         ])->findOrFail($id);
@@ -64,6 +71,232 @@ class RequestForQuotationController extends Controller
             'success' => true,
             'data' => $rfq,
         ]);
+    }
+
+    /**
+     * Review supplier portal RFQ feedback
+     * POST /api/procurement/rfqs/{id}/portal-feedbacks/{feedbackId}/review
+     */
+    public function reviewPortalFeedback(Request $request, int $id, int $feedbackId): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:approved,rejected',
+            'rejection_reason' => 'required_if:status,rejected|string|min:5',
+        ]);
+
+        $rfq = RequestForQuotation::findOrFail($id);
+        $feedback = SupplierRFQFeedback::with(['supplierPortal.supplier', 'rfqItem'])
+            ->where('rfq_id', $rfq->id)
+            ->findOrFail($feedbackId);
+
+        $feedback->update([
+            'status' => $validated['status'],
+            'reviewed_by' => auth()->id(),
+            'reviewed_at' => now(),
+            'rejection_reason' => $validated['status'] === 'rejected' ? $validated['rejection_reason'] : null,
+        ]);
+
+        if ($validated['status'] === 'approved') {
+            // Reject other feedbacks for the same RFQ item
+            SupplierRFQFeedback::where('rfq_item_id', $feedback->rfq_item_id)
+                ->where('id', '!=', $feedback->id)
+                ->where('status', 'pending')
+                ->update([
+                    'status' => 'rejected',
+                    'reviewed_by' => auth()->id(),
+                    'reviewed_at' => now(),
+                    'rejection_reason' => 'Another quote was approved for this item.',
+                ]);
+        }
+
+        $this->updateRfqStatus($rfq->id);
+
+        if ($this->isRfqCompleted($rfq->id)) {
+            $this->syncApprovedPrices($rfq->id);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier response reviewed.',
+            'data' => $feedback->fresh(),
+        ]);
+    }
+
+    /**
+     * Create negotiation record for supplier feedback
+     * POST /api/procurement/rfqs/{id}/portal-feedbacks/{feedbackId}/negotiate
+     */
+    public function negotiatePortalFeedback(Request $request, int $id, int $feedbackId): JsonResponse
+    {
+        $validated = $request->validate([
+            'counter_price' => 'required|numeric|min:0.01',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $rfq = RequestForQuotation::findOrFail($id);
+        $feedback = SupplierRFQFeedback::with(['supplierPortal', 'rfqItem'])
+            ->where('rfq_id', $rfq->id)
+            ->findOrFail($feedbackId);
+
+        $negotiation = SupplierRFQNegotiation::create([
+            'supplier_rfq_feedback_id' => $feedback->id,
+            'supplier_portal_id' => $feedback->supplier_portal_id,
+            'rfq_id' => $rfq->id,
+            'rfq_item_id' => $feedback->rfq_item_id,
+            'counter_price' => $validated['counter_price'],
+            'notes' => $validated['notes'] ?? null,
+            'created_by' => auth()->id(),
+            'status' => 'pending',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Negotiation sent to supplier.',
+            'data' => $negotiation,
+        ], 201);
+    }
+
+    /**
+     * Bulk approve feedbacks
+     * POST /api/procurement/rfqs/{id}/portal-feedbacks/bulk-approve
+     */
+    public function bulkApprovePortalFeedbacks(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'feedback_ids' => 'required|array|min:1',
+            'feedback_ids.*' => 'integer|exists:supplier_rfq_feedbacks,id',
+        ]);
+
+        $rfq = RequestForQuotation::findOrFail($id);
+        $feedbacks = SupplierRFQFeedback::where('rfq_id', $rfq->id)
+            ->whereIn('id', $validated['feedback_ids'])
+            ->get();
+
+        foreach ($feedbacks as $feedback) {
+            $feedback->update([
+                'status' => 'approved',
+                'reviewed_by' => auth()->id(),
+                'reviewed_at' => now(),
+                'rejection_reason' => null,
+            ]);
+
+            SupplierRFQFeedback::where('rfq_item_id', $feedback->rfq_item_id)
+                ->where('id', '!=', $feedback->id)
+                ->where('status', 'pending')
+                ->update([
+                    'status' => 'rejected',
+                    'reviewed_by' => auth()->id(),
+                    'reviewed_at' => now(),
+                    'rejection_reason' => 'Another quote was approved for this item.',
+                ]);
+        }
+
+        $this->updateRfqStatus($rfq->id);
+
+        if ($this->isRfqCompleted($rfq->id)) {
+            $this->syncApprovedPrices($rfq->id);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Selected responses approved.',
+        ]);
+    }
+
+    private function updateRfqStatus(int $rfqId): void
+    {
+        $rfq = RequestForQuotation::with('items')->findOrFail($rfqId);
+        $itemIds = $rfq->items->pluck('id')->all();
+
+        $approvedByItem = SupplierRFQFeedback::whereIn('rfq_item_id', $itemIds)
+            ->where('status', 'approved')
+            ->select('rfq_item_id')
+            ->distinct()
+            ->pluck('rfq_item_id')
+            ->all();
+
+        $allApproved = count($approvedByItem) === count($itemIds) && count($itemIds) > 0;
+        $anyApproved = count($approvedByItem) > 0;
+
+        if ($allApproved) {
+            $rfq->update(['status' => 'completed']);
+            return;
+        }
+
+        if ($anyApproved) {
+            $rfq->update(['status' => 'partially_approved']);
+            return;
+        }
+
+        $anyPending = SupplierRFQFeedback::where('rfq_id', $rfqId)->where('status', 'pending')->exists();
+        if ($anyPending) {
+            $rfq->update(['status' => 'receiving']);
+            return;
+        }
+
+        $rfq->update(['status' => 'rejected']);
+    }
+
+    private function isRfqCompleted(int $rfqId): bool
+    {
+        $rfq = RequestForQuotation::with('items')->findOrFail($rfqId);
+        $itemIds = $rfq->items->pluck('id')->all();
+
+        $approvedByItem = SupplierRFQFeedback::whereIn('rfq_item_id', $itemIds)
+            ->where('status', 'approved')
+            ->select('rfq_item_id')
+            ->distinct()
+            ->pluck('rfq_item_id')
+            ->all();
+
+        return count($itemIds) > 0 && count($approvedByItem) === count($itemIds);
+    }
+
+    private function syncApprovedPrices(int $rfqId): void
+    {
+        $approvedFeedbacks = SupplierRFQFeedback::with(['supplierPortal', 'rfqItem'])
+            ->where('rfq_id', $rfqId)
+            ->where('status', 'approved')
+            ->get();
+
+        foreach ($approvedFeedbacks as $feedback) {
+            $supplierId = $feedback->supplierPortal?->supplier_id;
+            $productId = $feedback->rfqItem?->product_id;
+
+            if (!$supplierId || !$productId) {
+                continue;
+            }
+
+            $existing = DB::table('supplier_products')
+                ->where('supplier_id', $supplierId)
+                ->where('product_id', $productId)
+                ->first();
+
+            if ($existing) {
+                DB::table('supplier_products')
+                    ->where('supplier_id', $supplierId)
+                    ->where('product_id', $productId)
+                    ->update([
+                        'supplier_price' => $feedback->quoted_price,
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                DB::table('supplier_products')->insert([
+                    'supplier_id' => $supplierId,
+                    'product_id' => $productId,
+                    'supplier_price' => $feedback->quoted_price,
+                    'minimum_order_quantity' => 1,
+                    'lead_time_days' => 7,
+                    'is_preferred_supplier' => false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            Product::where('id', $productId)->update([
+                'cost_price' => $feedback->quoted_price,
+            ]);
+        }
     }
 
     /**
@@ -98,9 +331,8 @@ class RequestForQuotationController extends Controller
 
         DB::beginTransaction();
         try {
-            // Generate RFQ number
-            $lastRFQ = RequestForQuotation::latest()->first();
-            $rfqNumber = 'RFQ-' . date('Y') . '-' . str_pad(($lastRFQ?->id ?? 0) + 1, 5, '0', STR_PAD_LEFT);
+            // Generate RFQ number using datetime for uniqueness
+            $rfqNumber = 'RFQ-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
             // Create RFQ with all fields
             $rfq = RequestForQuotation::create([
