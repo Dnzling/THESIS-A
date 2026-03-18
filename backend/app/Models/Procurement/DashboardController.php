@@ -43,9 +43,9 @@ class DashboardController extends Controller
             ->selectRaw('
                 COUNT(*) as total_prs,
                 SUM(CASE WHEN status = "submitted" THEN 1 ELSE 0 END) as pending_prs,
-                SUM(CASE WHEN status = "approved" THEN 1 ELSE 0 END) as approved_prs,
+                SUM(CASE WHEN status = "procurement_processing" THEN 1 ELSE 0 END) as approved_prs,
                 SUM(CASE WHEN status = "rejected" THEN 1 ELSE 0 END) as rejected_prs,
-                SUM(CASE WHEN status = "converted_to_po" THEN 1 ELSE 0 END) as converted_prs,
+                SUM(CASE WHEN status = "po_created" THEN 1 ELSE 0 END) as converted_prs,
                 SUM(estimated_amount) as total_estimated_amount
             ')->first();
 
@@ -62,9 +62,9 @@ class DashboardController extends Controller
         $poStats = PurchaseOrder::whereBetween('created_at', [$startDate, $endDate])
             ->selectRaw('
                 COUNT(*) as total_pos,
-                SUM(CASE WHEN status IN ("pending_approval", "partially_approved") THEN 1 ELSE 0 END) as pending_approval,
-                SUM(CASE WHEN status = "ordered" THEN 1 ELSE 0 END) as active_pos,
-                SUM(CASE WHEN status = "received" THEN 1 ELSE 0 END) as completed_pos,
+                SUM(CASE WHEN status IN ("pending_finance_approval") THEN 1 ELSE 0 END) as pending_approval,
+                SUM(CASE WHEN status IN ("sent_to_supplier","supplier_accepted","in_transit") THEN 1 ELSE 0 END) as active_pos,
+                SUM(CASE WHEN status = "delivered" THEN 1 ELSE 0 END) as completed_pos,
                 SUM(total_amount) as total_po_value,
                 SUM(CASE WHEN payment_status = "paid" THEN total_amount ELSE 0 END) as total_paid,
                 SUM(CASE WHEN payment_status = "pending" THEN total_amount ELSE 0 END) as total_pending_payment
@@ -83,7 +83,7 @@ class DashboardController extends Controller
         $paymentsStats = SupplierPayment::whereBetween('created_at', [$startDate, $endDate])
             ->selectRaw('
                 COUNT(*) as total_payments,
-                SUM(CASE WHEN status = "pending_approval" THEN 1 ELSE 0 END) as pending_approval,
+                SUM(CASE WHEN status = "pending_finance_approval" THEN 1 ELSE 0 END) as pending_approval,
                 SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as completed_payments,
                 SUM(payment_amount) as total_amount_paid
             ')->first();
@@ -122,13 +122,13 @@ class DashboardController extends Controller
             ->get();
 
         // Get pending approvals count
-        $pendingApprovals = PurchaseRequisition::whereIn('status', ['submitted', 'warehouse_approved'])
+        $pendingApprovals = PurchaseRequisition::where('status', 'submitted')
             ->count() 
-            + PurchaseOrder::whereIn('status', ['pending_approval', 'partially_approved'])
+            + PurchaseOrder::whereIn('status', ['pending_finance_approval'])
             ->count();
 
         // Get overdue POs
-        $overduePOs = PurchaseOrder::where('status', 'ordered')
+        $overduePOs = PurchaseOrder::whereIn('status', ['sent_to_supplier','supplier_accepted','in_transit'])
             ->whereNotNull('expected_delivery_date')
             ->where('expected_delivery_date', '<', now())
             ->count();
@@ -202,12 +202,12 @@ class DashboardController extends Controller
         $startDate = $this->getStartDate($dateRange);
 
         // Active POs
-        $activePOs = PurchaseOrder::where('status', 'ordered')->count();
-        $activePOsValue = PurchaseOrder::where('status', 'ordered')->sum('total_amount');
+        $activePOs = PurchaseOrder::whereIn('status', ['sent_to_supplier','supplier_accepted','in_transit'])->count();
+        $activePOsValue = PurchaseOrder::whereIn('status', ['sent_to_supplier','supplier_accepted','in_transit'])->sum('total_amount');
 
         // Pending approvals
-        $pendingPRs = PurchaseRequisition::whereIn('status', ['submitted', 'warehouse_approved'])->count();
-        $pendingPOs = PurchaseOrder::whereIn('status', ['pending_approval', 'partially_approved'])->count();
+        $pendingPRs = PurchaseRequisition::where('status', 'submitted')->count();
+        $pendingPOs = PurchaseOrder::whereIn('status', ['pending_finance_approval'])->count();
 
         // Pending payments
         $pendingPaymentsCount = SupplierPayment::where('status', 'pending_approval')->count();

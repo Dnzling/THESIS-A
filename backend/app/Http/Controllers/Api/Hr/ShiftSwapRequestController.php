@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Hr\ShiftSwapRequest;
 use App\Models\Hr\ShiftSchedule;
 use App\Models\Hr\Employee;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -197,6 +198,14 @@ class ShiftSwapRequestController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'shift_swap.requested',
+                'Submitted shift swap request',
+                ['shift_swap_id' => $swapRequest->id],
+                'ShiftSwapRequest',
+                $swapRequest->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Shift swap request created successfully',
@@ -347,6 +356,14 @@ class ShiftSwapRequestController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'shift_swap.accepted',
+                'Accepted shift swap request',
+                ['shift_swap_id' => $swapRequest->id],
+                'ShiftSwapRequest',
+                $swapRequest->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Swap request accepted successfully',
@@ -422,6 +439,14 @@ class ShiftSwapRequestController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'shift_swap.rejected',
+                'Rejected shift swap request',
+                ['shift_swap_id' => $swapRequest->id],
+                'ShiftSwapRequest',
+                $swapRequest->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Swap request rejected',
@@ -482,6 +507,14 @@ class ShiftSwapRequestController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'shift_swap.cancelled',
+                'Cancelled shift swap request',
+                ['shift_swap_id' => $swapRequest->id],
+                'ShiftSwapRequest',
+                $swapRequest->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Swap request cancelled successfully'
@@ -541,6 +574,64 @@ class ShiftSwapRequestController extends Controller
         return response()->json([
             'success' => true,
             'data' => $pending
+        ]);
+    }
+
+    /**
+     * Suggest swap candidates with same role and available schedule on the same date
+     */
+    public function suggestions(Request $request)
+    {
+        $user = Auth::user();
+        $storeId = $user->store_id;
+
+        $request->validate([
+            'requestor_schedule_id' => 'required|exists:shift_schedules,id'
+        ]);
+
+        $requestorSchedule = ShiftSchedule::with(['employee.user'])
+            ->where('id', $request->requestor_schedule_id)
+            ->first();
+
+        if (!$requestorSchedule) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Requestor schedule not found'
+            ], 404);
+        }
+
+        $requestor = $requestorSchedule->employee;
+        $roleId = $requestor?->user?->role_id;
+
+        if (!$requestor || !$roleId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Requestor role not found'
+            ], 422);
+        }
+
+        $candidates = ShiftSchedule::with(['shift', 'employee.user'])
+            ->whereDate('schedule_date', $requestorSchedule->schedule_date)
+            ->where('status', 'scheduled')
+            ->whereHas('employee', function ($q) use ($storeId, $roleId, $requestor) {
+                $q->where('store_id', $storeId)
+                    ->where('id', '!=', $requestor->id)
+                    ->whereHas('user', function ($u) use ($roleId) {
+                        $u->where('role_id', $roleId);
+                    });
+            })
+            ->orderBy('schedule_date')
+            ->get()
+            ->map(function ($schedule) {
+                return [
+                    'schedule' => $schedule,
+                    'employee' => $schedule->employee,
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'data' => $candidates
         ]);
     }
 }

@@ -30,6 +30,10 @@ class ProductController extends BaseController
                 $query->byCategory($request->category_id);
             }
 
+            if ($request->has('product_type')) {
+                $query->where('product_type', $request->product_type);
+            }
+
             if ($request->boolean('featured_only')) {
                 $query->featured();
             }
@@ -99,6 +103,7 @@ class ProductController extends BaseController
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
+                'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'nullable|numeric|min:0',
@@ -146,6 +151,7 @@ class ProductController extends BaseController
             $data = $validated;
             $data['store_id'] = $this->getStoreId();
             $data['stock_status'] = 'In Stock';
+            $data['product_type'] = $validated['product_type'] ?? 'finished_good';
                 
                 $product = Product::create($data);
 
@@ -363,6 +369,7 @@ class ProductController extends BaseController
                 'description' => 'nullable|string',
                 'category_id' => 'sometimes|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
+                'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'sometimes|numeric|min:0',

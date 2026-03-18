@@ -2,6 +2,7 @@
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <!-- Toast notifications -->
     <Toast />
+    <ConfirmDialog />
 
     <!-- Header -->
     <div class="flex items-center justify-between">
@@ -20,6 +21,20 @@
           severity="info" 
           @click="editPO"
         />
+        <Button
+          v-if="detail?.status === 'approved'"
+          label="Send to Supplier"
+          icon="pi pi-send"
+          severity="success"
+          @click="confirmSend"
+        />
+        <Button
+          v-if="detail?.status === 'sent_to_supplier'"
+          label="Resend to Supplier"
+          icon="pi pi-replay"
+          severity="secondary"
+          @click="confirmResend"
+        />
         <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
       </div>
     </div>
@@ -33,6 +48,13 @@
 
     <!-- Main Content -->
     <div v-else-if="detail" class="space-y-6">
+      <div
+        v-if="detail?.status === 'pending_finance_approval'"
+        class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700"
+      >
+        <i class="pi pi-clock mr-2"></i>
+        Awaiting Finance Approval — this PO cannot be sent to supplier yet.
+      </div>
       <!-- PO Header Information -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-white p-4 rounded-lg border border-gray-200">
@@ -179,6 +201,26 @@
         This purchase order is in <strong>{{ formatStatus(detail?.status) }}</strong> status and is view-only.
       </div>
 
+      <!-- Activity Timeline -->
+      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-history text-gray-500"></i>
+            <h3 class="font-medium text-gray-700">Activity Timeline</h3>
+          </div>
+        </div>
+        <div class="p-6">
+          <Timeline :value="timelineItems" align="left" class="w-full">
+            <template #content="{ item }">
+              <div class="pb-6">
+                <p class="font-medium text-gray-900">{{ item.title }}</p>
+                <p class="text-sm text-gray-500">{{ item.subtitle }}</p>
+              </div>
+            </template>
+          </Timeline>
+        </div>
+      </div>
+
       <!-- Goods Receipt Section -->
       <div v-if="detail?.goods_receipts?.length > 0" class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
@@ -214,6 +256,32 @@
       </div>
     </div>
 
+    <!-- Email Preview Modal -->
+    <Dialog v-model:visible="showEmailDialog" modal header="Supplier Email Preview" :style="{ width: '40rem' }">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold mb-2">To</label>
+          <InputText v-model="emailForm.recipient_email" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-2">Subject</label>
+          <InputText v-model="emailForm.subject" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-2">Message</label>
+          <Textarea v-model="emailForm.message" rows="6" class="w-full" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="showEmailDialog = false" />
+        <Button
+          :label="emailForm.mode === 'send' ? 'Send' : 'Resend'"
+          :loading="emailSending"
+          @click="submitEmail"
+        />
+      </template>
+    </Dialog>
+
     <!-- Not Found State -->
     <div v-else class="text-center py-12 bg-white rounded-lg border border-gray-200">
       <i class="pi pi-exclamation-circle text-4xl text-gray-300 mb-4"></i>
@@ -225,21 +293,31 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '../../../../stores/auth'
 import procurementService from '../../../../services/procurement.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 const poId = Number(route.params.id)
 
 // State
 const loading = ref(false)
 const detail = ref<any>(null)
+const showEmailDialog = ref(false)
+const emailSending = ref(false)
+const emailForm = ref({
+  recipient_email: '',
+  subject: '',
+  message: '',
+  mode: 'send' as 'send' | 'resend',
+})
 
 // Methods
 const loadDetail = async () => {
@@ -275,6 +353,98 @@ const editPO = () => {
   })
 }
 
+const openEmailDialog = (mode: 'send' | 'resend') => {
+  if (!detail.value?.supplier?.email) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing Email',
+      detail: 'Supplier email is not available.',
+      life: 3000
+    })
+    return
+  }
+
+  emailForm.value = {
+    recipient_email: detail.value.supplier.email,
+    subject: `Purchase Order ${detail.value.po_number}`,
+    message: `Hello ${detail.value.supplier.supplier_name},\n\nPlease find the attached Purchase Order ${detail.value.po_number}.\n\nThank you.`,
+    mode,
+  }
+  showEmailDialog.value = true
+}
+
+const confirmSend = () => openEmailDialog('send')
+const confirmResend = () => openEmailDialog('resend')
+
+const submitEmail = async () => {
+  if (!detail.value) return
+  emailSending.value = true
+  try {
+    await procurementService.emailPurchaseOrder(poId, {
+      recipient_email: emailForm.value.recipient_email,
+      subject: emailForm.value.subject,
+      message: emailForm.value.message,
+    })
+
+    if (emailForm.value.mode === 'send' && detail.value.status === 'approved') {
+      await procurementService.sendPurchaseOrder(poId)
+    }
+
+    toast.add({
+      severity: 'success',
+      summary: 'Sent',
+      detail: emailForm.value.mode === 'send' ? 'PO sent to supplier.' : 'PO resent to supplier.',
+      life: 2500
+    })
+    showEmailDialog.value = false
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to send email.',
+      life: 3000
+    })
+  } finally {
+    emailSending.value = false
+  }
+}
+
+const timelineItems = computed(() => {
+  if (!detail.value) return []
+  const logs = detail.value.activity_logs || []
+
+  if (!logs.length) {
+    return [
+      {
+        title: 'PO Created',
+        subtitle: detail.value.created_at ? formatDate(detail.value.created_at) : 'Date not available',
+      },
+    ]
+  }
+
+    return logs.map((log: any) => {
+      const actor = log.user ? `${log.user.fname ?? ''} ${log.user.lname ?? ''}`.trim() : 'System'
+      const action = log.action || ''
+      const titleMap: Record<string, string> = {
+        po_created: 'PO Created',
+        po_approved: 'Finance Approved',
+        po_sent_to_supplier: 'Sent to Supplier',
+        po_email_sent: 'Email Sent to Supplier',
+        po_supplier_accepted: 'Supplier Accepted',
+        po_supplier_declined: 'Declined by Supplier',
+        po_shipment_created: 'Delivery Form Created',
+        po_invoice_created: 'Invoice Created',
+        po_rejected: 'Rejected by Finance',
+        po_cancelled: 'Cancelled',
+      }
+    return {
+      title: titleMap[action] || log.description || 'Activity',
+      subtitle: `${formatDate(log.created_at)} • ${actor}`,
+    }
+  })
+})
+
 const formatStatus = (status: string) => {
   if (!status) return 'DRAFT'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -282,14 +452,17 @@ const formatStatus = (status: string) => {
 
 const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' => {
   const statusMap: Record<string, any> = {
-    'approved': 'success',
-    'ordered': 'info',
-    'received': 'success',
-    'pending_approval': 'warn',
-    'partially_received': 'warn',
-    'draft': 'contrast',
-    'cancelled': 'danger',
-    'rejected': 'danger'
+    approved: 'success',
+    sent_to_supplier: 'info',
+    supplier_accepted: 'success',
+    in_transit: 'warn',
+    delivered: 'success',
+    pending_finance_approval: 'warn',
+    rejected_finance: 'danger',
+    declined_supplier: 'danger',
+    cancelled: 'danger',
+    revision_requested: 'warn',
+    draft: 'contrast'
   }
   return statusMap[status] || 'contrast'
 }
@@ -336,19 +509,7 @@ const approvePO = async () => {
   if (notes === null) return
 
   try {
-    const userRole = authStore.user?.role?.name
-    if (!userRole) {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: 'Unable to determine your role',
-        life: 3000
-      })
-      return
-    }
-
     await procurementService.approvePurchaseOrder(poId, {
-      role: userRole,
       notes: notes || undefined
     })
     toast.add({

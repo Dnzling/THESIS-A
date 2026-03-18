@@ -241,14 +241,17 @@ const formatCurrency = (value: number, decimals: number = 2) => {
 
 const getPoStatusSeverity = (status: string): string => {
   const map: Record<string, string> = {
-    'draft': 'secondary',
-    'pending_approval': 'warning',
-    'partially_approved': 'warning',
-    'approved': 'info',
-    'ordered': 'success',
-    'received': 'success',
-    'cancelled': 'danger',
-    'rejected': 'danger',
+    draft: 'secondary',
+    pending_finance_approval: 'warning',
+    approved: 'info',
+    sent_to_supplier: 'info',
+    supplier_accepted: 'success',
+    in_transit: 'warning',
+    delivered: 'success',
+    rejected_finance: 'danger',
+    declined_supplier: 'danger',
+    cancelled: 'danger',
+    revision_requested: 'warning',
   }
   return map[status] || 'secondary'
 }

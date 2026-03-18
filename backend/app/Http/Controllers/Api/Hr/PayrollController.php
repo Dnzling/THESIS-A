@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Core\ActivityLog;
 
 class PayrollController extends Controller
 {
@@ -1573,6 +1574,60 @@ class PayrollController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
+    }
+
+    public function downloadPayslipPdf($id)
+    {
+        $payroll = Payroll::with(['employee.user', 'payPeriod', 'items'])
+            ->findOrFail($id);
+
+        $printedAt = now();
+
+        $pdf = \PDF::loadView('hr.payslip-pdf', [
+            'payroll' => $payroll,
+            'employee' => $payroll->employee,
+            'user' => $payroll->employee?->user,
+            'payPeriod' => $payroll->payPeriod,
+            'printedAt' => $printedAt,
+        ])->setPaper('A4');
+
+        ActivityLog::record(
+            'payslip.downloaded',
+            'Downloaded payslip PDF',
+            ['payroll_id' => $payroll->id, 'printed_at' => $printedAt->toDateTimeString()],
+            'Payroll',
+            $payroll->id
+        );
+
+        $fileName = 'payslip_' . ($payroll->employee?->employee_number ?? $payroll->id) . '.pdf';
+
+        return $pdf->download($fileName);
+    }
+
+    public function printPayslip($id)
+    {
+        $payroll = Payroll::with(['employee.user', 'payPeriod', 'items'])
+            ->findOrFail($id);
+
+        $printedAt = now();
+
+        $pdf = \PDF::loadView('hr.payslip-pdf', [
+            'payroll' => $payroll,
+            'employee' => $payroll->employee,
+            'user' => $payroll->employee?->user,
+            'payPeriod' => $payroll->payPeriod,
+            'printedAt' => $printedAt,
+        ])->setPaper('A4');
+
+        ActivityLog::record(
+            'payslip.printed',
+            'Printed payslip PDF',
+            ['payroll_id' => $payroll->id, 'printed_at' => $printedAt->toDateTimeString()],
+            'Payroll',
+            $payroll->id
+        );
+
+        return $pdf->stream('payslip_' . $payroll->id . '.pdf');
     }
 
     /**

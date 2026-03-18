@@ -69,6 +69,12 @@ class BranchInventoryController extends Controller
                 $query->where('warehouse_section', $request->warehouse_section);
             }
 
+            if ($request->has('product_type')) {
+                $query->whereHas('product', function ($q) use ($request) {
+                    $q->where('product_type', $request->product_type);
+                });
+            }
+
             if ($request->has('search')) {
                 $search = $request->search;
                 $query->whereHas('product', function ($q) use ($search) {

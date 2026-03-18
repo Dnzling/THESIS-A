@@ -7,9 +7,7 @@
         <Button label="Export Report" icon="pi pi-download" severity="secondary" outlined @click="exportReport" />
         <Button v-if="activeTab === 'assignments'" :loading="assignmentDialog" label="New Assignment" icon="pi pi-plus"
           severity="info" @click="openAssignmentDialog" />
-        <Button v-if="activeTab === 'shiftswap'" label="Request Swap" icon="pi pi-share-alt" severity="info"
-          @click="openSwapDialog" />
-        <Button v-if="activeTab !== 'coverage'" label="Create Shift" icon="pi pi-plus" severity="info"
+        <Button v-if="activeTab === 'templates'" label="Create Shift" icon="pi pi-plus" severity="info"
           @click="goToCreateShift" />
       </div>
     </div>
@@ -101,10 +99,10 @@
     <div v-else class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <Tabs v-model:value="activeTab">
         <TabList class="px-4 pt-2 border-b border-gray-100">
-          <Tab value="coverage">Coverage View</Tab>
-          <Tab value="assignments">Shift Assignment</Tab>
-          <Tab value="shiftswap">Shift Swap</Tab>
-          <Tab value="shifts">All Shifts</Tab>
+          <Tab value="templates">Shift Library</Tab>
+          <Tab value="assignments">Assignments</Tab>
+          <Tab value="swaps">Swap Requests</Tab>
+          <Tab value="coverage">Coverage</Tab>
         </TabList>
   
         <TabPanels class="p-4">
@@ -209,7 +207,7 @@
           </TabPanel>
   
           <!-- SHIFT SWAP TAB -->
-          <TabPanel value="shiftswap">
+          <TabPanel value="swaps">
             <div class="space-y-4">
               <div class="flex gap-3 mb-4">
                 <IconField>
@@ -274,7 +272,7 @@
           </TabPanel>
   
           <!-- ALL SHIFTS VIEW — Shift Definitions -->
-          <TabPanel value="shifts">
+          <TabPanel value="templates">
             <div class="space-y-4">
               <div class="flex gap-3">
                 <IconField>
@@ -570,7 +568,7 @@ const router = useRouter()
 const toast = useToast()
 
 // --- General State ---
-const activeTab = ref('coverage')
+const activeTab = ref('templates')
 const selectedDate = ref(new Date())
 const loading = ref(true)
 const assignmentDialog = ref(false)
@@ -721,13 +719,13 @@ watch(activeTab, (newTab) => {
   if (newTab === 'assignments' && assignments.value.length === 0) {
     fetchAssignments()
   }
-  if (newTab === 'shiftswap' && swapRequests.value.length === 0) {
+  if (newTab === 'swaps' && swapRequests.value.length === 0) {
     fetchSwapRequests()
   }
   if (newTab === 'coverage') {
     fetchCoverageData()
   }
-  if (newTab === 'shifts' && shiftDefinitions.value.length === 0) {
+  if (newTab === 'templates' && shiftDefinitions.value.length === 0) {
     fetchShiftDefinitions()
   }
 })
@@ -1089,7 +1087,7 @@ const fetchSwapRequests = async () => {
     const params: any = {}
     if (swapFilters.value.status) params.status = swapFilters.value.status
 
-    const response = await axios.get('api/shift-swap-requests', {
+    const response = await axios.get('api/shift-swaps', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }, params
     })
     if (response.data.success) {
@@ -1109,13 +1107,13 @@ const executeSwapAction = async (action: string, data: any) => {
 
   try {
     if (action === 'accept') {
-      await axios.put(`api/shift-swap-requests/${data.id}/accept`, {}, { headers })
+      await axios.put(`api/shift-swaps/${data.id}/accept`, {}, { headers })
       toast.add({ severity: 'success', summary: 'Accepted', detail: 'Swap request accepted successfully', life: 3000 })
     } else if (action === 'reject') {
-      await axios.put(`api/shift-swap-requests/${data.id}/reject`, {}, { headers })
+      await axios.put(`api/shift-swaps/${data.id}/reject`, {}, { headers })
       toast.add({ severity: 'success', summary: 'Rejected', detail: 'Swap request rejected', life: 3000 })
     } else if (action === 'cancel') {
-      await axios.put(`api/shift-swap-requests/${data.id}/cancel`, {}, { headers })
+      await axios.put(`api/shift-swaps/${data.id}/cancel`, {}, { headers })
       toast.add({ severity: 'success', summary: 'Cancelled', detail: 'Swap request cancelled', life: 3000 })
     }
     fetchSwapRequests()
@@ -1142,7 +1140,7 @@ const createSwapRequest = async () => {
       reason: swapForm.value.reason
     }
 
-    const response = await axios.post('api/shift-swap-requests', payload, {
+    const response = await axios.post('api/shift-swaps', payload, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
 
@@ -1182,7 +1180,7 @@ const openSwapDialog = async () => {
 const fetchShiftDefinitions = async () => {
   shiftDefsLoading.value = true
   try {
-    const response = await axios.get('api/shifts', {
+    const response = await axios.get('api/shift-management/templates', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     if (response.data.success) {
@@ -1247,7 +1245,7 @@ const updateShift = async () => {
     if (editShiftForm.value.break_start) payload.break_start = editShiftForm.value.break_start
     if (editShiftForm.value.break_end) payload.break_end = editShiftForm.value.break_end
 
-    const response = await axios.put(`api/shifts/${editShiftForm.value.id}`, payload, {
+    const response = await axios.put(`api/shift-management/templates/${editShiftForm.value.id}`, payload, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     if (response.data.success) {
@@ -1275,7 +1273,7 @@ const deleteShift = async () => {
   if (!selectedShiftForDelete.value) return
   deletingShift.value = true
   try {
-    await axios.delete(`api/shifts/${selectedShiftForDelete.value.id}`, {
+    await axios.delete(`api/shift-management/templates/${selectedShiftForDelete.value.id}`, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     toast.add({ severity: 'success', summary: 'Deleted', detail: 'Shift deleted successfully', life: 3000 })
@@ -1358,7 +1356,7 @@ const fetchEmployeeOptions = async () => {
 
 const fetchShiftOptions = async () => {
   try {
-    const response = await axios.get('api/shifts', {
+    const response = await axios.get('api/shift-management/templates', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params: { store_id: authStore.user?.store_id }
     })

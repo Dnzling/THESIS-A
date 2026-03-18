@@ -171,7 +171,11 @@
     </div>
 
     <!-- Loading -->
-    <ProgressSpinner v-if="loading" class="mt-6" />
+    <div v-if="loading" class="mt-6 space-y-3">
+      <Skeleton height="60px" class="rounded-lg" />
+      <Skeleton height="60px" class="rounded-lg" />
+      <Skeleton height="200px" class="rounded-lg" />
+    </div>
   </div>
 </template>
 
@@ -187,7 +191,7 @@ import Select from 'primevue/select'
 import FileUpload from 'primevue/fileupload'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
-import ProgressSpinner from 'primevue/progressspinner'
+import Skeleton from 'primevue/skeleton'
 import PageHeader from '../../../components/PageHeader.vue'
 import supplierService from '../../../services/supplier.service'
 

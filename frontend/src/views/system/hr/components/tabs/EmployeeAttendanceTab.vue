@@ -1,4 +1,4 @@
-<!-- views/system/employees/components/tabs/EmployeeAttendanceTab.vue -->
+﻿<!-- views/system/employees/components/tabs/EmployeeAttendanceTab.vue -->
 <template>
   <div class="space-y-4">
     <!-- Summary Cards -->
@@ -51,28 +51,16 @@
     <div class="flex justify-between items-center">
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-600">From:</span>
+          <span class="text-sm text-gray-600">Range:</span>
           <DatePicker 
-            v-model="dateRange.startDate" 
+            v-model="dateRangeRange"
+            selectionMode="range"
+            :manualInput="false"
             dateFormat="yy-mm-dd"
-            :maxDate="dateRange.endDate || new Date()"
-            placeholder="Start Date"
-            class="w-36"
-            size="small"
-            @date-select="handleDateSelect"
-          />
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-600">To:</span>
-          <DatePicker 
-            v-model="dateRange.endDate" 
-            dateFormat="yy-mm-dd"
-            :minDate="dateRange.startDate"
             :maxDate="new Date()"
-            placeholder="End Date"
-            class="w-36"
+            placeholder="Select Range"
+            class="w-64 p-fluid"
             size="small"
-            @date-select="handleDateSelect"
           />
         </div>
         <Button 
@@ -406,6 +394,7 @@ const dateRange = ref({
   startDate: null as Date | null,
   endDate: null as Date | null
 })
+const dateRangeRange = ref<Date[] | null>(null)
 
 // Quick month selection
 const selectedQuickMonth = ref('current')
@@ -556,6 +545,9 @@ const fetchAttendanceData = async () => {
         dateRange.value.endDate = response.data.data.date_range.end_date 
           ? new Date(response.data.data.date_range.end_date) 
           : null
+        dateRangeRange.value = dateRange.value.startDate && dateRange.value.endDate
+          ? [dateRange.value.startDate, dateRange.value.endDate]
+          : null
       }
       
       emit('update:attendance', response.data.data)
@@ -607,6 +599,7 @@ const resetDateFilter = () => {
     startDate: new Date(now.getFullYear(), now.getMonth(), 1),
     endDate: new Date(now.getFullYear(), now.getMonth() + 1, 0)
   }
+  dateRangeRange.value = [dateRange.value.startDate, dateRange.value.endDate]
   selectedQuickMonth.value = 'current'
   fetchAttendanceData()
 }
@@ -616,6 +609,7 @@ const selectQuickMonth = (type: string) => {
   const range = getDateRangeFromQuickMonth(type)
   dateRange.value.startDate = range.startDate
   dateRange.value.endDate = range.endDate
+  dateRangeRange.value = range.startDate && range.endDate ? [range.startDate, range.endDate] : null
   
   if (type !== 'all' || (range.startDate && range.endDate)) {
     fetchAttendanceData()
@@ -677,12 +671,23 @@ watch(() => props.employeeId, () => {
   }
 })
 
+watch(dateRangeRange, (range) => {
+  if (!range || range.length < 2) {
+    dateRange.value.startDate = null
+    dateRange.value.endDate = null
+    return
+  }
+  dateRange.value.startDate = range[0] || null
+  dateRange.value.endDate = range[1] || null
+})
+
 // Initialize
 onMounted(() => {
   // Set default date range to current month
   const now = new Date()
   dateRange.value.startDate = new Date(now.getFullYear(), now.getMonth(), 1)
   dateRange.value.endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  dateRangeRange.value = [dateRange.value.startDate, dateRange.value.endDate]
   
   if (props.initialData) {
     // Handle initial data if provided
@@ -711,3 +716,6 @@ onMounted(() => {
   padding: 0.25rem 0.5rem;
 }
 </style>
+
+
+

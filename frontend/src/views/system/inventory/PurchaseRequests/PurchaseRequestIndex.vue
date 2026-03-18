@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
+  <div class="min-h-screen p-6">
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-3xl font-bold text-gray-800">Stock Order Requests</h1>

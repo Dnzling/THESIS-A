@@ -35,8 +35,8 @@
         </Select>
   
         <!-- Date Picker -->
-        <DatePicker v-model="filters.dateRange" selectionMode="range" showIcon showClear size="small"
-          placeholder="Date Range" class="w-full sm:w-60" dateFormat="M dd, yy" />
+        <DatePicker v-model="filters.dateRange" selectionMode="range" :manualInput="false" showIcon showClear size="small"
+          placeholder="Date Range" fluid :maxDate="new Date()" dateFormat="M dd, yy" />
       </div>
   
       <!-- Clear Filters & Refresh -->

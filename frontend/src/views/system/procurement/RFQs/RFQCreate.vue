@@ -3,8 +3,10 @@
     <div class="flex items-center gap-3 mb-6">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.rfqs' })" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Create Request for Quotation</h2>
-        <p class="text-sm text-gray-500 mt-1">Create and send RFQ in a single view</p>
+        <h2 class="text-2xl font-bold text-gray-800">{{ isEditMode ? 'Edit Request for Quotation' : 'Create Request for Quotation' }}</h2>
+        <p class="text-sm text-gray-500 mt-1">
+          {{ isEditMode ? 'Update and resend RFQ details' : 'Create and send RFQ in a single view' }}
+        </p>
       </div>
     </div>
   
@@ -43,31 +45,10 @@
                 </div>
   
                 <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Deadline
-                    Date</label>
-                  <DatePicker v-model="form.deadline_date" dateFormat="yy-mm-dd"
-                    :invalid="errors.deadline_date !== undefined" fluid />
-                  <small class="text-red-500" v-if="errors.deadline_date">{{ errors.deadline_date }}</small>
-                </div>
-  
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-gray-700">Expected Delivery Date</label>
-                  <DatePicker v-model="form.expected_delivery_date" dateFormat="yy-mm-dd" fluid />
-                </div>
-  
-                <div class="flex flex-col gap-2">
                   <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Currency</label>
                   <Select v-model="form.currency" :options="currencies" optionLabel="label" optionValue="value"
                     placeholder="Select currency" filter :invalid="errors.currency !== undefined" fluid />
                   <small class="text-red-500" v-if="errors.currency">{{ errors.currency }}</small>
-                </div>
-  
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Payment
-                    Terms</label>
-                  <Select v-model="form.payment_terms" :options="paymentTerms" optionLabel="label" optionValue="value"
-                    placeholder="Select terms" :invalid="errors.payment_terms !== undefined" fluid />
-                  <small class="text-red-500" v-if="errors.payment_terms">{{ errors.payment_terms }}</small>
                 </div>
   
                 <div class="flex flex-col gap-2">
@@ -76,11 +57,6 @@
                     placeholder="Select terms" fluid />
                 </div>
   
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-gray-700">Assign To</label>
-                  <Select v-model="form.assigned_to" :options="employees" optionLabel="employee_name" optionValue="id"
-                    placeholder="Select employee" filter fluid />
-                </div>
               </div>
   
               <div class="flex flex-col gap-2">
@@ -201,8 +177,6 @@
               getRfqTypeLabel(form.rfq_type) }}</span></div>
           <div><span class="text-gray-600">Issue Date:</span> <span class="font-medium text-gray-900">{{ form.issue_date
               }}</span></div>
-          <div><span class="text-gray-600">Deadline:</span> <span class="font-medium text-gray-900">{{ form.deadline_date
-              }}</span></div>
         </div>
       </div>
       <div class="p-4 rounded-lg bg-indigo-50 border border-indigo-200">
@@ -240,20 +214,20 @@
   
     <template #footer>
       <Button label="Close" severity="secondary" text @click="showReview = false" />
-      <Button label="Create & Send RFQ" icon="pi pi-send" @click="submitForm"
+      <Button :label="isEditMode ? 'Update & Send RFQ' : 'Create & Send RFQ'" icon="pi pi-send" @click="submitForm"
         :disabled="!confirmTerms || selectedSupplierIds.length === 0" />
     </template>
   </Dialog>
   <div class="sticky bottom-0 -mx-6 px-6 py-3 bg-white/95 backdrop-blur flex justify-end gap-2">
     <Button label="Cancel" severity="secondary" text @click="router.push({ name: 'procurement.rfqs' })" />
-    <Button label="Save as Draft" icon="pi pi-save" severity="warning" @click="saveDraft" :loading="saving" />
-    <Button label="Review & Create" icon="pi pi-send" iconPos="right" @click="showReview = true" :loading="saving"
+    <Button :label="isEditMode ? 'Update Draft' : 'Save as Draft'" icon="pi pi-save" severity="warning" @click="saveDraft" :loading="saving" />
+    <Button :label="isEditMode ? 'Review & Update' : 'Review & Create'" icon="pi pi-send" iconPos="right" @click="showReview = true" :loading="saving"
       :disabled="selectedSupplierIds.length === 0" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
@@ -275,15 +249,11 @@ interface RFQForm {
   title: string
   description: string
   issue_date: Date
-  deadline_date: Date
-  expected_delivery_date: Date | null
   rfq_type: string
   currency: string
-  payment_terms: string
   shipping_terms: string
   instructions: string
   qualification_requirements: string
-  assigned_to: number | null
   items: RFQItem[]
   invitation_method: string
 }
@@ -313,20 +283,6 @@ interface Product {
   pending_receive_qty?: number
 }
 
-interface Employee {
-  id: number
-  fname: string
-  lname: string
-  employee_name?: string
-  email: string
-  role_name: string
-  department: string
-  status: string
-  employee_number: string
-  branch?: string
-  phone: string
-}
-
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
@@ -335,9 +291,10 @@ const loading = ref(false)
 const confirmTerms = ref(false)
 const showReview = ref(false)
 const selectedSupplierIds = ref<number[]>([])
+const editingRfqId = ref<number | null>(null)
+const isEditMode = computed(() => editingRfqId.value !== null)
 const products = ref<Product[]>([])
 const suppliers = ref<Supplier[]>([])
-const employees = ref<Employee[]>([])
 const errors = reactive<FormErrors>({})
 
 const rfqTypes = [
@@ -352,14 +309,6 @@ const currencies = [
   { label: 'EUR (Euro)', value: 'EUR' },
 ]
 
-const paymentTerms = [
-  { label: 'Net 7', value: 'net_7' },
-  { label: 'Net 15', value: 'net_15' },
-  { label: 'Net 30', value: 'net_30' },
-  { label: 'Net 45', value: 'net_45' },
-  { label: 'Net 60', value: 'net_60' },
-  { label: 'Cash on Delivery', value: 'cash_on_delivery' },
-]
 
 const shippingTerms = [
   { label: 'FOB (Free on Board)', value: 'FOB' },
@@ -373,18 +322,65 @@ const form = reactive<RFQForm>({
   title: '',
   description: '',
   issue_date: new Date(),
-  deadline_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days from now
-  expected_delivery_date: null,
   rfq_type: 'purchase',
   currency: 'PHP',
-  payment_terms: 'net_30',
   shipping_terms: 'FOB',
   instructions: '',
   qualification_requirements: '',
-  assigned_to: null,
   items: [{ product_id: null, variation_id: null, quantity: 1, unit: 'pcs', target_price: null, specifications: '', notes: '' }],
   invitation_method: 'both',
 })
+
+const toDateOrNull = (value: any): Date | null => {
+  if (!value) return null
+  const date = new Date(value)
+  return isNaN(date.getTime()) ? null : date
+}
+
+const loadRfqForEdit = async (id: number) => {
+  try {
+    const response = await procurementService.getRFQ(id)
+    const rfq = response?.data?.data || response?.data || response
+
+    if (!rfq) return
+
+    form.purchase_requisition_id = rfq.purchase_requisition_id ?? null
+    form.title = rfq.title || ''
+    form.description = rfq.description || ''
+    form.issue_date = toDateOrNull(rfq.issue_date) || new Date()
+    form.rfq_type = rfq.rfq_type || 'purchase'
+    form.currency = rfq.currency || 'PHP'
+    form.shipping_terms = rfq.shipping_terms || 'FOB'
+    form.instructions = rfq.instructions || ''
+    form.qualification_requirements = rfq.qualification_requirements || ''
+
+    if (Array.isArray(rfq.items) && rfq.items.length > 0) {
+      form.items = rfq.items.map((item: any) => ({
+        product_id: item.product_id || null,
+        variation_id: item.variation_id || null,
+        product_name: item.product?.product_name || item.product_name || '',
+        quantity: item.quantity || 1,
+        unit: 'pcs',
+        target_price: item.target_price ?? null,
+        specifications: item.specifications || '',
+        notes: item.notes || '',
+      }))
+    }
+
+    if (Array.isArray(rfq.suppliers)) {
+      selectedSupplierIds.value = rfq.suppliers
+        .map((s: any) => s.supplier_id || s.supplier?.id)
+        .filter((id: number | null) => !!id)
+    }
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to load RFQ for editing',
+      life: 3000,
+    })
+  }
+}
 
 const getRfqTypeLabel = (value: string) => {
   const type = rfqTypes.find(t => t.value === value)
@@ -406,20 +402,8 @@ const validateForm = (): boolean => {
     errors.issue_date = 'Issue Date is required'
   }
 
-  if (!form.deadline_date) {
-    errors.deadline_date = 'Deadline Date is required'
-  }
-
-  if (form.deadline_date && form.issue_date && new Date(form.deadline_date) <= new Date(form.issue_date)) {
-    errors.deadline_date = 'Deadline must be after issue date'
-  }
-
   if (!form.currency) {
     errors.currency = 'Currency is required'
-  }
-
-  if (!form.payment_terms) {
-    errors.payment_terms = 'Payment Terms is required'
   }
 
   const validItems = form.items.filter(i => i.product_id)
@@ -528,9 +512,6 @@ const saveDraft = async () => {
       issue_date: form.issue_date instanceof Date
         ? form.issue_date.toISOString().split('T')[0]
         : form.issue_date,
-      deadline_date: form.deadline_date instanceof Date
-        ? form.deadline_date.toISOString().split('T')[0]
-        : form.deadline_date,
       items: validItems.map(item => ({
         product_id: item.product_id,
         variation_id: item.variation_id,
@@ -541,13 +522,15 @@ const saveDraft = async () => {
       supplier_ids: selectedSupplierIds.value
     }
 
-    const response = await procurementService.createRFQ(payload as any)
+    const response = isEditMode.value && editingRfqId.value
+      ? await procurementService.updateRFQ(editingRfqId.value, payload as any)
+      : await procurementService.createRFQ(payload as any)
 
     if (response?.success) {
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: 'RFQ saved as draft successfully',
+      detail: isEditMode.value ? 'RFQ updated successfully' : 'RFQ saved as draft successfully',
         life: 3000
       })
       setTimeout(() => {
@@ -635,19 +618,11 @@ const submitForm = async () => {
       issue_date: form.issue_date instanceof Date
         ? form.issue_date.toISOString().split('T')[0]
         : form.issue_date,
-      deadline_date: form.deadline_date instanceof Date
-        ? form.deadline_date.toISOString().split('T')[0]
-        : form.deadline_date,
-      expected_delivery_date: form.expected_delivery_date instanceof Date
-        ? form.expected_delivery_date.toISOString().split('T')[0]
-        : form.expected_delivery_date,
       rfq_type: form.rfq_type,
       currency: form.currency,
-      payment_terms: form.payment_terms,
       shipping_terms: form.shipping_terms,
       instructions: form.instructions,
       qualification_requirements: form.qualification_requirements,
-      assigned_to: form.assigned_to,
       items: validItems.map(item => ({
         product_id: item.product_id,
         variation_id: item.variation_id || null,
@@ -660,8 +635,9 @@ const submitForm = async () => {
 
     console.log('RFQ Payload:', JSON.stringify(payload, null, 2))
 
-    // Create RFQ
-    const rfqResponse = await procurementService.createRFQ(payload as any)
+    const rfqResponse = isEditMode.value && editingRfqId.value
+      ? await procurementService.updateRFQ(editingRfqId.value, payload as any)
+      : await procurementService.createRFQ(payload as any)
 
     if (!rfqResponse?.success) {
       toast.add({
@@ -673,7 +649,7 @@ const submitForm = async () => {
       return
     }
 
-    const rfqId = rfqResponse.data?.id
+    const rfqId = rfqResponse.data?.id || editingRfqId.value
 
     // Send to suppliers
     const sendResponse = await procurementService.sendRfq(rfqId, {
@@ -685,7 +661,7 @@ const submitForm = async () => {
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: 'RFQ created and sent to suppliers successfully',
+      detail: isEditMode.value ? 'RFQ updated and sent to suppliers successfully' : 'RFQ created and sent to suppliers successfully',
         life: 3000
       })
 
@@ -696,7 +672,7 @@ const submitForm = async () => {
       toast.add({
         severity: 'warn',
         summary: 'Partial Success',
-        detail: 'RFQ created but failed to send to some suppliers',
+      detail: isEditMode.value ? 'RFQ updated but failed to send to some suppliers' : 'RFQ created but failed to send to some suppliers',
         life: 3000
       })
 
@@ -730,18 +706,14 @@ const submitForm = async () => {
 onMounted(async () => {
   loading.value = true
   try {
-    // Load products, suppliers, and employees in parallel
-    const [productsRes, suppliersRes, employeesRes] = await Promise.all([
+    // Load products and suppliers in parallel
+    const [productsRes, suppliersRes] = await Promise.all([
       procurementService.getProcurementProducts({ per_page: 1000 }).catch(err => {
         console.error('Failed to load products:', err)
         return null
       }),
       procurementService.getSuppliers({ per_page: 1000 }).catch(err => {
         console.error('Failed to load suppliers:', err)
-        return null
-      }),
-      procurementService.getEmployees({ per_page: 1000 }).catch(err => {
-        console.error('Failed to load employees:', err)
         return null
       })
     ])
@@ -784,23 +756,19 @@ onMounted(async () => {
       })
     }
 
-    // Process employees - map to include employee_name property
-    if (employeesRes?.data) {
-      const employeeList = Array.isArray(employeesRes.data)
-        ? employeesRes.data
-        : employeesRes.data.data || []
-
-      employees.value = employeeList.map((emp: any) => ({
-        ...emp,
-        employee_name: `${emp.fname} ${emp.lname}` // Compute display name
-      }))
-    }
-
     if (route.query.requisition_id) {
       const requisitionId = parseInt(route.query.requisition_id as string)
       const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId).catch(() => null)
       const requisition = requisitionRes?.data || requisitionRes?.data?.data || requisitionRes
       prefillFromRequisition(requisition)
+    }
+
+    if (route.query.rfq_id) {
+      const rfqId = parseInt(route.query.rfq_id as string)
+      if (!isNaN(rfqId)) {
+        editingRfqId.value = rfqId
+        await loadRfqForEdit(rfqId)
+      }
     }
   } catch (error) {
     console.error('Failed to load data:', error)

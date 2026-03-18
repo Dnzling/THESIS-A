@@ -10,8 +10,8 @@
       </IconField>
       <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear
         @change="fetchPayPeriods" />
-      <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" placeholder="Date Range"
-        @update:modelValue="fetchPayPeriods" />
+      <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" :manualInput="false"
+        placeholder="Date Range" fluid @update:modelValue="fetchPayPeriods" />
       <Button label="Generate Payroll" @click="showGenerateModal = true" severity="info" class="ml-auto" />
     </div>
   

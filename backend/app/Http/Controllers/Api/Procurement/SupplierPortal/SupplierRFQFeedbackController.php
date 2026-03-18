@@ -76,6 +76,15 @@ class SupplierRFQFeedbackController extends Controller
             $rfq = RequestForQuotation::with(['items.product', 'attachments'])
                 ->findOrFail($id);
 
+            // Mark RFQ as viewed for this supplier
+            \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $id)
+                ->where('supplier_id', $portal->supplier_id)
+                ->whereNull('viewed_at')
+                ->update([
+                    'status' => 'viewed',
+                    'viewed_at' => now(),
+                ]);
+
             // Get supplier's existing feedback for this RFQ
             $feedback = $portal->rfqFeedbacks()
                 ->where('rfq_id', $id)
@@ -155,6 +164,15 @@ class SupplierRFQFeedbackController extends Controller
                     'submitted_at' => now(),
                 ]
             );
+
+            // Update RFQ supplier status for this supplier
+            \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $request->rfq_id)
+                ->where('supplier_id', $portal->supplier_id)
+                ->update([
+                    'status' => 'submitted',
+                    'viewed_at' => \DB::raw('COALESCE(viewed_at, NOW())'),
+                    'responded_at' => now(),
+                ]);
 
             return response()->json([
                 'success' => true,

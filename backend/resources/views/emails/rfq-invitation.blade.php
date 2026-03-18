@@ -9,9 +9,7 @@ You have been invited to submit a quotation for our Request for Quotation (RFQ):
 ## RFQ Details
 - **RFQ Number**: {{ $rfq->rfq_number }}
 - **Issue Date**: {{ $rfq->issue_date->format('F d, Y') }}
-- **Deadline**: {{ $rfq->deadline_date->format('F d, Y') }}
 - **Currency**: {{ $rfq->currency }}
-- **Payment Terms**: {{ str_replace('_', ' ', ucwords($rfq->payment_terms)) }}
 
 ## Items Requested
 | Item | Quantity | Unit | Target Price |
@@ -30,7 +28,7 @@ You have been invited to submit a quotation for our Request for Quotation (RFQ):
 @endif
 
 ## Next Steps
-Please review the RFQ details and submit your quotation before the deadline.
+Please review the RFQ details and submit your quotation at your earliest convenience.
 
 <x-mail::button :url="$portalUrl">
 Submit Quotation

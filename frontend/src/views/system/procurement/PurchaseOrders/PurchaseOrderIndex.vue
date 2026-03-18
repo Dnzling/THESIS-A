@@ -1,9 +1,9 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4 md:p-6">
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Purchase Orders</h1>
+        <h1 class="text-xl font-bold text-gray-800">Purchase Orders</h1>
         <p class="text-gray-500 mt-1">Manage purchase orders and track delivery status</p>
       </div>
       <Button label="New Purchase Order" icon="pi pi-plus" class="p-button-lg" @click="goToCreatePO" />
@@ -11,7 +11,7 @@
   
     <!-- Quick Stats -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="text-center">
             <p class="text-gray-500 text-sm">Total POs</p>
@@ -19,15 +19,15 @@
           </div>
         </template>
       </Card>
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="text-center">
-            <p class="text-gray-500 text-sm">Pending Approval</p>
+            <p class="text-gray-500 text-sm">Sent to Supplier</p>
             <p class="text-2xl font-bold text-orange-600">{{ stats.pendingApproval }}</p>
           </div>
         </template>
       </Card>
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="text-center">
             <p class="text-gray-500 text-sm">Total Amount</p>
@@ -35,7 +35,7 @@
           </div>
         </template>
       </Card>
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="text-center">
             <p class="text-gray-500 text-sm">Delayed Orders</p>
@@ -46,7 +46,7 @@
     </div>
   
     <!-- Filters -->
-    <Card>
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
           <IconField>
@@ -71,7 +71,7 @@
     </Card>
   
     <!-- POs Table -->
-    <Card>
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #content>
         <DataTable v-if="!loading" :value="orders" :loading="loading" :paginator="true" :rows="15"
           responsive-layout="scroll" class="p-datatable-sm">
@@ -84,7 +84,7 @@
               </RouterLink>
             </template>
           </Column>
-
+  
           <!-- Supplier -->
           <Column header="Supplier" style="width: 15%">
             <template #body="{ data }">
@@ -94,70 +94,38 @@
               </div>
             </template>
           </Column>
-
+  
           <!-- Source (Stock Request or Manual) -->
           <Column header="Source" style="width: 10%">
             <template #body="{ data }">
-              <Badge 
-                v-if="data.stock_order_request_id"
-                value="Stock Request" 
-                severity="info"
-                class="text-xs"
-              />
-              <Badge 
-                v-else
-                value="Manual Entry" 
-                severity="secondary"
-                class="text-xs"
-              />
+              <Badge v-if="data.stock_order_request_id" value="Stock Request" severity="info" class="text-xs" />
+              <Badge v-else value="Manual Entry" severity="secondary" class="text-xs" />
             </template>
           </Column>
-
+  
           <!-- Dates -->
-          <Column header="Order / Delivery" style="width: 14%">
+          <Column header="Order" style="width: 14%">
             <template #body="{ data }">
               <div class="text-sm space-y-1">
                 <p>Order: {{ formatDate(data.order_date) }}</p>
-                <p class="font-semibold">
-                  Expected: {{ formatDate(data.expected_delivery_date) }}
-                </p>
+              
               </div>
             </template>
           </Column>
-
+  
           <!-- Amount & Items -->
           <Column header="Amount / Items" style="width: 13%">
             <template #body="{ data }">
               <div class="text-sm">
                 <p class="text-green-600 font-bold">₱ {{ formatNumber(parseFloat(data.total_amount)) }}</p>
-                <p class="text-gray-500">—</p>
-              </div>
-            </template>
-          </Column>
-
-          <!-- Status -->
-          <Column header="Status" style="width: 11%">
-            <template #body="{ data }">
-              <div class="space-y-1">
-                <Badge :value="data.status" :severity="statusSeverity(data.status)" />
-                <Badge
-                  v-if="data.payment_status"
-                  :value="`Finance: ${formatFinanceStatus(data.payment_status)}`"
-                  :severity="financeSeverity(data.payment_status)"
-                  class="text-xs"
-                />
               </div>
             </template>
           </Column>
   
-          <!-- Delivery Status -->
-          <Column header="Delivery" style="width: 12%">
+          <!-- Status -->
+          <Column header="Status" style="width: 11%">
             <template #body="{ data }">
-              <div class="text-center">
-                <Badge v-if="isOverdue(data.expected_delivery_date)" value="Overdue" severity="danger" />
-                <Badge v-else-if="isDueSoon(data.expected_delivery_date)" value="Due Soon" severity="warning" />
-                <Badge v-else value="On Track" severity="success" />
-              </div>
+              <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
   
@@ -167,7 +135,17 @@
               <div class="flex gap-2 justify-center">
                 <Button icon="pi pi-eye" text rounded @click="viewPO(data)" v-tooltip="'View'" />
                 <Button icon="pi pi-pencil" text rounded severity="info" @click="editPO(data)" v-tooltip="'Edit'" />
-                <Button v-if="data.status !== 'draft' && data.status !== 'pending_approval'" icon="pi pi-print" text rounded @click="printPO(data)" v-tooltip="'Print'" />
+                <Button
+                  v-if="data.status === 'approved'"
+                  icon="pi pi-send"
+                  text
+                  rounded
+                  severity="success"
+                  @click="sendToSupplier(data)"
+                  v-tooltip="'Send to Supplier'"
+                />
+                <Button v-if="data.status !== 'draft'" icon="pi pi-print" text rounded @click="printPO(data)"
+                  v-tooltip="'Print'" />
               </div>
             </template>
           </Column>
@@ -223,11 +201,12 @@ const filters = ref({
 
 const statusOptions = ref([
   { label: 'Draft', value: 'draft' },
-  { label: 'Pending Approval', value: 'pending_approval' },
-  { label: 'Approved', value: 'approved' },
-  { label: 'Ordered', value: 'ordered' },
-  { label: 'Partially Received', value: 'partially_received' },
-  { label: 'Received', value: 'received' },
+  { label: 'Sent to Supplier', value: 'sent_to_supplier' },
+  { label: 'Supplier Accepted', value: 'supplier_accepted' },
+  { label: 'In Transit', value: 'in_transit' },
+  { label: 'Delivered', value: 'delivered' },
+  { label: 'Declined by Supplier', value: 'declined_supplier' },
+  { label: 'Revision Requested', value: 'revision_requested' },
   { label: 'Cancelled', value: 'cancelled' },
 ])
 
@@ -236,12 +215,12 @@ async function loadOrders() {
   loading.value = true
   try {
     // Debug: Check token and user inf
-    
+
     const response = await procurementService.getPurchaseOrders(filters.value)
     console.log('📦 API Response:', response)
     console.log('📊 Orders array:', response.data?.data)
     console.log('📊 Total count:', response.data?.total)
-    
+
     orders.value = response.data?.data || []
     console.log('✅ Orders loaded:', orders.value.length, 'items')
     calculateStats()
@@ -265,16 +244,15 @@ async function loadSuppliers() {
 
 function calculateStats() {
   stats.value.totalCount = orders.value.length
-  stats.value.pendingApproval = orders.value.filter((o: any) => o.status === 'pending_approval').length
+  stats.value.pendingApproval = orders.value.filter((o: any) => o.status === 'pending_finance_approval').length
   stats.value.totalAmount = orders.value.reduce((sum: number, o: any) => sum + (parseFloat(o.total_amount) || 0), 0)
   stats.value.delayedCount = orders.value.filter((o: any) => isOverdue(o.expected_delivery_date)).length
 }
 
 function statusSeverity(status: string): string {
-  if (['approved', 'ordered', 'received'].includes(status)) return 'success'
-  if (status === 'pending_approval') return 'info'
-  if (status === 'partially_received') return 'warning'
-  if (['cancelled', 'rejected'].includes(status)) return 'danger'
+  if (['supplier_accepted', 'delivered'].includes(status)) return 'success'
+  if (['sent_to_supplier', 'in_transit'].includes(status)) return 'warning'
+  if (['cancelled', 'declined_supplier'].includes(status)) return 'danger'
   return 'secondary'
 }
 
@@ -290,6 +268,20 @@ function formatFinanceStatus(status: string): string {
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
+function formatStatus(status: string): string {
+  if (!status) return '-'
+  const map: Record<string, string> = {
+    draft: 'Draft',
+    sent_to_supplier: 'Sent to Supplier',
+    supplier_accepted: 'Supplier Accepted',
+    in_transit: 'In Transit',
+    delivered: 'Delivered',
+    declined_supplier: 'Declined by Supplier',
+    revision_requested: 'Revision Requested',
+    cancelled: 'Cancelled',
+  }
+  return map[status] || status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
 function formatDate(date: string): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -326,6 +318,26 @@ function editPO(po: any) {
     name: 'procurement.purchase-orders.create',
     params: { id: po.id },
   })
+}
+
+async function sendToSupplier(po: any) {
+  try {
+    await procurementService.sendPurchaseOrder(po.id)
+    toast.add({
+      severity: 'success',
+      summary: 'Sent',
+      detail: `PO ${po.po_number} sent to supplier.`,
+      life: 3000,
+    })
+    loadOrders()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to send PO to supplier',
+      life: 3000,
+    })
+  }
 }
 
 function printPO(po: any) {

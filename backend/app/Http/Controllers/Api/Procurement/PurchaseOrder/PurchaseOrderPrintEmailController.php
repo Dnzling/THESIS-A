@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Procurement\PurchaseOrder;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -109,12 +110,17 @@ class PurchaseOrderPrintEmailController extends Controller
                     ->attachData($pdf, "PO-{$po->po_number}.pdf");
             });
 
-            // Log email activity
-            $po->auditLog()->create([
-                'action' => 'email_sent',
-                'details' => "PO emailed to {$validated['recipient_email']}",
-                'user_id' => auth()->id(),
-            ]);
+            ActivityLog::record(
+                'po_email_sent',
+                "PO emailed to {$validated['recipient_email']}",
+                [
+                    'po_number' => $po->po_number,
+                    'recipient_email' => $validated['recipient_email'],
+                    'subject' => $validated['subject'],
+                ],
+                'purchase_order',
+                $po->id
+            );
 
             return response()->json([
                 'success' => true,
@@ -179,16 +185,28 @@ class PurchaseOrderPrintEmailController extends Controller
             $limit = $request->get('limit', 10);
 
             $products = \DB::table('purchase_order_items')
-                ->select('product_id', \DB::raw('COUNT(*) as purchase_count'), 'unit_cost')
-                ->groupBy('product_id')
+                ->join('products', 'purchase_order_items.product_id', '=', 'products.id')
+                ->leftJoin('product_assets as main_assets', function ($join) {
+                    $join->on('purchase_order_items.product_id', '=', 'main_assets.product_id')
+                        ->where('main_assets.asset_type', '=', 'Image_Main')
+                        ->where('main_assets.is_primary', '=', 1);
+                })
+                ->select(
+                    'purchase_order_items.product_id',
+                    'products.product_name',
+                    \DB::raw('COUNT(*) as purchase_count'),
+                    \DB::raw('MAX(purchase_order_items.unit_cost) as unit_cost'),
+                    \DB::raw('MAX(main_assets.file_path) as product_image')
+                )
+                ->groupBy('purchase_order_items.product_id', 'products.product_name')
                 ->orderByDesc('purchase_count')
                 ->limit($limit)
                 ->get();
 
             $data = $products->map(fn($product) => [
                 'product_id' => $product->product_id,
-                'product_name' => \App\Models\Catalog\Product::find($product->product_id)?->product_name,
-                'product_image' => \App\Models\Catalog\Product::find($product->product_id)?->image_url,
+                'product_name' => $product->product_name,
+                'product_image' => $product->product_image,
                 'quantity_ordered' => 1,
                 'last_price' => $product->unit_cost,
                 'purchase_frequency' => $product->purchase_count,
@@ -216,7 +234,7 @@ class PurchaseOrderPrintEmailController extends Controller
     {
         try {
             $orders = PurchaseOrder::where('supplier_id', $supplierId)
-                ->where('status', 'received')
+                ->where('status', 'delivered')
                 ->orderByDesc('expected_delivery_date')
                 ->limit(10)
                 ->get();
@@ -270,7 +288,7 @@ class PurchaseOrderPrintEmailController extends Controller
         try {
             $query = PurchaseOrder::with('supplier', 'branch', 'items.product')
                 ->where('store_id', auth()->user()->store_id)
-                ->where('status', 'approved');
+                ->whereIn('status', ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit']);
 
             if ($request->has('branch_id')) {
                 $query->where('branch_id', $request->branch_id);

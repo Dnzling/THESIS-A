@@ -83,6 +83,44 @@ export interface SupplierPOFeedback {
   updated_at: string
 }
 
+export interface SupplierPOShipment {
+  id: number
+  purchase_order_id: number
+  supplier_id: number
+  branch_id: number
+  truck_number?: string
+  plate_number?: string
+  driver_name: string
+  driver_contact?: string
+  origin_address?: string
+  destination_address?: string
+  current_latitude?: number
+  current_longitude?: number
+  distance_km?: number
+  cost_per_km?: number
+  shipping_cost?: number
+  dispatched_at?: string
+  delivered_at?: string
+  status?: 'pending' | 'in_transit' | 'delivered' | 'cancelled'
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SupplierDeliveryTemplate {
+  id: number
+  supplier_portal_id: number
+  supplier_id: number
+  truck_brand?: string
+  truck_type?: string
+  wheel_count?: number
+  plate_number?: string
+  driver_name?: string
+  driver_contact?: string
+  cost_per_km?: number
+  created_at?: string
+  updated_at?: string
+}
+
 export interface SupplierPortalRegistrationData {
   company_name: string
   contact_person: string
@@ -313,6 +351,73 @@ class SupplierService {
 
   async getMyPOFeedbacks(params?: any) {
     const response = await axiosClient.get(`${this.portalBaseUrl}/po-feedbacks`, { params })
+    return response.data
+  }
+
+  async getPOShipment(poId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/po-shipments/${poId}`)
+    return response.data
+  }
+
+  async getPOInvoice(poId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/po-shipments/${poId}/invoice`)
+    return response.data
+  }
+
+  async createPOShipment(data: {
+    purchase_order_id: number
+    truck_number?: string
+    truck_brand?: string
+    truck_type?: string
+    wheel_count?: number
+    plate_number?: string
+    driver_name: string
+    driver_contact?: string
+    cost_per_km: number
+    distance_km?: number | null
+    current_latitude?: number | null
+    current_longitude?: number | null
+    dispatched_at?: string
+    tax_rate?: number
+    expected_delivery_date?: Date | null
+  }) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/po-shipments`, data)
+    return response.data
+  }
+
+  async getDeliveryTemplates() {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/delivery-templates`)
+    return response.data
+  }
+
+  async createDeliveryTemplate(data: {
+    truck_brand?: string
+    truck_type?: string
+    wheel_count?: number
+    plate_number?: string
+    driver_name?: string
+    driver_contact?: string
+    cost_per_km?: number
+  }) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/delivery-templates`, data)
+    return response.data
+  }
+
+  async updateDeliveryTemplate(id: number, data: {
+    truck_brand?: string
+    truck_type?: string
+    wheel_count?: number
+    plate_number?: string
+    driver_name?: string
+    driver_contact?: string
+    cost_per_km?: number
+  }) {
+    const response = await axiosClient.put(`${this.portalBaseUrl}/delivery-templates/${id}`, data)
+    return response.data
+  }
+
+  async deleteDeliveryTemplate(id: number) {
+    const response = await axiosClient.delete(`${this.portalBaseUrl}/delivery-templates/${id}`)
     return response.data
   }
 

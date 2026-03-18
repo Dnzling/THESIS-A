@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Api\ProfileController as ApiProfileController;
 use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\BranchController;
 
@@ -25,6 +26,7 @@ use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
 use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
+use App\Http\Controllers\Api\ActivityLogController;
 
 
 // ========== RATE LIMITING ==========
@@ -60,17 +62,22 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::post('/customer-verification/trigger', [CustomerVerificationTriggerController::class, 'trigger']);
+    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 
     Route::prefix('admin')->group(function () {
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
         Route::get('/roles/{id}/permissions', [RolePermissionController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [RolePermissionController::class, 'updateRolePermissions']);
+        Route::get('/roles/export', [RolePermissionController::class, 'exportRoles']);
+        Route::post('/roles/import', [RolePermissionController::class, 'importRoles']);
 
         // Permissions
         Route::get('/permissions', [RolePermissionController::class, 'getPermissions']);
         Route::post('/permissions', [RolePermissionController::class, 'createPermission']);
         Route::put('/permissions/{id}', [RolePermissionController::class, 'updatePermission']);
         Route::delete('/permissions/{id}', [RolePermissionController::class, 'deletePermission']);
+        Route::get('/permissions/export', [RolePermissionController::class, 'exportPermissions']);
+        Route::post('/permissions/import', [RolePermissionController::class, 'importPermissions']);
 
         // Navigation Items
         Route::get('/navigation-items', [RolePermissionController::class, 'getNavigationItems']);
@@ -119,7 +126,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     });
 
     // ========== PROFILE ==========
-    Route::prefix('profile')->controller(ProfileController::class)->group(function () {
+    Route::prefix('profile')->controller(ApiProfileController::class)->group(function () {
         Route::get('/', 'show');
         Route::put('/', 'update');
         Route::post('avatar', 'updateAvatar');
@@ -133,7 +140,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // =========== HR ==============
     Route::apiResource('employees', EmployeeController::class);
+    Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);
+    Route::get('/employees/{id}/details/{year}', [EmployeeController::class, 'getEmployeeDetails']);
 
     // Simplified employee summary (for dashboard/widgets)
     Route::get('/employees/{id}/summary', [EmployeeController::class, 'getEmployeeSummary']);
@@ -173,6 +182,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/bulk-submit', [PayrollController::class, 'bulkSubmitForApproval']);
         Route::post('/bulk-approve', [PayrollController::class, 'bulkApprove']);
         Route::get('/payslip/{employeeId}', [PayrollController::class, 'getEmployeePayslips']);
+        Route::get('/{id}/payslip/pdf', [PayrollController::class, 'downloadPayslipPdf']);
+        Route::get('/{id}/payslip/print', [PayrollController::class, 'printPayslip']);
 
         Route::get('/', [PayrollController::class, 'index']);
         Route::get('/getEmployeesBasicSalary', [PayrollController::class, 'getEmployeeBasicSalary']);
@@ -183,6 +194,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/{id}/submit', [PayrollController::class, 'submit']);
         Route::post('/{id}/approve', [PayrollController::class, 'approve']);
         Route::post('/{id}/mark-paid', [PayrollController::class, 'markPaid']);
+    });
+
+    // Payslip PDF aliases (legacy frontend usage)
+    Route::get('/payrolls/{id}/payslip/pdf', [PayrollController::class, 'downloadPayslipPdf']);
+    Route::get('/payrolls/{id}/payslip/print', [PayrollController::class, 'printPayslip']);
+
+    Route::prefix('hr/dashboard')->controller(\App\Http\Controllers\Api\Hr\DashboardController::class)->group(function () {
+        Route::get('/today-stats', 'getTodayStats');
+        Route::get('/weekly-attendance', 'getWeeklyAttendance');
+        Route::get('/monthly-summary', 'getMonthlySummary');
     });
 
     // Deductions

@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\StockTransfer;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Collection;
 use Carbon\Carbon;
 
@@ -15,10 +16,15 @@ class ReportingService
     /**
      * Get branch inventory summary with KPIs
      */
-    public function getBranchSummary(int $storeId, int $branchId, ?int $days = null): array
+    public function getBranchSummary(int $storeId, int $branchId, ?int $days = null, ?string $productType = null): array
     {
         $query = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId);
+
+        if ($productType) {
+            $productIds = $this->getProductIdsByType($storeId, $productType);
+            $query->whereIn('product_id', $productIds);
+        }
 
         $items = $query->get();
 
@@ -36,15 +42,15 @@ class ReportingService
                 ? $items->avg('average_cost') 
                 : 0,
             'inventory_accuracy' => $this->calculateAccuracy($storeId, $branchId),
-            'stock_turnover_ratio' => $this->calculateStockTurnover($storeId, $branchId, $days),
-            'sell_through_rate' => $this->calculateSellThroughRate($storeId, $branchId, $days),
+            'stock_turnover_ratio' => $this->calculateStockTurnover($storeId, $branchId, $days, $productType),
+            'sell_through_rate' => $this->calculateSellThroughRate($storeId, $branchId, $days, $productType),
         ];
     }
 
     /**
      * Get multi-branch consolidated view for store
      */
-    public function getStoreSummary(int $storeId, ?int $days = null): array
+    public function getStoreSummary(int $storeId, ?int $days = null, ?string $productType = null): array
     {
         $branches = \App\Models\Store\Branch::where('store_id', $storeId)->get();
         $summaries = [];
@@ -58,7 +64,7 @@ class ReportingService
         ];
 
         foreach ($branches as $branch) {
-            $summary = $this->getBranchSummary($storeId, $branch->id, $days);
+            $summary = $this->getBranchSummary($storeId, $branch->id, $days, $productType);
             $summaries[$branch->id] = $summary;
 
             $totals['total_value'] += $summary['total_value'];
@@ -74,20 +80,25 @@ class ReportingService
             'branch_summaries' => $summaries,
             'totals' => $totals,
             'stock_accuracy' => $this->calculateStoreAccuracy($storeId),
-            'average_stock_turnover' => $this->calculateAverageStockTurnover($storeId, $days),
+            'average_stock_turnover' => $this->calculateAverageStockTurnover($storeId, $days, $productType),
         ];
     }
 
     /**
      * Get movement trends over period
      */
-    public function getMovementTrends(int $storeId, int $branchId, int $days = 30): array
+    public function getMovementTrends(int $storeId, int $branchId, int $days = 30, ?string $productType = null): array
     {
         $startDate = now()->subDays($days);
+
+        $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
         $transactions = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->where('created_at', '>=', $startDate)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('details->product_id', $productIds);
+            })
             ->get();
 
         $trends = [];
@@ -112,11 +123,15 @@ class ReportingService
     /**
      * Get inventory value by category
      */
-    public function getValueByCategory(int $storeId, int $branchId): array
+    public function getValueByCategory(int $storeId, int $branchId, ?string $productType = null): array
     {
         $items = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->with('product.category')
+            ->when($productType, function ($query) use ($storeId, $productType) {
+                $productIds = $this->getProductIdsByType($storeId, $productType);
+                $query->whereIn('product_id', $productIds);
+            })
             ->get();
 
         return $items
@@ -136,13 +151,17 @@ class ReportingService
     /**
      * Get slow-moving items
      */
-    public function getSlowMovers(int $storeId, int $branchId, int $days = 90, int $minValue = 5000): Collection
+    public function getSlowMovers(int $storeId, int $branchId, int $days = 90, int $minValue = 5000, ?string $productType = null): Collection
     {
         $cutoffDate = now()->subDays($days);
+        $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
         $items = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->where('total_value', '>=', $minValue)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('product_id', $productIds);
+            })
             ->get();
 
         return $items->filter(function ($item) use ($cutoffDate, $storeId, $branchId) {
@@ -160,14 +179,18 @@ class ReportingService
     /**
      * Get fast-moving items
      */
-    public function getFastMovers(int $storeId, int $branchId, int $days = 30, int $minQty = 50): Collection
+    public function getFastMovers(int $storeId, int $branchId, int $days = 30, int $minQty = 50, ?string $productType = null): Collection
     {
         $startDate = now()->subDays($days);
+        $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
         $transactionsByProduct = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->where('transaction_type', 'DEDUCT')
             ->where('created_at', '>=', $startDate)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('details->product_id', $productIds);
+            })
             ->get()
             ->groupBy('details.product_id');
 
@@ -248,21 +271,28 @@ class ReportingService
     /**
      * Calculate stock turnover ratio (sales / average inventory)
      */
-    protected function calculateStockTurnover(int $storeId, int $branchId, ?int $days = null): float
+    protected function calculateStockTurnover(int $storeId, int $branchId, ?int $days = null, ?string $productType = null): float
     {
         $period = $days ?? 30;
         $startDate = now()->subDays($period);
+        $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
         // Calculate total sales in period
         $sales = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->where('transaction_type', 'DEDUCT')
             ->where('created_at', '>=', $startDate)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('details->product_id', $productIds);
+            })
             ->sum('details.quantity');
 
         // Calculate average inventory value
         $items = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('product_id', $productIds);
+            })
             ->get();
 
         $avgInventory = $items->avg('total_value');
@@ -273,7 +303,7 @@ class ReportingService
     /**
      * Calculate average stock turnover for store
      */
-    protected function calculateAverageStockTurnover(int $storeId, ?int $days = null): float
+    protected function calculateAverageStockTurnover(int $storeId, ?int $days = null, ?string $productType = null): float
     {
         $branches = \App\Models\Store\Branch::where('store_id', $storeId)->get();
 
@@ -283,7 +313,7 @@ class ReportingService
 
         $totals = 0;
         foreach ($branches as $branch) {
-            $totals += $this->calculateStockTurnover($storeId, $branch->id, $days);
+            $totals += $this->calculateStockTurnover($storeId, $branch->id, $days, $productType);
         }
 
         return $totals / $branches->count();
@@ -292,25 +322,35 @@ class ReportingService
     /**
      * Calculate sell-through rate
      */
-    protected function calculateSellThroughRate(int $storeId, int $branchId, ?int $days = null): float
+    protected function calculateSellThroughRate(int $storeId, int $branchId, ?int $days = null, ?string $productType = null): float
     {
         $period = $days ?? 30;
         $startDate = now()->subDays($period);
+        $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
         $sold = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->where('transaction_type', 'DEDUCT')
             ->where('created_at', '>=', $startDate)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('details->product_id', $productIds);
+            })
             ->sum('details.quantity');
 
         $received = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->where('transaction_type', 'ADD')
             ->where('created_at', '>=', $startDate)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('details->product_id', $productIds);
+            })
             ->sum('details.quantity');
 
         $totalAvailable = $sold + BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->when($productType, function ($query) use ($productIds) {
+                $query->whereIn('product_id', $productIds);
+            })
             ->sum('quantity_on_hand');
 
         return $totalAvailable > 0 ? ($sold / $totalAvailable) * 100 : 0;
@@ -319,7 +359,7 @@ class ReportingService
     /**
      * Get transfer metrics
      */
-    public function getTransferMetrics(int $storeId, int $branchId, int $days = 30): array
+    public function getTransferMetrics(int $storeId, int $branchId, int $days = 30, ?string $productType = null): array
     {
         $startDate = now()->subDays($days);
 
@@ -348,11 +388,15 @@ class ReportingService
     /**
      * Get inventory aging report
      */
-    public function getAgingReport(int $storeId, int $branchId): array
+    public function getAgingReport(int $storeId, int $branchId, ?string $productType = null): array
     {
         $now = now();
         $items = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->when($productType, function ($query) use ($storeId, $productType) {
+                $productIds = $this->getProductIdsByType($storeId, $productType);
+                $query->whereIn('product_id', $productIds);
+            })
             ->get();
 
         return [
@@ -372,5 +416,13 @@ class ReportingService
                 return !$item->last_stock_count_date;
             })->count(),
         ];
+    }
+
+    protected function getProductIdsByType(int $storeId, string $productType): array
+    {
+        return Product::where('store_id', $storeId)
+            ->where('product_type', $productType)
+            ->pluck('id')
+            ->all();
     }
 }

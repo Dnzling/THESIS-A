@@ -76,6 +76,22 @@
                       :disabled="!form.category_id" />
                   </div>
                 </div>
+
+                <!-- Product Type -->
+                <div class="flex flex-col gap-2">
+                  <label for="product_type" class="text-sm font-semibold text-gray-700">
+                    Product Type <span class="text-red-500">*</span>
+                  </label>
+                  <Select
+                    id="product_type"
+                    v-model="form.product_type"
+                    :options="productTypeOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select product type"
+                    class="w-full"
+                  />
+                </div>
   
                 <!-- Brand & Collection -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -449,6 +465,7 @@ const form = ref({
   sku: '',
   category_id: null,
   subcategory_id: null,
+  product_type: 'finished_good',
   brand: '',
   collection_name: '',
   stock_status: 'In Stock',
@@ -480,6 +497,10 @@ const form = ref({
 
 const errors = ref<Record<string, string>>({})
 const categories = ref([])
+const productTypeOptions = [
+  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Raw Material', value: 'raw_material' }
+]
 const subcategories = computed(() => {
   if (!form.value.category_id) return []
   return categories.value.filter((c: any) => c.parent_category_id === form.value.category_id)
@@ -512,6 +533,7 @@ const loadProduct = async () => {
       sku: product.sku || '',
       category_id: product.category_id,
       subcategory_id: product.subcategory_id,
+      product_type: product.product_type || 'finished_good',
       brand: product.brand || '',
       collection_name: product.collection_name || '',
       stock_status: product.stock_status || 'In Stock',
@@ -762,6 +784,7 @@ const handleSubmit = async () => {
       sku: form.value.sku,
       category_id: form.value.category_id,
       subcategory_id: form.value.subcategory_id,
+      product_type: form.value.product_type,
       brand: form.value.brand,
       collection_name: form.value.collection_name,
       stock_status: form.value.stock_status,

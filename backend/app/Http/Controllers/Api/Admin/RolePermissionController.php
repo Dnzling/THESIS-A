@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Core\Role;
 use App\Models\Core\Permission;
 use App\Models\Core\NavigationItem;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 
 class RolePermissionController extends Controller
@@ -298,5 +300,179 @@ class RolePermissionController extends Controller
         ]);
 
         return response()->json(['message' => 'Navigation deleted successfully']);
+    }
+
+    /**
+     * Export roles as CSV.
+     */
+    public function exportRoles()
+    {
+        $user = Auth::user();
+        $storeId = $user?->store_id;
+
+        $roles = DB::table('roles')
+            ->when($storeId, function ($query) use ($storeId) {
+                $query->where(function ($q) use ($storeId) {
+                    $q->whereNull('store_id')->orWhere('store_id', $storeId);
+                });
+            })
+            ->orderBy('name')
+            ->get();
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="roles.csv"',
+        ];
+
+        $columns = ['id', 'name', 'display_name', 'code', 'description', 'is_active', 'store_id'];
+
+        $callback = function () use ($roles, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+            foreach ($roles as $role) {
+                fputcsv($file, [
+                    $role->id,
+                    $role->name,
+                    $role->display_name,
+                    $role->code,
+                    $role->description,
+                    (int) $role->is_active,
+                    $role->store_id
+                ]);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Import roles from CSV.
+     */
+    public function importRoles(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:csv,txt'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $user = Auth::user();
+        $storeId = $user?->store_id;
+        $file = $request->file('file');
+
+        $handle = fopen($file->getRealPath(), 'r');
+        $header = fgetcsv($handle);
+        $mapped = array_map(fn($h) => Str::lower(trim($h)), $header);
+
+        $count = 0;
+        while (($row = fgetcsv($handle)) !== false) {
+            $data = array_combine($mapped, $row);
+            if (!$data || empty($data['name'])) {
+                continue;
+            }
+
+            $roleStoreId = $data['store_id'] !== '' ? (int) $data['store_id'] : $storeId;
+
+            DB::table('roles')->updateOrInsert(
+                ['name' => $data['name'], 'store_id' => $roleStoreId],
+                [
+                    'display_name' => $data['display_name'] ?? $data['name'],
+                    'code' => $data['code'] ?? null,
+                    'description' => $data['description'] ?? null,
+                    'is_active' => isset($data['is_active']) ? (bool) $data['is_active'] : true,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+            $count++;
+        }
+
+        fclose($handle);
+
+        return response()->json(['message' => "Imported {$count} roles successfully"]);
+    }
+
+    /**
+     * Export permissions as CSV.
+     */
+    public function exportPermissions()
+    {
+        $permissions = DB::table('permissions')
+            ->whereNull('deleted_at')
+            ->orderBy('module')
+            ->orderBy('name')
+            ->get();
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="permissions.csv"',
+        ];
+
+        $columns = ['id', 'name', 'display_name', 'module', 'description', 'is_active'];
+
+        $callback = function () use ($permissions, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+            foreach ($permissions as $permission) {
+                fputcsv($file, [
+                    $permission->id,
+                    $permission->name,
+                    $permission->display_name,
+                    $permission->module,
+                    $permission->description,
+                    (int) $permission->is_active,
+                ]);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Import permissions from CSV.
+     */
+    public function importPermissions(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:csv,txt'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $file = $request->file('file');
+        $handle = fopen($file->getRealPath(), 'r');
+        $header = fgetcsv($handle);
+        $mapped = array_map(fn($h) => Str::lower(trim($h)), $header);
+
+        $count = 0;
+        while (($row = fgetcsv($handle)) !== false) {
+            $data = array_combine($mapped, $row);
+            if (!$data || empty($data['name']) || empty($data['module'])) {
+                continue;
+            }
+
+            DB::table('permissions')->updateOrInsert(
+                ['name' => $data['name']],
+                [
+                    'display_name' => $data['display_name'] ?? $data['name'],
+                    'module' => $data['module'],
+                    'description' => $data['description'] ?? null,
+                    'is_active' => isset($data['is_active']) ? (bool) $data['is_active'] : true,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+            $count++;
+        }
+
+        fclose($handle);
+
+        return response()->json(['message' => "Imported {$count} permissions successfully"]);
     }
 }

@@ -2,11 +2,7 @@
   <div class="supplier-rfq-detail">
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
-        <Button 
-          icon="pi pi-arrow-left"
-          class="p-button-rounded p-button-text"
-          @click="$router.back()"
-        />
+        <Button icon="pi pi-arrow-left" class="p-button-rounded p-button-text" @click="$router.back()" />
         <div>
           <div class="text-xs text-gray-500 uppercase tracking-wider">Supplier Portal</div>
           <div class="text-xl font-semibold text-gray-900">RFQ Details</div>
@@ -14,17 +10,15 @@
       </div>
       <div class="flex items-center gap-2">
         <Tag :value="rfq?.status || 'draft'" :severity="getStatusSeverity(rfq?.status)" />
-        <Button 
-          v-if="rfq && !isClosedRFQ(rfq) && canEditQuotes"
-          label="Submit Quote"
-          icon="pi pi-send"
-          class="p-button-primary"
-          @click="openQuoteDialog"
-        />
       </div>
     </div>
-
-    <div v-if="!loading" class="grid grid-cols-1 gap-4">
+  
+    <div v-if="loading" class="grid grid-cols-1 gap-4">
+      <Skeleton height="140px" class="rounded-2xl" />
+      <Skeleton height="280px" class="rounded-2xl" />
+      <Skeleton height="200px" class="rounded-2xl" />
+    </div>
+    <div v-else class="grid grid-cols-1 gap-4">
       <Card>
         <template #content>
           <div v-if="rfq" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -58,105 +52,87 @@
           </div>
         </template>
       </Card>
-
+  
       <!-- RFQ Items -->
       <Card title="Items">
         <template #content>
           <DataTable :value="rfq?.items || []" striped-rows class="w-full">
-              <Column header="Product">
-                <template #body="{ data }">
-                  <div>
-                    <div class="font-semibold">{{ data.product?.product_name || 'N/A' }}</div>
-                    <div class="text-xs text-gray-500">{{ data.product?.sku || '' }}</div>
+            <Column header="Product">
+              <template #body="{ data }">
+                <div>
+                  <div class="font-semibold">{{ data.product?.product_name || 'N/A' }}</div>
+                  <div class="text-xs text-gray-500">{{ data.product?.sku || '' }}</div>
+                </div>
+              </template>
+            </Column>
+            <Column field="quantity" header="Qty"></Column>
+            <Column field="unit" header="Unit"></Column>
+            <Column header="Target Price">
+              <template #body="{ data }">
+                {{ data.target_price ?? 'N/A' }}
+              </template>
+            </Column>
+            <Column field="specifications" header="Specifications">
+              <template #body="{ data }">
+                <p class="truncate max-w-xs text-gray-600">{{ data.specifications || 'N/A' }}</p>
+              </template>
+            </Column>
+            <Column header="Your Quote">
+              <template #body="{ data }">
+                <div v-if="feedbackByItemId[data.id]" class="space-y-1">
+                  <div class="text-green-600 font-semibold">
+                    ₱ {{ feedbackByItemId[data.id].quoted_price }}
                   </div>
-                </template>
-              </Column>
-              <Column field="quantity" header="Qty"></Column>
-              <Column field="unit" header="Unit"></Column>
-              <Column header="Target Price">
-                <template #body="{ data }">
-                  {{ data.target_price ?? 'N/A' }}
-                </template>
-              </Column>
-              <Column field="specifications" header="Specifications">
-                <template #body="{ data }">
-                  <p class="truncate max-w-xs text-gray-600">{{ data.specifications || 'N/A' }}</p>
-                </template>
-              </Column>
-              <Column header="Your Quote">
-                <template #body="{ data }">
-                  <div v-if="feedbackByItemId[data.id]" class="space-y-1">
-                    <div class="text-green-600 font-semibold">
-                      ${{ feedbackByItemId[data.id].quoted_price }}
-                    </div>
-                    <Tag 
-                      :value="feedbackByItemId[data.id].status || 'pending'"
-                      :severity="feedbackSeverity(feedbackByItemId[data.id].status)"
-                      class="text-xs"
-                    />
-                    <p v-if="feedbackByItemId[data.id].rejection_reason" class="text-xs text-red-600">
-                      {{ feedbackByItemId[data.id].rejection_reason }}
-                    </p>
-                    <div v-if="feedbackByItemId[data.id].negotiations && feedbackByItemId[data.id].negotiations.length > 0" class="mt-2 p-2 rounded border border-blue-200 bg-blue-50 text-xs text-gray-700">
-                      <p class="font-semibold text-blue-900 mb-1">Counter Offers</p>
-                      <div v-for="nego in feedbackByItemId[data.id].negotiations" :key="nego.id" class="flex items-center justify-between gap-2 border-t border-blue-100 pt-2 mt-2">
-                        <div>
-                          <div class="font-semibold text-blue-900">
-                            {{ rfq?.currency || 'PHP' }} {{ parseFloat(nego.counter_price).toFixed(2) }}
-                          </div>
-                          <div class="text-[11px] text-blue-700">
-                            {{ formatDate(nego.created_at) }} • {{ nego.status }}
-                          </div>
-                          <div v-if="nego.notes" class="text-[11px] text-gray-600 mt-1">{{ nego.notes }}</div>
+                  <Tag :value="feedbackByItemId[data.id].status || 'pending'"
+                    :severity="feedbackSeverity(feedbackByItemId[data.id].status)" class="text-xs" />
+                  <p v-if="feedbackByItemId[data.id].rejection_reason" class="text-xs text-red-600">
+                    {{ feedbackByItemId[data.id].rejection_reason }}
+                  </p>
+                  <div v-if="feedbackByItemId[data.id].negotiations && feedbackByItemId[data.id].negotiations.length > 0"
+                    class="mt-2 p-2 rounded border border-blue-200 bg-blue-50 text-xs text-gray-700">
+                    <p class="font-semibold text-blue-900 mb-1">Counter Offers</p>
+                    <div v-for="nego in feedbackByItemId[data.id].negotiations" :key="nego.id"
+                      class="flex items-center justify-between gap-2 border-t border-blue-100 pt-2 mt-2">
+                      <div>
+                        <div class="font-semibold text-blue-900">
+                          {{ rfq?.currency || 'PHP' }} {{ parseFloat(nego.counter_price).toFixed(2) }}
                         </div>
-                        <div class="flex gap-2">
-                          <Button 
-                            v-if="nego.status === 'pending'"
-                            size="small"
-                            label="Accept"
-                            severity="success"
-                            @click="acceptNego(nego.id)"
-                          />
-                          <Button 
-                            v-if="nego.status === 'pending'"
-                            size="small"
-                            label="Reject"
-                            severity="danger"
-                            @click="rejectNego(nego.id)"
-                          />
+                        <div class="text-[11px] text-blue-700">
+                          {{ formatDate(nego.created_at) }} • {{ nego.status }}
                         </div>
+                        <div v-if="nego.notes" class="text-[11px] text-gray-600 mt-1">{{ nego.notes }}</div>
+                      </div>
+                      <div class="flex gap-2">
+                        <Button v-if="nego.status === 'pending'" size="small" label="Accept" severity="success"
+                          @click="acceptNego(nego.id)" />
+                        <Button v-if="nego.status === 'pending'" size="small" label="Reject" severity="danger"
+                          @click="rejectNego(nego.id)" />
                       </div>
                     </div>
                   </div>
-                  <p v-else class="text-gray-400">Not quoted</p>
-                </template>
-              </Column>
+                </div>
+                <p v-else class="text-gray-400">Not quoted</p>
+              </template>
+            </Column>
+  
           </DataTable>
+          <div class="mt-5 ml-auto">
+            <Button v-if="rfq && !isClosedRFQ(rfq) && canEditQuotes" label="Submit Quote" icon="pi pi-send"
+              class="p-button-primary" @click="openQuoteDialog" />
+          </div>
         </template>
+  
       </Card>
-
-      <div class="flex justify-end">
-        <Button 
-          label="Back to RFQs"
-          icon="pi pi-arrow-left"
-          @click="$router.push('/supplier-portal/rfqs')"
-          class="p-button-secondary"
-        />
-      </div>
     </div>
-
+  
     <Dialog v-model:visible="quoteDialogVisible" modal header="Submit Quote" :style="{ width: '52rem' }">
       <form @submit.prevent="submitQuote" class="space-y-4">
-        <Message 
-          severity="info"
-          text="Enter your quoted price and any additional notes for each item."
-          class="w-full"
-        />
-
+        <Message severity="info" text="Enter your quoted price and any additional notes for each item." class="w-full" />
+  
         <div class="space-y-4">
           <div v-for="item in rfq?.items" :key="item.id" class="p-4 border rounded">
             <h4 class="font-semibold mb-3">Item: {{ item.product?.product_name || 'Item' }}</h4>
-            
+  
             <div class="grid grid-cols-2 gap-4 mb-3">
               <div>
                 <p class="text-sm font-semibold">Quantity</p>
@@ -167,44 +143,31 @@
                 <p class="text-sm">{{ item.specifications || 'N/A' }}</p>
               </div>
             </div>
-
+  
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium mb-2">Quoted Price *</label>
-                <InputNumber 
-                  v-model="quoteData[item.id].quoted_price"
-                  mode="currency"
-                  :currency="rfq?.currency || 'PHP'"
-                  class="w-full"
-                />
+                <InputNumber v-model="quoteData[item.id].quoted_price" mode="currency" :currency="rfq?.currency || 'PHP'"
+                  class="w-full" />
               </div>
               <div>
                 <label class="block text-sm font-medium mb-2">Description</label>
-                <InputText 
-                  v-model="quoteData[item.id].description"
-                  placeholder="Additional notes"
-                  class="w-full"
-                />
+                <InputText v-model="quoteData[item.id].description" placeholder="Additional notes" class="w-full" />
               </div>
             </div>
           </div>
         </div>
-
+  
         <div class="flex justify-end gap-2">
           <Button label="Cancel" severity="secondary" @click="quoteDialogVisible = false" />
-          <Button 
-            v-if="Object.keys(feedbackByItemId).length === 0"
-            label="Submit All Quotes"
-            type="submit"
-            class="p-button-primary"
-            :loading="submitting"
-          />
+          <Button v-if="Object.keys(feedbackByItemId).length === 0" label="Submit All Quotes" type="submit"
+            class="p-button-primary" :loading="submitting" />
         </div>
       </form>
     </Dialog>
-
+  
     <!-- Loading -->
-    <ProgressSpinner v-if="loading" class="mt-6" />
+    <div v-if="loading" class="mt-6"></div>
   </div>
 </template>
 
@@ -220,7 +183,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
-import ProgressSpinner from 'primevue/progressspinner'
+import Skeleton from 'primevue/skeleton'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
@@ -265,7 +228,7 @@ const loadRFQDetail = async () => {
     loading.value = true
     const rfqId = route.params.id as string
     const res = await supplierService.getSupplierRFQDetail(parseInt(rfqId))
-    
+
     rfq.value = res.data.rfq
     const feedback = res.data.supplier_feedback || []
 

@@ -8,6 +8,8 @@ use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 
 class SupplierPOFeedback extends Model
 {
+    protected $table = 'supplier_po_feedbacks';
+
     protected $fillable = [
         'supplier_portal_id',
         'purchase_order_id',

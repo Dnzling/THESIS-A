@@ -67,7 +67,7 @@
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Filter by Status</label>
             <Select v-model="filterStatus" :options="statusOptions" optionLabel="label" optionValue="value" 
-              placeholder="All Statuses" clearable @change="loadRFQs" />
+              placeholder="All Statuses" clearable :change="loadRFQs" />
           </div>
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Search</label>
@@ -75,7 +75,7 @@
           </div>
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Per Page</label>
-            <Select v-model="perPage" :options="[10, 15, 20, 50]" @change="loadRFQs" />
+            <Select v-model="perPage" :options="[10, 15, 20, 50]" :change="loadRFQs" />
           </div>
         </div>
       </template>
@@ -102,7 +102,7 @@
           <!-- RFQ Number -->
           <Column field="rfq_number" header="RFQ No." style="width: 120px">
             <template #body="{ data }">
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold">
                 {{ data.rfq_number }}
               </span>
             </template>
@@ -118,27 +118,7 @@
             </template>
           </Column>
 
-          <!-- Created By -->
-          <Column field="created_by" header="Created By" style="width: 150px">
-            <template #body="{ data }">
-              <div v-if="data.created_by">
-                <p class="font-medium text-gray-900">{{ data.created_by.fname }} {{ data.created_by.lname }}</p>
-                <p class="text-xs text-gray-600">{{ data.created_by.employee_number }}</p>
-              </div>
-            </template>
-          </Column>
-
-          <!-- Deadline -->
-          <Column field="deadline_date" header="Deadline" style="width: 140px">
-            <template #body="{ data }">
-              <div>
-                <p class="font-medium text-gray-900">{{ formatDate(data.deadline_date) }}</p>
-                <p class="text-xs font-semibold" :class="getDaysRemainingClass(data.deadline_date)">
-                  {{ calculateDaysRemaining(data.deadline_date) }}
-                </p>
-              </div>
-            </template>
-          </Column>
+        
 
           <!-- Status -->
           <Column field="status" header="Status" style="width: 130px">
@@ -147,20 +127,21 @@
             </template>
           </Column>
 
-          <!-- Currency & Payment Terms -->
-          <Column header="Terms" style="width: 150px">
+            <!-- Created By -->
+          <Column field="created_by" header="Created By" style="width: 150px">
             <template #body="{ data }">
-              <div class="text-sm">
-                <p class="font-medium">{{ data.currency }} • {{ capitalizeWords(data.payment_terms) }}</p>
-                <p class="text-xs text-gray-600" v-if="data.shipping_terms">{{ data.shipping_terms }}</p>
+              <div v-if="data.created_by">
+                <p class="font-medium text-gray-900">{{ data.created_by.fname }} {{ data.created_by.lname }}</p>
+                <p class="text-xs text-gray-600">{{ data.created_by.employee_number }}</p>
               </div>
             </template>
           </Column>
+      
 
           <!-- Actions -->
           <Column header="Actions" style="width: 160px">
             <template #body="{ data }">
-              <div class="flex gap-2 items-center justify-end">
+              <div class="flex gap-2 items-center justify-center">
                 <Button 
                   icon="pi pi-eye" 
                   text 
@@ -170,7 +151,7 @@
                   v-tooltip="'View Details'"
                 />
                 <Button
-                  v-if="data.status === 'completed'"
+                  v-if="data.status === 'approved'"
                   icon="pi pi-shopping-cart"
                   text
                   rounded
@@ -202,7 +183,7 @@
 
           <!-- Expanded Row Detail -->
           <template #expansion="{ data }">
-            <div class="p-6 bg-gradient-to-r from-gray-50 to-gray-100 border-t">
+            <div class="p-6 bg-linear-to-r from-gray-50 to-gray-100 border-t">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- RFQ Info -->
                 <div>
@@ -211,10 +192,6 @@
                     <div>
                       <p class="text-gray-600">Issue Date</p>
                       <p class="font-medium text-gray-900">{{ formatDate(data.issue_date) }}</p>
-                    </div>
-                    <div>
-                      <p class="text-gray-600">Expected Delivery</p>
-                      <p class="font-medium text-gray-900">{{ formatDate(data.expected_delivery_date) || 'Not specified' }}</p>
                     </div>
                     <div>
                       <p class="text-gray-600">Created</p>
@@ -236,10 +213,6 @@
                       <p class="font-medium text-gray-900">{{ data.currency }}</p>
                     </div>
                     <div>
-                      <p class="text-gray-600">Payment Terms</p>
-                      <p class="font-medium text-gray-900">{{ capitalizeWords(data.payment_terms) }}</p>
-                    </div>
-                    <div>
                       <p class="text-gray-600">Shipping Terms</p>
                       <p class="font-medium text-gray-900">{{ data.shipping_terms || 'Not specified' }}</p>
                     </div>
@@ -254,10 +227,6 @@
                 <div>
                   <h4 class="font-semibold text-gray-800 mb-3">👤 Assignment</h4>
                   <div class="space-y-2 text-sm">
-                    <div>
-                      <p class="text-gray-600">Assigned To</p>
-                      <p class="font-medium text-gray-900">{{ data.assigned_to ? `Employee #${data.assigned_to}` : 'Not assigned' }}</p>
-                    </div>
                     <div v-if="data.awarded_to_supplier_id">
                       <p class="text-gray-600">Awarded To</p>
                       <p class="font-medium text-green-600">Supplier #{{ data.awarded_to_supplier_id }}</p>
@@ -351,28 +320,6 @@ const capitalizeWords = (str: string | null): string => {
     .join(' ')
 }
 
-const calculateDaysRemaining = (deadline: string | null): string => {
-  if (!deadline) return 'N/A'
-  const deadlineDate = new Date(deadline)
-  const today = new Date()
-  const days = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 3600 * 24))
-  
-  if (days < 0) return `${Math.abs(days)}d ago`
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Tomorrow'
-  return `${days}d remaining`
-}
-
-const getDaysRemainingClass = (deadline: string | null): string => {
-  if (!deadline) return 'text-gray-600'
-  const deadlineDate = new Date(deadline)
-  const today = new Date()
-  const days = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 3600 * 24))
-  
-  if (days < 0) return 'text-red-600 font-semibold'
-  if (days < 3) return 'text-orange-600 font-semibold'
-  return 'text-green-600'
-}
 
 const statusSeverity = (status: string): string => {
   const severityMap: Record<string, string> = {
@@ -424,28 +371,38 @@ const onPageChange = (event: any) => {
 }
 
 const editRFQ = (id: number) => {
-  // TODO: Implement edit functionality
-  toast.add({
-    severity: 'info',
-    summary: 'Not Implemented',
-    detail: 'Edit functionality coming soon',
-    life: 3000,
+  router.push({
+    name: 'procurement.rfqs.create',
+    query: { rfq_id: id },
   })
 }
 
-const deleteRFQ = (id: number) => {
-  // TODO: Implement delete with confirmation
-  toast.add({
-    severity: 'info',
-    summary: 'Not Implemented',
-    detail: 'Delete functionality coming soon',
-    life: 3000,
-  })
+const deleteRFQ = async (id: number) => {
+  const confirmed = window.confirm('Delete this draft RFQ? This cannot be undone.')
+  if (!confirmed) return
+
+  try {
+    await procurementService.deleteRFQ(id)
+    toast.add({
+      severity: 'success',
+      summary: 'Deleted',
+      detail: 'RFQ deleted successfully',
+      life: 3000,
+    })
+    loadRFQs(currentPage.value)
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to delete RFQ',
+      life: 3000,
+    })
+  }
 }
 
 const createPOFromRFQ = (rfqId: number) => {
   router.push({
-    name: 'procurement.purchase-orders.create-legacy',
+    name: 'procurement.purchase-orders.create',
     query: { rfq_id: rfqId },
   })
 }

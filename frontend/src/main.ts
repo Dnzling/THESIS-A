@@ -35,6 +35,7 @@ import RadioButton from 'primevue/radiobutton'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
+import TabView from 'primevue/tabview'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import InputNumber from 'primevue/inputnumber'
@@ -55,6 +56,7 @@ import Primechart from 'primevue/chart'
 import MeterGroup from 'primevue/metergroup'
 import InputOtp from 'primevue/inputotp'
 import Menu from 'primevue/menu'
+import Timeline from 'primevue/timeline'
 
 // ==================== AXIOS CONFIGURATION ====================
 axios.defaults.withXSRFToken = true
@@ -82,6 +84,8 @@ app.use(router)
 
 // Register PrimeVue components
 const components = {
+  Timeline,
+  TabView,
   MeterGroup,
   Primechart,
   Menu,

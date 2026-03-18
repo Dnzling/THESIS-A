@@ -57,7 +57,7 @@ export interface Invoice {
   discount_amount?: number
   net_amount?: number
   currency?: string
-  status?: 'draft' | 'approved' | 'paid'
+  status?: 'draft' | 'pending_approval' | 'approved' | 'paid'
   match_status?: 'pending' | 'matched' | 'exception'
   payment_status?: 'pending' | 'paid'
 }
@@ -69,7 +69,18 @@ export interface PurchaseRequisition {
   requisition_type: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
   required_date: string
   reason: string
-  status?: 'draft' | 'submitted' | 'approved' | 'rejected' | 'cancelled'
+  status?: 'draft'
+    | 'pending'
+    | 'warehouse_approved'
+    | 'branch_manager_approved'
+    | 'pending_central_review'
+    | 'procurement_processing'
+    | 'rfq_sent'
+    | 'quotes_received'
+    | 'supplier_selected'
+    | 'po_created'
+    | 'rejected'
+    | 'cancelled'
   items?: Array<{
     product_id: number
     variation_id?: number
@@ -98,7 +109,17 @@ export interface PurchaseOrder {
   expected_delivery_date: string
   payment_terms?: string
   notes?: string
-  status?: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'ordered' | 'cancelled'
+  status?: 'draft'
+    | 'pending_finance_approval'
+    | 'approved'
+    | 'sent_to_supplier'
+    | 'supplier_accepted'
+    | 'in_transit'
+    | 'delivered'
+    | 'rejected_finance'
+    | 'declined_supplier'
+    | 'cancelled'
+    | 'revision_requested'
 }
 
 export interface GoodsReceipt {
@@ -192,8 +213,12 @@ class ProcurementService {
     return response.data
   }
 
-  async getProductHistory(id: number, params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/products/${id}/history`, { params })
+  async getProductHistory(idOrParams: number | Record<string, any>, params?: any) {
+    if (typeof idOrParams === 'number') {
+      const response = await axiosClient.get(`${this.baseUrl}/products/${idOrParams}/history`, { params })
+      return response.data
+    }
+    const response = await axiosClient.get(`${this.baseUrl}/product-inventory/history`, { params: idOrParams })
     return response.data
   }
 
@@ -529,7 +554,7 @@ class ProcurementService {
     return response.data
   }
 
-  async approvePurchaseOrder(id: number, data?: { role?: string, notes?: string }) {
+  async approvePurchaseOrder(id: number, data?: { notes?: string }) {
     const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/${id}/approve`, data || {})
     return response.data
   }

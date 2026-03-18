@@ -38,7 +38,7 @@
                   <span class="text-red-500">*</span> Branch
                 </label>
                 <Select v-model="form.branch_id" :options="branches" option-label="name" option-value="id"
-                  placeholder="Select branch" class="w-full" @change="onBranchChange" />
+                  placeholder="Select branch" class="w-full" />
               </div>
   
               <!-- Order Date -->
@@ -70,18 +70,10 @@
                 <p class="text-xs text-gray-500 mt-1">Auto-populates supplier details when selected</p>
               </div>
   
-              <!-- Expected Delivery Date (Auto-calculated) -->
               <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Expected Delivery Date
-                </label>
-                <div class="flex gap-2">
-                  <DatePicker v-model="form.expected_delivery_date" date-format="yy-mm-dd" class="flex-1"
-                    :min-date="minDeliveryDate" @change="validateDeliveryDate" fluid />
-                  <Button icon="pi pi-bolt" outlined severity="warning" @click="setDeliveryDateAuto"
-                    v-tooltip="`Auto-set based on ${selectedSupplier?.average_delivery_days || 7} day delivery`" />
-                </div>
-                <p class="text-xs text-red-500 mt-1" v-if="deliveryDateError">{{ deliveryDateError }}</p>
+                <label class="text-sm font-semibold text-gray-700 block mb-2">Discount Amount</label>
+                <InputNumber v-model="form.discount_amount" :min="0" mode="currency" currency="PHP" fluid
+                  @input="updateTotals" />
               </div>
             </div>
   
@@ -103,27 +95,7 @@
               </div>
             </div>
   
-            <!-- Payment Terms and Shipping -->
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
-              <div class="md:col-span-4">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Payment Terms
-                </label>
-                <Select v-model="form.payment_terms" :options="paymentTerms" option-label="label" option-value="value"
-                  placeholder="Select payment terms..." class="w-full" />
-              </div>
-  
-              <div class="md:col-span-4">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Shipping Cost</label>
-                <InputNumber v-model="form.shipping_cost" :min="0" mode="currency" currency="PHP" @input="updateTotals" fluid />
-              </div>
-  
-              <div class="md:col-span-4">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Discount Amount</label>
-                <InputNumber v-model="form.discount_amount" :min="0" mode="currency" currency="PHP" fluid
-                  @input="updateTotals" />
-              </div>
-            </div>
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4"></div>
           </div>
   
           <!-- Section 3: Line Items -->
@@ -149,60 +121,93 @@
   
             <!-- Line Items Table -->
             <Transition name="slide-fade" mode="out-in">
-              <div v-if="form.items.length > 0" class="overflow-x-auto">
-                <table class="w-full text-sm">
-                  <thead class="bg-gray-100 border-b-2 border-gray-300">
-                    <tr>
-                      <th class="text-left p-3">Product</th>
-                      <th class="text-center p-3">Qty</th>
-                      <th class="text-right p-3">Unit Price</th>
-                      <th class="text-center p-3">Tax %</th>
-                      <th class="text-center p-3">Discount %</th>
-                      <th class="text-right p-3">Line Total</th>
-                      <th class="text-center p-3">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <TransitionGroup name="list" tag="tbody">
-                      <tr v-for="(item, index) in form.items" :key="item.id || index"
-                        class="border-b hover:bg-gray-50 transition-colors">
-                        <td class="p-3">
-                          <Select :model-value="item.product_id" :options="products" option-label="product_name"
-                            option-value="id" placeholder="Select product..." class="w-full" filter
-                            @update:model-value="(value) => onProductChange(index, value)" />
-                        </td>
-                        <td class="p-3">
-                          <InputNumber v-model="item.quantity_ordered" :min="1" @input="calculateItemTotal(index)"
-                            class="w-full text-center" />
-                          <p v-if="budgetWarnings[index]" class="text-xs text-red-500 mt-1">
-                            ⚠️ {{ budgetWarnings[index] }}
-                          </p>
-                        </td>
-                        <td class="p-3">
-                          <InputNumber v-model="item.unit_cost" :min="0" mode="currency" currency="PHP"
-                            @input="calculateItemTotal(index)" class="w-full text-right" />
-                        </td>
-                        <td class="p-3">
-                          <InputNumber v-model="item.tax_rate" :min="0" :max="100" suffix="%"
-                            @input="calculateItemTotal(index)" class="w-full text-center" />
-                        </td>
-                        <td class="p-3">
-                          <InputNumber v-model="item.discount_percent" :min="0" :max="100" suffix="%"
-                            @input="calculateItemTotal(index)" class="w-full text-center" />
-                        </td>
-                        <td class="p-3 text-right font-semibold text-green-600">
-                          ₱ {{ item.line_total?.toFixed(2) || '0.00' }}
-                        </td>
-                        <td class="p-3 text-center">
-                          <Button icon="pi pi-trash" text severity="danger" size="small" @click="removeLineItem(index)"
-                            v-tooltip="'Remove item'" />
-                        </td>
-                      </tr>
-                    </TransitionGroup>
-                  </tbody>
-                </table>
+              <div v-if="form.items.length > 0" class="space-y-4">
+                <TransitionGroup name="list" tag="div" class="space-y-4">
+                  <div
+                    v-for="(item, index) in form.items"
+                    :key="item.id || index"
+                    class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-5"
+                  >
+                    <div class="flex items-center justify-between mb-4">
+                      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Item {{ index + 1 }}</div>
+                      <Button
+                        icon="pi pi-trash"
+                        text
+                        severity="danger"
+                        size="small"
+                        @click="removeLineItem(index)"
+                        v-tooltip="'Remove item'"
+                      />
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                      <div class="md:col-span-6">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product</label>
+                        <Select
+                          :model-value="item.product_id"
+                          :options="products"
+                          option-label="product_name"
+                          option-value="id"
+                          placeholder="Select product..."
+                          class="w-full"
+                          filter fluid
+                          @update:model-value="(value) => onProductChange(index, value)"
+                        />
+                      </div>
+
+                      <div class="md:col-span-2">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Qty</label>
+                        <InputNumber
+                          v-model="item.quantity_ordered"
+                          :min="1"
+                          @input="calculateItemTotal(index)"
+                          class="w-full text-center"
+                          fluid
+                        />
+                        <p v-if="budgetWarnings[index]" class="text-xs text-red-500 mt-1">
+                          ⚠️ {{ budgetWarnings[index] }}
+                        </p>
+                      </div>
+
+                      <div class="md:col-span-4">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Price</label>
+                        <InputNumber
+                          v-model="item.unit_cost"
+                          :min="0"
+                          mode="currency"
+                          currency="PHP"
+                          fluid
+                          @input="calculateItemTotal(index)"
+                          class="w-full text-right"
+                        />
+                      </div>
+
+                      <div class="md:col-span-4">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Discount %</label>
+                        <InputNumber
+                          v-model="item.discount_percent"
+                          :min="0"
+                          :max="100"
+                          suffix="%"
+                          fluid
+                          @input="calculateItemTotal(index)"
+                          class="w-full text-center"
+                        />
+                      </div>
+
+                      <div class="md:col-span-4">
+                        <div class="bg-gray-50 rounded-xl border border-gray-200 px-3 py-2">
+                          <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Line Total</label>
+                          <div class="text-lg font-semibold text-green-600">
+                            ₱ {{ item.line_total?.toFixed(2) || '0.00' }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TransitionGroup>
               </div>
-              <div v-else class="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded">
+              <div v-else class="text-center py-10 bg-gray-50 border border-dashed border-gray-300 rounded-2xl">
                 <i class="pi pi-inbox text-gray-400 text-3xl mb-2"></i>
                 <p class="text-gray-500">No items added yet. Click "Add Item" to start.</p>
               </div>
@@ -210,7 +215,7 @@
           </div>
   
           <!-- Section 4: Running Totals -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card class="bg-linear-to-br from-blue-50 to-blue-100 border border-blue-200">
               <template #content>
                 <p class="text-xs text-blue-600 font-semibold">Subtotal</p>
@@ -218,18 +223,11 @@
               </template>
             </Card>
   
-            <Card class="bg-linear-to-br from-purple-50 to-purple-100 border border-purple-200">
-              <template #content>
-                <p class="text-xs text-purple-600 font-semibold">Tax (VAT)</p>
-                <p class="text-2xl font-bold text-purple-900">{{ formatCurrency(totals.tax_total) }}</p>
-              </template>
-            </Card>
-  
             <Card class="bg-linear-to-br from-orange-50 to-orange-100 border border-orange-200">
               <template #content>
-                <p class="text-xs text-orange-600 font-semibold">Additional Charges</p>
+                <p class="text-xs text-orange-600 font-semibold">Discount</p>
                 <p class="text-2xl font-bold text-orange-900">
-                  {{ formatCurrency((form.shipping_cost || 0) - (form.discount_amount || 0)) }}
+                  {{ formatCurrency(form.discount_amount || 0) }}
                 </p>
               </template>
             </Card>
@@ -265,7 +263,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
@@ -284,8 +282,7 @@ const {
   validateQuantityAgainstBudget,
   checkSupplierStatus,
   getFrequentlyPurchasedProducts,
-  formatCurrency,
-  validateDeliveryDate: validateDeliveryDateUtil
+  formatCurrency
 } = usePoAutomation()
 
 // Form State
@@ -293,9 +290,6 @@ const form = reactive({
   supplier_id: null as number | null,
   branch_id: null as number | null,
   order_date: new Date(),
-  expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  payment_terms: 'net_30',
-  shipping_cost: 0,
   discount_amount: 0,
   notes: '',
   items: [] as any[]
@@ -314,23 +308,11 @@ const selectedSupplier = ref<any>(null)
 const storeCurrency = ref('PHP')
 const budgetWarnings = ref<Record<number, string>>({})
 const supplierWarning = reactive({ show: false, message: '', severity: 'warning' as string })
-const deliveryDateError = ref('')
-const minDeliveryDate = computed(() => new Date(form.order_date))
 
 const totals = reactive({
   subtotal: 0,
-  tax_total: 0,
   total_amount: 0
 })
-
-const paymentTerms = [
-  { label: 'Cash on Delivery', value: 'cash_on_delivery' },
-  { label: 'Net 7 Days', value: 'net_7' },
-  { label: 'Net 15 Days', value: 'net_15' },
-  { label: 'Net 30 Days', value: 'net_30' },
-  { label: 'Net 60 Days', value: 'net_60' },
-  { label: 'Advance Payment', value: 'advance_payment' }
-]
 
 // Load initial data
 onMounted(async () => {
@@ -363,12 +345,17 @@ const loadInitialData = async () => {
     ])
 
     suppliers.value = suppliersRes.data?.data || suppliersRes.data || []
-    branches.value = branchesRes.data?.data || branchesRes.data || []
+    const branchData = branchesRes.data?.data || branchesRes.data || []
+    branches.value = branchData.map((branch: any) => ({
+      ...branch,
+      name: branch.name || branch.branch_name || branch.branch || branch.code || `Branch ${branch.id}`
+    }))
     products.value = [] // Will be populated from supplier dropdown
 
     // Set default branch if only one exists
     if (branches.value.length === 1) {
       form.branch_id = branches.value[0].id
+      await loadProductsByBranch(form.branch_id)
     }
 
     // Load frequently purchased products
@@ -396,6 +383,9 @@ const prefillFromRequisition = async (requisitionId: number) => {
 
     form.branch_id = requisition.branch_id || requisition.branch?.id || form.branch_id
     form.notes = requisition.reason || form.notes
+    if (form.branch_id) {
+      await loadProductsByBranch(form.branch_id)
+    }
 
     if (Array.isArray(requisition.items)) {
       form.items = requisition.items.map((item: any) => ({
@@ -404,12 +394,23 @@ const prefillFromRequisition = async (requisitionId: number) => {
         product_name: item.product?.product_name || item.product_name || '',
         quantity_ordered: item.quantity_requested || 1,
         unit_cost: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0,
-        tax_rate: 12,
         discount_percent: 0,
         line_total: 0
       }))
 
       form.items.forEach((_, index) => calculateItemTotal(index))
+    }
+
+    if (products.value.length === 0 && Array.isArray(requisition.items)) {
+      products.value = requisition.items
+        .filter((item: any) => item.product_id)
+        .map((item: any) => ({
+          id: item.product_id,
+          product_name: item.product?.product_name || item.product_name || 'Unknown Product',
+          sku: item.product?.sku || item.sku || '',
+          stock_level: 0,
+          last_price: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0
+        }))
     }
 
     const firstSupplierId = requisition.items?.[0]?.product?.suppliers?.[0]?.id
@@ -428,9 +429,8 @@ const prefillFromRFQ = async (rfqId: number) => {
     const rfq = rfqRes?.data?.data || rfqRes?.data || rfqRes
     if (!rfq) return
 
-    form.notes = `From RFQ ${rfq.rfq_number || rfqId}`
-    form.payment_terms = rfq.payment_terms || form.payment_terms
-
+    form.notes = `From ${rfq.rfq_number || rfqId}`
+    form.branch_id = rfq.purchase_requisition?.branch_id || rfq.branch_id || form.branch_id
     const approvedFeedbacks = Array.isArray(rfq.supplier_portal_feedbacks)
       ? rfq.supplier_portal_feedbacks.filter((f: any) => f.status === 'approved')
       : []
@@ -467,7 +467,6 @@ const prefillFromRFQ = async (rfqId: number) => {
           product_name: product.product_name || rfqItem.product_name || '',
           quantity_ordered: rfqItem.quantity || 1,
           unit_cost: parseFloat(feedback.quoted_price || 0) || 0,
-          tax_rate: 12,
           discount_percent: 0,
           line_total: 0,
           stock_level: 0
@@ -482,7 +481,6 @@ const prefillFromRFQ = async (rfqId: number) => {
           product_name: product.product_name || item.product_name || '',
           quantity_ordered: item.quantity || 1,
           unit_cost: parseFloat(item.target_price || 0) || 0,
-          tax_rate: 12,
           discount_percent: 0,
           line_total: 0,
           stock_level: 0
@@ -523,9 +521,7 @@ const loadPOForEdit = async (poId: number) => {
     form.supplier_id = po.supplier_id
     form.branch_id = po.branch_id
     form.order_date = new Date(po.order_date)
-    form.expected_delivery_date = new Date(po.expected_delivery_date)
-    form.payment_terms = po.payment_terms
-    form.shipping_cost = po.shipping_cost
+    form.discount_amount = po.discount_amount ?? form.discount_amount
     form.discount_amount = po.discount_amount
     form.notes = po.notes
     
@@ -541,7 +537,6 @@ const loadPOForEdit = async (poId: number) => {
         variation_id: item.variation_id,
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost,
-        tax_rate: item.tax_rate,
         discount_percent: item.discount_percent
       }))
     }
@@ -571,15 +566,28 @@ const loadProductsByBranch = async (branchId: number) => {
 
     // Map the API response to product format
     products.value = data.map((item: any) => ({
-      id: item.product_id,
-      product_name: item.product?.product_name || 'Unknown Product',
-      sku: item.product?.sku,
+      id: item.product_id || item.product?.id,
+      product_name: item.product?.product_name || item.product_name || 'Unknown Product',
+      sku: item.product?.sku || item.sku,
       stock_level: item.quantity_available || 0,
       last_price: item.unit_cost || 0,
       quantity_on_hand: item.quantity_on_hand,
       reorder_point: item.reorder_point,
-      category_id: item.product?.category_id
-    }))
+      category_id: item.product?.category_id || item.category_id
+    })).filter((p: any) => !!p.id)
+
+    if (products.value.length === 0) {
+      const fallbackRes = await procurementService.getProcurementProducts({ per_page: 500 })
+      const fallbackList = fallbackRes?.data?.data || fallbackRes?.data || []
+      products.value = fallbackList.map((product: any) => ({
+        id: product.id,
+        product_name: product.product_name || 'Unknown Product',
+        sku: product.sku || '',
+        stock_level: product.stock_level || 0,
+        last_price: product.base_price || 0,
+        category_id: product.category_id
+      }))
+    }
   } catch (error) {
     console.error('Failed to load products for branch', error)
     toast.add({
@@ -591,11 +599,16 @@ const loadProductsByBranch = async (branchId: number) => {
   }
 }
 
-const onBranchChange = async () => {
-  if (form.branch_id) {
-    await loadProductsByBranch(form.branch_id)
+watch(
+  () => form.branch_id,
+  async (branchId) => {
+    if (branchId) {
+      await loadProductsByBranch(branchId)
+    } else {
+      products.value = []
+    }
   }
-}
+)
 
 const onSupplierChange = async () => {
   if (!form.supplier_id) {
@@ -607,11 +620,9 @@ const onSupplierChange = async () => {
   try {
     const details = await autoFillSupplierDetails(form.supplier_id)
     if (details) {
-      form.payment_terms = details.payment_terms || 'net_30'
-      setDeliveryDateAuto()
-
       // Check supplier status
-      const status = checkSupplierStatus(selectedSupplier.value)
+      selectedSupplier.value = details
+      const status = checkSupplierStatus(details)
       if (status.status !== 'ok') {
         supplierWarning.show = true
         supplierWarning.message = status.message
@@ -649,7 +660,6 @@ const addLineItem = () => {
     product_id: null,
     quantity_ordered: 1,
     unit_cost: 0,
-    tax_rate: 12,
     discount_percent: 0,
     line_total: 0
   })
@@ -677,41 +687,9 @@ const calculateItemTotal = (index: number) => {
 }
 
 const updateTotals = () => {
-  const totalsResult = calculateTotals(form.items, form.shipping_cost, form.discount_amount)
+  const totalsResult = calculateTotals(form.items, 0, form.discount_amount)
   totals.subtotal = totalsResult.subtotal
-  totals.tax_total = totalsResult.tax_total
   totals.total_amount = totalsResult.total_amount
-}
-
-const setDeliveryDateAuto = () => {
-  const days = selectedSupplier.value?.average_delivery_days || 7
-  const deliveryDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000)
-  form.expected_delivery_date = deliveryDate
-}
-
-const validateDeliveryDate = () => {
-  // Convert dates to strings for validation utilities
-  const toDateString = (date: any): string => {
-    if (date instanceof Date) {
-      const iso = date.toISOString()
-      const parts = iso.split('T')
-      return parts[0] || new Date().toISOString().split('T')[0] as string
-    }
-    if (typeof date === 'string') {
-      return date
-    }
-    return new Date().toISOString().split('T')[0] as string
-  }
-
-  const orderDateStr = toDateString(form.order_date)
-  const deliveryDateStr = toDateString(form.expected_delivery_date)
-
-  const validation = validateDeliveryDateUtil(orderDateStr, deliveryDateStr)
-  if (!validation.valid) {
-    deliveryDateError.value = validation.message || ''
-  } else {
-    deliveryDateError.value = ''
-  }
 }
 
 const addQuickProduct = (product: any) => {
@@ -721,7 +699,6 @@ const addQuickProduct = (product: any) => {
     product_name: product.product_name,
     quantity_ordered: product.quantity_ordered,
     unit_cost: product.unit_cost,
-    tax_rate: 12,
     discount_percent: 0,
     line_total: 0
   }
@@ -753,38 +730,26 @@ const submitForm = async () => {
     return
   }
 
-  if (deliveryDateError.value) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Please fix delivery date issues', life: 3000 })
-    return
-  }
-
   saving.value = true
   try {
     // Convert Date objects to ISO string dates for API
     const orderDate = (form.order_date instanceof Date
       ? form.order_date.toISOString().split('T')[0]
       : form.order_date) || new Date().toISOString().split('T')[0]
-    const deliveryDate = (form.expected_delivery_date instanceof Date
-      ? form.expected_delivery_date.toISOString().split('T')[0]
-      : form.expected_delivery_date) || new Date().toISOString().split('T')[0]
 
     const payload: Record<string, any> = {
       supplier_id: form.supplier_id,
       branch_id: form.branch_id,
       order_date: orderDate,
-      expected_delivery_date: deliveryDate,
-      payment_terms: form.payment_terms,
-      shipping_cost: form.shipping_cost,
       discount_amount: form.discount_amount,
       notes: form.notes,
       items: form.items.map((item) => ({
         product_id: item.product_id,
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost,
-        tax_rate: item.tax_rate,
         discount_percent: item.discount_percent
       })),
-      status: saveDraft.value ? 'draft' : 'pending_approval'
+      status: saveDraft.value ? 'draft' : 'pending_finance_approval'
     }
 
     // Call create or update based on isEditing flag

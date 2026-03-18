@@ -25,8 +25,11 @@
     </div>
 
     <!-- Quick Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" v-if="stats">
-      <Card>
+    <div v-if="loading" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <Skeleton v-for="i in 4" :key="i" height="120px" class="rounded-2xl" />
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" v-else-if="stats">
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="flex items-center justify-between">
             <div>
@@ -38,7 +41,7 @@
         </template>
       </Card>
 
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="flex items-center justify-between">
             <div>
@@ -50,7 +53,7 @@
         </template>
       </Card>
 
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="flex items-center justify-between">
             <div>
@@ -62,7 +65,7 @@
         </template>
       </Card>
 
-      <Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
           <div class="flex items-center justify-between">
             <div>
@@ -102,32 +105,38 @@
 
     <!-- Recent Activity -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card title="Recent RFQ Responses">
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm" title="Recent RFQ Responses">
         <template #content>
-          <div v-if="recentRFQs && recentRFQs.length > 0" class="space-y-3">
+          <div v-if="loading" class="space-y-3">
+            <Skeleton v-for="i in 4" :key="i" height="60px" class="rounded-lg" />
+          </div>
+          <div v-else-if="recentRFQs && recentRFQs.length > 0" class="space-y-3">
             <div 
               v-for="rfq in recentRFQs.slice(0, 5)" 
               :key="rfq.id"
-              class="flex justify-between items-center p-3 bg-gray-50 rounded"
+              class="flex justify-between items-center p-3 bg-gray-50 rounded-xl"
             >
               <div>
                 <p class="font-semibold">RFQ #{{ rfq.rfq_id }}</p>
                 <p class="text-sm text-gray-500">{{ formatDate(rfq.submitted_at) }}</p>
               </div>
-              <p class="font-bold text-green-600">${{ rfq.quoted_price }}</p>
+              <p class="font-bold text-green-600">₱ {{ formatMoney(rfq.quoted_price) }}</p>
             </div>
           </div>
           <p v-else class="text-gray-500 text-center py-6">No RFQ responses yet</p>
         </template>
       </Card>
 
-      <Card title="Recent PO Actions">
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm" title="Recent PO Actions">
         <template #content>
-          <div v-if="recentPOs && recentPOs.length > 0" class="space-y-3">
+          <div v-if="loading" class="space-y-3">
+            <Skeleton v-for="i in 4" :key="i" height="60px" class="rounded-lg" />
+          </div>
+          <div v-else-if="recentPOs && recentPOs.length > 0" class="space-y-3">
             <div 
               v-for="po in recentPOs.slice(0, 5)" 
               :key="po.id"
-              class="flex justify-between items-center p-3 bg-gray-50 rounded"
+              class="flex justify-between items-center p-3 bg-gray-50 rounded-xl"
             >
               <div>
                 <p class="font-semibold">PO #{{ po.purchase_order_id }}</p>
@@ -143,9 +152,6 @@
         </template>
       </Card>
     </div>
-
-    <!-- Loading -->
-    <ProgressSpinner v-if="loading" class="mt-6" />
   </div>
 </template>
 
@@ -156,7 +162,7 @@ import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
-import ProgressSpinner from 'primevue/progressspinner'
+import Skeleton from 'primevue/skeleton'
 import PageHeader from '../../../components/PageHeader.vue'
 import supplierService from '../../../services/supplier.service'
 
@@ -197,6 +203,8 @@ const fetchPortalData = async () => {
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString()
 }
+
+const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(value || 0)
 
 onMounted(() => {
   fetchPortalData()

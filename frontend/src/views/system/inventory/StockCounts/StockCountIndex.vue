@@ -68,14 +68,15 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-              <Calendar
+              <DatePicker
                 v-model="filters.date_range"
                 selectionMode="range"
+                :manualInput="false"
                 placeholder="Select date range"
-                class="w-full"
+                fluid
                 showIcon
                 dateFormat="yy-mm-dd"
-                @date-select="applyFilters"
+                @update:modelValue="applyFilters"
               />
             </div>
           </div>

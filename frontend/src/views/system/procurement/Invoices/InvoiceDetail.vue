@@ -1,473 +1,448 @@
 <template>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold text-gray-800">{{ invoice?.invoice_number }}</h1>
-        <p class="text-gray-500 mt-1">Invoice from {{ invoice?.supplier_name }}</p>
+  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+    <!-- iOS-style Header -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <button 
+          @click="goBack" 
+          class="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+        >
+          <i class="pi pi-chevron-left text-gray-600 text-lg"></i>
+        </button>
+        <div>
+          <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">{{ invoice?.invoice_number }}</h1>
+          <p class="text-gray-500 text-sm mt-1">{{ invoice?.supplier_name }}</p>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <Button
-          label="Back"
-          icon="pi pi-arrow-left"
-          severity="secondary"
-          @click="goBack"
-        />
-        <Button
-          v-if="invoice?.status === 'draft'"
-          label="Edit"
-          icon="pi pi-pencil"
+      <div v-if="invoice?.status === 'draft'" class="flex gap-2">
+        <button 
           @click="editInvoice"
-        />
+          class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-pencil text-sm"></i>
+          <span>Edit</span>
+        </button>
       </div>
     </div>
 
-    <!-- Invoice Status -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-gray-500 text-sm">Status</p>
-            <Badge :value="invoice?.status" :severity="statusSeverity(invoice?.status)" class="mt-2" />
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-gray-500 text-sm">3-Way Match</p>
-            <Badge :value="invoice?.match_status" :severity="matchStatusSeverity(invoice?.match_status)" class="mt-2" />
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-gray-500 text-sm">Payment Status</p>
-            <Badge :value="invoice?.payment_status" class="mt-2" />
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div>
-            <p class="text-gray-500 text-sm">Total Amount</p>
-            <p class="text-2xl font-bold text-green-600 mt-2">₱ {{ formatNumber(invoice?.total_amount) }}</p>
-          </div>
-        </template>
-      </Card>
+    <!-- iOS-style Status Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm font-medium">Status</span>
+          <div :class="getStatusDot(invoice?.status)" class="w-2 h-2 rounded-full"></div>
+        </div>
+        <span :class="getStatusClass(invoice?.status)" class="text-base font-semibold">
+          {{ formatStatus(invoice?.status) }}
+        </span>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm font-medium">3-Way Match</span>
+          <div :class="getMatchDot(invoice?.match_status)" class="w-2 h-2 rounded-full"></div>
+        </div>
+        <span :class="getMatchClass(invoice?.match_status)" class="text-base font-semibold">
+          {{ formatStatus(invoice?.match_status) }}
+        </span>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm font-medium">Payment</span>
+          <div :class="getPaymentDot(invoice?.payment_status)" class="w-2 h-2 rounded-full"></div>
+        </div>
+        <span :class="getPaymentClass(invoice?.payment_status)" class="text-base font-semibold">
+          {{ formatPaymentStatus(invoice?.payment_status) }}
+        </span>
+      </div>
+
+      <div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 shadow-lg">
+        <span class="text-gray-400 text-sm font-medium block mb-3">Total Amount</span>
+        <span class="text-2xl font-bold text-white tracking-tight">₱{{ formatNumber(invoice?.total_amount) }}</span>
+      </div>
     </div>
 
-    <!-- Main Content Tabs -->
-    <TabView v-model:activeIndex="activeTab">
-      <!-- Invoice Details -->
-      <TabPanel header="Invoice Details" headerIcon="pi pi-file" value="0">
-        <template #header>
-          <i class="pi pi-file mr-2"></i>
-          <span>Details</span>
-        </template>
+    <!-- iOS-style Tabs -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="flex border-b border-gray-100 bg-gray-50/50 px-4">
+        <button
+          v-for="(tab, index) in tabs"
+          :key="index"
+          @click="activeTab = index"
+          class="px-5 py-4 text-sm font-medium transition-colors relative"
+          :class="activeTab === index ? 'text-blue-500' : 'text-gray-500 hover:text-gray-700'"
+        >
+          <span class="flex items-center gap-2">
+            <i :class="tab.icon" class="text-base"></i>
+            <span>{{ tab.label }}</span>
+          </span>
+          <div 
+            v-if="activeTab === index" 
+            class="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"
+          ></div>
+        </button>
+      </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Invoice Information -->
-          <Card>
-            <template #header>
-              <div class="p-4 bg-blue-50 border-b">
-                <h3 class="font-semibold text-gray-800">Invoice Information</h3>
-              </div>
-            </template>
-            <template #content>
-              <div class="space-y-3">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Invoice Number</span>
-                  <span class="font-semibold">{{ invoice?.invoice_number }}</span>
+      <div class="p-6">
+        <!-- Tab 1: Details -->
+        <div v-if="activeTab === 0" class="space-y-6">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Invoice Details -->
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Invoice Details</h3>
+              <div class="bg-gray-50/50 rounded-xl p-5 space-y-3">
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Invoice Number</span>
+                  <span class="font-medium text-gray-900">{{ invoice?.invoice_number }}</span>
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Invoice Date</span>
-                  <span class="font-semibold">{{ formatDate(invoice?.invoice_date) }}</span>
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Invoice Date</span>
+                  <span class="font-medium text-gray-900">{{ formatDate(invoice?.invoice_date) }}</span>
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Due Date</span>
-                  <span class="font-semibold">{{ formatDate(invoice?.due_date) }}</span>
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Due Date</span>
+                  <span class="font-medium text-gray-900">{{ formatDate(invoice?.due_date) }}</span>
                 </div>
-                <Divider />
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Net Amount</span>
-                  <span class="font-semibold text-lg">₱ {{ formatNumber(invoice?.net_amount) }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Tax Amount</span>
-                  <span class="font-semibold">₱ {{ formatNumber(invoice?.tax_amount) }}</span>
-                </div>
-                <div class="flex justify-between border-t pt-2">
-                  <span class="text-gray-600 font-semibold">Total Amount</span>
-                  <span class="font-bold text-lg text-green-600">₱ {{ formatNumber(invoice?.total_amount) }}</span>
+                <div class="flex justify-between py-2">
+                  <span class="text-gray-500">Payment Terms</span>
+                  <span class="font-medium text-gray-900">{{ invoice?.payment_terms || 'Net 30' }}</span>
                 </div>
               </div>
-            </template>
-          </Card>
+            </div>
 
-          <!-- Supplier Information -->
-          <Card>
-            <template #header>
-              <div class="p-4 bg-blue-50 border-b">
-                <h3 class="font-semibold text-gray-800">Supplier Information</h3>
-              </div>
-            </template>
-            <template #content>
-              <div class="space-y-3">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Supplier Name</span>
+            <!-- Supplier Details -->
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Supplier Details</h3>
+              <div class="bg-gray-50/50 rounded-xl p-5 space-y-3">
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Supplier Name</span>
                   <RouterLink
                     :to="`/procurement/suppliers/${invoice?.supplier_id}`"
-                    class="font-semibold text-blue-600 hover:underline"
+                    class="font-medium text-blue-500 hover:text-blue-600"
                   >
                     {{ invoice?.supplier_name }}
                   </RouterLink>
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Supplier Code</span>
-                  <span class="font-semibold">{{ invoice?.supplier_code }}</span>
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Supplier Code</span>
+                  <span class="font-medium text-gray-900">{{ invoice?.supplier_code }}</span>
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Contact Person</span>
-                  <span class="font-semibold">{{ invoice?.contact_person }}</span>
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Contact Person</span>
+                  <span class="font-medium text-gray-900">{{ invoice?.contact_person }}</span>
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Email</span>
-                  <a :href="`mailto:${invoice?.email}`" class="text-blue-600 hover:underline">
+                <div class="flex justify-between py-2">
+                  <span class="text-gray-500">Email</span>
+                  <a :href="`mailto:${invoice?.email}`" class="font-medium text-blue-500 hover:text-blue-600">
                     {{ invoice?.email }}
                   </a>
                 </div>
-                <Divider />
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Payment Terms</span>
-                  <span class="font-semibold">{{ invoice?.payment_terms }}</span>
-                </div>
               </div>
-            </template>
-          </Card>
+            </div>
+          </div>
+
+          <!-- Line Items -->
+          <div class="space-y-4">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Line Items</h3>
+            <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50/80 text-gray-500 text-xs">
+                  <tr>
+                    <th class="px-5 py-4 text-left font-medium">Description</th>
+                    <th class="px-5 py-4 text-right font-medium">Qty</th>
+                    <th class="px-5 py-4 text-right font-medium">Unit Price</th>
+                    <th class="px-5 py-4 text-right font-medium">Line Total</th>
+                    <th class="px-5 py-4 text-right font-medium">Tax Rate</th>
+                    <th class="px-5 py-4 text-right font-medium">Tax Amount</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <tr v-for="(item, idx) in invoice?.items" :key="idx" class="hover:bg-gray-50/50">
+                    <td class="px-5 py-4 text-gray-900">{{ item.description }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">{{ item.quantity }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.unit_price) }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.quantity * item.unit_price) }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">{{ item.tax_rate }}%</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber((item.quantity * item.unit_price * item.tax_rate) / 100) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot class="bg-gray-50/80 font-medium">
+                  <tr>
+                    <td colspan="5" class="px-5 py-4 text-right text-gray-600">Subtotal</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.net_amount) }}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="5" class="px-5 py-4 text-right text-gray-600">Tax Total</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.tax_amount) }}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="5" class="px-5 py-4 text-right text-gray-900 font-semibold">Total</td>
+                    <td class="px-5 py-4 text-right text-blue-600 font-semibold">₱{{ formatNumber(invoice?.total_amount) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
         </div>
 
-        <!-- Line Items -->
-        <Card class="mt-6">
-          <template #header>
-            <div class="p-4 bg-blue-50 border-b">
-              <h3 class="font-semibold text-gray-800">Line Items</h3>
+        <!-- Tab 2: 3-Way Match -->
+        <div v-if="activeTab === 1" class="space-y-6">
+          <!-- Match Status -->
+          <div class="bg-gray-50/50 rounded-xl p-6">
+            <div class="flex items-center gap-4">
+              <div :class="getMatchIconClass(invoice?.match_status)" class="w-12 h-12 rounded-full flex items-center justify-center">
+                <i :class="getMatchIcon(invoice?.match_status)" class="text-2xl"></i>
+              </div>
+              <div>
+                <h3 class="font-semibold text-gray-900">{{ getMatchTitle(invoice?.match_status) }}</h3>
+                <p class="text-sm text-gray-500 mt-1">{{ invoice?.match_result?.message || 'All documents match successfully' }}</p>
+              </div>
             </div>
-          </template>
-          <template #content>
-            <DataTable :value="invoice?.items || []" class="p-datatable-sm" stripedRows>
-              <Column field="description" header="Description" style="width: 30%" />
-              <Column field="quantity" header="Qty" style="width: 10%">
-                <template #body="{ data }">
-                  {{ data.quantity }}
-                </template>
-              </Column>
-              <Column header="Unit Price" style="width: 12%">
-                <template #body="{ data }">
-                  ₱ {{ formatNumber(data.unit_price) }}
-                </template>
-              </Column>
-              <Column header="Line Amount" style="width: 15%">
-                <template #body="{ data }">
-                  ₱ {{ formatNumber(data.quantity * data.unit_price) }}
-                </template>
-              </Column>
-              <Column header="Tax Rate" style="width: 12%">
-                <template #body="{ data }">
-                  {{ data.tax_rate }}%
-                </template>
-              </Column>
-              <Column header="Tax Amount" style="width: 15%">
-                <template #body="{ data }">
-                  ₱ {{ formatNumber((data.quantity * data.unit_price * data.tax_rate) / 100) }}
-                </template>
-              </Column>
 
-              <template #empty>
-                <div class="text-center py-4 text-gray-500">
-                  No line items
-                </div>
-              </template>
-            </DataTable>
-          </template>
-        </Card>
-      </TabPanel>
+            <div v-if="invoice?.match_result?.issues?.length" class="mt-4 bg-red-50 rounded-lg p-4">
+              <p class="font-medium text-red-800 text-sm mb-2">Issues Found:</p>
+              <ul class="space-y-1">
+                <li v-for="(issue, idx) in invoice.match_result.issues" :key="idx" class="text-sm text-red-700 flex items-start gap-2">
+                  <i class="pi pi-exclamation-circle text-red-500 text-xs mt-0.5"></i>
+                  <span>{{ issue }}</span>
+                </li>
+              </ul>
+            </div>
 
-      <!-- 3-Way Matching -->
-      <TabPanel header="3-Way Matching" headerIcon="pi pi-check-circle" value="1">
-        <template #header>
-          <i class="pi pi-check-circle mr-2"></i>
-          <span>3-Way Match</span>
-          <Badge
-            :value="invoice?.match_status"
-            :severity="matchStatusSeverity(invoice?.match_status)"
-            class="ml-2"
-          />
-        </template>
+            <div v-if="isFinanceRoute && invoice?.match_status !== 'matched'" class="mt-4">
+              <button
+                @click="runMatch"
+                :disabled="matching"
+                class="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2"
+              >
+                <i class="pi pi-sync"></i>
+                <span>{{ matching ? 'Matching...' : 'Run 3-Way Match' }}</span>
+              </button>
+            </div>
+          </div>
 
-        <div class="space-y-6">
-          <!-- Match Status Summary -->
-          <Card>
-            <template #header>
-              <div class="p-4 bg-blue-50 border-b">
-                <h3 class="font-semibold text-gray-800">Match Status</h3>
-              </div>
-            </template>
-            <template #content>
-              <div class="space-y-4">
-                <div class="flex items-center gap-3">
-                  <i v-if="invoice?.match_status === 'matched'" class="pi pi-check-circle text-2xl text-green-600" />
-                  <i v-else-if="invoice?.match_status === 'exception'" class="pi pi-exclamation-circle text-2xl text-red-600" />
-                  <i v-else class="pi pi-clock text-2xl text-orange-600" />
-                  <div>
-                    <p class="font-semibold">
-                      {{ invoice?.match_status === 'matched' ? 'Invoice Matched' :
-                         invoice?.match_status === 'exception' ? 'Matching Exceptions Found' :
-                         'Waiting for Match' }}
-                    </p>
-                    <p class="text-sm text-gray-500 mt-1">
-                      {{ invoice?.match_result?.message }}
-                    </p>
-                  </div>
-                </div>
-
-                <!-- Exception Details -->
-                <div v-if="invoice?.match_result?.issues && invoice.match_result.issues.length > 0" class="bg-red-50 border border-red-200 rounded p-4">
-                  <p class="font-semibold text-red-800 mb-3">Issues Found:</p>
-                  <ul class="space-y-2">
-                    <li v-for="(issue, idx) in invoice.match_result.issues" :key="idx" class="flex gap-2 text-sm">
-                      <i class="pi pi-times text-red-600 shrink-0" />
-                      <span class="text-gray-700">{{ issue }}</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </template>
-          </Card>
-
-          <!-- Comparison -->
+          <!-- Comparison Cards -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <!-- PO -->
-            <Card>
-              <template #header>
-                <div class="p-4 bg-green-50 border-b">
-                  <h3 class="font-semibold text-gray-800">Purchase Order</h3>
+            <div class="bg-white rounded-xl border border-gray-100 p-5">
+              <div class="flex items-center gap-2 mb-4">
+                <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                  <i class="pi pi-file-pdf text-green-600 text-sm"></i>
                 </div>
-              </template>
-              <template #content>
-                <div class="space-y-2 text-sm">
-                  <p><span class="text-gray-600">PO Number:</span> {{ invoice?.po_number }}</p>
-                  <p><span class="text-gray-600">Quantity:</span> {{ invoice?.po_quantity }}</p>
-                  <p><span class="text-gray-600">Amount:</span> ₱ {{ formatNumber(invoice?.po_amount) }}</p>
-                  <p class="text-xs text-gray-500 mt-2">{{ formatDate(invoice?.po_date) }}</p>
-                </div>
-              </template>
-            </Card>
+                <span class="font-medium text-gray-900">Purchase Order</span>
+              </div>
+              <div class="space-y-3">
+                <p class="text-sm"><span class="text-gray-500">PO Number:</span> <span class="font-medium text-gray-900">{{ invoice?.po_number }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ invoice?.po_quantity }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.po_amount) }}</span></p>
+                <p class="text-xs text-gray-400">{{ formatDate(invoice?.po_date) }}</p>
+              </div>
+            </div>
 
-            <!-- GRN -->
-            <Card>
-              <template #header>
-                <div class="p-4 bg-purple-50 border-b">
-                  <h3 class="font-semibold text-gray-800">Goods Receipt</h3>
+            <div class="bg-white rounded-xl border border-gray-100 p-5">
+              <div class="flex items-center gap-2 mb-4">
+                <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                  <i class="pi pi-box text-purple-600 text-sm"></i>
                 </div>
-              </template>
-              <template #content>
-                <div class="space-y-2 text-sm">
-                  <p><span class="text-gray-600">GRN Number:</span> {{ invoice?.grn_number }}</p>
-                  <p><span class="text-gray-600">Quantity:</span> {{ invoice?.grn_quantity }}</p>
-                  <p><span class="text-gray-600">Status:</span> {{ invoice?.grn_status }}</p>
-                  <p class="text-xs text-gray-500 mt-2">{{ formatDate(invoice?.grn_date) }}</p>
-                </div>
-              </template>
-            </Card>
+                <span class="font-medium text-gray-900">Goods Receipt</span>
+              </div>
+              <div class="space-y-3">
+                <p class="text-sm"><span class="text-gray-500">GRN Number:</span> <span class="font-medium text-gray-900">{{ invoice?.grn_number || '—' }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ invoice?.grn_quantity || 0 }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Status:</span> <span class="font-medium text-gray-900">{{ invoice?.grn_status || 'Pending' }}</span></p>
+                <p class="text-xs text-gray-400">{{ formatDate(invoice?.grn_date) }}</p>
+              </div>
+            </div>
 
-            <!-- Invoice -->
-            <Card>
-              <template #header>
-                <div class="p-4 bg-blue-50 border-b">
-                  <h3 class="font-semibold text-gray-800">Invoice</h3>
+            <div class="bg-white rounded-xl border border-gray-100 p-5">
+              <div class="flex items-center gap-2 mb-4">
+                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <i class="pi pi-file text-blue-600 text-sm"></i>
                 </div>
-              </template>
-              <template #content>
-                <div class="space-y-2 text-sm">
-                  <p><span class="text-gray-600">Invoice #:</span> {{ invoice?.invoice_number }}</p>
-                  <p><span class="text-gray-600">Quantity:</span> {{ invoice?.invoice_quantity }}</p>
-                  <p><span class="text-gray-600">Amount:</span> ₱ {{ formatNumber(invoice?.total_amount) }}</p>
-                  <p class="text-xs text-gray-500 mt-2">{{ formatDate(invoice?.invoice_date) }}</p>
-                </div>
-              </template>
-            </Card>
+                <span class="font-medium text-gray-900">Invoice</span>
+              </div>
+              <div class="space-y-3">
+                <p class="text-sm"><span class="text-gray-500">Invoice #:</span> <span class="font-medium text-gray-900">{{ invoice?.invoice_number }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ invoice?.invoice_quantity }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.total_amount) }}</span></p>
+                <p class="text-xs text-gray-400">{{ formatDate(invoice?.invoice_date) }}</p>
+              </div>
+            </div>
           </div>
 
           <!-- Variance Analysis -->
-          <Card v-if="invoice?.match_result?.variance_analysis">
-            <template #header>
-              <div class="p-4 bg-orange-50 border-b">
-                <h3 class="font-semibold text-gray-800">Variance Analysis</h3>
+          <div v-if="invoice?.match_result?.variance_analysis" class="bg-white rounded-xl border border-gray-100 p-5">
+            <h4 class="font-medium text-gray-900 mb-4">Variance Analysis</h4>
+            <div class="grid grid-cols-3 gap-4">
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Quantity Variance</p>
+                <p class="text-lg font-semibold" :class="invoice.match_result.variance_analysis.qty_variance !== 0 ? 'text-red-600' : 'text-green-600'">
+                  {{ invoice.match_result.variance_analysis.qty_variance > 0 ? '+' : '' }}{{ invoice.match_result.variance_analysis.qty_variance }}
+                </p>
               </div>
-            </template>
-            <template #content>
-              <div class="space-y-3">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Quantity Variance</span>
-                  <span class="font-semibold">
-                    {{ invoice.match_result.variance_analysis.qty_variance }}
-                    <Badge
-                      :value="Math.abs(invoice.match_result.variance_analysis.qty_variance) > 0 ? 'Mismatch' : 'OK'"
-                      :severity="Math.abs(invoice.match_result.variance_analysis.qty_variance) > 0 ? 'danger' : 'success'"
-                      class="ml-2"
-                    />
-                  </span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Amount Variance</span>
-                  <span class="font-semibold">
-                    ₱ {{ formatNumber(invoice.match_result.variance_analysis.amt_variance) }}
-                    <Badge
-                      :value="Math.abs(invoice.match_result.variance_analysis.amt_variance) > 0 ? 'Out of Tolerance' : 'Within Tolerance'"
-                      :severity="Math.abs(invoice.match_result.variance_analysis.amt_variance) > (invoice.total_amount * 0.02) ? 'danger' : 'success'"
-                      class="ml-2"
-                    />
-                  </span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Variance %</span>
-                  <span class="font-semibold">{{ ((invoice.match_result.variance_analysis.amt_variance / invoice.total_amount) * 100).toFixed(2) }}%</span>
-                </div>
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Amount Variance</p>
+                <p class="text-lg font-semibold" :class="Math.abs(invoice.match_result.variance_analysis.amt_variance) > 0 ? 'text-red-600' : 'text-green-600'">
+                  ₱{{ formatNumber(invoice.match_result.variance_analysis.amt_variance) }}
+                </p>
               </div>
-            </template>
-          </Card>
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Variance %</p>
+                <p class="text-lg font-semibold text-gray-900">
+                  {{ ((invoice.match_result.variance_analysis.amt_variance / invoice.total_amount) * 100).toFixed(2) }}%
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-      </TabPanel>
 
-      <!-- Approval & Payment -->
-      <TabPanel header="Approval & Payment" headerIcon="pi pi-money-bill" value="2">
-        <template #header>
-          <i class="pi pi-money-bill mr-2"></i>
-          <span>Approval & Payment</span>
-        </template>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Approval -->
-          <Card>
-            <template #header>
-              <div class="p-4 bg-blue-50 border-b">
-                <h3 class="font-semibold text-gray-800">Approval Status</h3>
+        <!-- Tab 3: Approval & Payment -->
+        <div v-if="activeTab === 2" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white rounded-xl border border-gray-100 p-6">
+            <h3 class="font-medium text-gray-900 mb-4 flex items-center gap-2">
+              <i class="pi pi-check-circle text-blue-500"></i>
+              Approval Status
+            </h3>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500">Current Status</span>
+                <span :class="getStatusClass(invoice?.status)" class="font-medium">{{ formatStatus(invoice?.status) }}</span>
               </div>
-            </template>
-            <template #content>
-              <div class="space-y-4">
-                <div>
-                  <p class="text-gray-600 text-sm mb-2">Status</p>
-                  <Badge :value="invoice?.status" :severity="statusSeverity(invoice?.status)" />
-                </div>
 
-                <div v-if="invoice?.status === 'pending_approval'" class="bg-blue-50 p-4 rounded border border-blue-200">
-                  <p class="text-sm text-blue-800 mb-3">This invoice is awaiting approval before payment can be scheduled.</p>
-                  <Button
-                    label="Approve Invoice"
-                    icon="pi pi-check"
-                    class="w-full"
-                    @click="approveInvoice"
-                    :loading="approving"
-                  />
-                </div>
+              <div v-if="invoice?.status === 'pending_approval'" class="bg-blue-50 rounded-lg p-4">
+                <p class="text-sm text-blue-800 mb-3">This invoice needs your approval before payment can be processed.</p>
+                <button
+                  @click="approveInvoice"
+                  :disabled="approving"
+                  class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <i class="pi pi-check"></i>
+                  <span>{{ approving ? 'Approving...' : 'Approve Invoice' }}</span>
+                </button>
+              </div>
 
-                <div v-if="invoice?.approvals" class="space-y-2">
-                  <p class="text-sm text-gray-600 mb-2">Approval Trail:</p>
-                  <div v-for="approval in invoice.approvals" :key="approval.id" class="flex gap-3 text-sm">
-                    <i class="pi pi-check text-green-600" />
-                    <div>
-                      <p class="font-semibold">{{ approval.approved_by }}</p>
-                      <p class="text-gray-500 text-xs">{{ formatDate(approval.approved_at) }}</p>
-                    </div>
+              <div v-if="invoice?.approvals?.length" class="space-y-3">
+                <p class="text-sm font-medium text-gray-700">Approval History</p>
+                <div v-for="approval in invoice.approvals" :key="approval.id" class="flex items-start gap-3 text-sm">
+                  <i class="pi pi-check-circle text-green-500 text-xs mt-1"></i>
+                  <div>
+                    <p class="font-medium text-gray-900">{{ approval.approved_by }}</p>
+                    <p class="text-xs text-gray-500">{{ formatDate(approval.approved_at) }}</p>
                   </div>
                 </div>
               </div>
-            </template>
-          </Card>
+            </div>
+          </div>
 
-          <!-- Payment -->
-          <Card>
-            <template #header>
-              <div class="p-4 bg-green-50 border-b">
-                <h3 class="font-semibold text-gray-800">Payment Information</h3>
+          <div class="bg-white rounded-xl border border-gray-100 p-6">
+            <h3 class="font-medium text-gray-900 mb-4 flex items-center gap-2">
+              <i class="pi pi-credit-card text-green-500"></i>
+              Payment Information
+            </h3>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500">Payment Status</span>
+                <span :class="getPaymentClass(invoice?.payment_status)" class="font-medium">{{ formatPaymentStatus(invoice?.payment_status) }}</span>
               </div>
-            </template>
-            <template #content>
-              <div class="space-y-4">
+
+              <div v-if="!isFinanceRoute && invoice?.payment_status === 'pending'" class="bg-gray-50 rounded-lg p-4">
+                <label class="text-sm text-gray-700 block mb-2">Schedule Payment Date</label>
+                <input
+                  type="date"
+                  v-model="paymentDate"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-3"
+                />
+                <button
+                  @click="schedulePayment"
+                  :disabled="scheduling"
+                  class="w-full px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <i class="pi pi-calendar"></i>
+                  <span>{{ scheduling ? 'Scheduling...' : 'Schedule Payment' }}</span>
+                </button>
+              </div>
+
+              <div v-if="isFinanceRoute && invoice?.status === 'approved' && invoice?.payment_status === 'pending'" class="bg-gray-50 rounded-lg p-4 space-y-3">
                 <div>
-                  <p class="text-gray-600 text-sm mb-2">Payment Status</p>
-                  <Badge :value="invoice?.payment_status" />
+                  <label class="text-sm text-gray-700 block mb-2">Payment Method</label>
+                  <select v-model="paymentMethod" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="check">Check</option>
+                    <option value="credit_card">Credit Card</option>
+                  </select>
                 </div>
-
-                <div v-if="invoice?.payment_status === 'pending'">
-                  <p class="text-gray-600 text-sm mb-2">Scheduled Payment Date</p>
-                  <DatePicker
-                    v-model="paymentData.payment_date"
-                    dateFormat="yy-mm-dd"
-                    class="w-full mb-3"
+                <div>
+                  <label class="text-sm text-gray-700 block mb-2">Payment Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    v-model.number="paymentAmount"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   />
-                  <Button
-                    label="Schedule Payment"
-                    icon="pi pi-calendar"
-                    class="w-full"
-                    @click="schedulePayment"
-                    :loading="scheduling"
-                  />
                 </div>
-
-                <div v-if="invoice?.payment_status === 'scheduled'" class="bg-green-50 p-3 rounded border border-green-200">
-                  <p class="text-sm text-green-800">
-                    Payment Scheduled for {{ formatDate(invoice?.scheduled_payment_date) }}
-                  </p>
-                </div>
-
-                <div v-if="invoice?.payment_status === 'paid'" class="bg-green-50 p-3 rounded border border-green-200">
-                  <p class="text-sm text-green-800 font-semibold">
-                    Paid on {{ formatDate(invoice?.payment_date) }}
-                  </p>
-                </div>
+                <button
+                  @click="markPaid"
+                  :disabled="markingPaid"
+                  class="w-full px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <i class="pi pi-wallet"></i>
+                  <span>{{ markingPaid ? 'Processing...' : 'Mark as Paid' }}</span>
+                </button>
               </div>
-            </template>
-          </Card>
-        </div>
-      </TabPanel>
 
-      <!-- Timeline -->
-      <TabPanel header="Timeline" headerIcon="pi pi-timeline" value="3">
-        <template #header>
-          <i class="pi pi-timeline mr-2"></i>
-          <span>Timeline</span>
-        </template>
+              <div v-if="invoice?.payment_status === 'scheduled'" class="bg-green-50 rounded-lg p-4">
+                <p class="text-sm text-green-800">
+                  Payment scheduled for <span class="font-medium">{{ formatDate(invoice?.scheduled_payment_date) }}</span>
+                </p>
+              </div>
 
-        <Timeline :value="timeline" align="left" layout="vertical">
-          <template #content="{ item }">
-            <div class="flex gap-3">
-              <div class="text-sm">
-                <p class="font-semibold">{{ item.label }}</p>
-                <p class="text-gray-500 text-xs mt-1">{{ item.date }}</p>
+              <div v-if="invoice?.payment_status === 'paid'" class="bg-green-50 rounded-lg p-4">
+                <p class="text-sm text-green-800">
+                  Paid on <span class="font-medium">{{ formatDate(invoice?.payment_date) }}</span>
+                </p>
               </div>
             </div>
-          </template>
+          </div>
+        </div>
 
-          <template #marker="{ item }">
-            <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: item.color }" />
-          </template>
-        </Timeline>
-      </TabPanel>
-    </TabView>
+        <!-- Tab 4: Timeline -->
+        <div v-if="activeTab === 3" class="space-y-4">
+          <div class="relative">
+            <div v-for="(event, idx) in timeline" :key="idx" class="flex gap-4 pb-8 last:pb-0 relative">
+              <!-- Timeline line -->
+              <div v-if="idx < timeline.length - 1" class="absolute left-5 top-8 bottom-0 w-0.5 bg-gray-200"></div>
+              
+              <!-- Timeline dot -->
+              <div class="relative z-10">
+                <div :style="{ backgroundColor: event.color }" class="w-10 h-10 rounded-full flex items-center justify-center text-white">
+                  <i :class="event.icon" class="text-sm"></i>
+                </div>
+              </div>
+              
+              <!-- Content -->
+              <div class="flex-1 pb-4">
+                <p class="font-medium text-gray-900">{{ event.label }}</p>
+                <p class="text-sm text-gray-500 mt-1">{{ event.date }}</p>
+                <p v-if="event.description" class="text-sm text-gray-600 mt-2">{{ event.description }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <Toast />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import financeService from '../../../../services/finance.service'
 
 const router = useRouter()
 const route = useRoute()
@@ -478,23 +453,140 @@ const invoice = ref<any>(null)
 const activeTab = ref(0)
 const approving = ref(false)
 const scheduling = ref(false)
+const matching = ref(false)
+const markingPaid = ref(false)
 const loading = ref(false)
+const paymentDate = ref('')
+const paymentMethod = ref('bank_transfer')
+const paymentAmount = ref(0)
+const isFinanceRoute = computed(() => String(route.name || '').startsWith('finance.'))
 
-const paymentData = ref({
-  payment_date: new Date(),
+const tabs = [
+  { label: 'Details', icon: 'pi pi-file' },
+  { label: '3-Way Match', icon: 'pi pi-check-circle' },
+  { label: 'Approval & Payment', icon: 'pi pi-credit-card' },
+  { label: 'Timeline', icon: 'pi pi-clock' },
+]
+
+const timeline = computed(() => {
+  const events = [
+    {
+      label: 'Invoice Created',
+      date: formatDate(invoice.value?.invoice_date),
+      color: '#3B82F6',
+      icon: 'pi pi-plus',
+      description: `Invoice ${invoice.value?.invoice_number} was created`,
+    },
+    {
+      label: 'PO Reference',
+      date: formatDate(invoice.value?.po_date),
+      color: '#10B981',
+      icon: 'pi pi-file-pdf',
+      description: `Linked to PO ${invoice.value?.po_number}`,
+    },
+  ]
+
+  if (invoice.value?.grn_date) {
+    events.push({
+      label: 'Goods Received',
+      date: formatDate(invoice.value?.grn_date),
+      color: '#8B5CF6',
+      icon: 'pi pi-box',
+      description: `GRN ${invoice.value?.grn_number} received`,
+    })
+  }
+
+  if (invoice.value?.match_date) {
+    events.push({
+      label: '3-Way Match Completed',
+      date: formatDate(invoice.value?.match_date),
+      color: invoice.value?.match_status === 'matched' ? '#10B981' : '#EF4444',
+      icon: invoice.value?.match_status === 'matched' ? 'pi pi-check-circle' : 'pi pi-exclamation-circle',
+      description: `Match status: ${invoice.value?.match_status}`,
+    })
+  }
+
+  if (invoice.value?.approved_at) {
+    events.push({
+      label: 'Invoice Approved',
+      date: formatDate(invoice.value?.approved_at),
+      color: '#10B981',
+      icon: 'pi pi-check',
+      description: 'Invoice has been approved',
+    })
+  }
+
+  if (invoice.value?.payment_date) {
+    events.push({
+      label: 'Payment Completed',
+      date: formatDate(invoice.value?.payment_date),
+      color: '#10B981',
+      icon: 'pi pi-credit-card',
+      description: `Payment of ₱${formatNumber(invoice.value?.total_amount)} completed`,
+    })
+  }
+
+  return events
 })
-
-const timeline = ref<any[]>([])
 
 // Methods
 async function loadInvoice() {
   loading.value = true
   try {
-    const response = await procurementService.getInvoice(Number(route.params.id))
-    invoice.value = response.data?.data || response.data
+    const response = isFinanceRoute.value
+      ? await financeService.getInvoice(Number(route.params.id))
+      : await procurementService.getInvoice(Number(route.params.id))
+    
+    const raw = response.data?.data || response.data
+    const supplier = raw?.supplier || {}
+    const po = raw?.purchase_order || {}
+    const goodsReceipt = raw?.goods_receipt || null
+    
+    const normalizedItems = Array.isArray(raw?.items)
+      ? raw.items.map((item: any) => ({
+          ...item,
+          quantity: item.quantity_invoiced ?? item.quantity ?? 0,
+          unit_price: item.unit_price ?? 0,
+        }))
+      : []
 
-    // Build timeline
-    buildTimeline()
+    const poQuantity = Array.isArray(po?.items)
+      ? po.items.reduce((sum: number, item: any) => sum + Number(item.quantity_ordered || 0), 0)
+      : 0
+
+    const invoiceQuantity = normalizedItems.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0)
+
+    let matchIssues: string[] = []
+    if (raw?.match_notes) {
+      try {
+        const parsed = JSON.parse(raw.match_notes)
+        matchIssues = Array.isArray(parsed) ? parsed : []
+      } catch {
+        matchIssues = []
+      }
+    }
+
+    invoice.value = {
+      ...raw,
+      supplier_name: supplier.supplier_name,
+      supplier_code: supplier.supplier_code,
+      contact_person: supplier.contact_person,
+      email: supplier.email,
+      payment_terms: po.payment_terms,
+      total_amount: Number(raw?.net_amount ?? raw?.invoice_amount ?? 0),
+      items: normalizedItems,
+      po_number: po.po_number,
+      po_quantity: poQuantity,
+      po_amount: Number(po?.total_amount ?? po?.subtotal ?? 0),
+      po_date: po?.order_date,
+      grn_number: goodsReceipt?.grn_number,
+      grn_quantity: goodsReceipt?.total_received,
+      grn_status: goodsReceipt?.receipt_status,
+      grn_date: goodsReceipt?.received_at,
+      invoice_quantity: invoiceQuantity,
+      match_result: matchIssues.length ? { issues: matchIssues } : raw?.match_result,
+    }
+    paymentAmount.value = invoice.value?.total_amount || 0
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -507,61 +599,21 @@ async function loadInvoice() {
   }
 }
 
-function buildTimeline() {
-  timeline.value = [
-    {
-      label: 'Invoice Created',
-      date: formatDate(invoice.value?.invoice_date),
-      color: '#3b82f6',
-    },
-    {
-      label: 'PO Reference',
-      date: formatDate(invoice.value?.po_date),
-      color: '#10b981',
-    },
-    {
-      label: 'GRN Received',
-      date: formatDate(invoice.value?.grn_date),
-      color: '#a855f7',
-    },
-  ]
-
-  if (invoice.value?.match_date) {
-    timeline.value.push({
-      label: '3-Way Match Performed',
-      date: formatDate(invoice.value.match_date),
-      color: invoice.value.match_status === 'matched' ? '#10b981' : '#ef4444',
-    })
-  }
-
-  if (invoice.value?.approved_at) {
-    timeline.value.push({
-      label: 'Invoice Approved',
-      date: formatDate(invoice.value.approved_at),
-      color: '#10b981',
-    })
-  }
-
-  if (invoice.value?.payment_date) {
-    timeline.value.push({
-      label: 'Payment Completed',
-      date: formatDate(invoice.value.payment_date),
-      color: '#10b981',
-    })
-  }
-}
-
 async function approveInvoice() {
   approving.value = true
   try {
-    await procurementService.approveInvoice(invoice.value.id)
+    if (isFinanceRoute.value) {
+      await financeService.approveInvoice(invoice.value.id)
+    } else {
+      await procurementService.approveInvoice(invoice.value.id)
+    }
     toast.add({
       severity: 'success',
       summary: 'Success',
       detail: 'Invoice approved',
       life: 3000,
     })
-    loadInvoice()
+    await loadInvoice()
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -575,7 +627,7 @@ async function approveInvoice() {
 }
 
 async function schedulePayment() {
-  if (!paymentData.value.payment_date) {
+  if (!paymentDate.value) {
     toast.add({
       severity: 'warn',
       summary: 'Required',
@@ -587,24 +639,18 @@ async function schedulePayment() {
 
   scheduling.value = true
   try {
-    let paymentDate: string
-    if (paymentData.value.payment_date instanceof Date) {
-      paymentDate = (paymentData.value.payment_date.toISOString().split('T')[0] ?? '')
-    } else if (paymentData.value.payment_date) {
-      paymentDate = String(paymentData.value.payment_date)
-    } else {
-      paymentDate = (new Date().toISOString().split('T')[0] ?? '2026-03-10')
+    if (!isFinanceRoute.value) {
+      await procurementService.scheduleInvoicePayment(invoice.value.id, {
+        payment_date: paymentDate.value,
+      })
     }
-    await procurementService.scheduleInvoicePayment(invoice.value.id, {
-      payment_date: paymentDate,
-    })
     toast.add({
       severity: 'success',
       summary: 'Success',
       detail: 'Payment scheduled',
       life: 3000,
     })
-    loadInvoice()
+    await loadInvoice()
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -617,29 +663,197 @@ async function schedulePayment() {
   }
 }
 
-function statusSeverity(status: string): string {
-  if (status === 'approved' || status === 'paid') return 'success'
-  if (status === 'pending_approval') return 'info'
-  if (status === 'draft') return 'secondary'
-  return 'danger'
+async function runMatch() {
+  if (!invoice.value?.id) return
+  matching.value = true
+  try {
+    if (isFinanceRoute.value) {
+      await financeService.matchInvoice(invoice.value.id)
+    } else {
+      await procurementService.performInvoiceMatch(invoice.value.id)
+    }
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: '3-way match completed',
+      life: 3000,
+    })
+    await loadInvoice()
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to run 3-way match',
+      life: 3000,
+    })
+  } finally {
+    matching.value = false
+  }
 }
 
-function matchStatusSeverity(status: string): string {
-  if (status === 'matched') return 'success'
-  if (status === 'pending') return 'warning'
-  return 'danger'
+async function markPaid() {
+  if (!invoice.value?.id) return
+  if (!paymentAmount.value || paymentAmount.value <= 0) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Required',
+      detail: 'Please enter a valid payment amount',
+      life: 3000,
+    })
+    return
+  }
+
+  markingPaid.value = true
+  try {
+    await financeService.markInvoicePaid(invoice.value.id, {
+      payment_method: paymentMethod.value,
+      payment_amount: Number(paymentAmount.value),
+    })
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Invoice marked as paid',
+      life: 3000,
+    })
+    await loadInvoice()
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to mark invoice as paid',
+      life: 3000,
+    })
+  } finally {
+    markingPaid.value = false
+  }
+}
+
+// Helper functions
+function formatStatus(status: string): string {
+  if (!status) return '-'
+  return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+function formatPaymentStatus(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'Pending',
+    scheduled: 'Scheduled',
+    paid: 'Paid',
+    overdue: 'Overdue',
+  }
+  return map[status] || status || '-'
+}
+
+function getStatusClass(status: string): string {
+  const map: Record<string, string> = {
+    draft: 'text-gray-500',
+    pending_approval: 'text-orange-500',
+    approved: 'text-green-600',
+    rejected: 'text-red-500',
+    paid: 'text-green-600',
+  }
+  return map[status] || 'text-gray-900'
+}
+
+function getMatchClass(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'text-orange-500',
+    matched: 'text-green-600',
+    exception: 'text-red-500',
+  }
+  return map[status] || 'text-gray-900'
+}
+
+function getPaymentClass(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'text-orange-500',
+    scheduled: 'text-blue-500',
+    paid: 'text-green-600',
+    overdue: 'text-red-500',
+  }
+  return map[status] || 'text-gray-900'
+}
+
+function getStatusDot(status: string): string {
+  const map: Record<string, string> = {
+    draft: 'bg-gray-400',
+    pending_approval: 'bg-orange-400',
+    approved: 'bg-green-500',
+    rejected: 'bg-red-500',
+    paid: 'bg-green-500',
+  }
+  return map[status] || 'bg-gray-400'
+}
+
+function getMatchDot(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'bg-orange-400',
+    matched: 'bg-green-500',
+    exception: 'bg-red-500',
+  }
+  return map[status] || 'bg-gray-400'
+}
+
+function getPaymentDot(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'bg-orange-400',
+    scheduled: 'bg-blue-500',
+    paid: 'bg-green-500',
+    overdue: 'bg-red-500',
+  }
+  return map[status] || 'bg-gray-400'
+}
+
+function getMatchIcon(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'pi pi-clock',
+    matched: 'pi pi-check-circle',
+    exception: 'pi pi-exclamation-circle',
+  }
+  return map[status] || 'pi pi-question'
+}
+
+function getMatchIconClass(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'bg-orange-100 text-orange-600',
+    matched: 'bg-green-100 text-green-600',
+    exception: 'bg-red-100 text-red-600',
+  }
+  return map[status] || 'bg-gray-100 text-gray-600'
+}
+
+function getMatchTitle(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'Waiting for Match',
+    matched: 'All Documents Match',
+    exception: 'Matching Exceptions Found',
+  }
+  return map[status] || 'Match Status Unknown'
 }
 
 function formatDate(date: string): string {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(date).toLocaleDateString('en-PH', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-PH').format(value)
+  return new Intl.NumberFormat('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value || 0)
 }
 
 function goBack() {
+  if (isFinanceRoute.value) {
+    router.push({ name: 'finance.payables' })
+    return
+  }
   router.push({ name: 'procurement.invoices' })
 }
 
@@ -654,3 +868,39 @@ onMounted(() => {
   loadInvoice()
 })
 </script>
+
+<style scoped>
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* iOS-style shadows */
+.shadow-sm {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.02);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+</style>

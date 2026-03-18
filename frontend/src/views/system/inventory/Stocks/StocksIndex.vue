@@ -11,7 +11,7 @@
     <!-- Filters -->
     <Card class="mb-6">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
           <IconField>
             <InputIcon class="pi pi-search" />
             <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full" @keyup.enter="loadItems" />
@@ -23,6 +23,17 @@
             optionLabel="label"
             optionValue="value"
             placeholder="Stock Status"
+            class="w-full"
+            showClear
+            @change="loadItems"
+          />
+
+          <Select
+            v-model="filters.product_type"
+            :options="productTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Product Type"
             class="w-full"
             showClear
             @change="loadItems"
@@ -159,6 +170,7 @@ const router = useRouter()
 const filters = reactive({
   search: '',
   stock_status: null as string | null,
+  product_type: null as string | null,
   page: 1,
   per_page: 15
 })
@@ -168,6 +180,10 @@ const stockStatuses = [
   { label: 'Low Stock', value: 'low_stock' },
   { label: 'Out of Stock', value: 'out_of_stock' },
   { label: 'Overstock', value: 'overstock' }
+]
+const productTypeOptions = [
+  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Raw Material', value: 'raw_material' }
 ]
 
 const loadItems = async () => {
@@ -180,6 +196,7 @@ const loadItems = async () => {
 
     if (filters.search) params.search = filters.search
     if (filters.stock_status) params.stock_status = filters.stock_status
+    if (filters.product_type) params.product_type = filters.product_type
 
     const response = await inventoryService.getInventoryItems(params)
 
@@ -214,6 +231,7 @@ const onPage = (event: any) => {
 const resetFilters = () => {
   filters.search = ''
   filters.stock_status = null
+  filters.product_type = null
   filters.page = 1
   filters.per_page = 15
   loadItems()

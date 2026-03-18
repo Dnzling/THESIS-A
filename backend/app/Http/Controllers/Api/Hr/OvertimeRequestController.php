@@ -7,6 +7,7 @@ use App\Models\Hr\OvertimeRequest;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Employee;
 use App\Models\Core\User;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -130,6 +131,14 @@ class OvertimeRequestController extends Controller
             'status' => 'pending'
         ]);
 
+        ActivityLog::record(
+            'overtime.requested',
+            'Submitted overtime request',
+            ['overtime_request_id' => $otRequest->id],
+            'OvertimeRequest',
+            $otRequest->id
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Overtime request submitted successfully',
@@ -192,6 +201,14 @@ class OvertimeRequestController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'overtime.approved',
+                'Approved overtime request',
+                ['overtime_request_id' => $otRequest->id],
+                'OvertimeRequest',
+                $otRequest->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Overtime request approved successfully',
@@ -245,6 +262,14 @@ class OvertimeRequestController extends Controller
         }
 
         $otRequest->reject(auth()->id(), $request->rejection_reason);
+
+        ActivityLog::record(
+            'overtime.rejected',
+            'Rejected overtime request',
+            ['overtime_request_id' => $otRequest->id],
+            'OvertimeRequest',
+            $otRequest->id
+        );
 
         return response()->json([
             'success' => true,

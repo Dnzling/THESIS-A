@@ -25,8 +25,8 @@
       <!-- Deduction Types Tab -->
       <DeductionType v-if="activeTab === 'deduction-types'" />
 
-      <!-- Shift Swaps Tab -->
-      <ShiftSwaps v-else-if="activeTab === 'shift-swaps'" />
+      <!-- Activity Log Tab -->
+      <ActivityLog v-else-if="activeTab === 'activity-log'" />
 
       <!-- Other Settings Placeholder -->
       <div v-else class="flex flex-col items-center justify-center h-full text-gray-400">
@@ -40,6 +40,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import DeductionType from './DeductionType.vue';
+import ActivityLog from './ActivityLog.vue';
 // import ShiftSwaps from './ShiftSwaps.vue'
 
 // Tabs configuration
@@ -63,6 +64,11 @@ const tabs = [
     id: 'company-info',
     label: 'Company Info',
     icon: 'pi pi-building'
+  },
+  {
+    id: 'activity-log',
+    label: 'Activity Log',
+    icon: 'pi pi-book'
   }
 ]
 

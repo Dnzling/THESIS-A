@@ -1,6 +1,4 @@
 import axios, { type AxiosInstance } from 'axios'
-import router from './router'
-
 const pendingRequests = new Map<string, AbortController>()
 
 const getRequestKey = (config: any): string => {
@@ -65,15 +63,20 @@ const attachInterceptors = (client: AxiosInstance) => {
                 localStorage.removeItem('access_token')
                 localStorage.removeItem('user')
 
-                const currentRoute = router.currentRoute.value?.name
-                if (currentRoute !== 'Login') {
-                    router.push({ name: 'Login' })
-                }
+                void redirectToLogin()
             }
 
             return Promise.reject(error)
         }
     )
+}
+
+const redirectToLogin = async () => {
+    const { default: router } = await import('./router')
+    const currentRoute = router.currentRoute.value?.name
+    if (currentRoute !== 'Login') {
+        router.push({ name: 'Login' })
+    }
 }
 
 applyBaseConfig(axios)

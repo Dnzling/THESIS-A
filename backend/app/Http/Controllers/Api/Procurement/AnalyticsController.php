@@ -30,8 +30,8 @@ class AnalyticsController extends Controller
                 'total_po_amount' => PurchaseOrder::where('store_id', $storeId)
                     ->whereBetween('created_at', [$dateFrom, $dateTo])
                     ->sum('total_amount'),
-                'pending_approval_count' => PurchaseOrder::where('store_id', $storeId)
-                    ->whereIn('status', ['draft', 'pending_approval'])
+                'pending_finance_approval_count' => PurchaseOrder::where('store_id', $storeId)
+                    ->whereIn('status', ['draft', 'pending_finance_approval'])
                     ->count(),
                 'pending_payment_count' => PurchaseOrder::where('store_id', $storeId)
                     ->where('payment_status', 'pending')
@@ -70,10 +70,14 @@ class AnalyticsController extends Controller
                 ->join('products', 'branch_inventory.product_id', '=', 'products.id')
                 ->where('branch_inventory.branch_id', $branchId)
                 ->whereRaw('branch_inventory.quantity_on_hand < branch_inventory.reorder_point')
+                ->when($request->has('product_type'), function ($q) use ($request) {
+                    $q->where('products.product_type', $request->product_type);
+                })
                 ->select(
                     'products.id',
                     'products.sku',
                     'products.product_name',
+                    'products.product_type',
                     'branch_inventory.quantity_on_hand',
                     'branch_inventory.reorder_point',
                     'branch_inventory.quantity_on_orders',

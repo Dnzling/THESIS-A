@@ -31,11 +31,6 @@
               <small class="text-red-500" v-if="errors.requisition_type">{{ errors.requisition_type }}</small>
             </div>
             <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Required Date</label>
-              <DatePicker v-model="form.required_date" dateFormat="yy-mm-dd" :invalid="errors.required_date !== undefined" fluid />
-              <small class="text-red-500" v-if="errors.required_date">{{ errors.required_date }}</small>
-            </div>
-            <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Priority</label>
               <Select v-model="form.priority" :options="priorityOptions" optionLabel="label" optionValue="value" fluid />
             </div>
@@ -115,10 +110,6 @@
               <div>
                 <p class="text-gray-600 font-medium">Priority</p>
                 <p class="text-gray-900">{{ priorityOptions.find(p => p.value === form.priority)?.label }}</p>
-              </div>
-              <div>
-                <p class="text-gray-600 font-medium">Required Date</p>
-                <p class="text-gray-900">{{ formatDate(form.required_date) }}</p>
               </div>
             </div>
             <div class="mt-3 p-3 bg-white rounded border border-blue-200">
@@ -218,7 +209,6 @@ const priorityOptions = [
 const form = reactive<any>({
   branch_id: null,
   requisition_type: 'regular',
-  required_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   reason: '',
   priority: 3,
   items: [{ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, specifications: '', product_name: '' }],
@@ -252,18 +242,11 @@ const capitalizeWords = (str: string): string => {
   return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
-const formatDate = (date: any): string => {
-  if (!date) return 'N/A'
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
 const validateForm = (): boolean => {
   Object.keys(errors).forEach(key => delete errors[key])
 
   if (!form.branch_id) { errors.branch_id = 'Branch is required' }
   if (!form.requisition_type) { errors.requisition_type = 'Type is required' }
-  if (!form.required_date) { errors.required_date = 'Required date is required' }
   if (!form.reason || form.reason.trim() === '') { errors.reason = 'Reason is required' }
   if (validItems.value.length === 0) { errors.items = 'At least one item is required' }
 
@@ -339,7 +322,6 @@ const saveDraft = async () => {
     const response = await procurementService.createPurchaseRequisition({
       branch_id: form.branch_id,
       requisition_type: form.requisition_type,
-      required_date: form.required_date instanceof Date ? form.required_date.toISOString().split('T')[0] : form.required_date,
       reason: form.reason,
       priority: form.priority,
       items: validItems.value,
@@ -373,7 +355,6 @@ const submitForm = async () => {
     const response = await procurementService.createPurchaseRequisition({
       branch_id: form.branch_id,
       requisition_type: form.requisition_type,
-      required_date: form.required_date instanceof Date ? form.required_date.toISOString().split('T')[0] : form.required_date,
       reason: form.reason,
       priority: form.priority,
       items: validItems.value,

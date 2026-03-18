@@ -128,30 +128,31 @@ class PurchaseOrder extends Model
     // Scopes
     public function scopePending($query)
     {
-        return $query->whereIn('status', ['draft', 'pending_approval', 'partially_approved']);
+        return $query->whereIn('status', ['draft', 'pending_finance_approval']);
     }
 
     public function scopeApproved($query)
     {
-        return $query->whereIn('status', ['fully_approved', 'finance_approved']);
+        return $query->whereIn('status', ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit']);
     }
 
     public function scopeOrdered($query)
     {
-        return $query->where('status', 'ordered');
+        return $query->whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit']);
     }
 
     public function scopeReceived($query)
     {
-        return $query->whereIn('status', ['received', 'partially_received']);
+        return $query->where('status', 'delivered');
     }
 
     // Helper Methods
-    public function addApproval(string $role, int $userId, string $userName, ?string $notes = null): void
+    public function addApproval(string $permission, int $userId, string $userName, ?string $notes = null, ?string $role = null): void
     {
         $approvals = $this->approvals_received ?? [];
         
         $approvals[] = [
+            'approver_permission' => $permission,
             'approver_role' => $role,
             'approver_id' => $userId,
             'approver_name' => $userName,
@@ -164,19 +165,41 @@ class PurchaseOrder extends Model
 
         // Check if all approvals received
         if ($this->isFullyApproved()) {
-            $this->update(['status' => 'fully_approved']);
+            $this->update(['status' => 'approved']);
         } else {
-            $this->update(['status' => 'partially_approved']);
+            $this->update(['status' => 'pending_finance_approval']);
         }
     }
 
     public function isFullyApproved(): bool
     {
         $required = $this->required_approvers ?? [];
-        $received = collect($this->approvals_received ?? [])->pluck('approver_role')->toArray();
+        if (empty($required)) {
+            return true;
+        }
 
+        $received = collect($this->approvals_received ?? []);
+        $requiresPermissions = collect($required)->contains(fn ($value) => is_string($value) && str_contains($value, '.'));
+
+        if ($requiresPermissions) {
+            $receivedPermissions = $received->pluck('approver_permission')->filter()->toArray();
+            foreach ($required as $permission) {
+                if (!in_array($permission, $receivedPermissions, true)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        $normalizeRole = function (?string $role): string {
+            $role = trim((string) $role);
+            $role = preg_replace('/[\s-]+/', '_', $role);
+            return strtolower($role);
+        };
+
+        $receivedRoles = $received->pluck('approver_role')->filter()->map($normalizeRole)->toArray();
         foreach ($required as $role) {
-            if (!in_array($role, $received)) {
+            if (!in_array($normalizeRole($role), $receivedRoles, true)) {
                 return false;
             }
         }
@@ -193,14 +216,14 @@ class PurchaseOrder extends Model
             'reason' => $reason,
         ];
 
-        $this->status = 'rejected';
+        $this->status = 'rejected_finance';
         $this->save();
     }
 
     public function sendToSupplier(): void
     {
         $this->update([
-            'status' => 'ordered',
+            'status' => 'sent_to_supplier',
             'order_date' => now(),
         ]);
 
@@ -229,6 +252,36 @@ class PurchaseOrder extends Model
 
     public function isOverdue(): bool
     {
-        return $this->expected_delivery_date < now() && !in_array($this->status, ['received', 'cancelled']);
+        return $this->expected_delivery_date < now() && !in_array($this->status, ['delivered', 'cancelled']);
+    }
+
+    public function markSupplierAccepted(): void
+    {
+        $this->update(['status' => 'supplier_accepted']);
+    }
+
+    public function markSupplierDeclined(string $reason): void
+    {
+        $this->update([
+            'status' => 'declined_supplier',
+            'rejection_details' => [
+                'rejected_by_role' => 'supplier',
+                'rejected_at' => now()->toDateTimeString(),
+                'reason' => $reason,
+            ],
+        ]);
+    }
+
+    public function markInTransit(): void
+    {
+        $this->update(['status' => 'in_transit']);
+    }
+
+    public function markDelivered(): void
+    {
+        $this->update([
+            'status' => 'delivered',
+            'actual_delivery_date' => now()->toDateString(),
+        ]);
     }
 }

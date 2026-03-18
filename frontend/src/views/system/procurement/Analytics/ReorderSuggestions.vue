@@ -82,6 +82,18 @@
               @change="applyFilters"
             />
           </div>
+          <div class="flex-1">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Filter by Product Type</label>
+            <Select
+              v-model="filterProductType"
+              :options="productTypeOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="All Types"
+              class="w-full"
+              @change="applyFilters"
+            />
+          </div>
           <Button
             icon="pi pi-filter-slash"
             label="Clear Filters"
@@ -175,6 +187,11 @@ const suppliers = ref<any[]>([])
 const loading = ref(false)
 const filterCategory = ref(null)
 const filterSupplier = ref(null)
+const filterProductType = ref(null)
+const productTypeOptions = [
+  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Raw Material', value: 'raw_material' }
+]
 
 // Computed
 const criticalCount = computed(() => {
@@ -193,6 +210,7 @@ const filteredSuggestions = computed(() => {
   return suggestions.value.filter(s => {
     if (filterCategory.value && s.category_id !== filterCategory.value) return false
     if (filterSupplier.value && s.supplier_id !== filterSupplier.value) return false
+    if (filterProductType.value && s.product_type !== filterProductType.value) return false
     return true
   })
 })
@@ -201,7 +219,9 @@ const filteredSuggestions = computed(() => {
 async function loadReorderSuggestions() {
   loading.value = true
   try {
-    const response = await procurementService.getReorderSuggestions()
+    const response = await procurementService.getReorderSuggestions({
+      product_type: filterProductType.value || undefined
+    })
     suggestions.value = response.data?.data || []
     
     // Load categories from inventory service
@@ -224,12 +244,13 @@ async function loadReorderSuggestions() {
 }
 
 function applyFilters() {
-  // Filters are applied via computed property
+  loadReorderSuggestions()
 }
 
 function clearFilters() {
   filterCategory.value = null
   filterSupplier.value = null
+  filterProductType.value = null
 }
 
 async function createPO(product: any) {

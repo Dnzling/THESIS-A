@@ -84,7 +84,7 @@ class Invoice extends Model
     public function scopePendingMatch($query)
     {
         return $query->where('match_status', 'pending')
-            ->where('status', 'draft');
+            ->whereIn('status', ['draft', 'pending_approval']);
     }
 
     /**
@@ -197,7 +197,7 @@ class Invoice extends Model
      */
     public function canApprove(): bool
     {
-        return $this->match_status === 'matched' && $this->status === 'draft';
+        return $this->status === 'pending_approval' && $this->match_status !== 'exception';
     }
 
     /**

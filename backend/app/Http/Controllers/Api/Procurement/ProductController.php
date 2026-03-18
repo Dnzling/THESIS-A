@@ -44,6 +44,10 @@ class ProductController extends Controller
                 $query->where('category_id', $request->category_id);
             }
 
+            if ($request->has('product_type')) {
+                $query->where('product_type', $request->product_type);
+            }
+
             if ($request->has('status')) {
                 $statusMap = [
                     'in_stock' => 'in_stock',

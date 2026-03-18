@@ -33,7 +33,7 @@ export interface PurchaseRequisition {
   store_id: number;
   branch_id: number;
   requisition_type: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency';
-  status: 'draft' | 'submitted' | 'warehouse_approved' | 'finance_approved' | 'approved' | 'rejected' | 'cancelled' | 'converted_to_po';
+  status: 'draft' | 'submitted' | 'warehouse_approved' | 'branch_manager_approved' | 'pending_central_review' | 'procurement_processing' | 'rfq_sent' | 'quotes_received' | 'supplier_selected' | 'po_created' | 'rejected' | 'cancelled';
   estimated_amount: number;
   procurement_route: 'branch_direct' | 'centralized' | 'rfq_required';
   required_approvals: string[];

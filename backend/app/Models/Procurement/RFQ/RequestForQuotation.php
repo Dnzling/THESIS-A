@@ -23,16 +23,12 @@ class RequestForQuotation extends Model
         'title',
         'description',
         'issue_date',
-        'deadline_date',
-        'expected_delivery_date',
         'rfq_type',
         'currency',
-        'payment_terms',
         'shipping_terms',
         'status',
         'store_id',
         'created_by',
-        'assigned_to',
         'instructions',
         'qualification_requirements',
         'sent_date',
@@ -45,8 +41,6 @@ class RequestForQuotation extends Model
 
     protected $casts = [
         'issue_date' => 'date',
-        'deadline_date' => 'date',
-        'expected_delivery_date' => 'date',
         'sent_date' => 'datetime',
         'awarded_date' => 'datetime',
     ];
@@ -70,11 +64,6 @@ class RequestForQuotation extends Model
     public function awardedToSupplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class, 'awarded_supplier_id');
-    }
-
-    public function assignedToUser(): BelongsTo
-    {
-        return $this->belongsTo(Employee::class, 'assigned_to');
     }
 
     public function items(): HasMany
@@ -110,14 +99,12 @@ class RequestForQuotation extends Model
     // Scopes
     public function scopeOpen($query)
     {
-        return $query->whereIn('status', ['sent', 'receiving', 'partially_approved'])
-            ->where('deadline_date', '>=', now());
+        return $query->whereIn('status', ['sent', 'receiving', 'partially_approved']);
     }
 
     public function scopeClosed($query)
     {
-        return $query->whereIn('status', ['completed', 'rejected', 'cancelled', 'awarded'])
-            ->orWhere('deadline_date', '<', now());
+        return $query->whereIn('status', ['completed', 'rejected', 'cancelled', 'awarded']);
     }
 
     public function scopeAwarded($query)
@@ -128,21 +115,17 @@ class RequestForQuotation extends Model
     // Helper Methods
     public function isOpen(): bool
     {
-        return $this->status === 'sent' && $this->deadline_date >= now();
+        return in_array($this->status, ['sent', 'receiving', 'partially_approved'], true);
     }
 
     public function isClosed(): bool
     {
-        return $this->deadline_date < now() || in_array($this->status, ['completed', 'rejected', 'cancelled', 'awarded']);
+        return in_array($this->status, ['completed', 'rejected', 'cancelled', 'awarded'], true);
     }
 
     public function getDaysRemainingAttribute(): int
     {
-        if ($this->isClosed()) {
-            return 0;
-        }
-
-        return max(0, now()->diffInDays($this->deadline_date, false));
+        return 0;
     }
 
     public function getQuotationsReceivedCountAttribute(): int

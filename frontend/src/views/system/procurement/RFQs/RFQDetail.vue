@@ -1,365 +1,405 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.rfqs' })" />
+  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+    <!-- iOS-style Header -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <button 
+          @click="router.push({ name: 'procurement.rfqs' })"
+          class="w-10 h-10 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center transition-colors shadow-sm border border-gray-200"
+        >
+          <i class="pi pi-chevron-left text-gray-600 text-lg"></i>
+        </button>
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">RFQ Details</h2>
+          <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">RFQ Details</h1>
           <p class="text-sm text-gray-500 mt-1">{{ detail?.rfq_number || 'Loading...' }}</p>
         </div>
       </div>
-      <Tag :value="detail?.status?.toUpperCase() || 'DRAFT'" :severity="statusSeverity(detail?.status || 'draft')" />
+      <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="text-xs" />
     </div>
 
     <!-- Loading State -->
-    <Card v-if="loading">
-      <template #content>
-        <div class="space-y-4">
-          <Skeleton height="100px" class="rounded-lg" />
-          <Skeleton height="200px" class="rounded-lg" />
-          <Skeleton height="200px" class="rounded-lg" />
+    <div v-if="loading" class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div v-for="i in 3" :key="i" class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <Skeleton width="100px" height="12px" class="mb-3" />
+          <Skeleton width="150px" height="24px" class="mb-2" />
+          <Skeleton width="80px" height="12px" />
         </div>
-      </template>
-    </Card>
+      </div>
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <Skeleton width="150px" height="16px" class="mb-4" />
+        <Skeleton height="100px" class="mb-3" />
+        <Skeleton height="200px" />
+      </div>
+    </div>
 
     <template v-else-if="detail">
-      <!-- RFQ Header Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <template #content>
-            <div class="space-y-2">
-              <p class="text-xs font-semibold text-gray-600 uppercase">RFQ Number</p>
-              <p class="text-xl font-bold text-gray-900">{{ detail.rfq_number }}</p>
-              <p class="text-xs text-gray-500 mt-2">Created by: {{ detail.created_by?.fname }} {{ detail.created_by?.lname }}</p>
+      <!-- iOS-style Stats Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">RFQ Number</span>
+            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+              <i class="pi pi-file text-blue-600 text-sm"></i>
             </div>
-          </template>
-        </Card>
+          </div>
+          <p class="text-xl font-semibold text-gray-900">{{ detail.rfq_number }}</p>
+          <p class="text-xs text-gray-500 mt-2">Created by: {{ detail.created_by?.fname }} {{ detail.created_by?.lname }}</p>
+        </div>
 
-        <Card>
-          <template #content>
-            <div class="space-y-2">
-              <p class="text-xs font-semibold text-gray-600 uppercase">Title</p>
-              <p class="text-lg font-bold text-gray-900">{{ detail.title }}</p>
-              <p class="text-xs text-gray-500 mt-2">Type: {{ capitalizeWords(detail.rfq_type) }}</p>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Title</span>
+            <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+              <i class="pi pi-tag text-purple-600 text-sm"></i>
             </div>
-          </template>
-        </Card>
+          </div>
+          <p class="text-lg font-semibold text-gray-900">{{ detail.title }}</p>
+          <p class="text-xs text-gray-500 mt-2">Type: {{ capitalizeWords(detail.rfq_type) }}</p>
+        </div>
 
-        <Card>
-          <template #content>
-            <div class="space-y-2">
-              <p class="text-xs font-semibold text-gray-600 uppercase">Deadline</p>
-              <p class="text-lg font-bold text-gray-900">{{ formatDate(detail.deadline_date) }}</p>
-              <p class="text-xs text-gray-500 mt-2">Days remaining: {{ calculateDaysRemaining(detail.deadline_date) }}</p>
+        <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-medium text-blue-100 uppercase tracking-wider">Suppliers</span>
+            <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <i class="pi pi-users text-white text-sm"></i>
             </div>
-          </template>
-        </Card>
-
-        <Card>
-          <template #content>
-            <div class="space-y-2">
-              <p class="text-xs font-semibold text-gray-600 uppercase">Suppliers</p>
-              <p class="text-2xl font-bold text-gray-900">{{ detail.suppliers?.length || 0 }}</p>
-              <p class="text-xs text-gray-500 mt-2">Line Items: {{ detail.items?.length || 0 }}</p>
-            </div>
-          </template>
-        </Card>
+          </div>
+          <p class="text-2xl font-bold text-white">{{ detail.suppliers?.length || 0 }}</p>
+          <p class="text-xs text-blue-200 mt-2">{{ detail.items?.length || 0 }} line items</p>
+        </div>
       </div>
 
-    
-
-      <!-- RFQ Details Section -->
-      <Card>
-        <template #header>
-          <div class="px-6 pt-6">
-            <h3 class="text-lg font-semibold text-gray-800">📋 RFQ Details & Terms</h3>
+      <!-- RFQ Details & Terms Card -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-file-text text-gray-500"></i>
+            <h3 class="font-medium text-gray-700">RFQ Details & Terms</h3>
           </div>
-        </template>
-        <template #content>
+        </div>
+        <div class="p-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Basic Information -->
-            <div class="space-y-3">
-              <div class="border-l-4 border-blue-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Description</p>
+            <div class="space-y-4">
+              <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Description</p>
                 <p class="text-gray-900">{{ detail.description || 'No description provided' }}</p>
               </div>
-              <div class="border-l-4 border-blue-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Issue Date</p>
-                <p class="text-gray-900">{{ formatDate(detail.issue_date) }}</p>
-              </div>
-              <div class="border-l-4 border-blue-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Expected Delivery</p>
-                <p class="text-gray-900">{{ formatDate(detail.expected_delivery_date) || 'Not specified' }}</p>
-              </div>
-              <div class="border-l-4 border-blue-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Assigned To</p>
-                <p class="text-gray-900">{{ detail.assigned_to || 'Not assigned' }}</p>
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Issue Date</p>
+                <p class="font-medium text-gray-900">{{ formatDate(detail.issue_date) }}</p>
               </div>
             </div>
 
             <!-- Payment & Shipping Terms -->
-            <div class="space-y-3">
-              <div class="border-l-4 border-green-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Currency</p>
-                <p class="text-gray-900 font-semibold">{{ detail.currency }}</p>
+            <div class="space-y-4">
+              <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Currency</p>
+                <p class="font-semibold text-gray-900">{{ detail.currency }}</p>
               </div>
-              <div class="border-l-4 border-green-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Payment Terms</p>
-                <p class="text-gray-900">{{ capitalizeWords(detail.payment_terms) }}</p>
-              </div>
-              <div class="border-l-4 border-green-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Shipping Terms</p>
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Shipping Terms</p>
                 <p class="text-gray-900">{{ detail.shipping_terms || 'Not specified' }}</p>
               </div>
-              <div class="border-l-4 border-green-500 pl-3">
-                <p class="text-xs font-semibold text-gray-600 uppercase">Special Instructions</p>
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Special Instructions</p>
                 <p class="text-gray-900">{{ detail.instructions || 'None' }}</p>
               </div>
             </div>
           </div>
 
           <!-- Qualification Requirements -->
-          <div v-if="detail.qualification_requirements" class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p class="text-xs font-semibold text-gray-600 uppercase mb-2">Qualification Requirements</p>
-            <p class="text-gray-900">{{ detail.qualification_requirements }}</p>
+          <div v-if="detail.qualification_requirements" class="mt-6 p-4 bg-yellow-50 rounded-xl border border-yellow-100">
+            <div class="flex items-center gap-2 mb-2">
+              <i class="pi pi-exclamation-triangle text-yellow-600 text-sm"></i>
+              <p class="text-xs font-medium text-yellow-800 uppercase tracking-wider">Qualification Requirements</p>
+            </div>
+            <p class="text-sm text-yellow-800">{{ detail.qualification_requirements }}</p>
           </div>
-        </template>
-      </Card>
+        </div>
+      </div>
 
       <!-- Line Items -->
-      <Card>
-        <template #header>
-          <div class="px-6 pt-6">
-            <h3 class="text-lg font-semibold text-gray-800">📦 Line Items ({{ detail.items?.length || 0 }})</h3>
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-box text-gray-500"></i>
+            <h3 class="font-medium text-gray-700">Line Items ({{ detail.items?.length || 0 }})</h3>
           </div>
-        </template>
-        <template #content>
+        </div>
+        <div class="p-6">
           <div v-if="detail.items && detail.items.length > 0" class="space-y-3">
-            <div v-for="(item, index) in detail.items" :key="index" class="p-4 border rounded-lg bg-gradient-to-r from-orange-50 to-amber-50">
+            <div v-for="(item, index) in detail.items" :key="index" 
+                 class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- Product Info -->
-                <div>
-                  <p class="text-xs font-semibold text-gray-600 uppercase mb-1">Product</p>
+                <div class="md:col-span-1">
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product</p>
                   <p class="font-semibold text-gray-900">{{ item.product?.product_name || 'Unknown' }}</p>
-                  <p class="text-xs text-gray-600 mt-1">SKU: {{ item.product?.sku || 'N/A' }}</p>
-                  <p v-if="item.variation" class="text-xs text-gray-600 mt-1">
-                    Variation: <span class="font-medium">{{ item.variation.variation_name }}</span>
+                  <p class="text-xs text-gray-500 mt-1">SKU: {{ item.product?.sku || 'N/A' }}</p>
+                  <p v-if="item.variation" class="text-xs text-gray-500 mt-1">
+                    Variation: {{ item.variation.variation_name }}
                   </p>
                 </div>
-
-                <!-- Quantity & Specs -->
                 <div>
-                  <p class="text-xs font-semibold text-gray-600 uppercase mb-1">Quantity</p>
-                  <p class="text-2xl font-bold text-orange-600">{{ item.quantity }}</p>
-                  <p v-if="item.specifications" class="text-xs text-gray-600 mt-2">
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Quantity</p>
+                  <p class="text-2xl font-semibold text-blue-600">{{ item.quantity }}</p>
+                  <p v-if="item.specifications" class="text-xs text-gray-500 mt-2">
                     Specs: {{ item.specifications }}
                   </p>
                 </div>
-
-                <!-- Requirements -->
                 <div>
-                  <p class="text-xs font-semibold text-gray-600 uppercase mb-1">Requirements</p>
-                  <p class="text-gray-900">{{ item.requirements || 'Standard' }}</p>
-                  <p v-if="item.product" class="text-xs text-gray-600 mt-2">
-                    Base Price: {{ item.product.currency_symbol || 'PHP' }} {{ parseFloat(item.product.base_price).toFixed(2) }}
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Requirements</p>
+                  <p class="text-sm text-gray-700">{{ item.requirements || 'Standard' }}</p>
+                  <p v-if="item.product" class="text-xs text-gray-500 mt-2">
+                    Base Price: {{ detail.currency || 'PHP' }} {{ parseFloat(item.product.base_price).toFixed(2) }}
                   </p>
                 </div>
               </div>
             </div>
           </div>
-          <div v-else class="text-center py-6">
+          <div v-else class="text-center py-8">
+            <i class="pi pi-inbox text-3xl text-gray-300 mb-2"></i>
             <p class="text-gray-500">No line items</p>
           </div>
-        </template>
-      </Card>
+        </div>
+      </div>
 
-      <!-- Suppliers -->
-      <Card>
-        <template #header>
-          <div class="px-6 pt-6">
-            <h3 class="text-lg font-semibold text-gray-800">🏢 Invited Suppliers ({{ detail.suppliers?.length || 0 }})</h3>
+      <!-- Invited Suppliers -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-users text-gray-500"></i>
+            <h3 class="font-medium text-gray-700">Invited Suppliers ({{ detail.suppliers?.length || 0 }})</h3>
           </div>
-        </template>
-        <template #content>
+        </div>
+        <div class="p-6">
           <div v-if="detail.suppliers && detail.suppliers.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div v-for="(invitedSupplier, index) in detail.suppliers" :key="index" class="p-4 border rounded-lg bg-gradient-to-br from-purple-50 to-indigo-50">
-              <div class="flex items-start justify-between">
-                <div class="flex-1">
-                  <p class="text-xs font-semibold text-gray-600 uppercase mb-1">Supplier</p>
+            <div v-for="(invitedSupplier, index) in detail.suppliers" :key="index" 
+                 class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+              <div class="flex items-start justify-between mb-3">
+                <div>
                   <p class="font-semibold text-gray-900">{{ invitedSupplier.supplier?.supplier_name || 'Unknown Supplier' }}</p>
-                  <p class="text-sm text-gray-600 mt-1">📧 {{ invitedSupplier.supplier?.email || 'No email' }}</p>
-                  <p v-if="invitedSupplier.supplier?.contact_person" class="text-sm text-gray-600">
+                  <p class="text-sm text-gray-600 mt-1">{{ invitedSupplier.supplier?.email || 'No email' }}</p>
+                  <p v-if="invitedSupplier.supplier?.contact_person" class="text-xs text-gray-500 mt-1">
                     Contact: {{ invitedSupplier.supplier.contact_person }}
                   </p>
                 </div>
-                <Badge :value="capitalizeWords(invitedSupplier.status)" :severity="getStatusSeverity(invitedSupplier.status)" />
+                <Tag :value="formatStatus(invitedSupplier.status)" :severity="getSupplierStatusSeverity(invitedSupplier.status)" />
               </div>
 
-              <!-- Status Timeline -->
-              <div class="mt-3 space-y-1 text-xs text-gray-600 border-t pt-3">
-                <p>📤 Invited: {{ formatDateTime(invitedSupplier.invited_at) }}</p>
-                <p v-if="invitedSupplier.viewed_at">👁️ Viewed: {{ formatDateTime(invitedSupplier.viewed_at) }}</p>
-                <p v-if="invitedSupplier.responded_at">✅ Responded: {{ formatDateTime(invitedSupplier.responded_at) }}</p>
-                <p v-if="invitedSupplier.decline_reason" class="text-red-600">
-                  ❌ Decline Reason: {{ invitedSupplier.decline_reason }}
-                </p>
+              <div class="space-y-2 text-sm border-t border-gray-100 pt-3">
+                <div class="flex items-center gap-2">
+                  <i class="pi pi-envelope text-gray-400 text-xs"></i>
+                  <span class="text-xs text-gray-600">Invited: {{ formatDateTime(invitedSupplier.invited_at) }}</span>
+                </div>
+                <div v-if="invitedSupplier.viewed_at" class="flex items-center gap-2">
+                  <i class="pi pi-eye text-gray-400 text-xs"></i>
+                  <span class="text-xs text-gray-600">Viewed: {{ formatDateTime(invitedSupplier.viewed_at) }}</span>
+                </div>
+                <div v-if="invitedSupplier.responded_at" class="flex items-center gap-2">
+                  <i class="pi pi-check-circle text-green-500 text-xs"></i>
+                  <span class="text-xs text-green-600">Responded: {{ formatDateTime(invitedSupplier.responded_at) }}</span>
+                </div>
+                <div v-if="invitedSupplier.decline_reason" class="mt-2 p-2 bg-red-50 rounded-lg">
+                  <p class="text-xs text-red-600">Declined: {{ invitedSupplier.decline_reason }}</p>
+                </div>
               </div>
             </div>
           </div>
-          <div v-else class="text-center py-6">
+          <div v-else class="text-center py-8">
+            <i class="pi pi-users text-3xl text-gray-300 mb-2"></i>
             <p class="text-gray-500">No suppliers invited</p>
           </div>
-        </template>
-      </Card>
+        </div>
+      </div>
 
       <!-- Supplier Portal Responses -->
-      <Card v-if="portalFeedbackGroups.length > 0">
-        <template #header>
-          <div class="px-6 pt-6">
-            <h3 class="text-lg font-semibold text-gray-800">📨 Supplier Responses (Portal)</h3>
+      <div v-if="portalFeedbackGroups.length > 0" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-inbox text-gray-500"></i>
+            <h3 class="font-medium text-gray-700">Supplier Responses</h3>
           </div>
-        </template>
-        <template #content>
-          <div class="space-y-4">
-            <div v-for="group in portalFeedbackGroups" :key="group.supplier_id" class="p-4 border rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50">
-              <div class="flex items-start justify-between mb-3">
-                <div>
-                  <p class="font-semibold text-gray-900">{{ group.supplier_name }}</p>
-                  <p class="text-sm text-gray-600">{{ group.supplier_email || 'No email' }}</p>
-                </div>
-                <div class="flex items-center gap-2">
-                  <Badge :value="group.items.length + ' Items'" severity="info" />
-                  <Button 
-                    v-if="group.items.some((item: any) => item.status === 'pending')"
-                    size="small"
-                    label="Approve All"
-                    severity="success"
-                    @click="bulkApproveGroup(group.items.filter((item: any) => item.status === 'pending').map((item: any) => item.feedback_id))"
-                  />
-                </div>
+        </div>
+        <div class="p-6 space-y-4">
+          <div v-for="group in portalFeedbackGroups" :key="group.supplier_id" 
+               class="bg-white rounded-xl border border-gray-100 p-4">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <p class="font-semibold text-gray-900">{{ group.supplier_name }}</p>
+                <p class="text-sm text-gray-600">{{ group.supplier_email }}</p>
               </div>
-              <div class="space-y-2">
-                <div v-for="item in group.items" :key="item.id" class="flex items-start justify-between bg-white rounded p-3 border">
+              <div class="flex items-center gap-2">
+                <Tag :value="group.items.length + ' Items'" severity="info" class="text-xs" />
+                <button
+                  v-if="group.items.some((item: any) => item.status === 'pending')"
+                  @click="bulkApproveGroup(group.items.filter((item: any) => item.status === 'pending').map((item: any) => item.feedback_id))"
+                  class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  Approve All
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div v-for="item in group.items" :key="item.id" 
+                   class="bg-gray-50 rounded-xl p-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
+                    <p class="text-xs text-gray-500 mb-1">Product</p>
                     <p class="font-medium text-gray-900">{{ item.product_name }}</p>
-                    <p class="text-xs text-gray-500">SKU: {{ item.sku || 'N/A' }}</p>
+                    <p class="text-xs text-gray-500 mt-1">SKU: {{ item.sku || 'N/A' }}</p>
                     <p class="text-xs text-gray-500">Qty: {{ item.quantity }} {{ item.unit || '' }}</p>
-                    <div class="mt-2">
-                      <Badge :value="item.statusLabel" :severity="item.statusSeverity" />
-                      <p v-if="item.rejection_reason" class="text-xs text-red-600 mt-1">
-                        Reason: {{ item.rejection_reason }}
-                      </p>
-                    </div>
+                  </div>
+                  <div>
+                    <p class="text-xs text-gray-500 mb-1">Quoted Price</p>
+                    <p class="text-lg font-semibold text-green-600">{{ detail?.currency || 'PHP' }} {{ item.quoted_price }}</p>
+                    <p v-if="item.submitted_at" class="text-xs text-gray-500 mt-1">Submitted: {{ formatDateTime(item.submitted_at) }}</p>
                   </div>
                   <div class="text-right">
-                    <p class="text-sm text-gray-500">Quoted Price</p>
-                    <p class="text-lg font-bold text-emerald-600">{{ detail?.currency || 'PHP' }} {{ item.quoted_price }}</p>
-                    <p v-if="item.submitted_at" class="text-xs text-gray-500 mt-1">Submitted: {{ formatDateTime(item.submitted_at) }}</p>
-                    <div v-if="item.status === 'pending'" class="mt-2 flex gap-2 justify-end">
-                      <Button 
-                        size="small"
-                        label="Approve"
-                        severity="success"
-                        @click="approveFeedback(item.feedback_id)"
-                      />
-                      <Button 
-                        size="small"
-                        label="Reject"
-                        severity="danger"
-                        @click="openRejectDialog(item.feedback_id)"
-                      />
-                      <Button 
-                        size="small"
-                        label="Negotiate"
-                        severity="info"
-                        @click="openNegoDialog(item.feedback_id)"
-                      />
-                    </div>
-                    <div v-if="item.negotiations && item.negotiations.length > 0" class="mt-2 text-xs text-gray-600">
-                      <p class="font-semibold">Negotiations</p>
-                      <ul class="space-y-1">
-                        <li v-for="nego in item.negotiations" :key="nego.id">
-                          {{ detail?.currency || 'PHP' }} {{ parseFloat(nego.counter_price).toFixed(2) }} - {{ formatDateTime(nego.created_at) }}
-                        </li>
-                      </ul>
+                    <Tag :value="item.statusLabel" :severity="item.statusSeverity" class="mb-2" />
+                    <p v-if="item.rejection_reason" class="text-xs text-red-600 mt-1">{{ item.rejection_reason }}</p>
+                  </div>
+                </div>
+
+                <div v-if="item.negotiations && item.negotiations.length > 0" class="mt-3">
+                  <p class="text-xs font-medium text-gray-700 mb-2">Negotiation History</p>
+                  <div class="space-y-2">
+                    <div v-for="nego in item.negotiations" :key="nego.id" 
+                         class="bg-blue-50 p-2 rounded-lg text-xs">
+                      <span class="font-medium">Counter: {{ detail?.currency || 'PHP' }} {{ parseFloat(nego.counter_price).toFixed(2) }}</span>
+                      <span class="text-gray-500 ml-2">{{ formatDateTime(nego.created_at) }}</span>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div v-if="group.notes.length > 0" class="mt-3 text-xs text-gray-600">
-                <p class="font-semibold mb-1">Notes</p>
-                <ul class="space-y-1">
-                  <li v-for="(note, index) in group.notes" :key="index">• {{ note }}</li>
-                </ul>
+
+                <div v-if="item.status === 'pending'" class="mt-4 flex gap-2 justify-end">
+                  <button
+                    @click="approveFeedback(item.feedback_id)"
+                    class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    @click="openRejectDialog(item.feedback_id)"
+                    class="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    Reject
+                  </button>
+                </div>
               </div>
             </div>
+
+            <div v-if="group.notes.length > 0" class="mt-4 p-3 bg-gray-100 rounded-lg">
+              <p class="text-xs font-medium text-gray-700 mb-1">Notes</p>
+              <ul class="space-y-1">
+                <li v-for="(note, index) in group.notes" :key="index" class="text-xs text-gray-600">• {{ note }}</li>
+              </ul>
+            </div>
           </div>
-        </template>
-      </Card>
+        </div>
+      </div>
 
       <!-- Quotations -->
-      <Card v-if="detail.quotations && detail.quotations.length > 0">
-        <template #header>
-          <div class="px-6 pt-6">
-            <h3 class="text-lg font-semibold text-gray-800">💰 Supplier Quotations ({{ detail.quotations.length }})</h3>
+      <div v-if="detail.quotations && detail.quotations.length > 0" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-credit-card text-gray-500"></i>
+            <h3 class="font-medium text-gray-700">Supplier Quotations</h3>
           </div>
-        </template>
-        <template #content>
-          <div class="space-y-3">
-            <div v-for="(quotation, index) in detail.quotations" :key="index" class="p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-cyan-50">
-              <div class="flex justify-between items-start">
-                <div>
-                  <p class="font-semibold text-gray-900">{{ quotation.supplier?.supplier_name || 'Unknown' }}</p>
-                  <p class="text-sm text-gray-600 mt-1">Quote Date: {{ formatDate(quotation.quote_date) }}</p>
-                </div>
-                <div class="text-right">
-                  <p class="text-2xl font-bold text-blue-600">{{ detail.currency }} {{ parseFloat(quotation.total_price || 0).toFixed(2) }}</p>
-                  <Badge :value="quotation.status" :severity="getStatusSeverity(quotation.status)" />
-                </div>
+        </div>
+        <div class="p-6 space-y-3">
+          <div v-for="(quotation, index) in detail.quotations" :key="index" 
+               class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+            <div class="flex justify-between items-start">
+              <div>
+                <p class="font-semibold text-gray-900">{{ quotation.supplier?.supplier_name || 'Unknown' }}</p>
+                <p class="text-sm text-gray-600 mt-1">Quote Date: {{ formatDate(quotation.quote_date) }}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-2xl font-bold text-blue-600">{{ detail.currency }} {{ parseFloat(quotation.total_price || 0).toFixed(2) }}</p>
+                <Tag :value="formatStatus(quotation.status)" :severity="getSupplierStatusSeverity(quotation.status)" class="mt-2" />
               </div>
             </div>
           </div>
-        </template>
-      </Card>
-      <!-- Action Buttons -->
-      <div class="flex justify-end gap-2">
-        <Button v-if="detail.status === 'draft'" label="Send" icon="pi pi-send" severity="info" :loading="processing" @click="send" />
-        <Button v-if="detail.status === 'quotes_received'" label="Award" icon="pi pi-check" severity="success" :loading="processing" @click="award" />
+        </div>
       </div>
-      <ConfirmDialog />
-      <Dialog v-model:visible="rejectDialogVisible" modal header="Reject Supplier Response" :style="{ width: '32rem' }">
-        <div class="space-y-3">
-          <p class="text-sm text-gray-600">Provide a reason for rejection. This will be visible to the supplier.</p>
-          <Textarea v-model="rejectReason" rows="4" class="w-full" placeholder="Enter rejection reason..." />
-          <div class="flex justify-end gap-2">
-            <Button label="Cancel" severity="secondary" @click="closeRejectDialog" />
-            <Button label="Reject" severity="danger" :loading="processing" @click="submitReject" />
-          </div>
-        </div>
-      </Dialog>
-      <Dialog v-model:visible="negoDialogVisible" modal header="Send Counter Offer" :style="{ width: '32rem' }">
-        <div class="space-y-3">
-          <p class="text-sm text-gray-600">Enter your target price to negotiate with the supplier.</p>
-          <InputNumber v-model="negoPrice" mode="currency" currency="PHP" class="w-full" />
-          <Textarea v-model="negoNotes" rows="3" class="w-full" placeholder="Notes (optional)" />
-          <div class="flex justify-end gap-2">
-            <Button label="Cancel" severity="secondary" @click="closeNegoDialog" />
-            <Button label="Send Offer" severity="info" :loading="processing" @click="submitNegotiation" />
-          </div>
-        </div>
-      </Dialog>
+
+      <!-- Action Buttons -->
+      <div class="flex justify-end gap-3">
+        <button
+          v-if="detail.status === 'draft'"
+          @click="send"
+          :disabled="processing"
+          class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-send text-sm"></i>
+          <span>{{ processing ? 'Sending...' : 'Send to Suppliers' }}</span>
+        </button>
+        <button
+          v-if="detail.status === 'quotes_received'"
+          @click="award"
+          :disabled="processing"
+          class="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-check text-sm"></i>
+          <span>{{ processing ? 'Awarding...' : 'Award RFQ' }}</span>
+        </button>
+      </div>
     </template>
 
     <!-- Error State -->
-    <Card v-else>
-      <template #content>
-        <div class="text-center py-8">
-          <p class="text-lg text-gray-600">RFQ not found</p>
-          <Button label="Back to RFQs" text @click="router.push({ name: 'procurement.rfqs' })" class="mt-4" />
+    <div v-else class="text-center py-12 bg-white rounded-2xl border border-gray-100">
+      <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="pi pi-exclamation-circle text-gray-400 text-3xl"></i>
+      </div>
+      <h3 class="text-lg font-medium text-gray-700">RFQ Not Found</h3>
+      <p class="text-gray-500 mt-2 mb-4">The RFQ you're looking for doesn't exist or you don't have permission to view it.</p>
+      <button
+        @click="router.push({ name: 'procurement.rfqs' })"
+        class="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors inline-flex items-center gap-2"
+      >
+        <i class="pi pi-arrow-left"></i>
+        <span>Back to RFQs</span>
+      </button>
+    </div>
+
+    <ConfirmDialog />
+    
+    <!-- Reject Dialog -->
+    <div v-if="rejectDialogVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Reject Supplier Response</h3>
+        
+        <div class="space-y-4">
+          <p class="text-sm text-gray-600">Provide a reason for rejection. This will be visible to the supplier.</p>
+          <textarea
+            v-model="rejectReason"
+            rows="4"
+            placeholder="Enter rejection reason..."
+            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+          ></textarea>
         </div>
-      </template>
-    </Card>
+
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            @click="closeRejectDialog"
+            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            @click="submitReject"
+            :disabled="processing"
+            class="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2"
+          >
+            <span v-if="processing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            <span>{{ processing ? 'Rejecting...' : 'Reject' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -368,6 +408,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
+import Tag from 'primevue/tag'
+import Skeleton from 'primevue/skeleton'
+import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
 import procurementService from '../../../../services/procurement.service'
 
 interface RFQDetail {
@@ -376,16 +420,12 @@ interface RFQDetail {
   title: string
   description?: string
   issue_date: string
-  deadline_date: string
-  expected_delivery_date?: string
   rfq_type: string
   currency: string
-  payment_terms: string
   shipping_terms?: string
   instructions?: string
   qualification_requirements?: string
   status: string
-  assigned_to?: number
   created_by?: any
   items: any[]
   suppliers: any[]
@@ -405,10 +445,59 @@ const detail = ref<RFQDetail | null>(null)
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejectTargetFeedbackId = ref<number | null>(null)
-const negoDialogVisible = ref(false)
-const negoPrice = ref<number | null>(null)
-const negoNotes = ref('')
-const negoTargetFeedbackId = ref<number | null>(null)
+
+// Helper functions
+const formatStatus = (status: string): string => {
+  if (!status) return 'DRAFT'
+  return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+const capitalizeWords = (str: string): string => {
+  if (!str) return 'N/A'
+  return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')
+}
+
+const formatDate = (date: string | null): string => {
+  if (!date) return 'Not specified'
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  }).format(new Date(date))
+}
+
+const formatDateTime = (date: string | null): string => {
+  if (!date) return 'N/A'
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(date))
+}
+
+const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' => {
+  const severityMap: Record<string, any> = {
+    draft: 'contrast',
+    sent: 'info',
+    quotes_received: 'warn',
+    awarded: 'success',
+    cancelled: 'danger',
+  }
+  return severityMap[status] || 'contrast'
+}
+
+const getSupplierStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' => {
+  const severityMap: Record<string, any> = {
+    pending: 'info',
+    viewed: 'warn',
+    submitted: 'success',
+    declined: 'danger',
+    no_interest: 'secondary',
+  }
+  return severityMap[status] || 'secondary'
+}
 
 const portalFeedbackGroups = computed(() => {
   if (!detail.value?.supplier_portal_feedbacks) return []
@@ -534,57 +623,6 @@ const submitReject = async () => {
   }
 }
 
-const openNegoDialog = (feedbackId: number) => {
-  negoTargetFeedbackId.value = feedbackId
-  negoPrice.value = null
-  negoNotes.value = ''
-  negoDialogVisible.value = true
-}
-
-const closeNegoDialog = () => {
-  negoDialogVisible.value = false
-  negoPrice.value = null
-  negoNotes.value = ''
-  negoTargetFeedbackId.value = null
-}
-
-const submitNegotiation = async () => {
-  if (!detail.value || !negoTargetFeedbackId.value || !negoPrice.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Required',
-      detail: 'Please enter a counter price.',
-      life: 3000,
-    })
-    return
-  }
-
-  processing.value = true
-  try {
-    await procurementService.negotiatePortalFeedback(detail.value.id, negoTargetFeedbackId.value, {
-      counter_price: negoPrice.value,
-      notes: negoNotes.value || undefined,
-    })
-    toast.add({
-      severity: 'success',
-      summary: 'Sent',
-      detail: 'Counter offer sent to supplier.',
-      life: 3000,
-    })
-    closeNegoDialog()
-    await loadDetail()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to send counter offer',
-      life: 3000,
-    })
-  } finally {
-    processing.value = false
-  }
-}
-
 const bulkApproveGroup = async (feedbackIds: number[]) => {
   if (!detail.value || feedbackIds.length === 0) return
   confirm.require({
@@ -614,55 +652,6 @@ const bulkApproveGroup = async (feedbackIds: number[]) => {
       }
     },
   })
-}
-
-const formatDate = (date: string | null): string => {
-  if (!date) return 'Not specified'
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-}
-
-const formatDateTime = (date: string | null): string => {
-  if (!date) return 'N/A'
-  const d = new Date(date)
-  return d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-const calculateDaysRemaining = (deadline: string | null): number | string => {
-  if (!deadline) return 'N/A'
-  const deadlineDate = new Date(deadline)
-  const today = new Date()
-  const days = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 3600 * 24))
-  return days > 0 ? days : 'Expired'
-}
-
-const capitalizeWords = (str: string): string => {
-  return str
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ')
-}
-
-const statusSeverity = (status: string): string => {
-  const severityMap: Record<string, string> = {
-    draft: 'secondary',
-    sent: 'info',
-    quotes_received: 'warning',
-    awarded: 'success',
-    cancelled: 'danger',
-  }
-  return severityMap[status] || 'secondary'
-}
-
-const getStatusSeverity = (status: string): string => {
-  const severityMap: Record<string, string> = {
-    pending: 'info',
-    viewed: 'warning',
-    submitted: 'success',
-    declined: 'danger',
-    no_interest: 'secondary',
-  }
-  return severityMap[status] || 'secondary'
 }
 
 const loadDetail = async () => {
@@ -711,35 +700,9 @@ const send = async () => {
   }
 }
 
-const close = async () => {
-  processing.value = true
-  try {
-    const response = await procurementService.closeRFQ(rfqId)
-    if (response.success) {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'RFQ closed',
-        life: 3000,
-      })
-      await loadDetail()
-    }
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to close RFQ',
-      life: 3000,
-    })
-  } finally {
-    processing.value = false
-  }
-}
-
 const award = async () => {
   processing.value = true
   try {
-    // TODO: Show dialog to select supplier and enter notes
     const response = await procurementService.awardRFQ(rfqId, {
       supplier_id: detail.value?.suppliers[0]?.supplier_id,
       evaluation_notes: 'Best price and quality',
@@ -769,3 +732,48 @@ onMounted(() => {
   loadDetail()
 })
 </script>
+
+<style scoped>
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* iOS-style shadows */
+.shadow-sm {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.02);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 0.8s linear infinite;
+}
+</style>

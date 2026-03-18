@@ -6,7 +6,18 @@
         <h2 class="text-2xl font-bold text-gray-800">Roles & Permissions</h2>
         <p class="text-sm text-gray-500 mt-1">Manage user roles and access control</p>
       </div>
-      <Button label="Create Role" icon="pi pi-plus" @click="openCreateRoleDialog" />
+      <div class="flex items-center gap-2">
+        <Button label="Export Roles" icon="pi pi-download" severity="secondary" @click="exportRolesCsv" />
+        <FileUpload
+          mode="basic"
+          name="file"
+          accept=".csv"
+          chooseLabel="Import Roles"
+          :customUpload="true"
+          @uploader="importRolesCsv"
+        />
+        <Button label="Create Role" icon="pi pi-plus" @click="openCreateRoleDialog" />
+      </div>
     </div>
   
     <!-- Tabs -->
@@ -55,7 +66,7 @@
   
               <!-- Description -->
               <div class="col-span-3">
-                <p class="text-sm text-gray-600 truncate">{{ role.description || '—' }}</p>
+                <p class="text-sm text-gray-600 truncate">{{ role.description || '?' }}</p>
               </div>
   
               <!-- Permissions Count -->
@@ -95,7 +106,18 @@
             <template #title>
               <div class="flex items-center justify-between">
                 <span>All Permissions</span>
-                <Button label="Add Permission" icon="pi pi-plus" size="small" @click="openCreatePermissionDialog" />
+                <div class="flex items-center gap-2">
+                  <Button label="Export CSV" icon="pi pi-download" size="small" severity="secondary" @click="exportPermissionsCsv" />
+                  <FileUpload
+                    mode="basic"
+                    name="file"
+                    accept=".csv"
+                    chooseLabel="Import CSV"
+                    :customUpload="true"
+                    @uploader="importPermissionsCsv"
+                  />
+                  <Button label="Add Permission" icon="pi pi-plus" size="small" @click="openCreatePermissionDialog" />
+                </div>
               </div>
             </template>
             <template #content>
@@ -434,6 +456,7 @@ import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import Checkbox from 'primevue/checkbox'
 import Menu from 'primevue/menu'
+import FileUpload from 'primevue/fileupload'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -525,6 +548,7 @@ const modules = ref([
   { label: 'Inventory', value: 'inventory' },
   { label: 'Sales', value: 'sales' },
   { label: 'Accounting', value: 'accounting' },
+   { label: 'Finance', value: 'finance' },
   { label: 'Procurement', value: 'procurement' },
   { label: 'Supplier', value: 'supplier' },
   { label: 'Store Manager', value: 'store_manager' }
@@ -613,6 +637,67 @@ const loadNavigationItems = async () => {
   } finally {
     loadingNavigation.value = false
   }
+}
+
+const exportRolesCsv = async () => {
+  try {
+    const response = await axios.get('/api/admin/roles/export', { responseType: 'blob' })
+    downloadBlob(response.data, 'roles.csv')
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to export roles', life: 3000 })
+  }
+}
+
+const importRolesCsv = async (event: any) => {
+  try {
+    const file = event.files?.[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append('file', file)
+    await axios.post('/api/admin/roles/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Roles imported successfully', life: 3000 })
+    loadRoles()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to import roles', life: 3000 })
+  }
+}
+
+const exportPermissionsCsv = async () => {
+  try {
+    const response = await axios.get('/api/admin/permissions/export', { responseType: 'blob' })
+    downloadBlob(response.data, 'permissions.csv')
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to export permissions', life: 3000 })
+  }
+}
+
+const importPermissionsCsv = async (event: any) => {
+  try {
+    const file = event.files?.[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append('file', file)
+    await axios.post('/api/admin/permissions/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Permissions imported successfully', life: 3000 })
+    loadPermissions()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to import permissions', life: 3000 })
+  }
+}
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 const openPermissionsDialog = async (role: any) => {
@@ -823,3 +908,5 @@ onMounted(() => {
   loadNavigationItems()
 })
 </script>
+
+

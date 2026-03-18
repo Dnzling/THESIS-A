@@ -17,7 +17,7 @@
     <!-- Filters & Search -->
     <Card>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
           <!-- Search -->
           <span class="p-input-icon-left w-full">
             <i class="pi pi-search" />
@@ -51,6 +51,21 @@
               :options="statusOptions"
               placeholder="All Status"
               class="w-full" fluid
+              @change="loadProducts"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold mb-2">Product Type</label>
+            <Select
+              v-model="filters.product_type"
+              :options="productTypeOptions"
+              option-label="label"
+              option-value="value"
+              placeholder="All Types"
+              class="w-full"
+              fluid
+              showClear
               @change="loadProducts"
             />
           </div>
@@ -320,6 +335,7 @@ const filters = ref({
   search: '',
   category_id: null,
   status: '',
+  product_type: null,
   sort_by: 'created_at',
   page: 1,
   per_page: 15,
@@ -336,6 +352,10 @@ const sortOptions = ref([
   { label: 'SKU', value: 'sku' },
   { label: 'Price (Low to High)', value: 'base_price' },
   { label: 'Newest', value: 'created_at' },
+])
+const productTypeOptions = ref([
+  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Raw Material', value: 'raw_material' },
 ])
 
 // Methods

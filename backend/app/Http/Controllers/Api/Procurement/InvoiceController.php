@@ -143,10 +143,32 @@ class InvoiceController extends Controller
                 $po = PurchaseOrder::where('store_id', auth()->user()->store_id)
                     ->findOrFail($validated['purchase_order_id']);
 
-                if (!in_array($po->status, ['ordered', 'partially_received', 'received'])) {
+                if (!in_array($po->status, ['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered'])) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Invoice can only be created for ordered or received purchase orders',
+                        'message' => 'Invoice can only be created for sent or delivered purchase orders',
+                    ], 422);
+                }
+
+                $tolerance = 0.01;
+                if (abs(((float) $validated['invoice_amount']) - ((float) $po->subtotal)) > $tolerance) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invoice amount must match PO subtotal.',
+                    ], 422);
+                }
+
+                if (isset($validated['tax_amount']) && abs(((float) $validated['tax_amount']) - ((float) $po->tax_amount)) > $tolerance) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Tax amount must match PO tax amount.',
+                    ], 422);
+                }
+
+                if (isset($validated['shipping_cost']) && abs(((float) $validated['shipping_cost']) - ((float) $po->shipping_cost)) > $tolerance) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Shipping cost must match PO shipping cost.',
                     ], 422);
                 }
 
@@ -185,7 +207,7 @@ class InvoiceController extends Controller
                     'net_amount' => $netAmount,
                     'currency' => $validated['currency'],
                     'invoice_file_path' => $validated['invoice_file_path'],
-                    'status' => 'draft',
+                    'status' => 'pending_approval',
                     'match_status' => 'pending',
                     'payment_status' => 'pending',
                     'remarks' => $validated['remarks'],

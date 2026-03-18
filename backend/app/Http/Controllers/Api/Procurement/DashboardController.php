@@ -24,12 +24,12 @@ class DashboardController extends Controller
             $activeSuppliersCount = Supplier::where('status', 'active')->count();
             $totalSuppliersCount = Supplier::count();
         
-            $pendingPRCount = PurchaseRequisition::whereIn('status', ['submitted', 'warehouse_approved'])->count();
-            $pendingPOApprovalsCount = PurchaseOrder::whereIn('status', ['pending_approval', 'partially_approved'])->count();
+            $pendingPRCount = PurchaseRequisition::where('status', 'submitted')->count();
+            $pendingPOApprovalsCount = PurchaseOrder::whereIn('status', ['pending_finance_approval'])->count();
             $totalPendingApprovals = $pendingPRCount + $pendingPOApprovalsCount;
 
-            $activePOsCount = PurchaseOrder::where('status', 'ordered')->count();
-            $activePOsValue = PurchaseOrder::where('status', 'ordered')->sum('total_amount') ?? 0;
+            $activePOsCount = PurchaseOrder::whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit'])->count();
+            $activePOsValue = PurchaseOrder::whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit'])->sum('total_amount') ?? 0;
             $totalPOsValue = PurchaseOrder::sum('total_amount') ?? 0;
 
             $pendingPaymentsCount = 0;
@@ -90,7 +90,7 @@ class DashboardController extends Controller
                 });
 
             // ===== KEY METRICS =====
-            $completedPOs = PurchaseOrder::where('status', 'received')->count();
+            $completedPOs = PurchaseOrder::where('status', 'delivered')->count();
             $avgSupplierRating = Supplier::where('status', 'active')->avg('rating') ?? 0;
 
             return response()->json([

@@ -21,6 +21,17 @@
   
           <Select v-model="filters.category_id" :options="categories" optionLabel="category_name" optionValue="id"
             placeholder="All Categories" class="w-full" showClear @change="onFilterChange" />
+
+          <Select
+            v-model="filters.product_type"
+            :options="productTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Product Type"
+            class="w-full"
+            showClear
+            @change="onFilterChange"
+          />
   
           <Select v-model="filters.is_active" :options="activeStatuses" optionLabel="label" optionValue="value"
             placeholder="Status" class="w-full" showClear @change="onFilterChange" />
@@ -161,6 +172,7 @@ const currentProduct = ref(null)
 const filters = reactive({
   search: '',
   category_id: null,
+  product_type: null,
   is_active: null,
   page: 1,
   per_page: 15,
@@ -170,6 +182,10 @@ const filters = reactive({
 const activeStatuses = [
   { label: 'Active', value: true },
   { label: 'Inactive', value: false }
+]
+const productTypeOptions = [
+  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Raw Material', value: 'raw_material' }
 ]
 
 // Methods
@@ -233,6 +249,7 @@ const onFilterChange = () => {
 const resetFilters = () => {
   filters.search = ''
   filters.category_id = null
+  filters.product_type = null
   filters.is_active = null
   loadProducts()
 }

@@ -6,7 +6,7 @@
     <TabView class="mb-6">
       <TabPanel header="Pending" leftIcon="pi pi-clock">
         <div class="pt-4">
-          <ProgressSpinner v-if="loadingPending" />
+          <Skeleton v-if="loadingPending" height="120px" class="rounded-lg" />
           <Message
             v-else-if="pendingVerifications.length === 0"
             severity="info"
@@ -81,7 +81,7 @@
 
       <TabPanel header="Approved" leftIcon="pi pi-check">
         <div class="pt-4">
-          <ProgressSpinner v-if="loadingApproved" />
+          <Skeleton v-if="loadingApproved" height="120px" class="rounded-lg" />
           <Message
             v-else-if="approvedVerifications.length === 0"
             severity="info"
@@ -144,7 +144,7 @@
 
       <TabPanel header="Rejected" leftIcon="pi pi-times">
         <div class="pt-4">
-          <ProgressSpinner v-if="loadingRejected" />
+          <Skeleton v-if="loadingRejected" height="120px" class="rounded-lg" />
           <Message
             v-else-if="rejectedVerifications.length === 0"
             severity="info"
@@ -271,7 +271,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
-import ProgressSpinner from 'primevue/progressspinner'
+import Skeleton from 'primevue/skeleton'
 import PageHeader from '../../../components/PageHeader.vue'
 import SupplierVerificationDetail from '../../../components/supplier-portal/SupplierVerificationDetail.vue'
 import supplierService from '../../../services/supplier.service'

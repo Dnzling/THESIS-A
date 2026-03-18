@@ -12,12 +12,7 @@
         <TabView>
           <TabPanel header="Payables">
             <DataTable :value="payables" :loading="loading" stripedRows responsiveLayout="scroll">
-              <Column field="type" header="Type" style="width: 140px">
-                <template #body="{ data }">
-                  <Tag :value="data.type" severity="info" />
-                </template>
-              </Column>
-              <Column field="reference" header="Reference" />
+              <Column field="reference" header="Invoice #" />
               <Column field="supplier" header="Supplier" />
               <Column field="amount" header="Amount" style="width: 160px">
                 <template #body="{ data }">₱ {{ formatMoney(data.amount) }}</template>
@@ -25,9 +20,24 @@
               <Column field="due_date" header="Due Date" style="width: 160px">
                 <template #body="{ data }">{{ formatDate(data.due_date) }}</template>
               </Column>
-              <Column field="status" header="Status" style="width: 120px">
+              <Column field="status" header="Status" style="width: 160px">
                 <template #body="{ data }">
-                  <Tag :value="data.status" severity="warning" />
+                  <Tag :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)" />
+                </template>
+              </Column>
+              <Column header="Actions" style="width: 160px">
+                <template #body="{ data }">
+                  <div class="flex gap-2">
+                    <Button icon="pi pi-eye" text rounded @click="viewInvoice(data)" />
+                    <Button
+                      v-if="data.status === 'pending_approval'"
+                      icon="pi pi-check"
+                      text
+                      rounded
+                      severity="success"
+                      @click="approveInvoice(data.id)"
+                    />
+                  </div>
                 </template>
               </Column>
               <template #empty>
@@ -88,6 +98,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -101,6 +112,7 @@ const loading = ref(false)
 const payables = ref<any[]>([])
 const supplierPayments = ref<any[]>([])
 const loadingPayments = ref(false)
+const router = useRouter()
 
 const formatMoney = (value: number | string) => {
   const amount = typeof value === 'string' ? parseFloat(value) : value || 0
@@ -147,6 +159,22 @@ const approvePayment = async (id: number) => {
 const processPayment = async (id: number) => {
   await financeService.processSupplierPayment(id)
   loadSupplierPayments()
+}
+
+const approveInvoice = async (id: number) => {
+  await financeService.approveInvoice(id)
+  loadPayables()
+}
+
+const viewInvoice = (row: any) => {
+  if (!row?.id) return
+  router.push({ name: 'finance.invoices.detail', params: { id: row.id } })
+}
+
+const formatStatus = (status: string) => {
+  if (!status) return '-'
+  if (status === 'pending_approval') return 'Pending Approval'
+  return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
 onMounted(() => {

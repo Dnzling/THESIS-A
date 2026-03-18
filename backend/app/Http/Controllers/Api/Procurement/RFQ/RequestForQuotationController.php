@@ -12,6 +12,7 @@ use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class RequestForQuotationController extends Controller
@@ -89,9 +90,10 @@ class RequestForQuotationController extends Controller
             ->where('rfq_id', $rfq->id)
             ->findOrFail($feedbackId);
 
+        $reviewedBy = auth()->user()?->employee?->id ?? auth()->id();
         $feedback->update([
             'status' => $validated['status'],
-            'reviewed_by' => auth()->id(),
+            'reviewed_by' => $reviewedBy,
             'reviewed_at' => now(),
             'rejection_reason' => $validated['status'] === 'rejected' ? $validated['rejection_reason'] : null,
         ]);
@@ -103,7 +105,7 @@ class RequestForQuotationController extends Controller
                 ->where('status', 'pending')
                 ->update([
                     'status' => 'rejected',
-                    'reviewed_by' => auth()->id(),
+                    'reviewed_by' => $reviewedBy,
                     'reviewed_at' => now(),
                     'rejection_reason' => 'Another quote was approved for this item.',
                 ]);
@@ -145,7 +147,7 @@ class RequestForQuotationController extends Controller
             'rfq_item_id' => $feedback->rfq_item_id,
             'counter_price' => $validated['counter_price'],
             'notes' => $validated['notes'] ?? null,
-            'created_by' => auth()->id(),
+            'created_by' => auth()->user()->employee->id(),
             'status' => 'pending',
         ]);
 
@@ -219,7 +221,7 @@ class RequestForQuotationController extends Controller
         $anyApproved = count($approvedByItem) > 0;
 
         if ($allApproved) {
-            $rfq->update(['status' => 'completed']);
+            $rfq->update(['status' => 'approved']);
             return;
         }
 
@@ -311,14 +313,10 @@ class RequestForQuotationController extends Controller
             'description' => 'nullable|string',
             'rfq_type' => 'nullable|string|in:purchase,service,both',
             'currency' => 'nullable|string|max:3',
-            'payment_terms' => 'nullable|string',
             'shipping_terms' => 'nullable|string',
             'instructions' => 'nullable|string',
             'qualification_requirements' => 'nullable|string',
-            'assigned_to' => 'nullable|exists:employees,id',
             'issue_date' => 'required|date',
-            'deadline_date' => 'required|date|after:issue_date',
-            'expected_delivery_date' => 'nullable|date',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
@@ -343,16 +341,12 @@ class RequestForQuotationController extends Controller
                 'description' => $validated['description'] ?? null,
                 'rfq_type' => $validated['rfq_type'] ?? 'purchase',
                 'currency' => $validated['currency'] ?? 'PHP',
-                'payment_terms' => $validated['payment_terms'] ?? null,
                 'shipping_terms' => $validated['shipping_terms'] ?? null,
                 'instructions' => $validated['instructions'] ?? null,
                 'qualification_requirements' => $validated['qualification_requirements'] ?? null,
-                'assigned_to' => $validated['assigned_to'] ?? null,
                 'issue_date' => $validated['issue_date'],
-                'deadline_date' => $validated['deadline_date'],
-                'expected_delivery_date' => $validated['expected_delivery_date'] ?? null,
                 'status' => 'draft',
-                'created_by' => auth()->id(),
+                'created_by' => auth()->user()->employee->id(),
             ]);
 
             // Create items
@@ -395,6 +389,93 @@ class RequestForQuotationController extends Controller
     }
 
     /**
+     * Update RFQ
+     * PUT /api/procurement/rfqs/{id}
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $rfq = RequestForQuotation::with(['items', 'suppliers'])->findOrFail($id);
+
+        if ($rfq->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only draft RFQs can be updated',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'purchase_requisition_id' => 'nullable|exists:purchase_requisitions,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'rfq_type' => 'nullable|string|in:purchase,service,both',
+            'currency' => 'nullable|string|max:3',
+            'shipping_terms' => 'nullable|string',
+            'instructions' => 'nullable|string',
+            'qualification_requirements' => 'nullable|string',
+            'issue_date' => 'required|date',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.variation_id' => 'nullable|exists:product_variations,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.specifications' => 'nullable|string',
+            'items.*.requirements' => 'nullable|string',
+            'supplier_ids' => 'required|array|min:1',
+            'supplier_ids.*' => 'exists:suppliers,id',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $rfq->update([
+                'purchase_requisition_id' => $validated['purchase_requisition_id'] ?? null,
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'rfq_type' => $validated['rfq_type'] ?? 'purchase',
+                'currency' => $validated['currency'] ?? 'PHP',
+                'shipping_terms' => $validated['shipping_terms'] ?? null,
+                'instructions' => $validated['instructions'] ?? null,
+                'qualification_requirements' => $validated['qualification_requirements'] ?? null,
+                'issue_date' => $validated['issue_date'],
+            ]);
+
+            $rfq->items()->delete();
+            foreach ($validated['items'] as $item) {
+                RFQItem::create([
+                    'rfq_id' => $rfq->id,
+                    'product_id' => $item['product_id'],
+                    'variation_id' => $item['variation_id'] ?? null,
+                    'quantity' => $item['quantity'],
+                    'specifications' => $item['specifications'] ?? null,
+                    'requirements' => $item['requirements'] ?? null,
+                ]);
+            }
+
+            $rfq->suppliers()->delete();
+            foreach ($validated['supplier_ids'] as $supplierId) {
+                $rfq->inviteSupplier($supplierId);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'RFQ updated successfully',
+                'data' => $rfq->load(['items.product', 'items.variation', 'suppliers']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('RFQ Update Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update RFQ: ' . $e->getMessage(),
+                'error' => config('app.debug') ? $e->getMessage() : 'An error occurred',
+            ], 500);
+        }
+    }
+
+    /**
      * Send RFQ to suppliers
      * POST /api/procurement/rfqs/{id}/send
      */
@@ -416,7 +497,7 @@ class RequestForQuotationController extends Controller
             ], 422);
         }
 
-        $rfq->update(['status' => 'sent']);
+        $rfq->update(['status' => 'pending']);
 
         // TODO: Send email notifications to suppliers
 
@@ -457,7 +538,7 @@ class RequestForQuotationController extends Controller
      */
     public function award(Request $request, int $id): JsonResponse
     {
-        $rfq = RequestForQuotation::findOrFail($id);
+        $rfq = RequestForQuotation::with(['suppliers.supplier', 'quotations'])->findOrFail($id);
 
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
@@ -472,6 +553,52 @@ class RequestForQuotationController extends Controller
         }
 
         $rfq->awardToSupplier($validated['supplier_id'], $validated['evaluation_notes'] ?? null);
+
+        // Update RFQ supplier statuses
+        foreach ($rfq->suppliers as $rfqSupplier) {
+            $status = $rfqSupplier->supplier_id === (int) $validated['supplier_id'] ? 'submitted' : 'declined';
+            $rfqSupplier->update([
+                'status' => $status,
+                'responded_at' => now(),
+            ]);
+        }
+
+        // Notify suppliers of award outcome
+        try {
+            $winnerSupplier = $rfq->suppliers->firstWhere('supplier_id', (int) $validated['supplier_id'])?->supplier;
+            $winnerQuotation = $rfq->quotations->firstWhere('supplier_id', (int) $validated['supplier_id']);
+            $portalUrl = config('app.url') . '/supplier-portal/rfqs/' . $rfq->id;
+
+            if ($winnerSupplier && $winnerSupplier->email && $winnerQuotation) {
+                \Mail::to($winnerSupplier->email)->send(
+                    new \App\Mail\Procurement\RFQAwardWinnerMail($rfq, $winnerSupplier, $winnerQuotation, $portalUrl)
+                );
+            }
+
+            foreach ($rfq->suppliers as $rfqSupplier) {
+                if ($rfqSupplier->supplier_id === (int) $validated['supplier_id']) {
+                    continue;
+                }
+
+                $supplier = $rfqSupplier->supplier;
+                if (!$supplier || !$supplier->email) {
+                    continue;
+                }
+
+                $quotation = $rfq->quotations->firstWhere('supplier_id', $supplier->id);
+                if (!$quotation) {
+                    continue;
+                }
+
+                \Mail::to($supplier->email)->send(
+                    new \App\Mail\Procurement\RFQAwardRejectedMail($rfq, $supplier, $quotation, $portalUrl)
+                );
+            }
+        } catch (\Exception $e) {
+            \Log::warning('RFQ award email notification failed: ' . $e->getMessage(), [
+                'rfq_id' => $rfq->id,
+            ]);
+        }
 
         return response()->json([
             'success' => true,

@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="p-6  min-h-screen">
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-3xl font-bold text-gray-800">Purchase Requisitions</h1>
@@ -35,8 +35,8 @@
         <template #content>
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-gray-600">Submitted</p>
-              <p class="text-3xl font-bold text-blue-600">{{ summary.submitted }}</p>
+              <p class="text-sm text-gray-600">Pending</p>
+              <p class="text-3xl font-bold text-blue-600">{{ summary.pending }}</p>
             </div>
             <i class="pi pi-send text-4xl text-blue-500 opacity-20"></i>
           </div>
@@ -92,11 +92,11 @@
           :first="(currentPage - 1) * perPage"
           @page="onPageChange"
         >
-          <Column :expander="true" style="width: 3rem" />
+          <!-- <Column :expander="true" style="width: 3rem" /> -->
           
-          <Column field="pr_number" header="PR No." style="width: 120px">
+          <Column field="pr_number" header="PR No." style="width: 150px">
             <template #body="{ data }">
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ">
                 {{ data.pr_number }}
               </span>
             </template>
@@ -132,23 +132,12 @@
             </template>
           </Column>
 
-          <Column field="required_date" header="Required Date" style="width: 140px">
-            <template #body="{ data }">
-              <div>
-                <p class="font-medium text-gray-900">{{ formatDate(data.required_date) }}</p>
-                <p class="text-xs font-semibold" :class="getDaysRemainingClass(data.required_date)">
-                  {{ calculateDaysRemaining(data.required_date) }}
-                </p>
-              </div>
-            </template>
-          </Column>
-
           <Column field="status" header="Status" style="width: 130px">
             <template #body="{ data }">
-              <Tag :value="data.status.toUpperCase()" :severity="statusSeverity(data.status)" />
+              <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-
+<!-- 
           <Column header="Amount" style="width: 130px">
             <template #body="{ data }">
               <div class="text-sm">
@@ -156,18 +145,8 @@
                 <p class="text-xs text-gray-600 capitalize mt-1">{{ data?.procurement_route || 'N/A' }}</p>
               </div>
             </template>
-          </Column>
+          </Column> -->
 
-          <Column header="Approvals" style="width: 120px">
-            <template #body="{ data }">
-              <div class="flex flex-wrap gap-1">
-                <Tag v-for="approval in (data?.required_approvals || []).slice(0, 2)" :key="approval" 
-                  :value="capitalizeWords(approval).substring(0, 3)" severity="info" />
-                <Tag v-if="(data?.required_approvals || []).length > 2" 
-                  :value="`+${(data.required_approvals.length - 2)}`" severity="secondary" />
-              </div>
-            </template>
-          </Column>
 
           <Column header="Actions" style="width: 160px">
             <template #body="{ data }">
@@ -175,9 +154,9 @@
                 <Button icon="pi pi-eye" outlined rounded severity="info" 
                   @click="router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
-                <Button v-if="data.status === 'submitted' && data.any_item_missing_supplier" icon="pi pi-send" outlined rounded severity="success"
+                <Button v-if="approvedStatuses.includes(data.status) && data.any_item_missing_supplier" icon="pi pi-send" outlined rounded severity="success"
                   @click="createRfqFromRequisition(data.id)" v-tooltip="'Create RFQ'" />
-                <Button v-if="data.status === 'submitted' && data.all_items_have_suppliers" icon="pi pi-shopping-cart" outlined rounded severity="info"
+                <Button v-if="approvedStatuses.includes(data.status) && data.all_items_have_suppliers" icon="pi pi-shopping-cart" outlined rounded severity="info"
                   @click="createPoFromRequisition(data.id)" v-tooltip="'Create PO'" />
                 <Button v-if="data.status === 'draft'" icon="pi pi-pencil" text rounded severity="warning" 
                   @click="editPR(data.id)" v-tooltip="'Edit'" />
@@ -247,10 +226,6 @@
                         <p v-if="!data?.required_approvals?.length" class="text-gray-600">None required</p>
                       </div>
                     </div>
-                    <div>
-                      <p class="text-gray-600">Required Date</p>
-                      <p class="font-medium text-gray-900">{{ formatDate(data?.required_date) }}</p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -292,11 +267,17 @@ const filterType = ref<string | null>(null)
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Submitted', value: 'submitted' },
+  { label: 'Pending', value: 'pending' },
   { label: 'Warehouse Approved', value: 'warehouse_approved' },
   { label: 'Branch Manager Approved', value: 'branch_manager_approved' },
-  { label: 'Approved', value: 'approved' },
+  { label: 'Pending Central Review', value: 'pending_central_review' },
+  { label: 'Procurement Processing', value: 'procurement_processing' },
+  { label: 'RFQ Sent', value: 'rfq_sent' },
+  { label: 'Quotes Received', value: 'quotes_received' },
+  { label: 'Supplier Selected', value: 'supplier_selected' },
+  { label: 'PO Created', value: 'po_created' },
   { label: 'Rejected', value: 'rejected' },
+  { label: 'Cancelled', value: 'cancelled' },
 ]
 
 const requisitionTypeOptions = [
@@ -307,11 +288,13 @@ const requisitionTypeOptions = [
   { label: 'Emergency', value: 'emergency' },
 ]
 
+const approvedStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
+
 const summary = computed(() => ({
   total: total.value,
   draft: requisitions.value.filter(r => r.status === 'draft').length,
-  submitted: requisitions.value.filter(r => r.status === 'submitted').length,
-  approved: requisitions.value.filter(r => r.status === 'approved').length,
+  pending: requisitions.value.filter(r => r.status === 'pending').length,
+  approved: requisitions.value.filter(r => approvedStatuses.includes(r.status)).length,
 }))
 
 const capitalizeWords = (str: string): string => {
@@ -319,43 +302,27 @@ const capitalizeWords = (str: string): string => {
   return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
-const formatDate = (date: string | null): string => {
-  if (!date) return 'N/A'
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
-const calculateDaysRemaining = (deadline: string | null): string => {
-  if (!deadline) return 'N/A'
-  const deadlineDate = new Date(deadline)
-  const today = new Date()
-  const days = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 3600 * 24))
-  if (days < 0) return `${Math.abs(days)}d ago`
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Tomorrow'
-  return `${days}d remaining`
-}
-
-const getDaysRemainingClass = (deadline: string | null): string => {
-  if (!deadline) return 'text-gray-600'
-  const deadlineDate = new Date(deadline)
-  const today = new Date()
-  const days = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 3600 * 24))
-  if (days < 0) return 'text-red-600 font-semibold'
-  if (days < 3) return 'text-orange-600 font-semibold'
-  return 'text-green-600'
-}
-
 const statusSeverity = (status: string): string => {
   const severityMap: Record<string, string> = {
     draft: 'secondary',
-    submitted: 'info',
-    warehouse_approved: 'warning',
-    branch_manager_approved: 'warning',
-    approved: 'success',
+    pending: 'info',
+    warehouse_approved: 'success',
+    branch_manager_approved: 'success',
+    pending_central_review: 'warning',
+    procurement_processing: 'info',
+    rfq_sent: 'info',
+    quotes_received: 'warning',
+    supplier_selected: 'success',
+    po_created: 'success',
     rejected: 'danger',
+    cancelled: 'danger',
   }
   return severityMap[status] || 'secondary'
+}
+
+const formatStatus = (status: string): string => {
+  if (!status) return '-'
+  return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
 const loadRequisitions = async (page: number = 1) => {

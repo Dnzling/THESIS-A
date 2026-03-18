@@ -116,6 +116,30 @@ class EmployeeController extends Controller
         }
     }
 
+    /**
+     * Get the authenticated user's employee profile
+     */
+    public function me()
+    {
+        $user = Auth::user();
+        $employee = Employee::with(['user', 'user.branch'])
+            ->where('user_id', $user->id)
+            ->where('store_id', $user->store_id)
+            ->first();
+
+        if (!$employee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee record not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $employee
+        ]);
+    }
+
 
     /**
      * Store a newly created employee
@@ -386,6 +410,8 @@ class EmployeeController extends Controller
                 'data' => $data,
                 'cached' => true
             ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Employee not found for this store', 404);
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to fetch employee details', 500, $e);
         }
@@ -433,7 +459,12 @@ class EmployeeController extends Controller
                 'role:id,name'
             ])
             ->where('store_id', $user->store_id)
-            ->findOrFail($id);
+            ->where('id', $id)
+            ->first();
+
+        if (!$employee) {
+            throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
+        }
 
         // 2. Get all required data in parallel using separate queries
         $queries = [

@@ -30,7 +30,7 @@ class Department extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
-        'status' => 'boolean'
+        'status' => 'string'
     ];
 
     /**
@@ -54,6 +54,12 @@ class Department extends Model
         return $this->belongsTo(Employee::class, 'created_by');
     }
 
+    public function roles()
+    {
+        return $this->belongsToMany(\App\Models\Core\Role::class, 'department_roles', 'department_id', 'role_id')
+            ->withTimestamps();
+    }
+
     /**
      * Get the user who deleted the department.
      */
@@ -65,10 +71,10 @@ class Department extends Model
     /**
      * Get the employees for the department.
      */
-    // public function employees(): HasMany
-    // {
-    //     return $this->hasMany(Employee::class, 'department_id');
-    // }
+    public function employees(): HasMany
+    {
+        return $this->hasMany(Employee::class, 'department', 'name');
+    }
 
     /**
      * Scope a query to only include active departments.

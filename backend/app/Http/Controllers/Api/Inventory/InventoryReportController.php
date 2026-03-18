@@ -19,13 +19,15 @@ class InventoryReportController extends Controller
     /**
      * Get branch summary with KPIs
      */
-    public function branchSummary(?int $days = null): JsonResponse
+    public function branchSummary(Request $request): JsonResponse
     {
         try {
             $storeId =  Auth::user()->store_id;
             $branchId =  Auth::user()->branch_id;
+            $days = $request->query('days');
+            $productType = $request->query('product_type');
 
-            $summary = $this->reportingService->getBranchSummary($storeId, $branchId, $days);
+            $summary = $this->reportingService->getBranchSummary($storeId, $branchId, $days, $productType);
 
             return response()->json([
                 'success' => true,
@@ -42,14 +44,16 @@ class InventoryReportController extends Controller
     /**
      * Get store-wide consolidated summary
      */
-    public function storeSummary(?int $days = null): JsonResponse
+    public function storeSummary(Request $request): JsonResponse
     {
         try {
             $storeId =  Auth::user()->store_id;
+            $days = $request->query('days');
+            $productType = $request->query('product_type');
 
             $this->authorize('inventory.view_all_branches');
 
-            $summary = $this->reportingService->getStoreSummary($storeId, $days);
+            $summary = $this->reportingService->getStoreSummary($storeId, $days, $productType);
 
             return response()->json([
                 'success' => true,
@@ -72,8 +76,9 @@ class InventoryReportController extends Controller
             $storeId =  Auth::user()->store_id;
             $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 30);
+            $productType = $request->query('product_type');
 
-            $trends = $this->reportingService->getMovementTrends($storeId, $branchId, $days);
+            $trends = $this->reportingService->getMovementTrends($storeId, $branchId, $days, $productType);
 
             return response()->json([
                 'success' => true,
@@ -90,13 +95,14 @@ class InventoryReportController extends Controller
     /**
      * Get inventory value by category
      */
-    public function valueByCategory(): JsonResponse
+    public function valueByCategory(Request $request): JsonResponse
     {
         try {
             $storeId =  Auth::user()->store_id;
             $branchId =  Auth::user()->branch_id;
+            $productType = $request->query('product_type');
 
-            $values = $this->reportingService->getValueByCategory($storeId, $branchId);
+            $values = $this->reportingService->getValueByCategory($storeId, $branchId, $productType);
 
             return response()->json([
                 'success' => true,
@@ -120,8 +126,9 @@ class InventoryReportController extends Controller
             $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 90);
             $minValue = $request->query('min_value', 5000);
+            $productType = $request->query('product_type');
 
-            $items = $this->reportingService->getSlowMovers($storeId, $branchId, $days, $minValue);
+            $items = $this->reportingService->getSlowMovers($storeId, $branchId, $days, $minValue, $productType);
 
             return response()->json([
                 'success' => true,
@@ -145,8 +152,9 @@ class InventoryReportController extends Controller
             $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 30);
             $minQty = $request->query('min_qty', 50);
+            $productType = $request->query('product_type');
 
-            $items = $this->reportingService->getFastMovers($storeId, $branchId, $days, $minQty);
+            $items = $this->reportingService->getFastMovers($storeId, $branchId, $days, $minQty, $productType);
 
             return response()->json([
                 'success' => true,
@@ -169,8 +177,9 @@ class InventoryReportController extends Controller
             $storeId =  Auth::user()->store_id;
             $branchId =  Auth::user()->branch_id;
             $days = $request->query('days', 30);
+            $productType = $request->query('product_type');
 
-            $metrics = $this->reportingService->getTransferMetrics($storeId, $branchId, $days);
+            $metrics = $this->reportingService->getTransferMetrics($storeId, $branchId, $days, $productType);
 
             return response()->json([
                 'success' => true,
@@ -187,13 +196,14 @@ class InventoryReportController extends Controller
     /**
      * Get stock aging report
      */
-    public function aging(): JsonResponse
+    public function aging(Request $request): JsonResponse
     {
         try {
             $storeId =  Auth::user()->store_id;
             $branchId =  Auth::user()->branch_id;
+            $productType = $request->query('product_type');
 
-            $aging = $this->reportingService->getAgingReport($storeId, $branchId);
+            $aging = $this->reportingService->getAgingReport($storeId, $branchId, $productType);
 
             return response()->json([
                 'success' => true,

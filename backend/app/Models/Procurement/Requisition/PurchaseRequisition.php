@@ -27,7 +27,6 @@ class PurchaseRequisition extends Model
         'procurement_route',
         'required_approvals',
         'approval_chain',
-        'required_date',
         'reason',
         'priority',
         'requested_by',
@@ -38,7 +37,6 @@ class PurchaseRequisition extends Model
         'estimated_amount' => 'decimal:2',
         'required_approvals' => 'array',
         'approval_chain' => 'array',
-        'required_date' => 'date',
         'priority' => 'integer',
         'submitted_at' => 'datetime',
     ];
@@ -77,7 +75,7 @@ class PurchaseRequisition extends Model
     // Scopes
     public function scopePending($query)
     {
-        return $query->whereIn('status', ['draft', 'submitted', 'warehouse_approved']);
+        return $query->whereIn('status', ['draft', 'pending']);
     }
 
     public function scopeUrgent($query)
@@ -93,12 +91,12 @@ class PurchaseRequisition extends Model
     // Helper Methods
     public function isPending(): bool
     {
-        return in_array($this->status, ['draft', 'submitted', 'warehouse_approved']);
+        return in_array($this->status, ['draft', 'pending']);
     }
 
     public function isApproved(): bool
     {
-        return $this->status === 'warehouse_approved';
+        return $this->status === 'procurement_processing';
     }
 
     public function addApproval(string $role, int $userId, string $userName, ?string $notes = null): void
@@ -120,7 +118,7 @@ class PurchaseRequisition extends Model
     public function submit(): void
     {
         $this->update([
-            'status' => 'submitted',
+            'status' => 'pending',
             'submitted_at' => now(),
         ]);
     }

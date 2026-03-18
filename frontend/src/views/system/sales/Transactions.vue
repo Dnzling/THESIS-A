@@ -98,12 +98,8 @@
                 <!-- Date Range -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
-                    <div class="flex items-center space-x-2">
-                        <DatePicker v-model="dateRange.start" placeholder="From" showIcon dateFormat="yy-mm-dd"
-                            class="flex-1" />
-                        <DatePicker v-model="dateRange.end" placeholder="To" showIcon dateFormat="yy-mm-dd"
-                            class="flex-1" />
-                    </div>
+                    <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false" showIcon
+                        dateFormat="yy-mm-dd" fluid />
                 </div>
     
             </div>
@@ -428,11 +424,11 @@ const selectedTransactions = ref<any[]>([])
 const selectedTransaction = ref<any>(null)
 const transactionToDelete = ref<any>(null)
 
-// Date Range - Fixed: ensure dates are Date objects
-const dateRange = ref({
-  start: new Date(new Date().setDate(new Date().getDate() - 7)),
-  end: new Date()
-})
+// Date Range - use PrimeVue range picker
+const dateRange = ref<Date[] | null>([
+  new Date(new Date().setDate(new Date().getDate() - 7)),
+  new Date()
+])
 
 // New Transaction
 const newTransaction = ref({
@@ -662,9 +658,9 @@ const filteredTransactions = computed(() => {
   }
 
   // Date range filter - FIXED: Convert dates properly
-  if (dateRange.value.start && dateRange.value.end) {
-    const startDate = new Date(dateRange.value.start)
-    const endDate = new Date(dateRange.value.end)
+  if (dateRange.value?.[0] && dateRange.value?.[1]) {
+    const startDate = new Date(dateRange.value[0])
+    const endDate = new Date(dateRange.value[1])
 
     filtered = filtered.filter(t => {
       try {
@@ -808,10 +804,10 @@ const clearFilters = () => {
   searchTerm.value = ''
   selectedStatus.value = []
   selectedPaymentMethod.value = null
-  dateRange.value = {
-    start: new Date(new Date().setDate(new Date().getDate() - 7)),
-    end: new Date()
-  }
+  dateRange.value = [
+    new Date(new Date().setDate(new Date().getDate() - 7)),
+    new Date()
+  ]
 }
 
 const viewTransaction = (transaction: any) => {

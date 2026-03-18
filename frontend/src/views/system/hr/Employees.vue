@@ -145,13 +145,8 @@
         </div>
   
         <div>
-          <label class="block text-sm font-medium mb-1">Position *</label>
-          <InputText v-model="employeeForm.position" class="w-full" />
-        </div>
-  
-        <div>
-          <label class="block text-sm font-medium mb-1">Department *</label>
-          <Select v-model="employeeForm.department" :options="departments" optionLabel="name" class="w-full" />
+          <label class="block text-sm font-medium mb-1">Position (Role) *</label>
+          <Select v-model="employeeForm.role" :options="roles" optionLabel="display_name" class="w-full" />
         </div>
   
         <div>
@@ -241,8 +236,7 @@ interface EmployeeForm {
   id: number | null;
   firstName: string;
   lastName: string;
-  position: string;
-  department: string;
+  role: RoleOption | null;
   email: string;
   phone: string;
   status: string;
@@ -260,6 +254,12 @@ interface Employee {
   email: string
   phone: string
   branch: string
+}
+
+interface RoleOption {
+  id: number
+  name: string
+  display_name: string
 }
 
 interface StatCard {
@@ -280,6 +280,7 @@ const isEditMode = ref(false)
 const selectedEmployee = ref<Employee | null>(null)
 const employees = ref<Employee[]>([])
 const loading = ref(false)
+const roles = ref<RoleOption[]>([])
 
 const employeeStats = ref<StatCard[]>([
   { label: 'Total Employees', value: 0, icon: 'pi pi-user' },
@@ -294,8 +295,7 @@ const employeeForm = ref({
   id: null,
   firstName: '',
   lastName: '',
-  position: '',
-  department: null,
+  role: null,
   email: '',
   phone: '',
   status: { label: 'Active', value: 'active' }
@@ -359,6 +359,23 @@ const fetchEmployeesAxios = async () => {
   }
 }
 
+const fetchRoles = async () => {
+  try {
+    const response = await axios.get('/api/store/roles', {
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`
+      }
+    })
+    const data = response.data?.data || response.data || []
+    roles.value = data.map((role: any) => ({
+      id: role.id,
+      name: role.name,
+      display_name: role.display_name || role.name
+    }))
+  } catch (error) {
+    console.error('Failed to fetch roles:', error)
+  }
+}
 
 // Computed property for filtered employees
 
@@ -451,12 +468,14 @@ const viewEmployee = (employee: Employee) => {
 
 const editEmployee = (employee: Employee) => {
   isEditMode.value = true
+  const matchedRole = roles.value.find(role =>
+    role.display_name === employee.role_name || role.name === employee.role_name
+  ) || null
   employeeForm.value = {
     id: employee.id,
     firstName: employee.fname,
     lastName: employee.lname,
-    position: employee.role_name, // Using role_name as position
-    department: departments.value.find(d => d.value === employee.department), // Find by value, not name
+    role: matchedRole,
     email: employee.email,
     phone: employee.phone,
     status: statuses.value.find(s => s.value === employee.status) // Find by value to match your data
@@ -466,7 +485,7 @@ const editEmployee = (employee: Employee) => {
 
 const saveEmployee = () => {
   if (!employeeForm.value.firstName || !employeeForm.value.lastName ||
-    !employeeForm.value.position || !employeeForm.value.department ||
+    !employeeForm.value.role ||
     !employeeForm.value.email) {
     alert('Please fill in all required fields')
     return
@@ -475,8 +494,7 @@ const saveEmployee = () => {
   const employeeData = {
     fname: employeeForm.value.firstName,
     lname: employeeForm.value.lastName,
-    role_name: employeeForm.value.position,
-    department: employeeForm.value.department.value, // Use department.value instead of name
+    role_name: employeeForm.value.role.display_name,
     email: employeeForm.value.email,
     phone: employeeForm.value.phone,
     status: employeeForm.value.status?.value || 'Active', // Use status.value
@@ -519,8 +537,7 @@ const cancelDialog = () => {
     id: null,
     firstName: '',
     lastName: '',
-    position: '',
-    department: null,
+    role: null,
     email: '',
     phone: '',
     status: { label: 'Active', value: 'active' }
@@ -528,7 +545,8 @@ const cancelDialog = () => {
 }
 
 onMounted(() => {
-  fetchEmployeesAxios(),
+  fetchEmployeesAxios()
+  fetchRoles()
     console.log('Employees page loaded')
 })
 </script>

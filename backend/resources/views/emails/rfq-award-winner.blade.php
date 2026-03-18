@@ -15,7 +15,7 @@ We are pleased to inform you that your quotation for RFQ **{{ $rfq->rfq_number }
 ## Accepted Terms
 - **Total Price**: {{ $rfq->currency }} {{ number_format($quotation->total_price, 2) }}
 - **Delivery Days**: {{ $quotation->delivery_days }} days
-- **Payment Terms**: {{ $quotation->payment_terms ?? str_replace('_', ' ', ucwords($rfq->payment_terms)) }}
+- **Payment Terms**: {{ $quotation->payment_terms ?? 'Standard' }}
 - **Validity**: Valid until {{ $quotation->validity_date->format('F d, Y') }}
 
 ## Line Items

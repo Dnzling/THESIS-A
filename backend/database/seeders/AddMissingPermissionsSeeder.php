@@ -206,6 +206,13 @@ class AddMissingPermissionsSeeder extends Seeder
                 'is_active' => 1,
             ],
             [
+                'name' => 'hr.activity-logs.view',
+                'display_name' => 'Activity Logs View',
+                'module' => 'hr',
+                'description' => 'View activity logs',
+                'is_active' => 1,
+            ],
+            [
                 'name' => 'hr.payroll.view',
                 'display_name' => 'Payroll View',
                 'module' => 'hr',
@@ -264,6 +271,31 @@ class AddMissingPermissionsSeeder extends Seeder
             ],
         ];
 
+        // ========== FINANCE PERMISSIONS ==========
+        $financePermissions = [
+            [
+                'name' => 'finance.purchase-orders.view',
+                'display_name' => 'Finance Purchase Orders View',
+                'module' => 'finance',
+                'description' => 'View purchase orders for finance approval',
+                'is_active' => 1,
+            ],
+            [
+                'name' => 'finance.purchase-orders.approve',
+                'display_name' => 'Finance Purchase Orders Approve',
+                'module' => 'finance',
+                'description' => 'Approve purchase orders in finance',
+                'is_active' => 1,
+            ],
+            [
+                'name' => 'finance.purchase-orders.reject',
+                'display_name' => 'Finance Purchase Orders Reject',
+                'module' => 'finance',
+                'description' => 'Reject purchase orders in finance',
+                'is_active' => 1,
+            ],
+        ];
+
         // Insert supplier portal permissions
         foreach ($supplierPortalPermissions as $perm) {
             if (!DB::table('permissions')->where('name', $perm['name'])->exists()) {
@@ -302,6 +334,18 @@ class AddMissingPermissionsSeeder extends Seeder
 
         // Insert Admin customer permissions
         foreach ($adminCustomerPermissions as $perm) {
+            if (!DB::table('permissions')->where('name', $perm['name'])->exists()) {
+                DB::table('permissions')->insert(array_merge($perm, [
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]));
+                $insertedCount++;
+                echo "✓ Added permission: {$perm['name']}\n";
+            }
+        }
+
+        // Insert Finance permissions
+        foreach ($financePermissions as $perm) {
             if (!DB::table('permissions')->where('name', $perm['name'])->exists()) {
                 DB::table('permissions')->insert(array_merge($perm, [
                     'created_at' => $now,

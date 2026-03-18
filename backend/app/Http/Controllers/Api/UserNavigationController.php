@@ -179,6 +179,11 @@ class UserNavigationController extends Controller
             return true;
         }
 
+        // Guard admin/finance modules if no permissions are linked yet
+        if ($navItem->permissions->isEmpty() && in_array($navItem->module, ['admin', 'finance'], true)) {
+            return false;
+        }
+
         // If no permissions required, everyone can access
         if ($navItem->permissions->isEmpty()) {
             return true;

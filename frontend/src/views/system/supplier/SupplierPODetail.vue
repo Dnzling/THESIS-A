@@ -1,391 +1,240 @@
 <template>
-  <div class="supplier-po-detail">
-    <div class="flex items-center mb-6">
-      <Button 
-        icon="pi pi-arrow-left"
-        class="p-button-rounded p-button-text"
-        @click="$router.back()"
-      />
-      <PageHeader title="Purchase Order Details" icon="pi pi-shopping-cart" />
+  <div class="supplier-po-detail space-y-6 p-6">
+    <div class="flex items-start justify-between gap-4">
+      <div class="flex items-start gap-3">
+        <Button icon="pi pi-arrow-left" text rounded @click="router.push('/supplier-portal/pos')" />
+        <div>
+          <h1 class="text-2xl font-semibold text-slate-900">Purchase Order Details</h1>
+          <p class="text-sm text-slate-500">Full PO details with delivery and invoice information.</p>
+        </div>
+      </div>
+      <Tag v-if="po" :value="formatStatus(po.status)" :severity="getStatusSeverity(po.status)" />
     </div>
 
-    <div v-if="!loading" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <!-- PO Information -->
-      <div class="lg:col-span-2">
-        <Card title="Purchase Order" class="mb-6">
+    <div v-if="loading" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <Card class="lg:col-span-2 rounded-2xl border border-slate-200/70 shadow-sm">
+        <template #content>
+          <Skeleton height="220px" class="rounded-lg" />
+        </template>
+      </Card>
+      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+        <template #content>
+          <Skeleton height="220px" class="rounded-lg" />
+        </template>
+      </Card>
+    </div>
+
+    <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <Card v-if="isDeclined" class="rounded-2xl border border-red-200/70 bg-red-50/60 shadow-sm">
           <template #content>
-            <div v-if="po" class="space-y-4">
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">PO Number</p>
-                  <p class="text-lg">{{ po.po_number }}</p>
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Status</p>
-                  <Tag :value="po.status" :severity="getStatusSeverity(po.status)" />
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Created</p>
-                  <p>{{ formatDate(po.created_at) }}</p>
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Expected Delivery</p>
-                  <p>{{ formatDate(po.expected_delivery_date) }}</p>
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Total Amount</p>
-                  <p class="text-green-600 font-bold">${{ parseFloat(po.total_amount || 0).toFixed(2) }}</p>
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Delivery Address</p>
-                  <p class="text-sm">{{ getDeliveryAddress(po) }}</p>
-                </div>
-              </div>
+            <h2 class="text-lg font-semibold text-red-700">Rejected by Supplier</h2>
+            <p class="mt-2 text-sm text-red-600">{{ rejectionReason || 'No rejection reason provided.' }}</p>
+          </template>
+        </Card>
 
-              <Divider />
-
+        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+          <template #content>
+            <h2 class="text-lg font-semibold text-slate-900">PO Summary</h2>
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
               <div>
-                <h4 class="font-semibold mb-3">Notes</h4>
-                <p class="text-gray-700">{{ po.notes || 'No notes' }}</p>
+                <p class="text-xs text-slate-500">PO Number</p>
+                <p class="font-semibold text-slate-900">{{ po?.po_number || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-xs text-slate-500">Created</p>
+                <p>{{ formatDate(po?.created_at) }}</p>
+              </div>
+              <div>
+                <p class="text-xs text-slate-500">Supplier</p>
+                <p>{{ po?.supplier?.supplier_name || '-' }}</p>
               </div>
             </div>
           </template>
         </Card>
 
-        <!-- PO Items -->
-        <Card title="Items" class="mb-6">
+        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
-            <DataTable :value="po?.items || []" striped-rows class="w-full">
-              <Column header="Product">
-                <template #body="{ data }">
-                  <div>
-                    <div class="font-semibold">{{ data.product?.product_name || 'N/A' }}</div>
-                    <div class="text-xs text-gray-500">{{ data.product?.sku || '' }}</div>
-                  </div>
-                </template>
-              </Column>
-              <Column field="quantity_ordered" header="Qty"></Column>
-              <Column field="unit_cost" header="Unit Cost"></Column>
-              <Column field="line_total" header="Total">
-                <template #body="{ data }">
-                  ${{ parseFloat(data.line_total || 0).toFixed(2) }}
-                </template>
-              </Column>
-            </DataTable>
+            <h2 class="text-lg font-semibold text-slate-900">Branch Information</h2>
+            <div class="mt-4 text-sm text-slate-600">
+              <p class="font-semibold text-slate-900">{{ po?.branch?.name || '-' }}</p>
+              <p>{{ po?.branch?.address || '-' }} {{ po?.branch?.city || '' }}</p>
+            </div>
           </template>
         </Card>
 
-        <!-- Response Form -->
-        <Card 
-          v-if="!feedback && canRespondToPO(po)"
-          title="Your Response" 
-          class="mb-6"
-        >
+        <Card v-if="!isDeclined" class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
-            <form @submit.prevent="submitResponse" class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium mb-2">Your Response *</label>
-                <RadioButton 
-                  v-model="responseData.response"
-                  name="response"
-                  value="accepted"
-                  class="mr-2"
-                />
-                <label for="accepted" class="mr-6">Accept PO</label>
-                
-                <RadioButton 
-                  v-model="responseData.response"
-                  name="response"
-                  value="rejected"
-                  class="mr-2"
-                />
-                <label for="rejected">Reject PO</label>
+            <h2 class="text-lg font-semibold text-slate-900 mb-3">Items</h2>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th class="px-4 py-2">Item</th>
+                    <th class="px-4 py-2 text-right">Qty</th>
+                    <th class="px-4 py-2 text-right">Price</th>
+                    <th class="px-4 py-2 text-right">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in po?.items || []" :key="item.id" class="border-t">
+                    <td class="px-4 py-2">
+                      <div class="font-medium text-slate-900">{{ item.product?.product_name || 'Item' }}</div>
+                      <div class="text-xs text-slate-400">{{ item.product?.sku || '' }}</div>
+                    </td>
+                    <td class="px-4 py-2 text-right">{{ item.quantity_ordered }}</td>
+                    <td class="px-4 py-2 text-right">₱ {{ formatMoney(item.unit_cost) }}</td>
+                    <td class="px-4 py-2 text-right font-semibold">₱ {{ formatMoney(item.line_total) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-slate-600">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Subtotal (Items)</span>
+                <span class="font-semibold text-slate-900">₱ {{ formatMoney(po?.subtotal) }}</span>
               </div>
-
-              <div v-if="responseData.response === 'rejected'">
-                <label class="block text-sm font-medium mb-2">Rejection Reason *</label>
-                <Textarea 
-                  v-model="responseData.rejection_reason"
-                  placeholder="Please explain why you're rejecting this PO"
-                  rows="4"
-                  class="w-full"
-                />
+              <div class="flex items-center justify-between mt-2">
+                <span class="text-slate-500">Delivery Charge</span>
+                <span class="font-semibold text-emerald-600">₱ {{ formatMoney(deliveryCharge) }}</span>
               </div>
-
-              <div v-if="responseData.response === 'accepted'" class="space-y-4">
-                <Message 
-                  severity="info"
-                  text="Please confirm expected delivery date and quantity."
-                  class="w-full"
-                />
-
-                <div>
-                  <label class="block text-sm font-medium mb-2">Expected Delivery Date *</label>
-                  <DatePicker 
-                    v-model="responseData.expected_delivery_date"
-                    date-format="yy-mm-dd"
-                    :min-date="new Date()"
-                    class="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium mb-2">Delivery Quantity *</label>
-                  <InputNumber 
-                    v-model="responseData.delivery_quantity"
-                    :min="1"
-                    class="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium mb-2">Delivery Notes</label>
-                  <Textarea 
-                    v-model="responseData.delivery_notes"
-                    placeholder="Any special instructions or notes"
-                    rows="3"
-                    class="w-full"
-                  />
-                </div>
-              </div>
-
-              <div class="flex gap-3">
-                <Button 
-                  label="Submit Response"
-                  type="submit"
-                  class="p-button-primary"
-                  :loading="submitting"
-                />
-                <Button 
-                  label="Cancel"
-                  type="button"
-                  @click="$router.back()"
-                  class="p-button-secondary"
-                />
-              </div>
-            </form>
-          </template>
-        </Card>
-
-        <!-- Existing Feedback -->
-        <Card 
-          v-if="feedback"
-          :title="`Your Response - ${feedback.response.toUpperCase()}`"
-          class="mb-6"
-        >
-          <template #content>
-            <div class="space-y-4">
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Response Status</p>
-                  <Tag 
-                    :value="feedback.response"
-                    :severity="feedback.response === 'accepted' ? 'success' : 'danger'"
-                  />
-                </div>
-                <div>
-                  <p class="text-sm font-semibold text-gray-600">Submitted At</p>
-                  <p>{{ formatDate(feedback.submitted_at) }}</p>
-                </div>
-              </div>
-
-              <Divider />
-
-              <div v-if="feedback.response === 'accepted'">
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p class="text-sm font-semibold text-gray-600">Expected Delivery</p>
-                    <p>{{ formatDate(feedback.expected_delivery_date) }}</p>
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-gray-600">Delivery Quantity</p>
-                    <p>{{ feedback.delivery_quantity }}</p>
-                  </div>
-                </div>
-
-                <div v-if="feedback.delivery_notes" class="mb-4">
-                  <p class="text-sm font-semibold text-gray-600 mb-2">Delivery Notes</p>
-                  <p>{{ feedback.delivery_notes }}</p>
-                </div>
-
-                <Divider v-if="feedback.receipt_status === 'pending'" />
-
-                <div v-if="feedback.receipt_status === 'pending'">
-                  <h4 class="font-semibold mb-3">Confirm Receipt</h4>
-                  <form @submit.prevent="confirmReceipt" class="space-y-3">
-                    <div>
-                      <label class="block text-sm font-medium mb-2">Received Quantity *</label>
-                      <InputNumber 
-                        v-model="receiptData.delivery_quantity"
-                        :min="1"
-                        class="w-full"
-                      />
-                    </div>
-                    <div>
-                      <label class="block text-sm font-medium mb-2">Receipt Notes</label>
-                      <Textarea 
-                        v-model="receiptData.delivery_notes"
-                        placeholder="Any notes about the delivery"
-                        rows="2"
-                        class="w-full"
-                      />
-                    </div>
-                    <Button 
-                      label="Confirm Receipt"
-                      type="submit"
-                      class="p-button-success"
-                      :loading="submitting"
-                    />
-                  </form>
-                </div>
-
-                <Tag 
-                  v-else
-                  value="Receipt Confirmed"
-                  severity="success"
-                  class="mt-3"
-                />
-              </div>
-
-              <div v-else-if="feedback.response === 'rejected'">
-                <p class="text-sm font-semibold text-gray-600 mb-2">Rejection Reason</p>
-                <p>{{ feedback.rejection_reason }}</p>
+              <div class="flex items-center justify-between mt-3 border-t border-slate-200 pt-3 text-base font-semibold">
+                <span>Total</span>
+                <span>₱ {{ formatMoney(totalWithDelivery) }}</span>
               </div>
             </div>
           </template>
         </Card>
       </div>
 
-      <!-- Summary Panel -->
-      <div>
-        <Card title="PO Summary" class="sticky top-4">
+      <div v-if="!isDeclined" class="space-y-6">
+        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
-            <div v-if="po" class="space-y-4">
-              <div>
-                <p class="text-sm font-semibold text-gray-600">Supplier</p>
-                <p>{{ po.supplier?.company_name }}</p>
-              </div>
-
-              <Divider />
-
-              <div>
-                <p class="text-sm font-semibold text-gray-600">Total Items</p>
-                <p class="text-2xl">{{ po.items?.length || 0 }}</p>
-              </div>
-
-              <div>
-                <p class="text-sm font-semibold text-gray-600">Total Amount</p>
-                <p class="text-2xl text-green-600 font-bold">
-                  ${{ parseFloat(po.total_amount || 0).toFixed(2) }}
-                </p>
-              </div>
-
-              <Divider />
-
-              <div v-if="feedback">
-                <p class="text-sm font-semibold text-gray-600 mb-2">Your Response</p>
-                <Tag 
-                  :value="feedback.response"
-                  :severity="feedback.response === 'accepted' ? 'success' : 'danger'"
-                  class="w-full justify-center"
-                />
-              </div>
-
-              <Button 
-                label="Back to POs"
-                icon="pi pi-arrow-left"
-                @click="$router.push('/supplier-portal/pos')"
-                class="w-full p-button-secondary"
-              />
+            <h3 class="text-lg font-semibold text-slate-900">Delivery Information</h3>
+            <div class="mt-4 space-y-2 text-sm text-slate-600">
+              <div>Driver: <span class="font-medium text-slate-900">{{ shipment?.driver_name || '-' }}</span></div>
+              <div>Plate: <span class="font-medium text-slate-900">{{ shipment?.plate_number || '-' }}</span></div>
+              <div>Distance: <span class="font-medium text-slate-900">{{ shipment?.distance_km || '-' }} km</span></div>
+              <div>Status: <span class="font-medium text-slate-900">{{ formatStatus(shipment?.status) }}</span></div>
             </div>
+          </template>
+        </Card>
+
+        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+          <template #content>
+            <h3 class="text-lg font-semibold text-slate-900">Invoice</h3>
+            <div v-if="invoice" class="mt-4 space-y-2 text-sm text-slate-600">
+              <div>Invoice #: <span class="font-medium text-slate-900">{{ invoice.invoice_number }}</span></div>
+              <div>Status: <span class="font-medium text-slate-900">{{ formatStatus(invoice.status) }}</span></div>
+              <div>Invoice Date: <span class="font-medium text-slate-900">{{ formatDate(invoice.invoice_date) }}</span></div>
+              <div>Amount: <span class="font-medium text-slate-900">₱ {{ formatMoney(invoice.net_amount || invoice.invoice_amount) }}</span></div>
+              <div class="flex flex-wrap gap-2 mt-4">
+                <Button label="View Invoice" icon="pi pi-file" outlined @click="viewInvoice" />
+                <Button label="Print Invoice" icon="pi pi-print" outlined @click="printInvoice" />
+              </div>
+            </div>
+            <div v-else class="text-sm text-slate-500 mt-4">No invoice available yet.</div>
           </template>
         </Card>
       </div>
     </div>
-
-    <!-- Loading -->
-    <ProgressSpinner v-if="loading" class="mt-6" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import InputNumber from 'primevue/inputnumber'
-import Textarea from 'primevue/textarea'
-import DatePicker from 'primevue/datepicker'
-import RadioButton from 'primevue/radiobutton'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
-import Message from 'primevue/message'
-import Divider from 'primevue/divider'
-import ProgressSpinner from 'primevue/progressspinner'
-import PageHeader from '../../../components/PageHeader.vue'
+import Skeleton from 'primevue/skeleton'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const loading = ref(false)
-const submitting = ref(false)
-const po = ref(null)
-const feedback = ref(null)
 
-const responseData = ref({
-  response: 'accepted',
-  rejection_reason: '',
-  expected_delivery_date: null,
-  delivery_quantity: null,
-  delivery_notes: '',
+const loading = ref(false)
+const po = ref<any>(null)
+const shipment = ref<any>(null)
+const invoice = ref<any>(null)
+const rejectionReason = ref<string | null>(null)
+
+const deliveryCharge = computed(() => {
+  return Number(invoice.value?.shipping_cost || shipment.value?.shipping_cost || 0)
 })
 
-const receiptData = ref({
-  delivery_quantity: null,
-  delivery_notes: '',
+const totalWithDelivery = computed(() => {
+  const subtotal = Number(po.value?.subtotal || 0)
+  return subtotal + deliveryCharge.value
+})
+
+const isDeclined = computed(() => {
+  const status = po.value?.status
+  return status === 'declined_supplier' || status === 'declined_by_supplier'
 })
 
 const getStatusSeverity = (status: string) => {
   const map: { [key: string]: string } = {
     draft: 'secondary',
-    pending_approval: 'warning',
-    partially_approved: 'warning',
-    fully_approved: 'success',
-    finance_approved: 'success',
-    ordered: 'info',
-    received: 'success',
-    partially_received: 'warning',
-    rejected: 'danger',
+    pending_finance_approval: 'warning',
+    approved: 'success',
+    sent_to_supplier: 'info',
+    supplier_accepted: 'success',
+    in_transit: 'warning',
+    delivered: 'success',
+    rejected_finance: 'danger',
+    declined_supplier: 'danger',
     cancelled: 'danger',
   }
   return map[status] || 'info'
 }
 
+const formatStatus = (status: string) => {
+  if (!status) return '-'
+  return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
 const formatDate = (date: string) => {
+  if (!date) return '-'
   return new Date(date).toLocaleDateString()
 }
 
-const loadPODetail = async () => {
+const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(value || 0)
+
+const loadDetail = async () => {
   try {
     loading.value = true
-    const poId = route.params.id as string
-    const res = await supplierService.getSupplierPODetail(parseInt(poId))
-    
-    po.value = res.data.po
-    feedback.value = res.data.supplier_feedback
+    const id = Number(route.params.id)
+    const res = await supplierService.getSupplierPODetail(id)
+    const payload = res.data || res
+    po.value = payload?.data?.po || payload?.po || null
+    rejectionReason.value = payload?.data?.rejection_reason || payload?.rejection_reason || null
+    shipment.value = payload?.data?.shipment || null
+    invoice.value = payload?.data?.invoice || null
 
-    if (feedback.value) {
-      receiptData.value.delivery_quantity = feedback.value.delivery_quantity
-      receiptData.value.delivery_notes = feedback.value.delivery_notes || ''
+    if (!isDeclined.value && po.value?.id) {
+      if (!shipment.value) {
+        const shipmentRes = await supplierService.getPOShipment(id)
+        const shipmentPayload = shipmentRes.data || shipmentRes
+        shipment.value = shipmentPayload?.data?.shipment || shipmentPayload?.data || shipmentPayload
+      }
+      if (!invoice.value) {
+        try {
+          const invoiceRes = await supplierService.getPOInvoice(id)
+          const invoicePayload = invoiceRes.data || invoiceRes
+          invoice.value = invoicePayload?.data || invoicePayload || null
+        } catch {
+          invoice.value = null
+        }
+      }
     }
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load PO',
+      detail: error.response?.data?.message || 'Failed to load PO details.',
       life: 3000,
     })
   } finally {
@@ -393,119 +242,16 @@ const loadPODetail = async () => {
   }
 }
 
-const canRespondToPO = (data: any) => {
-  if (!data) return false
-  const blockedStatuses = ['cancelled', 'rejected', 'received', 'partially_received']
-  return !blockedStatuses.includes(data.status)
+const printInvoice = () => {
+  window.print()
 }
 
-const getDeliveryAddress = (data: any) => {
-  if (!data) return 'N/A'
-  const branch = data.branch
-  if (!branch) {
-    return data.delivery_address || 'N/A'
-  }
-  const parts = [
-    branch.name,
-    branch.address,
-    branch.city,
-    branch.province,
-  ].filter(Boolean)
-  return parts.join(', ') || 'N/A'
+const viewInvoice = () => {
+  if (!po.value?.id) return
+  router.push(`/supplier-portal/pos/${po.value.id}/invoice-view`)
 }
 
-const submitResponse = async () => {
-  if (responseData.value.response === 'rejected' && !responseData.value.rejection_reason) {
-    toast.add({
-      severity: 'error',
-      summary: 'Validation Error',
-      detail: 'Please provide a rejection reason',
-      life: 3000,
-    })
-    return
-  }
-
-  if (responseData.value.response === 'accepted') {
-    if (!responseData.value.expected_delivery_date || !responseData.value.delivery_quantity) {
-      toast.add({
-        severity: 'error',
-        summary: 'Validation Error',
-        detail: 'Please fill in all required fields',
-        life: 3000,
-      })
-      return
-    }
-  }
-
-  try {
-    submitting.value = true
-    await supplierService.submitPOFeedback({
-      purchase_order_id: po.value.id,
-      response: responseData.value.response,
-      rejection_reason: responseData.value.rejection_reason,
-      expected_delivery_date: responseData.value.expected_delivery_date?.toISOString().split('T')[0],
-      delivery_quantity: responseData.value.delivery_quantity,
-      delivery_notes: responseData.value.delivery_notes,
-    })
-
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Your response has been submitted',
-      life: 3000,
-    })
-
-    loadPODetail()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to submit response',
-      life: 3000,
-    })
-  } finally {
-    submitting.value = false
-  }
-}
-
-const confirmReceipt = async () => {
-  if (!receiptData.value.delivery_quantity) {
-    toast.add({
-      severity: 'error',
-      summary: 'Validation Error',
-      detail: 'Please enter received quantity',
-      life: 3000,
-    })
-    return
-  }
-
-  try {
-    submitting.value = true
-    await supplierService.confirmPOReceipt(feedback.value.id, receiptData.value)
-
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Receipt confirmed successfully',
-      life: 3000,
-    })
-
-    loadPODetail()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to confirm receipt',
-      life: 3000,
-    })
-  } finally {
-    submitting.value = false
-  }
-}
-
-onMounted(() => {
-  loadPODetail()
-})
+onMounted(loadDetail)
 </script>
 
 <style scoped lang="scss">

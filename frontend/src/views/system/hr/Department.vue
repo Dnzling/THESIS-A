@@ -119,7 +119,7 @@
 
         <Column field="status" header="Status" sortable style="width: 120px">
           <template #body="{ data }">
-            <Tag :value="data.status" :severity="data.status === 'active' ? 'success' : 'secondary'" />
+            <Tag :value="formatDepartmentStatus(data.status)" :severity="statusSeverity(data.status)" />
           </template>
         </Column>
 
@@ -178,6 +178,21 @@
         </div>
 
         <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Roles in Department</label>
+          <MultiSelect
+            v-model="formData.role_ids"
+            :options="roles"
+            optionLabel="display_name"
+            optionValue="id"
+            placeholder="Select roles"
+            display="chip"
+            filter
+            class="w-full"
+          />
+          <small class="text-xs text-gray-500">Used to count employees assigned to this department.</small>
+        </div>
+
+        <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
           <Select v-model="formData.status" :options="statusOptions" optionLabel="label" optionValue="value"
             placeholder="Select status" class="w-full" />
@@ -202,8 +217,8 @@
         <div class="grid grid-cols-2 gap-4">
           <div class="bg-gray-50 p-3 rounded-lg">
             <div class="text-xs text-gray-500 mb-1">Status</div>
-            <Tag :value="selectedDepartment.status"
-              :severity="selectedDepartment.status === 'active' ? 'success' : 'secondary'" />
+            <Tag :value="formatDepartmentStatus(selectedDepartment.status)"
+              :severity="statusSeverity(selectedDepartment.status)" />
           </div>
           <div class="bg-gray-50 p-3 rounded-lg">
             <div class="text-xs text-gray-500 mb-1">Total Employees</div>
@@ -272,6 +287,12 @@ interface Employee {
   full_name: string
 }
 
+interface RoleOption {
+  id: number
+  display_name: string
+  name: string
+}
+
 // State
 const toast = useToast()
 const confirm = useConfirm()
@@ -284,6 +305,7 @@ const showViewDialog = ref(false)
 const isEditMode = ref(false)
 const departments = ref<Department[]>([])
 const employees = ref<Employee[]>([])
+const roles = ref<RoleOption[]>([])
 const selectedDepartment = ref<Department | null>(null)
 
 // Filters
@@ -303,6 +325,7 @@ const formData = ref({
   code: '',
   description: '',
   manager_id: null as number | null,
+  role_ids: [] as number[],
   status: 'active'
 })
 
@@ -365,6 +388,22 @@ const fetchEmployees = async () => {
   }
 }
 
+const fetchRoles = async () => {
+  try {
+    const response = await axios.get('/api/store/roles', {
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    })
+    const data = response.data.data || response.data
+    roles.value = (data || []).map((role: any) => ({
+      id: role.id,
+      display_name: role.display_name || role.name,
+      name: role.name
+    }))
+  } catch (error) {
+    console.error('Failed to fetch roles:', error)
+  }
+}
+
 const openAddDialog = () => {
   isEditMode.value = false
   resetForm()
@@ -378,7 +417,8 @@ const editDepartment = (dept: Department) => {
     code: dept.code || '',
     description: dept.description || '',
     manager_id: dept.manager_id || null,
-    status: dept.status
+    role_ids: dept.roles?.map((r: any) => r.id) || [],
+    status: formatDepartmentStatusValue(dept.status)
   }
   selectedDepartment.value = dept
   showFormDialog.value = true
@@ -476,6 +516,7 @@ const resetForm = () => {
     code: '',
     description: '',
     manager_id: null,
+    role_ids: [],
     status: 'active'
   }
 }
@@ -503,9 +544,25 @@ const getInitials = (name: string): string => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
+const formatDepartmentStatusValue = (status: any): string => {
+  if (typeof status === 'boolean') return status ? 'active' : 'inactive'
+  if (!status) return 'inactive'
+  const normalized = String(status).toLowerCase()
+  return normalized === 'active' ? 'active' : 'inactive'
+}
+
+const formatDepartmentStatus = (status: any): string => {
+  return formatDepartmentStatusValue(status) === 'active' ? 'Active' : 'Inactive'
+}
+
+const statusSeverity = (status: any): string => {
+  return formatDepartmentStatusValue(status) === 'active' ? 'success' : 'secondary'
+}
+
 // Lifecycle
 onMounted(() => {
   fetchDepartments()
   fetchEmployees()
+  fetchRoles()
 })
 </script>

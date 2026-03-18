@@ -11,8 +11,8 @@
             <InputText v-model="filters.search" placeholder="Search period" class="w-full" />
           </IconField>
           <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-48" />
-          <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" placeholder="Date Range"
-            fluid />
+          <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" :manualInput="false"
+            placeholder="Date Range" fluid />
           <Button label="New Period" icon="pi pi-plus" severity="info" class="ml-auto" @click="createPeriod" />
         </div>
       </template>

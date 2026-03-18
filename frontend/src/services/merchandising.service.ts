@@ -7,6 +7,7 @@ export interface Product {
     description?: string
     category_id: number
     subcategory_id?: number
+    product_type?: 'raw_material' | 'finished_good'
     brand?: string
     collection_name?: string
     base_price: number

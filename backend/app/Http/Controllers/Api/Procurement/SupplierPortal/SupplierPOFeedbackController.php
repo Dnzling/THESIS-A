@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
 class SupplierPOFeedbackController extends Controller
@@ -20,7 +22,7 @@ class SupplierPOFeedbackController extends Controller
     public function getPOs(Request $request): JsonResponse
     {
         try {
-            $user = auth()->user();
+            $user = Auth::user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
             if (!$portal->isVerified()) {
@@ -45,7 +47,16 @@ class SupplierPOFeedbackController extends Controller
             }
 
             // Get POs for this supplier
+            $allowedStatuses = [
+                'sent_to_supplier',
+                'supplier_accepted',
+                'in_transit',
+                'delivered',
+                'declined_supplier',
+            ];
+
             $query = PurchaseOrder::where('supplier_id', $portal->supplier_id)
+                ->whereIn('status', $allowedStatuses)
                 ->with(['items.product', 'supplier'])
                 ->orderBy('created_at', 'desc');
 
@@ -81,7 +92,7 @@ class SupplierPOFeedbackController extends Controller
     public function getPODetail($id): JsonResponse
     {
         try {
-            $user = auth()->user();
+            $user = Auth::user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
             if (!$portal->isVerified()) {
@@ -113,11 +124,28 @@ class SupplierPOFeedbackController extends Controller
                 ->where('purchase_order_id', $id)
                 ->first();
 
+            $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with(['branch', 'supplier'])
+                ->where('purchase_order_id', $id)
+                ->first();
+
+            $invoice = \App\Models\Procurement\Invoice\Invoice::with(['items.product'])
+                ->where('purchase_order_id', $id)
+                ->latest('id')
+                ->first();
+
+            $rejectionReason = $po->rejection_details['reason'] ?? null;
+            if (!$rejectionReason && $feedback?->rejection_reason) {
+                $rejectionReason = $feedback->rejection_reason;
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'po' => $po,
                     'supplier_feedback' => $feedback,
+                    'shipment' => $shipment,
+                    'invoice' => $invoice,
+                    'rejection_reason' => $rejectionReason,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -138,8 +166,8 @@ class SupplierPOFeedbackController extends Controller
             'purchase_order_id' => 'required|exists:purchase_orders,id',
             'response' => 'required|in:accepted,rejected',
             'rejection_reason' => 'required_if:response,rejected|string',
-            'expected_delivery_date' => 'required_if:response,accepted|date|after_or_equal:today',
-            'delivery_quantity' => 'required_if:response,accepted|integer|min:1',
+            'expected_delivery_date' => 'nullable|date|after_or_equal:today',
+            'delivery_quantity' => 'nullable|integer|min:1',
             'delivery_notes' => 'nullable|string|max:1000',
         ]);
 
@@ -152,7 +180,7 @@ class SupplierPOFeedbackController extends Controller
         }
 
         try {
-            $user = auth()->user();
+            $user = Auth::user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
             if (!$portal->isVerified()) {
@@ -179,6 +207,34 @@ class SupplierPOFeedbackController extends Controller
                     'submitted_at' => now(),
                 ]
             );
+
+            if ($request->response === 'accepted') {
+                $po->markSupplierAccepted();
+
+                ActivityLog::record(
+                    'po_supplier_accepted',
+                    "PO {$po->po_number} accepted by supplier.",
+                    ['po_number' => $po->po_number, 'supplier_id' => $portal->supplier_id],
+                    'purchase_order',
+                    $po->id
+                );
+            }
+
+            if ($request->response === 'rejected') {
+                $po->markSupplierDeclined($request->get('rejection_reason'));
+
+                ActivityLog::record(
+                    'po_supplier_declined',
+                    "PO {$po->po_number} declined by supplier.",
+                    [
+                        'po_number' => $po->po_number,
+                        'supplier_id' => $portal->supplier_id,
+                        'reason' => $request->get('rejection_reason'),
+                    ],
+                    'purchase_order',
+                    $po->id
+                );
+            }
 
             return response()->json([
                 'success' => true,
@@ -213,7 +269,7 @@ class SupplierPOFeedbackController extends Controller
         }
 
         try {
-            $user = auth()->user();
+            $user = Auth::user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
             $feedback = SupplierPOFeedback::where('id', $id)
@@ -254,7 +310,7 @@ class SupplierPOFeedbackController extends Controller
     public function getMyFeedbacks(Request $request): JsonResponse
     {
         try {
-            $user = auth()->user();
+            $user = Auth::user();
             $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
 
             $feedbacksQuery = $portal->poFeedbacks()

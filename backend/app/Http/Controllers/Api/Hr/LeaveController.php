@@ -8,6 +8,7 @@ use App\Models\Hr\LeaveBalance;
 use App\Models\Hr\Employee;
 use App\Models\Hr\Attendance;
 use App\Models\Core\User;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -153,6 +154,14 @@ class LeaveController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'leave.requested',
+                'Submitted leave request',
+                ['leave_id' => $leave->id],
+                'Leave',
+                $leave->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Leave request submitted successfully',
@@ -224,6 +233,14 @@ class LeaveController extends Controller
 
             DB::commit();
 
+            ActivityLog::record(
+                'leave.approved',
+                'Approved leave request',
+                ['leave_id' => $leave->id],
+                'Leave',
+                $leave->id
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Leave request approved successfully',
@@ -281,6 +298,14 @@ class LeaveController extends Controller
             $leave->reject(auth()->id(), $request->rejected_reason);
 
             DB::commit();
+
+            ActivityLog::record(
+                'leave.rejected',
+                'Rejected leave request',
+                ['leave_id' => $leave->id],
+                'Leave',
+                $leave->id
+            );
 
             return response()->json([
                 'success' => true,
@@ -341,6 +366,14 @@ class LeaveController extends Controller
             $leave->update(['status' => 'cancelled']);
 
             DB::commit();
+
+            ActivityLog::record(
+                'leave.cancelled',
+                'Cancelled leave request',
+                ['leave_id' => $leave->id],
+                'Leave',
+                $leave->id
+            );
 
             return response()->json([
                 'success' => true,

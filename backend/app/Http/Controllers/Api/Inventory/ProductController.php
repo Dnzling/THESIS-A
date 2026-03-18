@@ -42,6 +42,10 @@ class ProductController extends Controller
                 $query->where('category_id', $request->category_id);
             }
 
+            if ($request->has('product_type')) {
+                $query->where('product_type', $request->product_type);
+            }
+
             if ($request->has('search')) {
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
@@ -121,6 +125,7 @@ class ProductController extends Controller
                 'sku' => 'required|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:product_categories,id',
+                'product_type' => 'nullable|in:raw_material,finished_good',
                 'base_price' => 'required|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean',
@@ -138,6 +143,7 @@ class ProductController extends Controller
                 'sku' => $validated['sku'],
                 'description' => $validated['description'] ?? null,
                 'category_id' => $validated['category_id'],
+                'product_type' => $validated['product_type'] ?? 'finished_good',
                 'base_price' => $validated['base_price'],
                 'cost_price' => $validated['cost_price'] ?? null,
                 'is_active' => $validated['is_active'] ?? true,
@@ -190,6 +196,7 @@ class ProductController extends Controller
                 'sku' => 'required|string|max:100|unique:products,sku,' . $id . ',id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:product_categories,id',
+                'product_type' => 'nullable|in:raw_material,finished_good',
                 'base_price' => 'required|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean',
@@ -200,6 +207,7 @@ class ProductController extends Controller
                 'sku' => $validated['sku'],
                 'description' => $validated['description'] ?? null,
                 'category_id' => $validated['category_id'],
+                'product_type' => $validated['product_type'] ?? $product->product_type ?? 'finished_good',
                 'base_price' => $validated['base_price'],
                 'cost_price' => $validated['cost_price'] ?? null,
                 'is_active' => $validated['is_active'] ?? $product->is_active,

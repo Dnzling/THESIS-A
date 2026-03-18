@@ -10,6 +10,7 @@ use App\Models\Procurement\Supplier\SupplierPayment;
 use App\Models\Hr\Payroll;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class FinanceDashboardController extends Controller
 {
@@ -17,27 +18,42 @@ class FinanceDashboardController extends Controller
     {
         $storeId = auth()->user()->store_id;
 
-        $payables = PurchaseOrder::where('store_id', $storeId)
-            ->where('payment_status', 'pending')
-            ->sum('total_amount');
+        $payables = Schema::hasTable('purchase_orders')
+            ? PurchaseOrder::where('store_id', $storeId)
+                ->where('payment_status', 'pending')
+                ->sum('total_amount')
+            : 0;
 
-        $invoicesDue = Invoice::where('store_id', $storeId)
-            ->whereIn('status', ['pending', 'approved'])
-            ->sum('net_amount');
+        $invoicesDue = Schema::hasTable('invoices')
+            ? Invoice::where('store_id', $storeId)
+                ->whereIn('status', ['pending', 'approved'])
+                ->sum('net_amount')
+            : 0;
 
-        $paymentsCompleted = SupplierPayment::whereHas('purchaseOrder', function ($q) use ($storeId) {
-                $q->where('store_id', $storeId);
-            })
-            ->where('status', 'completed')
-            ->sum('payment_amount');
+        $paymentsCompleted = 0;
+        if (Schema::hasTable('supplier_payments')) {
+            $paymentsQuery = SupplierPayment::query()->where('status', 'completed');
+            if (Schema::hasColumn('supplier_payments', 'store_id')) {
+                $paymentsQuery->where('store_id', $storeId);
+            } elseif (Schema::hasColumn('supplier_payments', 'purchase_order_id')) {
+                $paymentsQuery->whereHas('purchaseOrder', function ($q) use ($storeId) {
+                    $q->where('store_id', $storeId);
+                });
+            }
+            $paymentsCompleted = $paymentsQuery->sum('payment_amount');
+        }
 
-        $expensesPending = FinanceExpense::where('store_id', $storeId)
-            ->where('status', 'pending_approval')
-            ->sum('amount');
+        $expensesPending = Schema::hasTable('finance_expenses')
+            ? FinanceExpense::where('store_id', $storeId)
+                ->where('status', 'pending_approval')
+                ->sum('amount')
+            : 0;
 
-        $payrollPending = Payroll::byUserStore()
-            ->whereIn('status', ['pending', 'submitted', 'approved'])
-            ->sum('net_salary');
+        $payrollPending = Schema::hasTable('payrolls')
+            ? Payroll::byUserStore()
+                ->whereIn('status', ['pending', 'submitted', 'approved'])
+                ->sum('net_salary')
+            : 0;
 
         return response()->json([
             'success' => true,

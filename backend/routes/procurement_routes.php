@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Procurement\RFQ\SupplierQuotationController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
+use App\Http\Controllers\Api\Procurement\InvoiceController;
 use App\Http\Controllers\Api\Procurement\Config\ProcurementSettingsController;
 use App\Http\Controllers\Api\Procurement\Config\RoleApprovalLimitController;
 use App\Http\Controllers\Api\Procurement\DashboardController as ProcurementDashboardController;
@@ -89,6 +90,7 @@ Route::prefix('procurement')->group(function () {
         Route::get('/', [RequestForQuotationController::class, 'index']);
         Route::get('/{id}', [RequestForQuotationController::class, 'show']);
         Route::post('/', [RequestForQuotationController::class, 'store']);
+        Route::put('/{id}', [RequestForQuotationController::class, 'update']);
         Route::delete('/{id}', [RequestForQuotationController::class, 'destroy']);
         Route::post('/{id}/send', [RequestForQuotationController::class, 'send']);
         Route::post('/{id}/close', [RequestForQuotationController::class, 'close']);
@@ -143,17 +145,31 @@ Route::prefix('procurement')->group(function () {
         Route::get('/summary', [GoodsReceiptController::class, 'summary']);
     });
 
+    // Invoices
+    Route::prefix('invoices')->group(function () {
+        Route::get('/', [InvoiceController::class, 'index']);
+        Route::get('/pending/match', [InvoiceController::class, 'getPendingMatch']);
+        Route::get('/exceptions', [InvoiceController::class, 'getExceptions']);
+        Route::get('/{id}', [InvoiceController::class, 'show'])->whereNumber('id');
+        Route::post('/', [InvoiceController::class, 'store']);
+        Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
+        Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id');
+        Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id');
+        Route::post('/{id}/mark-paid', [InvoiceController::class, 'markPaid'])->whereNumber('id');
+        Route::post('/{id}/schedule-payment', [InvoiceController::class, 'schedulePayment'])->whereNumber('id');
+    });
+
     // Supplier Payments
     Route::prefix('payments')->group(function () {
         Route::get('/', [SupplierPaymentController::class, 'index']);
-        Route::get('/{id}', [SupplierPaymentController::class, 'show']);
-        Route::post('/', [SupplierPaymentController::class, 'store']);
-        Route::delete('/{id}', [SupplierPaymentController::class, 'destroy']);
-        Route::post('/{id}/approve', [SupplierPaymentController::class, 'approve']);
-        Route::post('/{id}/process', [SupplierPaymentController::class, 'process']);
-        Route::post('/{id}/cancel', [SupplierPaymentController::class, 'cancel']);
         Route::get('/pending', [SupplierPaymentController::class, 'pending']);
         Route::get('/summary', [SupplierPaymentController::class, 'summary']);
+        Route::post('/', [SupplierPaymentController::class, 'store']);
+        Route::get('/{id}', [SupplierPaymentController::class, 'show'])->whereNumber('id');
+        Route::delete('/{id}', [SupplierPaymentController::class, 'destroy'])->whereNumber('id');
+        Route::post('/{id}/approve', [SupplierPaymentController::class, 'approve'])->whereNumber('id');
+        Route::post('/{id}/process', [SupplierPaymentController::class, 'process'])->whereNumber('id');
+        Route::post('/{id}/cancel', [SupplierPaymentController::class, 'cancel'])->whereNumber('id');
     });
 
     // Procurement Settings
@@ -189,8 +205,8 @@ Route::prefix('procurement')->group(function () {
     // Products (automation features)
     Route::prefix('product-inventory')->group(function () {
         Route::get('/', [BranchInventoryController::class, 'index']);
-        Route::get('/{id}', [BranchInventoryController::class, 'show']);
         Route::get('/history', [PurchaseOrderPrintEmailController::class, 'getProductHistory']);
+        Route::get('/{id}', [BranchInventoryController::class, 'show']);
         Route::get('/{productId}/alternative-suppliers', [PurchaseOrderPrintEmailController::class, 'getAlternativeSuppliers']);
     });
 

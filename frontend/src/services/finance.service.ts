@@ -8,8 +8,43 @@ const financeService = {
     return response.data
   },
 
+  async approvePurchaseOrder(id: number) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/approve`)
+    return response.data
+  },
+
+  async rejectPurchaseOrder(id: number, payload: { notes: string }) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/reject`, payload)
+    return response.data
+  },
+
   async getPayables(params?: any) {
     const response = await axiosClient.get(`${baseUrl}/payables`, { params })
+    return response.data
+  },
+
+  async getInvoice(id: number) {
+    const response = await axiosClient.get(`${baseUrl}/invoices/${id}`)
+    return response.data
+  },
+
+  async getInvoices(params?: any) {
+    const response = await axiosClient.get(`${baseUrl}/invoices`, { params })
+    return response.data
+  },
+
+  async matchInvoice(id: number) {
+    const response = await axiosClient.post(`${baseUrl}/invoices/${id}/match`)
+    return response.data
+  },
+
+  async approveInvoice(id: number) {
+    const response = await axiosClient.post(`${baseUrl}/invoices/${id}/approve`)
+    return response.data
+  },
+
+  async markInvoicePaid(id: number, payload: { payment_method: string; payment_amount: number }) {
+    const response = await axiosClient.post(`${baseUrl}/invoices/${id}/mark-paid`, payload)
     return response.data
   },
 

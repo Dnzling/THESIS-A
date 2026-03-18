@@ -9,7 +9,6 @@ export interface POLineItem {
   product_image?: string
   quantity_ordered: number
   unit_cost: number
-  tax_rate: number
   discount_percent: number
   line_total?: number
   stock_level?: number
@@ -30,7 +29,6 @@ export interface POForm {
   notes: string
   items: POLineItem[]
   subtotal?: number
-  tax_total?: number
   total_amount?: number
 }
 
@@ -47,13 +45,7 @@ export const usePoAutomation = () => {
       const response = await procurementService.getSupplier(supplierId)
       selectedSupplier.value = response.data
 
-      return {
-        contact_person: response.data?.contact_person,
-        email: response.data?.email,
-        phone: response.data?.phone,
-        address: response.data?.address,
-        payment_terms: response.data?.payment_terms || 'net_30'
-      }
+      return response.data
     } catch (error) {
       console.error('Failed to auto-fill supplier details', error)
       return null
@@ -74,7 +66,7 @@ export const usePoAutomation = () => {
     return deliveryDate.toISOString().split('T')[0] || ''
   }
 
-  // Calculate line item total with tax and discount
+  // Calculate line item total with discount
   const calculateLineTotal = (item: POLineItem): number => {
     let total = item.quantity_ordered * item.unit_cost
 
@@ -83,18 +75,12 @@ export const usePoAutomation = () => {
       total -= total * (item.discount_percent / 100)
     }
 
-    // Apply tax
-    if (item.tax_rate > 0) {
-      total += total * (item.tax_rate / 100)
-    }
-
     return Math.round(total * 100) / 100
   }
 
   // Calculate PO totals
   const calculateTotals = (items: POLineItem[], shippingCost: number = 0, discountAmount: number = 0) => {
     let subtotal = 0
-    let taxTotal = 0
 
     items.forEach((item) => {
       const itemSubtotal = item.quantity_ordered * item.unit_cost
@@ -105,21 +91,12 @@ export const usePoAutomation = () => {
       } else {
         subtotal += itemSubtotal
       }
-
-      // Calculate tax on discounted amount
-      if (item.tax_rate > 0) {
-        const discountedAmount = item.discount_percent > 0 
-          ? itemSubtotal - itemSubtotal * (item.discount_percent / 100)
-          : itemSubtotal
-        taxTotal += discountedAmount * (item.tax_rate / 100)
-      }
     })
 
-    const totalAmount = subtotal + taxTotal + shippingCost - discountAmount
+    const totalAmount = subtotal + shippingCost - discountAmount
 
     return {
       subtotal: Math.round(subtotal * 100) / 100,
-      tax_total: Math.round(taxTotal * 100) / 100,
       total_amount: Math.round(totalAmount * 100) / 100
     }
   }
@@ -146,6 +123,13 @@ export const usePoAutomation = () => {
 
   // Check for supplier issues
   const checkSupplierStatus = (supplier: any): { status: string; severity: string; message: string } => {
+    if (!supplier) {
+      return {
+        status: 'unknown',
+        severity: 'info',
+        message: 'Supplier details are not available yet.'
+      }
+    }
     if (supplier.status === 'blacklisted') {
       return {
         status: 'blacklisted',
@@ -188,7 +172,6 @@ export const usePoAutomation = () => {
         product_image: item.product_image,
         quantity_ordered: item.average_quantity || 1,
         unit_cost: item.last_price || 0,
-        tax_rate: storeSettings.value?.default_tax_rate || 12,
         discount_percent: 0,
         stock_level: item.current_stock || 0,
         reorder_point: item.reorder_point || 0

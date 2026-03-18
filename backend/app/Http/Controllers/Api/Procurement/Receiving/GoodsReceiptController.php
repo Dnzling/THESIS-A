@@ -9,6 +9,7 @@ use App\Models\Procurement\Receiving\GoodsReceiptItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -101,6 +102,22 @@ class GoodsReceiptController extends Controller
         try {
             $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
 
+            // Validate quantities vs expected
+            foreach ($validated['items'] as $itemData) {
+                if ($itemData['quantity_received'] > $itemData['quantity_expected']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Quantity received cannot exceed quantity expected.',
+                    ], 422);
+                }
+                if (($itemData['quantity_damaged'] ?? 0) > $itemData['quantity_received']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Quantity damaged cannot exceed quantity received.',
+                    ], 422);
+                }
+            }
+
             // Generate GRN number using datetime for uniqueness
             $grnNumber = 'GRN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
@@ -109,12 +126,15 @@ class GoodsReceiptController extends Controller
             $hasDamaged = false;
             $hasPartial = false;
 
+            $mismatchSummaries = [];
             foreach ($validated['items'] as $item) {
                 if ($item['quantity_damaged'] > 0) {
                     $hasDamaged = true;
+                    $mismatchSummaries[] = "Damaged: product {$item['product_id']} qty {$item['quantity_damaged']}";
                 }
                 if ($item['quantity_received'] < $item['quantity_expected']) {
                     $hasPartial = true;
+                    $mismatchSummaries[] = "Short: product {$item['product_id']} expected {$item['quantity_expected']} received {$item['quantity_received']}";
                 }
             }
 
@@ -136,9 +156,17 @@ class GoodsReceiptController extends Controller
                 'delivery_note_number' => $validated['delivery_note_number'] ?? null,
                 'vehicle_number' => $validated['vehicle_number'] ?? null,
                 'driver_name' => $validated['driver_name'] ?? null,
-                'discrepancy_notes' => $validated['discrepancy_notes'] ?? null,
+                'discrepancy_notes' => $validated['discrepancy_notes'] ?? (count($mismatchSummaries) ? implode(' | ', $mismatchSummaries) : null),
                 'quality_notes' => $validated['quality_notes'] ?? null,
             ]);
+
+            ActivityLog::record(
+                'grn_created',
+                "Goods receipt {$grnNumber} created for PO {$po->po_number}.",
+                ['grn_number' => $grnNumber, 'po_number' => $po->po_number, 'receipt_status' => $receiptStatus],
+                'goods_receipt',
+                $grn->id
+            );
 
             // Create items and update inventory
             foreach ($validated['items'] as $itemData) {
@@ -258,8 +286,8 @@ class GoodsReceiptController extends Controller
             });
 
             if ($allItemsReceived) {
+                $po->markDelivered();
                 $po->update([
-                    'status' => 'received',
                     'actual_delivery_date' => $validated['receipt_date'],
                 ]);
 
@@ -269,8 +297,24 @@ class GoodsReceiptController extends Controller
                 $onTime = $actualDate <= $expectedDate;
 
                 $po->supplier->recordDelivery($onTime);
+
+                ActivityLog::record(
+                    'po_delivered',
+                    "PO {$po->po_number} marked delivered.",
+                    ['po_number' => $po->po_number, 'receipt_date' => $validated['receipt_date']],
+                    'purchase_order',
+                    $po->id
+                );
             } else {
-                $po->update(['status' => 'partially_received']);
+                $po->markInTransit();
+
+                ActivityLog::record(
+                    'po_partial_received',
+                    "PO {$po->po_number} partially received.",
+                    ['po_number' => $po->po_number],
+                    'purchase_order',
+                    $po->id
+                );
             }
 
             DB::commit();
@@ -317,7 +361,7 @@ class GoodsReceiptController extends Controller
         $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier'])
             ->findOrFail($poId);
 
-        if ($po->status !== 'ordered') {
+        if (!in_array($po->status, ['supplier_accepted', 'sent_to_supplier', 'in_transit'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Purchase order is not ready for receiving',

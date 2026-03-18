@@ -9,6 +9,7 @@ use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\Config\ProcurementSettings;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseRequisitionController extends Controller
@@ -20,7 +21,7 @@ class PurchaseRequisitionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = PurchaseRequisition::with(['branch', 'requestedBy', 'items.product.suppliers'])
-            ->where('store_id', auth()->user()->store_id);
+            ->where('store_id', Auth::user()->store_id);
 
         // Filters
         if ($request->has('branch_id')) {
@@ -92,7 +93,6 @@ class PurchaseRequisitionController extends Controller
         $validated = $request->validate([
             'branch_id' => 'required|exists:branches,id',
             'requisition_type' => 'required|in:regular,urgent,new_product,seasonal,emergency',
-            'required_date' => 'required|date|after:today',
             'reason' => 'required|string',
             'priority' => 'nullable|integer|min:1|max:5',
             'items' => 'required|array|min:1',
@@ -115,7 +115,7 @@ class PurchaseRequisitionController extends Controller
             }
 
             // Get procurement settings
-            $settings = ProcurementSettings::where('store_id', auth()->user()->store_id)->first();
+            $settings = ProcurementSettings::where('store_id', Auth::user()->store_id)->first();
 
             // Determine procurement route
             $procurementRoute = 'branch_direct';
@@ -139,19 +139,20 @@ class PurchaseRequisitionController extends Controller
             }
 
             // Create PR
+            $requestedBy = auth()->user()?->employee?->id;
+
             $pr = PurchaseRequisition::create([
                 'pr_number' => $prNumber,
-                'store_id' => auth()->user()->store_id,
+                'store_id' => Auth::user()->store_id,
                 'branch_id' => $validated['branch_id'],
                 'requisition_type' => $validated['requisition_type'],
                 'status' => 'draft',
                 'estimated_amount' => $estimatedAmount,
                 'procurement_route' => $procurementRoute,
                 'required_approvals' => $requiredApprovals,
-                'required_date' => $validated['required_date'],
                 'reason' => $validated['reason'],
                 'priority' => $validated['priority'] ?? 3,
-                'requested_by' => auth()->id(),
+                'requested_by' => $requestedBy,
             ]);
 
             // Create items
@@ -200,7 +201,6 @@ class PurchaseRequisitionController extends Controller
         }
 
         $validated = $request->validate([
-            'required_date' => 'nullable|date|after:today',
             'reason' => 'nullable|string',
             'priority' => 'nullable|integer|min:1|max:5',
         ]);
@@ -258,10 +258,18 @@ class PurchaseRequisitionController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        // Check if user has this role
-        $userRole = auth()->user()->role->name;
+        // Check if user has this role (normalize for consistency)
+        $normalizeRole = function (?string $role): string {
+            $role = trim((string) $role);
+            $role = preg_replace('/[\s-]+/', '_', $role);
+            return strtolower($role);
+        };
 
-        if ($userRole !== $validated['role']) {
+        $userRoleRaw = Auth::user()->role->name ?? Auth::user()->role ?? '';
+        $userRole = $normalizeRole($userRoleRaw);
+        $requestedRole = $normalizeRole($validated['role']);
+
+        if ($userRole !== $requestedRole) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to approve as this role',
@@ -270,15 +278,21 @@ class PurchaseRequisitionController extends Controller
 
         // Add approval
         $pr->addApproval(
-            $validated['role'],
-            auth()->id(),
-            auth()->user()->full_name,
+            $userRole,
+            Auth::id(),
+            Auth::user()->full_name,
             $validated['notes'] ?? null
         );
 
         // Update status
         $requiredApprovals = $pr->required_approvals ?? [];
         $receivedApprovals = collect($pr->approval_chain ?? [])->pluck('role')->toArray();
+
+        $roleStatusMap = [
+            'warehouse_manager' => 'warehouse_approved',
+            'branch_manager' => 'branch_manager_approved',
+            'finance_manager' => 'pending_central_review',
+        ];
 
         $allApproved = true;
         foreach ($requiredApprovals as $requiredRole) {
@@ -289,7 +303,9 @@ class PurchaseRequisitionController extends Controller
         }
 
         if ($allApproved) {
-            $pr->update(['status' => 'warehouse_approved']);
+            $pr->update(['status' => 'procurement_processing']);
+        } elseif (isset($roleStatusMap[$userRole])) {
+            $pr->update(['status' => $roleStatusMap[$userRole]]);
         }
 
         return response()->json([
@@ -315,9 +331,9 @@ class PurchaseRequisitionController extends Controller
             'status' => 'rejected',
             'approval_chain' => array_merge($pr->approval_chain ?? [], [
                 [
-                    'role' => auth()->user()->role->name,
-                    'user_id' => auth()->id(),
-                    'user_name' => auth()->user()->full_name,
+                    'role' => Auth::user()->role->name,
+                    'user_id' => Auth::id(),
+                    'user_name' => Auth::user()->full_name,
                     'action' => 'rejected',
                     'reason' => $validated['reason'],
                     'rejected_at' => now()->toDateTimeString(),
@@ -343,10 +359,10 @@ class PurchaseRequisitionController extends Controller
             'reason' => 'required|string',
         ]);
 
-        if (!in_array($pr->status, ['draft', 'submitted'])) {
+        if (!in_array($pr->status, ['draft', 'pending'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only draft or submitted requisitions can be cancelled',
+                'message' => 'Only draft or pending requisitions can be cancelled',
             ], 422);
         }
 

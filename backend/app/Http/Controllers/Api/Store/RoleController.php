@@ -14,14 +14,17 @@ class RoleController extends Controller
     public function index(): JsonResponse
     {
         $storeId = auth()->user()->store_id;
+        $globalAllowed = ['customer', 'store_admin', 'supplier'];
 
         $roles = DB::table('roles')
             ->select('roles.*')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
             ->where(function ($q) use ($storeId) {
-                $q->whereNull('store_id')
-                    ->orWhere('store_id', $storeId);
+                $q->where('store_id', $storeId);
+            })
+            ->orWhere(function ($q) use ($globalAllowed) {
+                $q->whereNull('store_id')->whereIn('name', $globalAllowed);
             })
             ->orderByRaw('store_id is null desc')
             ->orderBy('display_name')
@@ -128,8 +131,15 @@ class RoleController extends Controller
     public function getRolePermissions(int $roleId): JsonResponse
     {
         $storeId = auth()->user()->store_id;
+        $globalAllowed = ['customer', 'store_admin', 'supplier'];
         $role = Role::where(function ($q) use ($storeId) {
                 $q->whereNull('store_id')->orWhere('store_id', $storeId);
+            })
+            ->where(function ($q) use ($storeId, $globalAllowed) {
+                $q->where('store_id', $storeId)
+                  ->orWhere(function ($inner) use ($globalAllowed) {
+                      $inner->whereNull('store_id')->whereIn('name', $globalAllowed);
+                  });
             })
             ->findOrFail($roleId);
 

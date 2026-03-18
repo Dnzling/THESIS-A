@@ -172,7 +172,7 @@ class SupplierController extends Controller
 
         // Check if supplier has active purchase orders
         $activePOs = $supplier->purchaseOrders()
-            ->whereIn('status', ['draft', 'pending_approval', 'approved', 'ordered'])
+            ->whereIn('status', ['draft', 'pending_finance_approval', 'approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit'])
             ->count();
 
         if ($activePOs > 0) {

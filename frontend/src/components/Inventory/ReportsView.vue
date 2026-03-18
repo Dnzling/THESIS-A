@@ -48,7 +48,7 @@
     <!-- Date Range Filters -->
     <Card v-if="selectedReport">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">From Date</label>
             <Calendar v-model="filters.startDate" dateFormat="dd/mm/yy" class="w-full" />
@@ -65,6 +65,18 @@
               optionLabel="label"
               optionValue="value"
               class="w-full"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Product Type</label>
+            <Dropdown
+              v-model="filters.productType"
+              :options="productTypeOptions"
+              optionLabel="label"
+              optionValue="value"
+              class="w-full"
+              showClear
+              placeholder="All Types"
             />
           </div>
           <div class="flex items-end">
@@ -233,7 +245,8 @@ const reportTypes = [
 const filters = reactive({
   startDate: new Date(new Date().setDate(new Date().getDate() - 30)),
   endDate: new Date(),
-  groupBy: 'daily'
+  groupBy: 'daily',
+  productType: null as string | null
 })
 
 const groupByOptions = [
@@ -242,6 +255,10 @@ const groupByOptions = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Category', value: 'category' },
   { label: 'Branch', value: 'branch' }
+]
+const productTypeOptions = [
+  { label: 'Finished Good', value: 'finished_good' },
+  { label: 'Raw Material', value: 'raw_material' }
 ]
 
 const chartOptions = {
@@ -294,7 +311,8 @@ const loadSelectedReport = async () => {
       params: {
         from_date: filters.startDate?.toISOString(),
         to_date: filters.endDate?.toISOString(),
-        group_by: filters.groupBy
+        group_by: filters.groupBy,
+        product_type: filters.productType || undefined
       }
     })
 
@@ -419,7 +437,8 @@ const exportReport = async () => {
       params: {
         from_date: filters.startDate?.toISOString(),
         to_date: filters.endDate?.toISOString(),
-        export_format: 'csv'
+        export_format: 'csv',
+        product_type: filters.productType || undefined
       },
       responseType: 'blob'
     })

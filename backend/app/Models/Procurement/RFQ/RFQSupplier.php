@@ -51,7 +51,7 @@ class RFQSupplier extends Model
     {
         $this->update([
             'status' => 'submitted',
-            'submitted_at' => now(),
+            'responded_at' => now(),
         ]);
     }
 
@@ -60,15 +60,16 @@ class RFQSupplier extends Model
         $this->update([
             'status' => 'declined',
             'decline_reason' => $reason,
+            'responded_at' => now(),
         ]);
     }
 
     public function getResponseTimeAttribute(): ?int
     {
-        if (!$this->submitted_at || !$this->sent_at) {
+        if (!$this->responded_at || !$this->invited_at) {
             return null;
         }
 
-        return $this->sent_at->diffInHours($this->submitted_at);
+        return $this->invited_at->diffInHours($this->responded_at);
     }
 }

@@ -28,11 +28,14 @@
     </Card>
 
     <!-- RFQ Table -->
-    <Card>
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #content>
+        <div v-if="loading" class="space-y-3">
+          <Skeleton v-for="i in 6" :key="i" height="64px" class="rounded-xl" />
+        </div>
         <DataTable
+          v-else
           :value="rfqs"
-          :loading="loading"
           :paginator="true"
           :rows="rows"
           :totalRecords="totalRecords"
@@ -90,6 +93,7 @@ import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Skeleton from 'primevue/skeleton'
 import PageHeader from '../../../components/PageHeader.vue'
 import supplierService from '../../../services/supplier.service'
 
@@ -116,6 +120,7 @@ const getStatusSeverity = (status: string) => {
 }
 
 const formatDate = (date: string) => {
+  if (!date) return '—'
   return new Date(date).toLocaleDateString()
 }
 

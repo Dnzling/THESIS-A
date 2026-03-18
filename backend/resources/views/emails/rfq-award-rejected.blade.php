@@ -11,7 +11,7 @@ Thank you for submitting your quotation for RFQ **{{ $rfq->rfq_number }}**: {{ $
 - **Your Quotation Number**: {{ $quotation->quotation_number }}
 - **Status**: **NOT SELECTED**
 
-We received {{ $rfq->quotations_count }} qualified quotations for this RFQ. After careful evaluation based on our selection criteria (price, delivery time, quality, and payment terms), we have selected another supplier for this purchase.
+We received {{ $rfq->quotations_count }} qualified quotations for this RFQ. After careful evaluation based on our selection criteria (price, delivery time, and quality), we have selected another supplier for this purchase.
 
 ## Your Quotation Summary
 - **Submitted Price**: {{ $rfq->currency }} {{ number_format($quotation->total_price, 2) }}

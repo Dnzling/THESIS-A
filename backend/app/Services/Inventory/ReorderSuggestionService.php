@@ -466,7 +466,6 @@ class ReorderSuggestionService
                 'estimated_amount' => $estimatedAmount,
                 'procurement_route' => $procurementRoute,
                 'required_approvals' => $requiredApprovals,
-                'required_date' => now()->addDays(7),
                 'reason' => "Auto-created from reorder suggestion #{$suggestion->id}",
                 'priority' => $priorityMap[$suggestion->priority] ?? 3,
                 'requested_by' => $userId,

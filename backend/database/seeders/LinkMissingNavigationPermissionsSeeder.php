@@ -41,7 +41,7 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'hr.leave' => ['hr.leave.view', 'hr.leave.request', 'hr.leave.approve'],
             'hr.leave.balances' => ['hr.leave.view'],
             'hr.analytics' => ['hr.analytics.view'],
-            'hr.settings' => ['hr.settings.manage'],
+            'hr.settings' => ['hr.settings.manage', 'hr.activity-logs.view'],
             'hr.payroll' => ['hr.payroll.view', 'hr.payroll.create'],
             'hr.payroll.overview' => ['hr.payroll.view'],
             'hr.payroll.periods' => ['hr.payroll.view'],
@@ -64,8 +64,36 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'merchandising.pricing-history' => ['merchandising.reports.view'],
         ];
 
+        // ========== FINANCE PERMISSION MAPPINGS ==========
+        $financeMappings = [
+            'finance.dashboard' => ['finance.transactions.view.store'],
+            'finance.payables' => ['finance.documents.view.store'],
+            'finance.receivables' => ['finance.documents.view.store'],
+            'finance.expenses' => ['finance.transactions.view.store'],
+            'finance.payroll' => ['finance.workflows.view.store'],
+            'finance.budgets' => ['finance.settings.view.store'],
+            'finance.reports' => ['finance.documents.view.store'],
+            'finance.purchase-orders' => ['finance.purchase-orders.view'],
+            'finance.purchase-orders.detail' => [
+                'finance.purchase-orders.view',
+                'finance.purchase-orders.approve',
+                'finance.purchase-orders.reject'
+            ],
+        ];
+
+        // ========== ADMIN CUSTOMER MANAGEMENT ==========
+        $adminMappings = [
+            'admin.customer-management' => ['admin.customers.view', 'admin.customers.require-verification'],
+        ];
+
         // Merge all mappings
-        $allMappings = array_merge($supplierPortalMappings, $hrMappings, $merchandisingMappings);
+        $allMappings = array_merge(
+            $supplierPortalMappings,
+            $hrMappings,
+            $merchandisingMappings,
+            $financeMappings,
+            $adminMappings
+        );
 
         foreach ($allMappings as $navItemName => $permissions) {
             // Get navigation item

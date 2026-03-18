@@ -43,8 +43,12 @@ const SupplierPortalRegistration = () => import('../views/system/supplier/Suppli
 const SupplierRFQIndex = () => import('../views/system/supplier/SupplierRFQIndex.vue')
 const SupplierRFQDetail = () => import('../views/system/supplier/SupplierRFQDetail.vue')
 const SupplierPOIndex = () => import('../views/system/supplier/SupplierPOIndex.vue')
+const SupplierPOApprove = () => import('../views/system/supplier/SupplierPOApprove.vue')
 const SupplierPODetail = () => import('../views/system/supplier/SupplierPODetail.vue')
+const SupplierPODeliveryTemplate = () => import('../views/system/supplier/SupplierPODeliveryTemplate.vue')
+const SupplierPOInvoiceConfirm = () => import('../views/system/supplier/SupplierPOShipmentConfirm.vue')
 const SupplierTransactions = () => import('../views/system/supplier/SupplierTransactions.vue')
+const ProfileIndex = () => import('../views/system/profile/ProfileIndex.vue')
 
 // Store Admin Views
 // const Sales = () => import('../views/system/inventory/Sales.vue')
@@ -136,9 +140,21 @@ const routes: RouteRecordRaw[] = [
       { path: 'rfqs', name: 'supplier.rfqs', component: SupplierRFQIndex, meta: { title: 'RFQs' } },
       { path: 'rfqs/:id', name: 'supplier.rfqs.detail', component: SupplierRFQDetail, meta: { title: 'RFQ Details' } },
       { path: 'pos', name: 'supplier.pos', component: SupplierPOIndex, meta: { title: 'Purchase Orders' } },
-      { path: 'pos/:id', name: 'supplier.pos.detail', component: SupplierPODetail, meta: { title: 'Purchase Order Details' } },
+      { path: 'pos/:id', name: 'supplier.pos.approve', component: SupplierPOApprove, meta: { title: 'Review Purchase Order' } },
+      { path: 'pos/:id/view', name: 'supplier.pos.view', component: SupplierPODetail, meta: { title: 'Purchase Order Details' } },
+      { path: 'pos/:id/delivery-template', name: 'supplier.pos.delivery-template', component: SupplierPODeliveryTemplate, meta: { title: 'Delivery Form' } },
+      { path: 'pos/:id/invoice', name: 'supplier.pos.invoice', component: SupplierPOInvoiceConfirm, meta: { title: 'Invoice Confirmation' } },
+      { path: 'pos/:id/invoice-view', name: 'supplier.pos.invoice-view', component: () => import('../views/system/supplier/SupplierInvoiceDetail.vue'), meta: { title: 'Invoice Details' } },
       { path: 'transactions', name: 'supplier.transactions', component: SupplierTransactions, meta: { title: 'Transactions' } },
       { path: '', redirect: { name: 'supplier.dashboard' } },
+    ]
+  },
+  {
+    path: '/profile',
+    component: SystemLayout,
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', name: 'profile.index', component: ProfileIndex, meta: { title: 'My Profile' } }
     ]
   },
   {
@@ -242,16 +258,11 @@ const routes: RouteRecordRaw[] = [
       { path: 'purchase-requisitions', name: 'procurement.purchase-requisitions', component: () => import('../views/system/procurement/PurchaseRequisitions/PurchaseRequisitionIndex.vue'), meta: { title: 'Purchase Requisitions', subtitle: 'Manage requisitions' } },
       { path: 'purchase-requisitions/create', name: 'procurement.purchase-requisitions.create', component: () => import('../views/system/procurement/PurchaseRequisitions/PurchaseRequisitionCreate.vue'), meta: { title: 'Create Requisition', subtitle: 'Create a purchase requisition' } },
       { path: 'purchase-requisitions/:id', name: 'procurement.purchase-requisitions.detail', component: () => import('../views/system/procurement/PurchaseRequisitions/PurchaseRequisitionDetail.vue'), meta: { title: 'Requisition Details', subtitle: 'Review requisition details' } },
-      { path: 'stock-order-requests', name: 'stock-order-requests.index', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestIndex.vue'), meta: { title: 'Stock Order Requests', subtitle: 'Manage stock order requests for low stock items' } },
-      { path: 'stock-order-requests/create', name: 'stock-order-requests.create', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestCreate.vue'), meta: { title: 'Create Stock Order Request', subtitle: 'Request inventory for low stock items' } },
-      { path: 'stock-order-requests/:id', name: 'stock-order-requests.detail', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestDetail.vue'), meta: { title: 'Stock Order Request Details', subtitle: 'View stock order request details' } },
-      { path: 'stock-order-requests/:id/edit', name: 'stock-order-requests.edit', component: () => import('../views/system/procurement/PurchaseRequests/PurchaseRequestEdit.vue'), meta: { title: 'Edit Stock Order Request', subtitle: 'Update stock order request details' } },
       { path: 'rfqs', name: 'procurement.rfqs', component: () => import('../views/system/procurement/RFQs/RFQIndex.vue'), meta: { title: 'RFQs', subtitle: 'Manage requests for quotations' } },
       { path: 'rfqs/create', name: 'procurement.rfqs.create', component: () => import('../views/system/procurement/RFQs/RFQCreate.vue'), meta: { title: 'Create RFQ', subtitle: 'Create a request for quotation' } },
       { path: 'rfqs/:id', name: 'procurement.rfqs.detail', component: () => import('../views/system/procurement/RFQs/RFQDetail.vue'), meta: { title: 'RFQ Details', subtitle: 'Review RFQ details' } },
       { path: 'purchase-orders', name: 'procurement.purchase-orders', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderIndex.vue'), meta: { title: 'Purchase Orders', subtitle: 'Manage purchase orders' } },
-      { path: 'purchase-orders/create', name: 'procurement.purchase-orders.create', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderCreateNew.vue'), meta: { title: 'Create Purchase Order', subtitle: 'Create a purchase order from stock requests' } },
-      { path: 'purchase-orders/create-legacy', name: 'procurement.purchase-orders.create-legacy', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderCreate.vue'), meta: { title: 'Create Purchase Order (Legacy)', subtitle: 'Create a purchase order (legacy mode)' } },
+      { path: 'purchase-orders/create', name: 'procurement.purchase-orders.create', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderCreate.vue'), meta: { title: 'Create Purchase Order', subtitle: 'Create a purchase order from stock requests' } },
       { path: 'purchase-orders/:id', name: 'procurement.purchase-orders.detail', component: () => import('../views/system/procurement/PurchaseOrders/PurchaseOrderDetail.vue'), meta: { title: 'Purchase Order Details', subtitle: 'Review purchase order details' } },
       { path: 'invoices', name: 'procurement.invoices', component: () => import('../views/system/procurement/Invoices/InvoiceIndex.vue'), meta: { title: 'Invoices', subtitle: 'Manage supplier invoices and 3-way matching' } },
       { path: 'invoices/create', name: 'procurement.invoices.create', component: () => import('../views/system/procurement/Invoices/InvoiceCreate.vue'), meta: { title: 'Create Invoice', subtitle: 'Create a new invoice' } },
@@ -279,6 +290,9 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: 'dashboard', name: 'finance.dashboard', component: () => import('../views/system/finance/FinanceDashboard.vue'), meta: { title: 'Finance Dashboard' } },
       { path: 'payables', name: 'finance.payables', component: () => import('../views/system/finance/FinancePayablesIndex.vue'), meta: { title: 'Accounts Payable' } },
+      { path: 'invoices/:id', name: 'finance.invoices.detail', component: () => import('../views/system/procurement/Invoices/InvoiceDetail.vue'), meta: { title: 'Invoice Review' } },
+      { path: 'purchase-orders', name: 'finance.purchase-orders', component: () => import('../views/system/finance/FinancePurchaseOrderIndex.vue'), meta: { title: 'PO Finance Approvals' } },
+      { path: 'purchase-orders/:id', name: 'finance.purchase-orders.detail', component: () => import('../views/system/finance/FinancePurchaseOrderDetail.vue'), meta: { title: 'PO Finance Review' } },
       { path: 'receivables', name: 'finance.receivables', component: () => import('../views/system/finance/FinanceReceivablesIndex.vue'), meta: { title: 'Accounts Receivable' } },
       { path: 'expenses', name: 'finance.expenses', component: () => import('../views/system/finance/FinanceExpensesIndex.vue'), meta: { title: 'Expenses' } },
       { path: 'payroll', name: 'finance.payroll', component: () => import('../views/system/finance/FinancePayrollIndex.vue'), meta: { title: 'Payroll' } },

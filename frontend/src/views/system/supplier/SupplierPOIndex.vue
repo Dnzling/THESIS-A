@@ -1,6 +1,16 @@
 <template>
   <div class="supplier-po-index">
-    <PageHeader title="Purchase Orders" icon="pi pi-shopping-cart" />
+    <div class="flex items-center justify-between">
+     <div class="text-2xl font-semibold">Purchase Orders</div>
+      <Button
+        v-if="lastDeliveryPoId"
+        label="Last Delivery Form"
+        icon="pi pi-map-marker"
+        severity="secondary"
+        class="p-button-sm"
+        @click="goToDeliveryForm(lastDeliveryPoId)"
+      />
+    </div>
 
     <!-- Filters -->
     <Card class="mb-6">
@@ -40,18 +50,22 @@
     </Card>
 
     <!-- PO Table -->
-    <Card>
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #content>
+        <div v-if="loading" class="space-y-3">
+          <Skeleton v-for="i in 6" :key="i" height="64px" class="rounded-xl" />
+        </div>
         <DataTable
+          v-else
           :value="pos"
-          :loading="loading"
           :paginator="true"
+          :first="first"
           :rows="rows"
           :totalRecords="totalRecords"
           :lazy="true"
           dataKey="id"
           @page="onPageChange"
-          @row-click="(event) => viewDetail(event.data.id)"
+          @row-click="(event) => viewDetail(event.data.id, event.data.status)"
           class="w-full"
         >
           <template #empty>
@@ -72,7 +86,7 @@
           </Column>
           <Column header="Total">
             <template #body="{ data }">
-              ${{ parseFloat(data.total_amount || 0).toFixed(2) }}
+              ₱ {{ parseFloat(data.total_amount || 0).toFixed(2) }}
             </template>
           </Column>
           <Column header="Expected Delivery">
@@ -80,25 +94,29 @@
               {{ formatDate(data.expected_delivery_date) }}
             </template>
           </Column>
-          <Column header="Your Response">
-            <template #body="{ data }">
-              <Tag 
-                v-if="poFeedback[data.id]"
-                :value="poFeedback[data.id].response"
-                :severity="poFeedback[data.id].response === 'accepted' ? 'success' : 'danger'"
-                class="text-xs"
-              />
-              <span v-else class="text-gray-400 text-sm">Pending</span>
-            </template>
-          </Column>
           <Column header="Status">
             <template #body="{ data }">
-              <Tag :value="data.status" :severity="getStatusSeverity(data.status)" />
+              <Tag :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)" />
             </template>
           </Column>
-          <Column header="Action" style="width: 140px">
+          <Column header="Action" style="width: 180px">
             <template #body="{ data }">
-              <Button label="View" icon="pi pi-arrow-right" text @click.stop="viewDetail(data.id)" />
+              <div class="flex items-center gap-2">
+                <Button
+                  :label="['supplier_accepted', 'in_transit', 'delivered', 'declined_supplier'].includes(data.status) ? 'View' : 'Review'"
+                  icon="pi pi-arrow-right"
+                  text
+                  @click.stop="viewDetail(data.id, data.status)"
+                />
+                <Button
+                  v-if="data.status === 'supplier_accepted'"
+                  label="Delivery"
+                  icon="pi pi-truck"
+                  text
+                  severity="secondary"
+                  @click.stop="goToDeliveryForm(data.id)"
+                />
+              </div>
             </template>
           </Column>
         </DataTable>
@@ -120,6 +138,7 @@ import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import PageHeader from '../../../components/PageHeader.vue'
+import Skeleton from 'primevue/skeleton'
 import supplierService from '../../../services/supplier.service'
 
 const router = useRouter()
@@ -132,59 +151,89 @@ const first = ref(0)
 const rows = ref(10)
 const totalRecords = ref(0)
 const poFeedback = ref({})
+const lastDeliveryPoId = ref<number | null>(null)
 
 const statusOptions = [
   { label: 'All Statuses', value: '' },
   { label: 'Draft', value: 'draft' },
-  { label: 'Pending Approval', value: 'pending_approval' },
-  { label: 'Partially Approved', value: 'partially_approved' },
-  { label: 'Fully Approved', value: 'fully_approved' },
-  { label: 'Finance Approved', value: 'finance_approved' },
-  { label: 'Ordered', value: 'ordered' },
-  { label: 'Partially Received', value: 'partially_received' },
-  { label: 'Received', value: 'received' },
-  { label: 'Rejected', value: 'rejected' },
+  { label: 'Pending Finance Approval', value: 'pending_finance_approval' },
+  { label: 'Approved', value: 'approved' },
+  { label: 'Sent to Supplier', value: 'sent_to_supplier' },
+  { label: 'Supplier Accepted', value: 'supplier_accepted' },
+  { label: 'In Transit', value: 'in_transit' },
+  { label: 'Delivered', value: 'delivered' },
+  { label: 'Rejected by Finance', value: 'rejected_finance' },
+  { label: 'Declined by Supplier', value: 'declined_supplier' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
 
 const getStatusSeverity = (status: string) => {
   const map: { [key: string]: string } = {
     draft: 'secondary',
-    pending_approval: 'warning',
-    partially_approved: 'warning',
-    fully_approved: 'success',
-    finance_approved: 'success',
-    ordered: 'info',
-    received: 'success',
-    partially_received: 'warning',
-    rejected: 'danger',
+    pending_finance_approval: 'warning',
+    approved: 'success',
+    sent_to_supplier: 'info',
+    supplier_accepted: 'success',
+    in_transit: 'warning',
+    delivered: 'success',
+    rejected_finance: 'danger',
+    declined_supplier: 'danger',
     cancelled: 'danger',
   }
   return map[status] || 'info'
 }
 
+const formatStatus = (status: string) => {
+  if (!status) return '-'
+  const map: Record<string, string> = {
+    draft: 'Draft',
+    pending_finance_approval: 'Pending Finance Approval',
+    approved: 'Approved',
+    sent_to_supplier: 'Sent to Supplier',
+    supplier_accepted: 'Supplier Accepted',
+    in_transit: 'In Transit',
+    delivered: 'Delivered',
+    rejected_finance: 'Rejected by Finance',
+    declined_supplier: 'Declined by Supplier',
+    cancelled: 'Cancelled',
+  }
+  return map[status] || status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
 const formatDate = (date: string) => {
+  if (!date) return '—'
   return new Date(date).toLocaleDateString()
 }
 
 const loadPOs = async () => {
   try {
     loading.value = true
-    const res = await supplierService.getSupplierPOs({
+    const params: Record<string, any> = {
       page: Math.floor(first.value / rows.value) + 1,
       per_page: rows.value,
-      search: searchQuery.value,
-      status: statusFilter.value,
-    })
-    pos.value = res.data.data
-    totalRecords.value = res.data.total
+    }
+    if (searchQuery.value?.trim()) {
+      params.search = searchQuery.value.trim()
+    }
+    if (statusFilter.value) {
+      params.status = statusFilter.value
+    }
+    const res = await supplierService.getSupplierPOs(params)
+    const payload = res.data
+  
+    console.log('POs loaded:', payload)
+    const pageData = payload?.data
+    pos.value = Array.isArray(pageData?.data) ? [...pageData.data] : (Array.isArray(pageData) ? [...pageData] : [])
+    totalRecords.value = Number(pageData?.total ?? (Array.isArray(pos.value) ? pos.value.length : 0))
 
     // Load feedback for each PO
     pos.value.forEach(async (po: any) => {
       try {
         const feedbackRes = await supplierService.getMyPOFeedbacks({ purchase_order_id: po.id })
-        if (feedbackRes.data.data && feedbackRes.data.data.length > 0) {
-          poFeedback.value[po.id] = feedbackRes.data.data[0]
+        const feedbackPayload = feedbackRes.data || feedbackRes
+        const feedbackList = feedbackPayload?.data?.data || feedbackPayload?.data || []
+        if (feedbackList.length > 0) {
+          poFeedback.value[po.id] = feedbackList[0]
         }
       } catch (error) {
         console.error('Error loading PO feedback:', error)
@@ -224,11 +273,23 @@ const resetFilters = () => {
   loadPOs()
 }
 
-const viewDetail = (id: number) => {
+const viewDetail = (id: number, status?: string) => {
+  if (status === 'in_transit' || status === 'delivered' || status === 'declined_supplier' || status === 'declined_by_supplier') {
+    router.push(`/supplier-portal/pos/${id}/view`)
+    return
+  }
   router.push(`/supplier-portal/pos/${id}`)
 }
 
+const goToDeliveryForm = (id: number) => {
+  localStorage.setItem('last_delivery_form_po_id', String(id))
+  lastDeliveryPoId.value = id
+  router.push(`/supplier-portal/pos/${id}/delivery-template`)
+}
+
 onMounted(() => {
+  const stored = localStorage.getItem('last_delivery_form_po_id')
+  lastDeliveryPoId.value = stored ? Number(stored) : null
   loadPOs()
 })
 </script>
