@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierVerificationCont
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierRFQFeedbackController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPOFeedbackController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierShipmentController;
+use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierDeliveryLogController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierDeliveryTemplateController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,14 +46,18 @@ Route::prefix('supplier-portal')->group(function () {
 
         // PO Shipments (Delivery Form)
         Route::get('/po-shipments/{poId}', [SupplierShipmentController::class, 'show'])->whereNumber('poId');
+        Route::get('/shipments', [SupplierShipmentController::class, 'index']);
+        Route::get('/shipments/{id}', [SupplierShipmentController::class, 'showById'])->whereNumber('id');
         Route::post('/po-shipments', [SupplierShipmentController::class, 'store']);
-        Route::get('/po-shipments/{poId}/invoice', [SupplierShipmentController::class, 'invoice'])->whereNumber('poId');
+        Route::post('/shipments/{id}/deliver', [SupplierShipmentController::class, 'deliver'])->whereNumber('id');
 
         // Delivery Form Templates
         Route::get('/delivery-templates', [SupplierDeliveryTemplateController::class, 'index']);
         Route::post('/delivery-templates', [SupplierDeliveryTemplateController::class, 'store']);
         Route::put('/delivery-templates/{id}', [SupplierDeliveryTemplateController::class, 'update']);
         Route::delete('/delivery-templates/{id}', [SupplierDeliveryTemplateController::class, 'destroy']);
+        Route::get('/shipments/{id}/logs', [SupplierDeliveryLogController::class, 'index']);
+        Route::post('/shipments/{id}/logs', [SupplierDeliveryLogController::class, 'store']);
     });
 });
 

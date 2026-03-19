@@ -1,139 +1,292 @@
 <template>
-  <div class="supplier-po-detail space-y-6 p-6">
-    <div class="flex items-start justify-between gap-4">
-      <div class="flex items-start gap-3">
-        <Button icon="pi pi-arrow-left" text rounded @click="router.push('/supplier-portal/pos')" />
+  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+    <!-- iOS-style Header -->
+    <div class="flex items-start justify-between">
+      <div class="flex items-start gap-4">
+        <button 
+          @click="router.push('/supplier-portal/pos')"
+          class="w-10 h-10 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center transition-colors shadow-sm border border-gray-200"
+        >
+          <i class="pi pi-chevron-left text-gray-600 text-lg"></i>
+        </button>
         <div>
-          <h1 class="text-2xl font-semibold text-slate-900">Purchase Order Details</h1>
-          <p class="text-sm text-slate-500">Full PO details with delivery and invoice information.</p>
+          <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Purchase Order Details</h1>
+          <p class="text-sm text-gray-500 mt-1">Full PO details with delivery and shipment information</p>
         </div>
       </div>
-      <Tag v-if="po" :value="formatStatus(po.status)" :severity="getStatusSeverity(po.status)" />
+      <Tag 
+        v-if="po" 
+        :value="formatStatus(po.status)" 
+        :severity="getStatusSeverity(po.status)"
+        class="rounded-full px-3 py-1 text-xs font-medium"
+      />
     </div>
 
+    <!-- Loading State -->
     <div v-if="loading" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <Card class="lg:col-span-2 rounded-2xl border border-slate-200/70 shadow-sm">
-        <template #content>
-          <Skeleton height="220px" class="rounded-lg" />
-        </template>
-      </Card>
-      <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-        <template #content>
-          <Skeleton height="220px" class="rounded-lg" />
-        </template>
-      </Card>
+      <div class="lg:col-span-2 space-y-6">
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #content>
+            <div class="p-6">
+              <Skeleton width="150px" height="20px" class="mb-4" />
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Skeleton height="60px" class="rounded-xl" />
+                <Skeleton height="60px" class="rounded-xl" />
+                <Skeleton height="60px" class="rounded-xl" />
+              </div>
+            </div>
+          </template>
+        </Card>
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #content>
+            <div class="p-6">
+              <Skeleton width="150px" height="20px" class="mb-4" />
+              <Skeleton height="200px" class="rounded-xl" />
+            </div>
+          </template>
+        </Card>
+      </div>
+      <div class="space-y-6">
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #content>
+            <div class="p-6">
+              <Skeleton width="150px" height="20px" class="mb-4" />
+              <div class="space-y-3">
+                <Skeleton height="20px" v-for="i in 5" :key="i" />
+              </div>
+            </div>
+          </template>
+        </Card>
+      </div>
     </div>
 
+    <!-- Main Content -->
     <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Left Column - PO Details -->
       <div class="lg:col-span-2 space-y-6">
-        <Card v-if="isDeclined" class="rounded-2xl border border-red-200/70 bg-red-50/60 shadow-sm">
+        <!-- Rejection Banner -->
+        <Card v-if="isDeclined" class="rounded-2xl border border-red-200 bg-red-50/60 shadow-sm overflow-hidden">
           <template #content>
-            <h2 class="text-lg font-semibold text-red-700">Rejected by Supplier</h2>
-            <p class="mt-2 text-sm text-red-600">{{ rejectionReason || 'No rejection reason provided.' }}</p>
-          </template>
-        </Card>
-
-        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-          <template #content>
-            <h2 class="text-lg font-semibold text-slate-900">PO Summary</h2>
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
-              <div>
-                <p class="text-xs text-slate-500">PO Number</p>
-                <p class="font-semibold text-slate-900">{{ po?.po_number || '-' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-slate-500">Created</p>
-                <p>{{ formatDate(po?.created_at) }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-slate-500">Supplier</p>
-                <p>{{ po?.supplier?.supplier_name || '-' }}</p>
+            <div class="p-6">
+              <div class="flex items-start gap-3">
+                <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <i class="pi pi-exclamation-circle text-red-600 text-lg"></i>
+                </div>
+                <div>
+                  <h3 class="font-semibold text-red-800">Rejected by Supplier</h3>
+                  <p class="mt-2 text-sm text-red-700">{{ rejectionReason || 'No rejection reason provided.' }}</p>
+                </div>
               </div>
             </div>
           </template>
         </Card>
 
-        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+        <!-- PO Summary Card -->
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <i class="pi pi-file text-blue-600 text-sm"></i>
+                </div>
+                <h2 class="text-lg font-semibold text-gray-900">PO Summary</h2>
+              </div>
+            </div>
+          </template>
           <template #content>
-            <h2 class="text-lg font-semibold text-slate-900">Branch Information</h2>
-            <div class="mt-4 text-sm text-slate-600">
-              <p class="font-semibold text-slate-900">{{ po?.branch?.name || '-' }}</p>
-              <p>{{ po?.branch?.address || '-' }} {{ po?.branch?.city || '' }}</p>
+            <div class="p-6 pt-0">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gray-50 rounded-xl p-4">
+                  <p class="text-xs text-gray-500 mb-1">PO Number</p>
+                  <p class="font-semibold text-gray-900">{{ po?.po_number || '-' }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-xl p-4">
+                  <p class="text-xs text-gray-500 mb-1">Created</p>
+                  <p class="font-medium text-gray-900">{{ formatDate(po?.created_at) }}</p>
+                </div>
+                <div class="bg-gray-50 rounded-xl p-4">
+                  <p class="text-xs text-gray-500 mb-1">Supplier</p>
+                  <p class="font-medium text-gray-900">{{ po?.supplier?.supplier_name || '-' }}</p>
+                </div>
+              </div>
             </div>
           </template>
         </Card>
 
-        <Card v-if="!isDeclined" class="rounded-2xl border border-slate-200/70 shadow-sm">
-          <template #content>
-            <h2 class="text-lg font-semibold text-slate-900 mb-3">Items</h2>
-            <div class="overflow-x-auto rounded-xl border border-slate-200">
-              <table class="w-full text-sm">
-                <thead class="bg-slate-50 text-left text-slate-500">
-                  <tr>
-                    <th class="px-4 py-2">Item</th>
-                    <th class="px-4 py-2 text-right">Qty</th>
-                    <th class="px-4 py-2 text-right">Price</th>
-                    <th class="px-4 py-2 text-right">Line Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="item in po?.items || []" :key="item.id" class="border-t">
-                    <td class="px-4 py-2">
-                      <div class="font-medium text-slate-900">{{ item.product?.product_name || 'Item' }}</div>
-                      <div class="text-xs text-slate-400">{{ item.product?.sku || '' }}</div>
-                    </td>
-                    <td class="px-4 py-2 text-right">{{ item.quantity_ordered }}</td>
-                    <td class="px-4 py-2 text-right">₱ {{ formatMoney(item.unit_cost) }}</td>
-                    <td class="px-4 py-2 text-right font-semibold">₱ {{ formatMoney(item.line_total) }}</td>
-                  </tr>
-                </tbody>
-              </table>
+        <!-- Branch Information Card -->
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                  <i class="pi pi-map-marker text-green-600 text-sm"></i>
+                </div>
+                <h2 class="text-lg font-semibold text-gray-900">Branch Information</h2>
+              </div>
             </div>
-            <div class="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-slate-600">
-              <div class="flex items-center justify-between">
-                <span class="text-slate-500">Subtotal (Items)</span>
-                <span class="font-semibold text-slate-900">₱ {{ formatMoney(po?.subtotal) }}</span>
+          </template>
+          <template #content>
+            <div class="p-6 pt-0">
+              <div class="bg-gray-50 rounded-xl p-4">
+                <p class="font-semibold text-gray-900">{{ po?.branch?.name || '-' }}</p>
+                <p class="text-sm text-gray-600 mt-1">{{ po?.branch?.address || '-' }} {{ po?.branch?.city || '' }}</p>
+                <p v-if="po?.branch?.contact_number" class="text-sm text-gray-600 mt-2">📞 {{ po?.branch?.contact_number }}</p>
               </div>
-              <div class="flex items-center justify-between mt-2">
-                <span class="text-slate-500">Delivery Charge</span>
-                <span class="font-semibold text-emerald-600">₱ {{ formatMoney(deliveryCharge) }}</span>
+            </div>
+          </template>
+        </Card>
+
+        <!-- Items Card -->
+        <Card v-if="!isDeclined" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                  <i class="pi pi-box text-purple-600 text-sm"></i>
+                </div>
+                <h2 class="text-lg font-semibold text-gray-900">Items</h2>
               </div>
-              <div class="flex items-center justify-between mt-3 border-t border-slate-200 pt-3 text-base font-semibold">
-                <span>Total</span>
-                <span>₱ {{ formatMoney(totalWithDelivery) }}</span>
+            </div>
+          </template>
+          <template #content>
+            <div class="p-6 pt-0">
+              <div class="overflow-x-auto rounded-xl border border-gray-200">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                    <tr>
+                      <th class="px-4 py-3 text-left">Item</th>
+                      <th class="px-4 py-3 text-right">Qty</th>
+                      <th class="px-4 py-3 text-right">Price</th>
+                      <th class="px-4 py-3 text-right">Line Total</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr v-for="item in po?.items || []" :key="item.id" class="hover:bg-gray-50 transition-colors">
+                      <td class="px-4 py-3">
+                        <div class="font-medium text-gray-900">{{ item.product?.product_name || 'Item' }}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">{{ item.product?.sku || '' }}</div>
+                      </td>
+                      <td class="px-4 py-3 text-right font-medium">{{ item.quantity_ordered }}</td>
+                      <td class="px-4 py-3 text-right">₱{{ formatMoney(item.unit_cost) }}</td>
+                      <td class="px-4 py-3 text-right font-semibold text-green-600">₱{{ formatMoney(item.line_total) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Totals Summary -->
+              <div class="mt-4 bg-gray-50 rounded-xl p-4">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-gray-600">Subtotal (Items)</span>
+                  <span class="font-semibold text-gray-900">₱{{ formatMoney(po?.subtotal) }}</span>
+                </div>
+                <div class="flex items-center justify-between text-sm mt-2">
+                  <span class="text-gray-600">Delivery Charge</span>
+                  <span class="font-semibold text-emerald-600">₱{{ formatMoney(deliveryCharge) }}</span>
+                </div>
+                <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 text-base font-semibold">
+                  <span class="text-gray-900">Total</span>
+                  <span class="text-blue-600">₱{{ formatMoney(totalWithDelivery) }}</span>
+                </div>
               </div>
             </div>
           </template>
         </Card>
       </div>
 
+      <!-- Right Column - Shipment Information -->
       <div v-if="!isDeclined" class="space-y-6">
-        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+        <!-- Delivery Information Card -->
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                  <i class="pi pi-truck text-orange-600 text-sm"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900">Delivery Information</h3>
+              </div>
+            </div>
+          </template>
           <template #content>
-            <h3 class="text-lg font-semibold text-slate-900">Delivery Information</h3>
-            <div class="mt-4 space-y-2 text-sm text-slate-600">
-              <div>Driver: <span class="font-medium text-slate-900">{{ shipment?.driver_name || '-' }}</span></div>
-              <div>Plate: <span class="font-medium text-slate-900">{{ shipment?.plate_number || '-' }}</span></div>
-              <div>Distance: <span class="font-medium text-slate-900">{{ shipment?.distance_km || '-' }} km</span></div>
-              <div>Status: <span class="font-medium text-slate-900">{{ formatStatus(shipment?.status) }}</span></div>
+            <div class="p-6 pt-0">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Driver</span>
+                  <span class="font-medium text-gray-900">{{ shipment?.driver_name || '-' }}</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Plate Number</span>
+                  <span class="font-medium text-gray-900">{{ shipment?.plate_number || '-' }}</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Truck</span>
+                  <span class="font-medium text-gray-900">{{ shipment?.truck_brand || shipment?.truck_type || '-' }}</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Distance</span>
+                  <span class="font-medium text-gray-900">{{ shipment?.distance_km || '-' }} km</span>
+                </div>
+                <div class="flex items-center justify-between py-2">
+                  <span class="text-sm text-gray-500">Cost per KM</span>
+                  <span class="font-medium text-gray-900">₱{{ formatMoney(shipment?.cost_per_km) }}</span>
+                </div>
+              </div>
             </div>
           </template>
         </Card>
 
-        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-          <template #content>
-            <h3 class="text-lg font-semibold text-slate-900">Invoice</h3>
-            <div v-if="invoice" class="mt-4 space-y-2 text-sm text-slate-600">
-              <div>Invoice #: <span class="font-medium text-slate-900">{{ invoice.invoice_number }}</span></div>
-              <div>Status: <span class="font-medium text-slate-900">{{ formatStatus(invoice.status) }}</span></div>
-              <div>Invoice Date: <span class="font-medium text-slate-900">{{ formatDate(invoice.invoice_date) }}</span></div>
-              <div>Amount: <span class="font-medium text-slate-900">₱ {{ formatMoney(invoice.net_amount || invoice.invoice_amount) }}</span></div>
-              <div class="flex flex-wrap gap-2 mt-4">
-                <Button label="View Invoice" icon="pi pi-file" outlined @click="viewInvoice" />
-                <Button label="Print Invoice" icon="pi pi-print" outlined @click="printInvoice" />
+        <!-- Shipment Summary Card -->
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <i class="pi pi-send text-blue-600 text-sm"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900">Shipment Summary</h3>
               </div>
             </div>
-            <div v-else class="text-sm text-slate-500 mt-4">No invoice available yet.</div>
+          </template>
+          <template #content>
+            <div class="p-6 pt-0">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Status</span>
+                  <Tag 
+                    :value="formatStatus(shipment?.status)" 
+                    :severity="getShipmentStatusSeverity(shipment?.status)"
+                    class="rounded-full text-xs px-3 py-1"
+                  />
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Shipping Cost</span>
+                  <span class="font-medium text-emerald-600">₱{{ formatMoney(shipment?.shipping_cost) }}</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Tax Rate</span>
+                  <span class="font-medium text-gray-900">{{ Number(shipment?.tax_rate || 0).toFixed(2) }}%</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Expected Delivery</span>
+                  <span class="font-medium text-gray-900">{{ formatDate(shipment?.expected_delivery_date) }}</span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span class="text-sm text-gray-500">Dispatched</span>
+                  <span class="font-medium text-gray-900">{{ formatDate(shipment?.dispatched_at, true) }}</span>
+                </div>
+              </div>
+
+              <!-- Addresses -->
+              <div class="mt-4 pt-4 border-t border-gray-200">
+                <p class="text-xs text-gray-500 mb-2">Origin</p>
+                <p class="text-sm text-gray-700 bg-gray-50 rounded-xl p-3">{{ shipment?.origin_address || '-' }}</p>
+              </div>
+              <div class="mt-3">
+                <p class="text-xs text-gray-500 mb-2">Destination</p>
+                <p class="text-sm text-gray-700 bg-gray-50 rounded-xl p-3">{{ shipment?.destination_address || '-' }}</p>
+              </div>
+            </div>
           </template>
         </Card>
       </div>
@@ -145,10 +298,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import Tag from 'primevue/tag'
-import Skeleton from 'primevue/skeleton'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
@@ -158,11 +307,11 @@ const toast = useToast()
 const loading = ref(false)
 const po = ref<any>(null)
 const shipment = ref<any>(null)
-const invoice = ref<any>(null)
 const rejectionReason = ref<string | null>(null)
 
+// Computed properties
 const deliveryCharge = computed(() => {
-  return Number(invoice.value?.shipping_cost || shipment.value?.shipping_cost || 0)
+  return Number(shipment.value?.shipping_cost || 0)
 })
 
 const totalWithDelivery = computed(() => {
@@ -175,14 +324,15 @@ const isDeclined = computed(() => {
   return status === 'declined_supplier' || status === 'declined_by_supplier'
 })
 
-const getStatusSeverity = (status: string) => {
-  const map: { [key: string]: string } = {
+// Helper functions
+const getStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' => {
+  const map: Record<string, any> = {
     draft: 'secondary',
-    pending_finance_approval: 'warning',
+    pending_finance_approval: 'warn',
     approved: 'success',
     sent_to_supplier: 'info',
     supplier_accepted: 'success',
-    in_transit: 'warning',
+    in_transit: 'warn',
     delivered: 'success',
     rejected_finance: 'danger',
     declined_supplier: 'danger',
@@ -191,18 +341,47 @@ const getStatusSeverity = (status: string) => {
   return map[status] || 'info'
 }
 
-const formatStatus = (status: string) => {
+const getShipmentStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' => {
+  const map: Record<string, any> = {
+    pending: 'secondary',
+    dispatched: 'info',
+    in_transit: 'warn',
+    delivered: 'success',
+    cancelled: 'danger',
+  }
+  return map[status] || 'info'
+}
+
+const formatStatus = (status: string): string => {
   if (!status) return '-'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
-const formatDate = (date: string) => {
+const formatDate = (date?: string, withTime = false): string => {
   if (!date) return '-'
-  return new Date(date).toLocaleDateString()
+  const parsed = new Date(date)
+  if (isNaN(parsed.getTime())) return date
+  
+  const options: Intl.DateTimeFormatOptions = { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  }
+  if (withTime) {
+    options.hour = '2-digit'
+    options.minute = '2-digit'
+  }
+  return parsed.toLocaleDateString('en-PH', options)
 }
 
-const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(value || 0)
+const formatMoney = (value: number): string => {
+  return new Intl.NumberFormat('en-PH', { 
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value || 0)
+}
 
+// Load detail
 const loadDetail = async () => {
   try {
     loading.value = true
@@ -212,23 +391,11 @@ const loadDetail = async () => {
     po.value = payload?.data?.po || payload?.po || null
     rejectionReason.value = payload?.data?.rejection_reason || payload?.rejection_reason || null
     shipment.value = payload?.data?.shipment || null
-    invoice.value = payload?.data?.invoice || null
 
-    if (!isDeclined.value && po.value?.id) {
-      if (!shipment.value) {
-        const shipmentRes = await supplierService.getPOShipment(id)
-        const shipmentPayload = shipmentRes.data || shipmentRes
-        shipment.value = shipmentPayload?.data?.shipment || shipmentPayload?.data || shipmentPayload
-      }
-      if (!invoice.value) {
-        try {
-          const invoiceRes = await supplierService.getPOInvoice(id)
-          const invoicePayload = invoiceRes.data || invoiceRes
-          invoice.value = invoicePayload?.data || invoicePayload || null
-        } catch {
-          invoice.value = null
-        }
-      }
+    if (!isDeclined.value && po.value?.id && !shipment.value) {
+      const shipmentRes = await supplierService.getPOShipment(id)
+      const shipmentPayload = shipmentRes.data.data || shipmentRes
+      shipment.value = shipmentPayload?.data?.shipment || shipmentPayload?.data || shipmentPayload
     }
   } catch (error: any) {
     toast.add({
@@ -242,20 +409,47 @@ const loadDetail = async () => {
   }
 }
 
-const printInvoice = () => {
-  window.print()
-}
-
-const viewInvoice = () => {
-  if (!po.value?.id) return
-  router.push(`/supplier-portal/pos/${po.value.id}/invoice-view`)
-}
-
 onMounted(loadDetail)
 </script>
 
-<style scoped lang="scss">
-.supplier-po-detail {
-  padding: 20px;
+<style scoped>
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* iOS-style shadows */
+:deep(.p-card) {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+:deep(.p-card .p-card-content) {
+  padding: 0;
+}
+
+/* iOS-style tags */
+:deep(.p-tag) {
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
 }
 </style>

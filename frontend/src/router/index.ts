@@ -48,6 +48,8 @@ const SupplierPODetail = () => import('../views/system/supplier/SupplierPODetail
 const SupplierPODeliveryTemplate = () => import('../views/system/supplier/SupplierPODeliveryTemplate.vue')
 const SupplierPOInvoiceConfirm = () => import('../views/system/supplier/SupplierPOShipmentConfirm.vue')
 const SupplierTransactions = () => import('../views/system/supplier/SupplierTransactions.vue')
+const SupplierDriverShipmentsIndex = () => import('../views/system/supplier/SupplierDriverShipmentsIndex.vue')
+const SupplierDriverShipmentDetail = () => import('../views/system/supplier/SupplierDriverShipmentDetail.vue')
 const ProfileIndex = () => import('../views/system/profile/ProfileIndex.vue')
 
 // Store Admin Views
@@ -145,6 +147,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'pos/:id/delivery-template', name: 'supplier.pos.delivery-template', component: SupplierPODeliveryTemplate, meta: { title: 'Delivery Form' } },
       { path: 'pos/:id/invoice', name: 'supplier.pos.invoice', component: SupplierPOInvoiceConfirm, meta: { title: 'Invoice Confirmation' } },
       { path: 'pos/:id/invoice-view', name: 'supplier.pos.invoice-view', component: () => import('../views/system/supplier/SupplierInvoiceDetail.vue'), meta: { title: 'Invoice Details' } },
+      { path: 'deliveries', name: 'supplier.deliveries', component: SupplierDriverShipmentsIndex, meta: { title: 'Delivery Logs' } },
+      { path: 'deliveries/:id', name: 'supplier.deliveries.detail', component: SupplierDriverShipmentDetail, meta: { title: 'Delivery Log Detail' } },
       { path: 'transactions', name: 'supplier.transactions', component: SupplierTransactions, meta: { title: 'Transactions' } },
       { path: '', redirect: { name: 'supplier.dashboard' } },
     ]

@@ -3,63 +3,62 @@
 namespace App\Http\Controllers\Api\Procurement\SupplierPortal;
 
 use App\Http\Controllers\Controller;
-use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
-use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Core\ActivityLog;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Services\Logistics\DistanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class SupplierShipmentController extends Controller
 {
+    public function index(): JsonResponse
+    {
+        $portal = \App\Models\Procurement\SupplierPortal\SupplierPortal::where('user_id', auth()->id())->firstOrFail();
+        $shipments = PurchaseOrderShipment::with(['purchaseOrder', 'branch'])
+            ->where('supplier_id', $portal->supplier_id)
+            ->orderByDesc('dispatched_at')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shipments' => $shipments,
+            ],
+        ]);
+    }
+
     public function show(int $poId): JsonResponse
     {
         $shipment = PurchaseOrderShipment::with(['purchaseOrder', 'supplier', 'branch'])
             ->where('purchase_order_id', $poId)
             ->first();
 
-        $invoice = Invoice::with(['items.product'])
-            ->where('purchase_order_id', $poId)
-            ->latest('id')
-            ->first();
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shipment' => $shipment,
+            ],
+        ]);
+    }
+
+    public function showById(int $shipmentId): JsonResponse
+    {
+        $shipment = PurchaseOrderShipment::with(['purchaseOrder', 'supplier', 'branch'])
+            ->findOrFail($shipmentId);
+
+        $portal = \App\Models\Procurement\SupplierPortal\SupplierPortal::where('user_id', auth()->id())->firstOrFail();
+        abort_if($portal->supplier_id !== $shipment->supplier_id, 403, 'Shipment does not belong to your supplier.');
 
         return response()->json([
             'success' => true,
             'data' => [
                 'shipment' => $shipment,
-                'invoice' => $invoice,
             ],
-        ]);
-    }
-
-    public function invoice(int $poId): JsonResponse
-    {
-        $po = PurchaseOrder::with(['supplier'])
-            ->findOrFail($poId);
-
-        $portal = \App\Models\Procurement\SupplierPortal\SupplierPortal::where('user_id', auth()->id())->first();
-        if (!$portal || !$portal->supplier_id || $portal->supplier_id !== $po->supplier_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You do not have permission to view this invoice.',
-            ], 403);
-        }
-
-        $invoice = Invoice::with(['items.product'])
-            ->where('purchase_order_id', $poId)
-            ->latest('id')
-            ->first();
-
-        if (!$invoice) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invoice not found for this purchase order.',
-            ], 404);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $invoice,
         ]);
     }
 
@@ -188,9 +187,96 @@ class SupplierShipmentController extends Controller
         ], 201);
     }
 
+    public function deliver(Request $request, int $shipmentId): JsonResponse
+    {
+        $shipment = $this->guardedShipment($shipmentId);
+
+        if ($shipment->status === 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shipment has already been marked as delivered.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'notes' => 'nullable|string|max:800',
+            'attachments' => 'required|array|min:1',
+            'attachments.*' => 'required|image|max:10240',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+
+        $log = PurchaseOrderDeliveryLog::create([
+            'shipment_id' => $shipment->id,
+            'created_by' => auth()->id(),
+            'event_type' => 'Delivered',
+            'notes' => $validated['notes'] ?? null,
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
+            'logged_at' => now(),
+        ]);
+
+        $attachmentFiles = [];
+        foreach ($validated['attachments'] as $attachment) {
+            if (!$attachment?->isValid()) {
+                continue;
+            }
+
+            $slug = Str::slug(pathinfo($attachment->getClientOriginalName(), PATHINFO_FILENAME));
+            $filename = sprintf('%s-%s.%s', $slug ?: 'delivery', Str::random(6), $attachment->getClientOriginalExtension());
+            $path = $attachment->storeAs("supplier/shipments/logs/{$shipment->id}", $filename, 'public');
+
+            $attachmentFiles[] = PurchaseOrderDeliveryLogAttachment::create([
+                'delivery_log_id' => $log->id,
+                'file_path' => $path,
+                'mime_type' => $attachment->getClientMimeType(),
+                'size' => $attachment->getSize() ?? 0,
+            ]);
+        }
+
+        $shipment->update([
+            'status' => 'delivered',
+            'delivered_at' => now(),
+        ]);
+
+        $shipment->purchaseOrder?->markDelivered();
+
+        ActivityLog::record(
+            'po_shipment_delivered',
+            "Shipment {$shipment->id} confirmed delivered for PO {$shipment->purchaseOrder?->po_number}.",
+            [
+                'po_number' => $shipment->purchaseOrder?->po_number,
+                'shipment_id' => $shipment->id,
+                'attachments' => array_map(fn ($attachment) => $attachment->id, $attachmentFiles),
+            ],
+            'purchase_order',
+            $shipment->purchase_order_id
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Shipment marked as delivered.',
+            'data' => [
+                'shipment' => $shipment->load(['purchaseOrder', 'supplier', 'branch']),
+                'delivery_log' => $log->load(['creator', 'attachments']),
+            ],
+        ]);
+    }
+
     protected function buildAddress(array $parts): string
     {
         $filtered = array_values(array_filter($parts, fn ($part) => !empty($part)));
         return implode(', ', $filtered);
+    }
+
+    protected function guardedShipment(int $shipmentId): PurchaseOrderShipment
+    {
+        $shipment = PurchaseOrderShipment::with(['purchaseOrder', 'supplier'])
+            ->findOrFail($shipmentId);
+
+        $portal = SupplierPortal::where('user_id', auth()->id())->firstOrFail();
+        abort_if($portal->supplier_id !== $shipment->supplier_id, 403, 'Shipment does not belong to your supplier.');
+
+        return $shipment;
     }
 }

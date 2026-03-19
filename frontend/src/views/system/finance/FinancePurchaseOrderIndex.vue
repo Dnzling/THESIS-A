@@ -14,7 +14,7 @@
             <i class="pi pi-search" />
             <InputText v-model="filters.search" placeholder="Search PO number" class="w-full" @keyup.enter="loadPOs" />
           </span>
-          <Dropdown v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear @change="loadPOs" />
+          <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear @change="loadPOs" />
           <Button icon="pi pi-refresh" class="p-button-outlined p-button-rounded" @click="loadPOs" />
         </div>
 

@@ -46,7 +46,7 @@
                 <label class="text-sm font-semibold text-gray-700 block mb-2">
                   <span class="text-red-500">*</span> Receipt Date
                 </label>
-                <Calendar v-model="form.receipt_date" date-format="yy-mm-dd" class="w-full" show-icon />
+                <DatePicker fluid v-model="form.receipt_date" date-format="yy-mm-dd" class="w-full" show-icon />
               </div>
 
               <!-- Receipt Status -->

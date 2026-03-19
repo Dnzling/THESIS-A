@@ -3,6 +3,7 @@
     <div class="mb-6">
       <h1 class="text-3xl font-bold text-gray-800">Goods Receipts</h1>
       <p class="text-gray-600 mt-1">Record and verify delivered goods</p>
+      <Button label="New Receipt" icon="pi pi-plus" @click="$router.push('/procurement/goods-receipts/create')" />
     </div>
 
     <Card>

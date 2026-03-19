@@ -2,14 +2,6 @@
   <div class="supplier-po-index">
     <div class="flex items-center justify-between">
      <div class="text-2xl font-semibold">Purchase Orders</div>
-      <Button
-        v-if="lastDeliveryPoId"
-        label="Last Delivery Form"
-        icon="pi pi-map-marker"
-        severity="secondary"
-        class="p-button-sm"
-        @click="goToDeliveryForm(lastDeliveryPoId)"
-      />
     </div>
 
     <!-- Filters -->

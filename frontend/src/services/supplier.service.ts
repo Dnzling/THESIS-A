@@ -359,8 +359,13 @@ class SupplierService {
     return response.data
   }
 
-  async getPOInvoice(poId: number) {
-    const response = await axiosClient.get(`${this.portalBaseUrl}/po-shipments/${poId}/invoice`)
+  async getShipments(params?: any) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/shipments`, { params })
+    return response.data
+  }
+
+  async getShipment(shipmentId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/shipments/${shipmentId}`)
     return response.data
   }
 
@@ -379,9 +384,54 @@ class SupplierService {
     current_longitude?: number | null
     dispatched_at?: string
     tax_rate?: number
-    expected_delivery_date?: Date | null
+    expected_delivery_date?: string | null
   }) {
     const response = await axiosClient.post(`${this.portalBaseUrl}/po-shipments`, data)
+    return response.data
+  }
+
+  async getShipmentLogs(shipmentId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/shipments/${shipmentId}/logs`)
+    return response.data
+  }
+
+  async addShipmentLog(shipmentId: number, data: {
+    event_type: string
+    notes?: string
+    latitude?: number | null
+    longitude?: number | null
+  }) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/shipments/${shipmentId}/logs`, data)
+    return response.data
+  }
+
+  async markShipmentDelivered(shipmentId: number, data: {
+    notes?: string
+    latitude?: number | null
+    longitude?: number | null
+    attachments: File[]
+  }) {
+    const formData = new FormData()
+    if (data.notes) {
+      formData.append('notes', data.notes)
+    }
+    if (data.latitude !== undefined && data.latitude !== null) {
+      formData.append('latitude', String(data.latitude))
+    }
+    if (data.longitude !== undefined && data.longitude !== null) {
+      formData.append('longitude', String(data.longitude))
+    }
+    data.attachments.forEach((attachment) => {
+      formData.append('attachments[]', attachment)
+    })
+
+    const response = await axiosClient.post(
+      `${this.portalBaseUrl}/shipments/${shipmentId}/deliver`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }
+    )
     return response.data
   }
 

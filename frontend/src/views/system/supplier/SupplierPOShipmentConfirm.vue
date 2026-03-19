@@ -136,6 +136,45 @@
 
         <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
+            <h3 class="text-lg font-semibold text-slate-900">Delivery Logs</h3>
+            <p class="text-sm text-slate-500 mb-4">Timeline of recorded events.</p>
+            <div class="space-y-3">
+              <div v-if="logsLoading" class="text-sm text-slate-500">Loading logs…</div>
+              <div v-else-if="!deliveryLogs.length" class="text-sm text-slate-500">No events yet. Add one below.</div>
+              <div v-else class="space-y-2">
+                <div v-for="log in deliveryLogs" :key="log.id" class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div class="flex items-center justify-between text-xs uppercase text-slate-500">
+                    <span>{{ log.event_type }}</span>
+                    <span>{{ formatDate(log.logged_at, true) }}</span>
+                  </div>
+                  <p class="text-slate-700 mt-2">{{ log.notes || 'No notes recorded' }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 grid grid-cols-1 gap-3">
+              <Dropdown
+                v-model="logEventType"
+                :options="logTypes"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Select milestone"
+                class="w-full"
+              />
+              <InputTextarea v-model="logNotes" rows="2" placeholder="Notes (optional)" autoResize />
+              <Button
+                label="Add Log"
+                icon="pi pi-save"
+                class="w-full"
+                :loading="logSubmitting"
+                @click="submitLog"
+                :disabled="!shipment?.id"
+              />
+            </div>
+          </template>
+        </Card>
+
+        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+          <template #content>
             <h3 class="text-lg font-semibold text-slate-900">Confirmation</h3>
             <p class="text-sm text-slate-500 mt-2">This will create the shipment record for this PO.</p>
             <Button
@@ -163,6 +202,8 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Tag from 'primevue/tag'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Dropdown from 'primevue/dropdown'
+import InputTextarea from 'primevue/inputtextarea'
 import Skeleton from 'primevue/skeleton'
 import PortalStepper from '../../../components/system/supplier/PortalStepper.vue'
 import supplierService from '../../../services/supplier.service'
@@ -175,13 +216,27 @@ const confirm = useConfirm()
 const poId = Number(route.params.id)
 const po = ref<any>(null)
 const draft = ref<any>(null)
+const shipment = ref<any>(null)
 const submitting = ref(false)
 const loading = ref(false)
+const deliveryLogs = ref<any[]>([])
+const logsLoading = ref(false)
+const logEventType = ref('Arrived')
+const logNotes = ref('')
+const logSubmitting = ref(false)
 
 const steps = [
   { label: 'Review PO', description: 'Approve or reject' },
   { label: 'Delivery Form', description: 'Set delivery details' },
   { label: 'Shipment', description: 'Confirm shipment' },
+]
+
+const logTypes = [
+  { label: 'Arrived', value: 'Arrived' },
+  { label: 'Started unloading', value: 'Start Unloading' },
+  { label: 'Finished unloading', value: 'Finish Unloading' },
+  { label: 'Delivered', value: 'Delivered' },
+  { label: 'Issue', value: 'Issue' },
 ]
 
 const deliveryCharge = computed(() => {
@@ -197,12 +252,18 @@ const distanceDisplay = computed(() => {
 })
 
 const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(Number(value || 0))
-const formatDate = (value?: string) => {
+const formatDate = (value?: string, includeTime = false) => {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+  const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' }
+  if (includeTime) {
+    options.hour = 'numeric'
+    options.minute = '2-digit'
+  }
+  return date.toLocaleDateString('en-PH', options)
 }
+
 
 const subtotalAmount = computed(() => {
   if (!po.value) return 0
@@ -238,6 +299,52 @@ const loadPO = async () => {
     po.value = payload?.data?.po || payload?.po || null
   } finally {
     loading.value = false
+  }
+}
+
+const loadShipment = async () => {
+  if (!po.value) return
+  try {
+    const res = await supplierService.getPOShipment(po.value.id)
+    const payload = res.data || res
+    shipment.value = payload?.data?.shipment || null
+    await loadDeliveryLogs()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const loadDeliveryLogs = async () => {
+  if (!shipment.value?.id) return
+  logsLoading.value = true
+  try {
+    const res = await supplierService.getShipmentLogs(shipment.value.id)
+    const payload = res.data || res
+    deliveryLogs.value = payload?.data?.logs || []
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+const submitLog = async () => {
+  if (!shipment.value?.id) return
+  logSubmitting.value = true
+  try {
+    const res = await supplierService.addShipmentLog(shipment.value.id, {
+      event_type: logEventType.value,
+      notes: logNotes.value || undefined,
+      latitude: draft.value?.current_latitude ?? undefined,
+      longitude: draft.value?.current_longitude ?? undefined,
+    })
+    const payload = res.data || res
+    if (payload?.data) {
+      deliveryLogs.value = [payload.data, ...deliveryLogs.value]
+      logNotes.value = ''
+    }
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to save log', life: 3000 })
+  } finally {
+    logSubmitting.value = false
   }
 }
 
@@ -383,5 +490,6 @@ onMounted(async () => {
     return
   }
   await loadPO()
+  await loadShipment()
 })
 </script>

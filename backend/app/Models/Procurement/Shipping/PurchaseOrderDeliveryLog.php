@@ -2,9 +2,11 @@
 
 namespace App\Models\Procurement\Shipping;
 
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PurchaseOrderDeliveryLog extends Model
 {
@@ -32,5 +34,10 @@ class PurchaseOrderDeliveryLog extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderDeliveryLogAttachment::class, 'delivery_log_id');
     }
 }
