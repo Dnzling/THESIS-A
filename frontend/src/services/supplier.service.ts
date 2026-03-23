@@ -295,6 +295,7 @@ class SupplierService {
     rfq_item_id: number
     quoted_price: number
     description?: string
+    tax_rate?: number
   }) {
     const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, data)
     return response.data
@@ -323,6 +324,11 @@ class SupplierService {
 
   async getSupplierPODetail(poId: number): Promise<{ success: boolean; data: any }> {
     const response = await axiosClient.get(`${this.portalBaseUrl}/pos/${poId}`)
+    return response.data
+  }
+
+  async createInvoiceFromGoodsReceipt(data: { purchase_order_id: number; goods_receipt_id: number }) {
+    const response = await axiosClient.post(`/api/procurement/invoices/from-grn`, data)
     return response.data
   }
 

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import axiosClient, { attachInterceptors } from '../axios'
+import type { EmployeeDetails, HrApiResponse } from '../types/hr'
 
 const portalClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -147,6 +148,13 @@ export interface RejectApplicantPayload {
 let employeesInFlight: Promise<any> | null = null
 
 const hrService = {
+  api: {
+    get: (url: string, config?: any) => axiosClient.get(url, config),
+    post: (url: string, data?: any, config?: any) => axiosClient.post(url, data, config),
+    put: (url: string, data?: any, config?: any) => axiosClient.put(url, data, config),
+    delete: (url: string, config?: any) => axiosClient.delete(url, config),
+  },
+
   async getJobPostings(params?: any) {
     const response = await axiosClient.get('/api/job-postings', { params })
     return response.data
@@ -210,6 +218,26 @@ const hrService = {
       .then((res) => res.data)
       .finally(() => { employeesInFlight = null })
     return employeesInFlight
+  },
+
+  async getEmployeeDetails(id: number | string, params?: any): Promise<HrApiResponse<EmployeeDetails>> {
+    const response = await axiosClient.get(`/api/employees/${id}/details`, { params })
+    return response.data
+  },
+
+  async getHrDashboardTodayStats() {
+    const response = await axiosClient.get('/api/hr/dashboard/today-stats')
+    return response.data
+  },
+
+  async getHrDashboardWeeklyAttendance() {
+    const response = await axiosClient.get('/api/hr/dashboard/weekly-attendance')
+    return response.data
+  },
+
+  async getHrDashboardMonthlySummary(params?: any) {
+    const response = await axiosClient.get('/api/hr/dashboard/monthly-summary', { params })
+    return response.data
   },
 
   async getDepartments(params?: any) {

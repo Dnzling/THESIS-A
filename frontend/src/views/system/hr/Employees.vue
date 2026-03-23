@@ -219,7 +219,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../../../stores/auth'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useRouter } from 'vue-router'
 
 interface Department {
@@ -325,7 +325,7 @@ const statuses = ref<Status[]>([
 const fetchEmployeesAxios = async () => {
   loading.value = true
   try {
-    const response = await axios.get('api/employees', {
+    const response = await hrService.api.get('api/employees', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -361,7 +361,7 @@ const fetchEmployeesAxios = async () => {
 
 const fetchRoles = async () => {
   try {
-    const response = await axios.get('/api/store/roles', {
+    const response = await hrService.api.get('/api/store/roles', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -554,3 +554,4 @@ onMounted(() => {
 <style scoped>
 /* Add any custom styles here */
 </style>
+

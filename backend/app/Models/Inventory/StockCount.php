@@ -95,7 +95,7 @@ class StockCount extends Model
     // Scopes
     public function scopePending($query)
     {
-        return $query->where('status', 'scheduled');
+        return $query->whereIn('status', ['pending_approval', 'scheduled']);
     }
 
     public function scopeInProgress($query)
@@ -131,7 +131,7 @@ class StockCount extends Model
     // Helper methods
     public function isEditable(): bool
     {
-        return in_array($this->status, ['scheduled', 'in_progress']);
+        return in_array($this->status, ['pending_approval', 'scheduled', 'in_progress']);
     }
 
     public function canBeStarted(): bool

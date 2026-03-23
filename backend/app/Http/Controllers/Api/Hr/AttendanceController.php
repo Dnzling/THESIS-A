@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Employee;
 use App\Models\Hr\ShiftSchedule;
+use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\Shift;
 use App\Models\Hr\PayPeriod;
 use Illuminate\Http\Request;
@@ -154,8 +155,38 @@ class AttendanceController extends Controller
                     ->whereDate('schedule_date', $request->attendance_date)
                     ->first();
 
+                // Fallback: derive and auto-create daily schedule from active assignment
+                if (!$schedule) {
+                    $assignment = ShiftAssignment::query()
+                        ->where('employee_id', $request->employee_id)
+                        ->active($request->attendance_date)
+                        ->latest('start_date')
+                        ->first();
+
+                    if ($assignment) {
+                        $schedule = ShiftSchedule::firstOrCreate(
+                            [
+                                'employee_id' => $request->employee_id,
+                                'schedule_date' => $request->attendance_date,
+                            ],
+                            [
+                                'shift_id' => $assignment->shift_id,
+                                'assignment_id' => $assignment->id,
+                                'generation_method' => 'manual',
+                                'status' => 'scheduled',
+                                'assigned_by' => Auth::id(),
+                            ]
+                        );
+                    }
+                }
+
                 if ($schedule) {
                     $request->merge(['schedule_id' => $schedule->id]);
+                    $request->merge(['shift_id' => $schedule->shift_id]);
+                }
+            } else {
+                $schedule = ShiftSchedule::find($request->schedule_id);
+                if ($schedule) {
                     $request->merge(['shift_id' => $schedule->shift_id]);
                 }
             }
@@ -509,23 +540,66 @@ class AttendanceController extends Controller
         DB::beginTransaction();
 
         try {
+            // Reuse today's attendance row if one already exists (e.g. pre-created absent record)
+            $attendance = Attendance::where('employee_id', $employee->id)
+                ->whereDate('attendance_date', $today)
+                ->first();
+
             // Get today's schedule
             $schedule = ShiftSchedule::with('shift')
                 ->where('employee_id', $employee->id)
                 ->whereDate('schedule_date', $today)
                 ->first();
 
-            // Create new attendance
-            $attendance = Attendance::create([
-                'employee_id' => $employee->id,
-                'schedule_id' => $schedule->id ?? null,
-                'shift_id' => $schedule->shift_id ?? null,
-                'attendance_date' => $today,
-                'clock_in' => $now,
-                'clock_in_method' => $request->method ?? 'manual',
-                'clock_in_location' => $request->location,
-                'status' => 'present', // Will be updated by calculateLate
-            ]);
+            // Fallback: derive and auto-create schedule from active assignment
+            if (!$schedule) {
+                $assignment = ShiftAssignment::query()
+                    ->where('employee_id', $employee->id)
+                    ->active($today)
+                    ->latest('start_date')
+                    ->first();
+
+                if ($assignment) {
+                    $schedule = ShiftSchedule::firstOrCreate(
+                        [
+                            'employee_id' => $employee->id,
+                            'schedule_date' => $today,
+                        ],
+                        [
+                            'shift_id' => $assignment->shift_id,
+                            'assignment_id' => $assignment->id,
+                            'generation_method' => 'manual',
+                            'status' => 'scheduled',
+                            'assigned_by' => Auth::id(),
+                        ]
+                    )->load('shift');
+                }
+            }
+
+            if ($attendance) {
+                $attendance->update([
+                    'schedule_id' => $attendance->schedule_id ?? ($schedule->id ?? null),
+                    'shift_id' => $attendance->shift_id ?? ($schedule->shift_id ?? null),
+                    'clock_in' => $now,
+                    'clock_in_method' => $request->method ?? 'manual',
+                    'clock_in_ip' => $request->ip(),
+                    'clock_in_location' => $request->location,
+                    'status' => 'present', // Will be updated by calculateLate
+                ]);
+            } else {
+                // Create new attendance
+                $attendance = Attendance::create([
+                    'employee_id' => $employee->id,
+                    'schedule_id' => $schedule->id ?? null,
+                    'shift_id' => $schedule->shift_id ?? null,
+                    'attendance_date' => $today,
+                    'clock_in' => $now,
+                    'clock_in_method' => $request->method ?? 'manual',
+                    'clock_in_ip' => $request->ip(),
+                    'clock_in_location' => $request->location,
+                    'status' => 'present', // Will be updated by calculateLate
+                ]);
+            }
 
             // Calculate late minutes (simplest version)
             // Calculate late minutes - FIX: Handle both time-only and datetime formats
@@ -626,6 +700,7 @@ class AttendanceController extends Controller
             $attendance->update([
                 'clock_out' => $now,
                 'clock_out_method' => $request->method ?? 'manual',
+                'clock_out_ip' => $request->ip(),
                 'clock_out_location' => $request->location
             ]);
 

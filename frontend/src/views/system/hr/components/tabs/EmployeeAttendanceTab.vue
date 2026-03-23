@@ -1,4 +1,4 @@
-﻿<!-- views/system/employees/components/tabs/EmployeeAttendanceTab.vue -->
+<!-- views/system/employees/components/tabs/EmployeeAttendanceTab.vue -->
 <template>
   <div class="space-y-4">
     <!-- Summary Cards -->
@@ -349,7 +349,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../../stores/auth'
 
@@ -520,7 +520,7 @@ const fetchAttendanceData = async () => {
       params.end_date = formatDateForAPI(dateRange.value.endDate)
     }
 
-    const response = await axios.get('/api/attendance/by-employee-number', {
+    const response = await hrService.api.get('/api/attendance/by-employee-number', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       },
@@ -716,6 +716,7 @@ onMounted(() => {
   padding: 0.25rem 0.5rem;
 }
 </style>
+
 
 
 

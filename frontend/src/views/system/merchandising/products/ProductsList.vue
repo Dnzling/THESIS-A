@@ -1,19 +1,43 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="p-6  min-h-screen">
     <!-- Header -->
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-3xl font-bold text-gray-800">Products</h1>
-        <p class="text-gray-600 mt-1">Manage your product catalog</p>
       </div>
-      <Button @click="$router.push({ name: 'merchandising.products.create' })" icon="pi pi-plus" label="Add Product"
-        severity="success" />
+      <div class="flex items-center gap-2">
+        <Button @click="$router.push({ name: 'merchandising.products.logs' })" icon="pi pi-history" label="Logs"
+          severity="info" outlined />
+        <Button @click="$router.push({ name: 'merchandising.products.raw.create' })" icon="pi pi-box" label="Add Raw Material"
+          severity="contrast" outlined />
+        <Button @click="$router.push({ name: 'merchandising.products.create' })" icon="pi pi-plus" label="Add Product"
+          severity="success" />
+      </div>
     </div>
+
+    <Card class="mb-3">
+      <template #content>
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p class="text-sm font-semibold text-gray-700">View Mode</p>
+            <p class="text-xs text-gray-500">Toggle between finished goods and raw materials</p>
+          </div>
+          <SelectButton
+            v-model="filters.product_type"
+            :options="productTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            @change="onFilterChange"
+            :allowEmpty="false"
+          />
+        </div>
+      </template>
+    </Card>
   
     <!-- Filters Card -->
     <Card class="mb-6">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <IconField>
             <InputIcon class="pi pi-search" />
             <InputText v-model="filters.search" placeholder="Search products" class="w-full" @input="onFilterChange" />
@@ -21,17 +45,6 @@
   
           <Select v-model="filters.category_id" :options="categories" optionLabel="category_name" optionValue="id"
             placeholder="All Categories" class="w-full" showClear @change="onFilterChange" />
-
-          <Select
-            v-model="filters.product_type"
-            :options="productTypeOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Product Type"
-            class="w-full"
-            showClear
-            @change="onFilterChange"
-          />
   
           <Select v-model="filters.is_active" :options="activeStatuses" optionLabel="label" optionValue="value"
             placeholder="Status" class="w-full" showClear @change="onFilterChange" />
@@ -75,10 +88,6 @@
           <Column field="product_name" header="Product Name" sortable>
             <template #body="{ data }">
               <div class="flex items-center gap-3">
-                <img v-if="data.thumbnail" :src="data.thumbnail" alt="Product" class="w-12 h-12 rounded object-cover" />
-                <div v-else class="w-12 h-12 rounded bg-gray-200 flex items-center justify-center">
-                  <i class="pi pi-image text-gray-400"></i>
-                </div>
                 <div>
                   <p class="font-medium text-gray-900">{{ data.product_name }}</p>
                   <p class="text-sm text-gray-500">{{ data.brand }}</p>
@@ -92,9 +101,9 @@
           <Column field="base_price" header="Price" sortable>
             <template #body="{ data }">
               <div>
-                <p class="font-semibold text-gray-900">₱{{ formatPrice(data.base_price) }}</p>
-                <p v-if="data.discounted_price" class="text-sm text-red-600 line-through">
-                  ₱{{ formatPrice(data.discounted_price) }}
+                <p v-if="data.discounted_price" class="font-semibold text-red-600">PHP {{ formatPrice(data.discounted_price) }}</p>
+                <p :class="data.discounted_price ? 'text-sm text-gray-500 line-through' : 'font-semibold text-gray-900'">
+                  PHP {{ formatPrice(data.base_price) }}
                 </p>
               </div>
             </template>
@@ -103,6 +112,19 @@
           <Column field="is_active" header="Status">
             <template #body="{ data }">
               <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+            </template>
+          </Column>
+
+          <Column header="Price Approval">
+            <template #body="{ data }">
+              <div class="space-y-1">
+                <Tag :value="priceApprovalLabel(data.price_approval_status)" :severity="priceApprovalSeverity(data.price_approval_status)" />
+                <small v-if="data.price_approval_status === 'pending'" class="block text-xs text-gray-500">
+                  Pending:
+                  <span v-if="data.pending_base_price != null">PHP {{ formatPrice(data.pending_base_price) }}</span>
+                  <span v-if="data.pending_discounted_price != null"> / PHP {{ formatPrice(data.pending_discounted_price) }}</span>
+                </small>
+              </div>
             </template>
           </Column>
   
@@ -117,10 +139,37 @@
               <div class="flex gap-2">
                 <Button icon="pi pi-eye" severity="info" text rounded v-tooltip.top="'View Details'"
                   @click="viewProduct(data.id)" />
+                <Button
+                  v-if="authStore.hasPermission('merchandising.variations.create')"
+                  icon="pi pi-sparkles"
+                  severity="info"
+                  text
+                  rounded
+                  v-tooltip.top="'Add Variant'"
+                  @click="addVariant(data.id)"
+                />
                 <Button v-if="authStore.hasPermission('merchandising.products.update')" icon="pi pi-pencil"
                   severity="warning" text rounded v-tooltip.top="'Edit'" @click="editProduct(data.id)" />
                 <Button v-if="authStore.hasPermission('merchandising.products.delete')" icon="pi pi-trash"
                   severity="danger" text rounded v-tooltip.top="'Delete'" @click="confirmDelete(data)" />
+                <Button
+                  v-if="canApprovePricing() && data.price_approval_status === 'pending'"
+                  icon="pi pi-check"
+                  severity="success"
+                  text
+                  rounded
+                  v-tooltip.top="'Approve Price'"
+                  @click="approvePrice(data)"
+                />
+                <Button
+                  v-if="canApprovePricing() && data.price_approval_status === 'pending'"
+                  icon="pi pi-times"
+                  severity="danger"
+                  text
+                  rounded
+                  v-tooltip.top="'Reject Price'"
+                  @click="rejectPrice(data)"
+                />
               </div>
             </template>
           </Column>
@@ -172,7 +221,7 @@ const currentProduct = ref(null)
 const filters = reactive({
   search: '',
   category_id: null,
-  product_type: null,
+  product_type: 'finished_good',
   is_active: null,
   page: 1,
   per_page: 15,
@@ -193,8 +242,8 @@ const loadProducts = async () => {
   loading.value = true
   try {
     const response = await merchandisingService.getProducts(filters)
-    products.value = response.data.data
-    totalRecords.value = response.data.total
+    products.value = response.data?.data || response.data?.data?.data || []
+    totalRecords.value = response.data?.total || response.data?.data?.total || products.value.length
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load products', life: 3000 })
   } finally {
@@ -205,7 +254,7 @@ const loadProducts = async () => {
 const loadCategories = async () => {
   try {
     const response = await merchandisingService.getCategories({ active_only: true })
-    categories.value = response.data.data
+    categories.value = response.data?.data || response.data?.data?.data || []
   } catch (error) {
     console.error('Failed to load categories')
   }
@@ -214,7 +263,7 @@ const loadCategories = async () => {
 const loadTags = async () => {
   try {
     const response = await merchandisingService.getTags({ active_only: true })
-    tags.value = response.data.data
+    tags.value = response.data?.data || response.data?.data?.data || []
   } catch (error) {
     console.error('Failed to load tags')
   }
@@ -223,7 +272,7 @@ const loadTags = async () => {
 const loadAttributes = async () => {
   try {
     const response = await merchandisingService.getAttributes({ filterable_only: true })
-    attributes.value = response.data.data
+    attributes.value = response.data?.data || response.data?.data?.data || []
   } catch (error) {
     console.error('Failed to load attributes')
   }
@@ -249,7 +298,7 @@ const onFilterChange = () => {
 const resetFilters = () => {
   filters.search = ''
   filters.category_id = null
-  filters.product_type = null
+  filters.product_type = 'finished_good'
   filters.is_active = null
   loadProducts()
 }
@@ -271,8 +320,67 @@ const editProduct = (productId: number) => {
   })
 }
 
+const addVariant = (productId: number) => {
+  router.push({
+    name: 'merchandising.variations.create',
+    query: { product_id: String(productId) }
+  })
+}
+
+const canApprovePricing = () => {
+  return authStore.hasPermission('finance.all.approve')
+    || authStore.hasPermission('finance.settings.approve.store')
+    || authStore.hasPermission('finance.settings.approve.all')
+    || authStore.hasPermission('finance.purchase-orders.approve')
+}
+
+const priceApprovalLabel = (status?: string) => {
+  if (status === 'pending') return 'Pending Finance'
+  if (status === 'rejected') return 'Rejected'
+  return 'Approved'
+}
+
+const priceApprovalSeverity = (status?: string) => {
+  if (status === 'pending') return 'warning'
+  if (status === 'rejected') return 'danger'
+  return 'success'
+}
+
+const approvePrice = async (product: any) => {
+  try {
+    await merchandisingService.approveProductPrice(product.id)
+    toast.add({ severity: 'success', summary: 'Approved', detail: 'Price change approved.', life: 3000 })
+    loadProducts()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to approve price change',
+      life: 3000
+    })
+  }
+}
+
+const rejectPrice = async (product: any) => {
+  const reason = window.prompt('Enter rejection reason:')
+  if (!reason) return
+
+  try {
+    await merchandisingService.rejectProductPrice(product.id, reason)
+    toast.add({ severity: 'success', summary: 'Rejected', detail: 'Price change rejected.', life: 3000 })
+    loadProducts()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to reject price change',
+      life: 3000
+    })
+  }
+}
+
 const confirmDelete = (product: any) => {
-  selectedProducts.value = product
+  currentProduct.value = product
   deleteDialogVisible.value = true
 }
 

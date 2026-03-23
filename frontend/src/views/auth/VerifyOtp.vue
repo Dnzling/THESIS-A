@@ -3,11 +3,19 @@
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
       <div class="flex justify-center">
       </div>
+      <div class="mb-3 flex justify-center">
+        <span
+          class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
+          :class="isCustomerOtp ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'"
+        >
+          {{ otpContextLabel }}
+        </span>
+      </div>
       <h2 class="mt-6 text-center text-3xl font-bold text-gray-900" style="font-family: 'Poppins';">
         Verify Your Email
       </h2>
       <p class="mt-2 text-center text-sm text-gray-600">
-        We've sent a 6-digit code to email.
+        {{ isCustomerOtp ? "We've sent a FurniShop 6-digit code to your email." : "We've sent a 6-digit code to email." }}
       </p>
     </div>
   
@@ -104,6 +112,9 @@ const accessToken = ref('')
 
 // Compute full OTP from digits
 const fullOtp = computed(() => otpDigits.value.join(''))
+const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
+const isCustomerOtp = computed(() => otpContext.value === 'customer')
+const otpContextLabel = computed(() => isCustomerOtp.value ? 'FurniShop Customer Verification' : 'FurniSync SaaS Verification')
 
 // Handle OTP input
 const handleOtpInput = (index, event) => {
@@ -191,19 +202,30 @@ const verifyOtp = async () => { // Add async here
 
       // Clear the register_token after successful verification
       localStorage.removeItem('register_token')
+      localStorage.removeItem('otp_context')
 
       // Remove axios auth header since token is no longer needed
       delete axios.defaults.headers.common['Authorization']
 
       // Redirect to login after delay
       setTimeout(() => {
-        router.push({
-          path: '/login',
-          query: {
-            registered: 'true',
-            email: response.data.user?.email || ''
-          }
-        })
+        if (isCustomerOtp.value) {
+          router.push({
+            path: '/customer/login',
+            query: {
+              registered: 'true',
+              email: response.data.user?.email || ''
+            }
+          })
+        } else {
+          router.push({
+            path: '/login',
+            query: {
+              registered: 'true',
+              email: response.data.user?.email || ''
+            }
+          })
+        }
       }, 2000)
     } else {
       // Handle verification failure from API

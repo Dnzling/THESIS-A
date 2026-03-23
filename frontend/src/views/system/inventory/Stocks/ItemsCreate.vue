@@ -11,8 +11,12 @@
     <Card>
       <template #content>
         <form class="space-y-6" @submit.prevent="submitForm">
+          <Message severity="info" :closable="false">
+            New inventory items start at zero stock. Use Stock Adjustment, Purchase Receive, or Stock Transfer to add stock.
+          </Message>
+
           <!-- Product Selection -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4">
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
                 Product <span class="text-red-500">*</span>
@@ -36,20 +40,6 @@
                 </template>
               </Select>
               <small v-if="errors.product_id" class="text-red-500">{{ errors.product_id }}</small>
-            </div>
-
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Quantity on Hand <span class="text-red-500">*</span>
-              </label>
-              <InputNumber
-                v-model="form.quantity_on_hand"
-                :min="0"
-                showButtons
-                :class="{ 'p-invalid': errors.quantity_on_hand }"
-                class="w-full"
-              />
-              <small v-if="errors.quantity_on_hand" class="text-red-500">{{ errors.quantity_on_hand }}</small>
             </div>
           </div>
 
@@ -142,7 +132,6 @@ const products = ref<any[]>([])
 
 const form = reactive({
   product_id: null as number | null,
-  quantity_on_hand: 0,
   reorder_point: 10,
   reorder_quantity: 10,
   safety_stock: 5,
@@ -173,9 +162,6 @@ const validate = (): boolean => {
 
   if (!form.product_id) {
     errors.product_id = 'Product is required'
-  }
-  if (form.quantity_on_hand === null || form.quantity_on_hand < 0) {
-    errors.quantity_on_hand = 'Quantity must be 0 or greater'
   }
 
   return Object.keys(errors).length === 0

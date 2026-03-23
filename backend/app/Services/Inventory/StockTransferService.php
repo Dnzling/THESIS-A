@@ -7,6 +7,7 @@ use App\Models\Inventory\StockTransferItem;
 use App\Models\Inventory\BranchDistance;
 use App\Models\Inventory\InventoryConfiguration;
 use App\Models\Store\Branch;
+use App\Support\EmployeeContext;
 use Illuminate\Database\Eloquent\Collection;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -45,7 +46,7 @@ class StockTransferService
                 'store_id' => $storeId,
                 'from_branch_id' => $fromBranchId,
                 'to_branch_id' => $toBranchId,
-                'requested_by' => auth()->id(),
+                'requested_by' => EmployeeContext::currentEmployeeId(),
                 'requested_at' => now(),
                 'status' => 'pending',
                 'notes' => $notes,
@@ -121,7 +122,7 @@ class StockTransferService
 
             $transfer->update([
                 'status' => 'approved_sender',
-                'approved_sender_by' => auth()->id(),
+                'approved_sender_by' => EmployeeContext::currentEmployeeId(),
                 'approved_sender_at' => now(),
             ]);
 
@@ -143,7 +144,7 @@ class StockTransferService
 
         $transfer->update([
             'status' => 'rejected',
-            'rejected_by' => auth()->id(),
+            'rejected_by' => EmployeeContext::currentEmployeeId(),
             'rejected_at' => now(),
             'rejection_reason' => $reason,
         ]);
@@ -163,7 +164,7 @@ class StockTransferService
 
         $transfer->update([
             'status' => 'approved_finance',
-            'approved_finance_by' => auth()->id(),
+            'approved_finance_by' => EmployeeContext::currentEmployeeId(),
             'approved_finance_at' => now(),
         ]);
 
@@ -187,7 +188,7 @@ class StockTransferService
             // Update status to shipped
             $transfer->update([
                 'status' => 'shipped',
-                'shipped_by' => auth()->id(),
+                'shipped_by' => EmployeeContext::currentEmployeeId(),
                 'shipped_at' => now(),
                 'tracking_number' => $trackingNumber ?? $this->generateTrackingNumber($transferId),
             ]);
@@ -222,7 +223,7 @@ class StockTransferService
                 $item->update([
                     'quantity_received' => $itemData['quantity_received'],
                     'received_at' => now(),
-                    'received_by' => auth()->id(),
+                    'received_by' => EmployeeContext::currentEmployeeId(),
                     'condition_notes' => $itemData['condition_notes'] ?? null,
                 ]);
 
@@ -251,7 +252,7 @@ class StockTransferService
             // Complete transfer
             $transfer->update([
                 'status' => 'received',
-                'received_by' => auth()->id(),
+                'received_by' => EmployeeContext::currentEmployeeId(),
                 'received_at' => now(),
             ]);
 
@@ -296,7 +297,7 @@ class StockTransferService
 
             $transfer->update([
                 'status' => 'cancelled',
-                'cancelled_by' => auth()->id(),
+                'cancelled_by' => EmployeeContext::currentEmployeeId(),
                 'cancelled_at' => now(),
                 'cancellation_reason' => $reason,
             ]);

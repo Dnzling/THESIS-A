@@ -91,7 +91,7 @@ class ReorderRuleService
                 $results[] = [
                     'rule_id' => $rule->id,
                     'product_id' => $rule->product_id,
-                    'product_name' => $rule->product->name,
+                    'product_name' => $rule->product->product_name ?? $rule->product->name,
                     'current_stock' => $currentStock,
                     'reorder_point' => $rule->reorder_point,
                     'safety_stock' => $rule->safety_stock,
@@ -140,7 +140,7 @@ class ReorderRuleService
                         $suggestions[] = [
                             'type' => 'new_rule',
                             'product_id' => $inventory->product_id,
-                            'product_name' => $inventory->product->name,
+                            'product_name' => $inventory->product->product_name ?? $inventory->product->name,
                             'current_stock' => $inventory->quantity_on_hand,
                             'reorder_point' => $inventory->reorder_point,
                             'suggested_rule' => [
@@ -187,6 +187,102 @@ class ReorderRuleService
             Log::error('Failed to generate reorder suggestions', [
                 'branch_id' => $branchId,
                 'include_all_products' => $includeAllProducts,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Auto-create reorder rules from existing branch inventory records.
+     */
+    public function autoCreateRulesFromInventory(int $branchId, bool $overwrite = false): array
+    {
+        try {
+            $inventoryRows = BranchInventory::with('product')
+                ->where('branch_id', $branchId)
+                ->whereNotNull('product_id')
+                ->get();
+
+            $created = [];
+            $updated = [];
+            $skipped = [];
+
+            foreach ($inventoryRows as $row) {
+                if (!$row->product_id) {
+                    continue;
+                }
+
+                $existing = ReorderRule::query()
+                    ->where('branch_id', $branchId)
+                    ->where('product_id', $row->product_id)
+                    ->first();
+
+                $reorderPoint = (float) ($row->reorder_point ?? 0);
+                $reorderQty = (float) ($row->reorder_quantity ?? 0);
+                $safetyStock = (float) ($row->safety_stock ?? 0);
+                $maximumStock = (float) ($row->maximum_stock ?? 0);
+
+                // Safe defaults when inventory thresholds are missing.
+                if ($reorderPoint <= 0) {
+                    $reorderPoint = 10;
+                }
+                if ($reorderQty <= 0) {
+                    $reorderQty = max(1, (int) ceil($reorderPoint * 1.5));
+                }
+                if ($safetyStock <= 0 || $safetyStock >= $reorderPoint) {
+                    $safetyStock = max(1, (int) floor($reorderPoint * 0.3));
+                }
+                if ($maximumStock <= $reorderPoint) {
+                    $maximumStock = (float) max($reorderPoint + 1, (int) ceil($reorderPoint * 3));
+                }
+
+                $payload = [
+                    'product_id' => (int) $row->product_id,
+                    'branch_id' => $branchId,
+                    'rule_type' => 'automatic',
+                    'trigger_type' => 'reorder_point',
+                    'basis_type' => 'reorder_point',
+                    'reorder_point' => $reorderPoint,
+                    'reorder_quantity' => $reorderQty,
+                    'lead_time_days' => 7,
+                    'review_period_days' => 7,
+                    'safety_stock' => $safetyStock,
+                    'maximum_stock' => $maximumStock,
+                    'priority' => 'medium',
+                    'auto_generate_po' => false,
+                    'is_active' => true,
+                    'next_review_date' => now()->addDays(30),
+                    'notes' => 'Auto-created from branch inventory thresholds.',
+                ];
+
+                if (!$existing) {
+                    $createdRule = ReorderRule::create($payload);
+                    $created[] = $createdRule->id;
+                    continue;
+                }
+
+                if (!$overwrite) {
+                    $skipped[] = $existing->id;
+                    continue;
+                }
+
+                $existing->update($payload);
+                $updated[] = $existing->id;
+            }
+
+            return [
+                'created_ids' => $created,
+                'updated_ids' => $updated,
+                'skipped_ids' => $skipped,
+                'created_count' => count($created),
+                'updated_count' => count($updated),
+                'skipped_count' => count($skipped),
+            ];
+        } catch (Exception $e) {
+            Log::error('Failed to auto-create reorder rules from inventory', [
+                'branch_id' => $branchId,
+                'overwrite' => $overwrite,
                 'error' => $e->getMessage(),
             ]);
             throw $e;

@@ -4,9 +4,11 @@
 namespace App\Http\Controllers\Api\ProductCatalog;
 
 use App\Http\Controllers\Controller;
+use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class BaseController extends Controller
 {
@@ -16,6 +18,13 @@ class BaseController extends Controller
     public function __construct(Request $request)
     {
         try {
+            // Allow public asset serving endpoint (used by ecommerce 3D/image viewers)
+            if ($request->is('api/product-catalog/assets/*/serve')) {
+                $this->storeId = Auth::user()?->store_id;
+                $this->userId = Auth::id();
+                return;
+            }
+
             // Get store_id from authenticated user
             if (Auth::check()) {
                 $user = Auth::user();
@@ -38,6 +47,9 @@ class BaseController extends Controller
             } else {
                 abort(401, 'Unauthenticated');
             }
+        } catch (HttpExceptionInterface $e) {
+            // Preserve intended HTTP exceptions (401/403/etc) without converting to 500
+            throw $e;
         } catch (\Exception $e) {
             Log::error('BaseController error', [
                 'message' => $e->getMessage(),
@@ -59,6 +71,8 @@ class BaseController extends Controller
 
     protected function successResponse($data, $message = 'Success', $code = 200)
     {
+        $this->recordCatalogActivity('success', $message, $code);
+
         return response()->json([
             'success' => true,
             'message' => $message,
@@ -72,6 +86,8 @@ class BaseController extends Controller
 
     protected function errorResponse($message, $code = 400, $errors = [], $exception = null)
     {
+        $this->recordCatalogActivity('error', $message, $code, $errors);
+
         $response = [
             'success' => false,
             'message' => $message,
@@ -104,5 +120,51 @@ class BaseController extends Controller
         }
         
         return $validator->validated();
+    }
+
+    protected function recordCatalogActivity(string $result, string $message, int $statusCode, array $errors = []): void
+    {
+        try {
+            if (!Auth::check()) {
+                return;
+            }
+
+            $req = request();
+            $action = sprintf(
+                'merchandising.%s.%s',
+                strtolower($req->method()),
+                trim(str_replace('/', '.', $req->path()), '.')
+            );
+
+            $entityId = null;
+            foreach (['id', 'product', 'productId', 'category', 'tag', 'attribute', 'variation'] as $routeKey) {
+                $value = $req->route($routeKey);
+                if (is_numeric($value)) {
+                    $entityId = (int) $value;
+                    break;
+                }
+            }
+
+            ActivityLog::record(
+                $action,
+                $message,
+                [
+                    'module' => 'product_catalog',
+                    'result' => $result,
+                    'status_code' => $statusCode,
+                    'path' => $req->path(),
+                    'method' => $req->method(),
+                    'query' => $req->query(),
+                    'has_errors' => !empty($errors),
+                ],
+                'product_catalog',
+                $entityId
+            );
+        } catch (\Throwable $e) {
+            Log::warning('ProductCatalog activity log failed', [
+                'error' => $e->getMessage(),
+                'path' => request()->path(),
+            ]);
+        }
     }
 }

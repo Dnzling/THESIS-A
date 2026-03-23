@@ -17,16 +17,22 @@
               <label class="text-sm font-semibold text-gray-700">
                 From Branch <span class="text-red-500">*</span>
               </label>
-              <Select 
-                v-model="form.from_branch_id" 
-                :options="branches" 
-                optionLabel="name" 
-                optionValue="id" 
-                placeholder="Select source branch"
-                :loading="loadingBranches"
-                @change="onFromBranchChange"
-                :class="{ 'p-invalid': errors.from_branch_id }"
-              />
+              <div>
+                <Skeleton v-if="autoFillBranchLoading" height="2.5rem" />
+                <Select 
+                  v-else
+                  v-model="form.from_branch_id" 
+                  :options="branches" 
+                  optionLabel="name" 
+                  optionValue="id" 
+                  placeholder="Select source branch"
+                  :loading="loadingBranches"
+                  :disabled="true"
+                  @change="onFromBranchChange"
+                  :class="{ 'p-invalid': errors.from_branch_id }"
+                />
+              </div>
+              <small class="text-gray-500">Auto-filled from your assigned branch</small>
               <small v-if="errors.from_branch_id" class="text-red-500">{{ errors.from_branch_id }}</small>
             </div>
 
@@ -47,7 +53,9 @@
             </div>
 
             <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Expected Receive Date</label>
+              <label class="text-sm font-semibold text-gray-700">
+                Expected Receive Date <span class="text-red-500">*</span>
+              </label>
               <DatePicker 
                 v-model="form.expected_receive_date" 
                 dateFormat="yy-mm-dd" 
@@ -57,6 +65,18 @@
               />
               <small v-if="errors.expected_receive_date" class="text-red-500">{{ errors.expected_receive_date }}</small>
             </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold text-gray-700">
+              Transfer Reason <span class="text-red-500">*</span>
+            </label>
+            <InputText
+              v-model="form.reason"
+              placeholder="e.g. Branch replenishment"
+              :class="{ 'p-invalid': errors.reason }"
+            />
+            <small v-if="errors.reason" class="text-red-500">{{ errors.reason }}</small>
           </div>
 
           <div class="flex flex-col gap-2">
@@ -251,13 +271,17 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '../../../../stores/auth'
+import axios from 'axios'
 
 const router = useRouter()
 const toast = useToast()
 const saving = ref(false)
 const loadingBranches = ref(false)
 const loadingProducts = ref(false)
+const autoFillBranchLoading = ref(true)
 const showCancelDialog = ref(false)
+const authStore = useAuthStore()
 
 // Form state
 const form = reactive({
@@ -265,6 +289,7 @@ const form = reactive({
   to_branch_id: null as number | null,
   transfer_date: new Date(),
   expected_receive_date: null as Date | null,
+  reason: 'Branch replenishment',
   remarks: '',
   items: [] as Array<{
     inventory_item_id: number
@@ -284,7 +309,8 @@ const newItem = reactive({
 const errors = ref({
   from_branch_id: '',
   to_branch_id: '',
-  expected_receive_date: ''
+  expected_receive_date: '',
+  reason: ''
 })
 
 // API data
@@ -309,13 +335,17 @@ const selectedProduct = computed(() => {
 })
 
 const canAddItem = computed(() => {
-  return newItem.inventory_item_id && newItem.quantity > 0
+  if (!newItem.inventory_item_id || newItem.quantity <= 0) return false
+  if (!selectedProduct.value) return false
+  return newItem.quantity <= Number(selectedProduct.value.quantity_on_hand || 0)
 })
 
 const isFormValid = computed(() => {
   return (
     form.from_branch_id &&
     form.to_branch_id &&
+    form.expected_receive_date &&
+    form.reason.trim().length > 0 &&
     form.items.length > 0
   )
 })
@@ -323,6 +353,35 @@ const isFormValid = computed(() => {
 const totalQuantity = computed(() => {
   return form.items.reduce((sum, item) => sum + item.quantity, 0)
 })
+
+const resolveAssignedBranchId = (): number => {
+  const user: any = authStore.user || {}
+  const candidate = Number(
+    user.branch_id ??
+    user.branch?.id ??
+    user.employee?.branch_id ??
+    user.employee_branch_id ??
+    0
+  )
+  return Number.isFinite(candidate) ? candidate : 0
+}
+
+const resolveAssignedBranchIdFromEmployee = async (): Promise<number> => {
+  try {
+    const response = await axios.get('/api/employees/me')
+    const payload: any = response?.data || {}
+    const data = payload?.data || payload
+    const candidate = Number(
+      data?.branch_id ??
+      data?.employee?.branch_id ??
+      data?.branch?.id ??
+      0
+    )
+    return Number.isFinite(candidate) ? candidate : 0
+  } catch {
+    return 0
+  }
+}
 
 // Methods
 const loadBranches = async () => {
@@ -427,7 +486,7 @@ const removeItem = (index: number) => {
 }
 
 const validateForm = (): boolean => {
-  errors.value = { from_branch_id: '', to_branch_id: '', expected_receive_date: '' }
+  errors.value = { from_branch_id: '', to_branch_id: '', expected_receive_date: '', reason: '' }
   
   let isValid = true
   
@@ -443,6 +502,16 @@ const validateForm = (): boolean => {
 
   if (form.from_branch_id === form.to_branch_id) {
     errors.value.to_branch_id = 'From and To branches must be different'
+    isValid = false
+  }
+
+  if (!form.expected_receive_date) {
+    errors.value.expected_receive_date = 'Expected receive date is required'
+    isValid = false
+  }
+
+  if (!form.reason.trim()) {
+    errors.value.reason = 'Reason is required'
     isValid = false
   }
 
@@ -465,16 +534,15 @@ const submitTransfer = async () => {
     const payload = {
       from_branch_id: form.from_branch_id,
       to_branch_id: form.to_branch_id,
-      transfer_date: form.transfer_date.toISOString().split('T')[0],
-      expected_receive_date: form.expected_receive_date?.toISOString().split('T')[0],
+      expected_delivery_date: form.expected_receive_date?.toISOString().split('T')[0],
+      reason: form.reason,
       remarks: form.remarks || undefined,
       items: form.items.map(item => {
         const inventoryItem = inventoryItems.value.find(inv => inv.id === item.inventory_item_id)
         return {
           product_id: inventoryItem?.product_id,
           variation_id: inventoryItem?.variation_id || null,
-          quantity: item.quantity,
-          unit_value: inventoryItem?.unit_cost || null,
+          requested_quantity: item.quantity,
           notes: item.notes
         }
       })
@@ -486,14 +554,36 @@ const submitTransfer = async () => {
     toast.add({ 
       severity: 'success', 
       summary: 'Success', 
-      detail: `Transfer #${transferId} created successfully`,
+      detail: `Transfer #${transferId} submitted and is now pending manager approval`,
       life: 3000
     })
     
     router.push({ name: 'inventory.transfers' })
   } catch (error: any) {
     console.error('Failed to create transfer', error)
-    const message = error.response?.data?.message || 'Failed to create transfer'
+    const responseData = error?.response?.data || {}
+    const validationErrors = responseData?.errors
+
+    let message =
+      responseData?.message ||
+      responseData?.error ||
+      error?.message ||
+      'Failed to create transfer'
+
+    if (validationErrors && typeof validationErrors === 'object') {
+      const firstEntry = Object.entries(validationErrors)[0]
+      if (firstEntry) {
+        const [, value] = firstEntry
+        const firstError = Array.isArray(value) ? value[0] : String(value)
+        message = `${message}: ${firstError}`
+      }
+    }
+
+    if (!message || message === 'Request failed with status code 500') {
+      const raw = typeof responseData === 'string' ? responseData : ''
+      message = raw?.slice(0, 220) || `Server error (${error?.response?.status || 500}). Please check backend logs.`
+    }
+
     toast.add({ 
       severity: 'error', 
       summary: 'Error', 
@@ -532,6 +622,44 @@ watch(() => newItem.quantity, (newVal) => {
 
 // Load initial data
 onMounted(async () => {
-  await loadBranches()
+  try {
+    autoFillBranchLoading.value = true
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    form.expected_receive_date = tomorrow
+
+    let userBranchId = resolveAssignedBranchId()
+    if (!userBranchId) {
+      try {
+        await authStore.fetchCurrentUser()
+        userBranchId = resolveAssignedBranchId()
+      } catch {
+        // keep fallback behavior below
+      }
+    }
+
+    if (!userBranchId) {
+      userBranchId = await resolveAssignedBranchIdFromEmployee()
+    }
+
+    await loadBranches()
+
+    if (userBranchId) {
+      form.from_branch_id = userBranchId
+      await onFromBranchChange()
+    } else if (branches.value.length > 0) {
+      // Fallback so form is still usable even if branch is missing in user payload.
+      form.from_branch_id = Number(branches.value[0].id)
+      await onFromBranchChange()
+      toast.add({
+        severity: 'warn',
+        summary: 'Branch Fallback',
+        detail: 'Unable to detect your assigned branch from profile. Using first available branch.',
+        life: 4000
+      })
+    }
+  } finally {
+    autoFillBranchLoading.value = false
+  }
 })
 </script>

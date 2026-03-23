@@ -1,24 +1,25 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
+  <div class="min-h-screen p-6">
     <div class="max-w-7xl mx-auto">
       <!-- Header -->
       <div class="mb-6">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-3xl font-bold text-gray-800">Stock Counts</h1>
-            <p class="text-gray-600 mt-1">Manage inventory stock counts and audits</p>
+            <h1 class="text-lg font-bold text-gray-800">Stock Counts</h1>
           </div>
           <div class="flex items-center gap-2">
             <Button
+              v-if="canCreateStockCounts"
               label="Auto Schedule Cycle Counts"
               icon="pi pi-calendar-plus"
-              severity="warning"
+              severity="warning" size="small"
               outlined
               @click="showScheduleDialog = true"
             />
             <Button
+              v-if="canCreateStockCounts"
               label="New Stock Count"
-              icon="pi pi-plus"
+              icon="pi pi-plus" size="small"
               @click="createStockCount"
               class="bg-blue-600 hover:bg-blue-700"
             />
@@ -75,6 +76,8 @@
                 placeholder="Select date range"
                 fluid
                 showIcon
+                showClear
+                :maxDate="new Date()"
                 dateFormat="yy-mm-dd"
                 @update:modelValue="applyFilters"
               />
@@ -157,6 +160,7 @@
               <template #body="slotProps">
                 <div class="flex gap-2">
                   <Button
+                    v-if="canViewStockCounts"
                     icon="pi pi-eye"
                     severity="info"
                     outlined
@@ -164,6 +168,7 @@
                     @click="viewStockCount(slotProps.data)"
                   />
                   <Button
+                    v-if="canUpdateStockCounts"
                     icon="pi pi-pencil"
                     severity="warning"
                     outlined
@@ -172,6 +177,7 @@
                     :disabled="slotProps.data.status === 'completed'"
                   />
                   <Button
+                    v-if="canCompleteStockCounts"
                     icon="pi pi-check"
                     severity="success"
                     outlined
@@ -180,6 +186,7 @@
                     :disabled="slotProps.data.status === 'completed'"
                   />
                   <Button
+                    v-if="canDeleteStockCounts"
                     icon="pi pi-trash"
                     severity="danger"
                     outlined
@@ -272,6 +279,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '../../../../stores/auth'
 import inventoryService from '../../../../services/inventory.service'
 import { debounce } from 'lodash'
 import InputNumber from 'primevue/inputnumber'
@@ -290,6 +298,13 @@ const totalRecords = ref(0)
 const perPage = ref(10)
 const toast = useToast()
 const router = useRouter()
+const authStore = useAuthStore()
+
+const canViewStockCounts = authStore.hasPermission('inventory.stock-counts.view')
+const canCreateStockCounts = authStore.hasPermission('inventory.stock-counts.create')
+const canUpdateStockCounts = authStore.hasPermission('inventory.stock-counts.update')
+const canCompleteStockCounts = authStore.hasPermission('inventory.stock-counts.complete')
+const canDeleteStockCounts = authStore.hasPermission('inventory.stock-counts.delete')
 
 const filters = reactive({
   search: '',
@@ -311,6 +326,12 @@ const statusOptions = [
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' }
 ]
+
+const extractRows = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  return []
+}
 
 const loadStockCounts = async (page = 1) => {
   loading.value = true
@@ -356,7 +377,15 @@ const loadWarehouses = async () => {
     const response = await inventoryService.getWarehouses({ per_page: 1000 })
 
     if (response.success) {
-      warehouses.value = response.data || []
+      warehouses.value = extractRows(response.data)
+      const userBranchId = Number((authStore.user as any)?.branch_id || 0)
+      if (userBranchId) {
+        const hasBranchWarehouse = warehouses.value.some((w: any) => Number(w.id) === userBranchId)
+        if (hasBranchWarehouse) {
+          if (!filters.warehouse_id) filters.warehouse_id = userBranchId
+          if (!scheduleForm.branch_id) scheduleForm.branch_id = userBranchId
+        }
+      }
     }
   } catch (error: any) {
     toast.add({
@@ -382,7 +411,7 @@ const onPage = (event: any) => {
   loadStockCounts(event.page + 1)
 }
 
-const onSort = (event: any) => {
+const onSort = () => {
   // Handle sorting if needed
   loadStockCounts(1)
 }
@@ -543,7 +572,7 @@ const getStatusSeverity = (status: string) => {
 }
 
 onMounted(() => {
-  loadStockCounts()
   loadWarehouses()
+  loadStockCounts()
 })
 </script>

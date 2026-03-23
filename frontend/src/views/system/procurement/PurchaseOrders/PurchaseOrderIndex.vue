@@ -205,7 +205,7 @@ const statusOptions = ref([
   { label: 'Supplier Accepted', value: 'supplier_accepted' },
   { label: 'In Transit', value: 'in_transit' },
   { label: 'Delivered', value: 'delivered' },
-  { label: 'Declined by Supplier', value: 'declined_supplier' },
+  { label: 'Supplier Declined', value: 'declined_supplier' },
   { label: 'Revision Requested', value: 'revision_requested' },
   { label: 'Cancelled', value: 'cancelled' },
 ])
@@ -276,7 +276,7 @@ function formatStatus(status: string): string {
     supplier_accepted: 'Supplier Accepted',
     in_transit: 'In Transit',
     delivered: 'Delivered',
-    declined_supplier: 'Declined by Supplier',
+    declined_supplier: 'Supplier Declined',
     revision_requested: 'Revision Requested',
     cancelled: 'Cancelled',
   }

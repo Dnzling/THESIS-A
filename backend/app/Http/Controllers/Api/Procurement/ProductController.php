@@ -23,6 +23,7 @@ class ProductController extends Controller
         try {
             $storeId = auth()->user()->store_id;
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
+            $includeCost = $request->boolean('include_cost', false);
 
             $query = Product::where('store_id', $storeId)
                 ->with([
@@ -86,7 +87,7 @@ class ProductController extends Controller
             $products = $query->paginate($request->get('per_page', 15));
 
             // Enrich with procurement inventory and pricing data
-            $products->getCollection()->transform(function($product) use ($storeId) {
+            $products->getCollection()->transform(function($product) use ($storeId, $includeCost) {
                 $procInventory = ProcurementInventory::where('store_id', $storeId)
                     ->where('product_id', $product->id)
                     ->first();
@@ -104,6 +105,11 @@ class ProductController extends Controller
                     ->first();
 
                 $product->best_supplier = $bestPrice;
+                if ($includeCost) {
+                    $product->cost_price = $product->getRawOriginal('cost_price');
+                }
+
+                $product->cost_price = $product->getRawOriginal('cost_price');
                 $product->best_price = $bestPrice?->priceHistory?->first()?->unit_price ?? null;
 
                 return $product;
@@ -139,6 +145,7 @@ class ProductController extends Controller
             $storeId = auth()->user()->store_id;
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
 
+            $includeCost = $request->boolean('include_cost', false);
             $product = Product::where('store_id', $storeId)
                 ->with([
                     'category:id,category_name',
@@ -158,6 +165,10 @@ class ProductController extends Controller
                 ->where('branch_id', $branchId)
                 ->first();
 
+            if ($includeCost) {
+                $product->cost_price = $product->getRawOriginal('cost_price');
+            }
+            $product->cost_price = $product->getRawOriginal('cost_price');
             $product->current_stock = $inventory?->quantity_on_hand ?? 0;
             $product->quantity_on_orders = $inventory?->quantity_on_orders ?? 0;
             $product->reorder_point = $inventory?->reorder_point ?? 0;

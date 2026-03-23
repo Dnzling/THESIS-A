@@ -288,7 +288,7 @@ class PurchaseOrderPrintEmailController extends Controller
         try {
             $query = PurchaseOrder::with('supplier', 'branch', 'items.product')
                 ->where('store_id', auth()->user()->store_id)
-                ->whereIn('status', ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit']);
+                ->whereIn('status', ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered']);
 
             if ($request->has('branch_id')) {
                 $query->where('branch_id', $request->branch_id);

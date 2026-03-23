@@ -83,10 +83,6 @@
                   <p class="text-sm font-semibold text-gray-900">{{ product.category?.category_name || 'N/A' }}</p>
                 </div>
                 <div>
-                  <p class="text-xs text-gray-600 mb-1">Stock Status</p>
-                  <Tag :value="product.stock_status" :severity="getStockSeverity(product.stock_status)" />
-                </div>
-                <div>
                   <p class="text-xs text-gray-600 mb-1">Brand</p>
                   <p class="text-sm font-semibold text-gray-900">{{ product.brand || 'N/A' }}</p>
                 </div>
@@ -203,17 +199,6 @@
                   </span>
                 </template>
               </Column>
-              <Column field="stock_quantity" header="Stock">
-                <template #body="{ data }">
-                  <Badge :value="data.stock_quantity" :severity="data.stock_quantity > 10 ? 'success' : 'warning'" />
-                </template>
-              </Column>
-              <Column field="is_active" header="Status">
-                <template #body="{ data }">
-                  <Tag :value="data.is_active ? 'Active' : 'Inactive'" 
-                       :severity="data.is_active ? 'success' : 'secondary'" />
-                </template>
-              </Column>
             </DataTable>
           </template>
         </Card>
@@ -318,63 +303,16 @@
         :header="primary3DModel?.file_name || '3D Model'" 
         :modal="true" 
         class="w-full max-w-4xl"
-        @hide="onModal3DViewerClose"
       >
         <div v-if="primary3DModel" class="space-y-4">
-          <!-- 3D Viewer Container -->
-          <div 
-            ref="modal3DViewerContainer"
-            class="relative bg-linear-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden"
-            style="height: 500px;"
-          >
-            <!-- Loading Indicator -->
-            <div v-if="loading3DModal" class="absolute inset-0 flex items-center justify-center bg-white/90 z-10">
-              <div class="text-center">
-                <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" />
-                <p class="text-sm text-gray-600 mt-2">Loading 3D Model...</p>
-              </div>
-            </div>
-
-            <!-- Error State -->
-            <div v-if="model3DModalError" class="absolute inset-0 flex items-center justify-center bg-red-50 z-10">
-              <div class="text-center p-4">
-                <i class="pi pi-exclamation-triangle text-4xl text-red-500 mb-2"></i>
-                <p class="text-sm text-red-700">Failed to load 3D model</p>
-                <Button label="Retry" size="small" class="mt-2" @click="retryLoad3DModal" />
-              </div>
-            </div>
-
-            <!-- Controls -->
-            <div v-if="!loading3DModal && !model3DModalError" class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg z-20">
-              <div class="flex items-center justify-between gap-2">
-                <Button 
-                  icon="pi pi-replay" 
-                  v-tooltip.top="'Reset View'"
-                  text 
-                  rounded 
-                  size="small"
-                  @click="reset3DModalView"
-                />
-                <Button 
-                  icon="pi pi-sync" 
-                  v-tooltip.top="'Auto Rotate'"
-                  text 
-                  rounded 
-                  size="small"
-                  :class="{ 'bg-blue-100': autoRotateModal }"
-                  @click="toggleAutoRotateModal"
-                />
-                <Button 
-                  icon="pi pi-camera" 
-                  v-tooltip.top="'Screenshot'"
-                  text 
-                  rounded 
-                  size="small"
-                  @click="take3DScreenshotModal"
-                />
-              </div>
-            </div>
-          </div>
+          <Model3DPreview
+            :model-url="primary3DModel.url"
+            :model-format="primary3DModel.model_format"
+            :camera-x="primary3DModel?.camera_settings?.angle_x ?? 0"
+            :camera-y="primary3DModel?.camera_settings?.angle_y ?? 15"
+            :zoom="primary3DModel?.camera_settings?.zoom ?? 1.5"
+            height="500px"
+          />
 
           <!-- Model Details -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
@@ -482,14 +420,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../stores/auth'
-import * as THREE from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import merchandisingService from '../../../../services/merchandising.service'
 
 import Card from 'primevue/card'
@@ -500,7 +434,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import Skeleton from 'primevue/skeleton'
-import ProgressSpinner from 'primevue/progressspinner'
+import Model3DPreview from '../../../../components/merchandising/Model3DPreview.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -515,9 +449,6 @@ const galleryVisible = ref(false)
 
 // Modal 3D Viewer
 const view3DModalVisible = ref(false)
-const loading3DModal = ref(false)
-const model3DModalError = ref(false)
-const autoRotateModal = ref(false)
 
 // Image Preview
 const imagePreviewVisible = ref(false)
@@ -529,15 +460,6 @@ const allAssets = ref<any[]>([])
 const primary3DModel = ref<any>(null)
 const productImages = ref<any[]>([])
 const selectedImage = ref(null)
-
-// 3D Viewer refs
-const modal3DViewerContainer = ref<HTMLElement | null>(null)
-let modalScene: THREE.Scene | null = null
-let modalCamera: THREE.PerspectiveCamera | null = null
-let modalRenderer: THREE.WebGLRenderer | null = null
-let modalControls: OrbitControls | null = null
-let modalModel: THREE.Object3D | null = null
-let modalAnimationId: number | null = null
 
 const loadProduct = async () => {
   loading.value = true
@@ -625,18 +547,6 @@ const loadAssets = async () => {
   }
 }
 
-// Watch for 3D modal open to initialize viewer
-watch(view3DModalVisible, (isOpen) => {
-  if (isOpen && primary3DModel.value) {
-    nextTick(() => {
-      const container = modal3DViewerContainer.value
-      if (container) {
-        init3DViewerModal(container, primary3DModel.value?.url || '')
-      }
-    })
-  }
-})
-
 const openView3DModal = () => {
   if (!primary3DModel.value) {
     toast.add({
@@ -650,265 +560,6 @@ const openView3DModal = () => {
   view3DModalVisible.value = true
 }
 
-const init3DViewerModal = (container: HTMLElement, modelUrl: string) => {
-  if (!container || !modelUrl) {
-    console.warn('Cannot init 3D viewer modal: missing container or model URL')
-    return
-  }
-
-  loading3DModal.value = true
-  model3DModalError.value = false
-
-  try {
-    // Cleanup existing scene
-    cleanup3DViewerModal()
-
-    const width = container.clientWidth
-    const height = container.clientHeight
-
-    // Scene setup
-    modalScene = new THREE.Scene()
-    modalScene.background = new THREE.Color(0xf5f5f5)
-
-    // Camera
-    modalCamera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000)
-    modalCamera.position.set(
-      primary3DModel.value?.camera_settings?.angle_x || 2,
-      primary3DModel.value?.camera_settings?.angle_y || 2,
-      primary3DModel.value?.camera_settings?.zoom || 5
-    )
-
-    // Renderer
-    modalRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    modalRenderer.setSize(width, height)
-    modalRenderer.setPixelRatio(window.devicePixelRatio)
-    modalRenderer.shadowMap.enabled = true
-    modalRenderer.shadowMap.type = THREE.PCFSoftShadowMap
-    container.appendChild(modalRenderer.domElement)
-
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
-    modalScene.add(ambientLight)
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    directionalLight.position.set(5, 10, 7.5)
-    directionalLight.castShadow = true
-    modalScene.add(directionalLight)
-
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3)
-    fillLight.position.set(-5, 0, -5)
-    modalScene.add(fillLight)
-
-    // Controls
-    modalControls = new OrbitControls(modalCamera, modalRenderer.domElement)
-    modalControls.enableDamping = true
-    modalControls.dampingFactor = 0.05
-    modalControls.minDistance = 1
-    modalControls.maxDistance = 20
-    modalControls.maxPolarAngle = Math.PI / 2
-
-    // Get auth token
-    const token = authStore.token || localStorage.getItem('auth_token')
-    const modelFormat = primary3DModel.value?.model_format?.toLowerCase()
-    
-    console.log('Loading 3D model modal:', modelUrl, 'Format:', modelFormat)
-
-    if (modelFormat === 'obj') {
-      // OBJ Loader with auth using fetch
-      fetch(modelUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': '*/*'
-        }
-      })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-          }
-          return response.text()
-        })
-        .then(objText => {
-          const loader = new OBJLoader()
-          const object = loader.parse(objText)
-
-          // Center and scale
-          const box = new THREE.Box3().setFromObject(object)
-          const center = box.getCenter(new THREE.Vector3())
-          const size = box.getSize(new THREE.Vector3())
-          const maxDim = Math.max(size.x, size.y, size.z)
-          const scale = 3 / maxDim
-
-          object.scale.multiplyScalar(scale)
-          object.position.sub(center.multiplyScalar(scale))
-
-          if (modalScene) {
-            modalScene.add(object)
-          }
-          modalModel = object
-          loading3DModal.value = false
-
-          console.log('3D model modal loaded successfully')
-
-          // Animation loop
-          animateModal()
-        })
-        .catch((error: any) => {
-          console.error('Failed to load OBJ model:', error)
-          loading3DModal.value = false
-          model3DModalError.value = true
-          toast.add({
-            severity: 'error',
-            summary: 'Error',
-            detail: 'Failed to load 3D model',
-            life: 3000
-          })
-        })
-
-    } else {
-      // GLTF/GLB Loader with auth using fetch
-      fetch(modelUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/octet-stream, application/json, */*'
-        }
-      })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-          }
-          return response.arrayBuffer()
-        })
-        .then(buffer => {
-          const loader = new GLTFLoader()
-          loader.parse(buffer, '', (gltf: any) => {
-            const object = gltf.scene
-
-            // Center and scale
-            const box = new THREE.Box3().setFromObject(object)
-            const center = box.getCenter(new THREE.Vector3())
-            const size = box.getSize(new THREE.Vector3())
-            const maxDim = Math.max(size.x, size.y, size.z)
-            const scale = 3 / maxDim
-
-            object.scale.multiplyScalar(scale)
-            object.position.sub(center.multiplyScalar(scale))
-
-            if (modalScene) {
-              modalScene.add(object)
-            }
-            modalModel = object
-            loading3DModal.value = false
-
-            console.log('3D model modal loaded successfully')
-
-            // Animation loop
-            animateModal()
-          }, (error: any) => {
-            console.error('Failed to parse GLTF model:', error)
-            loading3DModal.value = false
-            model3DModalError.value = true
-            toast.add({
-              severity: 'error',
-              summary: 'Error',
-              detail: 'Failed to load 3D model',
-              life: 3000
-            })
-          })
-        })
-        .catch((error: any) => {
-          console.error('Failed to load GLTF model:', error)
-          loading3DModal.value = false
-          model3DModalError.value = true
-          toast.add({
-            severity: 'error',
-            summary: 'Error',
-            detail: 'Failed to load 3D model',
-            life: 3000
-          })
-        })
-    }
-  } catch (error) {
-    console.error('Error initializing 3D viewer modal:', error)
-    loading3DModal.value = false
-    model3DModalError.value = true
-  }
-}
-
-const animateModal = () => {
-  if (!modalScene || !modalCamera || !modalRenderer || !modalControls) return
-
-  modalAnimationId = requestAnimationFrame(animateModal)
-  
-  if (autoRotateModal.value && modalModel) {
-    modalModel.rotation.y += 0.005
-  }
-  
-  modalControls.update()
-  modalRenderer.render(modalScene, modalCamera)
-}
-
-const reset3DModalView = () => {
-  if (modalControls) {
-    modalControls.reset()
-  }
-}
-
-const toggleAutoRotateModal = () => {
-  autoRotateModal.value = !autoRotateModal.value
-}
-
-const take3DScreenshotModal = () => {
-  if (!modalRenderer) return
-  
-  const dataURL = modalRenderer.domElement.toDataURL('image/png')
-  const link = document.createElement('a')
-  link.download = `${product.value?.sku || 'product'}-3d-preview.png`
-  link.href = dataURL
-  link.click()
-  
-  toast.add({
-    severity: 'success',
-    summary: 'Screenshot Saved',
-    detail: '3D preview downloaded',
-    life: 2000
-  })
-}
-
-const retryLoad3DModal = () => {
-  model3DModalError.value = false
-  if (modal3DViewerContainer.value) {
-    init3DViewerModal(modal3DViewerContainer.value, primary3DModel.value?.url || '')
-  }
-}
-
-const cleanup3DViewerModal = () => {
-  if (modalAnimationId) {
-    cancelAnimationFrame(modalAnimationId)
-    modalAnimationId = null
-  }
-  
-  if (modalRenderer) {
-    modalRenderer.dispose()
-    if (modal3DViewerContainer.value && modalRenderer.domElement.parentNode === modal3DViewerContainer.value) {
-      modal3DViewerContainer.value.removeChild(modalRenderer.domElement)
-    }
-    modalRenderer = null
-  }
-  
-  if (modalControls) {
-    modalControls.dispose()
-    modalControls = null
-  }
-  
-  modalScene = null
-  modalCamera = null
-  modalModel = null
-}
-
-const onModal3DViewerClose = () => {
-  cleanup3DViewerModal()
-}
-
 const downloadModel = () => {
   if (!primary3DModel.value) return
   
@@ -919,10 +570,6 @@ const downloadModel = () => {
     detail: `Downloading ${primary3DModel.value.file_name}`,
     life: 2000
   })
-}
-
-const cleanup3DScene = () => {
-  // Legacy cleanup function - now handled by cleanup3DViewerModal
 }
 
 const confirmDelete = () => {
@@ -998,16 +645,6 @@ const getAssetTypeLabel = (assetType: string) => {
   return assetType.replace(/_/g, ' ')
 }
 
-const getStockSeverity = (status: string) => {
-  const severities: Record<string, string> = {
-    'In Stock': 'success',
-    'Low Stock': 'warning',
-    'Out of Stock': 'danger',
-    'Pre-order': 'info'
-  }
-  return severities[status] || 'secondary'
-}
-
 const openImagePreview = async (image: any) => {
   previewImage.value = { ...image }
   
@@ -1056,11 +693,6 @@ const formatDate = (date: string) => {
 
 onMounted(() => {
   loadProduct()
-})
-
-// Cleanup on unmount
-onBeforeUnmount(() => {
-  cleanup3DViewerModal()
 })
 </script>
 

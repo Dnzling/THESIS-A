@@ -360,18 +360,25 @@ const userData = localStorage.getItem('user')
 const user: User | null = userData ? JSON.parse(userData) : null
 
 const fullName = computed(() => {
-  const first = startCase(toLower(authStore.user?.first_name || ''))
-  const last = startCase(toLower(authStore.user?.last_name || ''))
-  return `${first} ${last}`.trim() || 'User'
+  const rawFirst = authStore.user?.first_name || authStore.user?.fname || ''
+  const rawLast = authStore.user?.last_name || authStore.user?.lname || ''
+  const fallbackName = authStore.user?.name || authStore.user?.full_name || ''
+  const first = startCase(toLower(rawFirst))
+  const last = startCase(toLower(rawLast))
+  return `${first} ${last}`.trim() || fallbackName || 'User'
 })
 
 const userInitials = computed(() => {
-  const first = authStore.user?.first_name?.[0] || ''
-  const last = authStore.user?.last_name?.[0] || ''
+  const first = authStore.user?.first_name?.[0] || authStore.user?.fname?.[0] || ''
+  const last = authStore.user?.last_name?.[0] || authStore.user?.lname?.[0] || ''
   return (first + last).toUpperCase() || 'U'
 })
 
-const roleDisplay = computed(() => startCase(authStore.user?.role || 'User'))
+const roleDisplay = computed(() => {
+  const role = authStore.user?.role
+  if (typeof role === 'string') return startCase(role)
+  return startCase(authStore.user?.role_name || role?.display_name || role?.name || 'User')
+})
 
 // Breadcrumbs
 const breadcrumbs = computed(() => {

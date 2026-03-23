@@ -152,7 +152,7 @@
               </div>
             </div>
             <div class="mt-4 grid grid-cols-1 gap-3">
-              <Dropdown
+              <Select
                 v-model="logEventType"
                 :options="logTypes"
                 optionLabel="label"
@@ -160,7 +160,7 @@
                 placeholder="Select milestone"
                 class="w-full"
               />
-              <InputTextarea v-model="logNotes" rows="2" placeholder="Notes (optional)" autoResize />
+              <TextArea v-model="logNotes" rows="2" placeholder="Notes (optional)" autoResize />
               <Button
                 label="Add Log"
                 icon="pi pi-save"
@@ -202,8 +202,6 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Tag from 'primevue/tag'
 import ConfirmDialog from 'primevue/confirmdialog'
-import Dropdown from 'primevue/dropdown'
-import InputTextarea from 'primevue/inputtextarea'
 import Skeleton from 'primevue/skeleton'
 import PortalStepper from '../../../components/system/supplier/PortalStepper.vue'
 import supplierService from '../../../services/supplier.service'

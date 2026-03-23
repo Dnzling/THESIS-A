@@ -195,7 +195,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import GeneratePayrollDialog from '../../../components/dialogs/GeneratePayrollDialog.vue'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { debounce } from 'lodash'
 
@@ -306,7 +306,7 @@ const fetchPayPeriods = async () => {
       params.month = filters.value.dateRange[0].getMonth() + 1
     }
 
-    const response = await axios.get('/api/payroll/pay-periods', { params })
+    const response = await hrService.api.get('/api/payroll/pay-periods', { params })
 
     if (response.data.success) {
       payPeriods.value = response.data.data
@@ -327,7 +327,7 @@ const fetchPayPeriods = async () => {
 const fetchPeriodDetails = async (id: number) => {
   loadingEmployees.value = true
   try {
-    const response = await axios.get(`/api/payroll/pay-periods/${id}/payroll`, {
+    const response = await hrService.api.get(`/api/payroll/pay-periods/${id}/payroll`, {
       params: {
         include_department_breakdown: true,
         include_status_breakdown: true
@@ -473,7 +473,7 @@ const editBatch = (batch: PayPeriod) => {
 
 const exportBatch = async (batch: PayPeriod) => {
   try {
-    const response = await axios.get(`/api/payroll/pay-periods/${batch.id}/export`, {
+    const response = await hrService.api.get(`/api/payroll/pay-periods/${batch.id}/export`, {
       responseType: 'blob'
     })
 
@@ -512,7 +512,7 @@ const deleteBatch = async () => {
 
   isDeleting.value = true
   try {
-    await axios.delete(`api/payroll/pay-periods/${batchToDelete.value.id}`)
+    await hrService.api.delete(`api/payroll/pay-periods/${batchToDelete.value.id}`)
 
     payPeriods.value = payPeriods.value.filter(p => p.id !== batchToDelete.value?.id)
 
@@ -558,7 +558,6 @@ watch(() => filters.value.status, () => {
 // ==================== LIFECYCLE ====================
 onMounted(() => {
   // Set axios default headers
-  axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
   fetchPayPeriods()
 })
 </script>
@@ -579,3 +578,6 @@ onMounted(() => {
   }
 }
 </style>
+
+
+

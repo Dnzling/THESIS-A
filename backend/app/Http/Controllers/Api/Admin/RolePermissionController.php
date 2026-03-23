@@ -11,9 +11,15 @@ use App\Models\Core\NavigationItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use App\Models\Core\User;
+use App\Services\Core\PermissionService;
 
 class RolePermissionController extends Controller
 {
+    public function __construct(protected PermissionService $permissionService)
+    {
+    }
+
     /**
      * Get all roles with permission counts
      */
@@ -82,7 +88,23 @@ class RolePermissionController extends Controller
 
         DB::table('role_permissions')->insert($data->toArray());
 
+        $this->clearPermissionCacheForRoleUsers((int) $roleId);
+
         return response()->json(['message' => 'Permissions updated successfully']);
+    }
+
+    /**
+     * Clear permission cache for all users assigned to a role.
+     */
+    private function clearPermissionCacheForRoleUsers(int $roleId): void
+    {
+        User::query()
+            ->where('role_id', $roleId)
+            ->select(['id', 'store_id'])
+            ->get()
+            ->each(function (User $user): void {
+                $this->permissionService->clearUserCache($user);
+            });
     }
 
     /**

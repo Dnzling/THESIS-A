@@ -328,7 +328,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
 // ==================== INTERFACES ====================
@@ -435,10 +435,9 @@ const fetchPayrollData = async () => {
   if (!periodId.value) return
   loading.value = true
   try {
-    axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
 
     const [payrollRes] = await Promise.all([
-      axios.get('/api/payroll', { params: { pay_period_id: periodId.value } }),
+      hrService.api.get('/api/payroll', { params: { pay_period_id: periodId.value } }),
       fetchBatchInfo()
     ])
 
@@ -455,7 +454,7 @@ const fetchPayrollData = async () => {
 
 const fetchBatchInfo = async () => {
   try {
-    const response = await axios.get(`/api/payroll/pay-periods/${periodId.value}`)
+    const response = await hrService.api.get(`/api/payroll/pay-periods/${periodId.value}`)
     if (response.data.success) {
       batchInfo.value = response.data.data
     }
@@ -556,7 +555,7 @@ const saveAllChanges = async () => {
     await Promise.all(
       draftItems.map(async (item) => {
         try {
-          const response = await axios.put(`/api/payroll/${item.payroll_id}`, {
+          const response = await hrService.api.put(`/api/payroll/${item.payroll_id}`, {
             allowances_total: item.allowanceAmount,
             bonuses_total: item.bonusPay,
             late_deduction: item.lateDeductions,
@@ -591,7 +590,7 @@ const saveAllChanges = async () => {
 const savePayrollItem = async (item: PayrollItem) => {
   item.saving = true
   try {
-    const response = await axios.put(`/api/payroll/${item.payroll_id}`, {
+    const response = await hrService.api.put(`/api/payroll/${item.payroll_id}`, {
       allowances_total: item.allowanceAmount,
       bonuses_total: item.bonusPay,
       late_deduction: item.lateDeductions,
@@ -618,7 +617,7 @@ const savePayrollItem = async (item: PayrollItem) => {
 const submitForApproval = async (item: PayrollItem) => {
   item.submitting = true
   try {
-    await axios.post(`/api/payroll/${item.payroll_id}/approve`)
+    await hrService.api.post(`/api/payroll/${item.payroll_id}/approve`)
     item.status = 'approved'
     toast.add({ severity: 'success', summary: 'Approved', detail: `${item.employeeName}'s payroll approved`, life: 3000 })
   } catch (error: any) {
@@ -643,7 +642,7 @@ const submitBatchForApproval = async () => {
   bulkSubmitting.value = true
   try {
     const ids = eligibleItems.map(i => i.payroll_id)
-    const response = await axios.post('/api/payroll/bulk-approve', { payroll_ids: ids })
+    const response = await hrService.api.post('/api/payroll/bulk-approve', { payroll_ids: ids })
 
     if (response.data.success) {
       eligibleItems.forEach(item => { item.status = 'approved' })
@@ -745,7 +744,6 @@ const goBack = () => {
 
 // ==================== LIFECYCLE ====================
 onMounted(() => {
-  axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
   fetchPayrollData()
 })
 </script>
@@ -770,3 +768,6 @@ onMounted(() => {
   .payroll-list :deep(.p-inputnumber) { width: 140px; }
 }
 </style>
+
+
+

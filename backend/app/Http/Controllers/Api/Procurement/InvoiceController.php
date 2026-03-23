@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class InvoiceController extends Controller
 {
@@ -253,6 +254,124 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Auto-create invoice from GRN
+     * POST /api/procurement/invoices/from-grn
+     */
+    public function createFromGoodsReceipt(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'purchase_order_id' => 'required|exists:purchase_orders,id',
+                'goods_receipt_id' => 'required|exists:goods_receipts,id',
+            ]);
+
+            DB::beginTransaction();
+
+            $po = PurchaseOrder::where('store_id', auth()->user()->store_id)
+                ->with('items')
+                ->findOrFail($validated['purchase_order_id']);
+
+            if ($po->status !== 'goods_received') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice can only be generated after goods are received',
+                ], 422);
+            }
+
+            $grn = \App\Models\Procurement\Receiving\GoodsReceipt::with('items')
+                ->where('purchase_order_id', $po->id)
+                ->findOrFail($validated['goods_receipt_id']);
+
+            $invoiceNumber = 'INV-' . now()->format('YmdHis') . '-' . strtoupper(\Str::random(4));
+            $paymentDays = $this->getPaymentDays($po->payment_terms);
+            $dueDate = now()->addDays($paymentDays)->toDateString();
+
+            $itemsPayload = [];
+            $taxAmountTotal = 0;
+            $invoiceAmount = 0;
+
+            foreach ($grn->items as $item) {
+                $poItem = $po->items->firstWhere('id', $item->purchase_order_item_id);
+                if (!$poItem || $item->quantity_received === 0) {
+                    continue;
+                }
+
+                $lineAmount = round($poItem->unit_cost * $item->quantity_received, 2);
+                $itemsPayload[] = [
+                    'product_id' => $item->product_id,
+                    'quantity_invoiced' => $item->quantity_received,
+                    'unit_price' => $poItem->unit_cost,
+                    'line_amount' => $lineAmount,
+                    'tax_rate' => $poItem->tax_rate,
+                    'tax_amount' => round(($lineAmount * ($poItem->tax_rate ?? 0)) / 100, 2),
+                ];
+
+                $invoiceAmount += $lineAmount;
+                $taxAmountTotal += $itemsPayload[count($itemsPayload) - 1]['tax_amount'];
+            }
+
+            $shippingCost = $po->shipping_cost;
+            $discountAmount = $po->discount_amount;
+            $netAmount = $invoiceAmount + $taxAmountTotal + $shippingCost - $discountAmount;
+
+            $invoice = Invoice::create([
+                'store_id' => auth()->user()->store_id,
+                'invoice_number' => $invoiceNumber,
+                'supplier_id' => $po->supplier_id,
+                'purchase_order_id' => $po->id,
+                'goods_receipt_id' => $grn->id,
+                'invoice_date' => now()->toDateString(),
+                'due_date' => $dueDate,
+                'invoice_amount' => $invoiceAmount,
+                'tax_amount' => $taxAmountTotal,
+                'shipping_cost' => $shippingCost,
+                'discount_amount' => $discountAmount,
+                'net_amount' => $netAmount,
+                'currency' => $po->currency ?? 'PHP',
+                'status' => 'draft',
+                'match_status' => 'pending',
+                'payment_status' => 'pending',
+                'remarks' => "Auto-created from GRN {$grn->grn_number}",
+            ]);
+
+            foreach ($itemsPayload as $item) {
+                InvoiceItem::create(array_merge($item, ['invoice_id' => $invoice->id]));
+            }
+
+            $invoice->performThreeWayMatch();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice draft created from GRN',
+                'data' => $invoice->load('items'),
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to create invoice from GRN', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create invoice from receipt',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function getPaymentDays(?string $term): int
+    {
+        return match ($term) {
+            'net_7' => 7,
+            'net_15' => 15,
+            'net_30' => 30,
+            'net_60' => 60,
+            'advance_payment' => 0,
+            'cash_on_delivery' => 0,
+            default => 30,
+        };
+    }
+
+    /**
      * Update invoice
      * PUT /api/procurement/invoices/{id}
      */
@@ -312,10 +431,10 @@ class InvoiceController extends Controller
             $invoice = Invoice::findOrFail($id);
             $matchResult = $invoice->performThreeWayMatch();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Invoice matching completed',
-                'data' => [
+        return response()->json([
+            'success' => true,
+            'message' => 'Invoice matching completed',
+            'data' => [
                     'invoice' => $invoice,
                     'match_result' => $matchResult,
                 ],

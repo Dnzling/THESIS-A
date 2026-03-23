@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Employee;
+use App\Models\Hr\Employee as HrEmployee;
 use Carbon\Carbon;
 
 class EmployeeIdGenerationService
@@ -17,7 +18,7 @@ class EmployeeIdGenerationService
         $prefix = $currentYear . '-';
 
         // Get the highest sequence number for current year
-        $lastEmployee = Employee::where('employee_id', 'like', $prefix . '%')
+        $lastEmployee = HrEmployee::where('employee_id', 'like', $prefix . '%')
             ->orderByRaw("CAST(SUBSTRING(employee_id, 6) AS UNSIGNED) DESC")
             ->first();
 
@@ -36,7 +37,7 @@ class EmployeeIdGenerationService
      */
     public static function createEmployeeFromOffer($jobOffer): Employee
     {
-        $employee = Employee::create([
+        $employee = HrEmployee::create([
             'employee_id' => self::generateEmployeeId(),
             'first_name' => $jobOffer->application->first_name,
             'last_name' => $jobOffer->application->last_name,
@@ -57,7 +58,7 @@ class EmployeeIdGenerationService
     /**
      * Populate default deductions for new employee
      */
-    private static function populateDeductions(Employee $employee, $jobOffer): void
+    private static function populateDeductions(HrEmployee $employee, $jobOffer): void
     {
         // Get company deduction configuration
         // This assumes you have a DeductionConfiguration model/table

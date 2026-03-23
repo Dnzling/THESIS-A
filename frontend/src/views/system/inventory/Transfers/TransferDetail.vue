@@ -22,19 +22,19 @@
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <p class="text-xs text-gray-600">Transfer No.</p>
-              <p class="font-semibold text-gray-900">{{ detail?.transfer_no || '-' }}</p>
+              <p class="font-semibold text-gray-900">{{ detail?.transfer_number || detail?.transfer_no || '-' }}</p>
             </div>
             <div>
               <p class="text-xs text-gray-600">From</p>
-              <p class="font-semibold text-gray-900">{{ detail?.from_name || '-' }}</p>
+              <p class="font-semibold text-gray-900">{{ detail?.from_branch?.name || detail?.fromBranch?.name || '-' }}</p>
             </div>
             <div>
               <p class="text-xs text-gray-600">To</p>
-              <p class="font-semibold text-gray-900">{{ detail?.to_name || '-' }}</p>
+              <p class="font-semibold text-gray-900">{{ detail?.to_branch?.name || detail?.toBranch?.name || '-' }}</p>
             </div>
             <div>
               <p class="text-xs text-gray-600">Date</p>
-              <p class="font-semibold text-gray-900">{{ detail?.transfer_date || '-' }}</p>
+              <p class="font-semibold text-gray-900">{{ formatDate(detail?.requested_date || detail?.created_at) }}</p>
             </div>
           </div>
         </template>
@@ -49,15 +49,36 @@
         </template>
         <template #content>
           <DataTable :value="detail?.items || []" class="p-datatable-sm" stripedRows>
-            <Column field="item_name" header="Item" />
-            <Column field="quantity" header="Quantity" />
-            <Column field="remarks" header="Remarks" />
+            <Column header="Item">
+              <template #body="{ data }">
+                {{ data.product?.product_name || data.product_name || '-' }}
+              </template>
+            </Column>
+            <Column header="Requested">
+              <template #body="{ data }">
+                {{ data.requested_quantity ?? data.quantity ?? 0 }}
+              </template>
+            </Column>
+            <Column header="Approved">
+              <template #body="{ data }">
+                {{ data.approved_quantity ?? '-' }}
+              </template>
+            </Column>
+            <Column header="Received">
+              <template #body="{ data }">
+                {{ data.received_quantity ?? '-' }}
+              </template>
+            </Column>
+            <Column field="notes" header="Notes" />
           </DataTable>
 
           <div v-if="canAction" class="pt-4 flex gap-2 justify-end">
             <Button label="Cancel" icon="pi pi-times" severity="danger" outlined :loading="processing" @click="cancelTransfer" />
             <Button label="Ship" icon="pi pi-send" severity="info" :loading="processing" @click="shipTransfer" />
             <Button label="Receive" icon="pi pi-check" severity="success" :loading="processing" @click="receiveTransfer" />
+          </div>
+          <div v-if="canApprove" class="pt-4 flex gap-2 justify-end">
+            <Button label="Approve Transfer" icon="pi pi-check-circle" severity="success" :loading="processing" @click="approveTransfer" />
           </div>
         </template>
       </Card>
@@ -69,6 +90,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -76,15 +98,17 @@ const router = useRouter()
 const loading = ref(false)
 const processing = ref(false)
 const detail = ref<any>(null)
+const authStore = useAuthStore()
 
 const transferId = computed(() => Number(route.params.id))
-const canAction = computed(() => ['approved', 'shipped'].includes(detail.value?.status))
+const canAction = computed(() => ['approved', 'shipped', 'in_transit'].includes(detail.value?.status))
+const canApprove = computed(() => ['pending_approval', 'requested'].includes(detail.value?.status) && authStore.hasPermission('inventory.transfers.approve'))
 
 const loadDetail = async () => {
   loading.value = true
   try {
     const response = await inventoryService.getTransfer(transferId.value)
-    detail.value = response.data || null
+    detail.value = response?.data || null
   } catch (error) {
     console.error('Failed to load transfer detail', error)
     detail.value = null
@@ -129,12 +153,33 @@ const cancelTransfer = async () => {
   }
 }
 
+const approveTransfer = async () => {
+  processing.value = true
+  try {
+    await inventoryService.approveTransfer(transferId.value)
+    await loadDetail()
+  } catch (error) {
+    console.error('Failed to approve transfer', error)
+  } finally {
+    processing.value = false
+  }
+}
+
 const statusSeverity = (status: string) => {
   if (status === 'received') return 'success'
   if (status === 'shipped') return 'info'
   if (status === 'cancelled') return 'danger'
   if (status === 'approved') return 'help'
+  if (status === 'pending_approval') return 'warning'
+  if (status === 'requested') return 'warning'
   return 'secondary'
+}
+
+const formatDate = (value?: string) => {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 }
 
 onMounted(() => {

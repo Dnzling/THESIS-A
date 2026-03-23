@@ -239,7 +239,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../../../stores/auth'
 
 // ==================== INTERFACES ====================
@@ -409,9 +409,8 @@ const fetchPayslipHistory = async (page = 1) => {
   loading.value = true
   try {
     // Set auth token
-    axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
 
-    const response = await axios.get(`/api/payroll/payslip/${props.employeeId}`, {
+    const response = await hrService.api.get(`/api/payroll/payslip/${props.employeeId}`, {
       params: {
         year: selectedYear.value !== currentYear ? selectedYear.value : undefined,
         month: selectedMonth.value,
@@ -526,7 +525,7 @@ const formatDateRange = (start: string | null, end: string | null): string => {
 const viewPayslip = async (payslip: Payslip) => {
   try {
     // Fetch detailed payslip data
-    const response = await axios.get(`/api/payrolls/${payslip.id}/payslip`)
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip`)
 
     // Merge with existing data
     selectedPayslip.value = {
@@ -567,7 +566,7 @@ const downloadPayslip = async (payslip: Payslip | null) => {
     emit('download-payslip', payslip)
 
     // Download PDF
-    const response = await axios.get(`/api/payrolls/${payslip.id}/payslip/pdf`, {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/pdf`, {
       responseType: 'blob'
     })
 
@@ -641,7 +640,7 @@ const exportAllPayslips = async () => {
     // Emit event to parent
     emit('export-all', selectedYear.value, selectedMonth.value)
 
-    const response = await axios.get('/api/payrolls/export', {
+    const response = await hrService.api.get('/api/payrolls/export', {
       params: {
         employee_id: props.employeeId,
         year: selectedYear.value,
@@ -695,3 +694,5 @@ defineExpose({
   refresh: fetchPayslipHistory
 })
 </script>
+
+

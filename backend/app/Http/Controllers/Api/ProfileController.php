@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\ActivityLog;
+use App\Models\Customer\Customer;
 use App\Models\Hr\Employee;
 use App\Mail\OtpVerificationMail;
 use Illuminate\Http\Request;
@@ -18,12 +19,14 @@ class ProfileController extends Controller
             ->where('user_id', $user->id)
             ->where('store_id', $user->store_id)
             ->first();
+        $customer = Customer::where('user_id', $user->id)->first();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'user' => $user,
-                'employee' => $employee
+                'employee' => $employee,
+                'customer' => $customer,
             ]
         ]);
     }
@@ -36,6 +39,8 @@ class ProfileController extends Controller
             'fname' => 'sometimes|string|max:100',
             'lname' => 'sometimes|string|max:100',
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'birthday' => 'nullable|date',
+            'contact_number' => 'nullable|string|max:30',
             'phone_number' => 'nullable|string|max:30',
             'phone' => 'nullable|string|max:30',
             'address' => 'nullable|string|max:255',
@@ -47,7 +52,7 @@ class ProfileController extends Controller
             'fname' => $validated['fname'] ?? $user->fname,
             'lname' => $validated['lname'] ?? $user->lname,
             'email' => $validated['email'] ?? $user->email,
-            'phone_number' => $validated['phone_number'] ?? $user->phone_number,
+            'birthday' => $validated['birthday'] ?? $user->birthday,
         ]);
 
         $requiresVerification = false;
@@ -58,6 +63,20 @@ class ProfileController extends Controller
 
         $user->save();
 
+        $contactNumber = $validated['contact_number']
+            ?? $validated['phone_number']
+            ?? $validated['phone']
+            ?? null;
+
+        if (!is_null($contactNumber)) {
+            Customer::firstOrCreate(
+                ['user_id' => $user->id],
+                ['verification_status' => 'unverified']
+            )->update([
+                'contact_number' => $contactNumber,
+            ]);
+        }
+
         if ($requiresVerification) {
             $otp = $user->generateOtp();
             Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
@@ -65,7 +84,7 @@ class ProfileController extends Controller
 
         $employee = Employee::where('user_id', $user->id)->first();
         if ($employee) {
-            $phoneValue = $validated['phone'] ?? $validated['phone_number'] ?? $employee->phone;
+            $phoneValue = $contactNumber ?? $employee->phone;
             $employee->fill([
                 'fname' => $validated['fname'] ?? $employee->fname,
                 'lname' => $validated['lname'] ?? $employee->lname,
@@ -73,6 +92,7 @@ class ProfileController extends Controller
                 'address' => $validated['address'] ?? $employee->address,
                 'province' => $validated['province'] ?? $employee->province,
                 'city' => $validated['city'] ?? $employee->city,
+                'date_of_birth' => $validated['birthday'] ?? $employee->date_of_birth,
             ]);
             $employee->save();
         }
@@ -91,7 +111,8 @@ class ProfileController extends Controller
             'requires_verification' => $requiresVerification,
             'data' => [
                 'user' => $user->fresh(),
-                'employee' => $employee?->fresh()
+                'employee' => $employee?->fresh(),
+                'customer' => Customer::where('user_id', $user->id)->first(),
             ]
         ]);
     }

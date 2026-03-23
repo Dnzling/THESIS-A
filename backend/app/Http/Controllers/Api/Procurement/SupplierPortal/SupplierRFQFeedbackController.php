@@ -116,6 +116,7 @@ class SupplierRFQFeedbackController extends Controller
             'rfq_id' => 'required|exists:request_for_quotations,id',
             'rfq_item_id' => 'required|exists:rfq_items,id',
             'quoted_price' => 'required|numeric|min:0.01',
+            'tax_rate' => 'nullable|numeric|min:0|max:100',
             'description' => 'nullable|string|max:1000',
         ]);
 
@@ -156,6 +157,7 @@ class SupplierRFQFeedbackController extends Controller
                 [
                     'rfq_id' => $request->rfq_id,
                     'quoted_price' => $request->quoted_price,
+                    'tax_rate' => $request->get('tax_rate', 0),
                     'description' => $request->description,
                     'status' => 'pending',
                     'reviewed_by' => null,

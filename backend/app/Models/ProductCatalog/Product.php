@@ -4,6 +4,7 @@
 namespace App\Models\ProductCatalog;
 
 use App\Models\Core\User;
+use App\Models\Ecommerce\EcommerceOrderItem;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -29,6 +30,16 @@ class Product extends Model
         'base_price',
         'cost_price',
         'discounted_price',
+        'price_approval_status',
+        'pending_base_price',
+        'pending_discounted_price',
+        'price_proposed_by',
+        'price_proposed_at',
+        'price_approved_by',
+        'price_approved_at',
+        'price_rejected_by',
+        'price_rejected_at',
+        'price_approval_notes',
         'tax_rate',
         'length_cm',
         'width_cm',
@@ -50,6 +61,11 @@ class Product extends Model
         'base_price' => 'decimal:2',
         'cost_price' => 'decimal:2',
         'discounted_price' => 'decimal:2',
+        'pending_base_price' => 'decimal:2',
+        'pending_discounted_price' => 'decimal:2',
+        'price_proposed_at' => 'datetime',
+        'price_approved_at' => 'datetime',
+        'price_rejected_at' => 'datetime',
         'tax_rate' => 'decimal:2',
         'assembly_required' => 'boolean',
         'is_featured' => 'boolean',
@@ -107,6 +123,11 @@ class Product extends Model
     public function variations()
     {
         return $this->hasMany(ProductVariation::class);
+    }
+
+    public function items()
+    {
+        return $this->hasMany(EcommerceOrderItem::class, 'product_id');
     }
 
     public function pricingHistory()

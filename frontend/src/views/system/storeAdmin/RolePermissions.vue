@@ -60,22 +60,82 @@
 
     <Menu ref="roleMenu" :model="roleMenuItems" :popup="true" />
 
-    <Dialog v-model:visible="permissionsDialog" :style="{ width: '800px' }" header="Manage Permissions" modal>
+    <Dialog v-model:visible="permissionsDialog" :style="{ width: '980px' }" header="Manage Permissions" modal>
       <div v-if="selectedRole" class="mb-4">
         <p class="text-sm text-gray-600">Role: <strong>{{ selectedRole.display_name }}</strong></p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
-        <div v-for="module in permissionsByModule" :key="module.name" class="border rounded-lg p-4">
-          <div class="flex items-center justify-between mb-3">
-            <div class="font-semibold text-gray-800">{{ module.display_name }}</div>
-            <Checkbox :binary="true" :modelValue="module.selected === module.total"
-              @update:modelValue="(val) => toggleModulePermissions(module.name, val)" />
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <InputText v-model="permissionAssignSearch" placeholder="Search module, sub module, action..." class="w-full md:w-80" />
+        <Select
+          v-model="selectedAssignModule"
+          :options="assignableModules"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Filter Module"
+          class="w-full md:w-64"
+          showClear
+        />
+        <Button
+          v-if="permissionAssignSearch || selectedAssignModule"
+          label="Clear"
+          icon="pi pi-times"
+          text
+          @click="clearAssignFilters"
+        />
+      </div>
+
+      <div class="max-h-[60vh] overflow-y-auto space-y-4">
+        <div v-for="module in groupedPermissionTree" :key="module.name" class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="bg-gray-100 px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <h4 class="font-semibold text-gray-800">{{ module.display_name }}</h4>
+              <Tag :value="`${module.selected}/${module.total}`" severity="info" />
+            </div>
+            <div class="flex items-center gap-2">
+              <small class="text-gray-600">All in module</small>
+              <Checkbox
+                :modelValue="isModuleChecked(module)"
+                :indeterminate="isModuleIndeterminate(module)"
+                :binary="true"
+                @update:modelValue="(checked) => toggleModuleGroup(module, checked)"
+              />
+            </div>
           </div>
-          <div class="space-y-2">
-            <div v-for="permission in module.permissions" :key="permission.id" class="flex items-center gap-2">
-              <Checkbox v-model="selectedRolePermissions" :value="permission.id" />
-              <span class="text-sm text-gray-700">{{ permission.display_name || permission.name }}</span>
+
+          <div class="p-4 space-y-3">
+            <div
+              v-for="submodule in module.submodules"
+              :key="`${module.name}-${submodule.name}`"
+              class="rounded-lg border border-gray-200"
+            >
+              <div class="bg-gray-50 px-3 py-2 flex items-center justify-between">
+                <div class="font-medium text-gray-800">{{ submodule.display_name }}</div>
+                <div class="flex items-center gap-2">
+                  <small class="text-gray-600">All</small>
+                  <Checkbox
+                    :modelValue="isSubmoduleChecked(submodule)"
+                    :indeterminate="isSubmoduleIndeterminate(submodule)"
+                    :binary="true"
+                    @update:modelValue="(checked) => toggleSubmoduleGroup(submodule, checked)"
+                  />
+                </div>
+              </div>
+
+              <div class="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div
+                  v-for="permission in submodule.permissions"
+                  :key="permission.id"
+                  class="flex items-center justify-between gap-3 rounded border border-gray-100 p-2"
+                >
+                  <span class="text-sm text-gray-700">{{ permission.display_name }}</span>
+                  <Checkbox
+                    :modelValue="hasPermission(permission.id)"
+                    :binary="true"
+                    @update:modelValue="(checked) => togglePermission(permission.id, checked)"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -138,6 +198,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Checkbox from 'primevue/checkbox'
+import Select from 'primevue/select'
 
 const toast = useToast()
 
@@ -148,6 +209,8 @@ const selectedRolePermissions = ref<number[]>([])
 
 const permissionsDialog = ref(false)
 const savingPermissions = ref(false)
+const permissionAssignSearch = ref('')
+const selectedAssignModule = ref<string | null>(null)
 
 const roleDialog = ref(false)
 const deleteRoleDialog = ref(false)
@@ -208,6 +271,78 @@ const permissionsByModule = computed(() => {
   return Object.values(grouped)
 })
 
+const groupedPermissionTree = computed(() => {
+  const groups: Record<string, any> = {}
+  const query = permissionAssignSearch.value.trim().toLowerCase()
+
+  for (const permission of allPermissions.value as any[]) {
+    const moduleName = String(permission.module || permission.name?.split('.')?.[0] || 'general')
+    if (selectedAssignModule.value && selectedAssignModule.value !== moduleName) continue
+
+    const parts = String(permission.name || '').split('.').filter(Boolean)
+    const moduleIndex = parts[0] === moduleName ? 1 : 0
+    const submoduleName = parts[moduleIndex] || 'general'
+
+    const haystack = [
+      moduleName,
+      submoduleName,
+      permission.display_name,
+      permission.name,
+      permission.description,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+
+    if (query && !haystack.includes(query)) continue
+
+    if (!groups[moduleName]) {
+      groups[moduleName] = {
+        name: moduleName,
+        display_name: moduleName.charAt(0).toUpperCase() + moduleName.slice(1).replace(/_/g, ' '),
+        submodules: {},
+        total: 0,
+        selected: 0,
+      }
+    }
+
+    if (!groups[moduleName].submodules[submoduleName]) {
+      groups[moduleName].submodules[submoduleName] = {
+        name: submoduleName,
+        display_name: submoduleName.charAt(0).toUpperCase() + submoduleName.slice(1).replace(/[-_]/g, ' '),
+        permissions: [],
+      }
+    }
+
+    groups[moduleName].submodules[submoduleName].permissions.push(permission)
+    groups[moduleName].total++
+    if (selectedRolePermissions.value.includes(permission.id)) {
+      groups[moduleName].selected++
+    }
+  }
+
+  return Object.values(groups)
+    .map((module: any) => ({
+      ...module,
+      submodules: Object.values(module.submodules).map((submodule: any) => ({
+        ...submodule,
+        permissions: [...submodule.permissions].sort((a: any, b: any) =>
+          String(a.display_name || '').localeCompare(String(b.display_name || ''))
+        ),
+      })),
+    }))
+    .sort((a: any, b: any) => a.display_name.localeCompare(b.display_name))
+})
+
+const assignableModules = computed(() =>
+  [...new Set((allPermissions.value as any[]).map((p: any) => p.module).filter(Boolean))]
+    .sort()
+    .map((module: string) => ({
+      label: module.charAt(0).toUpperCase() + module.slice(1).replace(/_/g, ' '),
+      value: module,
+    }))
+)
+
 const loadRoles = async () => {
   const response = await axiosClient.get('/api/store/roles')
   roles.value = response.data.data || response.data
@@ -216,6 +351,58 @@ const loadRoles = async () => {
 const loadPermissions = async () => {
   const response = await axiosClient.get('/api/store/permissions')
   allPermissions.value = response.data.data || response.data
+}
+
+const hasPermission = (permissionId: number) => selectedRolePermissions.value.includes(permissionId)
+
+const togglePermission = (permissionId: number, checked: boolean) => {
+  if (checked) {
+    if (!selectedRolePermissions.value.includes(permissionId)) {
+      selectedRolePermissions.value.push(permissionId)
+    }
+    return
+  }
+  selectedRolePermissions.value = selectedRolePermissions.value.filter((id) => id !== permissionId)
+}
+
+const isModuleChecked = (module: any) =>
+  module.total > 0 && module.selected === module.total
+
+const isModuleIndeterminate = (module: any) =>
+  module.selected > 0 && module.selected < module.total
+
+const isSubmoduleChecked = (submodule: any) =>
+  submodule.permissions.length > 0 &&
+  submodule.permissions.every((permission: any) => selectedRolePermissions.value.includes(permission.id))
+
+const isSubmoduleIndeterminate = (submodule: any) => {
+  const selectedCount = submodule.permissions.filter((permission: any) =>
+    selectedRolePermissions.value.includes(permission.id)
+  ).length
+  return selectedCount > 0 && selectedCount < submodule.permissions.length
+}
+
+const toggleModuleGroup = (module: any, checked: boolean) => {
+  const modulePermissionIds = module.submodules.flatMap((sub: any) => sub.permissions.map((p: any) => p.id))
+  if (checked) {
+    selectedRolePermissions.value = [...new Set([...selectedRolePermissions.value, ...modulePermissionIds])]
+    return
+  }
+  selectedRolePermissions.value = selectedRolePermissions.value.filter((id) => !modulePermissionIds.includes(id))
+}
+
+const toggleSubmoduleGroup = (submodule: any, checked: boolean) => {
+  const submodulePermissionIds = submodule.permissions.map((permission: any) => permission.id)
+  if (checked) {
+    selectedRolePermissions.value = [...new Set([...selectedRolePermissions.value, ...submodulePermissionIds])]
+    return
+  }
+  selectedRolePermissions.value = selectedRolePermissions.value.filter((id) => !submodulePermissionIds.includes(id))
+}
+
+const clearAssignFilters = () => {
+  permissionAssignSearch.value = ''
+  selectedAssignModule.value = null
 }
 
 const openPermissionsDialog = async (role: any) => {
@@ -243,19 +430,6 @@ const saveRolePermissions = async () => {
     toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to update permissions', life: 3000 })
   } finally {
     savingPermissions.value = false
-  }
-}
-
-const toggleModulePermissions = (moduleName: string, checked: boolean) => {
-  const module = permissionsByModule.value.find((m: any) => m.name === moduleName)
-  if (!module) return
-  const permissionIds = module.permissions.map((p: any) => p.id)
-  if (checked) {
-    selectedRolePermissions.value = [...new Set([...selectedRolePermissions.value, ...permissionIds])]
-  } else {
-    selectedRolePermissions.value = selectedRolePermissions.value.filter(
-      (id: number) => !permissionIds.includes(id)
-    )
   }
 }
 

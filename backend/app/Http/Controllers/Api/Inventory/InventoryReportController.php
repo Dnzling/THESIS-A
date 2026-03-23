@@ -13,7 +13,7 @@ class InventoryReportController extends Controller
     public function __construct(protected ReportingService $reportingService)
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('can:inventory.view_reports');
+        $this->middleware('can:inventory.reports.view');
     }
 
     /**
@@ -51,7 +51,7 @@ class InventoryReportController extends Controller
             $days = $request->query('days');
             $productType = $request->query('product_type');
 
-            $this->authorize('inventory.view_all_branches');
+            $this->authorize('inventory.reports.view_all_branches');
 
             $summary = $this->reportingService->getStoreSummary($storeId, $days, $productType);
 

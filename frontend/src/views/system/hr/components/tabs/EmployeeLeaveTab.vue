@@ -399,7 +399,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../../stores/auth'
 
@@ -601,7 +601,7 @@ const executeCancelLeave = async () => {
   if (!leaveToCancel.value) return
   
   try {
-    const response = await axios.put(`/api/leaves/${leaveToCancel.value.id}/cancel`, {}, {
+    const response = await hrService.api.put(`/api/leaves/${leaveToCancel.value.id}/cancel`, {}, {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -660,7 +660,7 @@ const fetchLeaveData = async () => {
   
   loading.value = true
   try {
-    const response = await axios.get(`/api/users/${props.employeeId}/leaves`, {
+    const response = await hrService.api.get(`/api/users/${props.employeeId}/leaves`, {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       },
@@ -703,7 +703,7 @@ const fetchUpcomingLeaves = async () => {
   if (!props.employeeId) return
   
   try {
-    const response = await axios.get(`/api/users/${props.employeeId}/leaves/upcoming`, {
+    const response = await hrService.api.get(`/api/users/${props.employeeId}/leaves/upcoming`, {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       },

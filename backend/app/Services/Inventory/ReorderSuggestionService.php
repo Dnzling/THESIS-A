@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 
 use App\Models\Inventory\ReorderSuggestion;
 use App\Models\Inventory\ReorderRule;
+use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
@@ -42,6 +43,12 @@ class ReorderSuggestionService
             $query->where('branch_id', $filters['branch_id']);
         }
 
+        if (isset($filters['store_id'])) {
+            $query->whereHas('branch', function ($q) use ($filters) {
+                $q->where('store_id', $filters['store_id']);
+            });
+        }
+
         if (isset($filters['product_id'])) {
             $query->where('product_id', $filters['product_id']);
         }
@@ -57,7 +64,8 @@ class ReorderSuggestionService
         // Search by product name
         if (isset($filters['search'])) {
             $query->whereHas('product', function ($q) use ($filters) {
-                $q->where('name', 'like', '%' . $filters['search'] . '%');
+                $q->where('product_name', 'like', '%' . $filters['search'] . '%')
+                    ->orWhere('sku', 'like', '%' . $filters['search'] . '%');
             });
         }
 
@@ -201,22 +209,101 @@ class ReorderSuggestionService
     public function generateSuggestions(?int $branchId = null): array
     {
         $rules = ReorderRule::when($branchId, fn($q) => $q->where('branch_id', $branchId))
-                           ->where('is_active', true)
-                           ->get();
+            ->where('is_active', true)
+            ->get();
 
         $suggestions = [];
         $errors = [];
+        $generatedProductKeys = [];
 
         foreach ($rules as $rule) {
             try {
                 $suggestion = $this->generateSuggestionFromRule($rule);
                 if ($suggestion) {
                     $suggestions[] = $suggestion;
+                    $generatedProductKeys["{$suggestion->branch_id}:{$suggestion->product_id}"] = true;
                 }
             } catch (Exception $e) {
                 $errors[] = [
                     'rule_id' => $rule->id,
-                    'product_name' => $rule->product->name,
+                    'product_name' => $rule->product->product_name ?? $rule->product->name,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        // Fallback: create suggestions directly from low-stock branch inventory items
+        // even when no reorder rule exists yet.
+        $lowStockItems = BranchInventory::with(['product', 'branch'])
+            ->when($branchId, fn($q) => $q->where('branch_id', $branchId))
+            ->where(function ($query) {
+                $query->whereColumn('quantity_available', '<=', 'reorder_point')
+                    ->orWhere('quantity_available', '<=', 0);
+            })
+            ->where(function ($query) {
+                $query->where('reorder_point', '>', 0)
+                    ->orWhere('quantity_available', '<=', 0);
+            })
+            ->get();
+
+        foreach ($lowStockItems as $item) {
+            try {
+                $productId = (int) ($item->product_id ?? 0);
+                $rowBranchId = (int) ($item->branch_id ?? 0);
+                if ($productId <= 0 || $rowBranchId <= 0 || !$item->product) {
+                    continue;
+                }
+
+                $itemKey = "{$rowBranchId}:{$productId}";
+                if (isset($generatedProductKeys[$itemKey])) {
+                    continue;
+                }
+
+                $existingPending = ReorderSuggestion::query()
+                    ->where('product_id', $productId)
+                    ->where('branch_id', $rowBranchId)
+                    ->where('status', 'pending')
+                    ->valid()
+                    ->first();
+
+                if ($existingPending) {
+                    $generatedProductKeys[$itemKey] = true;
+                    continue;
+                }
+
+                $currentStock = (float) ($item->quantity_available ?? $item->quantity_on_hand ?? 0);
+                $reorderPoint = (float) ($item->reorder_point ?? 0);
+                $targetStock = (float) ($item->maximum_stock ?? 0);
+                if ($targetStock <= 0) {
+                    $targetStock = $reorderPoint > 0 ? ($reorderPoint * 2) : 10;
+                }
+                $suggestedQty = max(1, (int) ceil($targetStock - $currentStock));
+
+                $priority = $this->determinePriorityFromInventory($currentStock, $reorderPoint);
+                $reason = "Current available stock ({$currentStock}) is below reorder point ({$reorderPoint}).";
+
+                $fallbackSuggestion = $this->createSuggestion([
+                    'reorder_rule_id' => null,
+                    'product_id' => $productId,
+                    'branch_id' => $rowBranchId,
+                    'suggestion_type' => 'automatic',
+                    'current_stock' => $currentStock,
+                    'suggested_quantity' => $suggestedQty,
+                    'priority' => $priority,
+                    'reason' => $reason,
+                    'valid_until' => now()->addDays(30),
+                    'metadata' => [
+                        'source' => 'branch_inventory_fallback',
+                        'inventory_item_id' => $item->id,
+                    ],
+                ]);
+
+                $suggestions[] = $fallbackSuggestion;
+                $generatedProductKeys[$itemKey] = true;
+            } catch (Exception $e) {
+                $errors[] = [
+                    'inventory_item_id' => $item->id ?? null,
+                    'product_name' => $item->product->product_name ?? $item->product->name ?? null,
                     'error' => $e->getMessage(),
                 ];
             }
@@ -294,10 +381,10 @@ class ReorderSuggestionService
      */
     private function getCurrentStockLevel(int $productId, int $branchId): float
     {
-        // This is a placeholder - implement based on your stock tracking system
-        // You might need to query warehouse locations, stock counts, etc.
-        // For now, return a dummy value
-        return 0.0; // TODO: Implement actual stock level calculation
+        return (float) BranchInventory::query()
+            ->where('product_id', $productId)
+            ->where('branch_id', $branchId)
+            ->sum('quantity_available');
     }
 
     /**
@@ -305,6 +392,10 @@ class ReorderSuggestionService
      */
     private function shouldReorder(ReorderRule $rule, float $currentStock): bool
     {
+        if (($rule->basis_type ?? 'reorder_point') === 'demand_lead_time') {
+            return $currentStock <= $rule->getDemandLeadTimeTrigger();
+        }
+
         return $currentStock <= $rule->reorder_point;
     }
 
@@ -313,8 +404,22 @@ class ReorderSuggestionService
      */
     private function calculateSuggestedQuantity(ReorderRule $rule, float $currentStock): float
     {
-        $deficit = $rule->max_stock - $currentStock;
-        return max($rule->min_order_quantity, $deficit);
+        if (($rule->basis_type ?? 'reorder_point') === 'demand_lead_time') {
+            $targetStock = (float) $rule->getDemandLeadTimeTargetStock();
+            return max(1, ceil($targetStock - $currentStock));
+        }
+
+        $configuredQuantity = (float) ($rule->getReorderQuantity() ?? 0);
+        if ($configuredQuantity > 0) {
+            return $configuredQuantity;
+        }
+
+        $targetStock = (float) ($rule->maximum_stock ?? 0);
+        if ($targetStock <= 0) {
+            $targetStock = (float) max(1, ($rule->reorder_point ?? 0) * 2);
+        }
+
+        return max(1, ceil($targetStock - $currentStock));
     }
 
     /**
@@ -322,7 +427,11 @@ class ReorderSuggestionService
      */
     private function determinePriority(ReorderRule $rule, float $currentStock): string
     {
-        $stockRatio = $currentStock / $rule->reorder_point;
+        if ((float) $rule->reorder_point <= 0) {
+            return $currentStock <= 0 ? 'critical' : 'medium';
+        }
+
+        $stockRatio = $currentStock / (float) $rule->reorder_point;
 
         if ($stockRatio <= 0.25) {
             return 'critical';
@@ -340,8 +449,40 @@ class ReorderSuggestionService
      */
     private function generateReason(ReorderRule $rule, float $currentStock): string
     {
+        if (($rule->basis_type ?? 'reorder_point') === 'demand_lead_time') {
+            $trigger = round((float) $rule->getDemandLeadTimeTrigger(), 2);
+            $target = round((float) $rule->getDemandLeadTimeTargetStock(), 2);
+            return "Current stock ({$currentStock}) is below demand+lead-time trigger ({$trigger}). " .
+                "Suggested quantity targets approximately {$target} units.";
+        }
+
+        $target = $rule->maximum_stock ?? ($rule->reorder_point * 2);
         return "Current stock ({$currentStock}) is below reorder point ({$rule->reorder_point}). " .
-               "Suggested quantity will bring stock to optimal level ({$rule->max_stock}).";
+               "Suggested quantity will bring stock to optimal level ({$target}).";
+    }
+
+    private function determinePriorityFromInventory(float $currentStock, float $reorderPoint): string
+    {
+        if ($currentStock <= 0) {
+            return 'critical';
+        }
+
+        if ($reorderPoint <= 0) {
+            return 'medium';
+        }
+
+        $stockRatio = $currentStock / $reorderPoint;
+        if ($stockRatio <= 0.25) {
+            return 'critical';
+        }
+        if ($stockRatio <= 0.5) {
+            return 'high';
+        }
+        if ($stockRatio <= 0.75) {
+            return 'medium';
+        }
+
+        return 'low';
     }
 
     /**

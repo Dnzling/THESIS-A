@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import axios from '../../../axios'
+import hrService from '@/services/hr.services'
 
 const logs = ref<any[]>([])
 const loading = ref(false)
@@ -47,7 +47,7 @@ const fetchLogs = async () => {
     const params: any = {}
     if (filters.dateRange?.[0]) params.from = filters.dateRange[0].toISOString().slice(0, 10)
     if (filters.dateRange?.[1]) params.to = filters.dateRange[1].toISOString().slice(0, 10)
-    const response = await axios.get('/api/activity-logs', { params })
+    const response = await hrService.api.get('/api/activity-logs', { params })
     logs.value = response.data?.data?.data ?? response.data?.data ?? []
   } catch {
     logs.value = []
@@ -58,3 +58,4 @@ const fetchLogs = async () => {
 
 onMounted(fetchLogs)
 </script>
+

@@ -19,6 +19,13 @@
           </div>
           <div class="flex gap-2">
             <Button
+              v-if="stockCount?.status === 'pending_approval' && authStore.hasPermission('inventory.stock-counts.approve')"
+              label="Approve Count Request"
+              icon="pi pi-check-circle"
+              severity="success"
+              @click="approveStockCountRequest"
+            />
+            <Button
               v-if="stockCount?.status !== 'completed'"
               label="Edit"
               icon="pi pi-pencil"
@@ -312,6 +319,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const loading = ref(false)
 const stockCount = ref<any>(null)
@@ -319,6 +327,7 @@ const recentActivities = ref<any[]>([])
 const toast = useToast()
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const itemsCounted = computed(() => {
   return stockCount.value?.items?.filter((item: any) => item.counted_quantity !== null).length || 0
@@ -421,6 +430,37 @@ const completeStockCount = async () => {
   }
 }
 
+const approveStockCountRequest = async () => {
+  try {
+    const response = await inventoryService.approveStockCount(Number(route.params.id))
+
+    if (response.success) {
+      toast.add({
+        severity: 'success',
+        summary: 'Approved',
+        detail: 'Stock count request approved and scheduled',
+        life: 3000
+      })
+      loadStockCount()
+      return
+    }
+
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: response.message || 'Failed to approve stock count request',
+      life: 3000
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to approve stock count request',
+      life: 3000
+    })
+  }
+}
+
 const updateCounts = () => {
   // This would open a dialog or navigate to an update counts page
   toast.add({
@@ -489,6 +529,7 @@ const formatDateTime = (dateTime: string) => {
 const getStatusSeverity = (status: string) => {
   switch (status) {
     case 'draft': return 'secondary'
+    case 'pending_approval': return 'warning'
     case 'in_progress': return 'info'
     case 'completed': return 'success'
     case 'cancelled': return 'danger'

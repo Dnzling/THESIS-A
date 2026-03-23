@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
+use App\Models\Hr\EmployeeDeduction;
 use App\Models\Hr\Employee;
 use App\Models\Hr\Leave;
 use App\Models\Hr\LeaveBalance;
@@ -671,28 +672,33 @@ class EmployeeController extends Controller
      */
     private function getDeductionsOptimized($employeeId)
     {
-        $deductions = DB::table('employee_deductions as ed')
-            ->join('deduction_types as dt', 'ed.deduction_type_id', '=', 'dt.id')
-            ->select('dt.name', 'dt.code', 'ed.amount')
-            ->where('ed.employee_id', $employeeId)
-            ->where('ed.is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('ed.end_date')
-                    ->orWhere('ed.end_date', '>=', now());
-            })
-            ->get();
+        $employee = Employee::select('id', 'salary')->find($employeeId);
+        $basicSalary = (float) ($employee?->salary ?? 0);
+        $grossSalary = $basicSalary;
+
+        $deductions = EmployeeDeduction::query()
+            ->with('deductionType:id,name,code,calculation_type,default_amount,percentage_value,percentage_rate,percentage_basis,min_amount,max_amount,formula_data,is_active')
+            ->forEmployee($employeeId)
+            ->active()
+            ->current()
+            ->get()
+            ->map(function (EmployeeDeduction $deduction) use ($basicSalary, $grossSalary) {
+                $amount = round($deduction->calculateAmount($basicSalary, $grossSalary), 2);
+
+                return [
+                    'name' => $deduction->deductionType?->name,
+                    'code' => $deduction->deductionType?->code,
+                    'amount' => $amount,
+                    'formatted' => 'PHP ' . number_format($amount, 2),
+                ];
+            });
 
         $total = $deductions->sum('amount');
 
         return [
             'total_monthly' => round($total, 2),
             'total_yearly' => round($total * 12, 2),
-            'items' => $deductions->map(fn($d) => [
-                'name' => $d->name,
-                'code' => $d->code,
-                'amount' => round($d->amount, 2),
-                'formatted' => '₱' . number_format($d->amount, 2)
-            ])
+            'items' => $deductions->values()
         ];
     }
 

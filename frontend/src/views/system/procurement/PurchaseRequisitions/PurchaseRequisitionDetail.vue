@@ -117,7 +117,7 @@
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex justify-end gap-3">
+      <div class="flex justify-end gap-3 flex-wrap">
         <button
           v-if="detail.status === 'draft'"
           @click="submit"
@@ -146,6 +146,15 @@
         >
           <i class="pi pi-check text-sm"></i>
           <span>{{ processing ? 'Approving...' : 'Approve' }}</span>
+        </button>
+        
+        <button
+          v-if="detail.status === 'delivered' && deliveredPO"
+          @click="createGoodsReceipt(deliveredPO)"
+          class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-archive text-sm"></i>
+          <span>Create Goods Receipt</span>
         </button>
       </div>
 
@@ -188,7 +197,7 @@
         <div class="p-6">
           <div v-if="detail?.items && detail.items.length > 0" class="space-y-3">
             <div v-for="(item, index) in detail.items" :key="index" class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
-              <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div class="col-span-2">
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product</p>
                   <p class="font-semibold text-gray-900">{{ item?.product?.product_name || 'Unknown' }}</p>
@@ -201,6 +210,14 @@
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Unit Cost</p>
                   <p class="font-semibold text-gray-900">₱{{ formatNumber(parseFloat(item?.estimated_unit_cost || 0)) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product Cost</p>
+                  <p class="text-sm text-gray-700">₱{{ formatNumber(Number(item?.product?.cost_price ?? 0)) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Tax Rate</p>
+                  <p class="text-sm text-gray-700">{{ Number(item?.product?.tax_rate ?? 0).toFixed(2) }}%</p>
                 </div>
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Total</p>
@@ -511,6 +528,20 @@ const submitRejection = async () => {
 onMounted(() => {
   loadDetail()
 })
+
+const deliveredPO = computed(() => {
+  if (!detail.value?.purchase_orders) return null
+  return detail.value.purchase_orders.find((po: any) => po.status === 'delivered')
+})
+
+const createGoodsReceipt = (po: any) => {
+  router.push({
+    name: 'procurement.goods-receipts.create',
+    query: {
+      po_id: po.id
+    }
+  })
+}
 </script>
 
 <style scoped>

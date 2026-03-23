@@ -44,14 +44,6 @@
           />
 
           <Select 
-            v-model="filters.stock_status" 
-            :options="stockStatusOptions" 
-            placeholder="All Stock Status" 
-            showClear 
-            @change="loadVariations"
-          />
-
-          <Select 
             v-model="filters.is_active" 
             :options="statusOptions" 
             optionLabel="label" 
@@ -168,15 +160,6 @@
                   {{ data.price_adjustment > 0 ? '+' : '' }}₱{{ formatPrice(data.price_adjustment) }}
                 </p>
               </div>
-            </template>
-          </Column>
-
-          <Column field="stock_quantity" header="Stock" sortable>
-            <template #body="{ data }">
-              <Badge 
-                :value="data.stock_quantity" 
-                :severity="getStockSeverity(data.stock_quantity)"
-              />
             </template>
           </Column>
 

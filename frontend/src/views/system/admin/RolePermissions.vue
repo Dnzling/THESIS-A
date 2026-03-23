@@ -122,9 +122,21 @@
             </template>
             <template #content>
               <!-- Filter by Module -->
-              <div class="mb-4">
+              <div class="mb-4 flex flex-wrap items-center gap-3">
+                <InputText
+                  v-model="permissionSearch"
+                  placeholder="Search permissions..."
+                  class="w-full md:w-1/3"
+                />
                 <Select v-model="selectedModule" :options="modules" optionLabel="label" optionValue="value"
                   placeholder="Filter by Module" class="w-full md:w-1/3" showClear />
+                <Button
+                  v-if="permissionSearch || selectedModule"
+                  label="Clear"
+                  icon="pi pi-times"
+                  text
+                  @click="clearPermissionFilters"
+                />
               </div>
   
               <DataTable :value="filteredPermissions" :loading="loadingPermissions" paginator :rows="20" stripedRows
@@ -247,43 +259,80 @@
     <Menu ref="roleMenu" :model="roleMenuItems" :popup="true" />
   
     <!-- Manage Permissions Dialog -->
-    <Dialog v-model:visible="permissionsDialog" :style="{ width: '800px' }" header="Manage Permissions" :modal="true"
+    <Dialog v-model:visible="permissionsDialog" :style="{ width: '980px' }" header="Manage Permissions" :modal="true"
       maximizable>
       <div v-if="selectedRole" class="space-y-4">
         <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
           <h3 class="font-semibold text-blue-900">{{ selectedRole.display_name }}</h3>
           <p class="text-sm text-blue-700">{{ selectedRole.description }}</p>
         </div>
-  
-        <!-- Group by Module -->
-        <div v-for="module in permissionsByModule" :key="module.name"
-          class="border border-gray-200 rounded-lg overflow-hidden">
-          <div class="bg-gray-100 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-200"
-            @click="toggleModule(module.name)">
+
+        <div class="flex flex-wrap items-center gap-3">
+          <InputText v-model="permissionAssignSearch" placeholder="Search module, sub module, action..." class="w-full md:w-80" />
+          <Select
+            v-model="selectedAssignModule"
+            :options="assignableModules"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Filter Module"
+            class="w-full md:w-64"
+            showClear
+          />
+          <Button
+            v-if="permissionAssignSearch || selectedAssignModule"
+            label="Clear"
+            icon="pi pi-times"
+            text
+            @click="clearAssignFilters"
+          />
+        </div>
+
+        <div v-for="module in groupedPermissionTree" :key="module.name" class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="bg-gray-100 px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <i :class="expandedModules.includes(module.name) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
-                class="text-gray-600"></i>
               <h4 class="font-semibold text-gray-800">{{ module.display_name }}</h4>
               <Tag :value="`${module.selected}/${module.total}`" severity="info" />
             </div>
             <div class="flex items-center gap-2">
-              <small class="text-gray-600">Select All</small>
-              <Checkbox :modelValue="module.selected === module.total"
-                @update:modelValue="toggleModulePermissions(module.name, $event)" :binary="true" />
+              <small class="text-gray-600">All in module</small>
+              <Checkbox
+                :modelValue="isModuleChecked(module)"
+                :indeterminate="isModuleIndeterminate(module)"
+                :binary="true"
+                @update:modelValue="(checked) => toggleModuleGroup(module, checked)"
+              />
             </div>
           </div>
-  
-          <div v-show="expandedModules.includes(module.name)" class="p-4 space-y-2">
-            <div v-for="permission in module.permissions" :key="permission.id"
-              class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-              <div class="flex-1">
+
+          <div class="p-4 space-y-3">
+            <div v-for="submodule in module.submodules" :key="`${module.name}-${submodule.name}`" class="rounded-lg border border-gray-200">
+              <div class="bg-gray-50 px-3 py-2 flex items-center justify-between">
+                <div class="font-medium text-gray-800">{{ submodule.display_name }}</div>
                 <div class="flex items-center gap-2">
-                  <code class="text-sm bg-gray-100 px-2 py-1 rounded">{{ permission.display_name }}</code>
+                  <small class="text-gray-600">All in sub module</small>
+                  <Checkbox
+                    :modelValue="isSubmoduleChecked(submodule)"
+                    :indeterminate="isSubmoduleIndeterminate(submodule)"
+                    :binary="true"
+                    @update:modelValue="(checked) => toggleSubmoduleGroup(submodule, checked)"
+                  />
                 </div>
-                <p class="text-sm text-gray-600 mt-1">{{ permission.name}}</p>
-                <p class="text-xs text-gray-500">{{ permission.description }}</p>
               </div>
-              <Checkbox v-model="selectedRolePermissions" :value="permission.id" />
+
+              <div class="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div
+                  v-for="permission in submodule.permissions"
+                  :key="permission.id"
+                  class="flex items-center justify-between gap-3 rounded border border-gray-100 p-2"
+                >
+                  <span class="text-sm text-gray-700">{{ permission.display_name }}</span>
+                  <Checkbox
+                    :modelValue="hasPermission(permission.id)"
+                    :binary="true"
+                    @update:modelValue="(checked) => togglePermission(permission.id, checked)"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -473,10 +522,12 @@ const loadingPermissions = ref(false)
 const loadingNavigation = ref(false)
 
 const selectedModule = ref(null)
+const permissionSearch = ref('')
 const navigationSearch = ref('')
 const selectedRole = ref(null)
-const selectedRolePermissions = ref([])
-const expandedModules = ref([])
+const selectedRolePermissions = ref<number[]>([])
+const permissionAssignSearch = ref('')
+const selectedAssignModule = ref<string | null>(null)
 
 // Dialogs
 const permissionsDialog = ref(false)
@@ -556,8 +607,29 @@ const modules = ref([
 
 // Computed
 const filteredPermissions = computed(() => {
-  if (!selectedModule.value) return allPermissions.value
-  return allPermissions.value.filter(p => p.module === selectedModule.value)
+  let rows = [...allPermissions.value]
+
+  if (selectedModule.value) {
+    rows = rows.filter((p: any) => p.module === selectedModule.value)
+  }
+
+  const query = permissionSearch.value.trim().toLowerCase()
+  if (query) {
+    rows = rows.filter((p: any) => {
+      const haystack = [
+        p.name,
+        p.display_name,
+        p.module,
+        p.description,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(query)
+    })
+  }
+
+  return rows
 })
 
 const permissionsByModule = computed(() => {
@@ -581,6 +653,75 @@ const permissionsByModule = computed(() => {
 
   return Object.values(grouped)
 })
+
+const groupedPermissionTree = computed(() => {
+  const groups: Record<string, any> = {}
+  const query = permissionAssignSearch.value.trim().toLowerCase()
+
+  for (const permission of allPermissions.value as any[]) {
+    const moduleName = String(permission.module || permission.name?.split('.')?.[0] || 'general')
+    if (selectedAssignModule.value && selectedAssignModule.value !== moduleName) continue
+
+    const parts = String(permission.name || '').split('.').filter(Boolean)
+    const moduleStartIndex = parts[0] === moduleName ? 1 : 0
+    const submoduleName = parts[moduleStartIndex] || 'general'
+
+    const haystack = [
+      moduleName,
+      submoduleName,
+      permission.display_name,
+      permission.name,
+      permission.description,
+    ].filter(Boolean).join(' ').toLowerCase()
+
+    if (query && !haystack.includes(query)) continue
+
+    if (!groups[moduleName]) {
+      groups[moduleName] = {
+        name: moduleName,
+        display_name: moduleName.charAt(0).toUpperCase() + moduleName.slice(1).replace(/_/g, ' '),
+        submodules: {},
+        total: 0,
+        selected: 0,
+      }
+    }
+
+    if (!groups[moduleName].submodules[submoduleName]) {
+      groups[moduleName].submodules[submoduleName] = {
+        name: submoduleName,
+        display_name: submoduleName.charAt(0).toUpperCase() + submoduleName.slice(1).replace(/[-_]/g, ' '),
+        permissions: [],
+      }
+    }
+
+    groups[moduleName].submodules[submoduleName].permissions.push(permission)
+    groups[moduleName].total++
+    if (selectedRolePermissions.value.includes(permission.id)) {
+      groups[moduleName].selected++
+    }
+  }
+
+  return Object.values(groups)
+    .map((module: any) => ({
+      ...module,
+      submodules: Object.values(module.submodules).map((submodule: any) => ({
+        ...submodule,
+        permissions: [...submodule.permissions].sort((a: any, b: any) =>
+          String(a.display_name || '').localeCompare(String(b.display_name || ''))
+        ),
+      })),
+    }))
+    .sort((a: any, b: any) => a.display_name.localeCompare(b.display_name))
+})
+
+const assignableModules = computed(() =>
+  [...new Set((allPermissions.value as any[]).map((p: any) => p.module).filter(Boolean))]
+    .sort()
+    .map((module: string) => ({
+      label: module.charAt(0).toUpperCase() + module.slice(1).replace(/_/g, ' '),
+      value: module,
+    }))
+)
 
 const parentNavigationOptions = computed(() => {
   return navigationItems.value.filter(nav => !nav.parent_id)
@@ -883,6 +1024,63 @@ const deleteNavigation = async () => {
 const toggleRoleMenu = (event: Event, role: any) => {
   selectedRole.value = role
   roleMenu.value.toggle(event)
+}
+
+const hasPermission = (permissionId: number) => selectedRolePermissions.value.includes(permissionId)
+
+const togglePermission = (permissionId: number, checked: boolean) => {
+  if (checked) {
+    if (!selectedRolePermissions.value.includes(permissionId)) {
+      selectedRolePermissions.value.push(permissionId)
+    }
+    return
+  }
+  selectedRolePermissions.value = selectedRolePermissions.value.filter((id) => id !== permissionId)
+}
+
+const isModuleChecked = (module: any) =>
+  module.total > 0 && module.selected === module.total
+
+const isModuleIndeterminate = (module: any) =>
+  module.selected > 0 && module.selected < module.total
+
+const isSubmoduleChecked = (submodule: any) =>
+  submodule.permissions.length > 0 &&
+  submodule.permissions.every((permission: any) => selectedRolePermissions.value.includes(permission.id))
+
+const isSubmoduleIndeterminate = (submodule: any) => {
+  const selectedCount = submodule.permissions.filter((permission: any) =>
+    selectedRolePermissions.value.includes(permission.id)
+  ).length
+  return selectedCount > 0 && selectedCount < submodule.permissions.length
+}
+
+const toggleModuleGroup = (module: any, checked: boolean) => {
+  const modulePermissionIds = module.submodules.flatMap((sub: any) => sub.permissions.map((p: any) => p.id))
+  if (checked) {
+    selectedRolePermissions.value = [...new Set([...selectedRolePermissions.value, ...modulePermissionIds])]
+    return
+  }
+  selectedRolePermissions.value = selectedRolePermissions.value.filter((id) => !modulePermissionIds.includes(id))
+}
+
+const toggleSubmoduleGroup = (submodule: any, checked: boolean) => {
+  const submodulePermissionIds = submodule.permissions.map((permission: any) => permission.id)
+  if (checked) {
+    selectedRolePermissions.value = [...new Set([...selectedRolePermissions.value, ...submodulePermissionIds])]
+    return
+  }
+  selectedRolePermissions.value = selectedRolePermissions.value.filter((id) => !submodulePermissionIds.includes(id))
+}
+
+const clearAssignFilters = () => {
+  permissionAssignSearch.value = ''
+  selectedAssignModule.value = null
+}
+
+const clearPermissionFilters = () => {
+  permissionSearch.value = ''
+  selectedModule.value = null
 }
 
 const openCreateRoleDialog = () => {

@@ -180,7 +180,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
 
@@ -283,7 +283,7 @@ const createShift = async () => {
     if (form.value.break_start) payload.break_start = form.value.break_start
     if (form.value.break_end) payload.break_end = form.value.break_end
 
-    const response = await axios.post('/api/shifts', payload, {
+    const response = await hrService.api.post('/api/shifts', payload, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     })
 
@@ -333,3 +333,4 @@ const createAnother = () => {
   errors.value = {}
 }
 </script>
+

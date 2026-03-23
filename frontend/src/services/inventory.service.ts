@@ -148,21 +148,21 @@ class InventoryService {
     return response.data
   }
 
-  // POST /inventory
+  // POST /inventory/items
   async createInventoryItem(data: Partial<BranchInventoryItem>) {
-    const response = await axiosClient.post(`${this.baseUrl}`, data)
+    const response = await axiosClient.post(`${this.baseUrl}/items`, data)
     return response.data
   }
 
-  // PUT /inventory/{id}
+  // PUT /inventory/items/{id}
   async updateInventoryItem(id: number, data: Partial<BranchInventoryItem>) {
-    const response = await axiosClient.put(`${this.baseUrl}/${id}`, data)
+    const response = await axiosClient.put(`${this.baseUrl}/items/${id}`, data)
     return response.data
   }
 
-  // DELETE /inventory/{id}
+  // DELETE /inventory/items/{id}
   async deleteInventoryItem(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/${id}`)
+    const response = await axiosClient.delete(`${this.baseUrl}/items/${id}`)
     return response.data
   }
 
@@ -273,6 +273,22 @@ class InventoryService {
   // ==================== INVENTORY TRANSACTIONS ====================
   async getTransactions(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/transactions`, { params })
+    return response.data
+  }
+
+  async getTransaction(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/transactions/${id}`)
+    return response.data
+  }
+
+  // ==================== INVENTORY ACTIVITY LOGS ====================
+  async getActivityLogs(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/activity-logs`, { params })
+    return response.data
+  }
+
+  async getActivityLog(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/activity-logs/${id}`)
     return response.data
   }
 
@@ -535,13 +551,18 @@ class InventoryService {
     return response.data
   }
 
+  async completeStockCount(id: number) {
+    const response = await axiosClient.post(`${this.baseUrl}/counts/${id}/complete`)
+    return response.data
+  }
+
   async updateStockCounts(id: number, data: any) {
     const response = await axiosClient.post(`${this.baseUrl}/counts/${id}/update-counts`, data)
     return response.data
   }
 
   async approveStockCount(id: number, notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/counts/${id}/approve`, { notes })
+    const response = await axiosClient.post(`${this.baseUrl}/counts/${id}/approve`, { approval_notes: notes })
     return response.data
   }
 
@@ -704,6 +725,11 @@ class InventoryService {
     return response.data
   }
 
+  async getReorderBasisTypes() {
+    const response = await axiosClient.get(`${this.baseUrl}/reorder-rules/basis-types`)
+    return response.data
+  }
+
   async getReorderPriorities() {
     const response = await axiosClient.get(`${this.baseUrl}/reorder-rules/priorities`)
     return response.data
@@ -726,6 +752,11 @@ class InventoryService {
 
   async bulkUpdateRulePriority(data: any) {
     const response = await axiosClient.post(`${this.baseUrl}/reorder-rules/bulk-update-priority`, data)
+    return response.data
+  }
+
+  async autoCreateReorderRules(data?: { branch_id?: number; overwrite?: boolean }) {
+    const response = await axiosClient.post(`${this.baseUrl}/reorder-rules/auto-create`, data || {})
     return response.data
   }
 
@@ -775,23 +806,23 @@ class InventoryService {
     return response.data
   }
 
-  async generateSuggestions() {
-    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/generate`)
+  async generateSuggestions(data?: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/generate`, data || {})
     return response.data
   }
 
   async bulkApproveReorderSuggestions(ids: number[], notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/bulk-approve`, { ids, notes })
+    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/bulk-approve`, { suggestion_ids: ids, notes })
     return response.data
   }
 
   async bulkRejectReorderSuggestions(ids: number[], notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/bulk-reject`, { ids, notes })
+    const response = await axiosClient.post(`${this.baseUrl}/reorder-suggestions/bulk-reject`, { suggestion_ids: ids, notes })
     return response.data
   }
 
-  async getReorderSuggestionStats() {
-    const response = await axiosClient.get(`${this.baseUrl}/reorder-suggestions/stats/overview`)
+  async getReorderSuggestionStats(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/reorder-suggestions/stats/overview`, { params })
     return response.data
   }
 
@@ -1019,6 +1050,86 @@ class InventoryService {
 
   async getBatchTypes() {
     const response = await axiosClient.get(`${this.baseUrl}/batches/types`)
+    return response.data
+  }
+
+  // ==================== ECOMMERCE ORDER PROCESSING ====================
+  async getEcommerceOrders(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-orders`, { params })
+    return response.data
+  }
+
+  async getEcommerceOrder(id: number | string) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-orders/${id}`)
+    return response.data
+  }
+
+  async updateEcommerceOrderStatus(id: number | string, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/ecommerce-orders/${id}/status`, payload)
+    return response.data
+  }
+
+  // ==================== ECOMMERCE DELIVERIES ====================
+  async getEcommerceDeliveries(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-deliveries`, { params })
+    return response.data
+  }
+
+  async getEcommerceDelivery(id: number | string) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-deliveries/${id}`)
+    return response.data
+  }
+
+  async updateEcommerceDeliveryStatus(id: number | string, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/ecommerce-deliveries/${id}/status`, payload)
+    return response.data
+  }
+
+  async getDeliveryDrivers(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-deliveries/drivers`, { params })
+    return response.data
+  }
+
+  async assignDeliveryDriver(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/ecommerce-deliveries/${id}/assign-driver`, payload)
+    return response.data
+  }
+
+  async uploadDeliveryProof(id: number | string, payload: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/ecommerce-deliveries/${id}/proof`, payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async getDeliveryLogs(id: number | string, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-deliveries/${id}/logs`, { params })
+    return response.data
+  }
+
+  async addDeliveryLog(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/ecommerce-deliveries/${id}/logs`, payload)
+    return response.data
+  }
+
+  // ==================== DELIVERY VEHICLES ====================
+  async getDeliveryVehicles(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-vehicles`, { params })
+    return response.data
+  }
+
+  async getDeliveryVehicle(id: number | string) {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-vehicles/${id}`)
+    return response.data
+  }
+
+  async createDeliveryVehicle(payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-vehicles`, payload)
+    return response.data
+  }
+
+  async updateDeliveryVehicle(id: number | string, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/delivery-vehicles/${id}`, payload)
     return response.data
   }
 }

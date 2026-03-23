@@ -163,7 +163,7 @@ class Attendance extends Model
         $clockIn = Carbon::parse($this->clock_in);
 
         if ($clockIn > $shiftStart) {
-            $minutesLate = $clockIn->diffInMinutes($shiftStart, false);
+            $minutesLate = $shiftStart->diffInMinutes($clockIn, false);
             $gracePeriod = $this->shift->grace_period_minutes ?? 15;
 
             if ($minutesLate > $gracePeriod) {
@@ -210,7 +210,7 @@ class Attendance extends Model
         $clockOut = Carbon::parse($this->clock_out);
 
         // Calculate total minutes between clock in and out
-        $totalMinutes = $clockOut->diffInMinutes($clockIn, false);
+        $totalMinutes = $clockIn->diffInMinutes($clockOut, false);
 
         // Subtract break minutes if available
         $breakMinutes = $this->break_minutes ?? 0;
@@ -257,7 +257,7 @@ class Attendance extends Model
             $start = $clockIn < $nightStart ? $nightStart : $clockIn;
             $end = $clockOut > $nightEnd ? $nightEnd : $clockOut;
             if ($end > $start) {
-                $nightMinutes += $end->diffInMinutes($start, false);
+                $nightMinutes += $start->diffInMinutes($end, false);
             }
         }
 
@@ -267,7 +267,7 @@ class Attendance extends Model
             $start = $nextDayMorning;
             $end = $clockOut > $morningEnd->addDay() ? $morningEnd->addDay() : $clockOut;
             if ($end > $start) {
-                $nightMinutes += $end->diffInMinutes($start, false);
+                $nightMinutes += $start->diffInMinutes($end, false);
             }
         }
 

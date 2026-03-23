@@ -9,7 +9,9 @@ use App\Models\Inventory\StockTransferItem;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\BranchDistance;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Core\ActivityLog;
 use App\Models\Procurement\Config\ProcurementSettings;
+use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -125,6 +127,8 @@ class StockTransferController extends Controller
                 'store_id' => Auth::user()->store_id,
                 'from_branch_id' => $validated['from_branch_id'],
                 'to_branch_id' => $validated['to_branch_id'],
+                // Keep persisted status compatible with existing enum/schema.
+                // UI/UX treats this as "Pending Approval".
                 'status' => 'requested',
                 'approval_policy_used' => $settings?->transfer_approval_policy ?? 'sender_only',
                 'cost_method' => $settings?->transfer_cost_method ?? 'none',
@@ -134,7 +138,7 @@ class StockTransferController extends Controller
                 'cost_calculation_notes' => "Calculated using {$settings?->transfer_cost_method} method",
                 'reason' => $validated['reason'],
                 'expected_delivery_date' => $validated['expected_delivery_date'],
-                'requested_by' => Auth::id(),
+                'requested_by' => EmployeeContext::currentEmployeeId(),
                 'requested_date' => now(),
             ]);
 
@@ -156,6 +160,17 @@ class StockTransferController extends Controller
             }
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_transfer.created',
+                "Created stock transfer {$transfer->transfer_number}",
+                $transfer,
+                [
+                    'status' => $transfer->status,
+                    'from_branch_id' => $transfer->from_branch_id,
+                    'to_branch_id' => $transfer->to_branch_id,
+                ]
+            );
 
             return response()->json([
                 'success' => true,
@@ -179,12 +194,20 @@ class StockTransferController extends Controller
      */
     public function approve(Request $request, int $id): JsonResponse
     {
-        $transfer = StockTransfer::with('items')->findOrFail($id);
-
-        if ($transfer->status !== 'requested') {
+        $user = Auth::user();
+        if (!$user || !$user->hasPermissionTo('inventory.transfers.approve', (int) $user->store_id)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only requested transfers can be approved',
+                'message' => 'Unauthorized. Approval permission is required.',
+            ], 403);
+        }
+
+        $transfer = StockTransfer::with('items')->findOrFail($id);
+
+        if (!in_array($transfer->status, ['requested', 'pending_approval'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only pending transfers can be approved',
             ], 422);
         }
 
@@ -207,11 +230,18 @@ class StockTransferController extends Controller
 
             $transfer->update([
                 'status' => 'sender_approved',
-                'sender_approved_by' => Auth::id(),
+                'sender_approved_by' => EmployeeContext::currentEmployeeId(),
                 'sender_approved_date' => now(),
             ]);
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_transfer.approved',
+                "Approved stock transfer {$transfer->transfer_number}",
+                $transfer,
+                ['status' => $transfer->status]
+            );
 
             return response()->json([
                 'success' => true,
@@ -277,7 +307,7 @@ class StockTransferController extends Controller
                     'related_branch_id' => $transfer->to_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
-                    'created_by' => Auth::id(),
+                    'created_by' => EmployeeContext::currentEmployeeId(),
                     'transaction_date' => now(),
                 ]);
 
@@ -287,7 +317,7 @@ class StockTransferController extends Controller
 
             $transfer->update([
                 'status' => 'in_transit',
-                'shipped_by' => Auth::id(),
+                'shipped_by' => EmployeeContext::currentEmployeeId(),
                 'shipped_date' => now(),
                 'vehicle_type' => $validated['vehicle_type'] ?? null,
                 'driver_name' => $validated['driver_name'] ?? null,
@@ -296,6 +326,16 @@ class StockTransferController extends Controller
             ]);
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_transfer.shipped',
+                "Shipped stock transfer {$transfer->transfer_number}",
+                $transfer,
+                [
+                    'status' => $transfer->status,
+                    'tracking_number' => $transfer->tracking_number,
+                ]
+            );
 
             return response()->json([
                 'success' => true,
@@ -390,18 +430,25 @@ class StockTransferController extends Controller
                     'related_branch_id' => $transfer->from_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
-                    'created_by' => Auth::id(),
+                    'created_by' => EmployeeContext::currentEmployeeId(),
                     'transaction_date' => now(),
                 ]);
             }
 
             $transfer->update([
                 'status' => 'received',
-                'received_by' => Auth::id(),
+                'received_by' => EmployeeContext::currentEmployeeId(),
                 'received_date' => now(),
             ]);
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_transfer.received',
+                "Received stock transfer {$transfer->transfer_number}",
+                $transfer,
+                ['status' => $transfer->status]
+            );
 
             return response()->json([
                 'success' => true,
@@ -443,9 +490,35 @@ class StockTransferController extends Controller
             'rejection_reason' => $validated['reason'],
         ]);
 
+        $this->recordLog(
+            'inventory.stock_transfer.cancelled',
+            "Cancelled stock transfer {$transfer->transfer_number}",
+            $transfer,
+            [
+                'status' => $transfer->status,
+                'reason' => $validated['reason'],
+            ]
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Transfer cancelled successfully',
         ]);
+    }
+
+    private function recordLog(string $action, string $description, StockTransfer $transfer, array $meta = []): void
+    {
+        ActivityLog::record(
+            $action,
+            $description,
+            array_merge([
+                'transfer_number' => $transfer->transfer_number,
+                'branch_id' => $transfer->from_branch_id,
+                'from_branch_id' => $transfer->from_branch_id,
+                'to_branch_id' => $transfer->to_branch_id,
+            ], $meta),
+            'inventory.stock_transfer',
+            (int) $transfer->id
+        );
     }
 }

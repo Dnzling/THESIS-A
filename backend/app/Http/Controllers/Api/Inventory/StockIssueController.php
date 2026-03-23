@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Support\EmployeeContext;
 use Illuminate\Support\Str;
 
 class StockIssueController extends Controller
@@ -143,8 +144,8 @@ class StockIssueController extends Controller
                 'description' => $validated['description'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
                 'status' => 'draft',
-                'requested_by' => Auth::id(),
-                'created_by' => Auth::id(),
+                'requested_by' => EmployeeContext::currentEmployeeId(),
+                'created_by' => EmployeeContext::currentEmployeeId(),
             ]);
 
             $totalValue = 0;
@@ -225,10 +226,10 @@ class StockIssueController extends Controller
 
             $issue->update([
                 'status' => 'approved',
-                'approved_by' => Auth::id(),
+                'approved_by' => EmployeeContext::currentEmployeeId(),
                 'approved_at' => now(),
                 'approval_notes' => $validated['notes'] ?? null,
-                'updated_by' => Auth::id(),
+                'updated_by' => EmployeeContext::currentEmployeeId(),
             ]);
 
             DB::commit();

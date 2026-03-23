@@ -8,6 +8,8 @@ import { supplierRoutes } from './modules/supplier.router'
 // Lazy load components for better performance
 const Home = () => import('../views/marketing/Home.vue')
 const Login = () => import('../views/auth/Login.vue')
+const CustomerLogin = () => import('../views/auth/CustomerLogin.vue')
+const CustomerRegister = () => import('../views/auth/CustomerRegister.vue')
 const Dashboard = () => import('../views/system/storeAdmin/Dashboard.vue')
 const About = () => import('../views/marketing/About.vue')
 const Pricing = () => import('../views/marketing/Pricing.vue')
@@ -35,6 +37,9 @@ const AdminSubscription = () => import('../views/system/admin/Subscriptions.vue'
 const AdminStoreValidation = () => import('../views/system/admin/Storevalidation.vue')
 const AdminCustomerValidation = () => import('../views/system/admin/Customervalidation.vue')
 const AdminCustomerManagement = () => import('../views/system/admin/CustomerManagement.vue')
+const AdminStoresIndex = () => import('../views/system/admin/StoresIndex.vue')
+const AdminStoreDetail = () => import('../views/system/admin/StoreDetail.vue')
+const AdminUsersIndex = () => import('../views/system/admin/UsersIndex.vue')
 const SupplierList = () => import('../views/system/supplier/SupplierList.vue')
 const SupplierDetail = () => import('../views/system/supplier/SupplierDetail.vue')
 const SupplierDashboard = () => import('../views/system/supplier/SupplierDashboard.vue')
@@ -74,10 +79,34 @@ const StoreRegister = () => import('../views/system/store/Registration.vue')
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'Home', component: Home, meta: { requiresGuest: true } },
   { path: '/login', name: 'Login', component: Login, meta: { requiresGuest: true } },
+  { path: '/customer/login', name: 'customer.login', component: CustomerLogin, meta: { requiresGuest: true } },
+  { path: '/customer/register', name: 'customer.register', component: CustomerRegister, meta: { requiresGuest: true } },
   { path: '/register', name: 'Register', component: Register, meta: { requiresGuest: true } },
   { path: '/about', name: 'About', component: About, meta: { requiresGuest: true } },
   { path: '/pricing', name: 'Pricing', component: Pricing, meta: { requiresGuest: true } },
   { path: '/verify-otp', name: 'VerifyOtp', component: VerifyOtp, meta: { requiresGuest: true, title: 'Verify Email' } },
+
+  {
+    path: '/shop',
+    component: () => import('../layouts/EcommerceLayout.vue'),
+    meta: { requiresAuth: false },
+    children: [
+      { path: '', name: 'ecommerce.products', component: () => import('../views/system/ecommerce/EcommerceProducts.vue'), meta: { title: 'Shop Products' } },
+      { path: 'stores', name: 'ecommerce.stores', component: () => import('../views/system/ecommerce/EcommerceStoreDirectory.vue'), meta: { title: 'Stores' } },
+      { path: 'stores/:storeId', name: 'ecommerce.store-profile', component: () => import('../views/system/ecommerce/EcommerceStoreProfile.vue'), meta: { title: 'Store Profile' } },
+      { path: 'stores/:storeId/products', name: 'ecommerce.store-products', component: () => import('../views/system/ecommerce/EcommerceStoreProducts.vue'), meta: { title: 'Store Products' } },
+      { path: 'products/:id', name: 'ecommerce.product', component: () => import('../views/system/ecommerce/EcommerceProductOverview.vue'), meta: { title: 'Product Overview' } },
+      { path: 'cart', name: 'ecommerce.cart', component: () => import('../views/system/ecommerce/EcommerceCart.vue'), meta: { title: 'My Cart', requiresAuth: true } },
+      { path: 'checkout', name: 'ecommerce.checkout', component: () => import('../views/system/ecommerce/EcommerceCheckout.vue'), meta: { title: 'Checkout', requiresAuth: true } },
+      { path: 'orders', name: 'ecommerce.orders', component: () => import('../views/system/ecommerce/EcommerceOrders.vue'), meta: { title: 'My Orders', requiresAuth: true } },
+      { path: 'orders/:id', name: 'ecommerce.order-detail', component: () => import('../views/system/ecommerce/EcommerceOrderDetail.vue'), meta: { title: 'Order Details', requiresAuth: true } },
+      { path: 'orders/:id/cancel', name: 'ecommerce.order-cancel', component: () => import('../views/system/ecommerce/EcommerceOrderCancel.vue'), meta: { title: 'Cancel Order', requiresAuth: true } },
+      { path: 'orders/:id/items/:itemId/return', name: 'ecommerce.order-return', component: () => import('../views/system/ecommerce/EcommerceOrderReturn.vue'), meta: { title: 'Return Item', requiresAuth: true } },
+      { path: 'orders/:id/items/:itemId/review', name: 'ecommerce.order-review', component: () => import('../views/system/ecommerce/EcommerceOrderReview.vue'), meta: { title: 'Review Item', requiresAuth: true } },
+      { path: 'profile', name: 'ecommerce.profile', component: () => import('../views/system/ecommerce/EcommerceProfile.vue'), meta: { title: 'My Profile', requiresAuth: true } },
+    ]
+  },
+ 
 
   {
     path: '/system',
@@ -95,7 +124,7 @@ const routes: RouteRecordRaw[] = [
       // { path: 'users', name: 'Users', component: Users, meta: { title: 'Users', subtitle: 'User Management & Permissions' } },
       // { path: 'productRegistration', name: 'ProductRegistration', component: ProductRegistration },
       // { path: 'profile', name: 'ProductRegistration', component: ProductRegistration },
-      { path: 'roles-permissions', name: 'store.role-permissions', component: () => import('../views/system/storeAdmin/RolePermissions.vue'), meta: { title: 'Role Permissions',  permissions: ['store.role.permission'] } },
+      { path: 'roles-permissions', name: 'store.role-permissions', component: () => import('../views/system/storeAdmin/RolePermissions.vue'), meta: { title: 'Role Permissions', permissions: ['store.role.permission'] } },
       { path: 'store', children: [{ path: 'verification', name: 'StoreVerification', component: Verification, meta: { title: 'Store Verification' } }] }
     ]
   },
@@ -110,6 +139,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'store-validation', name: 'AdminStoreValidation', component: AdminStoreValidation },
       { path: 'customer-validation', name: 'AdminCustomerValidation', component: AdminCustomerValidation },
       { path: 'customer-management', name: 'admin.customer-management', component: AdminCustomerManagement },
+      { path: 'stores', name: 'admin.stores', component: AdminStoresIndex, meta: { title: 'Stores' } },
+      { path: 'stores/:id', name: 'admin.stores.detail', component: AdminStoreDetail, meta: { title: 'Store Detail' } },
+      { path: 'users', name: 'admin.users', component: AdminUsersIndex, meta: { title: 'Users' } },
       {
         path: 'suppliers',
         redirect: '/admin/suppliers/list',
@@ -162,9 +194,20 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/sales',
+    component: SystemLayout,
+    meta: { requiresAuth: true },
+    children: [
+      { path: 'dashboard', name: 'sales.dashboard', component: () => import('../views/system/sales/SalesDashboard.vue'), meta: { title: 'Sales Dashboard' } },
+      { path: 'crm', name: 'sales.crm', component: () => import('../views/system/sales/SalesCRM.vue'), meta: { title: 'CRM Leads' } },
+      { path: 'pos', name: 'sales.pos', component: () => import('../views/system/sales/SalesPOS.vue'), meta: { title: 'In-Store POS' } },
+      { path: '', redirect: { name: 'sales.dashboard' } },
+    ]
+  },
+  {
     path: '/hr',
     component: SystemLayout,
-    meta: { requiresAuth: true},
+    meta: { requiresAuth: true },
     children: [
       { path: 'index', name: 'hr.dashboard', component: HrDashboard, meta: { title: 'HR Dashboard' } },
       {
@@ -222,7 +265,9 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: 'dashboard', name: 'merchandising.dashboard', component: () => import('../views/system/merchandising/Dashboard.vue'), meta: { title: 'Product Catalog Dashboard', subtitle: 'Overview of your product catalog and inventory', permissions: ['merchandising.dashboard.view'] } },
       { path: 'products', name: 'merchandising.products', component: () => import('../views/system/merchandising/products/ProductsList.vue'), meta: { title: 'All Products', subtitle: 'Manage your furniture product catalog', permissions: ['merchandising.products.view'] } },
+      { path: 'products/logs', name: 'merchandising.products.logs', component: () => import('../views/system/merchandising/products/ProductLogs.vue'), meta: { title: 'Product Logs', subtitle: 'View product module activity logs', permissions: ['merchandising.products.view'] } },
       { path: 'products/new', name: 'merchandising.products.create', component: () => import('../views/system/merchandising/products/ProductForm.vue'), meta: { title: 'Add New Product', subtitle: 'Create a new furniture product', permissions: ['merchandising.products.create'] } },
+      { path: 'products/raw/new', name: 'merchandising.products.raw.create', component: () => import('../views/system/merchandising/products/ProductForm.vue'), meta: { title: 'Add Raw Material', subtitle: 'Create a new raw material', permissions: ['merchandising.products.create'] } },
       { path: 'products/:id/edit', name: 'merchandising.products.edit', component: () => import('../views/system/merchandising/products/ProductForm.vue'), meta: { title: 'Edit Product', subtitle: 'Update product information', permissions: ['merchandising.products.update'] } },
       { path: 'products/:id', name: 'merchandising.products.view', component: () => import('../views/system/merchandising/products/ProductView.vue'), meta: { title: 'Product Details', subtitle: 'View detailed product information and 3D model', permissions: ['merchandising.products.read'] } },
       { path: 'variations', name: 'merchandising.variations', component: () => import('../views/system/merchandising/variations/VariationsList.vue'), meta: { title: 'Product Variations', subtitle: 'Manage colors, sizes, and materials', permissions: ['merchandising.variations.view'] } },
@@ -239,6 +284,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'attributes/new', name: 'merchandising.attributes.create', component: () => import('../views/system/merchandising/attributes/AttributeForm.vue'), meta: { title: 'Add Attribute', subtitle: 'Create a new product attribute', permissions: ['merchandising.attributes.create'] } },
       { path: 'tags', name: 'merchandising.tags', component: () => import('../views/system/merchandising/tags/TagsList.vue'), meta: { title: 'Tags & Collections', subtitle: 'Manage product tags and collections', permissions: ['merchandising.tags.view'] } },
       { path: 'pricing', name: 'merchandising.pricing', component: () => import('../views/system/merchandising/pricing/PricingRules.vue'), meta: { title: 'Pricing Rules', subtitle: 'Set discounts and pricing strategies', permissions: ['merchandising.pricing.view'] } },
+      { path: 'delivery-fees', name: 'merchandising.delivery-fees', component: () => import('../views/system/merchandising/DeliveryFeeSettings.vue'), meta: { title: 'Delivery Fee Settings', subtitle: 'Configure fixed, distance, or hybrid delivery charges', permissions: ['merchandising.pricing.edit'] } },
       { path: 'pricing/bulk-update', name: 'merchandising.pricing.bulk', component: () => import('../views/system/merchandising/pricing/BulkPricing.vue'), meta: { title: 'Bulk Price Update', subtitle: 'Update multiple product prices at once', permissions: ['merchandising.pricing.update'] } },
       { path: 'reports', name: 'merchandising.reports', component: () => import('../views/system/merchandising/reports/SalesReports.vue'), meta: { title: 'Sales Reports', subtitle: 'Analyze product performance', permissions: ['merchandising.reports.view'] } },
       { path: 'pricing-history', name: 'merchandising.pricing-history', component: () => import('../views/system/merchandising/reports/PricingHistory.vue'), meta: { title: 'Pricing History', subtitle: 'Track price changes over time', permissions: ['merchandising.reports.view'] } },
@@ -248,7 +294,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/procurement',
     component: SystemLayout,
-    meta: { requiresAuth: true},
+    meta: { requiresAuth: true },
     children: [
       { path: 'dashboard', name: 'procurement.dashboard', component: () => import('../views/system/procurement/Dashboard.vue'), meta: { title: 'Procurement Dashboard', subtitle: 'Overview of procurement operations' } },
       { path: 'suppliers', name: 'procurement.suppliers', component: () => import('../views/system/procurement/Suppliers/SupplierIndex.vue'), meta: { title: 'Suppliers', subtitle: 'Manage supplier records' } },
@@ -284,6 +330,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'analytics/lead-time', name: 'procurement.analytics.lead-time', component: () => import('../views/system/procurement/Analytics/LeadTimeMonitoring.vue'), meta: { title: 'Lead Time Monitoring', subtitle: 'Track delivery performance and trends' } },
       { path: 'payments', name: 'procurement.payments', component: () => import('../views/system/procurement/Payments/PaymentIndex.vue'), meta: { title: 'Supplier Payments', subtitle: 'Manage supplier payments' } },
       { path: 'reports', name: 'procurement.reports', component: () => import('../views/system/procurement/Reports/ReportIndex.vue'), meta: { title: 'Procurement Reports', subtitle: 'Analyze procurement performance' } },
+      { path: 'settings/workflow', name: 'procurement.settings.workflow', component: () => import('../views/system/procurement/Settings/WorkflowSettings.vue'), meta: { title: 'Workflow Settings', subtitle: 'Business-size based approval policy' } },
       { path: '', redirect: { name: 'procurement.dashboard' } },
     ]
   },
@@ -297,6 +344,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'invoices/:id', name: 'finance.invoices.detail', component: () => import('../views/system/procurement/Invoices/InvoiceDetail.vue'), meta: { title: 'Invoice Review' } },
       { path: 'purchase-orders', name: 'finance.purchase-orders', component: () => import('../views/system/finance/FinancePurchaseOrderIndex.vue'), meta: { title: 'PO Finance Approvals' } },
       { path: 'purchase-orders/:id', name: 'finance.purchase-orders.detail', component: () => import('../views/system/finance/FinancePurchaseOrderDetail.vue'), meta: { title: 'PO Finance Review' } },
+      { path: 'price-approvals', name: 'finance.price-approvals', component: () => import('../views/system/finance/FinancePriceApprovalIndex.vue'), meta: { title: 'Price Approvals' } },
+      { path: 'price-approvals/:id', name: 'finance.price-approvals.detail', component: () => import('../views/system/finance/FinancePriceApprovalDetail.vue'), meta: { title: 'Price Approval Review' } },
       { path: 'receivables', name: 'finance.receivables', component: () => import('../views/system/finance/FinanceReceivablesIndex.vue'), meta: { title: 'Accounts Receivable' } },
       { path: 'expenses', name: 'finance.expenses', component: () => import('../views/system/finance/FinanceExpensesIndex.vue'), meta: { title: 'Expenses' } },
       { path: 'payroll', name: 'finance.payroll', component: () => import('../views/system/finance/FinancePayrollIndex.vue'), meta: { title: 'Payroll' } },
@@ -337,7 +386,7 @@ router.beforeEach(async (to, from, next) => {
   const isAuthenticated = authStore.isAuthenticated
   const isPortalAuthenticated = portalAuthStore.isAuthenticated
 
-  console.log('🔍 Router guard:', {
+  console.log('Router guard:', {
     to: to.path,
     from: from.path,
     isAuthenticated,
@@ -349,8 +398,9 @@ router.beforeEach(async (to, from, next) => {
 
   // Check if route requires authentication
   if (to.meta.requiresAuth && !isAuthenticated) {
-    console.log('❌ Not authenticated')
-    return next({ name: 'Login', query: { redirect: to.fullPath } })
+    console.log('Not authenticated')
+    const loginRoute = to.path.startsWith('/shop') ? 'CustomerLogin' : 'Login'
+    return next({ name: loginRoute, query: { redirect: to.fullPath } })
   }
 
   if (to.meta.portalAuth && !isPortalAuthenticated) {
@@ -360,16 +410,16 @@ router.beforeEach(async (to, from, next) => {
 
   // Load permissions if authenticated
   if (isAuthenticated && !authStore.permissionsLoaded && !authStore.isLoadingPermissions) {
-    console.log('📥 Router guard loading permissions...')
+    console.log('Router guard loading permissions...')
     await authStore.loadPermissions()
   } else if (authStore.isLoadingPermissions) {
-    console.log('⏸️ Router guard waiting for permissions to load...')
+    console.log('Router guard waiting for permissions to load...')
     while (authStore.isLoadingPermissions) {
       await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
 
-  // ✅ ADD THIS: Check if user has required role
+  // ADD THIS: Check if user has required role
   if (to.meta.role || to.meta.roles) {
     const requiredRoles = to.meta.role || to.meta.roles
     const userRole = authStore.userRole
@@ -379,7 +429,7 @@ router.beforeEach(async (to, from, next) => {
       : requiredRoles === userRole
 
     if (!hasRole) {
-      console.log('❌ Access denied - insufficient role:', {
+      console.log('Access denied - insufficient role:', {
         userRole,
         requiredRoles
       })
@@ -392,14 +442,14 @@ router.beforeEach(async (to, from, next) => {
     const hasPermission = authStore.hasPermission(to.meta.permission as string)
 
     if (!hasPermission) {
-      console.log('❌ Access denied:', to.meta.permission)
+      console.log('Access denied:', to.meta.permission)
       return next({ name: 'Unauthorized' })
     }
   }
 
   // Redirect authenticated users from guest pages
   if (to.meta.requiresGuest && isAuthenticated) {
-    console.log('ℹ️ Redirecting authenticated user')
+    console.log('Redirecting authenticated user')
     return next(authStore.defaultRoute)
   }
 
@@ -407,8 +457,9 @@ router.beforeEach(async (to, from, next) => {
     return next(portalAuthStore.pendingRedirect || '/job-portal/applications')
   }
 
-  console.log('✅ Navigation allowed')
+  console.log('Navigation allowed')
   next()
 })
 
 export default router
+

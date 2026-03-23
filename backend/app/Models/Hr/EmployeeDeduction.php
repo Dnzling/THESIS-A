@@ -153,13 +153,13 @@ class EmployeeDeduction extends Model
         }
 
         // Check effective dates
-        $today = now()->toDateString();
+        $today = now()->startOfDay();
 
-        if ($this->effective_date > $today) {
+        if ($this->effective_date && $this->effective_date->gt($today)) {
             return false; // Not yet effective
         }
 
-        if ($this->end_date && $this->end_date < $today) {
+        if ($this->end_date && $this->end_date->lt($today)) {
             return false; // Already expired
         }
 
@@ -185,7 +185,7 @@ class EmployeeDeduction extends Model
     private function calculatePercentage(float $basicSalary, float $grossSalary): float
     {
         $type = $this->deductionType;
-        $percentage = (float) ($type?->percentage_value ?? 0);
+        $percentage = (float) ($type?->percentage_rate ?? $type?->percentage_value ?? 0);
 
         $basis = match ($type?->percentage_basis) {
             'basic' => $basicSalary,
@@ -205,12 +205,16 @@ class EmployeeDeduction extends Model
             $amount = $type->max_amount;
         }
 
-        return $amount;
+        return round($amount, 2);
     }
 
     private function calculateFormula(float $basicSalary, float $grossSalary): float
     {
-        // Custom formula logic based on formula_data
-        return 0;
+        $type = $this->deductionType;
+        if (!$type) {
+            return 0;
+        }
+
+        return (float) $type->calculateDeduction($basicSalary, $grossSalary, $grossSalary);
     }
 }

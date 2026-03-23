@@ -4,6 +4,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\Inventory\Warehouse;
+use App\Models\Store\Branch;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
@@ -21,6 +22,9 @@ class WarehouseService
             }
 
             $warehouse = Warehouse::create($data);
+            Branch::query()
+                ->where('id', $warehouse->branch_id)
+                ->update(['branch_type' => 'warehouse']);
 
             Log::info('Warehouse created successfully', [
                 'warehouse_id' => $warehouse->id,
@@ -48,6 +52,9 @@ class WarehouseService
             $oldData = $warehouse->toArray();
 
             $warehouse->update($data);
+            Branch::query()
+                ->where('id', $warehouse->branch_id)
+                ->update(['branch_type' => 'warehouse']);
 
             Log::info('Warehouse updated successfully', [
                 'warehouse_id' => $warehouse->id,

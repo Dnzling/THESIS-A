@@ -75,6 +75,21 @@
                 <InputNumber v-model="slotProps.data.estimated_unit_cost" :useGrouping="false" :minFractionDigits="2" :maxFractionDigits="2" fluid />
               </template>
             </Column>
+            <Column field="tax_rate" header="Tax Rate" style="width: 130px">
+              <template #body="slotProps">
+                <InputNumber
+                  v-model="slotProps.data.tax_rate"
+                  :min="0"
+                  :max="100"
+                  :showButtons="false"
+                  :useGrouping="false"
+                  :minFractionDigits="2"
+                  :maxFractionDigits="2"
+                  suffix="%"
+                  fluid
+                />
+              </template>
+            </Column>
             <Column field="specifications" header="Specifications">
               <template #body="slotProps">
                 <InputText v-model="slotProps.data.specifications" placeholder="Special requirements" />
@@ -120,7 +135,7 @@
           <div class="space-y-3">
             <h4 class="font-semibold text-gray-800">📦 Line Items ({{ validItems.length }} items)</h4>
             <div v-for="(item, index) in validItems" :key="index" class="p-4 border rounded-lg bg-orange-50">
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
                   <p class="text-xs text-gray-600 font-semibold">Product</p>
                   <p class="font-semibold text-gray-900">{{ item.product_name }}</p>
@@ -134,6 +149,10 @@
                   <p class="font-semibold text-gray-900">{{ item.estimated_unit_cost?.toFixed(2) || '0.00' }}</p>
                 </div>
                 <div>
+                  <p class="text-xs text-gray-600 font-semibold">Tax Rate</p>
+                  <p class="font-semibold text-gray-900">{{ (Number(item.tax_rate ?? 0)).toFixed(2) }}%</p>
+                </div>
+                <div>
                   <p class="text-xs text-gray-600 font-semibold">Total</p>
                   <p class="text-lg font-bold text-orange-700">{{ ((item.quantity_requested || 0) * (item.estimated_unit_cost || 0)).toFixed(2) }}</p>
                 </div>
@@ -144,6 +163,10 @@
                 <div>
                   <p class="text-sm text-gray-600">Estimated Total</p>
                   <p class="text-2xl font-bold text-orange-700">{{ estimatedTotal.toFixed(2) }}</p>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-600">Estimated Tax</p>
+                  <p class="text-xl font-bold text-emerald-600">{{ estimatedTax.toFixed(2) }}</p>
                 </div>
                 <div>
                   <p class="text-sm text-gray-600">Procurement Route</p>
@@ -211,7 +234,7 @@ const form = reactive<any>({
   requisition_type: 'regular',
   reason: '',
   priority: 3,
-  items: [{ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, specifications: '', product_name: '' }],
+  items: [{ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }],
 })
 
 const errors = reactive<any>({})
@@ -222,6 +245,13 @@ const validItems = computed(() => form.items.filter((i: any) => i.product_id))
 const estimatedTotal = computed(() => {
   return form.items.reduce((sum: number, item: any) => {
     return sum + ((item.quantity_requested || 0) * (item.estimated_unit_cost || 0))
+  }, 0)
+})
+const estimatedTax = computed(() => {
+  return form.items.reduce((sum: number, item: any) => {
+    const rate = Number(item.tax_rate ?? 0)
+    const amount = (item.quantity_requested || 0) * (item.estimated_unit_cost || 0)
+    return sum + amount * (rate / 100)
   }, 0)
 })
 
@@ -254,7 +284,7 @@ const validateForm = (): boolean => {
 }
 
 const addItem = () => {
-  form.items.push({ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, specifications: '', product_name: '' })
+  form.items.push({ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' })
 }
 
 const removeItem = (index: number) => {
@@ -266,7 +296,8 @@ const selectProduct = (index: number, event: any) => {
   if (product && form.items[index]) {
     form.items[index].product_id = product.id
     form.items[index].product_name = product.product_name
-    form.items[index].estimated_unit_cost = parseFloat(product.base_price) || 0
+    form.items[index].estimated_unit_cost = parseFloat(product.cost_price || product.base_price) || 0
+    form.items[index].tax_rate = Number(product.tax_rate ?? 0)
   }
 }
 
@@ -305,6 +336,7 @@ const prefillFromInventoryItem = (item: any) => {
     product_id: productId || null,
     quantity_requested: requestedQty,
     estimated_unit_cost: basePrice,
+    tax_rate: Number(item.product?.tax_rate ?? 0),
     specifications: '',
     product_name: productName
   }]
@@ -421,3 +453,4 @@ onMounted(async () => {
   }
 })
 </script>
+

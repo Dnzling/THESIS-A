@@ -432,7 +432,7 @@ const timelineItems = computed(() => {
         po_sent_to_supplier: 'Sent to Supplier',
         po_email_sent: 'Email Sent to Supplier',
         po_supplier_accepted: 'Supplier Accepted',
-        po_supplier_declined: 'Declined by Supplier',
+        po_supplier_declined: 'Supplier Declined',
         po_shipment_created: 'Delivery Form Created',
         po_invoice_created: 'Invoice Created',
         po_rejected: 'Rejected by Finance',

@@ -1,20 +1,26 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
-    <div class="mb-6 flex justify-between items-center">
+  <div class="min-h-screen p-4">
+    <div class="mb-4 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Inventory Items</h1>
-        <p class="text-gray-600 mt-1">View and manage inventory in your branch</p>
+        <h1 class="text-xl font-bold text-gray-800">Inventory</h1>
       </div>
-      <Button label="Add Item" icon="pi pi-plus" severity="success" @click="router.push({ name: 'inventory.items.create' })" />
+      <Button
+        v-if="canCreateItems"
+        label="Add Item"
+        icon="pi pi-plus"
+        severity="success"
+        size="small"
+        @click="router.push({ name: 'inventory.items.create' })"
+      />
     </div>
 
     <!-- Filters -->
-    <Card class="mb-6">
+    <Card class="mb-4">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full" @keyup.enter="loadItems" />
+            <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full" size="small"/>
           </IconField>
 
           <Select
@@ -22,10 +28,9 @@
             :options="stockStatuses"
             optionLabel="label"
             optionValue="value"
-            placeholder="Stock Status"
+            placeholder="Stock Status" size="small"
             class="w-full"
             showClear
-            @change="loadItems"
           />
 
           <Select
@@ -33,14 +38,12 @@
             :options="productTypeOptions"
             optionLabel="label"
             optionValue="value"
-            placeholder="Product Type"
+            placeholder="Product Type" size="small"
             class="w-full"
             showClear
-            @change="loadItems"
           />
 
-          <Button icon="pi pi-search" label="Search" @click="loadItems" />
-          <Button icon="pi pi-filter-slash" label="Reset" severity="secondary" @click="resetFilters" />
+          <Button icon="pi pi-filter-slash" label="Reset" severity="secondary" outlined size="small" @click="resetFilters" />
         </div>
       </template>
     </Card>
@@ -56,6 +59,9 @@
           :totalRecords="totalRecords"
           :lazy="true"
           @page="onPage"
+          @sort="onSort"
+          :sortField="sortField"
+          :sortOrder="sortOrder"
           dataKey="id"
           :rowsPerPageOptions="[15, 25, 50]"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
@@ -70,15 +76,36 @@
             </div>
           </template>
 
+          <Column field="created_at" header="Date" sortable style="width: 12%">
+            <template #body="{ data }">
+              {{ formatDate(data.created_at) }}
+            </template>
+          </Column>
+
           <Column field="product.sku" header="SKU" style="width: 12%">
             <template #body="{ data }">
-              {{ data.product?.sku || 'N/A' }}
+              {{ data.variation?.variation_sku || data.product?.sku || 'N/A' }}
             </template>
           </Column>
 
           <Column field="product.product_name" header="Item Name" style="width: 20%">
             <template #body="{ data }">
-              {{ data.product?.product_name || 'N/A' }}
+              <div class="text-sm">
+                <div class="font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
+                <div class="text-xs text-gray-500">
+                  {{ data.variation?.variation_name || (data.variation_id ? 'Variant' : 'Standard') }}
+                </div>
+              </div>
+            </template>
+          </Column>
+
+          <Column header="Variant" style="width: 16%">
+            <template #body="{ data }">
+              <div v-if="data.variation_id" class="text-xs text-gray-700">
+                <div>{{ data.variation?.color || '-' }} / {{ data.variation?.size || '-' }}</div>
+                <div class="text-gray-500">{{ data.variation?.material || '-' }}</div>
+              </div>
+              <span v-else class="text-xs text-gray-500">Standard</span>
             </template>
           </Column>
 
@@ -100,13 +127,13 @@
             </template>
           </Column>
 
-          <Column header="Location" style="width: 15%">
+          <!-- <Column header="Location" style="width: 15%">
             <template #body="{ data }">
               <span class="text-sm text-gray-600">
                 {{ [data.warehouse_section, data.aisle, data.rack, data.shelf].filter(Boolean).join('-') || 'N/A' }}
               </span>
             </template>
-          </Column>
+          </Column> -->
 
           <Column field="stock_status" header="Status" style="width: 13%">
             <template #body="{ data }">
@@ -118,6 +145,7 @@
             <template #body="{ data }">
               <div class="flex gap-1">
                 <Button
+                  v-if="canUpdateItems"
                   icon="pi pi-pencil"
                   size="small"
                   text
@@ -135,6 +163,7 @@
                   v-if="['low_stock', 'out_of_stock'].includes(data.stock_status)"
                 />
                 <Button
+                  v-if="canDeleteItems"
                   icon="pi pi-trash"
                   size="small"
                   text
@@ -154,11 +183,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const loading = ref(false)
 const items = ref<any[]>([])
@@ -166,6 +196,11 @@ const totalRecords = ref(0)
 const toast = useToast()
 const confirm = useConfirm()
 const router = useRouter()
+const authStore = useAuthStore()
+
+const canCreateItems = computed(() => authStore.hasPermission('inventory.items.create'))
+const canUpdateItems = computed(() => authStore.hasPermission('inventory.items.update'))
+const canDeleteItems = computed(() => authStore.hasPermission('inventory.items.delete'))
 
 const filters = reactive({
   search: '',
@@ -174,6 +209,9 @@ const filters = reactive({
   page: 1,
   per_page: 15
 })
+const sortField = ref('created_at')
+const sortOrder = ref(-1)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const stockStatuses = [
   { label: 'In Stock', value: 'in_stock' },
@@ -197,6 +235,8 @@ const loadItems = async () => {
     if (filters.search) params.search = filters.search
     if (filters.stock_status) params.stock_status = filters.stock_status
     if (filters.product_type) params.product_type = filters.product_type
+    params.sort_by = sortField.value
+    params.sort_order = sortOrder.value === 1 ? 'asc' : 'desc'
 
     const response = await inventoryService.getInventoryItems(params)
 
@@ -228,13 +268,27 @@ const onPage = (event: any) => {
   loadItems()
 }
 
+const onSort = (event: any) => {
+  sortField.value = event.sortField || 'created_at'
+  sortOrder.value = event.sortOrder || -1
+  filters.page = 1
+  loadItems()
+}
+
 const resetFilters = () => {
   filters.search = ''
   filters.stock_status = null
   filters.product_type = null
   filters.page = 1
   filters.per_page = 15
+  sortField.value = 'created_at'
+  sortOrder.value = -1
   loadItems()
+}
+
+const formatDate = (value: string) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const getStockLabel = (status: string) => {
@@ -262,12 +316,21 @@ const confirmDelete = (item: any) => {
     message: `Are you sure you want to delete the inventory record for "${item.product?.product_name || 'this item'}"?`,
     header: 'Confirm Delete',
     icon: 'pi pi-exclamation-triangle',
-    acceptSeverity: 'danger',
     accept: () => deleteItem(item.id)
   })
 }
 
 const deleteItem = async (id: number) => {
+  if (!canDeleteItems.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Unauthorized',
+      detail: 'You do not have permission to delete inventory records.',
+      life: 3000
+    })
+    return
+  }
+
   try {
     await inventoryService.deleteInventoryItem(id)
     toast.add({
@@ -294,11 +357,25 @@ const createPurchaseRequisition = (item: any) => {
       branch_inventory_id: item.id,
       branch_id: item.branch_id,
       product_id: item.product_id,
+      variation_id: item.variation_id || undefined,
     }
   })
 }
 
 onMounted(() => {
   loadItems()
+})
+
+watch([() => filters.stock_status, () => filters.product_type, () => filters.per_page], () => {
+  filters.page = 1
+  loadItems()
+})
+
+watch(() => filters.search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    filters.page = 1
+    loadItems()
+  }, 350)
 })
 </script>

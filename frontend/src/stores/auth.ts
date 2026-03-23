@@ -52,6 +52,15 @@ export const useAuthStore = defineStore('auth', () => {
     const currentUser = computed(() => user.value)
     const userRole = computed(() => user.value?.role || null)
     const userAbilities = computed(() => user.value?.abilities || [])
+    const isCustomer = computed(() => {
+        const role = String(user.value?.role || '').toLowerCase()
+        return role.includes('customer')
+    })
+
+    const isCustomerRoleValue = (roleValue: unknown): boolean => {
+        const normalized = String(roleValue || '').toLowerCase()
+        return normalized.includes('customer')
+    }
 
     const isRoleAllowedForRoute = (routePath: string): boolean => {
         const resolved = router.resolve(routePath)
@@ -77,6 +86,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const getFirstNavigationRoute = (): string => {
+        if (isCustomer.value) {
+            return '/shop'
+        }
+
         if (user.value?.role === 'super_admin') {
             return '/admin/dashboard'
         }
@@ -100,8 +113,15 @@ export const useAuthStore = defineStore('auth', () => {
      * Load user permissions and navigation from backend
      */
     const loadPermissions = async () => {
+        if (isCustomer.value) {
+            permissions.value = []
+            navigation.value = []
+            permissionsLoaded.value = true
+            return
+        }
+
         if (permissionsLoaded.value) {
-            console.log('??? Permissions already loaded, skipping...')
+            console.log('Permissions already loaded, skipping...')
             return
         }
 
@@ -110,14 +130,14 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (!token.value) {
-            console.warn('?????? Cannot load permissions - no token')
+            console.warn('Cannot load permissions - no token')
             return
         }
 
         isLoadingPermissions.value = true
         permissionsPromise = (async () => {
             try {
-                console.log('???? Loading user permissions and navigation...')
+                console.log('Loading user permissions and navigation...')
                 const response = await axios.get('/api/user/navigation')
 
                 permissions.value = response.data.permissions || []
@@ -127,16 +147,16 @@ export const useAuthStore = defineStore('auth', () => {
                 localStorage.setItem('navigation', JSON.stringify(navigation.value))
                 localStorage.setItem('permissions', JSON.stringify(permissions.value))
 
-                console.log('??? Permissions loaded:', permissions.value.length, 'permissions')
-                console.log('??? Navigation loaded:', navigation.value.length, 'items')
+                console.log('Permissions loaded:', permissions.value.length, 'permissions')
+                console.log('Navigation loaded:', navigation.value.length, 'items')
             } catch (err: any) {
-                console.error('??? Failed to load permissions:', err)
+                console.error('Failed to load permissions:', err)
 
                 const cachedNav = localStorage.getItem('navigation')
                 const cachedPerms = localStorage.getItem('permissions')
 
                 if (cachedNav && cachedPerms) {
-                    console.log('???? Loading navigation from cache...')
+                    console.log('Loading navigation from cache...')
                     navigation.value = JSON.parse(cachedNav)
                     permissions.value = JSON.parse(cachedPerms)
                     permissionsLoaded.value = true
@@ -157,16 +177,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     /**
-     * ✅ Fetch navigation (can be called separately to refresh)
+     * âœ… Fetch navigation (can be called separately to refresh)
      */
     const fetchNavigation = async () => {
+        if (isCustomer.value) {
+            permissions.value = []
+            navigation.value = []
+            return
+        }
+
         if (!token.value) {
-            console.warn('⚠️ Cannot fetch navigation - no token')
+            console.warn('Cannot fetch navigation - no token')
             return
         }
 
         try {
-            console.log('🔄 Fetching navigation...')
+            console.log('Fetching navigation...')
             const response = await axios.get('/api/user/navigation')
             
             permissions.value = response.data.permissions || []
@@ -176,9 +202,9 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.setItem('navigation', JSON.stringify(navigation.value))
             localStorage.setItem('permissions', JSON.stringify(permissions.value))
             
-            console.log('✅ Navigation refreshed:', navigation.value.length, 'items')
+            console.log('Navigation refreshed:', navigation.value.length, 'items')
         } catch (error) {
-            console.error('❌ Failed to fetch navigation:', error)
+            console.error('Failed to fetch navigation:', error)
             
             // Fallback to cached navigation
             const cached = localStorage.getItem('navigation')
@@ -226,7 +252,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     /**
-     * ✅ Get navigation items by module and section
+     * âœ… Get navigation items by module and section
      */
     const getNavigationBySection = (module: string, section: string) => {
         return navigation.value
@@ -249,7 +275,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     /**
-     * ✅ Check if navigation has specific section
+     * âœ… Check if navigation has specific section
      */
     const hasNavigationSection = (module: string, section: string): boolean => {
         return navigation.value.some(item => 
@@ -281,8 +307,14 @@ export const useAuthStore = defineStore('auth', () => {
                 device_name: 'web_browser',
             })
 
-            const accessToken = response.data.data?.access_token || response.data.token
-            const userData = response.data.data?.user || response.data.user
+            const payload = response.data || {}
+            const accessToken = payload?.data?.access_token || payload?.access_token || payload?.token
+            const userData =
+                payload?.data?.user ??
+                payload?.user ??
+                payload?.data ??
+                null
+            const customerUser = isCustomerRoleValue(userData?.role)
 
             token.value = accessToken
             user.value = userData
@@ -292,25 +324,30 @@ export const useAuthStore = defineStore('auth', () => {
 
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
 
-            // Load permissions ONCE
-            await loadPermissions()
+            if (customerUser) {
+                permissions.value = []
+                navigation.value = []
+                permissionsLoaded.value = true
+            } else {
+                // Load permissions ONCE
+                await loadPermissions()
 
-            // Clock in ONLY ONCE
-            try {
-                await axios.post('/api/attendances/clock-in', {
-                    user_id: userData.id,
-                    method: 'web'
-                })
-                console.log('✅ Clock-in successful')
-            } catch (clockInError) {
-                console.warn('⚠️ Clock-in failed:', clockInError)
-                // Don't block login if clock-in fails
+                // Clock in ONLY ONCE
+                try {
+                    await axios.post('/api/attendances/clock-in', {
+                        user_id: userData.id,
+                        method: 'web'
+                    })
+                    console.log('Clock-in successful')
+                } catch (clockInError) {
+                    console.warn('Clock-in failed:', clockInError)
+                }
             }
 
             return response
 
         } catch (err: any) {
-            console.error('❌ Login error:', err)
+            console.error('Login error:', err)
             error.value = err.response?.data?.message || err.message || 'Login failed'
             throw err
         } finally {
@@ -330,7 +367,7 @@ export const useAuthStore = defineStore('auth', () => {
                 })
             }
         } catch (err) {
-            console.warn('⚠️ Logout API error:', err)
+            console.warn('Logout API error:', err)
         } finally {
             // Clear everything
             token.value = null
@@ -365,15 +402,22 @@ export const useAuthStore = defineStore('auth', () => {
 
         try {
             const response = await axios.get('/api/auth/user')
-            user.value = response.data
-            localStorage.setItem('user', JSON.stringify(response.data))
+            const payload = response.data || {}
+            const resolvedUser =
+                payload?.data?.user ??
+                payload?.data ??
+                payload?.user ??
+                payload
+
+            user.value = resolvedUser
+            localStorage.setItem('user', JSON.stringify(resolvedUser))
 
             // Reload permissions when user data is refreshed
             permissionsLoaded.value = false
             isLoadingPermissions.value = false
             await loadPermissions()
 
-            return response.data
+            return resolvedUser
         } catch (err: any) {
             if (err.response?.status === 401) {
                 await logout()
@@ -387,7 +431,7 @@ export const useAuthStore = defineStore('auth', () => {
      */
     const initialize = async () => {
         if (token.value && user.value && !permissionsLoaded.value && !isLoadingPermissions.value) {
-            console.log('🔄 Initializing auth store...')
+            console.log('Initializing auth store...')
             axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
             await loadPermissions()
         }
@@ -412,6 +456,7 @@ export const useAuthStore = defineStore('auth', () => {
         currentUser,
         userRole,
         userAbilities,
+        isCustomer,
         defaultRoute,
 
         // Auth Actions

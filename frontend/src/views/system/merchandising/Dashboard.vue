@@ -73,7 +73,7 @@
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-600 mb-1">Total Value</p>
-                <h3 class="text-2xl font-bold text-gray-900">₱{{ formatPrice(stats.total_inventory_value) }}</h3>
+                <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrencyPHP(stats.total_inventory_value) }}</h3>
                 <p class="text-xs text-gray-600 mt-1">
                   <i class="pi pi-dollar"></i> Inventory value
                 </p>
@@ -146,7 +146,7 @@
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-600 mb-1">Avg Price</p>
-                <h3 class="text-2xl font-bold text-gray-900">₱{{ formatPrice(stats.average_price) }}</h3>
+                <h3 class="text-2xl font-bold text-gray-900">{{ formatCurrencyPHP(stats.average_price) }}</h3>
                 <p class="text-xs text-gray-600 mt-1">
                   <i class="pi pi-chart-line"></i> Per product
                 </p>
@@ -565,7 +565,7 @@ const loadDashboardStats = async () => {
   loading.value = true
   try {
     const response = await merchandisingService.getDashboardStats()
-    stats.value = { ...stats.value, ...response.data }
+    stats.value = { ...stats.value, ...(response || {}) }
 
     // Load recent products
     const productsResponse = await merchandisingService.getProducts({
@@ -599,7 +599,15 @@ const loadActivityLog = async () => {
   loadingActivity.value = true
   try {
     const response = await merchandisingService.getActivityLog({ per_page: 10 })
-    activityLog.value = response.data.data || []
+    const payload = response?.data || response || {}
+    const rows = payload?.data || payload?.data?.data || []
+    activityLog.value = (Array.isArray(rows) ? rows : []).map((item: any) => ({
+      ...item,
+      details: item?.meta?.result
+        ? `${item.meta.result.toUpperCase()} ${item?.meta?.method || ''} ${item?.meta?.path || ''}`.trim()
+        : (item?.meta?.path || item?.description || 'No additional details'),
+      action: String(item?.action || '').split('.').pop() || 'updated'
+    }))
   } catch (error: any) {
     console.error('Failed to load activity log:', error)
     // Don't show error toast for activity log, just keep it empty
@@ -620,36 +628,48 @@ const getStockSeverity = (status: string) => {
 }
 
 const getActivityColor = (action: string) => {
+  const normalized = String(action || '').toLowerCase()
   const colors: Record<string, string> = {
     'created': 'bg-green-500',
+    'create': 'bg-green-500',
     'updated': 'bg-blue-500',
+    'update': 'bg-blue-500',
     'deleted': 'bg-red-500',
+    'delete': 'bg-red-500',
     'uploaded': 'bg-purple-500',
     'price_changed': 'bg-yellow-500'
   }
-  return colors[action] || 'bg-gray-500'
+  return colors[normalized] || 'bg-gray-500'
 }
 
 const getActivityIcon = (action: string) => {
+  const normalized = String(action || '').toLowerCase()
   const icons: Record<string, string> = {
     'created': 'pi pi-plus',
+    'create': 'pi pi-plus',
     'updated': 'pi pi-pencil',
+    'update': 'pi pi-pencil',
     'deleted': 'pi pi-trash',
+    'delete': 'pi pi-trash',
     'uploaded': 'pi pi-upload',
     'price_changed': 'pi pi-dollar'
   }
-  return icons[action] || 'pi pi-info-circle'
+  return icons[normalized] || 'pi pi-info-circle'
 }
 
 const getActivitySeverity = (action: string) => {
+  const normalized = String(action || '').toLowerCase()
   const severities: Record<string, string> = {
     'created': 'success',
+    'create': 'success',
     'updated': 'info',
+    'update': 'info',
     'deleted': 'danger',
+    'delete': 'danger',
     'uploaded': 'secondary',
     'price_changed': 'warning'
   }
-  return severities[action] || 'secondary'
+  return severities[normalized] || 'secondary'
 }
 
 const formatPrice = (price: number) => {
@@ -658,6 +678,10 @@ const formatPrice = (price: number) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(price)
+}
+
+const formatCurrencyPHP = (price: number) => {
+  return `PHP ${formatPrice(price)}`
 }
 
 const formatFileSize = (bytes: number) => {

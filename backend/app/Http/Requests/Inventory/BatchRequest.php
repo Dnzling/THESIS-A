@@ -12,7 +12,15 @@ class BatchRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->can('manage inventory');
+        if (!auth()->check()) {
+            return false;
+        }
+
+        if ($this->isMethod('POST')) {
+            return auth()->user()->can('inventory.batches.create');
+        }
+
+        return auth()->user()->can('inventory.batches.update');
     }
 
     /**

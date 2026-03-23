@@ -161,7 +161,7 @@ import Button from 'primevue/button'
 import Select from 'primevue/select'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 
 const router = useRouter()
 const todayStats = ref({
@@ -286,7 +286,7 @@ const monthlySummaryDisplay = computed(() => {
 
 const fetchTodayStats = async () => {
   try {
-    const response = await axios.get('/api/hr/dashboard/today-stats')
+    const response = await hrService.api.get('/api/hr/dashboard/today-stats')
     todayStats.value = response.data.data
   } catch (error) {
     // keep defaults
@@ -296,7 +296,7 @@ const fetchTodayStats = async () => {
 const fetchWeeklyAttendance = async () => {
   weeklyError.value = ''
   try {
-    const response = await axios.get('/api/hr/dashboard/weekly-attendance')
+    const response = await hrService.api.get('/api/hr/dashboard/weekly-attendance')
     weeklyAttendance.value = response.data.data
   } catch (error) {
     weeklyError.value = 'Unable to load weekly attendance.'
@@ -306,7 +306,7 @@ const fetchWeeklyAttendance = async () => {
 const fetchMonthlySummary = async () => {
   monthlyError.value = ''
   try {
-    const response = await axios.get('/api/hr/dashboard/monthly-summary', {
+    const response = await hrService.api.get('/api/hr/dashboard/monthly-summary', {
       params: { month: selectedMonth.value, year: selectedYear.value }
     })
     monthlySummary.value = response.data.data
@@ -317,7 +317,7 @@ const fetchMonthlySummary = async () => {
 
 const fetchPayPeriods = async () => {
   try {
-    const response = await axios.get('/api/payroll/pay-periods')
+    const response = await hrService.api.get('/api/payroll/pay-periods')
     payPeriods.value = response.data.data || response.data || []
   } catch (error) {
     payPeriods.value = []
@@ -348,3 +348,4 @@ watch(selectedPayPeriod, (periodId) => {
 onMounted(reloadDashboard)
 onMounted(fetchPayPeriods)
 </script>
+

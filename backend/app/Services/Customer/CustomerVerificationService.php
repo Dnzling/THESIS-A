@@ -2,6 +2,7 @@
 
 namespace App\Services\Customer;
 
+use App\Models\Customer\Customer;
 use App\Models\Core\User;
 
 class CustomerVerificationService
@@ -22,15 +23,20 @@ class CustomerVerificationService
             return false;
         }
 
-        if ($user->customer_verification_status !== 'unverified') {
+        $customer = Customer::firstOrCreate(
+            ['user_id' => $user->id],
+            ['verification_status' => 'unverified']
+        );
+
+        if ($customer->verification_status !== 'unverified') {
             return false;
         }
 
-        $user->update([
-            'customer_verification_required' => true,
-            'customer_verification_status' => 'pending',
-            'customer_verification_trigger_amount' => $orderTotal,
-            'customer_verification_triggered_at' => now(),
+        $customer->update([
+            'verification_required' => true,
+            'verification_status' => 'pending',
+            'verification_trigger_amount' => $orderTotal,
+            'verification_triggered_at' => now(),
         ]);
 
         return true;

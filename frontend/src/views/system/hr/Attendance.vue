@@ -284,7 +284,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
 // Toast & Auth
@@ -515,7 +515,7 @@ const fetchAttendance = async () => {
       params.end_date = filters.dateRange[1].toISOString().split('T')[0]
     }
 
-    const response = await axios.get('api/attendances', {
+    const response = await hrService.api.get('api/attendances', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params
     })
@@ -590,7 +590,7 @@ const saveAttendance = async () => {
       updateData.clock_out = `${date.toISOString().split('T')[0]} ${editingAttendance.value.clockOutTime}:00`
     }
 
-    const response = await axios.put(
+    const response = await hrService.api.put(
       `api/attendances/${editingAttendance.value.id}`,
       updateData,
       { headers: { 'Authorization': `Bearer ${authStore.token}` } }
@@ -641,3 +641,4 @@ onMounted(() => {
   fetchAttendance()
 })
 </script>
+

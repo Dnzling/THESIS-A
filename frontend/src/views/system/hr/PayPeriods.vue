@@ -107,7 +107,7 @@
 <script setup lang="ts">
 import { useToast } from 'primevue/usetoast'
 import { computed, ref, onMounted, watch } from 'vue'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
 
@@ -193,7 +193,7 @@ const fetchPayPeriods = async () => {
   error.value = null
 
   try {
-    const response = await axios.get('/api/payroll/periods', {
+    const response = await hrService.api.get('/api/payroll/periods', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -308,7 +308,7 @@ const savePeriod = async () => {
       return `${year}-${month}-${day}`
     }
 
-    const response = await axios.post('/api/payroll/periods',
+    const response = await hrService.api.post('/api/payroll/periods',
       {
         name: periodForm.value.name,
         start_date: formatDate(periodForm.value.startDate),
@@ -385,7 +385,7 @@ const deletePeriod = async () => {
   if (!periodToDelete.value) return
 
   try {
-    const response = await axios.delete(`/api/payroll/periods/${periodToDelete.value.id}`)
+    const response = await hrService.api.delete(`/api/payroll/periods/${periodToDelete.value.id}`)
 
     if (response.data.success) {
       toast.add({
@@ -437,3 +437,4 @@ onMounted(() => {
   fetchPayPeriods()
 })
 </script>
+

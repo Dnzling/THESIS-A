@@ -14,6 +14,7 @@ export interface POLineItem {
   stock_level?: number
   reorder_point?: number
   last_price_date?: string
+  tax_rate?: number
 }
 
 export interface POForm {
@@ -68,35 +69,36 @@ export const usePoAutomation = () => {
 
   // Calculate line item total with discount
   const calculateLineTotal = (item: POLineItem): number => {
-    let total = item.quantity_ordered * item.unit_cost
-
-    // Apply discount
-    if (item.discount_percent > 0) {
-      total -= total * (item.discount_percent / 100)
-    }
-
-    return Math.round(total * 100) / 100
+    const baseAmount = item.quantity_ordered * item.unit_cost
+    const discountAmount = item.discount_percent > 0
+      ? baseAmount * (item.discount_percent / 100)
+      : 0
+    const taxableAmount = baseAmount - discountAmount
+    const taxAmount = taxableAmount * ((item.tax_rate ?? 0) / 100)
+    return Math.round((taxableAmount + taxAmount) * 100) / 100
   }
 
   // Calculate PO totals
   const calculateTotals = (items: POLineItem[], shippingCost: number = 0, discountAmount: number = 0) => {
     let subtotal = 0
+    let taxTotal = 0
 
     items.forEach((item) => {
-      const itemSubtotal = item.quantity_ordered * item.unit_cost
-
-      // Deduct item discount from subtotal
-      if (item.discount_percent > 0) {
-        subtotal += itemSubtotal - itemSubtotal * (item.discount_percent / 100)
-      } else {
-        subtotal += itemSubtotal
-      }
+      const itemBase = item.quantity_ordered * item.unit_cost
+      const itemDiscount = item.discount_percent > 0
+        ? itemBase * (item.discount_percent / 100)
+        : 0
+      const taxableAmount = itemBase - itemDiscount
+      const itemTax = taxableAmount * ((item.tax_rate ?? 0) / 100)
+      subtotal += taxableAmount
+      taxTotal += itemTax
     })
 
-    const totalAmount = subtotal + shippingCost - discountAmount
+    const totalAmount = subtotal + taxTotal + shippingCost - discountAmount
 
     return {
       subtotal: Math.round(subtotal * 100) / 100,
+      tax_amount: Math.round(taxTotal * 100) / 100,
       total_amount: Math.round(totalAmount * 100) / 100
     }
   }
@@ -172,6 +174,7 @@ export const usePoAutomation = () => {
         product_image: item.product_image,
         quantity_ordered: item.average_quantity || 1,
         unit_cost: item.last_price || 0,
+        tax_rate: item.tax_rate ?? 0,
         discount_percent: 0,
         stock_level: item.current_stock || 0,
         reorder_point: item.reorder_point || 0

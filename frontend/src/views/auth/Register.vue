@@ -33,6 +33,7 @@ const handleRegister = async (formData: RegisterFormData) => {
 
     // Success
     localStorage.setItem('register_token', response.data.user.access_token)
+    localStorage.setItem('otp_context', 'saas')
     router.push('/verify-otp')
 
   } catch (error: any) {

@@ -25,8 +25,12 @@ use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
 use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
+use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
+use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\Ecommerce\EcommerceController;
+use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
 
 
 // ========== RATE LIMITING ==========
@@ -49,6 +53,19 @@ Route::prefix('auth')->group(function () {
 });
 
 require __DIR__ . '/job_portal_routes.php';
+
+// Public ecommerce browsing (guest-friendly)
+Route::prefix('ecommerce')->group(function () {
+    Route::get('/products', [EcommerceController::class, 'products']);
+    Route::get('/products/{id}', [EcommerceController::class, 'productShow']);
+    Route::get('/stores', [EcommerceController::class, 'storeDirectory']);
+    Route::get('/stores/{storeId}', [EcommerceController::class, 'storeProfile']);
+    Route::get('/stores/{storeId}/products', [EcommerceController::class, 'storeProducts']);
+    Route::get('/stores/{storeId}/reviews', [EcommerceController::class, 'storeReviews']);
+});
+
+// Public 3D/image asset serve route (must stay outside auth middleware)
+Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
 
 // ========== PROTECTED ROUTES ==========
 
@@ -94,6 +111,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/customers', [CustomerManagementController::class, 'index']);
         Route::post('/customers/{id}/require-verification', [CustomerManagementController::class, 'requireVerification']);
         Route::post('/customers/require-verification-bulk', [CustomerManagementController::class, 'requireVerificationBulk']);
+
+        // Subscription Management
+        Route::get('/subscriptions', [SubscriptionManagementController::class, 'index']);
+        Route::get('/subscriptions/stats', [SubscriptionManagementController::class, 'stats']);
+        Route::put('/subscriptions/{store}', [SubscriptionManagementController::class, 'update']);
+        Route::post('/subscriptions/{store}/extend', [SubscriptionManagementController::class, 'extend']);
+
+        // Store Management
+        Route::get('/stores', [StoreManagementController::class, 'index']);
+        Route::get('/stores/{store}', [StoreManagementController::class, 'show']);
 });
 
     // ========== STORE ROLES & PERMISSIONS ==========
@@ -261,6 +288,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     require __DIR__ . '/supplier_routes.php';
     require __DIR__ . '/supplier_portal_routes.php';
     require __DIR__ . '/inventory_routes.php';
+    require __DIR__ . '/ecommerce_routes.php';
+    require __DIR__ . '/sales_routes.php';
     require __DIR__ . '/job_hiring_routes.php';
     require __DIR__ . '/finance_routes.php';
 

@@ -204,7 +204,9 @@ class ProcurementService {
   }
 
   async getProcurementProducts(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/products`, { params })
+    const response = await axiosClient.get(`${this.baseUrl}/products`, {
+      params: { include_cost: true, ...(params || {}) },
+    })
     return response.data
   }
 
@@ -808,6 +810,29 @@ class ProcurementService {
 
   async getApprovedPurchaseOrders(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/purchase-orders/approved`, { params })
+    return response.data
+  }
+
+  // ==================== WORKFLOW SETTINGS ====================
+  async getWorkflowSettings() {
+    const response = await axiosClient.get(`${this.baseUrl}/settings`)
+    return response.data
+  }
+
+  async getWorkflowPresets() {
+    const response = await axiosClient.get(`${this.baseUrl}/settings/presets`)
+    return response.data
+  }
+
+  async updateWorkflowSettings(data: Record<string, any>) {
+    const response = await axiosClient.put(`${this.baseUrl}/settings`, data)
+    return response.data
+  }
+
+  async applyWorkflowPreset(businessSize: 'small' | 'medium' | 'enterprise') {
+    const response = await axiosClient.post(`${this.baseUrl}/settings/apply-preset`, {
+      business_size: businessSize,
+    })
     return response.data
   }
 

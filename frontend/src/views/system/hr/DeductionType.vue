@@ -537,7 +537,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
 // Toast
@@ -545,7 +545,6 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 // Set authorization header
-axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
 
 // State
 const loading = ref(false)
@@ -720,7 +719,7 @@ const fetchDeductionTypes = async () => {
     if (filters.value.isActive !== null) params.is_active = filters.value.isActive
     params.with_counts = true
 
-    const response = await axios.get('api/deductions/deduction-types', { params })
+    const response = await hrService.api.get('api/deductions/deduction-types', { params })
     if (response.data.success) {
       deductionTypes.value = response.data.data
     }
@@ -758,9 +757,9 @@ const saveDeductionType = async () => {
 
     let response
     if (isEditing.value) {
-      response = await axios.put(`api/deductions/deduction-types/${form.value.id}`, data)
+      response = await hrService.api.put(`api/deductions/deduction-types/${form.value.id}`, data)
     } else {
-      response = await axios.post('api/deductions/deduction-types', data)
+      response = await hrService.api.post('api/deductions/deduction-types', data)
     }
 
     if (response.data.success) {
@@ -791,7 +790,7 @@ const saveDeductionType = async () => {
 
 const toggleActive = async (deduction: any) => {
   try {
-    const response = await axios.post(`api/deductions/deduction-types/${deduction.id}/toggle-active`)
+    const response = await hrService.api.post(`api/deductions/deduction-types/${deduction.id}/toggle-active`)
     if (response.data.success) {
       toast.add({
         severity: 'success',
@@ -815,7 +814,7 @@ const deleteDeductionType = async () => {
   if (!selectedDeduction.value) return
 
   try {
-    const response = await axios.delete(`api/deductions/deduction-types/${selectedDeduction.value.id}`)
+    const response = await hrService.api.delete(`api/deductions/deduction-types/${selectedDeduction.value.id}`)
     if (response.data.success) {
       toast.add({
         severity: 'success',
@@ -899,3 +898,5 @@ onMounted(() => {
   fetchDeductionTypes()
 })
 </script>
+
+

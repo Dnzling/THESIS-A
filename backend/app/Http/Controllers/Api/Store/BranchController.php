@@ -9,16 +9,21 @@ use Illuminate\Support\Facades\Auth;
 
 class BranchController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         try {
             $user = Auth::user();
             
             // Get branches for the user's store
-            $branches = Branch::where('store_id', $user->store_id)
-                ->select('id', 'name', 'branch_code', 'address', 'status', 'contact_number')
-                ->orderBy('name')
-                ->get();
+            $query = Branch::where('store_id', $user->store_id)
+                ->select('id', 'name', 'branch_code', 'address', 'status', 'contact_number', 'branch_type')
+                ->orderBy('name');
+
+            if ($request->filled('branch_type')) {
+                $query->where('branch_type', (string) $request->input('branch_type'));
+            }
+
+            $branches = $query->get();
             
             return response()->json([
                 'success' => true,
@@ -45,9 +50,13 @@ class BranchController extends Controller
                 'contact_number' => 'nullable|string|max:20',
                 'branch_code' => 'required|string|max:20|unique:branches,branch_code',
                 'is_main_branch' => 'nullable|boolean',
+                'branch_type' => 'nullable|in:storefront,warehouse',
             ]);
 
-            $branch = Branch::create(array_merge($validated, ['status' => 'active']));
+            $branch = Branch::create(array_merge($validated, [
+                'status' => 'active',
+                'branch_type' => $validated['branch_type'] ?? 'storefront',
+            ]));
 
             return response()->json([
                 'success' => true,

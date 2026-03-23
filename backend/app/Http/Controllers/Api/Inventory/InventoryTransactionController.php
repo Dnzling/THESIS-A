@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Core\ApprovalWorkflow;
 use App\Models\Inventory\InventoryTransaction;
 use App\Services\Core\ApprovalEngine;
+use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -73,8 +74,7 @@ class InventoryTransactionController extends Controller
             'product',
             'variation',
             'relatedBranch',
-            'createdBy',
-            'reference'
+            'createdBy'
         ])->findOrFail($id);
 
         return response()->json([
@@ -153,9 +153,11 @@ class InventoryTransactionController extends Controller
 
         DB::transaction(function () use ($inventoryTransaction): void {
             $workflow = ApprovalWorkflow::query()->findOrFail($inventoryTransaction->approval_workflow_id);
+            $actorId = EmployeeContext::currentEmployeeId();
+
             $workflow->update([
                 'status' => 'approved',
-                'approved_by' => Auth::id(),
+                'approved_by' => $actorId,
                 'approved_at' => now(),
             ]);
 
@@ -168,7 +170,7 @@ class InventoryTransactionController extends Controller
             $inventoryTransaction->update([
                 'requires_approval' => false,
                 'approval_status' => 'approved',
-                'approved_by' => Auth::id(),
+                'approved_by' => $actorId,
                 'approved_at' => now(),
             ]);
         });

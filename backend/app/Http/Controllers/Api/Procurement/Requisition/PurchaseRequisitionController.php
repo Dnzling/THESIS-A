@@ -44,7 +44,31 @@ class PurchaseRequisitionController extends Controller
             $query->where('priority', $request->priority);
         }
 
-        $requisitions = $query->orderBy('created_at', 'desc')
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('pr_number', 'like', "%{$search}%")
+                    ->orWhere('reason', 'like', "%{$search}%")
+                    ->orWhereHas('branch', function ($branchQuery) use ($search) {
+                        $branchQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('branch_code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('requestedBy', function ($requestedByQuery) use ($search) {
+                        $requestedByQuery->where('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%")
+                            ->orWhere('employee_number', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $sortBy = (string) $request->input('sort_by', 'created_at');
+        $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $allowedSorts = ['created_at', 'pr_number', 'status', 'requisition_type'];
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'created_at';
+        }
+
+        $requisitions = $query->orderBy($sortBy, $sortOrder)
             ->paginate($request->get('per_page', 15));
 
         $requisitions->getCollection()->transform(function ($pr) {
@@ -74,9 +98,22 @@ class PurchaseRequisitionController extends Controller
             'items.product',
             'items.product.suppliers',
             'items.variation',
-            'purchaseOrders',
-            'rfqs'
+            'purchaseOrders.supplier',
+            'rfqs.awardedToSupplier',
         ])->findOrFail($id);
+
+        $suppliers = collect();
+        foreach ($requisition->rfqs as $rfq) {
+            if ($rfq->awardedToSupplier) {
+                $suppliers->push($rfq->awardedToSupplier);
+            }
+        }
+        foreach ($requisition->purchaseOrders as $po) {
+            if ($po->supplier) {
+                $suppliers->push($po->supplier);
+            }
+        }
+        $requisition->setAttribute('suppliers', $suppliers->unique('id')->values());
 
         return response()->json([
             'success' => true,
@@ -100,6 +137,7 @@ class PurchaseRequisitionController extends Controller
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
             'items.*.quantity_requested' => 'required|integer|min:1',
             'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
+            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.specifications' => 'nullable|string',
         ]);
 
@@ -163,6 +201,7 @@ class PurchaseRequisitionController extends Controller
                     'variation_id' => $item['variation_id'] ?? null,
                     'quantity_requested' => $item['quantity_requested'],
                     'estimated_unit_cost' => $item['estimated_unit_cost'] ?? null,
+                    'tax_rate' => $item['tax_rate'] ?? 0,
                     'specifications' => $item['specifications'] ?? null,
                 ]);
             }
@@ -174,7 +213,6 @@ class PurchaseRequisitionController extends Controller
                 'message' => 'Purchase requisition created successfully',
                 'data' => $pr->load('items.product'),
             ], 201);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -268,7 +306,6 @@ class PurchaseRequisitionController extends Controller
         $userRoleRaw = Auth::user()->role->name ?? Auth::user()->role ?? '';
         $userRole = $normalizeRole($userRoleRaw);
         $requestedRole = $normalizeRole($validated['role']);
-
         if ($userRole !== $requestedRole) {
             return response()->json([
                 'success' => false,

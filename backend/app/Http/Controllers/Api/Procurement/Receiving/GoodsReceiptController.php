@@ -228,6 +228,9 @@ class GoodsReceiptController extends Controller
                 }
 
                 $inventory->unit_cost = $newCost;
+                // Prevent BranchInventoryObserver from writing duplicate generic "adjustment" TXN.
+                // GR flow writes explicit "purchase"/"damage" transactions below.
+                $inventory->skip_auto_transaction_log = true;
                 $inventory->save();
 
                 $inventory->updateStockStatus();
@@ -251,7 +254,7 @@ class GoodsReceiptController extends Controller
                     'notes' => "Received from PO {$po->po_number}",
                     'unit_cost' => $newCost,
                     'total_value' => $newCost * $itemData['quantity_received'],
-                    'created_by' => auth()->id(),
+                    'created_by' => auth()->user()?->employee?->id,
                     'transaction_date' => now(),
                 ]);
 
@@ -274,7 +277,7 @@ class GoodsReceiptController extends Controller
                         'notes' => "Damaged items received from PO {$po->po_number}",
                         'unit_cost' => $newCost,
                         'total_value' => $newCost * $itemData['quantity_damaged'],
-                        'created_by' => auth()->id(),
+                        'created_by' => auth()->user()?->employee?->id,
                         'transaction_date' => now(),
                     ]);
                 }
@@ -286,7 +289,7 @@ class GoodsReceiptController extends Controller
             });
 
             if ($allItemsReceived) {
-                $po->markDelivered();
+                $po->markGoodsReceived();
                 $po->update([
                     'actual_delivery_date' => $validated['receipt_date'],
                 ]);

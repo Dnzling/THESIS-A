@@ -57,6 +57,10 @@ import MeterGroup from 'primevue/metergroup'
 import InputOtp from 'primevue/inputotp'
 import Menu from 'primevue/menu'
 import Timeline from 'primevue/timeline'
+import InputMask from 'primevue/inputmask'
+import ColorPicker from 'primevue/colorpicker'
+import SelectButton from 'primevue/selectbutton'
+
 
 // ==================== AXIOS CONFIGURATION ====================
 axios.defaults.withXSRFToken = true
@@ -84,11 +88,14 @@ app.use(router)
 
 // Register PrimeVue components
 const components = {
+  SelectButton,
+  ColorPicker,
   Timeline,
   TabView,
   MeterGroup,
   Primechart,
   Menu,
+  InputMask,
   InputOtp,
   ConfirmDialog,
   ProgressBar,

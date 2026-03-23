@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StockCountRequest;
+use App\Models\Core\ActivityLog;
 use App\Models\Inventory\StockCount;
 use App\Models\Inventory\CountSheet;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Hr\Employee;
 use App\Services\Inventory\StockCountService;
+use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -26,7 +29,33 @@ class StockCountController extends Controller
      */
     private function getUserBranchId(): int
     {
-        return auth()->user()->branch_id;
+        $user = auth()->user();
+        if (!$user) {
+            return 0;
+        }
+
+        if (!empty($user->branch_id)) {
+            return (int) $user->branch_id;
+        }
+
+        return (int) Employee::query()
+            ->where('user_id', $user->id)
+            ->value('branch_id');
+    }
+
+    /**
+     * Resolve current user's employee id (required by stock count assigned fields)
+     */
+    private function getCurrentEmployeeId(): ?int
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return null;
+        }
+
+        return Employee::query()
+            ->where('user_id', $user->id)
+            ->value('id');
     }
 
     /**
@@ -34,9 +63,17 @@ class StockCountController extends Controller
      */
     private function getUserContext(): array
     {
+        $user = auth()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        if ($storeId === 0 && $user) {
+            $storeId = (int) Employee::query()
+                ->where('user_id', $user->id)
+                ->value('store_id');
+        }
+
         return [
-            'store_id' => auth()->user()->store_id,
-            'branch_id' => auth()->user()->branch_id,
+            'store_id' => $storeId,
+            'branch_id' => $this->getUserBranchId(),
         ];
     }
 
@@ -59,8 +96,11 @@ class StockCountController extends Controller
             ->where('store_id', $context['store_id']);
 
             // Filter by branch if specified
-            if ($request->has('branch_id')) {
-                $query->where('branch_id', $request->branch_id);
+            if ($request->filled('branch_id') || $request->filled('warehouse_id')) {
+                $query->where('branch_id', (int) ($request->branch_id ?? $request->warehouse_id));
+            } elseif (!empty($context['branch_id'])) {
+                // Default to current user's branch
+                $query->where('branch_id', (int) $context['branch_id']);
             }
 
             // Filter by status
@@ -122,13 +162,36 @@ class StockCountController extends Controller
             DB::beginTransaction();
 
             $context = $this->getUserContext();
+            $employeeId = $this->getCurrentEmployeeId();
             $data = $request->validated();
+            $data['branch_id'] = (int) ($data['branch_id'] ?? $context['branch_id']);
+            $data['assigned_to'] = (int) ($data['assigned_to'] ?? $employeeId ?? 0);
             $data['store_id'] = $context['store_id'];
-            $data['assigned_by'] = auth()->id();
+            $data['assigned_by'] = (int) ($employeeId ?? 0);
+
+            if (empty($data['branch_id'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No branch is assigned to your account. Please contact admin.',
+                ], 422);
+            }
+
+            if (empty($data['assigned_by']) || empty($data['assigned_to'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No employee profile found for your account. Please contact HR/admin.',
+                ], 422);
+            }
 
             $count = $this->stockCountService->createStockCount($data);
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_count.created',
+                "Created stock count {$count->count_number}",
+                $count
+            );
 
             return response()->json([
                 'success' => true,
@@ -215,9 +278,18 @@ class StockCountController extends Controller
             DB::beginTransaction();
 
             $data = $request->validated();
+            $employeeId = $this->getCurrentEmployeeId();
+            $data['branch_id'] = (int) ($data['branch_id'] ?? $count->branch_id ?? $context['branch_id']);
+            $data['assigned_to'] = (int) ($data['assigned_to'] ?? $count->assigned_to ?? $employeeId ?? 0);
             $count = $this->stockCountService->updateStockCount($count, $data);
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_count.updated',
+                "Updated stock count {$count->count_number}",
+                $count
+            );
 
             return response()->json([
                 'success' => true,
@@ -259,6 +331,12 @@ class StockCountController extends Controller
 
             $count->delete();
 
+            $this->recordLog(
+                'inventory.stock_count.deleted',
+                "Deleted stock count {$count->count_number}",
+                $count
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Stock count deleted successfully',
@@ -295,6 +373,12 @@ class StockCountController extends Controller
             }
 
             $count = $this->stockCountService->startStockCount($count);
+
+            $this->recordLog(
+                'inventory.stock_count.started',
+                "Started stock count {$count->count_number}",
+                $count
+            );
 
             return response()->json([
                 'success' => true,
@@ -334,6 +418,12 @@ class StockCountController extends Controller
 
             $count = $this->stockCountService->completeStockCount($count);
 
+            $this->recordLog(
+                'inventory.stock_count.completed',
+                "Completed stock count {$count->count_number}",
+                $count
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Stock count completed successfully',
@@ -354,6 +444,14 @@ class StockCountController extends Controller
     public function approve(Request $request, StockCount $count): JsonResponse
     {
         try {
+            $user = auth()->user();
+            if (!$user || !$user->hasPermissionTo('inventory.stock-counts.approve', (int) $user->store_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized. Approval permission is required.',
+                ], 403);
+            }
+
             // Check if user has access to this count
             $context = $this->getUserContext();
             if ($count->store_id !== $context['store_id']) {
@@ -368,9 +466,16 @@ class StockCountController extends Controller
             ]);
 
             $count = $this->stockCountService->approveStockCount($count, [
-                'approved_by' => auth()->id(),
+                'approved_by' => EmployeeContext::currentEmployeeId(),
                 'approval_notes' => $request->approval_notes,
             ]);
+
+            $this->recordLog(
+                'inventory.stock_count.approved',
+                "Approved stock count {$count->count_number}",
+                $count,
+                ['approval_notes' => $request->approval_notes]
+            );
 
             return response()->json([
                 'success' => true,
@@ -440,7 +545,14 @@ class StockCountController extends Controller
                 'counts.*.notes' => 'nullable|string|max:500',
             ]);
 
-            $result = $this->stockCountService->updateCountSheets($count, $request->counts, auth()->id());
+            $result = $this->stockCountService->updateCountSheets($count, $request->counts, (int) EmployeeContext::currentEmployeeId());
+
+            $this->recordLog(
+                'inventory.stock_count.counts_updated',
+                "Updated counted quantities for {$count->count_number}",
+                $count,
+                ['updated_items' => count($request->counts)]
+            );
 
             return response()->json([
                 'success' => true,
@@ -481,6 +593,7 @@ class StockCountController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                'pending_approval' => 'Pending Approval',
                 'scheduled' => 'Scheduled',
                 'in_progress' => 'In Progress',
                 'completed' => 'Completed',
@@ -496,17 +609,25 @@ class StockCountController extends Controller
      */
     public function suggestions(Request $request): JsonResponse
     {
-        $request->validate([
-            'branch_id' => 'required|integer|exists:branches,id',
-            'limit' => 'nullable|integer|min:1|max:200',
-            'days' => 'nullable|integer|min:7|max:365',
-        ]);
+            $request->validate([
+                'branch_id' => 'nullable|integer|exists:branches,id',
+                'limit' => 'nullable|integer|min:1|max:200',
+                'days' => 'nullable|integer|min:7|max:365',
+            ]);
 
         $context = $this->getUserContext();
 
+        $branchId = (int) ($request->branch_id ?? $request->warehouse_id ?? $context['branch_id']);
+        if ($branchId <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Branch is required for stock count suggestions.',
+            ], 422);
+        }
+
         $result = $this->stockCountService->getCycleCountSuggestions(
             $context['store_id'],
-            (int) $request->branch_id,
+            $branchId,
             (int) ($request->limit ?? 50),
             (int) ($request->days ?? 90)
         );
@@ -524,19 +645,34 @@ class StockCountController extends Controller
     public function autoSchedule(Request $request): JsonResponse
     {
         $request->validate([
-            'branch_id' => 'required|integer|exists:branches,id',
+            'branch_id' => 'nullable|integer|exists:branches,id',
             'weeks' => 'nullable|integer|min:1|max:12',
             'per_count' => 'nullable|integer|min:10|max:200',
             'start_date' => 'nullable|date|after:today',
         ]);
 
         $context = $this->getUserContext();
-        $assignedBy = auth()->id();
-        $assignedTo = auth()->id();
+        $assignedBy = $this->getCurrentEmployeeId();
+        $assignedTo = $assignedBy;
+        $branchId = (int) ($request->branch_id ?? $request->warehouse_id ?? $context['branch_id']);
+
+        if ($branchId <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No branch is assigned to your account. Please contact admin.',
+            ], 422);
+        }
+
+        if (empty($assignedBy)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No employee profile found for your account. Please contact HR/admin.',
+            ], 422);
+        }
 
         $result = $this->stockCountService->autoScheduleCycleCounts(
             $context['store_id'],
-            (int) $request->branch_id,
+            $branchId,
             $assignedBy,
             $assignedTo,
             (int) ($request->weeks ?? 4),
@@ -549,5 +685,21 @@ class StockCountController extends Controller
             'message' => "Scheduled {$result['total_scheduled']} cycle counts.",
             'data' => $result,
         ]);
+    }
+
+    private function recordLog(string $action, string $description, StockCount $count, array $meta = []): void
+    {
+        ActivityLog::record(
+            $action,
+            $description,
+            array_merge([
+                'branch_id' => $count->branch_id,
+                'count_number' => $count->count_number,
+                'status' => $count->status,
+                'count_type' => $count->count_type,
+            ], $meta),
+            'inventory.stock_count',
+            (int) $count->id
+        );
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Inventory;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreInventoryRequest extends FormRequest
 {
@@ -20,17 +21,26 @@ class StoreInventoryRequest extends FormRequest
      */
     public function rules(): array
     {
+        $inventoryId = $this->route('id');
+        $isCreate = $this->isMethod('post');
+
         return [
-            'product_id' => 'required|integer|exists:products,id',
+            'product_id' => [$isCreate ? 'required' : 'sometimes', 'integer', 'exists:products,id'],
             'variation_id' => 'nullable|integer|exists:product_variations,id',
-            'quantity_on_hand' => 'required|integer|min:0',
+            // Quantity changes must go through stock transactions (adjustments/counts/transfers).
+            'quantity_on_hand' => 'sometimes|integer|min:0',
             'quantity_reserved' => 'nullable|integer|min:0',
             'quantity_damaged' => 'nullable|integer|min:0',
             'warehouse_section' => 'nullable|string|max:50',
             'aisle' => 'nullable|string|max:20',
             'rack' => 'nullable|string|max:20',
             'shelf' => 'nullable|string|max:20',
-            'bin_code' => 'nullable|string|max:50|unique:branch_inventory',
+            'bin_code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('branch_inventory', 'bin_code')->ignore($inventoryId, 'id'),
+            ],
             'reorder_point' => 'nullable|integer|min:0',
             'reorder_quantity' => 'nullable|integer|min:0',
             'maximum_stock' => 'nullable|integer|min:0',

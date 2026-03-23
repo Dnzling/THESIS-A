@@ -99,7 +99,7 @@ class PurchaseRequisition extends Model
         return $this->status === 'procurement_processing';
     }
 
-    public function addApproval(string $role, int $userId, string $userName, ?string $notes = null): void
+   public function addApproval(string $role, int $userId, string $userName, ?string $notes = null): void
     {
         $chain = $this->approval_chain ?? [];
         

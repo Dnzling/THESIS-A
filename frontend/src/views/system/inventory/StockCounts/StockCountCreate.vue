@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
-    <div class="max-w-4xl mx-auto">
-      <div class="mb-6">
+  <div class="min-h-screen p-3 md:p-4">
+    <div class="max-w-5xl mx-auto">
+      <div class="mb-4">
         <div class="flex items-center gap-4">
           <Button
             icon="pi pi-arrow-left"
@@ -11,42 +11,42 @@
             v-tooltip.top="'Back to Stock Counts'"
           />
           <div>
-            <h1 class="text-3xl font-bold text-gray-800">Create Stock Count</h1>
-            <p class="text-gray-600 mt-1">Start a new inventory stock count</p>
+            <h1 class="text-lg md:text-2xl font-bold text-gray-800">Create Stock Count</h1>
           </div>
         </div>
       </div>
 
       <Card>
         <template #content>
-          <form @submit.prevent="submitForm" class="space-y-6">
+          <form @submit.prevent="submitForm" class="space-y-4">
             <!-- Basic Information -->
             <div>
-              <h3 class="text-lg font-semibold text-gray-800 mb-4">Basic Information</h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <h3 class="text-base font-semibold text-gray-800 mb-3">Basic Information</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
                     Reference Number <span class="text-red-500">*</span>
                   </label>
                   <InputText
                     v-model="form.reference_number"
-                    placeholder="Enter reference number"
+                    placeholder="Auto-generated"
                     class="w-full"
                     :class="{ 'p-invalid': errors.reference_number }"
-                    required
+                    readonly
                   />
+                  <small class="text-gray-500">Auto-generated from current date and time.</small>
                   <small v-if="errors.reference_number" class="p-error">{{ errors.reference_number[0] }}</small>
                 </div>
 
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
                     Count Date <span class="text-red-500">*</span>
                   </label>
-                  <Calendar
+                  <DatePicker
                     v-model="form.count_date"
                     placeholder="Select count date"
                     class="w-full"
-                    showIcon
+                    showIcon disabled fluid
                     dateFormat="yy-mm-dd"
                     :class="{ 'p-invalid': errors.count_date }"
                     required
@@ -55,49 +55,23 @@
                 </div>
 
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
-                    Warehouse <span class="text-red-500">*</span>
-                  </label>
-                  <Select
-                    v-model="form.warehouse_id"
-                    :options="warehouses"
-                    optionLabel="name"
-                    optionValue="id"
-                    placeholder="Select warehouse"
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">Branch</label>
+                  <InputText
+                    :value="displayBranchLabel"
                     class="w-full"
-                    :loading="warehousesLoading"
-                    :class="{ 'p-invalid': errors.warehouse_id }"
-                    required
-                    @change="onWarehouseChange"
+                    readonly
                   />
-                  <small v-if="errors.warehouse_id" class="p-error">{{ errors.warehouse_id[0] }}</small>
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
-                    Location (Optional)
-                  </label>
-                  <Select
-                    v-model="form.location_id"
-                    :options="locations"
-                    optionLabel="name"
-                    optionValue="id"
-                    placeholder="Select location (optional)"
-                    class="w-full"
-                    :loading="locationsLoading"
-                    showClear
-                    :disabled="!form.warehouse_id"
-                  />
+                  <small class="text-gray-500">Auto-using your assigned branch inventory.</small>
                 </div>
               </div>
             </div>
 
             <!-- Count Type -->
             <div>
-              <h3 class="text-lg font-semibold text-gray-800 mb-4">Count Configuration</h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <h3 class="text-base font-semibold text-gray-800 mb-3">Count Configuration</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
                     Count Type <span class="text-red-500">*</span>
                   </label>
                   <Select
@@ -114,7 +88,7 @@
                 </div>
 
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
                     Count Method
                   </label>
                   <Select
@@ -131,35 +105,38 @@
 
             <!-- Product Selection -->
             <div>
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-800">Products to Count</h3>
-                <div class="flex gap-2">
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-3">
+                <h3 class="text-base font-semibold text-gray-800">Products to Count</h3>
+                <div class="flex flex-wrap gap-2">
                   <Button
                     label="Auto-Suggest Cycle"
                     icon="pi pi-bolt"
                     severity="warning"
                     outlined
+                    size="small"
                     @click="applyCycleSuggestions"
                     type="button"
                     :loading="suggestLoading"
-                    :disabled="!form.warehouse_id"
+                    :disabled="!currentBranchId"
                   />
                   <Button
                     label="Add All Products"
                     icon="pi pi-plus"
                     severity="info"
                     outlined
+                    size="small"
                     @click="addAllProducts"
                     type="button"
-                    :disabled="!form.warehouse_id"
+                    :disabled="!currentBranchId"
                   />
                   <Button
                     label="Add Selected"
                     icon="pi pi-plus"
                     severity="success"
+                    size="small"
                     @click="addSelectedProducts"
                     type="button"
-                    :disabled="!form.warehouse_id || selectedProducts.length === 0"
+                    :disabled="!currentBranchId || selectedProducts.length === 0"
                   />
                 </div>
               </div>
@@ -169,7 +146,7 @@
                 <DataTable
                   :value="availableProducts"
                   :loading="productsLoading"
-                  class="p-datatable-sm"
+                  class="p-datatable-sm text-xs"
                   tableStyle="min-width: 50rem"
                   :paginator="true"
                   :rows="10"
@@ -187,7 +164,11 @@
                     </template>
                   </Column>
                   <Column field="category.name" header="Category" style="min-width: 120px"></Column>
-                  <Column field="unit.name" header="Unit" style="min-width: 100px"></Column>
+                  <Column field="unit.name" header="Unit" style="min-width: 100px">
+                    <template #body="slotProps">
+                      {{ slotProps.data.unit?.name || 'N/A' }}
+                    </template>
+                  </Column>
                   <Column field="current_stock" header="Current Stock" style="min-width: 120px">
                     <template #body="slotProps">
                       {{ slotProps.data.current_stock || 0 }}
@@ -198,10 +179,10 @@
 
               <!-- Selected Products for Counting -->
               <div v-if="form.items.length > 0">
-                <h4 class="text-md font-medium text-gray-700 mb-2">Selected for Counting</h4>
+                <h4 class="text-sm font-medium text-gray-700 mb-2">Selected for Counting</h4>
                 <DataTable
                   :value="form.items"
-                  class="p-datatable-sm"
+                  class="p-datatable-sm text-xs"
                   tableStyle="min-width: 50rem"
                 >
                   <Column field="product.name" header="Product" style="min-width: 200px">
@@ -240,6 +221,7 @@
                         icon="pi pi-trash"
                         severity="danger"
                         outlined
+                        size="small"
                         @click="removeProduct(slotProps.index)"
                       />
                     </template>
@@ -250,7 +232,7 @@
 
             <!-- Notes -->
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
+              <label class="block text-xs font-medium text-gray-700 mb-1.5">
                 Notes
               </label>
               <Textarea
@@ -264,16 +246,18 @@
             </div>
 
             <!-- Form Actions -->
-            <div class="flex justify-end gap-4 pt-6 border-t">
+            <div class="flex justify-end gap-2 pt-4 border-t">
               <Button
                 label="Cancel"
                 severity="secondary"
+                size="small"
                 @click="goBack"
                 type="button"
               />
               <Button
                 label="Create Stock Count"
                 type="submit"
+                size="small"
                 :loading="saving"
                 :disabled="form.items.length === 0"
                 class="bg-blue-600 hover:bg-blue-700"
@@ -290,31 +274,75 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import inventoryService from '../../../../services/inventory.service'
 
 const saving = ref(false)
 const productsLoading = ref(false)
-const warehousesLoading = ref(false)
-const locationsLoading = ref(false)
 const errors = ref<any>({})
-const warehouses = ref<any[]>([])
-const locations = ref<any[]>([])
 const availableProducts = ref<any[]>([])
 const selectedProducts = ref<any[]>([])
 const suggestLoading = ref(false)
+const fetchedBranchName = ref('')
 const toast = useToast()
 const router = useRouter()
+const authStore = useAuthStore()
 
 const form = reactive({
   reference_number: '',
   count_date: new Date(),
-  warehouse_id: null as number | null,
-  location_id: null as number | null,
   count_type: 'full',
   count_method: 'manual',
   items: [] as any[],
   notes: ''
 })
+
+const currentBranchId = computed(() => {
+  const user = authStore.user as any
+  return Number(
+    user?.employee?.branch_id ||
+    user?.branch?.id ||
+    user?.branch_id ||
+    user?.employee_branch_id ||
+    0
+  )
+})
+
+const currentBranchLabel = computed(() => {
+  const user = authStore.user as any
+  const branchName =
+    user?.branch?.name ||
+    user?.employee?.branch?.name ||
+    user?.branch_name ||
+    user?.employee?.branch_name
+  const branchCode =
+    user?.branch?.branch_code ||
+    user?.employee?.branch?.branch_code ||
+    user?.branch_code ||
+    user?.employee?.branch_code
+  const id = currentBranchId.value
+  if (branchName && branchCode) return `${branchName} (${branchCode})`
+  if (branchName) return branchName
+  if (id) return `Branch #${id}`
+  return 'Unassigned Branch'
+})
+
+const displayBranchLabel = computed(() => {
+  if (fetchedBranchName.value) return fetchedBranchName.value
+  return currentBranchLabel.value
+})
+
+const generateReferenceNumber = () => {
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mi = String(now.getMinutes()).padStart(2, '0')
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  const ms = String(now.getMilliseconds()).padStart(3, '0')
+  return `SC-${yyyy}${mm}${dd}-${hh}${mi}${ss}${ms}`
+}
 
 const countTypeOptions = [
   { label: 'Full Count', value: 'full' },
@@ -330,61 +358,73 @@ const countMethodOptions = [
   { label: 'Automated', value: 'automated' }
 ]
 
-const loadWarehouses = async () => {
-  warehousesLoading.value = true
-  try {
-    const response = await inventoryService.getWarehouses({ per_page: 1000 })
-
-    if (response.success) {
-      warehouses.value = response.data || []
-    }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load warehouses',
-      life: 3000
-    })
-  } finally {
-    warehousesLoading.value = false
-  }
+const extractRows = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.data)) return payload.data.data
+  return []
 }
 
-const loadLocations = async (warehouseId: number) => {
-  locationsLoading.value = true
+const loadBranchName = async () => {
+  if (!currentBranchId.value) return
   try {
-    const response = await inventoryService.getLocations({ warehouse_id: warehouseId, per_page: 1000 })
-
-    if (response.success) {
-      locations.value = response.data || []
+    const response = await inventoryService.getBranches()
+    const rows = extractRows(response?.data ?? response)
+    const match = rows.find((b: any) => Number(b.id) === Number(currentBranchId.value))
+    if (match?.name) {
+      fetchedBranchName.value = match.name
+      return
     }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load locations',
-      life: 3000
-    })
-  } finally {
-    locationsLoading.value = false
+
+    const fallbackRows = extractRows(response)
+    const fallbackMatch = fallbackRows.find((b: any) => Number(b.id) === Number(currentBranchId.value))
+    if (fallbackMatch?.name) {
+      fetchedBranchName.value = fallbackMatch.name
+    }
+  } catch {
+    // Keep fallback label from auth profile.
   }
 }
 
 const loadProducts = async () => {
-  if (!form.warehouse_id) return
+  if (!currentBranchId.value) return
 
   productsLoading.value = true
   try {
-    const params = {
-      warehouse_id: form.warehouse_id,
-      location_id: form.location_id || undefined,
+    const response = await inventoryService.getInventoryItems({
+      branch_id: currentBranchId.value,
       per_page: 1000
-    }
-
-    const response = await inventoryService.getProducts(params)
+    })
 
     if (response.success) {
-      availableProducts.value = response.data || []
+      const rows = Array.isArray(response.data) ? response.data : (response.data?.data || [])
+      availableProducts.value = rows.map((item: any) => {
+        const currentStock = Number(
+          item.quantity_on_hand ??
+          item.quantity_available ??
+          item.current_stock ??
+          0
+        )
+
+        return {
+          ...item,
+          id: item.id,
+          inventory_item_id: item.id,
+          product_id: item.product_id || item.product?.id || null,
+          variation_id: item.variation_id || null,
+          name: item.product?.product_name || item.product_name || item.name || '-',
+          code: item.product?.sku || item.sku || item.code || '-',
+          category: {
+            ...(item.product?.category || item.category || {}),
+            name: item.product?.category?.category_name || item.product?.category?.name || item.category?.name || 'Uncategorized',
+          },
+          unit: {
+            ...(item.product?.unit || item.unit || {}),
+            name: item.product?.unit?.name || item.unit?.name || item.unit_name || null,
+          },
+          current_stock: currentStock,
+        }
+      })
     }
   } catch (error: any) {
     toast.add({
@@ -399,12 +439,12 @@ const loadProducts = async () => {
 }
 
 const applyCycleSuggestions = async () => {
-  if (!form.warehouse_id) return
+  if (!currentBranchId.value) return
 
   suggestLoading.value = true
   try {
     const response = await inventoryService.getStockCountSuggestions({
-      branch_id: form.warehouse_id,
+      branch_id: currentBranchId.value,
       limit: 50
     })
 
@@ -453,24 +493,13 @@ const applyCycleSuggestions = async () => {
   }
 }
 
-const onWarehouseChange = () => {
-  form.location_id = null
-  locations.value = []
-  availableProducts.value = []
-  selectedProducts.value = []
-  form.items = []
-
-  if (form.warehouse_id) {
-    loadLocations(form.warehouse_id)
-    loadProducts()
-  }
-}
-
 const addAllProducts = () => {
   const newItems = availableProducts.value
-    .filter(product => !form.items.some(item => item.product_id === product.id))
+    .filter(product => !form.items.some(item => item.inventory_item_id === product.inventory_item_id))
     .map(product => ({
-      product_id: product.id,
+      product_id: product.product_id,
+      variation_id: product.variation_id || null,
+      inventory_item_id: product.inventory_item_id,
       product: product,
       expected_quantity: product.current_stock || 0,
       counted_quantity: null,
@@ -482,9 +511,11 @@ const addAllProducts = () => {
 
 const addSelectedProducts = () => {
   const newItems = selectedProducts.value
-    .filter(product => !form.items.some(item => item.product_id === product.id))
+    .filter(product => !form.items.some(item => item.inventory_item_id === product.inventory_item_id))
     .map(product => ({
-      product_id: product.id,
+      product_id: product.product_id,
+      variation_id: product.variation_id || null,
+      inventory_item_id: product.inventory_item_id,
       product: product,
       expected_quantity: product.current_stock || 0,
       counted_quantity: null,
@@ -518,12 +549,19 @@ const submitForm = async () => {
   saving.value = true
   errors.value = {}
 
+  if (!form.reference_number) {
+    form.reference_number = generateReferenceNumber()
+  }
+
   // Prepare form data
   const submitData = {
     ...form,
+    branch_id: currentBranchId.value || undefined,
     count_date: form.count_date ? form.count_date.toISOString().split('T')[0] : null,
     items: form.items.map(item => ({
       product_id: item.product_id,
+      variation_id: item.variation_id,
+      inventory_item_id: item.inventory_item_id,
       expected_quantity: item.expected_quantity,
       counted_quantity: item.counted_quantity
     }))
@@ -569,6 +607,16 @@ const submitForm = async () => {
 }
 
 onMounted(() => {
-  loadWarehouses()
+  form.reference_number = generateReferenceNumber()
+  if (!currentBranchId.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Branch Required',
+      detail: 'No branch is assigned to your user profile. Please contact your admin.',
+      life: 4000
+    })
+  }
+  loadBranchName()
+  loadProducts()
 })
 </script>

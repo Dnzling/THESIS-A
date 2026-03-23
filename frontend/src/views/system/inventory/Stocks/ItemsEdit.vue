@@ -3,8 +3,7 @@
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.items' })" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Edit Inventory Item</h2>
-        <p class="text-sm text-gray-500 mt-1">Update stock thresholds and warehouse location</p>
+        <h2 class="text-lg font-bold text-gray-800">Edit Inventory Item</h2>
       </div>
     </div>
 
@@ -28,19 +27,20 @@
 
         <form class="space-y-6" @submit.prevent="submitForm">
           <!-- Quantities -->
+          <Message severity="info" :closable="false">
+            On-hand stock is read-only here. Use Stock Adjustments, Stock Counts, or Stock Transfers to change quantity.
+          </Message>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
-                Quantity on Hand <span class="text-red-500">*</span>
+                Quantity on Hand
               </label>
               <InputNumber
                 v-model="form.quantity_on_hand"
                 :min="0"
-                showButtons
-                :class="{ 'p-invalid': errors.quantity_on_hand }"
                 class="w-full"
+                :disabled="true"
               />
-              <small v-if="errors.quantity_on_hand" class="text-red-500">{{ errors.quantity_on_hand }}</small>
             </div>
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Quantity Damaged</label>
@@ -207,10 +207,6 @@ const getStockSeverity = (status: string) => {
 const validate = (): boolean => {
   Object.keys(errors).forEach(k => delete errors[k])
 
-  if (form.quantity_on_hand === null || form.quantity_on_hand < 0) {
-    errors.quantity_on_hand = 'Quantity must be 0 or greater'
-  }
-
   return Object.keys(errors).length === 0
 }
 
@@ -219,7 +215,8 @@ const submitForm = async () => {
 
   submitting.value = true
   try {
-    await inventoryService.updateInventoryItem(itemId, { ...form })
+    const { quantity_on_hand, ...payload } = form
+    await inventoryService.updateInventoryItem(itemId, { ...payload })
     toast.add({
       severity: 'success',
       summary: 'Updated',

@@ -4,6 +4,7 @@ namespace App\Models\Core;
 
 use App\Models\ProductCatalog\Product;
 use App\Models\Core\Role;
+use App\Models\Customer\Customer;
 use App\Models\Hr\Employee;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Store\Store;
@@ -28,16 +29,10 @@ class User extends Authenticatable
         'fname',
         'lname',
         'email',
+        'birthday',
         'password',
         'role_id',
         'is_active',
-        'customer_verification_status',
-        'customer_verification_required',
-        'customer_verification_trigger_amount',
-        'customer_verification_triggered_at',
-        'customer_verification_rejection_reason',
-        'customer_verification_reviewed_by',
-        'customer_verification_reviewed_at',
         'phone_number',
         'otp_code',
         'otp_expires_at',
@@ -53,19 +48,27 @@ class User extends Authenticatable
         'otp_code',
     ];
 
-    protected $appends = ['full_name', 'role_name'];
+    protected $appends = [
+        'full_name',
+        'role_name',
+        'customer_verification_status',
+        'customer_verification_required',
+        'customer_verification_trigger_amount',
+        'customer_verification_triggered_at',
+        'customer_verification_rejection_reason',
+        'customer_verification_reviewed_by',
+        'customer_verification_reviewed_at',
+    ];
 
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
+            'birthday' => 'date',
             'password' => 'hashed',
             'otp_expires_at' => 'datetime',
             'deleted_at' => 'datetime',
             'is_active' => 'boolean',
-            'customer_verification_required' => 'boolean',
-            'customer_verification_triggered_at' => 'datetime',
-            'customer_verification_reviewed_at' => 'datetime',
         ];
     }
 
@@ -136,6 +139,11 @@ class User extends Authenticatable
     public function customerVerificationDocuments()
     {
         return $this->hasMany(CustomerVerificationDocument::class, 'user_id');
+    }
+
+    public function customer()
+    {
+        return $this->hasOne(Customer::class, 'user_id');
     }
 
     // ✅ Fixed: Role Check Methods
@@ -257,6 +265,41 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return (bool) $this->is_active;
+    }
+
+    public function getCustomerVerificationStatusAttribute(): string
+    {
+        return (string) ($this->customer?->verification_status ?? 'unverified');
+    }
+
+    public function getCustomerVerificationRequiredAttribute(): bool
+    {
+        return (bool) ($this->customer?->verification_required ?? false);
+    }
+
+    public function getCustomerVerificationTriggerAmountAttribute()
+    {
+        return $this->customer?->verification_trigger_amount;
+    }
+
+    public function getCustomerVerificationTriggeredAtAttribute()
+    {
+        return $this->customer?->verification_triggered_at;
+    }
+
+    public function getCustomerVerificationRejectionReasonAttribute()
+    {
+        return $this->customer?->verification_rejection_reason;
+    }
+
+    public function getCustomerVerificationReviewedByAttribute()
+    {
+        return $this->customer?->verification_reviewed_by;
+    }
+
+    public function getCustomerVerificationReviewedAtAttribute()
+    {
+        return $this->customer?->verification_reviewed_at;
     }
 
     public function getBranchInfoAttribute()

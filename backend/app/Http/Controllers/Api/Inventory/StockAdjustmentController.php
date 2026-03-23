@@ -8,6 +8,8 @@ use App\Models\Inventory\StockAdjustment;
 use App\Models\Inventory\StockAdjustmentItem;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Core\ActivityLog;
+use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -99,7 +101,7 @@ class StockAdjustmentController extends Controller
                 'status' => 'draft',
                 'reason' => $validated['reason'],
                 'adjustment_date' => $validated['adjustment_date'],
-                'created_by' => Auth::id(),
+                'created_by' => EmployeeContext::currentEmployeeId(),
             ]);
 
             // Create items
@@ -129,6 +131,13 @@ class StockAdjustmentController extends Controller
             }
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_adjustment.created',
+                "Created stock adjustment {$adjustment->adjustment_number}",
+                $adjustment,
+                ['status' => $adjustment->status]
+            );
 
             return response()->json([
                 'success' => true,
@@ -166,9 +175,16 @@ class StockAdjustmentController extends Controller
 
         DB::beginTransaction();
         try {
-            $this->applyApprovedAdjustment($adjustment, $validated['approval_notes'] ?? null, Auth::id());
+            $this->applyApprovedAdjustment($adjustment, $validated['approval_notes'] ?? null, EmployeeContext::currentEmployeeId());
 
             DB::commit();
+
+            $this->recordLog(
+                'inventory.stock_adjustment.approved',
+                "Approved stock adjustment {$adjustment->adjustment_number}",
+                $adjustment,
+                ['status' => $adjustment->status]
+            );
 
             return response()->json([
                 'success' => true,
@@ -202,6 +218,16 @@ class StockAdjustmentController extends Controller
             'approval_notes' => $validated['rejection_reason'],
         ]);
 
+        $this->recordLog(
+            'inventory.stock_adjustment.rejected',
+            "Rejected stock adjustment {$adjustment->adjustment_number}",
+            $adjustment,
+            [
+                'status' => $adjustment->status,
+                'reason' => $validated['rejection_reason'],
+            ]
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Stock adjustment rejected',
@@ -234,9 +260,16 @@ class StockAdjustmentController extends Controller
                 $adjustment->update(['status' => 'pending_approval']);
                 $adjustment->load('items');
 
-                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory + finance permissions)', Auth::id());
+                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory + finance permissions)', EmployeeContext::currentEmployeeId());
 
                 DB::commit();
+
+                $this->recordLog(
+                    'inventory.stock_adjustment.auto_approved',
+                    "Auto-approved stock adjustment {$adjustment->adjustment_number}",
+                    $adjustment,
+                    ['status' => $adjustment->status]
+                );
 
                 return response()->json([
                     'success' => true,
@@ -254,6 +287,13 @@ class StockAdjustmentController extends Controller
         }
 
         $adjustment->update(['status' => 'pending_approval']);
+
+        $this->recordLog(
+            'inventory.stock_adjustment.submitted',
+            "Submitted stock adjustment {$adjustment->adjustment_number} for approval",
+            $adjustment,
+            ['status' => $adjustment->status]
+        );
 
         return response()->json([
             'success' => true,
@@ -310,6 +350,22 @@ class StockAdjustmentController extends Controller
         }
 
         $adjustment->update(['status' => 'applied']);
+    }
+
+    private function recordLog(string $action, string $description, StockAdjustment $adjustment, array $meta = []): void
+    {
+        ActivityLog::record(
+            $action,
+            $description,
+            array_merge([
+                'adjustment_number' => $adjustment->adjustment_number,
+                'branch_id' => $adjustment->branch_id,
+                'type' => $adjustment->type,
+                'status' => $adjustment->status,
+            ], $meta),
+            'inventory.stock_adjustment',
+            (int) $adjustment->id
+        );
     }
 
     protected function userHasPermissions(array $permissions, $user = null): bool

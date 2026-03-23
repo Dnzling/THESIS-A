@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\LoginResponseResource;
 use App\Http\Resources\UserResource;
+use App\Mail\CustomerOtpVerificationMail;
 use App\Mail\OtpVerificationMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -12,8 +13,10 @@ use Illuminate\Validation\Rules;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Employee;
+use App\Models\Hr\ShiftAssignment;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
+use App\Models\Customer\Customer;
 use App\Models\Hr\ShiftSchedule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -43,9 +46,20 @@ class AuthController extends Controller
                 'is_active' => 1,
             ]);
 
+            if ($user->hasRole('customer') || (int) $user->role_id === 2) {
+                Customer::firstOrCreate(
+                    ['user_id' => $user->id],
+                    ['verification_status' => 'unverified']
+                );
+            }
+
             // Generate and send OTP
             $otp = $user->generateOtp();
-            Mail::to($user->email)->send(mailable: new OtpVerificationMail($otp, $user->fname));
+            if ($user->hasRole('customer')) {
+                Mail::to($user->email)->send(new CustomerOtpVerificationMail($otp, $user->fname));
+            } else {
+                Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+            }
 
             $user->load(['role' => function ($query) {
                 $query->select('id', 'name', 'display_name');
@@ -309,16 +323,54 @@ class AuthController extends Controller
                     ->whereDate('schedule_date', $today)
                     ->first();
 
-                // Create new attendance with clock-in
-                $attendance = Attendance::create([
-                    'employee_id' => $employee->id,
-                    'schedule_id' => $schedule->id ?? null,
-                    'shift_id' => $schedule->shift_id ?? null,
-                    'attendance_date' => $today,
-                    'clock_in' => $now,
-                    'clock_in_method' => 'web',
-                    'status' => 'present',
-                ]);
+                // Fallback: derive and auto-create schedule from active assignment
+                if (!$schedule) {
+                    $assignment = ShiftAssignment::query()
+                        ->where('employee_id', $employee->id)
+                        ->active($today)
+                        ->latest('start_date')
+                        ->first();
+
+                    if ($assignment) {
+                        $schedule = ShiftSchedule::firstOrCreate(
+                            [
+                                'employee_id' => $employee->id,
+                                'schedule_date' => $today,
+                            ],
+                            [
+                                'shift_id' => $assignment->shift_id,
+                                'assignment_id' => $assignment->id,
+                                'generation_method' => 'manual',
+                                'status' => 'scheduled',
+                                'assigned_by' => $user->id,
+                            ]
+                        )->load('shift');
+                    }
+                }
+
+                if ($attendance) {
+                    // Reuse existing row for the date (e.g. absent record created earlier)
+                    $attendance->update([
+                        'schedule_id' => $attendance->schedule_id ?? ($schedule->id ?? null),
+                        'shift_id' => $attendance->shift_id ?? ($schedule->shift_id ?? null),
+                        'clock_in' => $now,
+                        'clock_in_method' => 'web',
+                        'clock_in_ip' => $request->ip(),
+                        'status' => 'present',
+                    ]);
+                } else {
+                    // Create new attendance with clock-in
+                    $attendance = Attendance::create([
+                        'employee_id' => $employee->id,
+                        'schedule_id' => $schedule->id ?? null,
+                        'shift_id' => $schedule->shift_id ?? null,
+                        'attendance_date' => $today,
+                        'clock_in' => $now,
+                        'clock_in_method' => 'web',
+                        'clock_in_ip' => $request->ip(),
+                        'status' => 'present',
+                    ]);
+                }
 
                 // Calculate late minutes
                 if ($schedule && $schedule->shift) {
@@ -427,7 +479,8 @@ class AuthController extends Controller
         if ($attendance) {
             $attendance->update([
                 'clock_out' => now(),
-                'clock_out_method' => 'web'
+                'clock_out_method' => 'web',
+                'clock_out_ip' => $request->ip()
             ]);
             $attendance->calculateTotalWorked();
         }

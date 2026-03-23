@@ -16,12 +16,12 @@ class ProcurementSettingsController extends Controller
      */
     public function show(): JsonResponse
     {
-        $settings = ProcurementSettings::where('store_id', auth()->user()->store_id)
-            ->firstOrFail();
+        $settings = ProcurementSettings::forStore((int) auth()->user()->store_id);
 
         return response()->json([
             'success' => true,
             'data' => $settings,
+            'presets' => ProcurementSettings::businessPresets(),
         ]);
     }
 
@@ -32,6 +32,8 @@ class ProcurementSettingsController extends Controller
     public function update(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'business_size' => 'nullable|in:small,medium,enterprise',
+            'workflow_mode' => 'nullable|in:simple,standard,strict',
             'rfq_policy' => 'nullable|in:always,never,amount_based,contract_based',
             'rfq_threshold_amount' => 'nullable|numeric|min:0',
             'rfq_minimum_suppliers' => 'nullable|integer|min:1',
@@ -41,6 +43,11 @@ class ProcurementSettingsController extends Controller
             'approval_tiers.*.max_amount' => 'required|numeric|min:0',
             'approval_tiers.*.level' => 'required|integer|min:1',
             'approval_tiers.*.approvers' => 'required|array',
+            'allow_self_approval' => 'nullable|boolean',
+            'self_approval_threshold' => 'nullable|numeric|min:0',
+            'enforce_separation_of_duties' => 'nullable|boolean',
+            'min_approvers_required' => 'nullable|integer|min:1|max:10',
+            'apply_business_preset' => 'nullable|boolean',
             'allow_branch_overrides' => 'nullable|boolean',
             'transfer_approval_policy' => 'nullable|in:sender_only,both_branches,finance_required,auto_approve',
             'transfer_cost_method' => 'nullable|in:none,distance_based,manual_entry,fixed_fee,value_percentage',
@@ -53,8 +60,14 @@ class ProcurementSettingsController extends Controller
             'default_payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60',
         ]);
 
-        $settings = ProcurementSettings::where('store_id', auth()->user()->store_id)
-            ->firstOrFail();
+        $settings = ProcurementSettings::forStore((int) auth()->user()->store_id);
+
+        if (($validated['apply_business_preset'] ?? false) && !empty($validated['business_size'])) {
+            $preset = ProcurementSettings::presetFor($validated['business_size']);
+            $validated = array_merge($preset, $validated);
+        }
+
+        unset($validated['apply_business_preset']);
 
         $settings->update($validated);
 
@@ -97,6 +110,38 @@ class ProcurementSettingsController extends Controller
         return response()->json([
             'success' => true,
             'data' => $defaultTiers,
+        ]);
+    }
+
+    /**
+     * Get business-size workflow presets.
+     * GET /api/procurement/settings/presets
+     */
+    public function presets(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => ProcurementSettings::businessPresets(),
+        ]);
+    }
+
+    /**
+     * Apply business-size preset to current store.
+     * POST /api/procurement/settings/apply-preset
+     */
+    public function applyPreset(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'business_size' => 'required|in:small,medium,enterprise',
+        ]);
+
+        $settings = ProcurementSettings::forStore((int) auth()->user()->store_id);
+        $settings->update(ProcurementSettings::presetFor($validated['business_size']));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Business workflow preset applied successfully',
+            'data' => $settings->fresh(),
         ]);
     }
 

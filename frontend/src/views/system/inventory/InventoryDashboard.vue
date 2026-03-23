@@ -8,7 +8,7 @@
     </div>
   
     <div v-else>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="router.push({ name: 'inventory.items' })">
           <template #content>
             <div class="flex items-center justify-between">
@@ -63,6 +63,22 @@
               </div>
               <div class="bg-blue-100 p-4 rounded-full">
                 <i class="pi pi-arrow-right-arrow-left text-3xl text-blue-600"></i>
+              </div>
+            </div>
+          </template>
+        </Card>
+
+        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
+          @click="router.push({ name: 'inventory.activity-logs' })">
+          <template #content>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-600 mb-1">Activity Logs</p>
+                <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.activity_logs_count }}</h3>
+                <p class="text-xs text-blue-600 mt-1">Recent inventory actions</p>
+              </div>
+              <div class="bg-indigo-100 p-4 rounded-full">
+                <i class="pi pi-history text-3xl text-indigo-600"></i>
               </div>
             </div>
           </template>
@@ -129,6 +145,48 @@
             </DataTable>
           </template>
         </Card>
+
+        <Card class="lg:col-span-3 hover:shadow-lg transition-shadow cursor-pointer">
+          <template #title>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span>Recent Activity Logs</span>
+              </div>
+              <Button label="View All" text size="small" @click="router.push({ name: 'inventory.activity-logs' })" />
+            </div>
+          </template>
+          <template #content>
+            <DataTable :value="dashboardData.recent_activity_logs" class="p-datatable-sm" responsiveLayout="scroll"
+              :loading="loading" rowHover stripedRows size="small">
+              <Column field="created_at" header="Date">
+                <template #body="{ data }">
+                  {{ formatDate(data.created_at) }}
+                </template>
+              </Column>
+              <Column field="action" header="Action">
+                <template #body="{ data }">
+                  <Tag :value="formatAction(data.action)" severity="info" />
+                </template>
+              </Column>
+              <Column field="description" header="Description">
+                <template #body="{ data }">
+                  {{ data.description || 'N/A' }}
+                </template>
+              </Column>
+              <Column field="entity_id" header="Source ID">
+                <template #body="{ data }">
+                  {{ data.entity_id || '-' }}
+                </template>
+              </Column>
+              <template #empty>
+                <div class="text-center py-8 text-gray-500">
+                  <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
+                  <p>No recent activity logs found</p>
+                </div>
+              </template>
+            </DataTable>
+          </template>
+        </Card>
       </div>
   
       <!-- Period Info -->
@@ -171,22 +229,31 @@ const dashboardData = ref({
     in_transit: 0,
     completed: 0
   },
+  activity_logs_count: 0,
+  recent_activity_logs: [] as any[],
   recent_transactions: [] as any[]
 })
 
 const loadDashboard = async () => {
   loading.value = true
   try {
-    // Load main dashboard data
-    const response = await axios.get('/api/inventory/dashboard/stats')
+    // Load main dashboard data + recent logs
+    const [statsResponse, logsResponse] = await Promise.all([
+      axios.get('/api/inventory/dashboard/stats'),
+      axios.get('/api/inventory/activity-logs', { params: { per_page: 5 } })
+    ])
 
-    if (response.data?.data) {
+    if (statsResponse.data?.data) {
       dashboardData.value = {
         ...dashboardData.value,
-        ...response.data.data
+        ...statsResponse.data.data
       }
+    }
 
-      console.log('Dashboard loaded:', dashboardData.value)
+    if (logsResponse.data?.success) {
+      const rows = Array.isArray(logsResponse.data?.data?.data) ? logsResponse.data.data.data : []
+      dashboardData.value.recent_activity_logs = rows
+      dashboardData.value.activity_logs_count = Number(logsResponse.data?.data?.total || rows.length)
     }
   } catch (error: any) {
     console.error('Failed to load inventory dashboard', error)
@@ -241,6 +308,11 @@ const formatDate = (dateString: string) => {
     month: 'short',
     day: 'numeric'
   })
+}
+
+const formatAction = (action: string) => {
+  if (!action) return 'N/A'
+  return action.replace('inventory.', '').replaceAll('.', ' ')
 }
 
 onMounted(() => {

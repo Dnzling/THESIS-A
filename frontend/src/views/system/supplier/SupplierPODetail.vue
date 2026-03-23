@@ -14,12 +14,32 @@
           <p class="text-sm text-gray-500 mt-1">Full PO details with delivery and shipment information</p>
         </div>
       </div>
-      <Tag 
-        v-if="po" 
-        :value="formatStatus(po.status)" 
-        :severity="getStatusSeverity(po.status)"
-        class="rounded-full px-3 py-1 text-xs font-medium"
-      />
+      <div class="flex items-center gap-2">
+        <Button
+          v-if="canCreateInvoice"
+          :loading="invoiceCreating"
+          :disabled="invoiceCreating"
+          label="Create Invoice"
+          icon="pi pi-file"
+          severity="success"
+          text
+          @click="createInvoiceFromReceipt"
+        />
+        <Button
+          v-else-if="existingInvoice"
+          label="View Invoice"
+          icon="pi pi-eye"
+          severity="info"
+          text
+          @click="router.push({ name: 'supplier.pos.invoice-view', params: { id: existingInvoice.id } })"
+        />
+        <Tag 
+          v-if="po" 
+          :value="formatStatus(po.status)" 
+          :severity="getStatusSeverity(po.status)"
+          class="rounded-full px-3 py-1 text-xs font-medium"
+        />
+      </div>
     </div>
 
     <!-- Loading State -->
@@ -289,6 +309,81 @@
             </div>
           </template>
         </Card>
+        <Card v-if="goodsReceipt.value" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <i class="pi pi-check-circle text-emerald-600 text-sm"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900">Goods Receipt</h3>
+              </div>
+            </div>
+          </template>
+          <template #content>
+            <div class="p-6 pt-0 space-y-5">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-1">
+                  <p class="text-xs text-gray-500 uppercase tracking-wide">GRN Number</p>
+                  <p class="font-semibold text-gray-900">{{ goodsReceipt?.grn_number || '-' }}</p>
+                </div>
+                <div class="space-y-1">
+                  <p class="text-xs text-gray-500 uppercase tracking-wide">Status</p>
+                  <Tag
+                    :value="formatGoodsReceiptStatus(goodsReceipt?.receipt_status)"
+                    :severity="goodsReceiptStatusSeverity(goodsReceipt?.receipt_status)"
+                    class="rounded-full text-xs px-3 py-1"
+                  />
+                </div>
+                <div class="space-y-1">
+                  <p class="text-xs text-gray-500 uppercase tracking-wide">Received Date</p>
+                  <p class="font-semibold text-gray-900">{{ formatDate(goodsReceiptReceivedDate) }}</p>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-1">
+                  <p class="text-xs text-gray-500 uppercase tracking-wide">Qty Expected</p>
+                  <p class="font-semibold text-gray-900">{{ formatQuantity(goodsReceiptTotals.expected) }}</p>
+                </div>
+                <div class="space-y-1">
+                  <p class="text-xs text-gray-500 uppercase tracking-wide">Qty Received</p>
+                  <p class="font-semibold text-emerald-600">{{ formatQuantity(goodsReceiptTotals.received) }}</p>
+                </div>
+                <div class="space-y-1">
+                  <p class="text-xs text-gray-500 uppercase tracking-wide">Qty Damaged</p>
+                  <p class="font-semibold text-red-600">{{ formatQuantity(goodsReceiptTotals.damaged) }}</p>
+                </div>
+              </div>
+              <div class="overflow-x-auto rounded-xl border border-gray-200">
+                <table class="min-w-full text-sm">
+                  <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                    <tr>
+                      <th class="px-4 py-3 text-left">Item</th>
+                      <th class="px-4 py-3 text-right">Expected</th>
+                      <th class="px-4 py-3 text-right">Received</th>
+                      <th class="px-4 py-3 text-right">Damaged</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr
+                      v-for="item in goodsReceiptItems"
+                      :key="item.id"
+                      class="hover:bg-gray-50 transition-colors"
+                    >
+                      <td class="px-4 py-3">
+                        <div class="font-medium text-gray-900">{{ getGoodsReceiptProductName(item) }}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">{{ item.product?.sku || 'SKU unavailable' }}</div>
+                      </td>
+                      <td class="px-4 py-3 text-right font-medium">{{ formatQuantity(item.quantity_expected) }}</td>
+                      <td class="px-4 py-3 text-right font-medium text-emerald-600">{{ formatQuantity(item.quantity_received) }}</td>
+                      <td class="px-4 py-3 text-right font-medium text-red-600">{{ formatQuantity(item.quantity_damaged) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+        </Card>
       </div>
     </div>
   </div>
@@ -307,6 +402,9 @@ const toast = useToast()
 const loading = ref(false)
 const po = ref<any>(null)
 const shipment = ref<any>(null)
+const goodsReceipt = ref<any>(null)
+const existingInvoice = ref<any>(null)
+const invoiceCreating = ref(false)
 const rejectionReason = ref<string | null>(null)
 
 // Computed properties
@@ -323,6 +421,35 @@ const isDeclined = computed(() => {
   const status = po.value?.status
   return status === 'declined_supplier' || status === 'declined_by_supplier'
 })
+
+const canCreateInvoice = computed(() => {
+  return (
+    po.value?.status === 'goods_received' &&
+    goodsReceipt.value &&
+    !existingInvoice.value
+  )
+})
+
+
+const goodsReceiptItems = computed(() => goodsReceipt.value?.items || [])
+
+const goodsReceiptTotals = computed(() => {
+  const items = goodsReceiptItems.value
+  return items.reduce<{ expected: number; received: number; damaged: number }>(
+    (acc, item) => {
+      acc.expected += Number(item.quantity_expected || 0)
+      acc.received += Number(item.quantity_received || 0)
+      acc.damaged += Number(item.quantity_damaged || 0)
+      return acc
+    },
+    { expected: 0, received: 0, damaged: 0 }
+  )
+})
+
+const goodsReceiptReceivedDate = computed(() => {
+  return goodsReceipt.value?.receipt_date || goodsReceipt.value?.received_date || goodsReceipt.value?.created_at
+})
+
 
 // Helper functions
 const getStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' => {
@@ -350,6 +477,36 @@ const getShipmentStatusSeverity = (status: string): 'success' | 'info' | 'warn' 
     cancelled: 'danger',
   }
   return map[status] || 'info'
+}
+
+const formatGoodsReceiptStatus = (status: string): string => {
+  if (!status) return 'Pending'
+  const map: Record<string, string> = {
+    full: 'Full',
+    partial: 'Partial',
+    damaged: 'Damaged',
+    rejected: 'Rejected',
+  }
+  return map[status] || status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+const goodsReceiptStatusSeverity = (status: string): 'success' | 'warn' | 'danger' | 'info' => {
+  if (!status) return 'info'
+  const map: Record<string, 'success' | 'warn' | 'danger' | 'info'> = {
+    full: 'success',
+    partial: 'warn',
+    damaged: 'danger',
+    rejected: 'danger',
+  }
+  return map[status] || 'info'
+}
+
+const getGoodsReceiptProductName = (item: any): string => {
+  return item?.product?.product_name || 'Item'
+}
+
+const formatQuantity = (value?: number): string => {
+  return Number(value ?? 0).toLocaleString('en-PH')
 }
 
 const formatStatus = (status: string): string => {
@@ -381,23 +538,30 @@ const formatMoney = (value: number): string => {
   }).format(value || 0)
 }
 
-// Load detail
-const loadDetail = async () => {
-  try {
-    loading.value = true
-    const id = Number(route.params.id)
-    const res = await supplierService.getSupplierPODetail(id)
-    const payload = res.data || res
-    po.value = payload?.data?.po || payload?.po || null
-    rejectionReason.value = payload?.data?.rejection_reason || payload?.rejection_reason || null
-    shipment.value = payload?.data?.shipment || null
+const goToInvoice = () => {
+  if (!po.value) return
+  router.push({ name: 'supplier.pos.invoice', params: { id: po.value.id } })
+}
 
-    if (!isDeclined.value && po.value?.id && !shipment.value) {
-      const shipmentRes = await supplierService.getPOShipment(id)
-      const shipmentPayload = shipmentRes.data.data || shipmentRes
-      shipment.value = shipmentPayload?.data?.shipment || shipmentPayload?.data || shipmentPayload
-    }
-  } catch (error: any) {
+// Load detail
+  const loadDetail = async () => {
+    try {
+      loading.value = true
+      const id = Number(route.params.id)
+      const res = await supplierService.getSupplierPODetail(id)
+      const payload = res.data || res
+      po.value = payload?.data?.po || payload?.po || null
+      rejectionReason.value = payload?.data?.rejection_reason || payload?.rejection_reason || null
+      shipment.value = payload?.data?.shipment || null
+      goodsReceipt.value = payload?.data?.goods_receipt || null
+      existingInvoice.value = payload?.data?.invoice || null
+
+      if (!isDeclined.value && po.value?.id && !shipment.value) {
+        const shipmentRes = await supplierService.getPOShipment(id)
+        const shipmentPayload = shipmentRes.data.data || shipmentRes
+        shipment.value = shipmentPayload?.data?.shipment || shipmentPayload?.data || shipmentPayload
+      }
+    } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
@@ -405,9 +569,43 @@ const loadDetail = async () => {
       life: 3000,
     })
   } finally {
-    loading.value = false
+      loading.value = false
+    }
   }
-}
+
+  const createInvoiceFromReceipt = async () => {
+    if (!po.value?.id || !goodsReceipt.value?.id) return
+    invoiceCreating.value = true
+    try {
+      const response = await supplierService.createInvoiceFromGoodsReceipt({
+        purchase_order_id: po.value.id,
+        goods_receipt_id: goodsReceipt.value.id,
+      })
+
+      const invoicePayload = response?.data || response
+      existingInvoice.value = invoicePayload?.data || invoicePayload
+
+      toast.add({
+        severity: 'success',
+        summary: 'Invoice Draft Created',
+        detail: 'A draft invoice has been generated and sent to finance.',
+        life: 4000,
+      })
+
+      if (existingInvoice.value?.id) {
+        router.push({ name: 'supplier.pos.invoice-view', params: { id: existingInvoice.value.id } })
+      }
+    } catch (error: any) {
+      toast.add({
+        severity: 'error',
+        summary: 'Invoice Error',
+        detail: error.response?.data?.message || 'Failed to create invoice from receipt.',
+        life: 4000,
+      })
+    } finally {
+      invoiceCreating.value = false
+    }
+  }
 
 onMounted(loadDetail)
 </script>

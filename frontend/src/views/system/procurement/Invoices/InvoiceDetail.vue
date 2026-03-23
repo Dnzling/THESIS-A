@@ -11,7 +11,7 @@
         </button>
         <div>
           <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">{{ invoice?.invoice_number }}</h1>
-          <p class="text-gray-500 text-sm mt-1">{{ invoice?.supplier_name }}</p>
+          <p class="text-gray-500 text-sm mt-1">{{ invoice?.supplier?.supplier_name }}</p>
         </div>
       </div>
       <div v-if="invoice?.status === 'draft'" class="flex gap-2">
@@ -59,18 +59,18 @@
 
       <div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 shadow-lg">
         <span class="text-gray-400 text-sm font-medium block mb-3">Total Amount</span>
-        <span class="text-2xl font-bold text-white tracking-tight">₱{{ formatNumber(invoice?.total_amount) }}</span>
+        <span class="text-2xl font-bold text-white tracking-tight">₱{{ formatNumber(invoice?.net_amount || invoice?.total_amount) }}</span>
       </div>
     </div>
 
     <!-- iOS-style Tabs -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div class="flex border-b border-gray-100 bg-gray-50/50 px-4">
+      <div class="flex border-b border-gray-100 bg-gray-50/50 px-4 overflow-x-auto">
         <button
           v-for="(tab, index) in tabs"
           :key="index"
           @click="activeTab = index"
-          class="px-5 py-4 text-sm font-medium transition-colors relative"
+          class="px-5 py-4 text-sm font-medium transition-colors relative whitespace-nowrap"
           :class="activeTab === index ? 'text-blue-500' : 'text-gray-500 hover:text-gray-700'"
         >
           <span class="flex items-center gap-2">
@@ -106,7 +106,7 @@
                 </div>
                 <div class="flex justify-between py-2">
                   <span class="text-gray-500">Payment Terms</span>
-                  <span class="font-medium text-gray-900">{{ invoice?.payment_terms || 'Net 30' }}</span>
+                  <span class="font-medium text-gray-900">{{ formatPaymentTerms(invoice?.payment_terms) }}</span>
                 </div>
               </div>
             </div>
@@ -121,22 +121,74 @@
                     :to="`/procurement/suppliers/${invoice?.supplier_id}`"
                     class="font-medium text-blue-500 hover:text-blue-600"
                   >
-                    {{ invoice?.supplier_name }}
+                    {{ invoice?.supplier?.supplier_name }}
                   </RouterLink>
                 </div>
                 <div class="flex justify-between py-2 border-b border-gray-100">
-                  <span class="text-gray-500">Supplier Code</span>
-                  <span class="font-medium text-gray-900">{{ invoice?.supplier_code }}</span>
-                </div>
-                <div class="flex justify-between py-2 border-b border-gray-100">
                   <span class="text-gray-500">Contact Person</span>
-                  <span class="font-medium text-gray-900">{{ invoice?.contact_person }}</span>
+                  <span class="font-medium text-gray-900">{{ invoice?.supplier?.contact_person || '-' }}</span>
                 </div>
                 <div class="flex justify-between py-2">
                   <span class="text-gray-500">Email</span>
-                  <a :href="`mailto:${invoice?.email}`" class="font-medium text-blue-500 hover:text-blue-600">
-                    {{ invoice?.email }}
+                  <a :href="`mailto:${invoice?.supplier?.email}`" class="font-medium text-blue-500 hover:text-blue-600">
+                    {{ invoice?.supplier?.email || '-' }}
                   </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Purchase Order Info -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Purchase Order</h3>
+              <div class="bg-gray-50/50 rounded-xl p-5 space-y-3">
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">PO Number</span>
+                  <RouterLink
+                    :to="`/procurement/purchase-orders/${invoice?.purchase_order_id}`"
+                    class="font-medium text-blue-500 hover:text-blue-600"
+                  >
+                    {{ invoice?.purchase_order?.po_number }}
+                  </RouterLink>
+                </div>
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Order Date</span>
+                  <span class="font-medium text-gray-900">{{ formatDate(invoice?.purchase_order?.order_date) }}</span>
+                </div>
+                <div class="flex justify-between py-2">
+                  <span class="text-gray-500">Total Amount</span>
+                  <span class="font-medium text-green-600">₱{{ formatNumber(invoice?.purchase_order?.total_amount) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Goods Receipt Info -->
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Goods Receipt</h3>
+              <div class="bg-gray-50/50 rounded-xl p-5 space-y-3">
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">GRN Number</span>
+                  <RouterLink
+                    v-if="invoice?.goods_receipt"
+                    :to="`/procurement/goods-receipts/${invoice?.goods_receipt_id}`"
+                    class="font-medium text-blue-500 hover:text-blue-600"
+                  >
+                    {{ invoice?.goods_receipt?.grn_number }}
+                  </RouterLink>
+                  <span v-else class="font-medium text-gray-400">—</span>
+                </div>
+                <div class="flex justify-between py-2 border-b border-gray-100">
+                  <span class="text-gray-500">Receipt Date</span>
+                  <span class="font-medium text-gray-900">{{ formatDate(invoice?.goods_receipt?.receipt_date) || '-' }}</span>
+                </div>
+                <div class="flex justify-between py-2">
+                  <span class="text-gray-500">Receipt Status</span>
+                  <Tag 
+                    :value="formatReceiptStatus(invoice?.goods_receipt?.receipt_status)" 
+                    :severity="receiptStatusSeverity(invoice?.goods_receipt?.receipt_status)"
+                    class="rounded-full text-xs px-3 py-1"
+                  />
                 </div>
               </div>
             </div>
@@ -149,7 +201,7 @@
               <table class="w-full text-sm">
                 <thead class="bg-gray-50/80 text-gray-500 text-xs">
                   <tr>
-                    <th class="px-5 py-4 text-left font-medium">Description</th>
+                    <th class="px-5 py-4 text-left font-medium">Product</th>
                     <th class="px-5 py-4 text-right font-medium">Qty</th>
                     <th class="px-5 py-4 text-right font-medium">Unit Price</th>
                     <th class="px-5 py-4 text-right font-medium">Line Total</th>
@@ -159,18 +211,27 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                   <tr v-for="(item, idx) in invoice?.items" :key="idx" class="hover:bg-gray-50/50">
-                    <td class="px-5 py-4 text-gray-900">{{ item.description }}</td>
-                    <td class="px-5 py-4 text-right text-gray-900">{{ item.quantity }}</td>
+                    <td class="px-5 py-4">
+                      <div>
+                        <p class="font-medium text-gray-900">{{ item.product?.product_name || 'Unknown Product' }}</p>
+                        <p class="text-xs text-gray-500 mt-0.5">SKU: {{ item.product?.sku || '-' }}</p>
+                      </div>
+                    </td>
+                    <td class="px-5 py-4 text-right text-gray-900">{{ item.quantity_invoiced || item.quantity }}</td>
                     <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.unit_price) }}</td>
-                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.quantity * item.unit_price) }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.line_amount || item.unit_price * (item.quantity_invoiced || item.quantity)) }}</td>
                     <td class="px-5 py-4 text-right text-gray-900">{{ item.tax_rate }}%</td>
-                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber((item.quantity * item.unit_price * item.tax_rate) / 100) }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.tax_amount) }}</td>
                   </tr>
                 </tbody>
                 <tfoot class="bg-gray-50/80 font-medium">
                   <tr>
                     <td colspan="5" class="px-5 py-4 text-right text-gray-600">Subtotal</td>
-                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.net_amount) }}</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.subtotal || invoice?.net_amount) }}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="5" class="px-5 py-4 text-right text-gray-600">Shipping Cost</td>
+                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.shipping_cost) }}</td>
                   </tr>
                   <tr>
                     <td colspan="5" class="px-5 py-4 text-right text-gray-600">Tax Total</td>
@@ -178,11 +239,17 @@
                   </tr>
                   <tr>
                     <td colspan="5" class="px-5 py-4 text-right text-gray-900 font-semibold">Total</td>
-                    <td class="px-5 py-4 text-right text-blue-600 font-semibold">₱{{ formatNumber(invoice?.total_amount) }}</td>
+                    <td class="px-5 py-4 text-right text-blue-600 font-semibold">₱{{ formatNumber(invoice?.net_amount || invoice?.total_amount) }}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
+          </div>
+
+          <!-- Remarks -->
+          <div v-if="invoice?.remarks" class="bg-gray-50 rounded-xl p-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Remarks</p>
+            <p class="text-sm text-gray-700">{{ invoice.remarks }}</p>
           </div>
         </div>
 
@@ -196,14 +263,14 @@
               </div>
               <div>
                 <h3 class="font-semibold text-gray-900">{{ getMatchTitle(invoice?.match_status) }}</h3>
-                <p class="text-sm text-gray-500 mt-1">{{ invoice?.match_result?.message || 'All documents match successfully' }}</p>
+                <p class="text-sm text-gray-500 mt-1">{{ getMatchDescription(invoice?.match_status) }}</p>
               </div>
             </div>
 
-            <div v-if="invoice?.match_result?.issues?.length" class="mt-4 bg-red-50 rounded-lg p-4">
+            <div v-if="invoice?.match_notes && invoice.match_status === 'exception'" class="mt-4 bg-red-50 rounded-lg p-4">
               <p class="font-medium text-red-800 text-sm mb-2">Issues Found:</p>
               <ul class="space-y-1">
-                <li v-for="(issue, idx) in invoice.match_result.issues" :key="idx" class="text-sm text-red-700 flex items-start gap-2">
+                <li v-for="(issue, idx) in parseMatchNotes(invoice.match_notes)" :key="idx" class="text-sm text-red-700 flex items-start gap-2">
                   <i class="pi pi-exclamation-circle text-red-500 text-xs mt-0.5"></i>
                   <span>{{ issue }}</span>
                 </li>
@@ -216,7 +283,7 @@
                 :disabled="matching"
                 class="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2"
               >
-                <i class="pi pi-sync"></i>
+                <i class="pi pi-sync" :class="{ 'animate-spin': matching }"></i>
                 <span>{{ matching ? 'Matching...' : 'Run 3-Way Match' }}</span>
               </button>
             </div>
@@ -224,6 +291,7 @@
 
           <!-- Comparison Cards -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- PO Card -->
             <div class="bg-white rounded-xl border border-gray-100 p-5">
               <div class="flex items-center gap-2 mb-4">
                 <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
@@ -232,13 +300,14 @@
                 <span class="font-medium text-gray-900">Purchase Order</span>
               </div>
               <div class="space-y-3">
-                <p class="text-sm"><span class="text-gray-500">PO Number:</span> <span class="font-medium text-gray-900">{{ invoice?.po_number }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ invoice?.po_quantity }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.po_amount) }}</span></p>
-                <p class="text-xs text-gray-400">{{ formatDate(invoice?.po_date) }}</p>
+                <p class="text-sm"><span class="text-gray-500">PO Number:</span> <span class="font-medium text-gray-900">{{ invoice?.purchase_order?.po_number }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ calculatePOQuantity() }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.purchase_order?.total_amount) }}</span></p>
+                <p class="text-xs text-gray-400">{{ formatDate(invoice?.purchase_order?.order_date) }}</p>
               </div>
             </div>
 
+            <!-- GRN Card -->
             <div class="bg-white rounded-xl border border-gray-100 p-5">
               <div class="flex items-center gap-2 mb-4">
                 <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
@@ -247,13 +316,14 @@
                 <span class="font-medium text-gray-900">Goods Receipt</span>
               </div>
               <div class="space-y-3">
-                <p class="text-sm"><span class="text-gray-500">GRN Number:</span> <span class="font-medium text-gray-900">{{ invoice?.grn_number || '—' }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ invoice?.grn_quantity || 0 }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Status:</span> <span class="font-medium text-gray-900">{{ invoice?.grn_status || 'Pending' }}</span></p>
-                <p class="text-xs text-gray-400">{{ formatDate(invoice?.grn_date) }}</p>
+                <p class="text-sm"><span class="text-gray-500">GRN Number:</span> <span class="font-medium text-gray-900">{{ invoice?.goods_receipt?.grn_number || '—' }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ calculateGRNQuantity() }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Status:</span> <span class="font-medium text-gray-900">{{ formatReceiptStatus(invoice?.goods_receipt?.receipt_status) || 'N/A' }}</span></p>
+                <p class="text-xs text-gray-400">{{ formatDate(invoice?.goods_receipt?.receipt_date) }}</p>
               </div>
             </div>
 
+            <!-- Invoice Card -->
             <div class="bg-white rounded-xl border border-gray-100 p-5">
               <div class="flex items-center gap-2 mb-4">
                 <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
@@ -263,33 +333,33 @@
               </div>
               <div class="space-y-3">
                 <p class="text-sm"><span class="text-gray-500">Invoice #:</span> <span class="font-medium text-gray-900">{{ invoice?.invoice_number }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ invoice?.invoice_quantity }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.total_amount) }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ calculateInvoiceQuantity() }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.net_amount) }}</span></p>
                 <p class="text-xs text-gray-400">{{ formatDate(invoice?.invoice_date) }}</p>
               </div>
             </div>
           </div>
 
           <!-- Variance Analysis -->
-          <div v-if="invoice?.match_result?.variance_analysis" class="bg-white rounded-xl border border-gray-100 p-5">
+          <div v-if="invoice?.match_status === 'exception'" class="bg-white rounded-xl border border-gray-100 p-5">
             <h4 class="font-medium text-gray-900 mb-4">Variance Analysis</h4>
             <div class="grid grid-cols-3 gap-4">
               <div>
                 <p class="text-xs text-gray-500 mb-1">Quantity Variance</p>
-                <p class="text-lg font-semibold" :class="invoice.match_result.variance_analysis.qty_variance !== 0 ? 'text-red-600' : 'text-green-600'">
-                  {{ invoice.match_result.variance_analysis.qty_variance > 0 ? '+' : '' }}{{ invoice.match_result.variance_analysis.qty_variance }}
+                <p class="text-lg font-semibold text-red-600">
+                  {{ calculateQuantityVariance() }}
                 </p>
               </div>
               <div>
                 <p class="text-xs text-gray-500 mb-1">Amount Variance</p>
-                <p class="text-lg font-semibold" :class="Math.abs(invoice.match_result.variance_analysis.amt_variance) > 0 ? 'text-red-600' : 'text-green-600'">
-                  ₱{{ formatNumber(invoice.match_result.variance_analysis.amt_variance) }}
+                <p class="text-lg font-semibold text-red-600">
+                  ₱{{ formatNumber(calculateAmountVariance()) }}
                 </p>
               </div>
               <div>
                 <p class="text-xs text-gray-500 mb-1">Variance %</p>
                 <p class="text-lg font-semibold text-gray-900">
-                  {{ ((invoice.match_result.variance_analysis.amt_variance / invoice.total_amount) * 100).toFixed(2) }}%
+                  {{ calculateVariancePercentage() }}%
                 </p>
               </div>
             </div>
@@ -321,12 +391,12 @@
                 </button>
               </div>
 
-              <div v-if="invoice?.approvals?.length" class="space-y-3">
-                <p class="text-sm font-medium text-gray-700">Approval History</p>
-                <div v-for="approval in invoice.approvals" :key="approval.id" class="flex items-start gap-3 text-sm">
+              <div v-if="invoice?.purchase_order?.approvals_received?.length" class="space-y-3">
+                <p class="text-sm font-medium text-gray-700">PO Approval History</p>
+                <div v-for="(approval, idx) in invoice.purchase_order.approvals_received" :key="idx" class="flex items-start gap-3 text-sm">
                   <i class="pi pi-check-circle text-green-500 text-xs mt-1"></i>
                   <div>
-                    <p class="font-medium text-gray-900">{{ approval.approved_by }}</p>
+                    <p class="font-medium text-gray-900">{{ approval.approver_name }}</p>
                     <p class="text-xs text-gray-500">{{ formatDate(approval.approved_at) }}</p>
                   </div>
                 </div>
@@ -345,62 +415,25 @@
                 <span :class="getPaymentClass(invoice?.payment_status)" class="font-medium">{{ formatPaymentStatus(invoice?.payment_status) }}</span>
               </div>
 
-              <div v-if="!isFinanceRoute && invoice?.payment_status === 'pending'" class="bg-gray-50 rounded-lg p-4">
-                <label class="text-sm text-gray-700 block mb-2">Schedule Payment Date</label>
-                <input
-                  type="date"
-                  v-model="paymentDate"
-                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-3"
-                />
-                <button
-                  @click="schedulePayment"
-                  :disabled="scheduling"
-                  class="w-full px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
-                >
-                  <i class="pi pi-calendar"></i>
-                  <span>{{ scheduling ? 'Scheduling...' : 'Schedule Payment' }}</span>
-                </button>
-              </div>
-
-              <div v-if="isFinanceRoute && invoice?.status === 'approved' && invoice?.payment_status === 'pending'" class="bg-gray-50 rounded-lg p-4 space-y-3">
-                <div>
-                  <label class="text-sm text-gray-700 block mb-2">Payment Method</label>
-                  <select v-model="paymentMethod" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                    <option value="bank_transfer">Bank Transfer</option>
-                    <option value="cash">Cash</option>
-                    <option value="check">Check</option>
-                    <option value="credit_card">Credit Card</option>
-                  </select>
+              <div class="bg-gray-50 rounded-lg p-4">
+                <div class="space-y-2">
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Invoice Amount:</span>
+                    <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.net_amount) }}</span>
+                  </div>
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Payment Due:</span>
+                    <span class="font-medium text-gray-900">{{ formatDate(invoice?.due_date) }}</span>
+                  </div>
                 </div>
-                <div>
-                  <label class="text-sm text-gray-700 block mb-2">Payment Amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    v-model.number="paymentAmount"
-                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                  />
-                </div>
-                <button
-                  @click="markPaid"
-                  :disabled="markingPaid"
-                  class="w-full px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
-                >
-                  <i class="pi pi-wallet"></i>
-                  <span>{{ markingPaid ? 'Processing...' : 'Mark as Paid' }}</span>
-                </button>
-              </div>
-
-              <div v-if="invoice?.payment_status === 'scheduled'" class="bg-green-50 rounded-lg p-4">
-                <p class="text-sm text-green-800">
-                  Payment scheduled for <span class="font-medium">{{ formatDate(invoice?.scheduled_payment_date) }}</span>
-                </p>
               </div>
 
               <div v-if="invoice?.payment_status === 'paid'" class="bg-green-50 rounded-lg p-4">
                 <p class="text-sm text-green-800">
                   Paid on <span class="font-medium">{{ formatDate(invoice?.payment_date) }}</span>
+                </p>
+                <p v-if="invoice?.payment_method" class="text-xs text-green-600 mt-1">
+                  Method: {{ invoice.payment_method }}
                 </p>
               </div>
             </div>
@@ -409,23 +442,23 @@
 
         <!-- Tab 4: Timeline -->
         <div v-if="activeTab === 3" class="space-y-4">
-          <div class="relative">
-            <div v-for="(event, idx) in timeline" :key="idx" class="flex gap-4 pb-8 last:pb-0 relative">
+          <div class="relative pl-6">
+            <div v-for="(event, idx) in timeline" :key="idx" class="relative pb-8 last:pb-0">
               <!-- Timeline line -->
-              <div v-if="idx < timeline.length - 1" class="absolute left-5 top-8 bottom-0 w-0.5 bg-gray-200"></div>
+              <div v-if="idx < timeline.length - 1" class="absolute left-2 top-8 bottom-0 w-0.5 bg-gray-200"></div>
               
               <!-- Timeline dot -->
-              <div class="relative z-10">
-                <div :style="{ backgroundColor: event.color }" class="w-10 h-10 rounded-full flex items-center justify-center text-white">
+              <div class="relative z-10 flex items-start gap-4">
+                <div :style="{ backgroundColor: event.color }" class="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0">
                   <i :class="event.icon" class="text-sm"></i>
                 </div>
-              </div>
-              
-              <!-- Content -->
-              <div class="flex-1 pb-4">
-                <p class="font-medium text-gray-900">{{ event.label }}</p>
-                <p class="text-sm text-gray-500 mt-1">{{ event.date }}</p>
-                <p v-if="event.description" class="text-sm text-gray-600 mt-2">{{ event.description }}</p>
+                
+                <!-- Content -->
+                <div class="flex-1">
+                  <p class="font-medium text-gray-900">{{ event.label }}</p>
+                  <p class="text-sm text-gray-500 mt-1">{{ event.date }}</p>
+                  <p v-if="event.description" class="text-sm text-gray-600 mt-2">{{ event.description }}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -441,6 +474,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Tag from 'primevue/tag'
 import procurementService from '../../../../services/procurement.service'
 import financeService from '../../../../services/finance.service'
 
@@ -459,6 +493,7 @@ const loading = ref(false)
 const paymentDate = ref('')
 const paymentMethod = ref('bank_transfer')
 const paymentAmount = ref(0)
+
 const isFinanceRoute = computed(() => String(route.name || '').startsWith('finance.'))
 
 const tabs = [
@@ -469,47 +504,49 @@ const tabs = [
 ]
 
 const timeline = computed(() => {
+  if (!invoice.value) return []
+  
   const events = [
     {
       label: 'Invoice Created',
-      date: formatDate(invoice.value?.invoice_date),
+      date: formatDate(invoice.value?.created_at),
       color: '#3B82F6',
       icon: 'pi pi-plus',
       description: `Invoice ${invoice.value?.invoice_number} was created`,
     },
     {
-      label: 'PO Reference',
-      date: formatDate(invoice.value?.po_date),
+      label: 'PO Created',
+      date: formatDate(invoice.value?.purchase_order?.created_at),
       color: '#10B981',
       icon: 'pi pi-file-pdf',
-      description: `Linked to PO ${invoice.value?.po_number}`,
+      description: `PO ${invoice.value?.purchase_order?.po_number} was created`,
     },
   ]
 
-  if (invoice.value?.grn_date) {
+  if (invoice.value?.goods_receipt?.created_at) {
     events.push({
       label: 'Goods Received',
-      date: formatDate(invoice.value?.grn_date),
+      date: formatDate(invoice.value?.goods_receipt?.created_at),
       color: '#8B5CF6',
       icon: 'pi pi-box',
-      description: `GRN ${invoice.value?.grn_number} received`,
+      description: `GRN ${invoice.value?.goods_receipt?.grn_number} received`,
     })
   }
 
-  if (invoice.value?.match_date) {
+  if (invoice.value?.match_date || invoice.value?.updated_at) {
     events.push({
-      label: '3-Way Match Completed',
-      date: formatDate(invoice.value?.match_date),
+      label: '3-Way Match Performed',
+      date: formatDate(invoice.value?.match_date || invoice.value?.updated_at),
       color: invoice.value?.match_status === 'matched' ? '#10B981' : '#EF4444',
       icon: invoice.value?.match_status === 'matched' ? 'pi pi-check-circle' : 'pi pi-exclamation-circle',
-      description: `Match status: ${invoice.value?.match_status}`,
+      description: `Match status: ${formatStatus(invoice.value?.match_status)}`,
     })
   }
 
-  if (invoice.value?.approved_at) {
+  if (invoice.value?.status === 'approved') {
     events.push({
       label: 'Invoice Approved',
-      date: formatDate(invoice.value?.approved_at),
+      date: formatDate(invoice.value?.updated_at),
       color: '#10B981',
       icon: 'pi pi-check',
       description: 'Invoice has been approved',
@@ -522,12 +559,96 @@ const timeline = computed(() => {
       date: formatDate(invoice.value?.payment_date),
       color: '#10B981',
       icon: 'pi pi-credit-card',
-      description: `Payment of ₱${formatNumber(invoice.value?.total_amount)} completed`,
+      description: `Payment of ₱${formatNumber(invoice.value?.net_amount)} completed`,
     })
   }
 
   return events
 })
+
+// Helper Functions
+const formatPaymentTerms = (term: string): string => {
+  const map: Record<string, string> = {
+    net_30: 'Net 30 Days',
+    net_60: 'Net 60 Days',
+    net_15: 'Net 15 Days',
+    net_7: 'Net 7 Days',
+    cash_on_delivery: 'Cash on Delivery',
+    advance_payment: 'Advance Payment',
+  }
+  return map[term] || term || 'Net 30'
+}
+
+const formatReceiptStatus = (status: string): string => {
+  const map: Record<string, string> = {
+    full: 'Full Receipt',
+    partial: 'Partial',
+    pending: 'Pending',
+  }
+  return map[status] || status || '-'
+}
+
+const receiptStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'secondary' => {
+  const map: Record<string, any> = {
+    full: 'success',
+    partial: 'warn',
+    pending: 'secondary',
+  }
+  return map[status] || 'secondary'
+}
+
+const calculatePOQuantity = (): number => {
+  return invoice.value?.purchase_order?.items?.reduce((sum: number, item: any) => sum + Number(item.quantity_ordered || 0), 0) || 0
+}
+
+const calculateGRNQuantity = (): number => {
+  return invoice.value?.goods_receipt?.items?.reduce((sum: number, item: any) => sum + Number(item.quantity_received || 0), 0) || 0
+}
+
+const calculateInvoiceQuantity = (): number => {
+  return invoice.value?.items?.reduce((sum: number, item: any) => sum + Number(item.quantity_invoiced || item.quantity || 0), 0) || 0
+}
+
+const calculateQuantityVariance = (): string => {
+  const poQty = calculatePOQuantity()
+  const grnQty = calculateGRNQuantity()
+  const invQty = calculateInvoiceQuantity()
+  
+  if (poQty !== grnQty) return `PO/GRN mismatch: ${poQty} vs ${grnQty}`
+  if (poQty !== invQty) return `PO/Invoice mismatch: ${poQty} vs ${invQty}`
+  if (grnQty !== invQty) return `GRN/Invoice mismatch: ${grnQty} vs ${invQty}`
+  return '0'
+}
+
+const calculateAmountVariance = (): number => {
+  const poAmount = Number(invoice.value?.purchase_order?.total_amount || 0)
+  const invAmount = Number(invoice.value?.net_amount || 0)
+  return Math.abs(poAmount - invAmount)
+}
+
+const calculateVariancePercentage = (): string => {
+  const poAmount = Number(invoice.value?.purchase_order?.total_amount || 0)
+  const invAmount = Number(invoice.value?.net_amount || 0)
+  if (poAmount === 0) return '0'
+  return ((Math.abs(poAmount - invAmount) / poAmount) * 100).toFixed(2)
+}
+
+const parseMatchNotes = (notes: string): string[] => {
+  try {
+    return JSON.parse(notes)
+  } catch {
+    return [notes]
+  }
+}
+
+const getMatchDescription = (status: string): string => {
+  const map: Record<string, string> = {
+    pending: 'Waiting for 3-way matching to be performed',
+    matched: 'All documents match successfully',
+    exception: 'Discrepancies found between documents',
+  }
+  return map[status] || 'Match status unknown'
+}
 
 // Methods
 async function loadInvoice() {
@@ -537,56 +658,8 @@ async function loadInvoice() {
       ? await financeService.getInvoice(Number(route.params.id))
       : await procurementService.getInvoice(Number(route.params.id))
     
-    const raw = response.data?.data || response.data
-    const supplier = raw?.supplier || {}
-    const po = raw?.purchase_order || {}
-    const goodsReceipt = raw?.goods_receipt || null
-    
-    const normalizedItems = Array.isArray(raw?.items)
-      ? raw.items.map((item: any) => ({
-          ...item,
-          quantity: item.quantity_invoiced ?? item.quantity ?? 0,
-          unit_price: item.unit_price ?? 0,
-        }))
-      : []
-
-    const poQuantity = Array.isArray(po?.items)
-      ? po.items.reduce((sum: number, item: any) => sum + Number(item.quantity_ordered || 0), 0)
-      : 0
-
-    const invoiceQuantity = normalizedItems.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0)
-
-    let matchIssues: string[] = []
-    if (raw?.match_notes) {
-      try {
-        const parsed = JSON.parse(raw.match_notes)
-        matchIssues = Array.isArray(parsed) ? parsed : []
-      } catch {
-        matchIssues = []
-      }
-    }
-
-    invoice.value = {
-      ...raw,
-      supplier_name: supplier.supplier_name,
-      supplier_code: supplier.supplier_code,
-      contact_person: supplier.contact_person,
-      email: supplier.email,
-      payment_terms: po.payment_terms,
-      total_amount: Number(raw?.net_amount ?? raw?.invoice_amount ?? 0),
-      items: normalizedItems,
-      po_number: po.po_number,
-      po_quantity: poQuantity,
-      po_amount: Number(po?.total_amount ?? po?.subtotal ?? 0),
-      po_date: po?.order_date,
-      grn_number: goodsReceipt?.grn_number,
-      grn_quantity: goodsReceipt?.total_received,
-      grn_status: goodsReceipt?.receipt_status,
-      grn_date: goodsReceipt?.received_at,
-      invoice_quantity: invoiceQuantity,
-      match_result: matchIssues.length ? { issues: matchIssues } : raw?.match_result,
-    }
-    paymentAmount.value = invoice.value?.total_amount || 0
+    invoice.value = response.data?.data || response.data
+    paymentAmount.value = Number(invoice.value?.net_amount || 0)
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -626,43 +699,6 @@ async function approveInvoice() {
   }
 }
 
-async function schedulePayment() {
-  if (!paymentDate.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Required',
-      detail: 'Please select a payment date',
-      life: 3000,
-    })
-    return
-  }
-
-  scheduling.value = true
-  try {
-    if (!isFinanceRoute.value) {
-      await procurementService.scheduleInvoicePayment(invoice.value.id, {
-        payment_date: paymentDate.value,
-      })
-    }
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Payment scheduled',
-      life: 3000,
-    })
-    await loadInvoice()
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to schedule payment',
-      life: 3000,
-    })
-  } finally {
-    scheduling.value = false
-  }
-}
-
 async function runMatch() {
   if (!invoice.value?.id) return
   matching.value = true
@@ -688,43 +724,6 @@ async function runMatch() {
     })
   } finally {
     matching.value = false
-  }
-}
-
-async function markPaid() {
-  if (!invoice.value?.id) return
-  if (!paymentAmount.value || paymentAmount.value <= 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Required',
-      detail: 'Please enter a valid payment amount',
-      life: 3000,
-    })
-    return
-  }
-
-  markingPaid.value = true
-  try {
-    await financeService.markInvoicePaid(invoice.value.id, {
-      payment_method: paymentMethod.value,
-      payment_amount: Number(paymentAmount.value),
-    })
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Invoice marked as paid',
-      life: 3000,
-    })
-    await loadInvoice()
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to mark invoice as paid',
-      life: 3000,
-    })
-  } finally {
-    markingPaid.value = false
   }
 }
 

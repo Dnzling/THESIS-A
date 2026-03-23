@@ -27,7 +27,7 @@ class StockCountService
                 'count_number' => $countNumber,
                 'store_id' => $data['store_id'],
                 'branch_id' => $data['branch_id'],
-                'status' => 'scheduled',
+                'status' => 'pending_approval',
                 'count_type' => $data['count_type'],
                 'scheduled_date' => $data['scheduled_date'],
                 'assigned_by' => $data['assigned_by'],
@@ -123,6 +123,18 @@ class StockCountService
     public function approveStockCount(StockCount $count, array $data): StockCount
     {
         return DB::transaction(function () use ($count, $data) {
+            // Approval of a newly created count request (manager gate before execution)
+            if ($count->status === 'pending_approval') {
+                $count->update([
+                    'status' => 'scheduled',
+                    'approved_date' => now(),
+                    'approved_by' => $data['approved_by'],
+                    'approval_notes' => $data['approval_notes'] ?? null,
+                ]);
+
+                return $count;
+            }
+
             $count->update([
                 'status' => 'approved',
                 'approved_date' => now(),

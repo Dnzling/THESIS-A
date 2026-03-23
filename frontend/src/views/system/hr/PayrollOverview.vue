@@ -192,7 +192,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import Chart from 'chart.js/auto'
 
@@ -341,7 +341,7 @@ const updateTrendChart = (data: any) => {
 // Fetch overview data from API
 const fetchOverview = async () => {
   try {
-    const response = await axios.get('api/payroll/overview', {
+    const response = await hrService.api.get('api/payroll/overview', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       },

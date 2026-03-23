@@ -294,7 +294,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
 
@@ -395,7 +395,6 @@ const leaveCounts = ref<LeaveCounts>({
 })
 
 // Set authorization header
-axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
 
 // Helper: Get initials from name
 const getInitials = (name: string): string => {
@@ -518,7 +517,7 @@ const transformLeaveData = (records: any[]): LeaveRequest[] => {
 const fetchLeaves = async () => {
   loading.value = true
   try {
-    const response = await axios.get('api/leaves')
+    const response = await hrService.api.get('api/leaves')
 
     if (response.data.success) {
       // Get the paginated data array
@@ -569,7 +568,7 @@ const fetchLeaves = async () => {
 
 const fetchEmployees = async () => {
   try {
-    const response = await axios.get('api/employees')
+    const response = await hrService.api.get('api/employees')
     if (response.data.success) {
       const records = response.data.data.data || response.data.data || []
       employees.value = records.map((emp: any) => ({
@@ -595,7 +594,7 @@ const fetchLeaveBalances = async (employeeId?: number) => {
     }
     params.year = new Date().getFullYear()
 
-    const response = await axios.get('/api/leaves/balance', { params })
+    const response = await hrService.api.get('/api/leaves/balance', { params })
     if (response.data.success) {
       const balanceData = response.data.data
       const employee = employees.value.find(e => e.id === balanceData.employee_id)
@@ -614,7 +613,7 @@ const fetchLeaveBalances = async (employeeId?: number) => {
 
 const approveLeave = async (id: number) => {
   try {
-    const response = await axios.post(`/api/leaves/${id}/approve`, {
+    const response = await hrService.api.post(`/api/leaves/${id}/approve`, {
       notes: 'Approved via UI'
     })
 
@@ -652,7 +651,7 @@ const approveLeave = async (id: number) => {
 
 const rejectLeave = async (id: number, reason: string) => {
   try {
-    const response = await axios.post(`/api/leaves/${id}/reject`, {
+    const response = await hrService.api.post(`/api/leaves/${id}/reject`, {
       reason: reason
     })
 
@@ -692,7 +691,7 @@ const rejectLeave = async (id: number, reason: string) => {
 
 const cancelLeave = async (id: number) => {
   try {
-    const response = await axios.post(`/api/leaves/${id}/cancel`)
+    const response = await hrService.api.post(`/api/leaves/${id}/cancel`)
 
     if (response.data.success) {
       toast.add({
@@ -919,3 +918,5 @@ onMounted(() => {
 });
 
 </script>
+
+

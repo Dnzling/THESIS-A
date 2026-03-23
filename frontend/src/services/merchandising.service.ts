@@ -10,6 +10,7 @@ export interface Product {
     product_type?: 'raw_material' | 'finished_good'
     brand?: string
     collection_name?: string
+    cost_price?: number
     base_price: number
     discounted_price?: number
     tax_rate?: number
@@ -75,6 +76,9 @@ export interface ProductAsset {
     file_name: string
     is_primary?: boolean
     display_order?: number
+    default_camera_angle_x?: number
+    default_camera_angle_y?: number
+    default_zoom_level?: number
 }
 
 class MerchandisingService {
@@ -107,6 +111,16 @@ class MerchandisingService {
 
     async updateProduct(id: number, data: Partial<Product>) {
         const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, data)
+        return response.data
+    }
+
+    async approveProductPrice(id: number, notes?: string) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${id}/price/approve`, { notes })
+        return response.data
+    }
+
+    async rejectProductPrice(id: number, reason: string) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${id}/price/reject`, { reason })
         return response.data
     }
 
@@ -298,6 +312,22 @@ class MerchandisingService {
             product_id,
             assets
         })
+        return response.data
+    }
+
+    // ==================== DELIVERY FEE SETTINGS ====================
+    async getDeliveryFeeSettings(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/delivery-fee-settings`, { params })
+        return response.data
+    }
+
+    async updateDeliveryFeeSettings(data: any, params?: any) {
+        const response = await axiosClient.put(`${this.baseUrl}/delivery-fee-settings`, data, { params })
+        return response.data
+    }
+
+    async estimateDeliveryFee(data: any, params?: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/delivery-fee-settings/estimate`, data, { params })
         return response.data
     }
 }

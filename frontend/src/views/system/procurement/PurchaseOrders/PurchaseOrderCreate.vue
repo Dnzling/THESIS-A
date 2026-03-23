@@ -180,6 +180,10 @@
                           @input="calculateItemTotal(index)"
                           class="w-full text-right"
                         />
+                        <p class="text-xs text-gray-500 mt-2">Tax Rate</p>
+                        <p class="text-sm font-semibold text-gray-900">
+                          {{ (Number(item.tax_rate ?? 0)).toFixed(2) }}%
+                        </p>
                       </div>
 
                       <div class="md:col-span-4">
@@ -215,14 +219,14 @@
           </div>
   
           <!-- Section 4: Running Totals -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card class="bg-linear-to-br from-blue-50 to-blue-100 border border-blue-200">
               <template #content>
                 <p class="text-xs text-blue-600 font-semibold">Subtotal</p>
                 <p class="text-2xl font-bold text-blue-900">{{ formatCurrency(totals.subtotal) }}</p>
               </template>
             </Card>
-  
+
             <Card class="bg-linear-to-br from-orange-50 to-orange-100 border border-orange-200">
               <template #content>
                 <p class="text-xs text-orange-600 font-semibold">Discount</p>
@@ -231,7 +235,16 @@
                 </p>
               </template>
             </Card>
-  
+
+            <Card class="bg-linear-to-br from-yellow-50 to-yellow-100 border border-yellow-200">
+              <template #content>
+                <p class="text-xs text-amber-600 font-semibold">Tax</p>
+                <p class="text-2xl font-bold text-amber-900">
+                  {{ formatCurrency(totals.tax_amount) }}
+                </p>
+              </template>
+            </Card>
+ 
             <Card class="bg-linear-to-br from-green-50 to-green-100 border border-green-300 shadow-lg">
               <template #content>
                 <p class="text-xs text-green-600 font-semibold">TOTAL AMOUNT</p>
@@ -286,10 +299,11 @@ const {
 } = usePoAutomation()
 
 // Form State
-const form = reactive({
-  supplier_id: null as number | null,
-  branch_id: null as number | null,
-  order_date: new Date(),
+  const form = reactive({
+    supplier_id: null as number | null,
+    branch_id: null as number | null,
+    purchase_requisition_id: null as number | null,
+    order_date: new Date(),
   discount_amount: 0,
   notes: '',
   items: [] as any[]
@@ -311,6 +325,7 @@ const supplierWarning = reactive({ show: false, message: '', severity: 'warning'
 
 const totals = reactive({
   subtotal: 0,
+  tax_amount: 0,
   total_amount: 0
 })
 
@@ -376,10 +391,12 @@ const loadInitialData = async () => {
 
 const prefillFromRequisition = async (requisitionId: number) => {
   try {
-    const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId)
-    const requisition = requisitionRes?.data || requisitionRes?.data?.data || requisitionRes
+      const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId)
+      const requisition = requisitionRes?.data || requisitionRes?.data?.data || requisitionRes
 
-    if (!requisition) return
+      if (!requisition) return
+
+      form.purchase_requisition_id = requisition.id || null
 
     form.branch_id = requisition.branch_id || requisition.branch?.id || form.branch_id
     form.notes = requisition.reason || form.notes
@@ -394,6 +411,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
         product_name: item.product?.product_name || item.product_name || '',
         quantity_ordered: item.quantity_requested || 1,
         unit_cost: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+        tax_rate: parseFloat(item.tax_rate ?? item.product?.tax_rate ?? 0) || 0,
         discount_percent: 0,
         line_total: 0
       }))
@@ -409,9 +427,10 @@ const prefillFromRequisition = async (requisitionId: number) => {
           product_name: item.product?.product_name || item.product_name || 'Unknown Product',
           sku: item.product?.sku || item.sku || '',
           stock_level: 0,
-          last_price: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0
+          last_price: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+          tax_rate: parseFloat(item.tax_rate ?? item.product?.tax_rate ?? 0) || 0
         }))
-    }
+  }
 
     const firstSupplierId = requisition.items?.[0]?.product?.suppliers?.[0]?.id
     if (firstSupplierId) {
@@ -428,6 +447,8 @@ const prefillFromRFQ = async (rfqId: number) => {
     const rfqRes = await procurementService.getRFQ(rfqId)
     const rfq = rfqRes?.data?.data || rfqRes?.data || rfqRes
     if (!rfq) return
+
+    form.purchase_requisition_id = rfq.purchase_requisition_id || form.purchase_requisition_id
 
     form.notes = `From ${rfq.rfq_number || rfqId}`
     form.branch_id = rfq.purchase_requisition?.branch_id || rfq.branch_id || form.branch_id
@@ -457,34 +478,36 @@ const prefillFromRFQ = async (rfqId: number) => {
       await onSupplierChange()
     }
 
-    if (approvedFeedbacks.length > 0) {
-      form.items = approvedFeedbacks.map((feedback: any) => {
-        const rfqItem = feedback?.rfq_item || {}
-        const product = rfqItem?.product || {}
-        return {
-          id: `rfq-feedback-${feedback.id}`,
-          product_id: rfqItem.product_id || product.id || null,
-          product_name: product.product_name || rfqItem.product_name || '',
-          quantity_ordered: rfqItem.quantity || 1,
-          unit_cost: parseFloat(feedback.quoted_price || 0) || 0,
-          discount_percent: 0,
-          line_total: 0,
-          stock_level: 0
-        }
-      })
-    } else if (Array.isArray(rfq.items)) {
-      form.items = rfq.items.map((item: any) => {
-        const product = item.product || {}
-        return {
-          id: `rfq-item-${item.id || Date.now()}`,
-          product_id: item.product_id || product.id || null,
-          product_name: product.product_name || item.product_name || '',
-          quantity_ordered: item.quantity || 1,
-          unit_cost: parseFloat(item.target_price || 0) || 0,
-          discount_percent: 0,
-          line_total: 0,
-          stock_level: 0
-        }
+      if (approvedFeedbacks.length > 0) {
+        form.items = approvedFeedbacks.map((feedback: any) => {
+          const rfqItem = feedback?.rfq_item || {}
+          const product = rfqItem?.product || {}
+          return {
+            id: `rfq-feedback-${feedback.id}`,
+            product_id: rfqItem.product_id || product.id || null,
+            product_name: product.product_name || rfqItem.product_name || '',
+            quantity_ordered: rfqItem.quantity || 1,
+            unit_cost: parseFloat(feedback.quoted_price || 0) || 0,
+            tax_rate: parseFloat(feedback.tax_rate ?? product.tax_rate ?? 0) || 0,
+            discount_percent: 0,
+            line_total: 0,
+            stock_level: 0
+          }
+        })
+      } else if (Array.isArray(rfq.items)) {
+        form.items = rfq.items.map((item: any) => {
+          const product = item.product || {}
+          return {
+            id: `rfq-item-${item.id || Date.now()}`,
+            product_id: item.product_id || product.id || null,
+            product_name: product.product_name || item.product_name || '',
+            quantity_ordered: item.quantity || 1,
+            unit_cost: parseFloat(item.target_price || 0) || 0,
+            tax_rate: parseFloat(item.tax_rate ?? product.tax_rate ?? 0) || 0,
+            discount_percent: 0,
+            line_total: 0,
+            stock_level: 0
+          }
       })
     }
 
@@ -494,7 +517,8 @@ const prefillFromRFQ = async (rfqId: number) => {
         .map(item => ({
           id: item.product_id,
           product_name: item.product_name || 'Unknown Product',
-          sku: item.sku || ''
+          sku: item.sku || '',
+          tax_rate: item.tax_rate ?? 0
         }))
     }
 
@@ -514,9 +538,10 @@ const prefillFromRFQ = async (rfqId: number) => {
 const loadPOForEdit = async (poId: number) => {
   try {
     isEditing.value = true
-    const response = await procurementService.getPurchaseOrder(poId)
-    const po = response.data
+      const response = await procurementService.getPurchaseOrder(poId)
+      const po = response.data
 
+      form.purchase_requisition_id = po.purchase_requisition_id || null
     // Pre-fill form with existing PO data
     form.supplier_id = po.supplier_id
     form.branch_id = po.branch_id
@@ -537,8 +562,10 @@ const loadPOForEdit = async (poId: number) => {
         variation_id: item.variation_id,
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost,
-        discount_percent: item.discount_percent
+        discount_percent: item.discount_percent,
+        tax_rate: item.tax_rate ?? 0
       }))
+      form.items.forEach((_, index) => calculateItemTotal(index))
     }
 
     // Load supplier details to auto-fill
@@ -547,7 +574,7 @@ const loadPOForEdit = async (poId: number) => {
     }
 
     // Recalculate totals
-    calculateTotals()
+    updateTotals()
   } catch (error) {
     console.error('Failed to load PO for editing', error)
     toast.add({
@@ -573,7 +600,8 @@ const loadProductsByBranch = async (branchId: number) => {
       last_price: item.unit_cost || 0,
       quantity_on_hand: item.quantity_on_hand,
       reorder_point: item.reorder_point,
-      category_id: item.product?.category_id || item.category_id
+      category_id: item.product?.category_id || item.category_id,
+      tax_rate: item.product?.tax_rate ?? item.tax_rate ?? 0
     })).filter((p: any) => !!p.id)
 
     if (products.value.length === 0) {
@@ -585,7 +613,8 @@ const loadProductsByBranch = async (branchId: number) => {
         sku: product.sku || '',
         stock_level: product.stock_level || 0,
         last_price: product.base_price || 0,
-        category_id: product.category_id
+      category_id: product.category_id,
+      tax_rate: product.tax_rate ?? 0
       }))
     }
   } catch (error) {
@@ -608,6 +637,27 @@ watch(
       products.value = []
     }
   }
+)
+
+watch(
+  () => form.discount_amount,
+  () => {
+    updateTotals()
+  }
+)
+
+watch(
+  () => form.items.map((item) => ({
+    id: item.id,
+    quantity: item.quantity_ordered,
+    unit_cost: item.unit_cost,
+    discount: item.discount_percent,
+    tax_rate: item.tax_rate
+  })),
+  () => {
+    form.items.forEach((_, index) => calculateItemTotal(index))
+  },
+  { deep: true }
 )
 
 const onSupplierChange = async () => {
@@ -648,6 +698,7 @@ const onProductChange = (index: number, productId: any) => {
         form.items[index].product_name = product.product_name
         form.items[index].stock_level = product.stock_level || 0
         form.items[index].unit_cost = product.last_price || 0
+        form.items[index].tax_rate = product.tax_rate ?? 0
       }
     }
   }
@@ -661,6 +712,7 @@ const addLineItem = () => {
     quantity_ordered: 1,
     unit_cost: 0,
     discount_percent: 0,
+    tax_rate: 0,
     line_total: 0
   })
 }
@@ -689,6 +741,7 @@ const calculateItemTotal = (index: number) => {
 const updateTotals = () => {
   const totalsResult = calculateTotals(form.items, 0, form.discount_amount)
   totals.subtotal = totalsResult.subtotal
+  totals.tax_amount = totalsResult.tax_amount
   totals.total_amount = totalsResult.total_amount
 }
 
@@ -700,6 +753,7 @@ const addQuickProduct = (product: any) => {
     quantity_ordered: product.quantity_ordered,
     unit_cost: product.unit_cost,
     discount_percent: 0,
+    tax_rate: product.tax_rate ?? 0,
     line_total: 0
   }
   form.items.push(newItem)
@@ -740,6 +794,7 @@ const submitForm = async () => {
     const payload: Record<string, any> = {
       supplier_id: form.supplier_id,
       branch_id: form.branch_id,
+      purchase_requisition_id: form.purchase_requisition_id,
       order_date: orderDate,
       discount_amount: form.discount_amount,
       notes: form.notes,
@@ -747,7 +802,8 @@ const submitForm = async () => {
         product_id: item.product_id,
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost,
-        discount_percent: item.discount_percent
+        discount_percent: item.discount_percent,
+        tax_rate: item.tax_rate ?? 0
       })),
       status: saveDraft.value ? 'draft' : 'pending_finance_approval'
     }
@@ -774,13 +830,18 @@ const submitForm = async () => {
     setTimeout(() => {
       router.push({ name: 'procurement.purchase-orders' })
     }, 1500)
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to save purchase order', error)
+    const detailMessage =
+      (error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        (isEditing.value ? 'Failed to update purchase order' : 'Failed to create purchase order'))
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: isEditing.value ? 'Failed to update purchase order' : 'Failed to create purchase order',
-      life: 3000
+      detail: detailMessage,
+      life: 5000
     })
   } finally {
     saving.value = false

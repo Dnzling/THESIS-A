@@ -17,6 +17,7 @@ class SupplierRFQFeedback extends Model
         'rfq_id',
         'rfq_item_id',
         'quoted_price',
+        'tax_rate',
         'description',
         'status',
         'reviewed_by',
@@ -27,6 +28,7 @@ class SupplierRFQFeedback extends Model
 
     protected $casts = [
         'quoted_price' => 'decimal:2',
+        'tax_rate' => 'decimal:2',
         'submitted_at' => 'datetime',
         'reviewed_at' => 'datetime',
     ];

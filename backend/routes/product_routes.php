@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ProductCatalog\ProductVariationController;
 use App\Http\Controllers\Api\ProductCatalog\TagController;
 use App\Http\Controllers\Api\ProductCatalog\AttributeController;
 use App\Http\Controllers\Api\ProductCatalog\DashboardController;
+use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 
 // Product Catalog Routes
 Route::prefix('product-catalog')->group(function () {
@@ -24,6 +25,8 @@ Route::prefix('product-catalog')->group(function () {
     // Products
     Route::apiResource('products', ProductController::class);
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
+    Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice']);
+    Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice']);
     Route::post('products/bulk/status', [ProductController::class, 'bulkStatus']);
     Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete']);
 
@@ -34,7 +37,6 @@ Route::prefix('product-catalog')->group(function () {
 
     // Product Assets (3D models, images, etc.)
     Route::prefix('assets')->group(function () {
-        Route::get('/{id}/serve', [ProductAssetController::class, 'serve']);
         Route::get('/', [ProductAssetController::class, 'index']);
         Route::get('/{id}', [ProductAssetController::class, 'show']);
         Route::post('/upload', [ProductAssetController::class, 'store']);
@@ -52,6 +54,11 @@ Route::prefix('product-catalog')->group(function () {
     Route::apiResource('tags', TagController::class);
     Route::post('tags/assign-to-product', [TagController::class, 'assignToProduct']);
     Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete']);
+
+    // Delivery Fee Settings (hybrid: fixed + distance + surcharges)
+    Route::get('delivery-fee-settings', [DeliveryFeeSettingController::class, 'show']);
+    Route::put('delivery-fee-settings', [DeliveryFeeSettingController::class, 'update']);
+    Route::post('delivery-fee-settings/estimate', [DeliveryFeeSettingController::class, 'estimate']);
 });
 
 

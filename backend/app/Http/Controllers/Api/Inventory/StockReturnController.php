@@ -8,6 +8,7 @@ use App\Http\Requests\Inventory\StockReturnRequest;
 use App\Models\Inventory\StockReturn;
 use App\Models\Inventory\StockReturnItem;
 use App\Services\Inventory\StockReturnService;
+use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -128,7 +129,7 @@ class StockReturnController extends Controller
             $context = $this->getUserContext();
             $data = $request->validated();
             $data['store_id'] = $context['store_id'];
-            $data['requested_by'] = auth()->id();
+            $data['requested_by'] = EmployeeContext::currentEmployeeId();
 
             $return = $this->stockReturnService->createReturn($data);
 
@@ -298,7 +299,7 @@ class StockReturnController extends Controller
             ]);
 
             $return = $this->stockReturnService->approveReturn($return, [
-                'approved_by' => auth()->id(),
+                'approved_by' => EmployeeContext::currentEmployeeId(),
                 'notes' => $request->notes,
             ]);
 
@@ -376,7 +377,7 @@ class StockReturnController extends Controller
             ]);
 
             $return = $this->stockReturnService->shipReturn($return, [
-                'shipped_by' => auth()->id(),
+                'shipped_by' => EmployeeContext::currentEmployeeId(),
                 ...$request->only(['vehicle_type', 'driver_name', 'driver_contact', 'tracking_number']),
             ]);
 
@@ -410,7 +411,7 @@ class StockReturnController extends Controller
             }
 
             $return = $this->stockReturnService->receiveReturn($return, [
-                'received_by' => auth()->id(),
+                'received_by' => EmployeeContext::currentEmployeeId(),
             ]);
 
             return response()->json([

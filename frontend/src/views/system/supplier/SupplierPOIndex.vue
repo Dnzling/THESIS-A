@@ -1,149 +1,327 @@
 <template>
-  <div class="supplier-po-index">
+  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+    <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
-     <div class="text-2xl font-semibold">Purchase Orders</div>
+      <div>
+        <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">Purchase Orders</h1>
+        <p class="text-sm text-gray-500 mt-1">Manage and track all your purchase orders</p>
+      </div>
     </div>
 
-    <!-- Filters -->
-    <Card class="mb-6">
+    <!-- iOS-style Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <template #content>
+          <div class="p-5">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Total POs</span>
+              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                <i class="pi pi-file text-blue-600 text-sm"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-semibold text-gray-900">{{ stats.total }}</p>
+          </div>
+        </template>
+      </Card>
+
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <template #content>
+          <div class="p-5">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Accepted</span>
+              <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                <i class="pi pi-check-circle text-green-600 text-sm"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-semibold text-gray-900">{{ stats.accepted }}</p>
+          </div>
+        </template>
+      </Card>
+
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <template #content>
+          <div class="p-5">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">In Transit</span>
+              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                <i class="pi pi-truck text-orange-600 text-sm"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-semibold text-gray-900">{{ stats.inTransit }}</p>
+          </div>
+        </template>
+      </Card>
+
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br from-purple-500 to-purple-600">
+        <template #content>
+          <div class="p-5">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium text-purple-100 uppercase tracking-wider">Goods Received</span>
+              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                <i class="pi pi-box text-white text-sm"></i>
+              </div>
+            </div>
+            <p class="text-3xl font-bold text-white">{{ stats.goodsReceived }}</p>
+          </div>
+        </template>
+      </Card>
+    </div>
+
+    <!-- iOS-style Filters Card -->
+    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <template #header>
+        <div class="px-6 pt-6">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+              <i class="pi pi-filter text-purple-600 text-sm"></i>
+            </div>
+            <h2 class="text-lg font-semibold text-gray-900">Filter Purchase Orders</h2>
+          </div>
+        </div>
+      </template>
+      
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label class="block text-sm font-medium mb-2">Search by PO Number</label>
-            <InputText 
-              v-model="searchQuery"
-              placeholder="Search"
-              class="w-full"
-              @input="onSearch"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-2">Filter by Status</label>
-            <Select 
-              v-model="statusFilter"
-              :options="statusOptions"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="All Statuses"
-              class="w-full"
-              @change="onFilterChange"
-            />
-          </div>
-          <div class="flex items-end">
-            <Button 
-              label="Reset"
-              icon="pi pi-times"
-              @click="resetFilters"
-              class="p-button-secondary w-full"
-            />
+        <div class="p-6 pt-2">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Search Input -->
+            <div class="md:col-span-2 space-y-2">
+              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Search</label>
+              <div class="relative">
+                <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  placeholder="Search by PO number"
+                  class="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  @input="onSearch"
+                />
+              </div>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</label>
+              <select
+                v-model="statusFilter"
+                class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                @change="onFilterChange"
+              >
+                <option value="">All Statuses</option>
+                <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+
+            <!-- Reset Button -->
+            <div class="flex items-end">
+              <button
+                @click="resetFilters"
+                class="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2 border border-gray-200"
+              >
+                <i class="pi pi-times"></i>
+                <span>Reset</span>
+              </button>
+            </div>
           </div>
         </div>
       </template>
     </Card>
 
-    <!-- PO Table -->
-    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-      <template #content>
-        <div v-if="loading" class="space-y-3">
-          <Skeleton v-for="i in 6" :key="i" height="64px" class="rounded-xl" />
+    <!-- POs Table Card -->
+    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <template #header>
+        <div class="px-6 pt-6">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+              <i class="pi pi-list text-blue-600 text-sm"></i>
+            </div>
+            <h2 class="text-lg font-semibold text-gray-900">Purchase Orders</h2>
+          </div>
         </div>
-        <DataTable
-          v-else
-          :value="pos"
-          :paginator="true"
-          :first="first"
-          :rows="rows"
-          :totalRecords="totalRecords"
-          :lazy="true"
-          dataKey="id"
-          @page="onPageChange"
-          @row-click="(event) => viewDetail(event.data.id, event.data.status)"
-          class="w-full"
-        >
-          <template #empty>
-            <div class="text-center text-gray-500 py-6">No purchase orders available.</div>
-          </template>
-          <Column header="PO">
-            <template #body="{ data }">
-              <div>
-                <div class="font-semibold">#{{ data.po_number }}</div>
-                <div class="text-xs text-gray-500">{{ formatDate(data.created_at) }}</div>
+      </template>
+
+      <template #content>
+        <div class="p-6 pt-2">
+          <!-- Loading State -->
+          <div v-if="loading" class="space-y-3">
+            <div v-for="i in 5" :key="i" class="bg-gray-50 rounded-xl p-4">
+              <div class="grid grid-cols-6 gap-4">
+                <Skeleton width="120px" height="20px" />
+                <Skeleton width="60px" height="20px" />
+                <Skeleton width="80px" height="20px" />
+                <Skeleton width="100px" height="20px" />
+                <Skeleton width="100px" height="20px" />
+                <Skeleton width="140px" height="20px" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Data Table -->
+          <DataTable
+            v-else
+            :value="pos"
+            :paginator="true"
+            :first="first"
+            :rows="rows"
+            :totalRecords="totalRecords"
+            :lazy="true"
+            dataKey="id"
+            @page="onPageChange"
+            class="p-datatable-sm"
+            stripedRows
+            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
+            :rowsPerPageOptions="[5, 10, 20, 50]"
+          >
+            <!-- PO Number Column -->
+            <Column header="PO" style="min-width: 140px">
+              <template #body="{ data }">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
+                    <i class="pi pi-file text-blue-600 text-xs"></i>
+                  </div>
+                  <div>
+                    <div class="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer" @click="viewDetail(data.id, getPurchaseOrderStatus(data))">
+                      #{{ getPONumber(data) }}
+                    </div>
+                    <div class="text-xs text-gray-500 mt-0.5">{{ formatDate(data.created_at) }}</div>
+                  </div>
+                </div>
+              </template>
+            </Column>
+
+            <!-- Items Column -->
+            <Column header="Items" style="width: 80px" class="text-center">
+              <template #body="{ data }">
+                <Tag :value="getItemCount(data)" severity="info" class="rounded-full text-xs px-3 py-1" />
+              </template>
+            </Column>
+
+            <!-- Total Column -->
+            <Column header="Total" style="min-width: 100px" class="text-right">
+              <template #body="{ data }">
+                <span class="font-semibold text-green-600">₱{{ formatNumber(getTotalAmount(data)) }}</span>
+              </template>
+            </Column>
+
+            <!-- Expected Delivery Column -->
+            <Column header="Expected Delivery" style="min-width: 120px">
+              <template #body="{ data }">
+                <div class="flex items-center gap-2">
+                  <i class="pi pi-calendar text-gray-400 text-xs"></i>
+                  <span class="text-gray-700">{{ formatDate(getExpectedDelivery(data)) }}</span>
+                </div>
+              </template>
+            </Column>
+
+            <!-- Status Column -->
+            <Column header="Status" style="min-width: 140px">
+              <template #body="{ data }">
+                <div class="flex items-center gap-2">
+                  <div :class="getStatusDot(getPurchaseOrderStatus(data))" class="w-2 h-2 rounded-full"></div>
+                  <Tag 
+                    :value="formatStatus(getPurchaseOrderStatus(data))" 
+                    :severity="getStatusSeverity(getPurchaseOrderStatus(data))"
+                    class="rounded-full text-xs px-3 py-1"
+                  />
+                </div>
+              </template>
+            </Column>
+
+            <!-- Goods Received Column -->
+            <!-- <Column header="Goods Received" style="min-width: 120px">
+              <template #body="{ data }">
+                <div v-if="getGoodsReceivedStatus(data) === 'confirmed'" class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                  <Tag value="Received" severity="success" class="rounded-full text-xs px-3 py-1" />
+                </div>
+                <div v-else-if="getGoodsReceivedStatus(data) === 'pending'" class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-orange-400"></div>
+                  <Tag value="Pending" severity="warning" class="rounded-full text-xs px-3 py-1" />
+                </div>
+                <span v-else class="text-xs text-gray-400">—</span>
+              </template>
+            </Column> -->
+
+            <!-- Actions Column -->
+            <Column header="Actions" style="min-width: 180px" headerStyle="text-align: center">
+              <template #body="{ data }">
+                <div class="flex items-center justify-start gap-1">
+                  <button
+                    @click.stop="viewDetail(data.id, getPurchaseOrderStatus(data))"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
+                    :class="getActionButtonClass(getPurchaseOrderStatus(data))"
+                  >
+                    <i :class="getActionIcon(getPurchaseOrderStatus(data))" class="text-xs"></i>
+                    <span>{{ getActionLabel(getPurchaseOrderStatus(data)) }}</span>
+                  </button>
+                  
+                  <button
+                    v-if="getPurchaseOrderStatus(data) === 'goods_received'"
+                    @click.stop="createInvoiceFromReceipt(data.id)"
+                    :disabled="invoiceCreatingId === data.id"
+                    class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
+                  >
+                    <i class="pi pi-file text-xs"></i>
+                    <span v-if="invoiceCreatingId === data.id">Creating...</span>
+                    <span v-else>Create Invoice</span>
+                  </button>
+                  
+                  <button
+                    v-if="getPurchaseOrderStatus(data) === 'supplier_accepted'"
+                    @click.stop="goToDeliveryForm(data.id)"
+                    class="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
+                    v-tooltip="'Record Delivery'"
+                  >
+                    <i class="pi pi-truck text-xs"></i>
+                    <span>Deliver</span>
+                  </button>
+                </div>
+              </template>
+            </Column>
+
+            <!-- Empty Template -->
+            <template #empty>
+              <div class="text-center py-12">
+                <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="pi pi-inbox text-gray-400 text-3xl"></i>
+                </div>
+                <h3 class="text-lg font-medium text-gray-700">No Purchase Orders Found</h3>
+                <p class="text-gray-500 mt-2">No purchase orders match your current filters</p>
               </div>
             </template>
-          </Column>
-          <Column header="Items">
-            <template #body="{ data }">
-              {{ data.items?.length || 0 }}
-            </template>
-          </Column>
-          <Column header="Total">
-            <template #body="{ data }">
-              ₱ {{ parseFloat(data.total_amount || 0).toFixed(2) }}
-            </template>
-          </Column>
-          <Column header="Expected Delivery">
-            <template #body="{ data }">
-              {{ formatDate(data.expected_delivery_date) }}
-            </template>
-          </Column>
-          <Column header="Status">
-            <template #body="{ data }">
-              <Tag :value="formatStatus(data.status)" :severity="getStatusSeverity(data.status)" />
-            </template>
-          </Column>
-          <Column header="Action" style="width: 180px">
-            <template #body="{ data }">
-              <div class="flex items-center gap-2">
-                <Button
-                  :label="['supplier_accepted', 'in_transit', 'delivered', 'declined_supplier'].includes(data.status) ? 'View' : 'Review'"
-                  icon="pi pi-arrow-right"
-                  text
-                  @click.stop="viewDetail(data.id, data.status)"
-                />
-                <Button
-                  v-if="data.status === 'supplier_accepted'"
-                  label="Delivery"
-                  icon="pi pi-truck"
-                  text
-                  severity="secondary"
-                  @click.stop="goToDeliveryForm(data.id)"
-                />
-              </div>
-            </template>
-          </Column>
-        </DataTable>
+          </DataTable>
+        </div>
       </template>
     </Card>
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import PageHeader from '../../../components/PageHeader.vue'
 import Skeleton from 'primevue/skeleton'
 import supplierService from '../../../services/supplier.service'
 
 const router = useRouter()
 const toast = useToast()
 const loading = ref(false)
-const pos = ref([])
+const pos = ref<any[]>([])
 const searchQuery = ref('')
 const statusFilter = ref('')
 const first = ref(0)
 const rows = ref(10)
 const totalRecords = ref(0)
-const poFeedback = ref({})
+const poFeedback = ref<Record<number, any>>({})
 const lastDeliveryPoId = ref<number | null>(null)
+const invoiceCreatingId = ref<number | null>(null)
 
 const statusOptions = [
   { label: 'All Statuses', value: '' },
@@ -154,20 +332,149 @@ const statusOptions = [
   { label: 'Supplier Accepted', value: 'supplier_accepted' },
   { label: 'In Transit', value: 'in_transit' },
   { label: 'Delivered', value: 'delivered' },
+  { label: 'Goods Received', value: 'goods_received' },
   { label: 'Rejected by Finance', value: 'rejected_finance' },
-  { label: 'Declined by Supplier', value: 'declined_supplier' },
+  { label: 'Supplier Declined', value: 'declined_supplier' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
 
-const getStatusSeverity = (status: string) => {
-  const map: { [key: string]: string } = {
+// Computed stats
+const stats = computed(() => {
+  const total = pos.value.length
+  const accepted = pos.value.filter(p => p.response === 'accepted').length
+  const inTransit = pos.value.filter(p => getPurchaseOrderStatus(p) === 'in_transit').length
+  const goodsReceived = pos.value.filter(p => p.receipt_status === 'confirmed').length
+  
+  return { total, accepted, inTransit, goodsReceived }
+})
+
+// Helper functions
+const getPONumber = (row: any): string => {
+  return row?.purchase_order?.po_number || row?.po_number || '-'
+}
+
+const getItemCount = (row: any): number => {
+  return row?.purchase_order?.items?.length || 0
+}
+
+const getTotalAmount = (row: any): number => {
+  return parseFloat(row?.purchase_order?.total_amount || row?.total_amount || 0)
+}
+
+const getExpectedDelivery = (row: any): string => {
+  return row?.purchase_order?.expected_delivery_date || row?.expected_delivery_date
+}
+
+const getPurchaseOrderStatus = (row: any): string => {
+  return row?.purchase_order?.status || row?.status || ''
+}
+
+const getGoodsReceivedStatus = (row: any): string => {
+  return row?.receipt_status || 'pending'
+}
+
+const getInvoiceStatusForPO = (row: any): string => {
+  return row?.purchase_order?.invoice_status || ''
+}
+
+const getActionLabel = (status: string): string => {
+  if (['supplier_accepted', 'in_transit', 'delivered', 'goods_received', 'declined_supplier'].includes(status)) {
+    return 'View'
+  }
+  return 'Review'
+}
+
+const getActionIcon = (status: string): string => {
+  if (['supplier_accepted', 'in_transit', 'delivered', 'goods_received', 'declined_supplier'].includes(status)) {
+    return 'pi pi-eye'
+  }
+  return 'pi pi-arrow-right'
+}
+
+const getActionButtonClass = (status: string): string => {
+  if (['supplier_accepted', 'in_transit', 'delivered', 'goods_received', 'declined_supplier'].includes(status)) {
+    return 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+  }
+  return 'bg-purple-50 hover:bg-purple-100 text-purple-700'
+}
+
+const getStatusDot = (status: string): string => {
+  const map: Record<string, string> = {
+    draft: 'bg-gray-400',
+    pending_finance_approval: 'bg-orange-400',
+    approved: 'bg-green-500',
+    sent_to_supplier: 'bg-blue-400',
+    supplier_accepted: 'bg-green-400',
+    in_transit: 'bg-purple-400',
+    delivered: 'bg-green-600',
+    goods_received: 'bg-green-600',
+    rejected_finance: 'bg-red-500',
+    declined_supplier: 'bg-red-500',
+    cancelled: 'bg-red-400',
+  }
+  return map[status] || 'bg-gray-400'
+}
+
+const createInvoiceFromReceipt = async (poId: number) => {
+  if (invoiceCreatingId.value === poId) return
+  invoiceCreatingId.value = poId
+  try {
+    const res = await supplierService.getSupplierPODetail(poId)
+    const payload = res.data || res
+    const detail = payload?.data || payload
+    const invoice = detail?.invoice
+    if (invoice?.id) {
+      toast.add({
+        severity: 'info',
+        summary: 'Invoice Exists',
+        detail: 'An invoice already exists for this PO.',
+        life: 4000,
+      })
+      return
+    }
+    const goodsReceipt = detail?.goods_receipt
+    if (!goodsReceipt?.id) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Cannot Create Invoice',
+        detail: 'No goods receipt is linked to this PO yet.',
+        life: 4000,
+      })
+      return
+    }
+    await supplierService.createInvoiceFromGoodsReceipt({
+      purchase_order_id: poId,
+      goods_receipt_id: goodsReceipt.id,
+    })
+    toast.add({
+      severity: 'success',
+      summary: 'Invoice Draft Created',
+      detail: 'A draft invoice has been created and sent to finance.',
+      life: 4000,
+    })
+    loadPOs()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Invoice Error',
+      detail: error.response?.data?.message || 'Failed to create invoice.',
+      life: 4000,
+    })
+  } finally {
+    invoiceCreatingId.value = null
+  }
+}
+
+const getStatusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' => {
+  const map: Record<string, any> = {
     draft: 'secondary',
-    pending_finance_approval: 'warning',
+    pending_finance_approval: 'warn',
     approved: 'success',
     sent_to_supplier: 'info',
     supplier_accepted: 'success',
-    in_transit: 'warning',
+    in_transit: 'warn',
     delivered: 'success',
+    goods_received: 'success',
     rejected_finance: 'danger',
     declined_supplier: 'danger',
     cancelled: 'danger',
@@ -175,7 +482,7 @@ const getStatusSeverity = (status: string) => {
   return map[status] || 'info'
 }
 
-const formatStatus = (status: string) => {
+const formatStatus = (status: string): string => {
   if (!status) return '-'
   const map: Record<string, string> = {
     draft: 'Draft',
@@ -185,16 +492,28 @@ const formatStatus = (status: string) => {
     supplier_accepted: 'Supplier Accepted',
     in_transit: 'In Transit',
     delivered: 'Delivered',
+    goods_received: 'Goods Received',
     rejected_finance: 'Rejected by Finance',
-    declined_supplier: 'Declined by Supplier',
+    declined_supplier: 'Supplier Declined',
     cancelled: 'Cancelled',
   }
   return map[status] || status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
-const formatDate = (date: string) => {
+const formatDate = (date: string): string => {
   if (!date) return '—'
-  return new Date(date).toLocaleDateString()
+  return new Date(date).toLocaleDateString('en-PH', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  })
+}
+
+const formatNumber = (value: number): string => {
+  return new Intl.NumberFormat('en-PH', { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  }).format(value || 0)
 }
 
 const loadPOs = async () => {
@@ -210,16 +529,24 @@ const loadPOs = async () => {
     if (statusFilter.value) {
       params.status = statusFilter.value
     }
+    
     const res = await supplierService.getSupplierPOs(params)
     const payload = res.data
   
-    console.log('POs loaded:', payload)
-    const pageData = payload?.data
-    pos.value = Array.isArray(pageData?.data) ? [...pageData.data] : (Array.isArray(pageData) ? [...pageData] : [])
-    totalRecords.value = Number(pageData?.total ?? (Array.isArray(pos.value) ? pos.value.length : 0))
+    // Handle paginated response
+    if (payload?.data?.data) {
+      pos.value = payload.data.data
+      totalRecords.value = payload.data.total || 0
+    } else if (Array.isArray(payload?.data)) {
+      pos.value = payload.data
+      totalRecords.value = pos.value.length
+    } else {
+      pos.value = []
+      totalRecords.value = 0
+    }
 
     // Load feedback for each PO
-    pos.value.forEach(async (po: any) => {
+    for (const po of pos.value) {
       try {
         const feedbackRes = await supplierService.getMyPOFeedbacks({ purchase_order_id: po.id })
         const feedbackPayload = feedbackRes.data || feedbackRes
@@ -230,14 +557,17 @@ const loadPOs = async () => {
       } catch (error) {
         console.error('Error loading PO feedback:', error)
       }
-    })
+    }
   } catch (error: any) {
+    console.error('Failed to load POs:', error)
     toast.add({
       severity: 'error',
       summary: 'Error',
       detail: error.response?.data?.message || 'Failed to load POs',
       life: 3000,
     })
+    pos.value = []
+    totalRecords.value = 0
   } finally {
     loading.value = false
   }
@@ -266,7 +596,7 @@ const resetFilters = () => {
 }
 
 const viewDetail = (id: number, status?: string) => {
-  if (status === 'in_transit' || status === 'delivered' || status === 'declined_supplier' || status === 'declined_by_supplier') {
+  if (['in_transit', 'delivered', 'goods_received', 'declined_supplier'].includes(status || '')) {
     router.push(`/supplier-portal/pos/${id}/view`)
     return
   }
@@ -286,8 +616,74 @@ onMounted(() => {
 })
 </script>
 
-<style scoped lang="scss">
-.supplier-po-index {
-  padding: 20px;
+<style scoped>
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* iOS-style shadows */
+:deep(.p-card) {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+:deep(.p-card .p-card-content) {
+  padding: 0;
+}
+
+:deep(.p-card .p-card-body) {
+  padding: 0;
+}
+
+/* iOS-style table */
+:deep(.p-datatable) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.p-datatable .p-datatable-thead > tr > th) {
+  background-color: #f9fafb;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+:deep(.p-datatable .p-datatable-tbody > tr > td) {
+  padding: 1rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+:deep(.p-datatable .p-datatable-tbody > tr:hover) {
+  background-color: #f9fafb;
+}
+
+/* iOS-style tags */
+:deep(.p-tag) {
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
 }
 </style>

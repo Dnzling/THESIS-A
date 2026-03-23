@@ -32,8 +32,8 @@ class UserResource extends JsonResource
             
             // Role info
 
-            'role' => $this->role->name,
-            'display_role' => $this->role->display_name,
+            'role' => $this->role?->name,
+            'display_role' => $this->role?->display_name ?? $this->role?->name ?? 'N/A',
             // 'role' => $this->whenLoaded('role', function () {
             //     return [
             //         'id' => $this->role->id,
@@ -46,7 +46,7 @@ class UserResource extends JsonResource
             'store' => $this->when($canViewSensitive && $this->relationLoaded('store'), function () {
                 return $this->store ? [
                     'id' => $this->store->id,
-                    'name' => $this->store->store_name,
+                    'name' => $this->store->store_name ?? $this->store->name ?? 'N/A',
                     'code' => $this->store->store_code,
                 ] : null;
             }),

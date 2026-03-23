@@ -560,7 +560,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
 
@@ -900,7 +900,7 @@ const fetchData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const response = await axios.get('api/shift-schedules', {
+    const response = await hrService.api.get('api/shift-schedules', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     if (response.data.success) {
@@ -996,7 +996,7 @@ const fetchAssignments = async () => {
     if (assignmentFilters.value.type) params.assignment_type = assignmentFilters.value.type
     if (assignmentFilters.value.search) params.fname = assignmentFilters.value.search
 
-    const response = await axios.get('api/shift-assignments', {
+    const response = await hrService.api.get('api/shift-assignments', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }, params
     })
     if (response.data.success) {
@@ -1026,7 +1026,7 @@ const createAssignment = async () => {
       notes: assignmentForm.value.notes
     }
 
-    const response = await axios.post('api/shift-assignments', payload, {
+    const response = await hrService.api.post('api/shift-assignments', payload, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
 
@@ -1046,7 +1046,7 @@ const createAssignment = async () => {
 const deleteAssignment = async (assignment: any) => {
   actionLoading.value = true
   try {
-    await axios.delete(`api/shift-assignments/${assignment.id}`, {
+    await hrService.api.delete(`api/shift-assignments/${assignment.id}`, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     toast.add({ severity: 'success', summary: 'Deleted', detail: 'Assignment removed successfully', life: 3000 })
@@ -1087,7 +1087,7 @@ const fetchSwapRequests = async () => {
     const params: any = {}
     if (swapFilters.value.status) params.status = swapFilters.value.status
 
-    const response = await axios.get('api/shift-swaps', {
+    const response = await hrService.api.get('api/shift-swaps', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }, params
     })
     if (response.data.success) {
@@ -1107,13 +1107,13 @@ const executeSwapAction = async (action: string, data: any) => {
 
   try {
     if (action === 'accept') {
-      await axios.put(`api/shift-swaps/${data.id}/accept`, {}, { headers })
+      await hrService.api.put(`api/shift-swaps/${data.id}/accept`, {}, { headers })
       toast.add({ severity: 'success', summary: 'Accepted', detail: 'Swap request accepted successfully', life: 3000 })
     } else if (action === 'reject') {
-      await axios.put(`api/shift-swaps/${data.id}/reject`, {}, { headers })
+      await hrService.api.put(`api/shift-swaps/${data.id}/reject`, {}, { headers })
       toast.add({ severity: 'success', summary: 'Rejected', detail: 'Swap request rejected', life: 3000 })
     } else if (action === 'cancel') {
-      await axios.put(`api/shift-swaps/${data.id}/cancel`, {}, { headers })
+      await hrService.api.put(`api/shift-swaps/${data.id}/cancel`, {}, { headers })
       toast.add({ severity: 'success', summary: 'Cancelled', detail: 'Swap request cancelled', life: 3000 })
     }
     fetchSwapRequests()
@@ -1140,7 +1140,7 @@ const createSwapRequest = async () => {
       reason: swapForm.value.reason
     }
 
-    const response = await axios.post('api/shift-swaps', payload, {
+    const response = await hrService.api.post('api/shift-swaps', payload, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
 
@@ -1180,7 +1180,7 @@ const openSwapDialog = async () => {
 const fetchShiftDefinitions = async () => {
   shiftDefsLoading.value = true
   try {
-    const response = await axios.get('api/shift-management/templates', {
+    const response = await hrService.api.get('api/shift-management/templates', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     if (response.data.success) {
@@ -1245,7 +1245,7 @@ const updateShift = async () => {
     if (editShiftForm.value.break_start) payload.break_start = editShiftForm.value.break_start
     if (editShiftForm.value.break_end) payload.break_end = editShiftForm.value.break_end
 
-    const response = await axios.put(`api/shift-management/templates/${editShiftForm.value.id}`, payload, {
+    const response = await hrService.api.put(`api/shift-management/templates/${editShiftForm.value.id}`, payload, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     if (response.data.success) {
@@ -1273,7 +1273,7 @@ const deleteShift = async () => {
   if (!selectedShiftForDelete.value) return
   deletingShift.value = true
   try {
-    await axios.delete(`api/shift-management/templates/${selectedShiftForDelete.value.id}`, {
+    await hrService.api.delete(`api/shift-management/templates/${selectedShiftForDelete.value.id}`, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     toast.add({ severity: 'success', summary: 'Deleted', detail: 'Shift deleted successfully', life: 3000 })
@@ -1299,7 +1299,7 @@ const toggleEditShiftDay = (day: string) => {
 // --- Helper API Calls ---
 const fetchMyScheduleOptions = async () => {
   try {
-    const response = await axios.get('api/shift-schedules', {
+    const response = await hrService.api.get('api/shift-schedules', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params: { status: 'scheduled' }
     })
@@ -1320,7 +1320,7 @@ const fetchMyScheduleOptions = async () => {
 
 const fetchReceiverScheduleOptions = async (receiverId: number) => {
   try {
-    const response = await axios.get('api/shift-schedules', {
+    const response = await hrService.api.get('api/shift-schedules', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params: { employee_id: receiverId, status: 'scheduled' }
     })
@@ -1338,7 +1338,7 @@ const fetchReceiverScheduleOptions = async (receiverId: number) => {
 
 const fetchEmployeeOptions = async () => {
   try {
-    const response = await axios.get('api/employees', {
+    const response = await hrService.api.get('api/employees', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params: { store_id: authStore.user?.store_id }
     })
@@ -1356,7 +1356,7 @@ const fetchEmployeeOptions = async () => {
 
 const fetchShiftOptions = async () => {
   try {
-    const response = await axios.get('api/shift-management/templates', {
+    const response = await hrService.api.get('api/shift-management/templates', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params: { store_id: authStore.user?.store_id }
     })
@@ -1396,3 +1396,4 @@ onMounted(() => {
   fetchShiftDefinitions()
 })
 </script>
+

@@ -12,7 +12,7 @@
           label="Export"
           severity="secondary"
           @click="exportReport"
-          :disabled="selectedReport === null"
+          :disabled="selectedReport === null || selectedReport === 'activity_logs'"
         />
         <Button
           icon="pi pi-refresh"
@@ -152,6 +152,7 @@
               <template #body="{ data }">
                 <span v-if="column.type === 'currency'">{{ formatCurrency(data[column.field]) }}</span>
                 <span v-else-if="column.type === 'percent'">{{ data[column.field] }}%</span>
+                <span v-else-if="column.type === 'datetime'">{{ formatDateTime(data[column.field]) }}</span>
                 <span v-else-if="column.type === 'status'">
                   <Tag :value="data[column.field]" :severity="getStatusSeverity(data[column.field])" />
                 </span>
@@ -181,7 +182,7 @@ import { ref, reactive, computed } from 'vue'
 import { Chart } from 'chart.js/auto'
 import axiosClient from '../../axios'
 
-type ReportType = 'branch_summary' | 'store_summary' | 'movements' | 'category' | 'slow_movers' | 'fast_movers' | 'transfers' | 'aging'
+type ReportType = 'branch_summary' | 'store_summary' | 'movements' | 'category' | 'slow_movers' | 'fast_movers' | 'transfers' | 'aging' | 'activity_logs'
 
 const selectedReport = ref<ReportType | null>(null)
 const loading = ref(false)
@@ -239,6 +240,12 @@ const reportTypes = [
     name: 'Stock Aging',
     description: 'Product age analysis',
     icon: 'pi pi-clock'
+  },
+  {
+    id: 'activity_logs',
+    name: 'Activity Logs',
+    description: 'Inventory action trail by users',
+    icon: 'pi pi-history'
   }
 ]
 
@@ -301,11 +308,71 @@ const getStatusSeverity = (status: string): string => {
   return severities[status] || 'info'
 }
 
+const formatDateTime = (value: any): string => {
+  if (!value) return 'N/A'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
+  return d.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 const loadSelectedReport = async () => {
   if (!selectedReport.value) return
 
   loading.value = true
   try {
+    if (selectedReport.value === 'activity_logs') {
+      const response = await axiosClient.get('/api/inventory/activity-logs', {
+        params: {
+          from_date: filters.startDate?.toISOString().split('T')[0],
+          to_date: filters.endDate?.toISOString().split('T')[0],
+          per_page: 200
+        }
+      })
+      const rows = Array.isArray(response.data?.data?.data) ? response.data.data.data : []
+      reportData.value = rows.map((row: any) => ({
+        ...row,
+        action: (row.action || '').replace('inventory.', '').replaceAll('.', ' '),
+        entity_type: (row.entity_type || '').replace('inventory.', '').replaceAll('.', ' ')
+      }))
+      reportSummary.value = [
+        { label: 'Total Logs', value: Number(response.data?.data?.total || rows.length), type: 'number' },
+        { label: 'Users Involved', value: new Set(rows.map((x: any) => x.user_id).filter(Boolean)).size, type: 'number' },
+        { label: 'Actions', value: new Set(rows.map((x: any) => x.action).filter(Boolean)).size, type: 'number' },
+      ]
+      setReportColumns()
+      chartData.value = null
+
+      const actionMap = rows.reduce((acc: Record<string, number>, row: any) => {
+        const key = row.action || 'unknown'
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      }, {})
+
+      pieChartData.value = {
+        labels: Object.keys(actionMap).map(k => k.replace('inventory.', '').replaceAll('.', ' ')),
+        datasets: [{
+          data: Object.values(actionMap),
+          backgroundColor: [
+            '#3b82f6',
+            '#ef4444',
+            '#10b981',
+            '#f59e0b',
+            '#8b5cf6',
+            '#ec4899',
+            '#06b6d4',
+            '#84cc16'
+          ]
+        }]
+      }
+      return
+    }
+
     const endpoint = `/api/inventory/reports/${selectedReport.value}`
     const response = await axiosClient.get(endpoint, {
       params: {
@@ -390,6 +457,13 @@ const setReportColumns = () => {
       { field: 'received_date', header: 'Received', width: '120px' },
       { field: 'days_in_inventory', header: 'Days In Inventory', type: 'number' },
       { field: 'inventory_value', header: 'Value', type: 'currency' }
+    ],
+    activity_logs: [
+      { field: 'created_at', header: 'Date', width: '180px', type: 'datetime' },
+      { field: 'action', header: 'Action', width: '220px' },
+      { field: 'description', header: 'Description', width: '260px' },
+      { field: 'entity_type', header: 'Entity', width: '180px' },
+      { field: 'entity_id', header: 'Source ID', width: '100px' }
     ]
   }
 

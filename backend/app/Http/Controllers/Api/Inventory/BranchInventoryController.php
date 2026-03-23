@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StoreInventoryRequest;
+use App\Models\Core\ActivityLog;
 use App\Models\Inventory\BranchInventory;
 use App\Services\Inventory\InventoryService;
 use App\Services\Inventory\AlertService;
@@ -43,14 +44,26 @@ class BranchInventoryController extends Controller
      * Display inventory for the authenticated user's branch
      * GET /api/inventory
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, ?int $branchId = null): JsonResponse
     {
         try {
             $context = $this->getUserContext();
+            $user = auth()->user();
+            $targetBranchId = (int) ($branchId ?? $context['branch_id']);
+
+            if ($targetBranchId !== (int) $context['branch_id']) {
+                $canViewAll = $user?->hasPermissionTo('inventory.branch_inventory.view_all', (int) $context['store_id']) ?? false;
+                if (!$canViewAll) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unauthorized to view other branch inventory',
+                    ], 403);
+                }
+            }
             
             $query = BranchInventory::with(['product', 'variation', 'branch'])
                 ->where('store_id', $context['store_id'])
-                ->where('branch_id', $context['branch_id']);
+                ->where('branch_id', $targetBranchId);
 
             // Filters
             if ($request->has('stock_status')) {
@@ -77,9 +90,17 @@ class BranchInventoryController extends Controller
 
             if ($request->has('search')) {
                 $search = $request->search;
-                $query->whereHas('product', function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                        ->orWhere('sku', 'LIKE', "%{$search}%");
+                $query->where(function ($builder) use ($search) {
+                    $builder->whereHas('product', function ($q) use ($search) {
+                        $q->where('product_name', 'LIKE', "%{$search}%")
+                            ->orWhere('sku', 'LIKE', "%{$search}%");
+                    })->orWhereHas('variation', function ($q) use ($search) {
+                        $q->where('variation_name', 'LIKE', "%{$search}%")
+                            ->orWhere('variation_sku', 'LIKE', "%{$search}%")
+                            ->orWhere('color', 'LIKE', "%{$search}%")
+                            ->orWhere('size', 'LIKE', "%{$search}%")
+                            ->orWhere('material', 'LIKE', "%{$search}%");
+                    });
                 });
             }
 
@@ -182,6 +203,12 @@ class BranchInventoryController extends Controller
             // Generate alerts if needed
             $this->alertService->generateAlerts($context['store_id'], $context['branch_id']);
 
+            $this->recordLog(
+                'inventory.branch_inventory.created',
+                'Created branch inventory record',
+                $inventory
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Inventory record created successfully',
@@ -208,8 +235,32 @@ class BranchInventoryController extends Controller
                 ->where('branch_id', $context['branch_id'])
                 ->findOrFail($id);
 
-            $inventory->update($request->validated());
+            $validated = $request->validated();
+
+            // Protect ledger integrity: on-hand quantity should only change through transactions.
+            if (array_key_exists('quantity_on_hand', $validated) &&
+                (int) $validated['quantity_on_hand'] !== (int) $inventory->quantity_on_hand) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Direct on-hand edits are disabled. Use Stock Adjustment, Stock Count, or Stock Transfer to change quantity.',
+                    'errors' => [
+                        'quantity_on_hand' => [
+                            'Direct on-hand edits are disabled. Use Stock Adjustment, Stock Count, or Stock Transfer to change quantity.'
+                        ]
+                    ]
+                ], 422);
+            }
+
+            unset($validated['quantity_on_hand']);
+
+            $inventory->update($validated);
             $inventory->calculateTotalValue();
+
+            $this->recordLog(
+                'inventory.branch_inventory.updated',
+                'Updated branch inventory settings',
+                $inventory
+            );
 
             return response()->json([
                 'success' => true,
@@ -250,6 +301,12 @@ class BranchInventoryController extends Controller
             }
 
             $inventory->delete();
+
+            $this->recordLog(
+                'inventory.branch_inventory.deleted',
+                'Deleted branch inventory record',
+                $inventory
+            );
 
             return response()->json([
                 'success' => true,
@@ -359,6 +416,12 @@ class BranchInventoryController extends Controller
                 
             $inventory->updateStockStatus();
 
+            $this->recordLog(
+                'inventory.branch_inventory.status_updated',
+                'Updated inventory stock status',
+                $inventory
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Stock status updated successfully',
@@ -375,5 +438,21 @@ class BranchInventoryController extends Controller
                 'message' => 'Failed to update stock status: ' . $e->getMessage(),
             ], 400);
         }
+    }
+
+    private function recordLog(string $action, string $description, BranchInventory $inventory): void
+    {
+        ActivityLog::record(
+            $action,
+            $description,
+            [
+                'branch_id' => $inventory->branch_id,
+                'product_id' => $inventory->product_id,
+                'variation_id' => $inventory->variation_id,
+                'stock_status' => $inventory->stock_status,
+            ],
+            'inventory.branch_inventory',
+            (int) $inventory->id
+        );
     }
 }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\ProductCatalog\Product;
 use App\Models\Store\Branch;
-use App\Models\Employee;
+use App\Models\Hr\Employee;
 use Carbon\Carbon;
 
 class ReorderSuggestion extends Model

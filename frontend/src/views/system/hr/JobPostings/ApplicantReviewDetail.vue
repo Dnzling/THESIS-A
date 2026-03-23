@@ -122,7 +122,6 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import hrService from '../../../../services/hr.services'
-import axiosClient from '../../../../axios'
 
 const route = useRoute()
 const router = useRouter()
@@ -181,14 +180,14 @@ const revokePreviewUrl = () => {
 
 const previewDocument = async (doc: any) => {
   revokePreviewUrl()
-  const response = await axiosClient.get(`/api/job-applications/${application.value.id}/documents/${doc.id}`, { responseType: 'blob' })
+  const response = await hrService.api.get(`/api/job-applications/${application.value.id}/documents/${doc.id}`, { responseType: 'blob' })
   previewMimeType.value = response.data.type || doc.mime_type || ''
   previewUrl.value = URL.createObjectURL(response.data)
   previewVisible.value = true
 }
 
 const downloadDocument = async (doc: any) => {
-  const response = await axiosClient.get(`/api/job-applications/${application.value.id}/documents/${doc.id}`, { responseType: 'blob' })
+  const response = await hrService.api.get(`/api/job-applications/${application.value.id}/documents/${doc.id}`, { responseType: 'blob' })
   const url = window.URL.createObjectURL(response.data)
   const link = document.createElement('a')
   link.href = url
@@ -240,3 +239,4 @@ watch(previewVisible, (visible) => {
 
 onMounted(loadApplication)
 </script>
+

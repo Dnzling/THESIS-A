@@ -284,4 +284,12 @@ class PurchaseOrder extends Model
             'actual_delivery_date' => now()->toDateString(),
         ]);
     }
+
+    public function markGoodsReceived(): void
+    {
+        $this->update([
+            'status' => 'goods_received',
+            'actual_delivery_date' => now()->toDateString(),
+        ]);
+    }
 }

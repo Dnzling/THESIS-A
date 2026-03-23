@@ -46,7 +46,8 @@ class Branch extends Model
         // 'opening_hours',
         'status',
         'branch_code',
-        'is_main_branch'
+        'is_main_branch',
+        'branch_type',
     ];
 
     /**
@@ -56,6 +57,7 @@ class Branch extends Model
      */
     protected $casts = [
         'is_main_branch' => 'boolean',
+        'branch_type' => 'string',
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
         'opening_hours' => 'array',
@@ -128,6 +130,11 @@ class Branch extends Model
     public function scopeMain($query)
     {
         return $query->where('is_main_branch', true);
+    }
+
+    public function scopeWarehouse($query)
+    {
+        return $query->where('branch_type', 'warehouse');
     }
 
     /**

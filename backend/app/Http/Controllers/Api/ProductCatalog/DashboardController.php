@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api\ProductCatalog;
 
+use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\ProductVariation;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends BaseController
@@ -78,10 +80,10 @@ class DashboardController extends BaseController
 
             // Price range distribution
             $priceRangeDistribution = [
-                ['range' => '₱0 - ₱10,000', 'count' => Product::byStore($storeId)->whereBetween('base_price', [0, 10000])->count()],
-                ['range' => '₱10,001 - ₱25,000', 'count' => Product::byStore($storeId)->whereBetween('base_price', [10001, 25000])->count()],
-                ['range' => '₱25,001 - ₱50,000', 'count' => Product::byStore($storeId)->whereBetween('base_price', [25001, 50000])->count()],
-                ['range' => '₱50,001+', 'count' => Product::byStore($storeId)->where('base_price', '>', 50000)->count()],
+                ['range' => 'PHP 0 - PHP 10,000', 'count' => Product::byStore($storeId)->whereBetween('base_price', [0, 10000])->count()],
+                ['range' => 'PHP 10,001 - PHP 25,000', 'count' => Product::byStore($storeId)->whereBetween('base_price', [10001, 25000])->count()],
+                ['range' => 'PHP 25,001 - PHP 50,000', 'count' => Product::byStore($storeId)->whereBetween('base_price', [25001, 50000])->count()],
+                ['range' => 'PHP 50,001+', 'count' => Product::byStore($storeId)->where('base_price', '>', 50000)->count()],
             ];
 
             return response()->json([
@@ -117,40 +119,75 @@ class DashboardController extends BaseController
         }
     }
 
-    public function activityLog()
+    public function activityLog(Request $request)
     {
         try {
             $storeId = $this->getStoreId();
-            $perPage = request('per_page', 10);
+            $perPage = (int) $request->input('per_page', 20);
 
-            // Get activity logs from audit trail or create mock data
-            // This assumes you have an activity_logs table
-            $activities = DB::table('activity_logs')
+            $query = ActivityLog::query()
+                ->with(['user:id,fname,lname,email'])
                 ->where('store_id', $storeId)
-                ->where('module', 'merchandising')
-                ->orderBy('created_at', 'desc')
-                ->limit($perPage)
-                ->get()
-                ->map(function ($log) {
-                    return [
-                        'id' => $log->id,
-                        'action' => $log->action,
-                        'description' => $log->description,
-                        'details' => $log->details,
-                        'user' => $log->user_name ?? 'System',
-                        'created_at' => $log->created_at
-                    ];
+                ->where(function ($q) {
+                    $q->where('entity_type', 'product_catalog')
+                        ->orWhere('action', 'like', 'merchandising.%');
                 });
 
+            if ($request->filled('action')) {
+                $query->where('action', 'like', '%' . trim((string) $request->input('action')) . '%');
+            }
+
+            if ($request->filled('entity_id')) {
+                $query->where('entity_id', (int) $request->input('entity_id'));
+            }
+
+            if ($request->filled('from')) {
+                $query->whereDate('created_at', '>=', $request->input('from'));
+            }
+
+            if ($request->filled('to')) {
+                $query->whereDate('created_at', '<=', $request->input('to'));
+            }
+
+            if ($request->filled('search')) {
+                $search = trim((string) $request->input('search'));
+                $query->where(function ($q) use ($search) {
+                    $q->where('description', 'like', "%{$search}%")
+                        ->orWhere('action', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($u) use ($search) {
+                            $u->where('fname', 'like', "%{$search}%")
+                                ->orWhere('lname', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                });
+            }
+
+            $activities = $query->orderByDesc('created_at')->paginate($perPage);
+            $activities->getCollection()->transform(function (ActivityLog $log) {
+                return [
+                    'id' => $log->id,
+                    'action' => $log->action,
+                    'description' => $log->description,
+                    'entity_type' => $log->entity_type,
+                    'entity_id' => $log->entity_id,
+                    'meta' => $log->meta,
+                    'user' => trim(($log->user?->fname ?? '') . ' ' . ($log->user?->lname ?? '')) ?: ($log->user?->email ?? 'System'),
+                    'created_at' => $log->created_at,
+                ];
+            });
+
             return response()->json([
+                'success' => true,
                 'data' => $activities
             ]);
 
         } catch (\Exception $e) {
-            // If activity_logs table doesn't exist, return empty array
             return response()->json([
-                'data' => []
-            ]);
+                'success' => false,
+                'message' => 'Failed to load activity logs',
+                'data' => [],
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 }

@@ -152,6 +152,7 @@ Route::prefix('procurement')->group(function () {
         Route::get('/exceptions', [InvoiceController::class, 'getExceptions']);
         Route::get('/{id}', [InvoiceController::class, 'show'])->whereNumber('id');
         Route::post('/', [InvoiceController::class, 'store']);
+        Route::post('/from-grn', [InvoiceController::class, 'createFromGoodsReceipt']);
         Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
         Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id');
         Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id');
@@ -176,6 +177,8 @@ Route::prefix('procurement')->group(function () {
     Route::prefix('settings')->group(function () {
         Route::get('/', [ProcurementSettingsController::class, 'show']);
         Route::put('/', [ProcurementSettingsController::class, 'update']);
+        Route::get('/presets', [ProcurementSettingsController::class, 'presets']);
+        Route::post('/apply-preset', [ProcurementSettingsController::class, 'applyPreset']);
         Route::get('/default-tiers', [ProcurementSettingsController::class, 'defaultTiers']);
         Route::post('/test-rfq', [ProcurementSettingsController::class, 'testRfq']);
         Route::post('/calculate-transfer-cost', [ProcurementSettingsController::class, 'calculateTransferCost']);

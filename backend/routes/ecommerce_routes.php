@@ -1,0 +1,26 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\Ecommerce\EcommerceController;
+
+Route::prefix('ecommerce')->group(function () {
+    Route::post('/stores/{storeId}/follow', [EcommerceController::class, 'followStore']);
+    Route::delete('/stores/{storeId}/follow', [EcommerceController::class, 'unfollowStore']);
+
+    Route::get('/cart', [EcommerceController::class, 'getCart']);
+    Route::post('/cart/items', [EcommerceController::class, 'addCartItem']);
+    Route::put('/cart/items/{itemId}', [EcommerceController::class, 'updateCartItem']);
+    Route::delete('/cart/items/{itemId}', [EcommerceController::class, 'removeCartItem']);
+    Route::post('/cart/clear', [EcommerceController::class, 'clearCart']);
+    Route::get('/address-templates', [EcommerceController::class, 'addressTemplates']);
+    Route::post('/address-templates', [EcommerceController::class, 'storeAddressTemplate']);
+    Route::put('/address-templates/{id}', [EcommerceController::class, 'updateAddressTemplate']);
+    Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
+
+    Route::post('/checkout', [EcommerceController::class, 'checkout']);
+    Route::get('/orders', [EcommerceController::class, 'orders']);
+    Route::get('/orders/{id}', [EcommerceController::class, 'orderShow']);
+    Route::post('/orders/{id}/cancel-requests', [EcommerceController::class, 'requestOrderCancellation']);
+    Route::post('/order-items/{itemId}/return-requests', [EcommerceController::class, 'requestOrderReturn']);
+    Route::post('/order-items/{itemId}/reviews', [EcommerceController::class, 'submitItemReview']);
+});

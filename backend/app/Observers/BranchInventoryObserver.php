@@ -48,6 +48,12 @@ class BranchInventoryObserver
      */
     public function updated(BranchInventory $inventory): void
     {
+        // Skip auto-adjustment log when caller already creates a specific transaction
+        // (e.g., purchase from goods receipt) to avoid duplicate TXN rows.
+        if (($inventory->skip_auto_transaction_log ?? false) === true) {
+            return;
+        }
+
         $quantityChanged = $inventory->wasChanged('quantity_on_hand');
 
         if ($quantityChanged) {

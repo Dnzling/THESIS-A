@@ -11,12 +11,18 @@ class ProcurementSettings extends Model
 {
     protected $fillable = [
         'store_id',
+        'business_size',
+        'workflow_mode',
         'rfq_policy',
         'rfq_threshold_amount',
         'rfq_minimum_suppliers',
         'rfq_response_days',
         'rfq_skip_if_contract',
         'approval_tiers',
+        'allow_self_approval',
+        'self_approval_threshold',
+        'enforce_separation_of_duties',
+        'min_approvers_required',
         'allow_branch_overrides',
         'transfer_approval_policy',
         'transfer_cost_method',
@@ -30,11 +36,17 @@ class ProcurementSettings extends Model
     ];
 
     protected $casts = [
+        'business_size' => 'string',
+        'workflow_mode' => 'string',
         'rfq_threshold_amount' => 'decimal:2',
         'rfq_minimum_suppliers' => 'integer',
         'rfq_response_days' => 'integer',
         'rfq_skip_if_contract' => 'boolean',
         'approval_tiers' => 'array',
+        'allow_self_approval' => 'boolean',
+        'self_approval_threshold' => 'decimal:2',
+        'enforce_separation_of_duties' => 'boolean',
+        'min_approvers_required' => 'integer',
         'allow_branch_overrides' => 'boolean',
         'transfer_fixed_fee' => 'decimal:2',
         'transfer_cost_per_km' => 'decimal:2',
@@ -48,6 +60,50 @@ class ProcurementSettings extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public static function businessPresets(): array
+    {
+        return [
+            'small' => [
+                'business_size' => 'small',
+                'workflow_mode' => 'simple',
+                'allow_self_approval' => true,
+                'self_approval_threshold' => 50000,
+                'enforce_separation_of_duties' => false,
+                'min_approvers_required' => 1,
+            ],
+            'medium' => [
+                'business_size' => 'medium',
+                'workflow_mode' => 'standard',
+                'allow_self_approval' => true,
+                'self_approval_threshold' => 20000,
+                'enforce_separation_of_duties' => true,
+                'min_approvers_required' => 1,
+            ],
+            'enterprise' => [
+                'business_size' => 'enterprise',
+                'workflow_mode' => 'strict',
+                'allow_self_approval' => false,
+                'self_approval_threshold' => null,
+                'enforce_separation_of_duties' => true,
+                'min_approvers_required' => 2,
+            ],
+        ];
+    }
+
+    public static function presetFor(?string $businessSize): array
+    {
+        $size = strtolower((string) ($businessSize ?: 'medium'));
+        return static::businessPresets()[$size] ?? static::businessPresets()['medium'];
+    }
+
+    public static function forStore(int $storeId): self
+    {
+        return static::firstOrCreate(
+            ['store_id' => $storeId],
+            static::presetFor('medium')
+        );
     }
 
     // Helper Methods
@@ -96,5 +152,18 @@ class ProcurementSettings extends Model
             default:
                 return 0;
         }
+    }
+
+    public function isSelfApprovalAllowedForAmount(float $amount): bool
+    {
+        if (!$this->allow_self_approval) {
+            return false;
+        }
+
+        if ($this->self_approval_threshold === null) {
+            return true;
+        }
+
+        return $amount <= (float) $this->self_approval_threshold;
     }
 }

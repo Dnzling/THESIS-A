@@ -162,6 +162,15 @@
                   @click="editPR(data.id)" v-tooltip="'Edit'" />
                 <Button v-if="data.status === 'draft'" icon="pi pi-trash" text rounded severity="danger" 
                   @click="deletePR(data.id)" v-tooltip="'Delete'" />
+                <Button
+                  v-if="data.status === 'delivered'"
+                  icon="pi pi-file"
+                  outlined
+                  rounded
+                  severity="warning"
+                  @click="createGoodsReceiptFromPR(data)"
+                  v-tooltip="'Create Goods Receipt'"
+                />
               </div>
             </template>
           </Column>
@@ -370,6 +379,42 @@ const createRfqFromRequisition = (id: number) => {
 
 const createPoFromRequisition = (id: number) => {
   router.push({ name: 'procurement.purchase-orders.create-legacy', query: { requisition_id: id } })
+}
+
+const creatingGoodsReceipt = ref(false)
+
+const createGoodsReceiptFromPR = async (pr: any) => {
+  if (creatingGoodsReceipt.value) return
+  creatingGoodsReceipt.value = true
+  try {
+    const response = await procurementService.getPurchaseRequisition(pr.id)
+    const detail = response.data
+    const po = Array.isArray(detail?.purchase_orders)
+      ? detail.purchase_orders.find((order: any) => order.status === 'delivered')
+      : null
+
+    if (!po) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Unavailable',
+        detail: 'No delivered purchase order found for this requisition.',
+        life: 3000,
+      })
+      return
+    }
+
+    router.push({
+      name: 'procurement.goods-receipts.create',
+      query: {
+        po_id: po.id,
+      },
+    })
+  } catch (error) {
+    console.error('Failed to fetch PR detail before creating GRN', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Unable to determine delivered PO', life: 3000 })
+  } finally {
+    creatingGoodsReceipt.value = false
+  }
 }
 
 onMounted(() => {

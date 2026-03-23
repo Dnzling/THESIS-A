@@ -19,12 +19,15 @@ class ReorderRule extends Model
         'branch_id',
         'rule_type',
         'trigger_type',
+        'basis_type',
         'reorder_point',
         'reorder_quantity',
         'lead_time_days',
+        'review_period_days',
         'safety_stock',
         'maximum_stock',
         'economic_order_quantity',
+        'avg_daily_demand',
         'priority',
         'auto_generate_po',
         'supplier_preferences',
@@ -39,9 +42,11 @@ class ReorderRule extends Model
         'reorder_point' => 'decimal:2',
         'reorder_quantity' => 'decimal:2',
         'lead_time_days' => 'integer',
+        'review_period_days' => 'integer',
         'safety_stock' => 'decimal:2',
         'maximum_stock' => 'decimal:2',
         'economic_order_quantity' => 'decimal:2',
+        'avg_daily_demand' => 'decimal:4',
         'auto_generate_po' => 'boolean',
         'supplier_preferences' => 'array',
         'seasonal_adjustments' => 'array',
@@ -104,6 +109,10 @@ class ReorderRule extends Model
             return false;
         }
 
+        if ($this->basis_type === 'demand_lead_time') {
+            return $currentStock <= $this->getDemandLeadTimeTrigger();
+        }
+
         switch ($this->trigger_type) {
             case 'reorder_point':
                 return $currentStock <= $this->reorder_point;
@@ -139,11 +148,35 @@ class ReorderRule extends Model
 
     public function getReorderQuantity(): float
     {
+        if ($this->basis_type === 'demand_lead_time') {
+            $target = $this->getDemandLeadTimeTargetStock();
+            return max(1, $target);
+        }
+
         if ($this->rule_type === 'demand_based' && $this->economic_order_quantity) {
             return $this->economic_order_quantity;
         }
 
         return $this->reorder_quantity ?? 0;
+    }
+
+    public function getDemandLeadTimeTrigger(): float
+    {
+        $avgDemand = (float) ($this->avg_daily_demand ?? 0);
+        $leadTime = (int) ($this->lead_time_days ?? 0);
+        $safety = (float) ($this->safety_stock ?? 0);
+
+        return max(0, ($avgDemand * max(0, $leadTime)) + $safety);
+    }
+
+    public function getDemandLeadTimeTargetStock(): float
+    {
+        $avgDemand = (float) ($this->avg_daily_demand ?? 0);
+        $leadTime = (int) ($this->lead_time_days ?? 0);
+        $review = (int) ($this->review_period_days ?? 7);
+        $safety = (float) ($this->safety_stock ?? 0);
+
+        return max(1, ($avgDemand * max(0, $leadTime + $review)) + $safety);
     }
 
     public function getSeasonalAdjustment(): float

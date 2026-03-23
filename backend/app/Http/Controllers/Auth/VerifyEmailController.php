@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use App\Mail\CustomerOtpVerificationMail;
 use App\Mail\OtpVerificationMail;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -136,8 +137,12 @@ class VerifyEmailController extends Controller
         // Generate new OTP
         $otp = $user->generateOtp();
 
-        // Send OTP email
-        Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+        // Send OTP email using customer branding for customer accounts
+        if ($user->hasRole('customer')) {
+            Mail::to($user->email)->send(new CustomerOtpVerificationMail($otp, $user->fname));
+        } else {
+            Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+        }
 
         return response()->json([
             'success' => true,

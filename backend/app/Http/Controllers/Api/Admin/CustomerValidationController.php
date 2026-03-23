@@ -21,16 +21,20 @@ class CustomerValidationController extends Controller
         $query = User::with(['role', 'customerVerificationDocuments'])
             ->whereHas('role', function ($q) {
                 $q->whereIn('name', ['customer', 'customer_user', 'client']);
-            });
+            })
+            ->with('customer');
 
         if ($status === 'pending') {
-            $query->where('customer_verification_status', 'pending');
+            $query->whereHas('customer', fn($q) => $q->where('verification_status', 'pending'));
         } elseif ($status === 'verified') {
-            $query->where('customer_verification_status', 'verified');
+            $query->whereHas('customer', fn($q) => $q->where('verification_status', 'verified'));
         } elseif ($status === 'rejected') {
-            $query->where('customer_verification_status', 'rejected');
+            $query->whereHas('customer', fn($q) => $q->where('verification_status', 'rejected'));
         } elseif ($status === 'unverified') {
-            $query->where('customer_verification_status', 'unverified');
+            $query->where(function ($q) {
+                $q->whereDoesntHave('customer')
+                  ->orWhereHas('customer', fn($sq) => $sq->where('verification_status', 'unverified'));
+            });
         }
 
         $customers = $query->latest()->paginate($request->per_page ?? 20);
@@ -50,7 +54,7 @@ class CustomerValidationController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $user = User::with(['role', 'customerVerificationDocuments'])
+        $user = User::with(['role', 'customerVerificationDocuments', 'customer'])
             ->whereHas('role', function ($q) {
                 $q->whereIn('name', ['customer', 'customer_user', 'client']);
             })
@@ -75,30 +79,34 @@ class CustomerValidationController extends Controller
             'rejection_reason' => 'nullable|string|max:500'
         ]);
 
-        $user = User::findOrFail($id);
+        $user = User::with('customer')->findOrFail($id);
+        $customer = $user->customer()->firstOrCreate(
+            ['user_id' => $user->id],
+            ['verification_status' => 'unverified']
+        );
 
         if ($validated['action'] === 'approve') {
-            $user->update([
-                'customer_verification_status' => 'verified',
-                'customer_verification_required' => false,
-                'customer_verification_rejection_reason' => null,
-                'customer_verification_reviewed_by' => auth()->id(),
-                'customer_verification_reviewed_at' => now(),
+            $customer->update([
+                'verification_status' => 'verified',
+                'verification_required' => false,
+                'verification_rejection_reason' => null,
+                'verification_reviewed_by' => auth()->id(),
+                'verification_reviewed_at' => now(),
             ]);
         } else {
-            $user->update([
-                'customer_verification_status' => 'rejected',
-                'customer_verification_required' => false,
-                'customer_verification_rejection_reason' => $validated['rejection_reason'] ?? null,
-                'customer_verification_reviewed_by' => auth()->id(),
-                'customer_verification_reviewed_at' => now(),
+            $customer->update([
+                'verification_status' => 'rejected',
+                'verification_required' => false,
+                'verification_rejection_reason' => $validated['rejection_reason'] ?? null,
+                'verification_reviewed_by' => auth()->id(),
+                'verification_reviewed_at' => now(),
             ]);
         }
 
         return response()->json([
             'success' => true,
             'message' => $validated['action'] === 'approve' ? 'Customer approved' : 'Customer rejected',
-            'data' => $user->fresh('role'),
+            'data' => $user->fresh(['role', 'customer']),
         ]);
     }
 

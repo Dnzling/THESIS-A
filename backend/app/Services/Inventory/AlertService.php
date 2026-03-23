@@ -7,6 +7,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\ReorderRule;
 use App\Models\Inventory\InventoryConfiguration;
 use App\Models\Inventory\InventoryNotification;
+use App\Support\EmployeeContext;
 use Illuminate\Database\Eloquent\Collection;
 
 class AlertService
@@ -236,7 +237,7 @@ class AlertService
 
         $alert->update([
             'is_acknowledged' => true,
-            'acknowledged_by' => auth()->id(),
+            'acknowledged_by' => EmployeeContext::currentEmployeeId(),
             'acknowledged_at' => now(),
             'acknowledgement_notes' => $notes,
         ]);
@@ -253,7 +254,7 @@ class AlertService
 
         $alert->update([
             'is_resolved' => true,
-            'resolved_by' => auth()->id(),
+            'resolved_by' => EmployeeContext::currentEmployeeId(),
             'resolved_at' => now(),
             'resolution_notes' => $notes,
         ]);

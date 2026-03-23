@@ -6,6 +6,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\InventoryConfiguration;
 use App\Models\Inventory\StockAlert;
+use App\Support\EmployeeContext;
 use Illuminate\Database\Eloquent\Collection;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -317,7 +318,7 @@ class InventoryService
             'store_id' => $storeId,
             'branch_id' => $branchId,
             'transaction_type' => $type,
-            'created_by' => auth()->id(),
+            'created_by' => EmployeeContext::currentEmployeeId(),
             'details' => $details,
         ]);
     }

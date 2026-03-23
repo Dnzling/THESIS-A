@@ -52,6 +52,7 @@ class SupplierPOFeedbackController extends Controller
                 'supplier_accepted',
                 'in_transit',
                 'delivered',
+                'goods_received',
                 'declined_supplier',
             ];
 
@@ -128,6 +129,11 @@ class SupplierPOFeedbackController extends Controller
                 ->where('purchase_order_id', $id)
                 ->first();
 
+            $goodsReceipt = \App\Models\Procurement\Receiving\GoodsReceipt::with(['items.product'])
+                ->where('purchase_order_id', $id)
+                ->latest('id')
+                ->first();
+
             $invoice = \App\Models\Procurement\Invoice\Invoice::with(['items.product'])
                 ->where('purchase_order_id', $id)
                 ->latest('id')
@@ -144,6 +150,7 @@ class SupplierPOFeedbackController extends Controller
                     'po' => $po,
                     'supplier_feedback' => $feedback,
                     'shipment' => $shipment,
+                    'goods_receipt' => $goodsReceipt,
                     'invoice' => $invoice,
                     'rejection_reason' => $rejectionReason,
                 ],
@@ -225,7 +232,7 @@ class SupplierPOFeedbackController extends Controller
 
                 ActivityLog::record(
                     'po_supplier_declined',
-                    "PO {$po->po_number} declined by supplier.",
+                    "PO {$po->po_number} Supplier Declined.",
                     [
                         'po_number' => $po->po_number,
                         'supplier_id' => $portal->supplier_id,

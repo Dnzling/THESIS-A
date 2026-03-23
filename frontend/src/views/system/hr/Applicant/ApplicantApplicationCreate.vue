@@ -123,7 +123,6 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import axiosClient from '../../../../axios'
 import hrService, { type JobPosting } from '../../../../services/hr.services'
 import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
 
@@ -179,7 +178,7 @@ const barangayOptions = computed(() =>
 // Fetch all provinces
 const fetchProvinces = async () => {
   try {
-    const response = await axiosClient.get('/api/address/provinces')
+    const response = await hrService.api.get('/api/address/provinces')
     provinces.value = response.data || []
 
     // Set Cavite as default if not set
@@ -211,7 +210,7 @@ const fetchCities = async (provinceId: string) => {
   }
 
   try {
-    const response = await axiosClient.get(`/api/address/cities/${provinceId}`)
+    const response = await hrService.api.get(`/api/address/cities/${provinceId}`)
     citiesCache.value[provinceId] = response.data || []
     cities.value = citiesCache.value[provinceId]
   } catch (error) {
@@ -228,7 +227,7 @@ const fetchBarangays = async (cityId: string) => {
   }
 
   try {
-    const response = await axiosClient.get(`/api/address/barangays/${cityId}`)
+    const response = await hrService.api.get(`/api/address/barangays/${cityId}`)
     barangays.value = response.data || []
   } catch (error) {
     console.error('Failed to fetch barangays:', error)
@@ -345,3 +344,4 @@ onMounted(async () => {
   }
 })
 </script>
+

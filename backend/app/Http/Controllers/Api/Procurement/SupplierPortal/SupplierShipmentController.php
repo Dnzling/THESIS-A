@@ -9,6 +9,7 @@ use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Services\Logistics\DistanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -178,6 +179,8 @@ class SupplierShipmentController extends Controller
             $po->id
         );
 
+        $this->updatePurchaseRequisitionStatus($po->purchase_requisition_id, 'in_transit');
+
         return response()->json([
             'success' => true,
             'message' => 'Shipment created successfully.',
@@ -241,6 +244,8 @@ class SupplierShipmentController extends Controller
 
         $shipment->purchaseOrder?->markDelivered();
 
+        $this->updatePurchaseRequisitionStatus($shipment->purchaseOrder?->purchase_requisition_id, 'delivered');
+
         ActivityLog::record(
             'po_shipment_delivered',
             "Shipment {$shipment->id} confirmed delivered for PO {$shipment->purchaseOrder?->po_number}.",
@@ -267,6 +272,29 @@ class SupplierShipmentController extends Controller
     {
         $filtered = array_values(array_filter($parts, fn ($part) => !empty($part)));
         return implode(', ', $filtered);
+    }
+
+    private function updatePurchaseRequisitionStatus(?int $requisitionId, string $status): void
+    {
+        if (!$requisitionId) {
+            return;
+        }
+
+        $pr = PurchaseRequisition::find($requisitionId);
+        if (!$pr) {
+            return;
+        }
+
+        $terminalStatuses = ['rejected', 'cancelled', 'delivered'];
+        if (in_array($pr->status, $terminalStatuses, true)) {
+            return;
+        }
+
+        if ($pr->status === $status) {
+            return;
+        }
+
+        $pr->update(['status' => $status]);
     }
 
     protected function guardedShipment(int $shipmentId): PurchaseOrderShipment

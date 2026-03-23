@@ -101,6 +101,11 @@
                 <span>Payslip History</span>
               </div>
             </Tab>
+            <Tab value="deductions">
+              <div class="flex items-center gap-2">
+                <span>Deductions</span>
+              </div>
+            </Tab>
           </TabList>
   
           <TabPanels class="p-6">
@@ -145,6 +150,10 @@
                 ref="payslipHistoryRef" 
               />
             </TabPanel>
+
+            <TabPanel value="deductions">
+              <EmployeeDeductionsTab :deductions="employeeInfo.deductions" />
+            </TabPanel>
           </TabPanels>
         </Tabs>
       </div>
@@ -156,17 +165,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
-import { useAuthStore } from '../../../stores/auth'
+import hrService from '../../../services/hr.services'
+import type { EmployeeDetails } from '../../../types/hr'
 
 // Import tab components
 import EmployeeInfoTab from './components/tabs/EmployeeInfoTab.vue'
 import EmployeeAttendanceTab from './components/tabs/EmployeeAttendanceTab.vue'
 import EmployeeLeaveTab from './components/tabs/EmployeeLeaveTab.vue'
 import PayslipHistory from './components/tabs/EmployeePayrollTab.vue'
+import EmployeeDeductionsTab from './components/tabs/EmployeeDeductionsTab.vue'
 
-const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
@@ -183,7 +192,7 @@ const error = ref('')
 
 // State
 const activeTab = ref('info')
-const employeeInfo = ref<any>({
+const employeeInfo = ref<EmployeeDetails | any>({
   basic_info: {},
   employment_details: {},
   contact_info: {},
@@ -209,14 +218,10 @@ const fetchEmployeeData = async () => {
   error.value = ''
 
   try {
-    const response = await axios.get(`api/employees/${employeeId}/details`, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
+    const response = await hrService.getEmployeeDetails(employeeId)
 
-    if (response.data.success) {
-      employeeInfo.value = response.data.data
+    if (response.success) {
+      employeeInfo.value = response.data
     }
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to fetch employee data'
@@ -346,3 +351,4 @@ onMounted(() => {
   fetchEmployeeData()
 })
 </script>
+

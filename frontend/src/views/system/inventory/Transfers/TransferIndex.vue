@@ -1,148 +1,102 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="p-6 min-h-screen">
     <div class="mb-6 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Stock Transfers</h1>
-        <p class="text-gray-600 mt-1">Manage inter-store stock movements and approvals</p>
+        <h1 class="text-lg font-bold text-gray-800">Stock Transfers</h1>
       </div>
-      <Button label="Create Transfer" icon="pi pi-plus" severity="success" @click="router.push({ name: 'inventory.transfers.create' })" />
+      <Button v-if="canCreateTransfers" label="Create Transfer" icon="pi pi-plus" severity="success"
+        @click="router.push({ name: 'inventory.transfers.create' })" size="small" />
     </div>
-
+  
     <!-- Filters -->
     <Card class="mb-6">
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Select
-            v-model="filters.status"
-            :options="statusOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="All Statuses"
-            showClear
-            @change="loadTransfers(1)"
-          />
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText
-              v-model="filters.search"
-              placeholder="Search transfer no..."
-              @keyup.enter="loadTransfers(1)"
-            />
+            <InputText v-model="filters.search" placeholder="Search transfer no..." @keyup.enter="loadTransfers(1)"  size="small" fluid/>
           </IconField>
-          <Calendar
-            v-model="filters.start_date"
-            dateFormat="yy-mm-dd"
-            placeholder="From Date"
-            @date-select="loadTransfers(1)"
-          />
-          <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters" />
+          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
+            placeholder="All Statuses" showClear @change="loadTransfers(1)" fluid  size="small" />
+          <DatePicker v-model="filters.start_date" dateFormat="yy-mm-dd" placeholder="Date Range" selectionMode="range"
+            @date-select="loadTransfers(1)" fluid size="small" showClear showIcon :maxDate="new Date()"  />
+          <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters"  size="small" />
         </div>
       </template>
     </Card>
-
+  
     <!-- Transfers Table -->
     <Card>
       <template #content>
-        <DataTable
-          :value="transfers"
-          :loading="loading"
-          paginator
-          :rows="pagination.per_page"
-          :totalRecords="pagination.total"
-          :first="(pagination.current_page - 1) * pagination.per_page"
-          @page="onPageChange"
-          dataKey="id"
-          class="p-datatable-sm"
-          stripedRows
-        >
+        <DataTable :value="transfers" :loading="loading" paginator :rows="pagination.per_page"
+          :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
+          @page="onPageChange" dataKey="id" class="p-datatable-sm" stripedRows>
           <template #empty>
             <div class="text-center py-8">
               <i class="pi pi-inbox text-4xl text-gray-400"></i>
               <p class="text-gray-600 mt-2">No transfers found</p>
             </div>
           </template>
-
+  
           <Column field="reference_no" header="Transfer No." style="width: 15%">
             <template #body="{ data }">
               <span class="font-medium">{{ data.reference_no }}</span>
             </template>
           </Column>
-
+  
           <Column field="from_branch.name" header="From Branch" style="width: 15%">
             <template #body="{ data }">
               {{ data.from_branch?.name || 'N/A' }}
             </template>
           </Column>
-
+  
           <Column field="to_branch.name" header="To Branch" style="width: 15%">
             <template #body="{ data }">
               {{ data.to_branch?.name || 'N/A' }}
             </template>
           </Column>
-
+  
           <Column field="quantity" header="Qty" style="width: 10%" />
-
+  
           <Column field="transfer_date" header="Date" style="width: 12%">
             <template #body="{ data }">
               {{ formatDate(data.transfer_date) }}
             </template>
           </Column>
-
+  
           <Column field="status" header="Status" style="width: 15%">
             <template #body="{ data }">
-              <Tag :value="data.status" :severity="statusSeverity(data.status)" />
+              <Tag :value="formatStatusLabel(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-
+  
           <Column header="Actions" style="width: 12%">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button
-                  icon="pi pi-eye"
-                  size="small"
-                  text
-                  severity="info"
+                <Button v-if="canViewTransfers" icon="pi pi-eye" size="small" text severity="info"
                   @click="router.push({ name: 'inventory.transfers.detail', params: { id: data.id } })"
-                  v-tooltip="'View details'"
-                />
-                <Button
-                  v-if="data.status === 'draft'"
-                  icon="pi pi-pencil"
-                  size="small"
-                  text
-                  severity="warning"
+                  v-tooltip="'View details'" />
+                <Button v-if="data.status === 'draft' && canCreateTransfers" icon="pi pi-pencil" size="small" text severity="warning"
                   @click="router.push({ name: 'inventory.transfers.create', query: { edit: data.id } })"
-                  v-tooltip="'Edit draft'"
-                />
-                <Button
-                  v-if="data.status === 'draft'"
-                  icon="pi pi-times"
-                  size="small"
-                  text
-                  severity="danger"
-                  @click="confirmCancel(data)"
-                  v-tooltip="'Cancel transfer'"
-                />
+                  v-tooltip="'Edit draft'" />
+                <Button v-if="data.status === 'draft' && canCancelTransfers" icon="pi pi-times" size="small" text severity="danger"
+                  @click="confirmCancel(data)" v-tooltip="'Cancel transfer'" />
               </div>
             </template>
           </Column>
         </DataTable>
-
+  
         <!-- Pagination Info -->
         <div class="flex justify-between items-center mt-4 text-sm text-gray-600">
           <div>
-            Showing {{ (pagination.current_page - 1) * pagination.per_page + 1 }} to 
-            {{ Math.min(pagination.current_page * pagination.per_page, pagination.total) }} 
+            Showing {{ (pagination.current_page - 1) * pagination.per_page + 1 }} to
+            {{ Math.min(pagination.current_page * pagination.per_page, pagination.total) }}
             of {{ pagination.total }} entries
           </div>
           <div class="flex items-center gap-2">
             <span>Rows per page:</span>
-            <Select
-              v-model="pagination.per_page"
-              :options="[10, 15, 25, 50, 100]"
-              @change="loadTransfers(1)"
-              style="width: 80px"
-            />
+            <Select v-model="pagination.per_page" :options="[10, 15, 25, 50, 100]" @change="loadTransfers(1)"
+              style="width: 80px" />
           </div>
         </div>
       </template>
@@ -157,6 +111,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import axios from 'axios'
+import { useAuthStore } from '../../../../stores/auth'
 
 interface Transfer {
   id: number
@@ -180,8 +135,13 @@ interface PaginationMeta {
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
+const authStore = useAuthStore()
 const loading = ref(false)
 const transfers = ref<Transfer[]>([])
+
+const canViewTransfers = authStore.hasPermission('inventory.transfers.view')
+const canCreateTransfers = authStore.hasPermission('inventory.transfers.create')
+const canCancelTransfers = authStore.hasPermission('inventory.transfers.cancel')
 
 const pagination = reactive<PaginationMeta>({
   current_page: 1,
@@ -200,6 +160,7 @@ const filters = reactive({
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
+  { label: 'Pending Approval', value: 'requested' },
   { label: 'Submitted', value: 'submitted' },
   { label: 'Approved', value: 'approved' },
   { label: 'Shipped', value: 'shipped' },
@@ -210,6 +171,8 @@ const statusOptions = [
 const statusSeverity = (status: string) => {
   const severities: Record<string, string> = {
     draft: 'secondary',
+    requested: 'warning',
+    pending_approval: 'warning',
     submitted: 'info',
     approved: 'warning',
     shipped: 'primary',
@@ -219,11 +182,16 @@ const statusSeverity = (status: string) => {
   return severities[status] || 'secondary'
 }
 
+const formatStatusLabel = (status: string) => {
+  if (status === 'requested' || status === 'pending_approval') return 'pending approval'
+  return status
+}
+
 const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric' 
+  return new Date(date).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
   })
 }
 
@@ -234,44 +202,50 @@ const loadTransfers = async (page = pagination.current_page) => {
       page,
       per_page: pagination.per_page
     }
-    
+
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
     if (filters.start_date) params.start_date = filters.start_date.toISOString().split('T')[0]
 
     const response = await axios.get('/api/inventory/transfers', { params })
-    
-    // Handle different API response structures
-    if (response.data?.data) {
-      // Handle { success: true, data: items, meta: pagination } format
-      if (Array.isArray(response.data.data)) {
-        transfers.value = response.data.data
-        if (response.data.meta) {
-          pagination.current_page = response.data.meta.current_page || page
-          pagination.last_page = response.data.meta.last_page || 1
-          pagination.per_page = response.data.meta.per_page || pagination.per_page
-          pagination.total = response.data.meta.total || 0
-          pagination.from = response.data.meta.from || 0
-          pagination.to = response.data.meta.to || 0
-        }
-      } 
-      // Handle Laravel pagination format { data: items, current_page, etc }
-      else if (response.data.data && response.data.current_page) {
-        transfers.value = response.data.data
-        pagination.current_page = response.data.current_page
-        pagination.last_page = response.data.last_page
-        pagination.per_page = response.data.per_page
-        pagination.total = response.data.total
-        pagination.from = response.data.from
-        pagination.to = response.data.to
+    const payload = response.data?.data ?? response.data
+
+    const rows = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload)
+        ? payload
+        : []
+
+    transfers.value = rows.map((row: any) => {
+      const items = Array.isArray(row.items) ? row.items : []
+      const totalQty = items.reduce((sum: number, item: any) => sum + Number(item.requested_quantity || item.quantity || 0), 0)
+
+      return {
+        id: Number(row.id),
+        reference_no: row.reference_no || row.transfer_no || row.transfer_number || `TRF-${row.id}`,
+        from_branch: row.from_branch || row.fromBranch || null,
+        to_branch: row.to_branch || row.toBranch || null,
+        quantity: Number(row.quantity ?? totalQty ?? 0),
+        transfer_date: row.transfer_date || row.requested_date || row.created_at || '',
+        status: row.status || 'draft'
       }
-    } 
-    // Handle direct array response
-    else if (Array.isArray(response.data)) {
-      transfers.value = response.data
-      pagination.total = response.data.length
+    })
+
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      pagination.current_page = Number(payload.current_page || page)
+      pagination.last_page = Number(payload.last_page || 1)
+      pagination.per_page = Number(payload.per_page || pagination.per_page)
+      pagination.total = Number(payload.total || transfers.value.length)
+      pagination.from = Number(payload.from || (transfers.value.length ? 1 : 0))
+      pagination.to = Number(payload.to || transfers.value.length)
+    } else {
+      pagination.current_page = 1
+      pagination.last_page = 1
+      pagination.total = transfers.value.length
+      pagination.from = transfers.value.length ? 1 : 0
+      pagination.to = transfers.value.length
     }
-    
+
   } catch (error) {
     console.error('Failed to load transfers', error)
     toast.add({
@@ -290,14 +264,13 @@ const confirmCancel = (transfer: any) => {
     message: `Are you sure you want to cancel transfer "${transfer.reference_no}"?`,
     header: 'Cancel Transfer',
     icon: 'pi pi-exclamation-triangle',
-    acceptSeverity: 'danger',
     accept: () => cancelTransfer(transfer.id)
   })
 }
 
 const cancelTransfer = async (id: number) => {
   try {
-    await axios.delete(`/api/inventory/transfers/${id}`)
+    await axios.post(`/api/inventory/transfers/${id}/cancel`)
     toast.add({
       severity: 'success',
       summary: 'Cancelled',

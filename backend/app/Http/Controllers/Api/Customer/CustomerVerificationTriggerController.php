@@ -25,7 +25,7 @@ class CustomerVerificationTriggerController extends Controller
             'success' => true,
             'triggered' => $triggered,
             'threshold' => (float) config('customer_verification.threshold', 50000),
-            'data' => $user->fresh(),
+            'data' => $user->fresh('customer'),
         ]);
     }
 }

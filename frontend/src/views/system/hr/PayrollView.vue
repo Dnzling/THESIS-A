@@ -196,7 +196,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { debounce } from 'lodash'
 
@@ -327,10 +327,9 @@ const fetchPayrollData = async () => {
   loading.value = true
   try {
     // Set auth token
-    axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
 
     // Fetch payrolls for this batch/period
-    const response = await axios.get('/api/payroll', {
+    const response = await hrService.api.get('/api/payroll', {
       params: {
         pay_period_id: batchId.value
       }
@@ -364,7 +363,7 @@ const fetchPayrollData = async () => {
 
 const fetchBatchInfo = async () => {
   try {
-    const response = await axios.get(`/api/payroll/pay-periods/${batchId.value}`)
+    const response = await hrService.api.get(`/api/payroll/pay-periods/${batchId.value}`)
     if (response.data.success) {
       batchInfo.value = response.data.data
     }
@@ -525,7 +524,7 @@ const goBack = () => {
 const submitForApproval = async (item: PayrollItem) => {
   ;(item as any).submitting = true
   try {
-    await axios.post(`/api/payroll/${item.payroll_id}/submit`)
+    await hrService.api.post(`/api/payroll/${item.payroll_id}/submit`)
     item.status = 'processing'
     calculateStatistics(payrollItems.value)
     // Refresh batch info so period status badge updates
@@ -567,7 +566,7 @@ const bulkSubmitForApproval = async () => {
   bulkSubmitting.value = true
   try {
     const ids = eligibleItems.map(i => i.payroll_id).filter(Boolean)
-    const response = await axios.post('/api/payroll/bulk-submit', { payroll_ids: ids })
+    const response = await hrService.api.post('/api/payroll/bulk-submit', { payroll_ids: ids })
 
     if (response.data.success) {
       // Update local statuses
@@ -692,7 +691,7 @@ const printPayslip = (item: PayrollItem) => {
 
 const exportPayroll = async () => {
   try {
-    const response = await axios.get(`/api/payroll/pay-periods/${batchId.value}/export`, {
+    const response = await hrService.api.get(`/api/payroll/pay-periods/${batchId.value}/export`, {
       responseType: 'blob'
     })
 
@@ -770,3 +769,5 @@ onMounted(() => {
   }
 }
 </style>
+
+

@@ -144,15 +144,26 @@
               </div>
             </div>
   
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium mb-2">Quoted Price *</label>
-                <InputNumber v-model="quoteData[item.id].quoted_price" mode="currency" :currency="rfq?.currency || 'PHP'"
-                  class="w-full" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium mb-2">Description</label>
-                <InputText v-model="quoteData[item.id].description" placeholder="Additional notes" class="w-full" />
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2">Quoted Price *</label>
+              <InputNumber v-model="quoteData[item.id].quoted_price" mode="currency" :currency="rfq?.currency || 'PHP'"
+                class="w-full" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Description</label>
+              <InputText v-model="quoteData[item.id].description" placeholder="Additional notes" class="w-full" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">Tax %</label>
+              <InputNumber
+                  v-model="quoteData[item.id].tax_rate"
+                  mode="decimal"
+                  min="0"
+                  max="100"
+                  suffix="%"
+                  class="w-full"
+                />
               </div>
             </div>
           </div>
@@ -238,6 +249,7 @@ const loadRFQDetail = async () => {
         quoteData.value[item.id] = {
           quoted_price: null,
           description: '',
+          tax_rate: Number(item.product?.tax_rate ?? 0),
         }
       }
     })
@@ -245,9 +257,11 @@ const loadRFQDetail = async () => {
     // Load existing feedback
     feedback.forEach((f: any) => {
       feedbackByItemId.value[f.rfq_item_id] = f
+      const item = rfq.value.items?.find((rfqItem: any) => rfqItem.id === f.rfq_item_id)
       quoteData.value[f.rfq_item_id] = {
         quoted_price: f.quoted_price,
         description: f.description || '',
+        tax_rate: f.tax_rate ?? Number(item?.product?.tax_rate ?? 0),
       }
     })
 
@@ -298,6 +312,16 @@ const submitQuote = async () => {
       return
     }
 
+    if (quote.tax_rate == null || quote.tax_rate < 0 || quote.tax_rate > 100) {
+      toast.add({
+        severity: 'error',
+        summary: 'Invalid Tax',
+        detail: `Please provide a valid tax percentage (0-100) for item ${item?.product?.product_name || item?.id}`,
+        life: 3000,
+      })
+      return
+    }
+
     try {
       submitting.value = true
       await supplierService.submitRFQFeedback({
@@ -305,6 +329,7 @@ const submitQuote = async () => {
         rfq_item_id: parseInt(itemId),
         quoted_price: quote.quoted_price,
         description: quote.description,
+      tax_rate: quote.tax_rate,
       })
     } catch (error: any) {
       toast.add({

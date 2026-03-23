@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\Procurement\PurchaseOrder;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Procurement\StockOrder\StockOrderRequest;
 use App\Models\Core\ActivityLog;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -24,13 +26,13 @@ class PurchaseOrderController extends Controller
     {
         $user = Auth::user();
         $userStoreId = $user ? $user->store_id : null;
-        
+
         \Log::info("🔍 PO INDEX REQUEST", [
             'user_id' => $user ? $user->id : 'NOT_AUTHENTICATED',
             'user_store_id' => $userStoreId,
             'authenticated' => $user ? true : false,
         ]);
-        
+
         $query = PurchaseOrder::with(['branch', 'supplier', 'createdBy'])
             ->where('store_id', $userStoreId);
 
@@ -88,7 +90,7 @@ class PurchaseOrderController extends Controller
             'createdBy',
             'goodsReceipts'
         ])->where('store_id', auth()->user()->store_id)
-          ->findOrFail($id);
+            ->findOrFail($id);
 
         $activityLogs = ActivityLog::with('user')
             ->where('entity_type', 'purchase_order')
@@ -127,6 +129,7 @@ class PurchaseOrderController extends Controller
             'stock_order_request_ids' => 'required|array|min:1',
             'stock_order_request_ids.*' => 'exists:stock_order_requests,id',
             'supplier_id' => 'required|exists:suppliers,id',
+            'purchase_requisition_id' => 'nullable|exists:purchase_requisitions,id',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
@@ -135,6 +138,7 @@ class PurchaseOrderController extends Controller
         ] : [
             'branch_id' => 'required|exists:branches,id',
             'supplier_id' => 'required|exists:suppliers,id',
+            'purchase_requisition_id' => 'nullable|exists:purchase_requisitions,id',
             'order_date' => 'required|date',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
@@ -190,11 +194,11 @@ class PurchaseOrderController extends Controller
 
                 foreach ($stockOrderRequests as $stockRequest) {
                     $product = $stockRequest->branchInventory->product;
-                    
+
                     // Use product's unit cost as default
                     $unitCost = $product->unit_cost ?? 0;
                     $itemSubtotal = $unitCost * $stockRequest->requested_quantity;
-                    
+
                     $subtotal += $itemSubtotal;
 
                     $items[] = [
@@ -203,9 +207,10 @@ class PurchaseOrderController extends Controller
                         'variation_id' => $stockRequest->branchInventory->variation_id,
                         'quantity_ordered' => $stockRequest->requested_quantity,
                         'unit_cost' => $unitCost,
-                        'discount_percent' => 0,
-                    ];
-                }
+                    'discount_percent' => 0,
+                    'tax_rate' => $product->tax_rate ?? 0,
+                ];
+            }
 
                 $shippingCost = 0;
                 $discountAmount = $validated['discount_amount'] ?? 0;
@@ -224,6 +229,7 @@ class PurchaseOrderController extends Controller
                     'store_id' => $storeId,
                     'branch_id' => $branchId,
                     'supplier_id' => $validated['supplier_id'],
+                    'purchase_requisition_id' => $validated['purchase_requisition_id'] ?? null,
                     'stock_order_request_id' => $stockOrderRequests->first()->id,
                     'status' => $validated['status'] ?? 'pending_finance_approval',
                     'subtotal' => $subtotal,
@@ -238,14 +244,14 @@ class PurchaseOrderController extends Controller
                     'payment_terms' => $validated['payment_terms'] ?? 'net_30',
                     'order_date' => now()->toDateString(),
                     'expected_delivery_date' => null,
-                    'created_by' => auth()->id(),
+                    'created_by' => auth()->user()?->employee?->id,
                     'notes' => $validated['notes'] ?? null,
                     'terms_conditions' => $validated['terms_conditions'] ?? null,
                 ]);
 
                 // Calculate payment due date
                 $paymentTerms = $validated['payment_terms'] ?? 'net_30';
-                $paymentDueDays = match($paymentTerms) {
+                $paymentDueDays = match ($paymentTerms) {
                     'net_7' => 7,
                     'net_15' => 15,
                     'net_30' => 30,
@@ -264,12 +270,12 @@ class PurchaseOrderController extends Controller
                         'quantity_ordered' => $item['quantity_ordered'],
                         'quantity_received' => 0,
                         'quantity_cancelled' => 0,
-                        'unit_cost' => $item['unit_cost'],
-                        'tax_rate' => $item['tax_rate'],
-                        'discount_percent' => $item['discount_percent'] ?? 0,
-                        'line_total' => $item['unit_cost'] * $item['quantity_ordered'],
-                    ]);
-                }
+                    'unit_cost' => $item['unit_cost'],
+                    'discount_percent' => $item['discount_percent'] ?? 0,
+                    'line_total' => $item['unit_cost'] * $item['quantity_ordered'],
+                    'tax_rate' => $item['tax_rate'] ?? 0,
+                ]);
+            }
 
                 // Mark stock order requests as converted
                 foreach ($stockOrderRequests as $stockRequest) {
@@ -283,10 +289,14 @@ class PurchaseOrderController extends Controller
                     'purchase_order',
                     $po->id
                 );
+
+                $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'po_created');
             } else {
                 // Manual PO creation from items
                 foreach ($validated['items'] as $item) {
-                    $itemSubtotal = $item['unit_cost'] * $item['quantity_ordered'];
+                    $product = Product::find($item['product_id']);
+                    $unitCostValue = $item['unit_cost'] ?? $product?->cost_price ?? 0;
+                    $itemSubtotal = $unitCostValue * $item['quantity_ordered'];
                     if (isset($item['discount_percent'])) {
                         $itemSubtotal -= $itemSubtotal * ($item['discount_percent'] / 100);
                     }
@@ -296,9 +306,10 @@ class PurchaseOrderController extends Controller
                         'product_id' => $item['product_id'],
                         'variation_id' => $item['variation_id'] ?? null,
                         'quantity_ordered' => $item['quantity_ordered'],
-                        'unit_cost' => $item['unit_cost'],
+                        'unit_cost' => $unitCostValue,
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $itemSubtotal,
+                        'tax_rate' => $item['tax_rate'] ?? $product?->tax_rate ?? 0,
                     ];
                 }
 
@@ -316,6 +327,7 @@ class PurchaseOrderController extends Controller
                     'store_id' => $storeId,
                     'branch_id' => $validated['branch_id'],
                     'supplier_id' => $validated['supplier_id'],
+                    'purchase_requisition_id' => $validated['purchase_requisition_id'] ?? null,
                     'status' => $validated['status'] ?? 'pending_finance_approval',
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
@@ -329,13 +341,13 @@ class PurchaseOrderController extends Controller
                     'payment_terms' => $validated['payment_terms'] ?? 'net_30',
                     'order_date' => $validated['order_date'],
                     'expected_delivery_date' => null,
-                    'created_by' => auth()->id(),
+                    'created_by' => auth()->user()?->employee?->id,
                     'notes' => $validated['notes'] ?? null,
                     'terms_conditions' => $validated['terms_conditions'] ?? null,
                 ]);
 
                 $paymentTerms = $validated['payment_terms'] ?? 'net_30';
-                $paymentDueDays = match($paymentTerms) {
+                $paymentDueDays = match ($paymentTerms) {
                     'net_7' => 7,
                     'net_15' => 15,
                     'net_30' => 30,
@@ -354,9 +366,9 @@ class PurchaseOrderController extends Controller
                         'quantity_received' => 0,
                         'quantity_cancelled' => 0,
                         'unit_cost' => $item['unit_cost'],
-                        'tax_rate' => $item['tax_rate'],
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $item['line_total'],
+                        'tax_rate' => $item['tax_rate'] ?? 0,
                     ]);
                 }
 
@@ -367,6 +379,8 @@ class PurchaseOrderController extends Controller
                     'purchase_order',
                     $po->id
                 );
+
+                $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'po_created');
             }
 
             DB::commit();
@@ -376,7 +390,6 @@ class PurchaseOrderController extends Controller
                 'message' => 'Purchase order created successfully from stock order requests',
                 'data' => $po->load(['supplier', 'items.product', 'createdBy']),
             ], 201);
-
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('PO Creation Error', [
@@ -429,15 +442,15 @@ class PurchaseOrderController extends Controller
         DB::beginTransaction();
         try {
             // Update basic info
-        $po->update([
-            'branch_id' => $validated['branch_id'] ?? $po->branch_id,
-            'supplier_id' => $validated['supplier_id'] ?? $po->supplier_id,
-            'order_date' => $validated['order_date'] ?? $po->order_date,
-            'payment_terms' => $validated['payment_terms'] ?? $po->payment_terms,
-            'discount_amount' => $validated['discount_amount'] ?? $po->discount_amount,
-            'notes' => $validated['notes'] ?? $po->notes,
-            'terms_conditions' => $validated['terms_conditions'] ?? $po->terms_conditions,
-        ]);
+            $po->update([
+                'branch_id' => $validated['branch_id'] ?? $po->branch_id,
+                'supplier_id' => $validated['supplier_id'] ?? $po->supplier_id,
+                'order_date' => $validated['order_date'] ?? $po->order_date,
+                'payment_terms' => $validated['payment_terms'] ?? $po->payment_terms,
+                'discount_amount' => $validated['discount_amount'] ?? $po->discount_amount,
+                'notes' => $validated['notes'] ?? $po->notes,
+                'terms_conditions' => $validated['terms_conditions'] ?? $po->terms_conditions,
+            ]);
 
             // Update items if provided
             if (isset($validated['items'])) {
@@ -450,7 +463,7 @@ class PurchaseOrderController extends Controller
 
                 foreach ($validated['items'] as $item) {
                     $itemSubtotal = $item['unit_cost'] * $item['quantity_ordered'];
-                    
+
                     if (isset($item['discount_percent'])) {
                         $itemSubtotal -= $itemSubtotal * ($item['discount_percent'] / 100);
                     }
@@ -489,7 +502,6 @@ class PurchaseOrderController extends Controller
                 'message' => 'Purchase order updated successfully',
                 'data' => $po->fresh()->load('items.product'),
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -535,10 +547,22 @@ class PurchaseOrderController extends Controller
         $approvalPermission = $approvalPermission ?? $approvalPermissions[0];
 
         $userRole = $user->role->name ?? $user->role ?? null;
+        $settings = ProcurementSettings::forStore((int) $user->store_id);
+        $isSelfApproval = $this->isSelfApproval($po, $user);
+
+        if ($isSelfApproval && $settings->enforce_separation_of_duties) {
+            $canBypass = $settings->isSelfApprovalAllowedForAmount((float) $po->total_amount);
+            if (!$canBypass) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Self-approval is restricted by workflow settings for this amount.',
+                ], 403);
+            }
+        }
 
         // Check if this role is actually required for approval
         $requiredRoles = $po->required_approvers ?? [];
-        $requiresPermissions = collect($requiredRoles)->contains(fn ($value) => is_string($value) && str_contains($value, '.'));
+        $requiresPermissions = collect($requiredRoles)->contains(fn($value) => is_string($value) && str_contains($value, '.'));
         if ($requiresPermissions && !in_array($approvalPermission, $requiredRoles, true)) {
             return response()->json([
                 'success' => false,
@@ -577,7 +601,12 @@ class PurchaseOrderController extends Controller
         // Finance approval is final in this workflow
         if ($approvalPermission === 'finance.purchase-orders.approve') {
             $po->update(['status' => 'approved']);
+        } else {
+            $this->tryAutoFinanceApprovalForDualRole($po, $user, $settings, $isSelfApproval);
+            $po = $po->fresh();
         }
+
+        $this->enforceMinimumApprovers($po, $settings);
 
         ActivityLog::record(
             'po_approved',
@@ -625,6 +654,8 @@ class PurchaseOrderController extends Controller
             $po->id
         );
 
+        $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'rejected');
+
         return response()->json([
             'success' => true,
             'message' => 'Purchase order rejected',
@@ -667,7 +698,6 @@ class PurchaseOrderController extends Controller
                 'message' => 'Purchase order sent to supplier successfully',
                 'data' => $po->fresh(),
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -771,5 +801,88 @@ class PurchaseOrderController extends Controller
             'success' => true,
             'message' => 'Purchase order deleted successfully',
         ]);
+    }
+
+    private function setPurchaseRequisitionStatus(?int $requisitionId, string $status): void
+    {
+        if (!$requisitionId) {
+            return;
+        }
+
+        $pr = PurchaseRequisition::find($requisitionId);
+        if (!$pr) {
+            return;
+        }
+
+        $terminalStatuses = ['rejected', 'cancelled', 'delivered'];
+        if (in_array($pr->status, $terminalStatuses, true)) {
+            return;
+        }
+
+        if ($pr->status === $status) {
+            return;
+        }
+
+        $pr->update(['status' => $status]);
+    }
+
+    private function isSelfApproval(PurchaseOrder $po, $user): bool
+    {
+        $employeeId = (int) ($user?->employee?->id ?? 0);
+        return $employeeId > 0 && $employeeId === (int) ($po->created_by ?? 0);
+    }
+
+    private function tryAutoFinanceApprovalForDualRole(
+        PurchaseOrder $po,
+        $user,
+        ProcurementSettings $settings,
+        bool $isSelfApproval
+    ): void {
+        if (!$isSelfApproval) {
+            return;
+        }
+
+        if (!$settings->isSelfApprovalAllowedForAmount((float) $po->total_amount)) {
+            return;
+        }
+
+        if (!$this->userHasAnyPermission(['finance.purchase-orders.approve'], $user)) {
+            return;
+        }
+
+        $approvalsReceived = collect($po->approvals_received ?? []);
+        $alreadyFinanceApproved = $approvalsReceived
+            ->pluck('approver_permission')
+            ->contains('finance.purchase-orders.approve');
+
+        if (!$alreadyFinanceApproved) {
+            $po->addApproval(
+                'finance.purchase-orders.approve',
+                (int) $user->id,
+                (string) $user->full_name,
+                'Auto-approved by dual-role workflow policy.',
+                $user->role->name ?? null
+            );
+        }
+
+        $po->update(['status' => 'approved']);
+    }
+
+    private function enforceMinimumApprovers(PurchaseOrder $po, ProcurementSettings $settings): void
+    {
+        $minimumRequired = max(1, (int) ($settings->min_approvers_required ?? 1));
+        if ($minimumRequired <= 1) {
+            return;
+        }
+
+        $distinctApprovers = collect($po->approvals_received ?? [])
+            ->pluck('approver_id')
+            ->filter()
+            ->unique()
+            ->count();
+
+        if ($distinctApprovers < $minimumRequired) {
+            $po->update(['status' => 'pending_finance_approval']);
+        }
     }
 }

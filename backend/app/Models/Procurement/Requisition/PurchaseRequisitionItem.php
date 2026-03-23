@@ -16,12 +16,14 @@ class PurchaseRequisitionItem extends Model
         'variation_id',
         'quantity_requested',
         'estimated_unit_cost',
+        'tax_rate',
         'specifications',
     ];
 
     protected $casts = [
         'quantity_requested' => 'integer',
         'estimated_unit_cost' => 'decimal:2',
+        'tax_rate' => 'decimal:2',
     ];
 
     // Relationships
@@ -44,5 +46,10 @@ class PurchaseRequisitionItem extends Model
     public function getEstimatedTotalAttribute(): float
     {
         return $this->quantity_requested * ($this->estimated_unit_cost ?? 0);
+    }
+
+    public function getEstimatedTaxAttribute(): float
+    {
+        return $this->getEstimatedTotalAttribute() * ($this->tax_rate ?? 0) / 100;
     }
 }

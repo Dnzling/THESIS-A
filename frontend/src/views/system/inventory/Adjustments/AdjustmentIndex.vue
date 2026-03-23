@@ -1,11 +1,10 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="p-6 min-h-screen">
     <div class="mb-6 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Stock Adjustments</h1>
-        <p class="text-gray-600 mt-1">Manage and track inventory adjustments</p>
+        <h1 class="text-lg font-bold text-gray-800">Stock Adjustments</h1>
       </div>
-      <Button label="Create Adjustment" icon="pi pi-plus" severity="success"
+      <Button v-if="canCreateAdjustments" label="Create Adjustment" icon="pi pi-plus" severity="success"
         @click="router.push({ name: 'inventory.adjustments.create' })" />
     </div>
   
@@ -66,13 +65,13 @@
           <Column header="Actions" style="width: 15%">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button icon="pi pi-eye" size="small" text severity="info"
+                <Button v-if="canViewAdjustments" icon="pi pi-eye" size="small" text severity="info"
                   @click="router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })"
                   v-tooltip="'View details'" />
-                <Button v-if="data.status === 'draft'" icon="pi pi-pencil" size="small" text severity="warning"
+                <Button v-if="data.status === 'draft' && canCreateAdjustments" icon="pi pi-pencil" size="small" text severity="warning"
                   @click="router.push({ name: 'inventory.adjustments.edit', params: { id: data.id } })"
                   v-tooltip="'Edit'" />
-                <Button v-if="data.status === 'draft'" icon="pi pi-check" size="small" text severity="success"
+                <Button v-if="data.status === 'draft' && canSubmitAdjustments" icon="pi pi-check" size="small" text severity="success"
                   @click="submitAdjustment(data.id)" v-tooltip="'Submit'" />
               </div>
             </template>
@@ -88,18 +87,26 @@ import { onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
+import { useAuthStore } from '../../../../stores/auth'
 
 interface Pagination {
   current_page: number
   last_page: number
   per_page: number
   total: number
+  from?: number
+  to?: number
 }
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const adjustments = ref<any[]>([])
+
+const canViewAdjustments = authStore.hasPermission('inventory.adjustments.view')
+const canCreateAdjustments = authStore.hasPermission('inventory.adjustments.create')
+const canSubmitAdjustments = authStore.hasPermission('inventory.adjustments.submit')
 
 const pagination = reactive<Pagination>({
   current_page: 1,
@@ -139,17 +146,17 @@ const formatDate = (date: string) => {
   })
 }
 
-const capitalizeFirstLetter = (string) => {
-  if (!string) return 'N/A'
-  return string.charAt(0).toUpperCase() + string.slice(1)
+const capitalizeFirstLetter = (value?: string | null) => {
+  if (!value) return 'N/A'
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-const formatStatus = (status) => {
+const formatStatus = (status?: string | null) => {
   if (!status) return 'N/A'
   
   // Replace underscores with spaces and capitalize each word
   return status.split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }
 

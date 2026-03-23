@@ -10,6 +10,7 @@ use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
 use App\Models\ProductCatalog\Product;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -109,12 +110,32 @@ class RequestForQuotationController extends Controller
                     'reviewed_at' => now(),
                     'rejection_reason' => 'Another quote was approved for this item.',
                 ]);
+
+            $approvedSupplierId = $feedback->supplier_portal?->supplier_id;
+            if ($approvedSupplierId) {
+                DB::table('rfq_suppliers')
+                    ->where('rfq_id', $rfq->id)
+                    ->where('supplier_id', '!=', $approvedSupplierId)
+                    ->whereIn('status', ['pending', 'submitted'])
+                    ->update([
+                        'status' => 'declined',
+                        'responded_at' => now(),
+                        'decline_reason' => 'Another supplier was approved for this RFQ.',
+                    ]);
+            }
+
+            $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'supplier_selected');
         }
 
         $this->updateRfqStatus($rfq->id);
 
         if ($this->isRfqCompleted($rfq->id)) {
             $this->syncApprovedPrices($rfq->id);
+        }
+
+        $rfq->refresh();
+        if ($rfq->status === 'rejected') {
+            $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'rejected');
         }
 
         return response()->json([
@@ -147,7 +168,7 @@ class RequestForQuotationController extends Controller
             'rfq_item_id' => $feedback->rfq_item_id,
             'counter_price' => $validated['counter_price'],
             'notes' => $validated['notes'] ?? null,
-            'created_by' => auth()->user()->employee->id(),
+            'created_by' => auth()->user()?->employee?->id ?? auth()->id(),
             'status' => 'pending',
         ]);
 
@@ -297,6 +318,7 @@ class RequestForQuotationController extends Controller
 
             Product::where('id', $productId)->update([
                 'cost_price' => $feedback->quoted_price,
+                'tax_rate' => $feedback->tax_rate ?? 0,
             ]);
         }
     }
@@ -345,8 +367,8 @@ class RequestForQuotationController extends Controller
                 'instructions' => $validated['instructions'] ?? null,
                 'qualification_requirements' => $validated['qualification_requirements'] ?? null,
                 'issue_date' => $validated['issue_date'],
-                'status' => 'draft',
-                'created_by' => auth()->user()->employee->id(),
+            'status' => 'draft',
+            'created_by' => auth()->user()?->employee?->id ?? auth()->id(),
             ]);
 
             // Create items
@@ -498,6 +520,7 @@ class RequestForQuotationController extends Controller
         }
 
         $rfq->update(['status' => 'pending']);
+        $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'rfq_sent');
 
         // TODO: Send email notifications to suppliers
 
@@ -651,5 +674,28 @@ class RequestForQuotationController extends Controller
             'success' => true,
             'message' => 'RFQ deleted successfully',
         ]);
+    }
+
+    private function updatePurchaseRequisitionStatus(?int $requisitionId, string $status): void
+    {
+        if (!$requisitionId) {
+            return;
+        }
+
+        $pr = PurchaseRequisition::find($requisitionId);
+        if (!$pr) {
+            return;
+        }
+
+        $terminalStatuses = ['rejected', 'cancelled', 'delivered'];
+        if (in_array($pr->status, $terminalStatuses, true)) {
+            return;
+        }
+
+        if ($pr->status === $status) {
+            return;
+        }
+
+        $pr->update(['status' => $status]);
     }
 }

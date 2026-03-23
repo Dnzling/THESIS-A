@@ -265,7 +265,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
-import axios from 'axios'
+import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 
 // Interfaces
@@ -353,7 +353,7 @@ const stats = computed(() => {
 const fetchDepartments = async () => {
   loading.value = true
   try {
-    const response = await axios.get('/api/departments', {
+    const response = await hrService.api.get('/api/departments', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     if (response.data.success) {
@@ -373,7 +373,7 @@ const fetchDepartments = async () => {
 
 const fetchEmployees = async () => {
   try {
-    const response = await axios.get('/api/employees', {
+    const response = await hrService.api.get('/api/employees', {
       headers: { 'Authorization': `Bearer ${authStore.token}` },
       params: { per_page: 1000 }
     })
@@ -390,7 +390,7 @@ const fetchEmployees = async () => {
 
 const fetchRoles = async () => {
   try {
-    const response = await axios.get('/api/store/roles', {
+    const response = await hrService.api.get('/api/store/roles', {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
     const data = response.data.data || response.data
@@ -486,7 +486,7 @@ const confirmDelete = (dept: Department) => {
     acceptClass: 'p-button-danger',
     accept: async () => {
       try {
-        const response = await axios.delete(`/api/departments/${dept.id}`, {
+        const response = await hrService.api.delete(`/api/departments/${dept.id}`, {
           headers: { 'Authorization': `Bearer ${authStore.token}` }
         })
         if (response.data.success) {
@@ -566,3 +566,4 @@ onMounted(() => {
   fetchRoles()
 })
 </script>
+

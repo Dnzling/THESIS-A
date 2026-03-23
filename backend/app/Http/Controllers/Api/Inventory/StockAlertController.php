@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\StockAlert;
 use App\Models\Inventory\BranchInventory;
+use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -115,7 +116,7 @@ class StockAlertController extends Controller
             ], 422);
         }
 
-        $alert->acknowledge(auth()->id());
+        $alert->acknowledge(EmployeeContext::currentEmployeeId());
 
         return response()->json([
             'success' => true,
@@ -187,7 +188,7 @@ class StockAlertController extends Controller
             ->where('status', 'active')
             ->update([
                 'status' => 'acknowledged',
-                'acknowledged_by' => auth()->id(),
+                'acknowledged_by' => EmployeeContext::currentEmployeeId(),
                 'acknowledged_at' => now(),
             ]);
 

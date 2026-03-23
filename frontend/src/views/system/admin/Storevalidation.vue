@@ -165,73 +165,57 @@
                         </div>
                     </div>
     
-                    <!-- Pending Stores Table -->
-                    <DataTable :value="filteredPendingStores" v-model:selection="selectedStores" dataKey="id"
-                        sortMode="multiple" tableStyle="min-width: 50rem" paginator :rows="10"
-                        :rowsPerPageOptions="[5, 10, 20, 50]">
-                        <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
-    
-                        <Column field="storeName" header="Store Name" sortable style="width: 20%">
-                            <template #body="slotProps">
-                                <div class="flex items-center space-x-3">
-                                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                        <i class="pi pi-store text-blue-600"></i>
-                                    </div>
-                                    <div>
-                                        <p class="font-medium">{{ slotProps.data.storeName }}</p>
-                                        <p class="text-xs text-gray-500">ID: {{ slotProps.data.storeId }}</p>
-                                    </div>
-                                </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="owner" header="Owner" sortable style="width: 15%">
-                            <template #body="slotProps">
+                    <div class="space-y-4">
+                        <div
+                            v-for="store in filteredPendingStores"
+                            :key="store.id"
+                            class="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
+                        >
+                            <div class="flex flex-wrap justify-between gap-3">
                                 <div>
-                                    <p class="font-medium">{{ slotProps.data.ownerName }}</p>
-                                    <p class="text-xs text-gray-500">{{ slotProps.data.ownerEmail }}</p>
+                                    <p class="text-xs uppercase tracking-[0.3em] text-slate-500">{{ store.storeType }}</p>
+                                    <h4 class="text-xl font-semibold text-slate-900">{{ store.storeName }}</h4>
+                                    <p class="text-xs text-slate-400">ID: {{ store.storeId }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="registrationDate" header="Submitted" sortable style="width: 12%">
-                            <template #body="slotProps">
+                                <span
+                                    class="rounded-full border px-3 py-1 text-xs font-semibold"
+                                    :class="getStoreStatusColor(store.status)"
+                                >
+                                    {{ store.status }}
+                                </span>
+                            </div>
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
                                 <div>
-                                    <p class="font-medium">{{ formatDate(slotProps.data.registrationDate) }}</p>
-                                    <p class="text-xs text-gray-500">{{ slotProps.data.waitingTime }}</p>
+                                    <p class="font-semibold text-slate-800">{{ store.ownerName }}</p>
+                                    <p class="truncate">{{ store.ownerEmail }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="storeType" header="Type" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.storeType" severity="info" rounded />
-                            </template>
-                        </Column>
-    
-                        <Column field="documentStatus" header="Documents" sortable style="width: 15%">
-                            <template #body="slotProps">
-                                <div class="flex items-center">
-                                    <i
-                                        :class="`pi ${getDocumentIcon(slotProps.data.documentStatus)} mr-2 ${getDocumentColor(slotProps.data.documentStatus)}`"></i>
-                                    <span>{{ slotProps.data.documentStatus }}</span>
+                                <div>
+                                    <p class="font-semibold text-slate-900">{{ formatDate(store.registrationDate) }}</p>
+                                    <p class="text-xs text-slate-500">{{ store.waitingTime }} waiting</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column header="Actions" style="width: 18%">
-                            <template #body="slotProps">
-                                <div class="flex space-x-2">
-                                    <Button label="Review" size="small" icon="pi pi-eye"
-                                        @click="reviewStore(slotProps.data)" />
-                                    <Button icon="pi pi-check" size="small" severity="success"
-                                        @click="approveStore(slotProps.data)" />
-                                    <Button icon="pi pi-times" size="small" severity="danger"
-                                        @click="rejectStore(slotProps.data)" />
+                                <div class="flex flex-col gap-1">
+                                    <span class="flex items-center gap-1 text-xs">
+                                        <i :class="`pi ${getDocumentIcon(store.documentStatus)} ${getDocumentColor(store.documentStatus)}`"></i>
+                                        {{ store.documentStatus }}
+                                    </span>
+                                    <span class="text-xs text-slate-500">Documents: {{ store.documents.length }}</span>
                                 </div>
-                            </template>
-                        </Column>
-                    </DataTable>
+                            </div>
+                            <div class="mt-4 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-500">
+                                <span class="flex items-center gap-1">
+                                    <i class="pi pi-map-marker"></i>{{ store.address }}
+                                </span>
+                                <Button
+                                    label="View Details"
+                                    icon="pi pi-arrow-right"
+                                    text
+                                    size="small"
+                                    severity="info"
+                                    @click="viewStore(store)"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
     
                 <!-- Approved Stores View -->
@@ -265,73 +249,56 @@
                         </div>
                     </div>
     
-                    <!-- Approved Stores Table -->
-                    <DataTable :value="filteredApprovedStores" dataKey="id" sortMode="multiple"
-                        tableStyle="min-width: 50rem" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
-                        <Column field="storeName" header="Store Name" sortable style="width: 20%">
-                            <template #body="slotProps">
-                                <div class="flex items-center space-x-3">
-                                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                                        <i class="pi pi-check-circle text-green-600"></i>
-                                    </div>
-                                    <div>
-                                        <p class="font-medium">{{ slotProps.data.storeName }}</p>
-                                        <p class="text-xs text-gray-500">ID: {{ slotProps.data.storeId }}</p>
-                                    </div>
-                                </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="owner" header="Owner" sortable style="width: 15%">
-                            <template #body="slotProps">
+                    <div class="space-y-4">
+                        <div
+                            v-for="store in filteredApprovedStores"
+                            :key="store.id"
+                            class="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
+                        >
+                            <div class="flex flex-wrap justify-between gap-3">
                                 <div>
-                                    <p class="font-medium">{{ slotProps.data.ownerName }}</p>
-                                    <p class="text-xs text-gray-500">{{ slotProps.data.ownerEmail }}</p>
+                                    <p class="text-xs uppercase tracking-[0.3em] text-slate-500">{{ store.storeType }}</p>
+                                    <h4 class="text-xl font-semibold text-slate-900">{{ store.storeName }}</h4>
+                                    <p class="text-xs text-slate-400">ID: {{ store.storeId }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="approvalDate" header="Approved On" sortable style="width: 12%">
-                            <template #body="slotProps">
+                                <span
+                                    class="rounded-full border px-3 py-1 text-xs font-semibold text-slate-600 bg-green-50 border-green-100"
+                                >
+                                    {{ store.status }}
+                                </span>
+                            </div>
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
                                 <div>
-                                    <p class="font-medium">{{ formatDate(slotProps.data.approvalDate) }}</p>
-                                    <p class="text-xs text-gray-500">By: {{ slotProps.data.approvedBy }}</p>
+                                    <p class="font-semibold text-slate-800">{{ store.ownerName }}</p>
+                                    <p class="truncate">{{ store.ownerEmail }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="storeType" header="Type" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.storeType" severity="info" rounded />
-                            </template>
-                        </Column>
-    
-                        <Column field="status" header="Status" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.status" severity="success" rounded />
-                            </template>
-                        </Column>
-    
-                        <Column field="productsCount" header="Products" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <div class="text-center">
-                                    <p class="font-bold">{{ slotProps.data.productsCount }}</p>
-                                    <p class="text-xs text-gray-500">items</p>
+                                <div>
+                                    <p class="font-semibold text-slate-900">{{ formatDate(store.approvalDate) }}</p>
+                                    <p class="text-xs text-slate-500">Approved by {{ store.approvedBy }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column header="Actions" style="width: 13%">
-                            <template #body="slotProps">
-                                <div class="flex space-x-2">
-                                    <Button icon="pi pi-eye" size="small" severity="info"
-                                        @click="viewStore(slotProps.data)" />
-                                    <Button icon="pi pi-ban" size="small" severity="danger"
-                                        @click="suspendStore(slotProps.data)" />
+                                <div class="flex flex-col gap-1">
+                                    <span class="text-xs text-slate-500">
+                                        <i class="pi pi-check-circle text-green-500"></i>
+                                        Products: {{ store.productsCount }}
+                                    </span>
+                                    <span class="text-xs text-slate-500">Revenue: PHP {{ store.revenue.toLocaleString() }}</span>
                                 </div>
-                            </template>
-                        </Column>
-                    </DataTable>
+                            </div>
+                            <div class="mt-4 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-500">
+                                <span class="flex items-center gap-1">
+                                    <i class="pi pi-map-marker"></i>{{ store.address }}
+                                </span>
+                                <Button
+                                    label="View Details"
+                                    icon="pi pi-arrow-right"
+                                    text
+                                    size="small"
+                                    severity="info"
+                                    @click="viewStore(store)"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
     
                 <!-- Rejected Stores View -->
@@ -365,67 +332,56 @@
                         </div>
                     </div>
     
-                    <!-- Rejected Stores Table -->
-                    <DataTable :value="filteredRejectedStores" dataKey="id" sortMode="multiple"
-                        tableStyle="min-width: 50rem" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
-                        <Column field="storeName" header="Store Name" sortable style="width: 20%">
-                            <template #body="slotProps">
-                                <div class="flex items-center space-x-3">
-                                    <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                                        <i class="pi pi-times-circle text-red-600"></i>
-                                    </div>
-                                    <div>
-                                        <p class="font-medium">{{ slotProps.data.storeName }}</p>
-                                        <p class="text-xs text-gray-500">ID: {{ slotProps.data.storeId }}</p>
-                                    </div>
-                                </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="owner" header="Owner" sortable style="width: 15%">
-                            <template #body="slotProps">
+                    <div class="space-y-4">
+                        <div
+                            v-for="store in filteredRejectedStores"
+                            :key="store.id"
+                            class="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
+                        >
+                            <div class="flex flex-wrap justify-between gap-3">
                                 <div>
-                                    <p class="font-medium">{{ slotProps.data.ownerName }}</p>
-                                    <p class="text-xs text-gray-500">{{ slotProps.data.ownerEmail }}</p>
+                                    <p class="text-xs uppercase tracking-[0.3em] text-slate-500">{{ store.storeType }}</p>
+                                    <h4 class="text-xl font-semibold text-slate-900">{{ store.storeName }}</h4>
+                                    <p class="text-xs text-slate-400">ID: {{ store.storeId }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="rejectionDate" header="Rejected On" sortable style="width: 12%">
-                            <template #body="slotProps">
+                                <span
+                                    class="rounded-full border px-3 py-1 text-xs font-semibold text-slate-600 bg-red-50 border-red-100"
+                                >
+                                    {{ store.status }}
+                                </span>
+                            </div>
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
                                 <div>
-                                    <p class="font-medium">{{ formatDate(slotProps.data.rejectionDate) }}</p>
-                                    <p class="text-xs text-gray-500">By: {{ slotProps.data.rejectedBy }}</p>
+                                    <p class="font-semibold text-slate-800">{{ store.ownerName }}</p>
+                                    <p class="truncate">{{ store.ownerEmail }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="rejectionReason" header="Reason" sortable style="width: 20%">
-                            <template #body="slotProps">
-                                <div class="flex items-start">
-                                    <i class="pi pi-info-circle text-red-500 mt-1 mr-2"></i>
-                                    <span class="text-sm">{{ slotProps.data.rejectionReason }}</span>
+                                <div>
+                                    <p class="font-semibold text-slate-900">{{ formatDate(store.rejectionDate) }}</p>
+                                    <p class="text-xs text-slate-500">By: {{ store.rejectedBy }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="status" header="Status" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.status" severity="danger" rounded />
-                            </template>
-                        </Column>
-    
-                        <Column header="Actions" style="width: 13%">
-                            <template #body="slotProps">
-                                <div class="flex space-x-2">
-                                    <Button icon="pi pi-eye" size="small" severity="info"
-                                        @click="viewRejectedStore(slotProps.data)" />
-                                    <Button label="Re-review" size="small" icon="pi pi-redo"
-                                        @click="rereviewStore(slotProps.data)" />
+                                <div class="flex flex-col gap-1">
+                                    <span class="text-xs text-slate-500">Reason: {{ store.rejectionReason || '—' }}</span>
+                                    <span class="text-xs text-slate-500 flex items-center gap-1">
+                                        <i class="pi pi-times-circle text-red-500"></i>
+                                        {{ store.documentStatus }}
+                                    </span>
                                 </div>
-                            </template>
-                        </Column>
-                    </DataTable>
+                            </div>
+                            <div class="mt-4 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-500">
+                                <span class="flex items-center gap-1">
+                                    <i class="pi pi-map-marker"></i>{{ store.address }}
+                                </span>
+                                <Button
+                                    label="View Details"
+                                    icon="pi pi-arrow-right"
+                                    text
+                                    size="small"
+                                    severity="info"
+                                    @click="viewRejectedStore(store)"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
     
                 <!-- All Stores View -->
@@ -458,75 +414,56 @@
                         </div>
                     </div>
     
-                    <!-- All Stores Table -->
-                    <DataTable :value="filteredAllStores" dataKey="id" sortMode="multiple" tableStyle="min-width: 50rem"
-                        paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
-                        <Column field="storeName" header="Store Name" sortable style="width: 20%">
-                            <template #body="slotProps">
-                                <div class="flex items-center space-x-3">
-                                    <div
-                                        :class="`w-10 h-10 rounded-lg flex items-center justify-center ${getStoreStatusColor(slotProps.data.status)}`">
-                                        <i :class="`pi ${getStoreStatusIcon(slotProps.data.status)}`"></i>
-                                    </div>
-                                    <div>
-                                        <p class="font-medium">{{ slotProps.data.storeName }}</p>
-                                        <p class="text-xs text-gray-500">ID: {{ slotProps.data.storeId }}</p>
-                                    </div>
-                                </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="owner" header="Owner" sortable style="width: 15%">
-                            <template #body="slotProps">
+                    <div class="space-y-4">
+                        <div
+                            v-for="store in filteredAllStores"
+                            :key="store.id"
+                            class="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
+                        >
+                            <div class="flex flex-wrap justify-between gap-3">
                                 <div>
-                                    <p class="font-medium">{{ slotProps.data.ownerName }}</p>
-                                    <p class="text-xs text-gray-500">{{ slotProps.data.ownerEmail }}</p>
+                                    <p class="text-xs uppercase tracking-[0.3em] text-slate-500">{{ store.storeType }}</p>
+                                    <h4 class="text-xl font-semibold text-slate-900">{{ store.storeName }}</h4>
+                                    <p class="text-xs text-slate-400">ID: {{ store.storeId }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="status" header="Status" sortable style="width: 12%">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)"
-                                    rounded />
-                            </template>
-                        </Column>
-    
-                        <Column field="storeType" header="Type" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.storeType" severity="info" rounded />
-                            </template>
-                        </Column>
-    
-                        <Column field="registrationDate" header="Registered" sortable style="width: 12%">
-                            <template #body="slotProps">
+                                <span
+                                    class="rounded-full border px-3 py-1 text-xs font-semibold text-slate-600"
+                                    :class="getStoreStatusColor(store.status)"
+                                >
+                                    {{ store.status }}
+                                </span>
+                            </div>
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
                                 <div>
-                                    <p class="font-medium">{{ formatDate(slotProps.data.registrationDate) }}</p>
-                                    <p class="text-xs text-gray-500">{{ slotProps.data.age }}</p>
+                                    <p class="font-semibold text-slate-800">{{ store.ownerName }}</p>
+                                    <p class="truncate">{{ store.ownerEmail }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column field="productsCount" header="Products" sortable style="width: 10%">
-                            <template #body="slotProps">
-                                <div class="text-center">
-                                    <p class="font-bold">{{ slotProps.data.productsCount }}</p>
-                                    <p class="text-xs text-gray-500">items</p>
+                                <div>
+                                    <p class="font-semibold text-slate-900">{{ formatDate(store.registrationDate) }}</p>
+                                    <p class="text-xs text-slate-500">{{ store.waitingTime || store.age || '—' }}</p>
                                 </div>
-                            </template>
-                        </Column>
-    
-                        <Column header="Actions" style="width: 11%">
-                            <template #body="slotProps">
-                                <div class="flex space-x-2">
-                                    <Button icon="pi pi-eye" size="small" severity="info"
-                                        @click="viewStore(slotProps.data)" />
-                                    <Button v-if="slotProps.data.status === 'Pending'" icon="pi pi-check" size="small"
-                                        severity="success" @click="approveStore(slotProps.data)" />
+                                <div class="flex flex-col gap-1">
+                                    <span class="text-xs text-slate-500">
+                                        <i class="pi pi-store text-slate-500"></i> Products: {{ store.productsCount }}
+                                    </span>
+                                    <span class="text-xs text-slate-500">Revenue: PHP {{ store.revenue.toLocaleString() }}</span>
                                 </div>
-                            </template>
-                        </Column>
-                    </DataTable>
+                            </div>
+                            <div class="mt-4 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-500">
+                                <span class="flex items-center gap-1">
+                                    <i class="pi pi-map-marker"></i>{{ store.address }}
+                                </span>
+                                <Button
+                                    label="View Details"
+                                    icon="pi pi-arrow-right"
+                                    text
+                                    size="small"
+                                    severity="info"
+                                    @click="viewStore(store)"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1414,8 +1351,9 @@ const getStatusSeverity = (status: string) => {
   }
 }
 
-const getStoreStatusIcon = (status: string) => {
-  switch (status.toLowerCase()) {
+const getStoreStatusIcon = (status: string | undefined | null) => {
+  const normalized = String(status || '').toLowerCase()
+  switch (normalized) {
     case 'pending': return 'pi-clock'
     case 'approved':
     case 'active': return 'pi-check-circle'
@@ -1425,8 +1363,9 @@ const getStoreStatusIcon = (status: string) => {
   }
 }
 
-const getStoreStatusColor = (status: string) => {
-  switch (status.toLowerCase()) {
+const getStoreStatusColor = (status: string | undefined | null) => {
+  const normalized = String(status || '').toLowerCase()
+  switch (normalized) {
     case 'pending': return 'bg-yellow-100 text-yellow-600'
     case 'approved':
     case 'active': return 'bg-green-100 text-green-600'

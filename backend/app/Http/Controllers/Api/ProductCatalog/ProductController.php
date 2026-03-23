@@ -3,11 +3,13 @@
 
 namespace App\Http\Controllers\Api\ProductCatalog;
 
+use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\PricingHistory;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
+use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -32,6 +34,18 @@ class ProductController extends BaseController
 
             if ($request->has('product_type')) {
                 $query->where('product_type', $request->product_type);
+            }
+
+            if ($request->has('stock_status')) {
+                $query->where('stock_status', $request->stock_status);
+            }
+
+            if ($request->has('is_active')) {
+                $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? $request->boolean('is_active'));
+            }
+
+            if ($request->has('price_approval_status') && $request->price_approval_status) {
+                $query->where('price_approval_status', $request->price_approval_status);
             }
 
             if ($request->boolean('featured_only')) {
@@ -107,6 +121,7 @@ class ProductController extends BaseController
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'nullable|numeric|min:0',
+                'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0',
                 'tax_rate' => 'nullable|numeric|min:0|max:100',
                 'length_cm' => 'nullable|numeric|min:0',
@@ -152,8 +167,12 @@ class ProductController extends BaseController
             $data['store_id'] = $this->getStoreId();
             $data['stock_status'] = 'In Stock';
             $data['product_type'] = $validated['product_type'] ?? 'finished_good';
+            $data = $this->applyTypeSpecificDefaults($data);
                 
                 $product = Product::create($data);
+
+                // Auto-register the new product in branch inventory for all active branches (zero stock).
+                $this->ensureBranchInventoryRowsForProduct($product->id, (int) $this->getStoreId());
 
                 // Create pricing history entry
             if (!is_null($product->base_price)) {
@@ -257,9 +276,13 @@ class ProductController extends BaseController
                                      $query->active()->with('custom3dModel');
                                  },
                                  'tags'
-                             ])
-                             ->withCount(['variations', 'assets'])
-                             ->findOrFail($id);
+            ])
+            ->withCount(['variations', 'assets'])
+            ->findOrFail($id);
+
+            $product->cost_price = $product->getRawOriginal('cost_price');
+            $product->tax_rate = $product->getRawOriginal('tax_rate');
+            $product->makeVisible(['cost_price', 'tax_rate']);
 
             // Get related products
             $product->related = $product->relatedProducts()
@@ -267,7 +290,11 @@ class ProductController extends BaseController
                                         ->strongest()
                                         ->get();
 
-            return $this->successResponse($product, 'Product retrieved successfully');
+            $payload = $product->toArray();
+            $payload['cost_price'] = $product->getRawOriginal('cost_price');
+            $payload['tax_rate'] = $product->getRawOriginal('tax_rate');
+
+            return $this->successResponse($payload, 'Product retrieved successfully');
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return $this->errorResponse('Product not found', 404);
@@ -373,10 +400,22 @@ class ProductController extends BaseController
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'sometimes|numeric|min:0',
+                'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
                 'tax_rate' => 'nullable|numeric|min:0|max:100',
+                'length_cm' => 'nullable|numeric|min:0',
+                'width_cm' => 'nullable|numeric|min:0',
+                'height_cm' => 'nullable|numeric|min:0',
+                'weight_kg' => 'nullable|numeric|min:0',
+                'assembly_required' => 'boolean',
+                'is_featured' => 'boolean',
+                'is_new_arrival' => 'boolean',
+                'is_bestseller' => 'boolean',
                 'is_active' => 'boolean',
                 'stock_status' => 'in:In Stock,Low Stock,Out of Stock,Pre-order',
+                'meta_title' => 'nullable|string|max:200',
+                'meta_description' => 'nullable|string',
+                'meta_keywords' => 'nullable|string',
                 'published_at' => 'nullable|date',
                 'price_change_reason' => 'required_if:base_price,changed|string|nullable'
             ]);
@@ -396,11 +435,44 @@ class ProductController extends BaseController
             try {
                 $oldPrice = $product->base_price;
                 $data = $validated;
-                
+                $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
+                $isFinanceApprover = $this->isFinancePriceApprover();
+
+                if ($isPriceUpdateRequested && !$isFinanceApprover) {
+                    $data = $this->removeLivePriceFields($data);
+                    $data['pending_base_price'] = array_key_exists('base_price', $validated)
+                        ? $validated['base_price']
+                        : $product->pending_base_price;
+                    $data['pending_discounted_price'] = array_key_exists('discounted_price', $validated)
+                        ? $validated['discounted_price']
+                        : $product->pending_discounted_price;
+                    $data['price_approval_status'] = 'pending';
+                    $data['price_proposed_by'] = $this->getUserId();
+                    $data['price_proposed_at'] = now();
+                    $data['price_approved_by'] = null;
+                    $data['price_approved_at'] = null;
+                    $data['price_rejected_by'] = null;
+                    $data['price_rejected_at'] = null;
+                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? null;
+                } elseif ($isPriceUpdateRequested && $isFinanceApprover) {
+                    $data['price_approval_status'] = 'approved';
+                    $data['pending_base_price'] = null;
+                    $data['pending_discounted_price'] = null;
+                    $data['price_proposed_by'] = $this->getUserId();
+                    $data['price_proposed_at'] = now();
+                    $data['price_approved_by'] = $this->getUserId();
+                    $data['price_approved_at'] = now();
+                    $data['price_rejected_by'] = null;
+                    $data['price_rejected_at'] = null;
+                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? null;
+                }
+
+                $data = $this->applyTypeSpecificDefaults($data, $product);
+
                 $product->update($data);
 
-                // Create pricing history if price changed
-                if (isset($data['base_price']) && $data['base_price'] != $oldPrice) {
+                // Create pricing history if finance directly applied price update
+                if ($isPriceUpdateRequested && $isFinanceApprover && isset($data['base_price']) && $data['base_price'] != $oldPrice) {
                     PricingHistory::create([
                         'store_id' => $this->getStoreId(),
                         'product_id' => $product->id,
@@ -415,9 +487,14 @@ class ProductController extends BaseController
 
                 DB::commit();
 
+                $fresh = $product->fresh(['category', 'subcategory']);
+                $message = ($isPriceUpdateRequested && !$isFinanceApprover)
+                    ? 'Price change submitted for finance approval'
+                    : 'Product updated successfully';
+
                 return $this->successResponse(
-                    $product->fresh(['category', 'subcategory']),
-                    'Product updated successfully'
+                    $fresh,
+                    $message
                 );
 
             } catch (\Exception $e) {
@@ -448,6 +525,99 @@ class ProductController extends BaseController
                 [],
                 $e
             );
+        }
+    }
+
+    public function approvePrice(Request $request, $id)
+    {
+        try {
+            if (!$this->isFinancePriceApprover()) {
+                return $this->errorResponse('You do not have permission to approve product pricing.', 403);
+            }
+
+            $validated = $this->validateRequest($request, [
+                'notes' => 'nullable|string|max:500',
+            ]);
+
+            $product = Product::byStore($this->getStoreId())->findOrFail($id);
+            if ($product->price_approval_status !== 'pending') {
+                return $this->errorResponse('No pending price request to approve.', 422);
+            }
+
+            DB::beginTransaction();
+            try {
+                $oldPrice = $product->base_price;
+
+                $product->update([
+                    'base_price' => $product->pending_base_price ?? $product->base_price,
+                    'discounted_price' => $product->pending_discounted_price,
+                    'price_approval_status' => 'approved',
+                    'price_approved_by' => $this->getUserId(),
+                    'price_approved_at' => now(),
+                    'price_rejected_by' => null,
+                    'price_rejected_at' => null,
+                    'price_approval_notes' => $validated['notes'] ?? $product->price_approval_notes,
+                    'pending_base_price' => null,
+                    'pending_discounted_price' => null,
+                ]);
+
+                if (!is_null($product->base_price) && $oldPrice != $product->base_price) {
+                    PricingHistory::create([
+                        'store_id' => $this->getStoreId(),
+                        'product_id' => $product->id,
+                        'old_price' => $oldPrice ?? 0,
+                        'new_price' => $product->base_price,
+                        'price_type' => 'Base',
+                        'reason' => $validated['notes'] ?? 'Finance approved price change',
+                        'effective_date' => now(),
+                        'created_by' => $this->getUserId()
+                    ]);
+                }
+
+                DB::commit();
+
+                return $this->successResponse($product->fresh(), 'Price change approved');
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Product not found', 404);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to approve price change: ' . $e->getMessage(), 500, [], $e);
+        }
+    }
+
+    public function rejectPrice(Request $request, $id)
+    {
+        try {
+            if (!$this->isFinancePriceApprover()) {
+                return $this->errorResponse('You do not have permission to reject product pricing.', 403);
+            }
+
+            $validated = $this->validateRequest($request, [
+                'reason' => 'required|string|max:500',
+            ]);
+
+            $product = Product::byStore($this->getStoreId())->findOrFail($id);
+            if ($product->price_approval_status !== 'pending') {
+                return $this->errorResponse('No pending price request to reject.', 422);
+            }
+
+            $product->update([
+                'price_approval_status' => 'rejected',
+                'price_rejected_by' => $this->getUserId(),
+                'price_rejected_at' => now(),
+                'price_approval_notes' => $validated['reason'],
+                'pending_base_price' => null,
+                'pending_discounted_price' => null,
+            ]);
+
+            return $this->successResponse($product->fresh(), 'Price change rejected');
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Product not found', 404);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to reject price change: ' . $e->getMessage(), 500, [], $e);
         }
     }
 
@@ -623,6 +793,101 @@ class ProductController extends BaseController
                 500,
                 [],
                 $e
+            );
+        }
+    }
+
+    private function isPriceUpdateRequested(Product $product, array $data): bool
+    {
+        $requestedBase = array_key_exists('base_price', $data);
+        $requestedDiscount = array_key_exists('discounted_price', $data);
+        if (!$requestedBase && !$requestedDiscount) {
+            return false;
+        }
+
+        if ($requestedBase && (float) $data['base_price'] !== (float) $product->base_price) {
+            return true;
+        }
+
+        if ($requestedDiscount) {
+            $incoming = $data['discounted_price'];
+            $current = $product->discounted_price;
+            if (($incoming === null && $current !== null) || ($incoming !== null && (float) $incoming !== (float) $current)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function removeLivePriceFields(array $data): array
+    {
+        unset($data['base_price'], $data['discounted_price'], $data['price_change_reason']);
+        return $data;
+    }
+
+    private function isFinancePriceApprover(): bool
+    {
+        return $this->userHasAnyPermission([
+            'finance.all.approve',
+            'finance.settings.approve.store',
+            'finance.settings.approve.all',
+            'finance.purchase-orders.approve',
+        ]);
+    }
+
+    /**
+     * Keep raw materials non-promotional and non-discounted.
+     */
+    private function applyTypeSpecificDefaults(array $data, ?Product $existing = null): array
+    {
+        $type = $data['product_type'] ?? $existing?->product_type ?? 'finished_good';
+        if ($type !== 'raw_material') {
+            return $data;
+        }
+
+        $data['discounted_price'] = null;
+        $data['is_featured'] = false;
+        $data['is_new_arrival'] = false;
+        $data['is_bestseller'] = false;
+
+        return $data;
+    }
+
+    /**
+     * Ensure each active branch has a base branch_inventory row for this product.
+     * Stock starts at 0 and must move through inventory transactions.
+     */
+    private function ensureBranchInventoryRowsForProduct(int $productId, int $storeId): void
+    {
+        $branches = Branch::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->pluck('id');
+
+        foreach ($branches as $branchId) {
+            BranchInventory::query()->firstOrCreate(
+                [
+                    'store_id' => $storeId,
+                    'branch_id' => (int) $branchId,
+                    'product_id' => $productId,
+                    'variation_id' => null,
+                ],
+                [
+                    'quantity_on_hand' => 0,
+                    'quantity_reserved' => 0,
+                    'quantity_available' => 0,
+                    'quantity_damaged' => 0,
+                    'quantity_incoming' => 0,
+                    'reorder_point' => 10,
+                    'reorder_quantity' => 10,
+                    'maximum_stock' => 1000,
+                    'safety_stock' => 5,
+                    'stock_status' => 'out_of_stock',
+                    'unit_cost' => 0,
+                    'average_cost' => 0,
+                    'total_value' => 0,
+                ]
             );
         }
     }

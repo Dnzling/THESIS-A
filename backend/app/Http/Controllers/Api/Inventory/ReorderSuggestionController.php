@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\ReorderSuggestionRequest;
+use App\Models\Hr\Employee;
 use App\Models\Inventory\ReorderSuggestion;
 use App\Services\Inventory\ReorderSuggestionService;
+use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +23,42 @@ class ReorderSuggestionController extends Controller
     }
 
     /**
+     * Resolve authenticated user context.
+     */
+    private function getUserContext(): array
+    {
+        $user = auth()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $branchId = (int) ($user?->branch_id ?? 0);
+
+        if ($user && ($storeId === 0 || $branchId === 0)) {
+            $employee = Employee::query()
+                ->where('user_id', $user->id)
+                ->first(['store_id', 'branch_id']);
+
+            $storeId = $storeId ?: (int) ($employee?->store_id ?? 0);
+            $branchId = $branchId ?: (int) ($employee?->branch_id ?? 0);
+        }
+
+        return [
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
+        ];
+    }
+
+    private function resolveBranchId(Request $request): int
+    {
+        $context = $this->getUserContext();
+        return (int) ($request->branch_id ?? $context['branch_id'] ?? 0);
+    }
+
+    private function canAccessBranchRecord(int $recordBranchId): bool
+    {
+        $context = $this->getUserContext();
+        return empty($context['branch_id']) || (int) $context['branch_id'] === (int) $recordBranchId;
+    }
+
+    /**
      * Display a listing of reorder suggestions.
      */
     public function index(Request $request): JsonResponse
@@ -30,6 +68,15 @@ class ReorderSuggestionController extends Controller
                 'status', 'priority', 'type', 'branch_id', 'product_id',
                 'expired', 'search'
             ]);
+            $context = $this->getUserContext();
+
+            if (!isset($filters['branch_id']) && !empty($context['branch_id'])) {
+                $filters['branch_id'] = $context['branch_id'];
+            }
+
+            if (!empty($context['store_id'])) {
+                $filters['store_id'] = $context['store_id'];
+            }
 
             $perPage = $request->get('per_page', 15);
             $suggestions = $this->suggestionService->getSuggestions($filters, $perPage);
@@ -55,7 +102,12 @@ class ReorderSuggestionController extends Controller
     public function store(ReorderSuggestionRequest $request): JsonResponse
     {
         try {
-            $suggestion = $this->suggestionService->createSuggestion($request->validated());
+            $payload = $request->validated();
+            if (empty($payload['branch_id'])) {
+                $payload['branch_id'] = $this->resolveBranchId($request);
+            }
+
+            $suggestion = $this->suggestionService->createSuggestion($payload);
 
             return response()->json([
                 'success' => true,
@@ -78,6 +130,13 @@ class ReorderSuggestionController extends Controller
     public function show(ReorderSuggestion $suggestion): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
             $suggestion->load(['reorderRule', 'product', 'branch', 'approver', 'implementer']);
 
             return response()->json([
@@ -101,7 +160,19 @@ class ReorderSuggestionController extends Controller
     public function update(ReorderSuggestionRequest $request, ReorderSuggestion $suggestion): JsonResponse
     {
         try {
-            $updatedSuggestion = $this->suggestionService->updateSuggestion($suggestion, $request->validated());
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
+            $payload = $request->validated();
+            if (empty($payload['branch_id'])) {
+                $payload['branch_id'] = (int) $suggestion->branch_id;
+            }
+
+            $updatedSuggestion = $this->suggestionService->updateSuggestion($suggestion, $payload);
 
             return response()->json([
                 'success' => true,
@@ -124,6 +195,13 @@ class ReorderSuggestionController extends Controller
     public function destroy(ReorderSuggestion $suggestion): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
             // Only allow deletion of pending suggestions
             if (!$suggestion->isPending()) {
                 return response()->json([
@@ -154,11 +232,18 @@ class ReorderSuggestionController extends Controller
     public function approve(Request $request, ReorderSuggestion $suggestion): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
             $request->validate([
                 'notes' => 'nullable|string|max:1000',
             ]);
 
-            $approvedBy = auth()->id();
+            $approvedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
 
             if (!$this->suggestionService->approveSuggestion($suggestion, $approvedBy, $notes)) {
@@ -189,6 +274,13 @@ class ReorderSuggestionController extends Controller
     public function reject(Request $request, ReorderSuggestion $suggestion): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
             $request->validate([
                 'notes' => 'nullable|string|max:1000',
             ]);
@@ -223,11 +315,18 @@ class ReorderSuggestionController extends Controller
     public function implement(Request $request, ReorderSuggestion $suggestion): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
             $request->validate([
                 'notes' => 'nullable|string|max:1000',
             ]);
 
-            $implementedBy = auth()->id();
+            $implementedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
 
             if (!$this->suggestionService->implementSuggestion($suggestion, $implementedBy, $notes)) {
@@ -258,6 +357,13 @@ class ReorderSuggestionController extends Controller
     public function cancel(Request $request, ReorderSuggestion $suggestion): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $suggestion->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder suggestion.',
+                ], 403);
+            }
+
             $request->validate([
                 'notes' => 'nullable|string|max:1000',
             ]);
@@ -296,7 +402,7 @@ class ReorderSuggestionController extends Controller
                 'branch_id' => 'nullable|integer|exists:branches,id',
             ]);
 
-            $branchId = $request->get('branch_id');
+            $branchId = $this->resolveBranchId($request);
             $result = $this->suggestionService->generateSuggestions($branchId);
 
             return response()->json([
@@ -324,7 +430,7 @@ class ReorderSuggestionController extends Controller
                 'branch_id' => 'nullable|integer|exists:branches,id',
             ]);
 
-            $branchId = $request->get('branch_id');
+            $branchId = $this->resolveBranchId($request);
             $stats = $this->suggestionService->getSuggestionStats($branchId);
 
             return response()->json([
@@ -349,13 +455,30 @@ class ReorderSuggestionController extends Controller
     {
         try {
             $request->validate([
-                'suggestion_ids' => 'required|array|min:1',
+                'suggestion_ids' => 'nullable|array|min:1',
                 'suggestion_ids.*' => 'integer|exists:reorder_suggestions,id',
+                'ids' => 'nullable|array|min:1',
+                'ids.*' => 'integer|exists:reorder_suggestions,id',
                 'notes' => 'nullable|string|max:1000',
             ]);
 
-            $suggestionIds = $request->get('suggestion_ids');
-            $approvedBy = auth()->id();
+            $suggestionIds = $request->get('suggestion_ids', $request->get('ids', []));
+            if (empty($suggestionIds)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No suggestions provided for bulk approve.',
+                ], 422);
+            }
+
+            $context = $this->getUserContext();
+            if (!empty($context['branch_id'])) {
+                $suggestionIds = ReorderSuggestion::query()
+                    ->whereIn('id', $suggestionIds)
+                    ->where('branch_id', $context['branch_id'])
+                    ->pluck('id')
+                    ->all();
+            }
+            $approvedBy = EmployeeContext::currentEmployeeId();
             $notes = $request->get('notes');
 
             $result = $this->suggestionService->bulkApprove($suggestionIds, $approvedBy, $notes);
@@ -382,12 +505,29 @@ class ReorderSuggestionController extends Controller
     {
         try {
             $request->validate([
-                'suggestion_ids' => 'required|array|min:1',
+                'suggestion_ids' => 'nullable|array|min:1',
                 'suggestion_ids.*' => 'integer|exists:reorder_suggestions,id',
+                'ids' => 'nullable|array|min:1',
+                'ids.*' => 'integer|exists:reorder_suggestions,id',
                 'notes' => 'nullable|string|max:1000',
             ]);
 
-            $suggestionIds = $request->get('suggestion_ids');
+            $suggestionIds = $request->get('suggestion_ids', $request->get('ids', []));
+            if (empty($suggestionIds)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No suggestions provided for bulk reject.',
+                ], 422);
+            }
+
+            $context = $this->getUserContext();
+            if (!empty($context['branch_id'])) {
+                $suggestionIds = ReorderSuggestion::query()
+                    ->whereIn('id', $suggestionIds)
+                    ->where('branch_id', $context['branch_id'])
+                    ->pluck('id')
+                    ->all();
+            }
             $notes = $request->get('notes');
 
             $result = $this->suggestionService->bulkReject($suggestionIds, $notes);

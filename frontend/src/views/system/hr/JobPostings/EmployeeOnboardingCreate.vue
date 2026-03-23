@@ -214,10 +214,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import axiosClient from '../../../../axios'
+import hrService from '@/services/hr.services'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import hrService from '../../../../services/hr.services'
 
 interface ShiftDayRow {
   key: string
@@ -369,7 +368,7 @@ const loadPage = async () => {
       hrService.getBranches(),
       hrService.getDepartments(),
       hrService.getRoles(),
-      axiosClient.get('/api/address/provinces'),
+      hrService.api.get('/api/address/provinces'),
     ])
 
     application.value = applicationResponse?.data || applicationResponse
@@ -467,7 +466,7 @@ const onProvinceChange = async () => {
   barangayOptions.value = []
   if (!employeeForm.province_code) return
   try {
-    const response = await axiosClient.get(`/api/address/cities/${employeeForm.province_code}`)
+    const response = await hrService.api.get(`/api/address/cities/${employeeForm.province_code}`)
     const cityItems = response.data || []
     cityOptions.value = cityItems.map((item: any) => ({
       psgc_id: item.city_id,
@@ -483,7 +482,7 @@ const onCityChange = async () => {
   barangayOptions.value = []
   if (!employeeForm.city_code) return
   try {
-    const response = await axiosClient.get(`/api/address/barangays/${employeeForm.city_code}`)
+    const response = await hrService.api.get(`/api/address/barangays/${employeeForm.city_code}`)
     const barangayItems = response.data || []
     barangayOptions.value = (barangayItems || []).map((item: any) => ({ psgc_id: item.code, name: item.name }))
   } catch (error) {
@@ -702,3 +701,4 @@ watch([employeeForm, shiftForm, shiftDays], () => {
 
 onMounted(loadPage)
 </script>
+

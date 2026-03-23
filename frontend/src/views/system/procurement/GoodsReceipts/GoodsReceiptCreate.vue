@@ -41,16 +41,24 @@
                 <p class="text-xs text-gray-500 mt-1">Only approved purchase orders are available</p>
               </div>
 
-              <!-- Receipt Date -->
-              <div class="md:col-span-3">
+            <!-- Receipt Date -->
+              <div class="md:col-span-2">
                 <label class="text-sm font-semibold text-gray-700 block mb-2">
                   <span class="text-red-500">*</span> Receipt Date
                 </label>
                 <DatePicker fluid v-model="form.receipt_date" date-format="yy-mm-dd" class="w-full" show-icon />
               </div>
 
+              <!-- Receipt Time -->
+              <div class="md:col-span-2">
+                <label class="text-sm font-semibold text-gray-700 block mb-2">
+                  <span class="text-red-500">*</span> Receipt Time
+                </label>
+                <InputText v-model="form.receipt_time" placeholder="HH:mm:ss" class="w-full" />
+              </div>
+
               <!-- Receipt Status -->
-              <div class="md:col-span-3">
+              <div class="md:col-span-2">
                 <label class="text-sm font-semibold text-gray-700 block mb-2">
                   <span class="text-red-500">*</span> Receipt Type
                 </label>
@@ -76,7 +84,7 @@
               </div>
               <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
                 <p class="text-xs text-purple-600 font-semibold">PO Total</p>
-                <p class="text-gray-800 font-semibold">₱ {{ (selectedPO.total_amount || 0).toFixed(2) }}</p>
+                <p class="text-gray-800 font-semibold">₱ {{ (parseFloat(selectedPO?.total_amount) || 0).toFixed(2) }}</p>
               </div>
             </div>
           </div>
@@ -187,7 +195,7 @@
                     <td class="p-3 text-center">
                       <InputNumber
                         v-model="item.quantity_received"
-                        :min="0"
+                        :min="0" fluid
                         class="w-16 text-center"
                         @input="calculateVariance(index)"
                       />
@@ -201,7 +209,7 @@
                         v-model="item.status"
                         :options="itemStatusOptions"
                         option-label="label"
-                        option-value="value"
+                        option-value="value" fluid
                         class="w-full"
                         size="small"
                       />
@@ -320,6 +328,7 @@ const form = reactive({
   purchase_order_id: null as number | null,
   branch_id: null as number | null,
   receipt_date: new Date(),
+  receipt_time: new Date().toTimeString().split(' ')[0],
   receipt_status: 'full' as 'full' | 'partial' | 'damaged' | 'rejected',
   notes: ''
 })
@@ -408,23 +417,27 @@ const onPoSelected = async () => {
     return
   }
 
-  try {
-    const response = await procurementService.getPurchaseOrder(form.purchase_order_id)
-    selectedPO.value = response.data || null
-    form.branch_id = selectedPO.value?.branch_id
+    try {
+      const response = await procurementService.getPurchaseOrder(form.purchase_order_id)
+      selectedPO.value = response.data || null
+      form.branch_id = selectedPO.value?.branch_id
 
     // Initialize received items from PO items
-    receivedItems.value = (selectedPO.value?.items || []).map((item: any) => ({
-      id: item.id,
-      product_id: item.product_id,
-      product: item.product,
-      quantity_ordered: item.quantity_ordered,
-      quantity_received: item.quantity_ordered, // Default to full receipt
-      variance: 0,
-      variance_percent: 0,
-      status: 'complete',
-      remarks: ''
-    }))
+      receivedItems.value = (selectedPO.value?.items || []).map((item: any) => ({
+        id: item.id,
+        purchase_order_item_id: item.id,
+        product_id: item.product_id,
+        product: item.product,
+        variation_id: item.variation_id,
+        quantity_ordered: item.quantity_ordered,
+        quantity_expected: item.quantity_ordered,
+        quantity_received: item.quantity_ordered,
+        quantity_damaged: 0,
+        variance: 0,
+        variance_percent: 0,
+        status: 'complete',
+        remarks: ''
+      }))
   } catch (error) {
     console.error('Failed to load PO details', error)
     toast.add({
@@ -444,10 +457,14 @@ const quickAddItem = (item: any) => {
     if (poItem) {
       receivedItems.value.push({
         id: poItem.id,
+        purchase_order_item_id: poItem.id,
         product_id: item.product_id,
         product: item.product,
+        variation_id: poItem.variation_id,
         quantity_ordered: item.quantity_ordered,
+        quantity_expected: item.quantity_ordered,
         quantity_received: item.quantity_ordered,
+        quantity_damaged: 0,
         variance: 0,
         variance_percent: 0,
         status: 'complete',
@@ -480,10 +497,14 @@ const addByBarcode = async () => {
       if (!exists) {
         receivedItems.value.push({
           id: matchedItem.id,
+          purchase_order_item_id: matchedItem.id,
           product_id: matchedItem.product_id,
           product: matchedItem.product,
+          variation_id: matchedItem.variation_id,
           quantity_ordered: matchedItem.quantity_ordered,
+          quantity_expected: matchedItem.quantity_ordered,
           quantity_received: 1, // Start with 1 for barcode scans
+          quantity_damaged: 0,
           variance: 1 - matchedItem.quantity_ordered,
           variance_percent: Math.round(
             ((1 - matchedItem.quantity_ordered) / matchedItem.quantity_ordered) * 100
@@ -520,31 +541,37 @@ const addByBarcode = async () => {
   }
 }
 
-const calculateVariance = (index: number) => {
-  const item = receivedItems.value[index]
-  item.variance = item.quantity_received - item.quantity_ordered
-  item.variance_percent = item.quantity_ordered > 0
-    ? Math.round((item.variance / item.quantity_ordered) * 100)
-    : 0
-}
+  const calculateVariance = (index: number) => {
+    const item = receivedItems.value[index]
+    item.variance = item.quantity_received - item.quantity_ordered
+    item.variance_percent = item.quantity_ordered > 0
+      ? Math.round((item.variance / item.quantity_ordered) * 100)
+      : 0
+  }
 
 const removeReceivedItem = (index: number) => {
   receivedItems.value.splice(index, 1)
 }
 
-const getVarianceColor = (item: any) => {
-  if (item.variance === 0) return 'text-green-600'
-  if (item.variance > 0) return 'text-blue-600'
+  const getVarianceColor = (item: any) => {
+    if (item.variance === 0) return 'text-green-600'
+    if (item.variance > 0) return 'text-blue-600'
   if (item.variance_percent < -5) return 'text-red-600'
   return 'text-orange-600'
 }
 
-const getRowHighlight = (item: any) => {
-  if (item.status === 'damaged') return 'bg-red-50'
-  if (item.status === 'short' || item.variance < 0) return 'bg-yellow-50'
-  if (item.status === 'wrong') return 'bg-blue-50'
-  return ''
-}
+  const getRowHighlight = (item: any) => {
+    if (item.status === 'damaged') return 'bg-red-50'
+    if (item.status === 'short' || item.variance < 0) return 'bg-yellow-50'
+    if (item.status === 'wrong') return 'bg-blue-50'
+    return ''
+  }
+
+  const mapStatusToCondition = (status: string): 'good' | 'damaged' | 'defective' => {
+    if (status === 'damaged') return 'damaged'
+    if (status === 'wrong') return 'defective'
+    return 'good'
+  }
 
 const submitForm = async () => {
   // Validation
@@ -565,21 +592,25 @@ const submitForm = async () => {
       ? form.receipt_date.toISOString().split('T')[0]
       : form.receipt_date) || new Date().toISOString().split('T')[0]
 
-    const payload: Record<string, any> = {
-      purchase_order_id: form.purchase_order_id,
-      branch_id: form.branch_id,
-      receipt_date: receiptDate,
-      receipt_status: form.receipt_status,
-      notes: form.notes,
-      items: receivedItems.value.map((item) => ({
-        product_id: item.product_id,
-        quantity_ordered: item.quantity_ordered,
-        quantity_received: item.quantity_received,
-        status: item.status,
-        remarks: item.remarks
-      })),
-      status: saveDraft.value ? 'draft' : 'completed'
-    }
+      const payload: Record<string, any> = {
+        purchase_order_id: form.purchase_order_id,
+        branch_id: form.branch_id,
+        receipt_date: receiptDate,
+        receipt_time: form.receipt_time || new Date().toTimeString().split(' ')[0],
+        receipt_status: form.receipt_status,
+        notes: form.notes,
+        items: receivedItems.value.map((item) => ({
+          purchase_order_item_id: item.purchase_order_item_id,
+          product_id: item.product_id,
+          variation_id: item.variation_id ?? null,
+          quantity_expected: item.quantity_expected,
+          quantity_received: item.quantity_received,
+          quantity_damaged: item.quantity_damaged ?? 0,
+          condition: mapStatusToCondition(item.status),
+          notes: item.remarks || ''
+        })),
+        status: saveDraft.value ? 'draft' : 'completed'
+      }
 
     await procurementService.createGoodsReceipt(payload as any)
 

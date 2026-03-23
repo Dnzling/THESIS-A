@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\ReorderRule;
+use App\Models\Hr\Employee;
 use App\Http\Requests\Inventory\ReorderRuleRequest;
 use App\Services\Inventory\ReorderRuleService;
 use Illuminate\Http\Request;
@@ -22,16 +23,67 @@ class ReorderRuleController extends Controller
     }
 
     /**
+     * Get authenticated user context (store + branch), with employee fallback.
+     */
+    private function getUserContext(): array
+    {
+        $user = auth()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $branchId = (int) ($user?->branch_id ?? 0);
+
+        if ($user && ($storeId === 0 || $branchId === 0)) {
+            $employee = Employee::query()
+                ->where('user_id', $user->id)
+                ->first(['store_id', 'branch_id']);
+
+            $storeId = $storeId ?: (int) ($employee?->store_id ?? 0);
+            $branchId = $branchId ?: (int) ($employee?->branch_id ?? 0);
+        }
+
+        return [
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
+        ];
+    }
+
+    /**
+     * Resolve branch from request, defaulting to current user's branch.
+     */
+    private function resolveBranchId(Request $request): int
+    {
+        $context = $this->getUserContext();
+        return (int) ($request->branch_id ?? $context['branch_id'] ?? 0);
+    }
+
+    /**
+     * Restrict branch-scoped records when user is branch-bound.
+     */
+    private function canAccessBranchRecord(int $recordBranchId): bool
+    {
+        $context = $this->getUserContext();
+        return empty($context['branch_id']) || (int) $context['branch_id'] === (int) $recordBranchId;
+    }
+
+    /**
      * Display a listing of reorder rules.
      */
     public function index(Request $request): JsonResponse
     {
         try {
             $query = ReorderRule::with(['product', 'branch']);
+            $context = $this->getUserContext();
+
+            if (!empty($context['store_id'])) {
+                $query->whereHas('branch', function ($q) use ($context) {
+                    $q->where('store_id', $context['store_id']);
+                });
+            }
 
             // Filter by branch if provided
             if ($request->has('branch_id') && $request->branch_id) {
                 $query->where('branch_id', $request->branch_id);
+            } elseif (!empty($context['branch_id'])) {
+                $query->where('branch_id', $context['branch_id']);
             }
 
             // Filter by product if provided
@@ -63,7 +115,7 @@ class ReorderRuleController extends Controller
             if ($request->has('search') && $request->search) {
                 $search = $request->search;
                 $query->whereHas('product', function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
+                    $q->where('product_name', 'like', "%{$search}%")
                       ->orWhere('sku', 'like', "%{$search}%");
                 });
             }
@@ -94,7 +146,12 @@ class ReorderRuleController extends Controller
         try {
             DB::beginTransaction();
 
-            $rule = $this->reorderRuleService->createReorderRule($request->validated());
+            $payload = $request->validated();
+            if (empty($payload['branch_id'])) {
+                $payload['branch_id'] = $this->resolveBranchId($request);
+            }
+
+            $rule = $this->reorderRuleService->createReorderRule($payload);
 
             DB::commit();
 
@@ -121,6 +178,13 @@ class ReorderRuleController extends Controller
     public function show(ReorderRule $reorderRule): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $reorderRule->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder rule.',
+                ], 403);
+            }
+
             $reorderRule->load(['product', 'branch']);
 
             return response()->json([
@@ -145,9 +209,21 @@ class ReorderRuleController extends Controller
     public function update(ReorderRuleRequest $request, ReorderRule $reorderRule): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $reorderRule->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder rule.',
+                ], 403);
+            }
+
             DB::beginTransaction();
 
-            $updatedRule = $this->reorderRuleService->updateReorderRule($reorderRule, $request->validated());
+            $payload = $request->validated();
+            if (empty($payload['branch_id'])) {
+                $payload['branch_id'] = (int) $reorderRule->branch_id;
+            }
+
+            $updatedRule = $this->reorderRuleService->updateReorderRule($reorderRule, $payload);
 
             DB::commit();
 
@@ -174,6 +250,13 @@ class ReorderRuleController extends Controller
     public function destroy(ReorderRule $reorderRule): JsonResponse
     {
         try {
+            if (!$this->canAccessBranchRecord((int) $reorderRule->branch_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to reorder rule.',
+                ], 403);
+            }
+
             DB::beginTransaction();
 
             $reorderRule->delete();
@@ -254,6 +337,33 @@ class ReorderRuleController extends Controller
     }
 
     /**
+     * Get basis types.
+     */
+    public function getBasisTypes(): JsonResponse
+    {
+        try {
+            $types = [
+                ['value' => 'reorder_point', 'label' => 'Reorder Point'],
+                ['value' => 'demand_lead_time', 'label' => 'Demand + Lead Time'],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $types,
+                'message' => 'Basis types retrieved successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error retrieving basis types: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve basis types',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Get priority levels.
      */
     public function getPriorities(): JsonResponse
@@ -289,13 +399,21 @@ class ReorderRuleController extends Controller
     {
         try {
             $request->validate([
-                'branch_id' => 'required|integer|exists:branches,id',
+                'branch_id' => 'nullable|integer|exists:branches,id',
                 'product_ids' => 'nullable|array',
                 'product_ids.*' => 'integer|exists:products,id',
             ]);
 
+            $branchId = $this->resolveBranchId($request);
+            if ($branchId <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Branch is required for reorder status checks.',
+                ], 422);
+            }
+
             $result = $this->reorderRuleService->checkReorderStatus(
-                $request->branch_id,
+                $branchId,
                 $request->product_ids
             );
 
@@ -322,12 +440,20 @@ class ReorderRuleController extends Controller
     {
         try {
             $request->validate([
-                'branch_id' => 'required|integer|exists:branches,id',
+                'branch_id' => 'nullable|integer|exists:branches,id',
                 'include_all_products' => 'boolean',
             ]);
 
+            $branchId = $this->resolveBranchId($request);
+            if ($branchId <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Branch is required to generate reorder suggestions.',
+                ], 422);
+            }
+
             $suggestions = $this->reorderRuleService->generateReorderSuggestions(
-                $request->branch_id,
+                $branchId,
                 $request->boolean('include_all_products', false)
             );
 
@@ -353,12 +479,25 @@ class ReorderRuleController extends Controller
     public function getNeedingReview(): JsonResponse
     {
         try {
+            $context = $this->getUserContext();
             $rules = ReorderRule::with(['product', 'branch'])
                 ->active()
                 ->where(function ($query) {
                     $query->whereNull('next_review_date')
                           ->orWhere('next_review_date', '<=', now());
-                })
+                });
+
+            if (!empty($context['store_id'])) {
+                $rules->whereHas('branch', function ($q) use ($context) {
+                    $q->where('store_id', $context['store_id']);
+                });
+            }
+
+            if (!empty($context['branch_id'])) {
+                $rules->where('branch_id', $context['branch_id']);
+            }
+
+            $rules = $rules
                 ->orderBy('next_review_date')
                 ->get();
 
@@ -392,8 +531,18 @@ class ReorderRuleController extends Controller
 
             DB::beginTransaction();
 
+            $ruleIds = $request->rule_ids;
+            $context = $this->getUserContext();
+            if (!empty($context['branch_id'])) {
+                $ruleIds = ReorderRule::query()
+                    ->whereIn('id', $request->rule_ids)
+                    ->where('branch_id', $context['branch_id'])
+                    ->pluck('id')
+                    ->all();
+            }
+
             $count = $this->reorderRuleService->bulkUpdatePriority(
-                $request->rule_ids,
+                $ruleIds,
                 $request->priority
             );
 
@@ -412,6 +561,50 @@ class ReorderRuleController extends Controller
                 'success' => false,
                 'message' => 'Failed to bulk update priorities',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Auto-create reorder rules from branch inventory.
+     */
+    public function autoCreateFromInventory(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'branch_id' => 'nullable|integer|exists:branches,id',
+                'overwrite' => 'nullable|boolean',
+            ]);
+
+            $branchId = $this->resolveBranchId($request);
+            if ($branchId <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Branch is required to auto-create reorder rules.',
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            $result = $this->reorderRuleService->autoCreateRulesFromInventory(
+                $branchId,
+                (bool) $request->boolean('overwrite', false)
+            );
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $result,
+                'message' => "Auto-create finished. Created {$result['created_count']} rule(s), updated {$result['updated_count']}, skipped {$result['skipped_count']}.",
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error auto-creating reorder rules: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to auto-create reorder rules',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

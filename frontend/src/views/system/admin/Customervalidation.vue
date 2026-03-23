@@ -1024,7 +1024,7 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const toFileUrl = (path: string) => {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${apiBaseUrl}/storage/${path.replace(/^\\/+/, '')}`
+  return `${apiBaseUrl}/storage/${path.replace(/^\/+/, '')}`
 }
 
 const mapCustomer = (user: any) => {
@@ -1224,8 +1224,9 @@ const formatDate = (dateString: string) => {
   }
 }
 
-const getCustomerStatusSeverity = (status: string) => {
-  switch (status.toLowerCase()) {
+const getCustomerStatusSeverity = (status: string | undefined | null) => {
+  const normalized = String(status || '').toLowerCase()
+  switch (normalized) {
     case 'pending': return 'warning'
     case 'verified':
     case 'active': return 'success'
@@ -1236,8 +1237,9 @@ const getCustomerStatusSeverity = (status: string) => {
   }
 }
 
-const getCustomerStatusIcon = (status: string) => {
-  switch (status.toLowerCase()) {
+const getCustomerStatusIcon = (status: string | undefined | null) => {
+  const normalized = String(status || '').toLowerCase()
+  switch (normalized) {
     case 'pending': return 'pi-user-clock'
     case 'verified':
     case 'active': return 'pi-user-check'
@@ -1248,8 +1250,9 @@ const getCustomerStatusIcon = (status: string) => {
   }
 }
 
-const getCustomerStatusColor = (status: string) => {
-  switch (status.toLowerCase()) {
+const getCustomerStatusColor = (status: string | undefined | null) => {
+  const normalized = String(status || '').toLowerCase()
+  switch (normalized) {
     case 'pending': return 'bg-yellow-100 text-yellow-600'
     case 'verified':
     case 'active': return 'bg-green-100 text-green-600'

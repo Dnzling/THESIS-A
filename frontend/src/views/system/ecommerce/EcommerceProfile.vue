@@ -1,0 +1,604 @@
+<template>
+  <div class="space-y-4">
+    <div class="rounded-3xl border border-slate-200 bg-white/80">
+      <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr]">
+        <aside class="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
+          <h2 class="text-xl font-semibold text-slate-900">My Account</h2>
+          <div class="mt-5 space-y-5">
+            <div>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">MyAccount</p>
+              <div class="space-y-1">
+                <Button label="Basic Information" text fluid :severity="activeSection === 'basic' ? 'info' : 'secondary'"
+                  class="justify-start" @click="activeSection = 'basic'" />
+                <Button label="Address Book" text fluid :severity="activeSection === 'address' ? 'info' : 'secondary'"
+                  class="justify-start" @click="activeSection = 'address'" />
+                <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'info' : 'secondary'"
+                  class="justify-start" @click="activeSection = 'payment'" />
+              </div>
+            </div>
+  
+            <div>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">My Orders</p>
+              <div class="space-y-1">
+                <Button label="Returns" text fluid :severity="activeSection === 'returns' ? 'info' : 'secondary'"
+                  class="justify-start" @click="activeSection = 'returns'" />
+                <Button label="Cancellations" text fluid
+                  :severity="activeSection === 'cancellations' ? 'info' : 'secondary'" class="justify-start"
+                  @click="activeSection = 'cancellations'" />
+              </div>
+            </div>
+          </div>
+        </aside>
+  
+        <section class="p-5">
+          <div v-if="loading" class="space-y-3">
+            <Skeleton v-for="idx in 8" :key="idx" height="1.2rem" />
+          </div>
+  
+          <template v-else>
+            <div v-if="activeSection === 'basic'" class="space-y-4">
+              <h3 class="text-2xl font-semibold text-slate-900">Basic Information</h3>
+  
+              <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                <div class="rounded-xl border border-slate-200 p-3">
+                  <p class="text-xs text-slate-500">First Name</p>
+                  <p class="mt-1 font-semibold">{{ basicInfo.firstName }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 p-3">
+                  <p class="text-xs text-slate-500">Last Name</p>
+                  <p class="mt-1 font-semibold">{{ basicInfo.lastName }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 p-3">
+                  <p class="text-xs text-slate-500">Email</p>
+                  <p class="mt-1 font-semibold">{{ basicInfo.maskedEmail }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 p-3">
+                  <p class="text-xs text-slate-500">Contact Number</p>
+                  <p class="mt-1 font-semibold">{{ basicInfo.maskedPhone }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 p-3">
+                  <p class="text-xs text-slate-500">Birthday</p>
+                  <p class="mt-1 font-semibold">{{ basicInfo.formattedBirthday }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 p-3">
+                  <p class="text-xs text-slate-500">Created At</p>
+                  <p class="mt-1 font-semibold">{{ basicInfo.formattedCreatedAt }}</p>
+                </div>
+              </div>
+  
+              <div class="flex flex-wrap gap-2">
+                <Button label="Edit" severity="info" outlined @click="editDialogVisible = true" />
+                <Button label="Change Password" severity="info" outlined @click="passwordDialogVisible = true" />
+                <Button label="Change Email (Verify)" severity="secondary" outlined @click="emailDialogVisible = true" />
+                <Button label="Change Mobile (Verify)" severity="secondary" outlined
+                  @click="mobileDialogVisible = true" />
+              </div>
+            </div>
+  
+            <div v-else-if="activeSection === 'address'" class="space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-2xl font-semibold text-slate-900">Address Book</h3>
+                <Button label="Add Address" severity="info" text @click="openAddAddressDialog" />
+              </div>
+              <p v-if="!addressTemplates.length" class="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">
+                No address preset yet. Add one to speed up checkout.
+              </p>
+              <div v-for="template in addressTemplates" :key="template.id" class="rounded-xl border border-slate-200 p-4">
+                <div v-if="editingAddressId !== template.id" class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">{{ template.full_name }} - {{ template.contact_number
+                      }}</p>
+                    <p class="text-xs text-slate-600">{{ template.province }}, {{ template.city }}, {{ template.barangay
+                      }}, {{ template.address_line }}</p>
+                  </div>
+                  <Button label="Edit" text severity="info" @click="startEditAddress(template)" />
+                </div>
+                <div v-else class="space-y-2">
+                  <InputText v-model="addressEditForm.full_name" fluid placeholder="Full name" />
+                  <InputMask mask="9999-999-9999" v-model="addressEditForm.contact_number" fluid
+                    placeholder="0912-456-7890" />
+  
+                  <Select v-model="editAddressSelection.provinceId" :options="provinceOptions" optionLabel="label"
+                    optionValue="value" filter fluid placeholder="Select Province" @change="onEditProvinceChange" />
+                  <Select v-model="editAddressSelection.cityId" :options="editCityOptions" optionLabel="label"
+                    optionValue="value" filter fluid placeholder="Select City"
+                    :disabled="!editAddressSelection.provinceId" @change="onEditCityChange" />
+                  <Select v-model="editAddressSelection.barangayCode" :options="editBarangayOptions" optionLabel="label"
+                    optionValue="value" filter fluid placeholder="Select Barangay"
+                    :disabled="!editAddressSelection.cityId" />
+                  <Textarea v-model="addressEditForm.address_line" fluid rows="2" placeholder="Address line" />
+                  <div class="flex gap-2">
+                    <Button label="Save" size="small" severity="info" :loading="savingAddress"
+                      @click="saveAddressEdit(template.id)" />
+                    <Button label="Cancel" size="small" severity="secondary" outlined @click="editingAddressId = null" />
+                  </div>
+                </div>
+              </div>
+            </div>
+  
+            <div v-else-if="activeSection === 'payment'" class="space-y-4">
+              <h3 class="text-2xl font-semibold text-slate-900">Payment Methods</h3>
+              <div class="rounded-xl border border-slate-200 p-4 text-sm">Cash on Delivery (COD)</div>
+              <div class="rounded-xl border border-slate-200 p-4 text-sm">GCash (PayMongo)</div>
+              <div class="rounded-xl border border-slate-200 p-4 text-sm">Credit Card</div>
+            </div>
+  
+            <div v-else-if="activeSection === 'returns'" class="space-y-4">
+              <h3 class="text-2xl font-semibold text-slate-900">Returns</h3>
+              <p class="text-sm text-slate-500" v-if="!returnOrders.length">No return records.</p>
+              <div v-for="order in returnOrders" :key="order.id" class="rounded-xl border border-slate-200 p-4 text-sm">
+                <p class="font-semibold">Order {{ order.order_number }}</p>
+                <p class="text-slate-600">Status: {{ order.status }}</p>
+              </div>
+            </div>
+  
+            <div v-else class="space-y-4">
+              <h3 class="text-2xl font-semibold text-slate-900">Cancellations</h3>
+              <p class="text-sm text-slate-500" v-if="!cancellationOrders.length">No cancellation records.</p>
+              <div v-for="order in cancellationOrders" :key="order.id"
+                class="rounded-xl border border-slate-200 p-4 text-sm">
+                <p class="font-semibold">Order {{ order.order_number }}</p>
+                <p class="text-slate-600">Status: {{ order.status }}</p>
+              </div>
+            </div>
+          </template>
+        </section>
+      </div>
+    </div>
+  
+    <Dialog v-model:visible="editDialogVisible" modal header="Edit Basic Information" :style="{ width: '32rem' }">
+      <div class="space-y-3">
+        <InputText v-model="editForm.fname" fluid placeholder="First name" />
+        <InputText v-model="editForm.lname" fluid placeholder="Last name" />
+        <DatePicker v-model="editForm.birthday" :maxDate="new Date()" fluid showIcon dateFormat="mm/dd/yy" />
+        <Button label="Save Changes" severity="info" :loading="savingProfile" @click="saveBasicInfo" />
+      </div>
+    </Dialog>
+  
+    <Dialog v-model:visible="passwordDialogVisible" modal header="Change Password" :style="{ width: '32rem' }">
+      <div class="space-y-3">
+        <Password v-model="passwordForm.current_password" :feedback="false" fluid toggleMask
+          placeholder="Current password" />
+        <Password v-model="passwordForm.password" :feedback="true" fluid toggleMask placeholder="New password" />
+        <Password v-model="passwordForm.password_confirmation" :feedback="false" fluid toggleMask
+          placeholder="Confirm new password" />
+        <Button label="Update Password" severity="info" :loading="changingPassword" @click="changePassword" />
+      </div>
+    </Dialog>
+  
+    <Dialog v-model:visible="emailDialogVisible" modal header="Change Email (Verification Required)"
+      :style="{ width: '32rem' }">
+      <div class="space-y-3">
+        <InputText v-model="contactChangeForm.newEmail" fluid placeholder="New email address" />
+        <div class="flex gap-2">
+          <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
+          <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
+        </div>
+        <Button label="Verify and Change Email" severity="info" :loading="savingContactChange"
+          @click="verifyAndChangeEmail" />
+      </div>
+    </Dialog>
+  
+    <Dialog v-model:visible="mobileDialogVisible" modal header="Change Mobile (Verification Required)"
+      :style="{ width: '32rem' }">
+      <div class="space-y-3">
+        <InputText v-model="contactChangeForm.newMobile" fluid placeholder="New mobile number" />
+        <div class="flex gap-2">
+          <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
+          <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
+        </div>
+        <Button label="Verify and Change Mobile" severity="info" :loading="savingContactChange"
+          @click="verifyAndChangeMobile" />
+      </div>
+    </Dialog>
+  
+    <Dialog v-model:visible="addAddressDialogVisible" modal header="Add Address Preset" :style="{ width: '32rem' }">
+      <div class="space-y-3">
+        <InputText v-model="addAddressForm.full_name" fluid placeholder="Full name" />
+        <InputMask mask="9999-999-9999" v-model="addressEditForm.contact_number" fluid placeholder="Contact number" />
+        <Select v-model="addAddressSelection.provinceId" :options="provinceOptions" optionLabel="label"
+          optionValue="value" filter fluid placeholder="Select Province" @change="onAddProvinceChange" />
+        <Select v-model="addAddressSelection.cityId" :options="cityOptions" optionLabel="label" optionValue="value" filter
+          fluid placeholder="Select City" :disabled="!addAddressSelection.provinceId" @change="onAddCityChange" />
+        <Select v-model="addAddressSelection.barangayCode" :options="barangayOptions" optionLabel="label"
+          optionValue="value" filter fluid placeholder="Select Barangay" :disabled="!addAddressSelection.cityId" />
+        <Textarea v-model="addAddressForm.address_line" fluid rows="2" placeholder="Address line" />
+        <Button label="Save Address" severity="info" :loading="savingNewAddress" @click="createAddressTemplate" />
+      </div>
+    </Dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useToast } from 'primevue/usetoast'
+import axios from 'axios'
+import ecommerceService from '@/services/ecommerce.service'
+import InputText from 'primevue/inputtext'
+import Textarea from 'primevue/textarea'
+import Password from 'primevue/password'
+import Dialog from 'primevue/dialog'
+import DatePicker from 'primevue/datepicker'
+import Select from 'primevue/select'
+
+type AddressTemplate = { id: number; full_name: string; contact_number: string; province: string; city: string; barangay: string; address_line: string }
+
+const toast = useToast()
+const loading = ref(false)
+const activeSection = ref<'basic' | 'address' | 'payment' | 'returns' | 'cancellations'>('basic')
+const myOrders = ref<any[]>([])
+const profileUser = ref<any>({})
+const profileEmployee = ref<any>(null)
+const profileCustomer = ref<any>(null)
+const addressTemplates = ref<AddressTemplate[]>([])
+const editingAddressId = ref<number | null>(null)
+const savingAddress = ref(false)
+
+const editDialogVisible = ref(false)
+const passwordDialogVisible = ref(false)
+const emailDialogVisible = ref(false)
+const mobileDialogVisible = ref(false)
+const addAddressDialogVisible = ref(false)
+const savingProfile = ref(false)
+const changingPassword = ref(false)
+const sendingOtp = ref(false)
+const savingContactChange = ref(false)
+const savingNewAddress = ref(false)
+
+const editForm = reactive<{ fname: string; lname: string; birthday: Date | null }>({ fname: '', lname: '', birthday: null })
+const passwordForm = reactive({ current_password: '', password: '', password_confirmation: '' })
+const contactChangeForm = reactive({ newEmail: '', newMobile: '', otpCode: '' })
+const addressEditForm = reactive({ full_name: '', contact_number: '', province: '', city: '', barangay: '', address_line: '' })
+const addAddressForm = reactive({ full_name: '', contact_number: '', province: '', city: '', barangay: '', address_line: '' })
+const addAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
+const editAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
+
+const provinces = ref<any[]>([])
+const cities = ref<any[]>([])
+const barangays = ref<any[]>([])
+const editCities = ref<any[]>([])
+const editBarangays = ref<any[]>([])
+const citiesCache = ref<Record<string, any[]>>({})
+
+const returnOrders = computed(() => myOrders.value.filter((o) => ['returned', 'return_requested', 'refunded'].includes(String(o.status || '').toLowerCase())))
+const cancellationOrders = computed(() => myOrders.value.filter((o) => ['cancelled', 'canceled'].includes(String(o.status || '').toLowerCase())))
+
+const basicInfo = computed(() => ({
+  firstName: profileUser.value?.fname || '-',
+  lastName: profileUser.value?.lname || '-',
+  maskedEmail: maskEmail(profileUser.value?.email || ''),
+  maskedPhone: maskPhone(profileCustomer.value?.contact_number || profileEmployee.value?.phone || ''),
+  formattedBirthday: formatDate(profileUser.value?.birthday || profileEmployee.value?.date_of_birth),
+  formattedCreatedAt: formatDate(profileUser.value?.created_at),
+}))
+const provinceOptions = computed(() => provinces.value.map((p: any) => ({ label: p.name, value: p.province_id })))
+const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
+const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
+const editCityOptions = computed(() => editCities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
+const editBarangayOptions = computed(() => editBarangays.value.map((b: any) => ({ label: b.name, value: b.code })))
+
+function maskEmail(email: string) {
+  if (!email || !email.includes('@')) return '-'
+  const [local, domain] = email.split('@')
+  const safe = local.length <= 2 ? `${local[0] || '*'}*` : `${local.slice(0, 2)}${'*'.repeat(Math.max(2, local.length - 2))}`
+  return `${safe}@${domain}`
+}
+
+function maskPhone(phone: string) {
+  if (!phone) return '-'
+  const clean = phone.replace(/\D/g, '')
+  if (clean.length <= 4) return `${'*'.repeat(clean.length)}`
+  return `${'*'.repeat(clean.length - 4)}${clean.slice(-4)}`
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+async function loadProfile() {
+  const response = await axios.get('/api/profile')
+  profileUser.value = response.data?.data?.user || {}
+  profileEmployee.value = response.data?.data?.employee || null
+  profileCustomer.value = response.data?.data?.customer || null
+  editForm.fname = profileUser.value?.fname || ''
+  editForm.lname = profileUser.value?.lname || ''
+  editForm.birthday = profileUser.value?.birthday ? new Date(profileUser.value.birthday) : (profileEmployee.value?.date_of_birth ? new Date(profileEmployee.value.date_of_birth) : null)
+}
+
+async function loadAddressTemplates() {
+  const response = await ecommerceService.getAddressTemplates()
+  addressTemplates.value = response.data?.data || []
+}
+
+async function loadOrders() {
+  const response = await ecommerceService.getOrders({ per_page: 50 })
+  myOrders.value = response.data?.data?.data || []
+}
+
+async function fetchProvinces() {
+  try {
+    const response = await ecommerceService.getProvinces()
+    provinces.value = response.data || []
+  } catch {
+    provinces.value = []
+  }
+}
+
+async function fetchCities(provinceId: string) {
+  if (!provinceId) {
+    cities.value = []
+    return
+  }
+  if (citiesCache.value[provinceId]) {
+    cities.value = citiesCache.value[provinceId]
+    return
+  }
+  try {
+    const response = await ecommerceService.getCities(provinceId)
+    citiesCache.value[provinceId] = response.data || []
+    cities.value = citiesCache.value[provinceId]
+  } catch {
+    cities.value = []
+  }
+}
+
+async function fetchBarangays(cityId: string) {
+  if (!cityId) {
+    barangays.value = []
+    return
+  }
+  try {
+    const response = await ecommerceService.getBarangays(cityId)
+    barangays.value = response.data || []
+  } catch {
+    barangays.value = []
+  }
+}
+
+async function fetchEditCities(provinceId: string) {
+  if (!provinceId) {
+    editCities.value = []
+    return
+  }
+  if (citiesCache.value[provinceId]) {
+    editCities.value = citiesCache.value[provinceId]
+    return
+  }
+  try {
+    const response = await ecommerceService.getCities(provinceId)
+    citiesCache.value[provinceId] = response.data || []
+    editCities.value = citiesCache.value[provinceId]
+  } catch {
+    editCities.value = []
+  }
+}
+
+async function fetchEditBarangays(cityId: string) {
+  if (!cityId) {
+    editBarangays.value = []
+    return
+  }
+  try {
+    const response = await ecommerceService.getBarangays(cityId)
+    editBarangays.value = response.data || []
+  } catch {
+    editBarangays.value = []
+  }
+}
+
+async function onAddProvinceChange() {
+  addAddressSelection.cityId = ''
+  addAddressSelection.barangayCode = ''
+  barangays.value = []
+  await fetchCities(addAddressSelection.provinceId)
+}
+
+async function onAddCityChange() {
+  addAddressSelection.barangayCode = ''
+  await fetchBarangays(addAddressSelection.cityId)
+}
+
+async function onEditProvinceChange() {
+  editAddressSelection.cityId = ''
+  editAddressSelection.barangayCode = ''
+  editBarangays.value = []
+  await fetchEditCities(editAddressSelection.provinceId)
+}
+
+async function onEditCityChange() {
+  editAddressSelection.barangayCode = ''
+  await fetchEditBarangays(editAddressSelection.cityId)
+}
+
+async function saveBasicInfo() {
+  savingProfile.value = true
+  try {
+    await axios.put('/api/profile', {
+      fname: editForm.fname,
+      lname: editForm.lname,
+      birthday: editForm.birthday ? editForm.birthday.toISOString().slice(0, 10) : null,
+    })
+    editDialogVisible.value = false
+    await loadProfile()
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Basic information updated.', life: 1800 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to update basic information.', life: 2500 })
+  } finally {
+    savingProfile.value = false
+  }
+}
+
+async function changePassword() {
+  changingPassword.value = true
+  try {
+    await axios.post('/api/auth/change-password', passwordForm)
+    passwordDialogVisible.value = false
+    passwordForm.current_password = ''
+    passwordForm.password = ''
+    passwordForm.password_confirmation = ''
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Password changed successfully.', life: 1800 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change password.', life: 2500 })
+  } finally {
+    changingPassword.value = false
+  }
+}
+
+async function sendOtp() {
+  sendingOtp.value = true
+  try {
+    await axios.post('/api/auth/resend-otp')
+    toast.add({ severity: 'info', summary: 'OTP Sent', detail: 'Verification code sent to your registered email.', life: 2200 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'OTP Failed', detail: error?.response?.data?.message || 'Unable to send OTP.', life: 2500 })
+  } finally {
+    sendingOtp.value = false
+  }
+}
+
+async function verifyOtpCode() {
+  await axios.post('/api/auth/verify-otp', { otp: contactChangeForm.otpCode })
+}
+
+async function verifyAndChangeEmail() {
+  if (!contactChangeForm.newEmail || !contactChangeForm.otpCode) return
+  savingContactChange.value = true
+  try {
+    await verifyOtpCode()
+    await axios.put('/api/profile', { email: contactChangeForm.newEmail })
+    emailDialogVisible.value = false
+    contactChangeForm.newEmail = ''
+    contactChangeForm.otpCode = ''
+    await loadProfile()
+    toast.add({ severity: 'success', summary: 'Email Updated', detail: 'Please verify your new email OTP to fully activate it.', life: 2600 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change email.', life: 2600 })
+  } finally {
+    savingContactChange.value = false
+  }
+}
+
+async function verifyAndChangeMobile() {
+  if (!contactChangeForm.newMobile || !contactChangeForm.otpCode) return
+  savingContactChange.value = true
+  try {
+    await verifyOtpCode()
+    await axios.put('/api/profile', { contact_number: contactChangeForm.newMobile })
+    mobileDialogVisible.value = false
+    contactChangeForm.newMobile = ''
+    contactChangeForm.otpCode = ''
+    await loadProfile()
+    toast.add({ severity: 'success', summary: 'Mobile Updated', detail: 'Mobile number changed after OTP verification.', life: 2200 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change mobile number.', life: 2600 })
+  } finally {
+    savingContactChange.value = false
+  }
+}
+
+async function startEditAddress(template: AddressTemplate) {
+  editingAddressId.value = template.id
+  addressEditForm.full_name = template.full_name
+  addressEditForm.contact_number = template.contact_number
+  addressEditForm.province = template.province
+  addressEditForm.city = template.city
+  addressEditForm.barangay = template.barangay
+  addressEditForm.address_line = template.address_line
+
+  const province = provinces.value.find((p: any) => String(p.name).toLowerCase() === String(template.province).toLowerCase())
+  editAddressSelection.provinceId = province?.province_id || ''
+  editAddressSelection.cityId = ''
+  editAddressSelection.barangayCode = ''
+  editCities.value = []
+  editBarangays.value = []
+
+  if (editAddressSelection.provinceId) {
+    await fetchEditCities(editAddressSelection.provinceId)
+    const city = editCities.value.find((c: any) => String(c.name).toLowerCase() === String(template.city).toLowerCase())
+    editAddressSelection.cityId = city?.city_id || ''
+  }
+
+  if (editAddressSelection.cityId) {
+    await fetchEditBarangays(editAddressSelection.cityId)
+    const barangay = editBarangays.value.find((b: any) => String(b.name).toLowerCase() === String(template.barangay).toLowerCase())
+    editAddressSelection.barangayCode = barangay?.code || ''
+  }
+}
+
+async function saveAddressEdit(id: number) {
+  savingAddress.value = true
+  try {
+    const provinceName = provinces.value.find((p: any) => p.province_id === editAddressSelection.provinceId)?.name
+    const cityName = editCities.value.find((c: any) => c.city_id === editAddressSelection.cityId)?.name
+    const barangayName = editBarangays.value.find((b: any) => b.code === editAddressSelection.barangayCode)?.name
+
+    if (provinceName) addressEditForm.province = provinceName
+    if (cityName) addressEditForm.city = cityName
+    if (barangayName) addressEditForm.barangay = barangayName
+    await ecommerceService.updateAddressTemplate(id, { ...addressEditForm })
+    editingAddressId.value = null
+    await loadAddressTemplates()
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Address template updated.', life: 1800 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to update address.', life: 2500 })
+  } finally {
+    savingAddress.value = false
+  }
+}
+
+function openAddAddressDialog() {
+  addAddressForm.full_name = ''
+  addAddressForm.contact_number = ''
+  addAddressForm.address_line = ''
+  addAddressSelection.provinceId = ''
+  addAddressSelection.cityId = ''
+  addAddressSelection.barangayCode = ''
+  cities.value = []
+  barangays.value = []
+  addAddressDialogVisible.value = true
+}
+
+async function createAddressTemplate() {
+  if (!addAddressForm.full_name || !addAddressForm.contact_number || !addAddressSelection.provinceId || !addAddressSelection.cityId || !addAddressSelection.barangayCode || !addAddressForm.address_line) {
+    toast.add({ severity: 'warn', summary: 'Missing fields', detail: 'Please complete all address fields.', life: 2200 })
+    return
+  }
+
+  savingNewAddress.value = true
+  try {
+    const provinceName = provinces.value.find((p: any) => p.province_id === addAddressSelection.provinceId)?.name || ''
+    const cityName = cities.value.find((c: any) => c.city_id === addAddressSelection.cityId)?.name || ''
+    const barangayName = barangays.value.find((b: any) => b.code === addAddressSelection.barangayCode)?.name || ''
+
+    await ecommerceService.createAddressTemplate({
+      full_name: addAddressForm.full_name,
+      contact_number: addAddressForm.contact_number,
+      province: provinceName,
+      city: cityName,
+      barangay: barangayName,
+      address_line: addAddressForm.address_line,
+      is_default: addressTemplates.value.length === 0,
+    })
+
+    addAddressDialogVisible.value = false
+    await loadAddressTemplates()
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Address preset added.', life: 1800 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to add address preset.', life: 2500 })
+  } finally {
+    savingNewAddress.value = false
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    await Promise.all([loadProfile(), loadAddressTemplates(), loadOrders(), fetchProvinces()])
+  } finally {
+    loading.value = false
+  }
+})
+</script>

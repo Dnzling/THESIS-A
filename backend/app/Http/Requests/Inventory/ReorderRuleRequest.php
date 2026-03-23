@@ -6,6 +6,7 @@ namespace App\Http\Requests\Inventory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use App\Models\Inventory\ReorderRule;
+use App\Models\Hr\Employee;
 
 class ReorderRuleRequest extends FormRequest
 {
@@ -45,6 +46,11 @@ class ReorderRuleRequest extends FormRequest
                 'string',
                 Rule::in(['reorder_point', 'safety_stock', 'forecast', 'seasonal']),
             ],
+            'basis_type' => [
+                'nullable',
+                'string',
+                Rule::in(['reorder_point', 'demand_lead_time']),
+            ],
             'reorder_point' => [
                 'nullable',
                 'numeric',
@@ -63,6 +69,13 @@ class ReorderRuleRequest extends FormRequest
                 'integer',
                 'min:1',
                 'max:365',
+                'required_if:basis_type,demand_lead_time',
+            ],
+            'review_period_days' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'max:365',
             ],
             'safety_stock' => [
                 'nullable',
@@ -70,6 +83,7 @@ class ReorderRuleRequest extends FormRequest
                 'min:0',
                 'decimal:0,2',
                 'required_if:trigger_type,safety_stock',
+                'required_if:basis_type,demand_lead_time',
             ],
             'maximum_stock' => [
                 'nullable',
@@ -83,6 +97,13 @@ class ReorderRuleRequest extends FormRequest
                 'numeric',
                 'min:0',
                 'decimal:0,2',
+            ],
+            'avg_daily_demand' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'decimal:0,4',
+                'required_if:basis_type,demand_lead_time',
             ],
             'priority' => [
                 'required',
@@ -140,12 +161,15 @@ class ReorderRuleRequest extends FormRequest
             'branch_id' => 'branch',
             'rule_type' => 'rule type',
             'trigger_type' => 'trigger type',
+            'basis_type' => 'basis type',
             'reorder_point' => 'reorder point',
             'reorder_quantity' => 'reorder quantity',
             'lead_time_days' => 'lead time (days)',
+            'review_period_days' => 'review period (days)',
             'safety_stock' => 'safety stock',
             'maximum_stock' => 'maximum stock',
             'economic_order_quantity' => 'economic order quantity',
+            'avg_daily_demand' => 'average daily demand',
             'auto_generate_po' => 'auto generate PO',
             'supplier_preferences' => 'supplier preferences',
             'seasonal_adjustments' => 'seasonal adjustments',
@@ -162,6 +186,8 @@ class ReorderRuleRequest extends FormRequest
         return [
             'reorder_point.required_if' => 'Reorder point is required when trigger type is reorder point.',
             'safety_stock.required_if' => 'Safety stock is required when trigger type is safety stock.',
+            'avg_daily_demand.required_if' => 'Average daily demand is required for Demand + Lead Time basis.',
+            'lead_time_days.required_if' => 'Lead time is required for Demand + Lead Time basis.',
             'maximum_stock.gte' => 'Maximum stock must be greater than or equal to reorder point.',
             'supplier_preferences.*.supplier_id.exists' => 'Selected supplier does not exist.',
             'supplier_preferences.*.priority.min' => 'Supplier priority must be at least 1.',
@@ -202,6 +228,16 @@ class ReorderRuleRequest extends FormRequest
                 $validator->errors()->add('safety_stock', 'Safety stock should be less than reorder point.');
             }
 
+            // Demand + Lead Time basis guardrails
+            if (($this->basis_type ?? 'reorder_point') === 'demand_lead_time') {
+                if (!$this->avg_daily_demand || (float) $this->avg_daily_demand <= 0) {
+                    $validator->errors()->add('avg_daily_demand', 'Average daily demand must be greater than zero.');
+                }
+                if (!$this->lead_time_days || (int) $this->lead_time_days <= 0) {
+                    $validator->errors()->add('lead_time_days', 'Lead time days must be greater than zero.');
+                }
+            }
+
             // Custom validation: validate seasonal adjustments structure
             if ($this->seasonal_adjustments) {
                 $months = range(1, 12);
@@ -212,5 +248,34 @@ class ReorderRuleRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * Default branch_id from authenticated user when omitted.
+     */
+    protected function prepareForValidation(): void
+    {
+        $basisType = $this->input('basis_type') ?: (($this->input('rule_type') === 'demand_based') ? 'demand_lead_time' : 'reorder_point');
+        $this->merge(['basis_type' => $basisType]);
+
+        if ($this->filled('branch_id')) {
+            return;
+        }
+
+        $user = auth()->user();
+        if (!$user) {
+            return;
+        }
+
+        $branchId = (int) ($user->branch_id ?? 0);
+        if ($branchId === 0) {
+            $branchId = (int) Employee::query()
+                ->where('user_id', $user->id)
+                ->value('branch_id');
+        }
+
+        if ($branchId > 0) {
+            $this->merge(['branch_id' => $branchId]);
+        }
     }
 }

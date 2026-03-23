@@ -31,6 +31,78 @@ const inventoryRoutes: RouteRecordRaw[] = [
         },
       },
 
+      // ==================== ECOMMERCE ORDERS ====================
+      {
+        path: 'ecommerce-orders',
+        name: 'inventory.ecommerce-orders',
+        component: () => import('../../views/system/inventory/EcommerceOrders/EcommerceOrderIndex.vue'),
+        meta: {
+          title: 'Ecommerce Orders',
+          permission: 'inventory.items.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Ecommerce Orders' },
+          ],
+        },
+      },
+      {
+        path: 'ecommerce-orders/:id',
+        name: 'inventory.ecommerce-orders.detail',
+        component: () => import('../../views/system/inventory/EcommerceOrders/EcommerceOrderDetail.vue'),
+        meta: {
+          title: 'Order Detail',
+          permission: 'inventory.items.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Ecommerce Orders', to: '/inventory/ecommerce-orders' },
+            { label: 'Detail' },
+          ],
+        },
+      },
+
+      // ==================== ECOMMERCE DELIVERIES ====================
+      {
+        path: 'ecommerce-deliveries',
+        name: 'inventory.ecommerce-deliveries',
+        component: () => import('../../views/system/inventory/Deliveries/DeliveryIndex.vue'),
+        meta: {
+          title: 'Delivery Management',
+          permission: 'inventory.items.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Deliveries' },
+          ],
+        },
+      },
+      {
+        path: 'ecommerce-deliveries/:id',
+        name: 'inventory.ecommerce-deliveries.detail',
+        component: () => import('../../views/system/inventory/Deliveries/DeliveryDetail.vue'),
+        meta: {
+          title: 'Delivery Detail',
+          permission: 'inventory.items.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Deliveries', to: '/inventory/ecommerce-deliveries' },
+            { label: 'Detail' },
+          ],
+        },
+      },
+
+      {
+        path: 'delivery-vehicles',
+        name: 'inventory.delivery-vehicles',
+        component: () => import('../../views/system/inventory/Deliveries/DeliveryVehicles.vue'),
+        meta: {
+          title: 'Delivery Vehicles',
+          permission: 'inventory.items.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Delivery Vehicles' },
+          ],
+        },
+      },
+
       // ==================== BRANCH INVENTORY ====================
       {
         path: 'items',
@@ -246,10 +318,10 @@ const inventoryRoutes: RouteRecordRaw[] = [
       },
 
       // =================== Purchase ORders ===========
-      { path: 'stock-order-requests', name: 'stock-order-requests.index', component: () => import('../../views/system/inventory/PurchaseRequests/PurchaseRequestIndex.vue'), meta: { title: 'Stock Order Requests', subtitle: 'Manage stock order requests for low stock items' } },
-      { path: 'stock-order-requests/create', name: 'stock-order-requests.create', component: () => import('../../views/system/inventory/PurchaseRequests/PurchaseRequestCreate.vue'), meta: { title: 'Create Stock Order Request', subtitle: 'Request inventory for low stock items' } },
-      { path: 'stock-order-requests/:id', name: 'stock-order-requests.detail', component: () => import('../../views/system/inventory/PurchaseRequests/PurchaseRequestDetail.vue'), meta: { title: 'Stock Order Request Details', subtitle: 'View stock order request details' } },
-      { path: 'stock-order-requests/:id/edit', name: 'stock-order-requests.edit', component: () => import('../../views/system/inventory/PurchaseRequests/PurchaseRequestEdit.vue'), meta: { title: 'Edit Stock Order Request', subtitle: 'Update stock order request details' } },
+      { path: 'requisites', name: 'requisites.index', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionIndex.vue'), meta: { title: 'Stock Order Requests', subtitle: 'Manage stock order requests for low stock items', permission: 'inventory.requisites.view' } },
+      { path: 'requisites/create', name: 'requisites.create', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionCreate.vue'), meta: { title: 'Create Stock Order Request', subtitle: 'Request inventory for low stock items', permission: 'inventory.requisites.view' } },
+      { path: 'requisites/:id', name: 'requisites.detail', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionDetail.vue'), meta: { title: 'Stock Order Request Details', subtitle: 'View stock order request details', permission: 'inventory.requisites.view' } },
+      // { path: 'requisites/:id/edit', name: 'requisites.edit', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionEdit.vue'), meta: { title: 'Edit Stock Order Request', subtitle: 'Update stock order request details' } },
 
       // ==================== STOCK RETURNS ====================
       {
@@ -776,6 +848,35 @@ const inventoryRoutes: RouteRecordRaw[] = [
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Transactions' },
+          ],
+        },
+      },
+
+      // ==================== INVENTORY ACTIVITY LOGS ====================
+      {
+        path: 'activity-logs',
+        name: 'inventory.activity-logs',
+        component: () => import('../../views/system/inventory/ActivityLogs/InventoryActivityLogIndex.vue'),
+        meta: {
+          title: 'Inventory Activity Logs',
+          permission: 'inventory.transactions.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Activity Logs' },
+          ],
+        },
+      },
+      {
+        path: 'activity-logs/:id',
+        name: 'inventory.activity-logs.detail',
+        component: () => import('../../views/system/inventory/ActivityLogs/InventoryActivityLogDetail.vue'),
+        meta: {
+          title: 'Inventory Log Detail',
+          permission: 'inventory.transactions.view',
+          breadcrumb: [
+            { label: 'Inventory', to: '/inventory' },
+            { label: 'Activity Logs', to: '/inventory/activity-logs' },
+            { label: 'Detail' },
           ],
         },
       },

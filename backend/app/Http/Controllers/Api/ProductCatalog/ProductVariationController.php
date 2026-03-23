@@ -3,9 +3,12 @@
 
 namespace App\Http\Controllers\Api\ProductCatalog;
 
+use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\ProductCatalog\PricingHistory;
+use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -97,6 +100,19 @@ class ProductVariationController extends BaseController
             DB::beginTransaction();
 
             try {
+                if (!empty($validated['custom_3d_model_id'])) {
+                    $modelAsset = ProductAsset::byStore($this->getStoreId())
+                        ->where('id', $validated['custom_3d_model_id'])
+                        ->where('product_id', $product->id)
+                        ->where('asset_type', '3D_Model')
+                        ->first();
+
+                    if (!$modelAsset) {
+                        DB::rollBack();
+                        return $this->errorResponse('Selected 3D model is invalid for this product/store', 422);
+                    }
+                }
+
                 // Check if variation SKU is unique for this store
                 $exists = ProductVariation::byStore($this->getStoreId())
                                          ->where('variation_sku', $validated['variation_sku'])
@@ -111,6 +127,7 @@ class ProductVariationController extends BaseController
                 $data['store_id'] = $this->getStoreId();
                 
                 $variation = ProductVariation::create($data);
+                $this->ensureVariationInventoryRows($product, $variation);
 
                 // Create pricing history entry for variation
                 if ($data['price_adjustment'] != 0) {
@@ -228,9 +245,25 @@ class ProductVariationController extends BaseController
             DB::beginTransaction();
 
             try {
+                if (array_key_exists('custom_3d_model_id', $validated) && !empty($validated['custom_3d_model_id'])) {
+                    $modelAsset = ProductAsset::byStore($this->getStoreId())
+                        ->where('id', $validated['custom_3d_model_id'])
+                        ->where('product_id', $variation->product_id)
+                        ->where('asset_type', '3D_Model')
+                        ->first();
+
+                    if (!$modelAsset) {
+                        DB::rollBack();
+                        return $this->errorResponse('Selected 3D model is invalid for this variation product/store', 422);
+                    }
+                }
+
                 $oldPriceAdjustment = $variation->price_adjustment;
                 
                 $variation->update($validated);
+                if ((bool) $variation->is_active) {
+                    $this->ensureVariationInventoryRows($variation->product, $variation);
+                }
 
                 // Create pricing history if price adjustment changed
                 if (isset($validated['price_adjustment']) && $validated['price_adjustment'] != $oldPriceAdjustment) {
@@ -374,6 +407,44 @@ class ProductVariationController extends BaseController
                 500,
                 [],
                 $e
+            );
+        }
+    }
+
+    /**
+     * Ensure every active branch has a branch_inventory row for this product+variation.
+     * Initial quantity is zero; stock will be adjusted via receiving/transactions.
+     */
+    private function ensureVariationInventoryRows(Product $product, ProductVariation $variation): void
+    {
+        $branches = Branch::query()
+            ->where('store_id', $this->getStoreId())
+            ->where('status', 'active')
+            ->get(['id']);
+
+        foreach ($branches as $branch) {
+            BranchInventory::query()->firstOrCreate(
+                [
+                    'store_id' => $this->getStoreId(),
+                    'branch_id' => (int) $branch->id,
+                    'product_id' => (int) $product->id,
+                    'variation_id' => (int) $variation->id,
+                ],
+                [
+                    'quantity_on_hand' => 0,
+                    'quantity_reserved' => 0,
+                    'quantity_available' => 0,
+                    'quantity_damaged' => 0,
+                    'quantity_incoming' => 0,
+                    'reorder_point' => 0,
+                    'reorder_quantity' => 0,
+                    'maximum_stock' => 0,
+                    'safety_stock' => 0,
+                    'stock_status' => 'out_of_stock',
+                    'unit_cost' => 0,
+                    'average_cost' => 0,
+                    'total_value' => 0,
+                ]
             );
         }
     }

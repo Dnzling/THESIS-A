@@ -23,6 +23,8 @@ class Store extends Model
         'city',
         'address',
         'status',
+        'subscription_tier',
+        'subscription_ends_at',
         'longitude',
         'latitude',
         'verified_at',
@@ -37,6 +39,7 @@ class Store extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'verified_at' => 'datetime',
+        'subscription_ends_at' => 'date',
         'settings' => 'array',
     ];
 
