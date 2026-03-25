@@ -154,6 +154,15 @@
                   v-tooltip="'Edit item'"
                 />
                 <Button
+                  v-if="canUpdateItems"
+                  icon="pi pi-sliders-h"
+                  size="small"
+                  text
+                  severity="info"
+                  @click="openReorderRuleForItem(data)"
+                  v-tooltip="'Manage reorder rule'"
+                />
+                <Button
                   icon="pi pi-plus-circle"
                   size="small"
                   text
@@ -198,9 +207,9 @@ const confirm = useConfirm()
 const router = useRouter()
 const authStore = useAuthStore()
 
-const canCreateItems = computed(() => authStore.hasPermission('inventory.items.create'))
-const canUpdateItems = computed(() => authStore.hasPermission('inventory.items.update'))
-const canDeleteItems = computed(() => authStore.hasPermission('inventory.items.delete'))
+const canCreateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
+const canUpdateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
+const canDeleteItems = computed(() => authStore.hasPermission('inventory.branch_inventory.delete'))
 
 const filters = reactive({
   search: '',
@@ -260,6 +269,43 @@ const loadItems = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const extractRows = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.data)) return payload.data.data
+  return []
+}
+
+const openReorderRuleForItem = async (row: any) => {
+  const productId = Number(row?.product_id || 0)
+  const branchId = Number(row?.branch_id || 0)
+  if (!productId) return
+
+  try {
+    const response = await inventoryService.getReorderRules({
+      product_id: productId,
+      branch_id: branchId || undefined,
+      per_page: 1
+    })
+    const existing = extractRows(response?.data)?.[0]
+
+    if (existing?.id) {
+      router.push({ name: 'inventory.reorder-rules.edit', params: { id: existing.id } })
+      return
+    }
+  } catch {
+    // fallback to create
+  }
+
+  router.push({
+    name: 'inventory.reorder-rules.create',
+    query: {
+      product_id: String(productId),
+      branch_id: branchId ? String(branchId) : undefined
+    }
+  })
 }
 
 const onPage = (event: any) => {
@@ -351,13 +397,20 @@ const deleteItem = async (id: number) => {
 }
 
 const createPurchaseRequisition = (item: any) => {
+  const reorderQty = Number(item?.reorder_quantity || 0)
+  const reorderPoint = Number(item?.reorder_point || 0)
+  const available = Number(item?.quantity_available || 0)
+  const suggestedQty = reorderQty > 0 ? reorderQty : Math.max(1, reorderPoint - available)
+
   router.push({
-    name: 'procurement.purchase-requisitions.create',
+    name: 'inventory.requisites.create',
     query: {
       branch_inventory_id: item.id,
       branch_id: item.branch_id,
       product_id: item.product_id,
       variation_id: item.variation_id || undefined,
+      requested_quantity: String(suggestedQty),
+      notes: 'Auto-generated from Branch Inventory low stock.',
     }
   })
 }

@@ -28,7 +28,7 @@
               @change="onPOSelected"
             />
             <p class="text-xs text-gray-600 mt-2">
-              Selecting a PO auto-fills supplier and expected amounts
+              Selecting a PO auto-fills supplier and product lines. Tax and delivery are entered separately.
             </p>
           </div>
 
@@ -176,9 +176,9 @@
           </div>
 
           <!-- Totals -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-4 bg-gray-50 p-4 rounded">
             <div>
-              <p class="text-gray-600 text-sm">Subtotal</p>
+              <p class="text-gray-600 text-sm">Product Subtotal</p>
               <p class="text-2xl font-bold text-gray-800">₱ {{ formatNumber(subtotal) }}</p>
             </div>
             <div>
@@ -186,17 +186,33 @@
               <p class="text-2xl font-bold text-orange-600">₱ {{ formatNumber(totalTax) }}</p>
             </div>
             <div>
+              <p class="text-gray-600 text-sm">Delivery Charge</p>
+              <p class="text-2xl font-bold text-blue-600">₱ {{ formatNumber(form.shipping_cost || 0) }}</p>
+            </div>
+            <div>
               <p class="text-gray-600 text-sm">Discount</p>
               <p class="text-2xl font-bold">₱ {{ formatNumber(form.discount_amount || 0) }}</p>
             </div>
             <div>
-              <p class="text-gray-600 text-sm">Total Amount</p>
-              <p class="text-3xl font-bold text-green-600">₱ {{ formatNumber(form.invoice_amount) }}</p>
+              <p class="text-gray-600 text-sm">Total Payable</p>
+              <p class="text-3xl font-bold text-green-600">₱ {{ formatNumber(form.net_amount || 0) }}</p>
             </div>
           </div>
 
-          <!-- Discount Input -->
+          <!-- Charges -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">
+                Delivery Charge
+              </label>
+              <InputNumber
+                v-model="form.shipping_cost"
+                mode="currency"
+                currency="PHP"
+                placeholder="0.00"
+                @input="calculateTotals"
+              />
+            </div>
             <div>
               <label class="block text-sm font-semibold text-gray-700 mb-2">
                 Discount Amount
@@ -207,6 +223,16 @@
                 currency="PHP"
                 placeholder="0.00"
                 @input="calculateTotals"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-2">
+                Currency
+              </label>
+              <InputText
+                v-model="form.currency"
+                maxlength="3"
+                class="w-full uppercase"
               />
             </div>
           </div>
@@ -271,11 +297,14 @@ const form = ref({
   grn_number: '',
   reference_number: '',
   line_items: [
-    { description: '', quantity: 0, unit_price: 0, tax_rate: 12, tax_amount: 0 },
+    { product_id: null as number | null, description: '', quantity: 0, unit_price: 0, tax_rate: 12, tax_amount: 0 },
   ],
   discount_amount: 0,
   tax_amount: 0,
+  shipping_cost: 0,
   invoice_amount: 0,
+  net_amount: 0,
+  currency: 'PHP',
   notes: '',
 })
 
@@ -311,12 +340,39 @@ async function loadPurchaseOrders() {
   }
 }
 
-function onPOSelected() {
+async function onPOSelected() {
   const po = purchaseOrders.value.find((p: any) => p.id === form.value.purchase_order_id)
   if (po) {
     form.value.supplier_id = Number(po.supplier_id)
-    form.value.supplier_name = po.supplier_name
-    form.value.grn_number = po.po_number.replace('PO', 'GRN')
+    form.value.supplier_name = po.supplier?.supplier_name || po.supplier_name || ''
+    form.value.grn_number = String(po.po_number || '').replace('PO', 'GRN')
+    form.value.shipping_cost = Number(po.shipping_cost || 0)
+
+    try {
+      const poResponse = await procurementService.getPurchaseOrder(form.value.purchase_order_id)
+      const poDetail = poResponse?.data || poResponse
+      const poItems = poDetail?.items || []
+
+      if (Array.isArray(poItems) && poItems.length > 0) {
+        form.value.line_items = poItems.map((item: any) => ({
+          product_id: item.product_id ? Number(item.product_id) : null,
+          description: item.product?.product_name || item.product_name || item.description || '',
+          quantity: Number(item.quantity_ordered || 0),
+          unit_price: Number(item.unit_cost || item.unit_price || 0),
+          tax_rate: Number(item.tax_rate || 0),
+          tax_amount: 0,
+        }))
+      }
+    } catch (error) {
+      toast.add({
+        severity: 'warn',
+        summary: 'PO Lines',
+        detail: 'Could not auto-load PO line items. You can still enter them manually.',
+        life: 3000,
+      })
+    }
+
+    calculateTotals()
   }
 }
 
@@ -325,12 +381,18 @@ function calculateLineAmount() {
 }
 
 function calculateTotals() {
-  form.value.tax_amount = totalTax.value
-  form.value.invoice_amount = subtotal.value + totalTax.value - (form.value.discount_amount || 0)
+  form.value.tax_amount = Number(totalTax.value || 0)
+  form.value.invoice_amount = Number(subtotal.value || 0)
+  form.value.net_amount =
+    Number(form.value.invoice_amount || 0) +
+    Number(form.value.tax_amount || 0) +
+    Number(form.value.shipping_cost || 0) -
+    Number(form.value.discount_amount || 0)
 }
 
 function addLineItem() {
   form.value.line_items.push({
+    product_id: null,
     description: '',
     quantity: 0,
     unit_price: 0,
@@ -363,11 +425,33 @@ function formatDateForAPI(date: any): string {
 async function saveDraft() {
   try {
     saving.value = true
+    calculateTotals()
     const payload = {
-      ...form.value,
+      supplier_id: form.value.supplier_id,
+      purchase_order_id: form.value.purchase_order_id,
+      invoice_number: form.value.invoice_number,
       invoice_date: formatDateForAPI(form.value.invoice_date),
       due_date: formatDateForAPI(form.value.due_date),
-      status: 'draft' as const,
+      invoice_amount: Number(form.value.invoice_amount || 0),
+      tax_amount: Number(form.value.tax_amount || 0),
+      shipping_cost: Number(form.value.shipping_cost || 0),
+      discount_amount: Number(form.value.discount_amount || 0),
+      currency: (form.value.currency || 'PHP').toUpperCase(),
+      remarks: form.value.notes || null,
+      items: form.value.line_items.map((item: any) => {
+        const qty = Number(item.quantity || 0)
+        const unit = Number(item.unit_price || 0)
+        const line = Number((qty * unit).toFixed(2))
+        const taxRate = Number(item.tax_rate || 0)
+        return {
+          product_id: item.product_id || null,
+          quantity_invoiced: qty,
+          unit_price: unit,
+          line_amount: line,
+          tax_rate: taxRate,
+          tax_amount: Number(((line * taxRate) / 100).toFixed(2)),
+        }
+      }),
     }
     const response = await procurementService.createInvoice(payload)
     toast.add({
@@ -378,13 +462,14 @@ async function saveDraft() {
     })
     router.push({
       name: 'procurement.invoices.detail',
-      params: { id: response.data.data.id },
+      params: { id: response.data?.id || response.data?.data?.id },
     })
   } catch (error) {
+    const message = (error as any)?.response?.data?.message || 'Failed to save invoice'
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to save invoice',
+      detail: message,
       life: 3000,
     })
   } finally {

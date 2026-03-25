@@ -302,7 +302,10 @@
               <div class="space-y-3">
                 <p class="text-sm"><span class="text-gray-500">PO Number:</span> <span class="font-medium text-gray-900">{{ invoice?.purchase_order?.po_number }}</span></p>
                 <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ calculatePOQuantity() }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.purchase_order?.total_amount) }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Subtotal:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.purchase_order?.subtotal || 0)) }}</span></p>
+                <p class="text-xs text-gray-500"><span>Tax:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.purchase_order?.tax_amount || 0)) }}</span></p>
+                <p class="text-xs text-gray-500"><span>Delivery:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.purchase_order?.shipping_cost || 0)) }}</span></p>
+                <p class="text-xs text-gray-500"><span>Total:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.purchase_order?.total_amount || 0)) }}</span></p>
                 <p class="text-xs text-gray-400">{{ formatDate(invoice?.purchase_order?.order_date) }}</p>
               </div>
             </div>
@@ -334,7 +337,10 @@
               <div class="space-y-3">
                 <p class="text-sm"><span class="text-gray-500">Invoice #:</span> <span class="font-medium text-gray-900">{{ invoice?.invoice_number }}</span></p>
                 <p class="text-sm"><span class="text-gray-500">Quantity:</span> <span class="font-medium text-gray-900">{{ calculateInvoiceQuantity() }}</span></p>
-                <p class="text-sm"><span class="text-gray-500">Amount:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(invoice?.net_amount) }}</span></p>
+                <p class="text-sm"><span class="text-gray-500">Subtotal:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.invoice_amount || 0)) }}</span></p>
+                <p class="text-xs text-gray-500"><span>Tax:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.tax_amount || 0)) }}</span></p>
+                <p class="text-xs text-gray-500"><span>Delivery:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.shipping_cost || 0)) }}</span></p>
+                <p class="text-xs text-gray-500"><span>Total:</span> <span class="font-medium text-gray-900">₱{{ formatNumber(Number(invoice?.net_amount || 0)) }}</span></p>
                 <p class="text-xs text-gray-400">{{ formatDate(invoice?.invoice_date) }}</p>
               </div>
             </div>
@@ -436,6 +442,18 @@
                   Method: {{ invoice.payment_method }}
                 </p>
               </div>
+
+              <div v-else class="bg-blue-50 rounded-lg p-4 space-y-2">
+                <p class="text-xs text-blue-700">PayMongo Status: <span class="font-medium">{{ paymongoInvoiceStatus }}</span></p>
+                <button
+                  :disabled="paymongoInvoiceLoading"
+                  class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+                  @click="handleInvoicePaymongoAction"
+                >
+                  <i class="pi pi-wallet"></i>
+                  <span>{{ paymongoInvoiceActionLabel }}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -471,12 +489,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Tag from 'primevue/tag'
 import procurementService from '../../../../services/procurement.service'
 import financeService from '../../../../services/finance.service'
+import paymongoService from '@/services/paymongo.service'
 
 const router = useRouter()
 const route = useRoute()
@@ -493,8 +512,18 @@ const loading = ref(false)
 const paymentDate = ref('')
 const paymentMethod = ref('bank_transfer')
 const paymentAmount = ref(0)
+const paymongoInvoiceIntentId = ref<string | null>(null)
+const paymongoInvoiceStatus = ref('idle')
+const paymongoInvoiceLoading = ref(false)
+const paymongoInvoicePolling = ref<ReturnType<typeof setInterval> | null>(null)
+const invoiceMarkedPaidByPaymongo = ref(false)
 
 const isFinanceRoute = computed(() => String(route.name || '').startsWith('finance.'))
+const paymongoInvoiceActionLabel = computed(() => {
+  if (invoice.value?.payment_status === 'paid') return 'Invoice Paid'
+  if (!paymongoInvoiceIntentId.value) return 'Pay with PayMongo'
+  return 'Open PayMongo Checkout'
+})
 
 const tabs = [
   { label: 'Details', icon: 'pi pi-file' },
@@ -621,14 +650,14 @@ const calculateQuantityVariance = (): string => {
 }
 
 const calculateAmountVariance = (): number => {
-  const poAmount = Number(invoice.value?.purchase_order?.total_amount || 0)
-  const invAmount = Number(invoice.value?.net_amount || 0)
+  const poAmount = Number(invoice.value?.purchase_order?.subtotal || 0)
+  const invAmount = Number(invoice.value?.invoice_amount || 0)
   return Math.abs(poAmount - invAmount)
 }
 
 const calculateVariancePercentage = (): string => {
-  const poAmount = Number(invoice.value?.purchase_order?.total_amount || 0)
-  const invAmount = Number(invoice.value?.net_amount || 0)
+  const poAmount = Number(invoice.value?.purchase_order?.subtotal || 0)
+  const invAmount = Number(invoice.value?.invoice_amount || 0)
   if (poAmount === 0) return '0'
   return ((Math.abs(poAmount - invAmount) / poAmount) * 100).toFixed(2)
 }
@@ -660,6 +689,7 @@ async function loadInvoice() {
     
     invoice.value = response.data?.data || response.data
     paymentAmount.value = Number(invoice.value?.net_amount || 0)
+    await loadLatestPaymongoInvoiceIntent()
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -669,6 +699,125 @@ async function loadInvoice() {
     })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadLatestPaymongoInvoiceIntent() {
+  if (!invoice.value?.id) return
+  try {
+    const response = await paymongoService.getLatestIntentByPayable('invoice', Number(invoice.value.id))
+    const latest = response?.data
+    if (!latest) return
+
+    paymongoInvoiceIntentId.value = latest.payment_intent_id || null
+    paymongoInvoiceStatus.value = latest.status || paymongoInvoiceStatus.value
+
+    if (paymongoInvoiceIntentId.value && !['succeeded', 'failed', 'canceled', 'cancelled', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {
+      startInvoicePaymongoPolling()
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function createInvoicePaymongoIntent() {
+  if (!invoice.value?.id || !invoice.value?.store_id) return
+  paymongoInvoiceLoading.value = true
+  try {
+    const intentResponse = await paymongoService.createIntent({
+      amount: Math.max(Math.round(Number(invoice.value?.net_amount || invoice.value?.invoice_amount || 0) * 100), 1),
+      payment_method_allowed: ['gcash'],
+      store_id: Number(invoice.value.store_id),
+      payable_type: 'invoice',
+      payable_id: Number(invoice.value.id),
+    })
+    paymongoInvoiceIntentId.value = intentResponse?.data?.id || null
+    paymongoInvoiceStatus.value = intentResponse?.data?.attributes?.status || 'awaiting_payment_method'
+    startInvoicePaymongoPolling()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'PayMongo',
+      detail: error?.response?.data?.message || 'Failed to create PayMongo intent for invoice.',
+      life: 3500,
+    })
+  } finally {
+    paymongoInvoiceLoading.value = false
+  }
+}
+
+async function openInvoicePaymongoCheckout() {
+  if (!paymongoInvoiceIntentId.value) return
+  paymongoInvoiceLoading.value = true
+  try {
+    const response = await paymongoService.startGcash(paymongoInvoiceIntentId.value, {
+      name: invoice.value?.supplier?.contact_person || invoice.value?.supplier?.supplier_name || 'Supplier',
+      email: invoice.value?.supplier?.email || 'supplier@example.com',
+      phone: invoice.value?.supplier?.phone || invoice.value?.supplier?.contact_number || '09170000000',
+      return_url: window.location.href,
+    })
+
+    const redirectUrl = response?.data?.redirect_url
+    if (!redirectUrl) throw new Error('PayMongo checkout URL is missing.')
+    window.open(redirectUrl, '_blank')
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'PayMongo',
+      detail: error?.response?.data?.message || 'Unable to open PayMongo checkout.',
+      life: 3500,
+    })
+  } finally {
+    paymongoInvoiceLoading.value = false
+  }
+}
+
+async function handleInvoicePaymongoAction() {
+  if (invoice.value?.payment_status === 'paid') return
+  if (!paymongoInvoiceIntentId.value) {
+    await createInvoicePaymongoIntent()
+    await openInvoicePaymongoCheckout()
+    return
+  }
+  await openInvoicePaymongoCheckout()
+}
+
+async function pollInvoicePaymongoStatus() {
+  if (!paymongoInvoiceIntentId.value || paymongoInvoiceLoading.value) return
+  paymongoInvoiceLoading.value = true
+  try {
+    const response = await paymongoService.getIntent(paymongoInvoiceIntentId.value)
+    paymongoInvoiceStatus.value = response?.data?.data?.attributes?.status || paymongoInvoiceStatus.value
+
+    if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase()) && invoice.value?.payment_status !== 'paid' && !invoiceMarkedPaidByPaymongo.value) {
+      invoiceMarkedPaidByPaymongo.value = true
+      await financeService.markInvoicePaid(Number(invoice.value.id), {
+        payment_method: 'paymongo_gcash',
+        payment_amount: Number(invoice.value?.net_amount || invoice.value?.invoice_amount || 0),
+      })
+      await loadInvoice()
+    }
+
+    if (['succeeded', 'failed', 'canceled', 'cancelled', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {
+      stopInvoicePaymongoPolling()
+    }
+  } catch {
+    // ignore polling failures to keep UI responsive
+  } finally {
+    paymongoInvoiceLoading.value = false
+  }
+}
+
+function startInvoicePaymongoPolling() {
+  stopInvoicePaymongoPolling()
+  pollInvoicePaymongoStatus()
+  paymongoInvoicePolling.value = setInterval(pollInvoicePaymongoStatus, 8000)
+}
+
+function stopInvoicePaymongoPolling() {
+  if (paymongoInvoicePolling.value) {
+    clearInterval(paymongoInvoicePolling.value)
+    paymongoInvoicePolling.value = null
   }
 }
 
@@ -865,6 +1014,10 @@ function editInvoice() {
 
 onMounted(() => {
   loadInvoice()
+})
+
+onBeforeUnmount(() => {
+  stopInvoicePaymongoPolling()
 })
 </script>
 

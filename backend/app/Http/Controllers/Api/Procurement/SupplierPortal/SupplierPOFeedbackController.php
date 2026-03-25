@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Core\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -139,6 +140,14 @@ class SupplierPOFeedbackController extends Controller
                 ->latest('id')
                 ->first();
 
+            $contract = SupplierContract::where('store_id', $po->store_id)
+                ->where('supplier_id', $po->supplier_id)
+                ->active()
+                ->orderBy('end_date', 'desc')
+                ->first();
+            $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+            $contractDiscountPercent = $contract?->discount_percentage ?? 0;
+
             $rejectionReason = $po->rejection_details['reason'] ?? null;
             if (!$rejectionReason && $feedback?->rejection_reason) {
                 $rejectionReason = $feedback->rejection_reason;
@@ -153,6 +162,9 @@ class SupplierPOFeedbackController extends Controller
                     'goods_receipt' => $goodsReceipt,
                     'invoice' => $invoice,
                     'rejection_reason' => $rejectionReason,
+                    'contract_tax_rate' => $contractTaxRate,
+                    'contract_discount_percent' => $contractDiscountPercent,
+                    'contract_is_tax_exempt' => $contract?->is_tax_exempt ?? false,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -225,6 +237,22 @@ class SupplierPOFeedbackController extends Controller
                     'purchase_order',
                     $po->id
                 );
+
+                $creatorUserId = $po->createdBy?->user_id;
+                if ($creatorUserId) {
+                    $this->notify($creatorUserId, [
+                        'store_id' => $po->store_id,
+                        'branch_id' => $po->branch_id,
+                        'module' => 'procurement',
+                        'entity_type' => 'purchase_order',
+                        'entity_id' => $po->id,
+                        'action' => 'supplier_accepted',
+                        'title' => 'Supplier Accepted PO',
+                        'message' => "Supplier accepted PO {$po->po_number}.",
+                        'severity' => 'success',
+                        'link' => "/system/procurement/purchase-orders/{$po->id}",
+                    ]);
+                }
             }
 
             if ($request->response === 'rejected') {
@@ -232,7 +260,7 @@ class SupplierPOFeedbackController extends Controller
 
                 ActivityLog::record(
                     'po_supplier_declined',
-                    "PO {$po->po_number} Supplier Declined.",
+                    "PO {$po->po_number} declined by supplier.",
                     [
                         'po_number' => $po->po_number,
                         'supplier_id' => $portal->supplier_id,
@@ -241,6 +269,22 @@ class SupplierPOFeedbackController extends Controller
                     'purchase_order',
                     $po->id
                 );
+
+                $creatorUserId = $po->createdBy?->user_id;
+                if ($creatorUserId) {
+                    $this->notify($creatorUserId, [
+                        'store_id' => $po->store_id,
+                        'branch_id' => $po->branch_id,
+                        'module' => 'procurement',
+                        'entity_type' => 'purchase_order',
+                        'entity_id' => $po->id,
+                        'action' => 'supplier_declined',
+                        'title' => 'Supplier Declined PO',
+                        'message' => "Supplier declined PO {$po->po_number}.",
+                        'severity' => 'danger',
+                        'link' => "/system/procurement/purchase-orders/{$po->id}",
+                    ]);
+                }
             }
 
             return response()->json([

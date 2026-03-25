@@ -7,7 +7,7 @@
             <Button text severity="secondary" icon="pi pi-arrow-left" @click="goBack" />
             <div>
               <h1 class="text-2xl font-semibold text-gray-900">{{ order?.order_number || 'Order Detail' }}</h1>
-              <p class="text-sm text-gray-500">Process order and assign delivery safely.</p>
+              <p class="text-sm text-gray-500">View order and delivery details.</p>
             </div>
           </div>
           <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" @click="loadOrder" />
@@ -33,35 +33,24 @@
               <div><span class="text-gray-500">Payment Status:</span> <span class="font-medium text-gray-900">{{ order?.payment_status }}</span></div>
               <div class="col-span-2"><span class="text-gray-500">Address:</span> <span class="font-medium text-gray-900">{{ order?.shipping_address || '-' }}</span></div>
             </div>
-          </template>
-        </Card>
 
-        <Card class="rounded-2xl border border-gray-100 shadow-sm">
-          <template #title>Status</template>
-          <template #content>
-            <div class="space-y-3">
-              <Tag :value="formatStatus(order?.status || 'pending')" :severity="statusSeverity(order?.status || 'pending')" />
-              <Select v-model="statusForm.status" :options="statusOptions" optionLabel="label" optionValue="value" fluid />
-              <Textarea v-model="statusForm.notes" rows="3" fluid placeholder="Notes (optional)" />
-              <Button severity="info" :loading="updating" fluid label="Update Status" @click="saveStatus" />
+            <Divider />
+
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-sm font-semibold text-gray-900">Delivery Information</h4>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div><span class="text-gray-500">Assigned Branch:</span> <span class="font-medium text-gray-900">{{ order?.assigned_branch?.name || '-' }}</span></div>
+              <div><span class="text-gray-500">Delivery Status:</span> <Tag :value="formatStatus(order?.delivery?.status || 'not_assigned')" :severity="deliverySeverity(order?.delivery?.status || 'assigned')" /></div>
+              <div><span class="text-gray-500">Tracking:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.tracking_number || '-' }}</span></div>
+              <div><span class="text-gray-500">Courier:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.courier_name || '-' }}</span></div>
+              <div><span class="text-gray-500">Courier Contact:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.courier_contact || '-' }}</span></div>
+              <div><span class="text-gray-500">Vehicle:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.vehicle ? `${order.delivery.vehicle.vehicle_name} (${order.delivery.vehicle.plate_number})` : '-' }}</span></div>
+              <div><span class="text-gray-500">ETA:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.estimated_delivery_at ? formatDateTime(order.delivery.estimated_delivery_at) : '-' }}</span></div>
             </div>
           </template>
         </Card>
       </div>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm">
-        <template #title>Delivery Assignment</template>
-        <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Select v-model="deliveryForm.vehicle_id" :options="vehicles" optionLabel="label" optionValue="id" showClear fluid placeholder="Vehicle" />
-            <InputText v-model="deliveryForm.courier_name" fluid placeholder="Courier name" />
-            <InputText v-model="deliveryForm.courier_contact" fluid placeholder="Courier contact" />
-            <InputText v-model="deliveryForm.tracking_number" fluid placeholder="Tracking number" />
-            <DatePicker v-model="deliveryForm.estimated_delivery_at" showTime fluid placeholder="Estimated delivery" />
-            <Textarea v-model="deliveryForm.notes" rows="2" fluid placeholder="Delivery notes" class="md:col-span-3" />
-          </div>
-        </template>
-      </Card>
 
       <Card class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>Ordered Items</template>
@@ -70,6 +59,11 @@
             <Column field="product_name" header="Product" />
             <Column field="sku" header="SKU" />
             <Column field="quantity" header="Qty" />
+            <Column header="Stock Status">
+              <template #body="{ data }">
+                <Tag :value="formatStatus(data.branch_inventory?.stock_status || 'unknown')" :severity="(data.branch_inventory?.stock_status || '').includes('out') ? 'danger' : ((data.branch_inventory?.stock_status || '').includes('low') ? 'warning' : 'success')" />
+              </template>
+            </Column>
             <Column field="unit_price" header="Unit Price">
               <template #body="{ data }">{{ formatMoney(data.unit_price) }}</template>
             </Column>
@@ -79,6 +73,26 @@
           </DataTable>
         </template>
       </Card>
+
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card class="rounded-2xl border border-gray-100 shadow-sm">
+          <template #title>Customer Chat</template>
+          <template #content>
+            <div class="space-y-3">
+              <Message severity="info" :closable="false">
+                Chat replies are now handled in the Sales module for better team workflow.
+              </Message>
+              <Button
+                label="Open Sales Chat Inbox"
+                icon="pi pi-comments"
+                severity="info"
+                outlined
+                @click="openSalesChat"
+              />
+            </div>
+          </template>
+        </Card>
+      </div>
 
       <Card class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>Order Timeline</template>
@@ -91,9 +105,7 @@
                   <Tag v-if="item.status_to" :value="formatStatus(item.status_to)" severity="secondary" class="text-xs" />
                 </div>
                 <p class="mt-1 text-xs text-gray-600">{{ item.description || '-' }}</p>
-                <p class="mt-1 text-xs text-gray-400">
-                  {{ formatDateTime(item.created_at) }} • {{ item.actor || 'System' }}
-                </p>
+                <p class="mt-1 text-xs text-gray-400">{{ formatDateTime(item.created_at) }} • {{ item.actor || 'System' }}</p>
               </div>
             </template>
           </Timeline>
@@ -101,86 +113,37 @@
         </template>
       </Card>
     </template>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import inventoryService from '@/services/inventory.service'
+import salesService from '@/services/sales.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-import Select from 'primevue/select'
-import Textarea from 'primevue/textarea'
-import InputText from 'primevue/inputtext'
-import DatePicker from 'primevue/datepicker'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Skeleton from 'primevue/skeleton'
 import Timeline from 'primevue/timeline'
+import Divider from 'primevue/divider'
+import Message from 'primevue/message'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 
 const loading = ref(false)
-const updating = ref(false)
 const order = ref<any>(null)
-const vehicles = ref<any[]>([])
-
-const statusOptions = [
-  { label: 'Processing', value: 'processing' },
-  { label: 'Packed', value: 'packed' },
-  { label: 'Shipped', value: 'shipped' },
-  { label: 'In Transit', value: 'in_transit' },
-  { label: 'Out For Delivery', value: 'out_for_delivery' },
-  { label: 'Delivered', value: 'delivered' },
-  { label: 'Cancelled', value: 'cancelled' },
-]
-
-const statusForm = reactive({
-  status: 'processing',
-  notes: '',
-})
-
-const deliveryForm = reactive<any>({
-  vehicle_id: null,
-  tracking_number: '',
-  courier_name: '',
-  courier_contact: '',
-  estimated_delivery_at: null,
-  notes: '',
-})
-
-const loadVehicles = async () => {
-  try {
-    const res = await inventoryService.getDeliveryVehicles({ per_page: 200, status: 'active' })
-    const rows = res?.data?.data || []
-    vehicles.value = rows.map((v: any) => ({
-      ...v,
-      label: `${v.vehicle_name} (${v.plate_number})`,
-    }))
-  } catch {
-    vehicles.value = []
-  }
-}
 
 const loadOrder = async () => {
   loading.value = true
   try {
-    const res = await inventoryService.getEcommerceOrder(String(route.params.id))
+    const res = await salesService.getEcommerceOrder(String(route.params.id))
     order.value = res?.data
-    statusForm.status = order.value?.status || 'processing'
-
-    const delivery = order.value?.delivery || {}
-    deliveryForm.vehicle_id = delivery.vehicle_id ?? null
-    deliveryForm.tracking_number = delivery.tracking_number ?? ''
-    deliveryForm.courier_name = delivery.courier_name ?? ''
-    deliveryForm.courier_contact = delivery.courier_contact ?? ''
-    deliveryForm.estimated_delivery_at = delivery.estimated_delivery_at ? new Date(delivery.estimated_delivery_at) : null
-    deliveryForm.notes = delivery.notes ?? ''
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order', life: 3000 })
   } finally {
@@ -188,28 +151,19 @@ const loadOrder = async () => {
   }
 }
 
-const saveStatus = async () => {
-  updating.value = true
-  try {
-    await inventoryService.updateEcommerceOrderStatus(String(route.params.id), {
-      status: statusForm.status,
-      notes: statusForm.notes || undefined,
-      delivery: {
-        vehicle_id: deliveryForm.vehicle_id || undefined,
-        tracking_number: deliveryForm.tracking_number || undefined,
-        courier_name: deliveryForm.courier_name || undefined,
-        courier_contact: deliveryForm.courier_contact || undefined,
-        estimated_delivery_at: deliveryForm.estimated_delivery_at || undefined,
-        notes: deliveryForm.notes || undefined,
-      },
-    })
-    toast.add({ severity: 'success', summary: 'Updated', detail: 'Order status updated successfully.', life: 2500 })
-    await loadOrder()
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Update failed', detail: error?.response?.data?.message || 'Failed to update order status', life: 3000 })
-  } finally {
-    updating.value = false
+const openSalesChat = () => {
+  if (!order.value) {
+    router.push({ name: 'sales.chats' })
+    return
   }
+
+  router.push({
+    name: 'sales.chats',
+    query: {
+      customer_user_id: order.value.user_id,
+      order_id: order.value.id,
+    },
+  })
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
@@ -224,16 +178,14 @@ const formatDateTime = (value: string) => {
     minute: '2-digit',
   })
 }
-const statusSeverity = (status: string) => {
+const deliverySeverity = (status: string) => {
   if (status === 'delivered') return 'success'
-  if (status === 'cancelled') return 'danger'
-  if (status === 'pending') return 'warning'
+  if (status === 'failed_delivery' || status === 'cancelled') return 'danger'
+  if (status === 'out_for_delivery') return 'warning'
   return 'info'
 }
 
-const goBack = () => router.push({ name: 'inventory.ecommerce-orders' })
+const goBack = () => router.push({ name: 'sales.ecommerce-orders' })
 
-onMounted(async () => {
-  await Promise.all([loadOrder(), loadVehicles()])
-})
+onMounted(loadOrder)
 </script>

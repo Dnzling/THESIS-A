@@ -100,7 +100,7 @@
                   <small class="text-red-500" v-if="errors.currency">{{ errors.currency }}</small>
                 </div>
 
-                <div class="space-y-2">
+                <!-- <div class="space-y-2">
                   <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Shipping Terms</label>
                   <Select 
                     v-model="form.shipping_terms" 
@@ -110,7 +110,7 @@
                     placeholder="Select terms"
                     class="w-full bg-gray-50 border-gray-200 rounded-xl"
                   />
-                </div>
+                </div> -->
               </div>
 
               <div class="space-y-2">
@@ -760,7 +760,7 @@ const form = reactive<RFQForm>({
   issue_date: new Date(),
   rfq_type: 'purchase',
   currency: 'PHP',
-  shipping_terms: 'FOB',
+  shipping_terms: '',
   instructions: '',
   qualification_requirements: '',
   items: [{ product_id: null, variation_id: null, quantity: 1, unit: 'pcs', target_price: null, specifications: '', notes: '' }],
@@ -807,7 +807,7 @@ const loadRfqForEdit = async (id: number) => {
     form.issue_date = toDateOrNull(rfq.issue_date) || new Date()
     form.rfq_type = rfq.rfq_type || 'purchase'
     form.currency = rfq.currency || 'PHP'
-    form.shipping_terms = rfq.shipping_terms || 'FOB'
+    form.shipping_terms = rfq.shipping_terms
     form.instructions = rfq.instructions || ''
     form.qualification_requirements = rfq.qualification_requirements || ''
 

@@ -69,15 +69,9 @@
             No templates yet. Tap the preset to create one.
           </div>
   
-          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="text-sm font-medium text-slate-700">Tax Rate (VAT)</label>
-              <InputNumber v-model="form.tax_rate" class="w-full mt-2" suffix="%" :min="0" :max="100" />
-            </div>
-            <div>
-              <label class="text-sm font-medium text-slate-700">Expected Delivery</label>
-              <DatePicker v-model="form.expected_delivery_date" :minDate="new Date()" fluid class="mt-2" dateFormat="yy-mm-dd" />
-            </div>
+          <div class="mt-4">
+            <label class="text-sm font-medium text-slate-700">Expected Delivery</label>
+            <DatePicker v-model="form.expected_delivery_date" :minDate="new Date()" fluid class="mt-2" dateFormat="yy-mm-dd" />
           </div>
         </template>
       </Card>
@@ -264,12 +258,8 @@ const form = ref({
   cost_per_km: 0,
   current_latitude: '',
   current_longitude: '',
-  tax_rate: 12,
   expected_delivery_date: null as Date | null,
 })
-
-const taxRate = ref(12)
-const expectedDeliveryDate = ref('')
 
 const activeTemplate = computed(() => {
   if (!templates.value.length) return null
@@ -421,6 +411,7 @@ const saveTemplate = async () => {
       }
       selectedTemplateId.value = payload.data.id
       applyTemplate()
+      await loadTemplates()
     }
     showTemplateModal.value = false
     toast.add({ severity: 'success', summary: 'Template Saved', detail: 'Template ready to use.', life: 2000 })
@@ -491,7 +482,6 @@ const continueToInvoice = () => {
     current_longitude: form.value.current_longitude ? Number(form.value.current_longitude) : null,
     distance_km: distanceKm.value,
     delivery_charge: deliveryCharge.value,
-    tax_rate: Number(form.value.tax_rate || 12),
     expected_delivery_date: form.value.expected_delivery_date || null,
   }
   localStorage.setItem(`supplier_delivery_draft_${poId}`, JSON.stringify(draft))

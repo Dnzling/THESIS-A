@@ -19,7 +19,7 @@
           </div>
           <div class="flex gap-2">
             <Button
-              v-if="stockCount?.status === 'pending_approval' && authStore.hasPermission('inventory.stock-counts.approve')"
+              v-if="stockCount?.status === 'pending_approval' && authStore.hasPermission('inventory.stock_counts.approve')"
               label="Approve Count Request"
               icon="pi pi-check-circle"
               severity="success"

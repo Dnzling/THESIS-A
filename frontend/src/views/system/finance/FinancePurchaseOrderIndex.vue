@@ -296,7 +296,7 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
-import procurementService from '../../../services/procurement.service'
+import financeService from '@/services/finance.service'
 
 const router = useRouter()
 const toast = useToast()
@@ -366,7 +366,7 @@ const loadPOs = async () => {
       params.search = filters.value.search
     }
 
-    const response = await procurementService.getPurchaseOrders(params)
+    const response = await financeService.getPurchaseOrders(params)
     
     // Handle different response structures
     if (response.data?.data) {

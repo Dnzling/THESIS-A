@@ -16,11 +16,7 @@ class SerialNumberRequest extends FormRequest
             return false;
         }
 
-        if ($this->isMethod('POST')) {
-            return auth()->user()->can('inventory.serial-numbers.create');
-        }
-
-        return auth()->user()->can('inventory.serial-numbers.update');
+        return auth()->user()?->can('inventory.master_data.manage') ?? false;
     }
 
     /**

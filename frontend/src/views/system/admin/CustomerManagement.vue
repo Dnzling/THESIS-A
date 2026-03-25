@@ -258,7 +258,7 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const toFileUrl = (path: string) => {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `${apiBaseUrl}/storage/${path.replace(/^\\/+/, '')}`
+  return `${apiBaseUrl}/storage/${path.replace(/^\/+/, '')}`
 }
 
 const loadCustomers = async () => {

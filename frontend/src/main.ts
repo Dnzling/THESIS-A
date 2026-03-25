@@ -60,6 +60,7 @@ import Timeline from 'primevue/timeline'
 import InputMask from 'primevue/inputmask'
 import ColorPicker from 'primevue/colorpicker'
 import SelectButton from 'primevue/selectbutton'
+import Carousel from 'primevue/carousel'
 
 
 // ==================== AXIOS CONFIGURATION ====================
@@ -88,6 +89,7 @@ app.use(router)
 
 // Register PrimeVue components
 const components = {
+  Carousel,
   SelectButton,
   ColorPicker,
   Timeline,

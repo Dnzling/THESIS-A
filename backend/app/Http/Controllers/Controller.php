@@ -3,9 +3,40 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\DB;
+use App\Models\Core\SystemNotification;
 
 abstract class Controller
 {
+    protected function notify(int $userId, array $payload): SystemNotification
+    {
+        $user = auth()->user();
+        $storeId = $payload['store_id'] ?? $user?->store_id;
+        $branchId = $payload['branch_id'] ?? $user?->branch_id;
+
+        return SystemNotification::create([
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
+            'user_id' => $userId,
+            'module' => $payload['module'] ?? 'general',
+            'entity_type' => $payload['entity_type'] ?? null,
+            'entity_id' => $payload['entity_id'] ?? null,
+            'action' => $payload['action'] ?? null,
+            'title' => $payload['title'] ?? 'Notification',
+            'message' => $payload['message'] ?? null,
+            'data' => $payload['data'] ?? null,
+            'link' => $payload['link'] ?? null,
+            'severity' => $payload['severity'] ?? 'info',
+            'is_read' => (bool) ($payload['is_read'] ?? false),
+            'read_at' => $payload['read_at'] ?? null,
+        ]);
+    }
+
+    protected function notifyMany(array $userIds, array $payload): void
+    {
+        foreach ($userIds as $userId) {
+            $this->notify((int) $userId, $payload);
+        }
+    }
     protected function getUserPermissions($user = null): array
     {
         $user = $user ?? auth()->user();

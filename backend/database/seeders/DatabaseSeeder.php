@@ -18,9 +18,15 @@ use Database\Seeders\Hr\ShiftSeeder;
 use Database\Seeders\Permission\Inventory\InventoryNavigationSeeder;
 use Database\Seeders\Permission\Inventory\InventoryPermissionsSeeder;
 use Database\Seeders\Permission\Inventory\InventoryRolePermissionsSeeder;
+use Database\Seeders\Permission\Logistics\LogisticsNavigationSeeder;
+use Database\Seeders\Permission\Logistics\LogisticsPermissionsSeeder;
+use Database\Seeders\Permission\Logistics\LogisticsRolePermissionsSeeder;
 use Database\Seeders\Permission\Merchandise\MerchandisingPermissionsSeeder;
 use Database\Seeders\Permission\Merchandise\NavigationItemsSeeder;
 use Database\Seeders\Permission\Merchandise\RolePermissionSeeder;
+use Database\Seeders\Permission\Sales\SalesPermissionsSeeder;
+use Database\Seeders\Permission\Sales\SalesNavigationSeeder;
+use Database\Seeders\Permission\Sales\SalesRolePermissionsSeeder;
 use Database\Seeders\InventoryInitialSeeder;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -56,7 +62,15 @@ class DatabaseSeeder extends Seeder
             // PermissionSeeder::class,
             // InventoryRolePermissionsSeeder::class,
             // InventoryNavigationSeeder::class,
-            InventoryInitialSeeder::class,
+            // InventoryInitialSeeder::class,
+            // InventoryPermissionsSeeder::class,
+            // InventoryRolePermissionsSeeder::class,
+            // LogisticsPermissionsSeeder::class,
+            // LogisticsNavigationSeeder::class,
+            // LogisticsRolePermissionsSeeder::class,
+            SalesPermissionsSeeder::class,
+            SalesNavigationSeeder::class,
+            SalesRolePermissionsSeeder::class,
         ]);
     }
 }

@@ -8,7 +8,7 @@
           <Skeleton v-for="idx in 7" :key="idx" height="1.1rem" />
         </div>
         <div v-else-if="store" class="space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 class="text-2xl font-bold text-slate-900">{{ store.store_name }}</h1>
               <p class="text-sm text-slate-500">{{ store.city }} · {{ store.address }}</p>
@@ -59,9 +59,10 @@
             </div>
           </div>
   
-          <div class="flex gap-2">
-            <Button label="View Products" severity="info" @click="goStoreProducts()" />
-            <Button label="View Reviews" severity="secondary" outlined @click="goStoreReviews" />
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <Button label="View Products" severity="info" class="w-full sm:w-auto" @click="goStoreProducts()" />
+            <Button label="View Reviews" severity="secondary" outlined class="w-full sm:w-auto" @click="goStoreReviews" />
+            <Button label="Chat Store" severity="help" outlined class="w-full sm:w-auto" @click="goChatStore" />
           </div>
         </div>
       </template>
@@ -135,6 +136,11 @@ function goStoreReviews() {
     params: { storeId: route.params.storeId },
     query: { tab: 'reviews' },
   })
+}
+
+function goChatStore() {
+  if (!store.value?.id) return
+  router.push({ name: 'ecommerce.chats', query: { store_id: String(store.value.id) } })
 }
 
 onMounted(loadStore)

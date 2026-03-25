@@ -10,6 +10,7 @@ use App\Models\ProductCatalog\PricingHistory;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Store\Branch;
+use App\Models\Inventory\ReorderRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -866,7 +867,7 @@ class ProductController extends BaseController
             ->pluck('id');
 
         foreach ($branches as $branchId) {
-            BranchInventory::query()->firstOrCreate(
+            $inventory = BranchInventory::query()->firstOrCreate(
                 [
                     'store_id' => $storeId,
                     'branch_id' => (int) $branchId,
@@ -879,14 +880,33 @@ class ProductController extends BaseController
                     'quantity_available' => 0,
                     'quantity_damaged' => 0,
                     'quantity_incoming' => 0,
-                    'reorder_point' => 10,
-                    'reorder_quantity' => 10,
+                    // Reorder settings now live in reorder_rules (primary).
+                    // Keep these columns as legacy/fallback only.
+                    'reorder_point' => 0,
+                    'reorder_quantity' => 0,
                     'maximum_stock' => 1000,
                     'safety_stock' => 5,
                     'stock_status' => 'out_of_stock',
                     'unit_cost' => 0,
                     'average_cost' => 0,
                     'total_value' => 0,
+                ]
+            );
+
+            ReorderRule::query()->firstOrCreate(
+                [
+                    'product_id' => $productId,
+                    'branch_id' => (int) $branchId,
+                ],
+                [
+                    'rule_type' => 'manual',
+                    'trigger_type' => 'reorder_point',
+                    'basis_type' => 'reorder_point',
+                    'reorder_point' => 10,
+                    'reorder_quantity' => 10,
+                    'priority' => 'medium',
+                    'auto_generate_po' => false,
+                    'is_active' => true,
                 ]
             );
         }

@@ -98,10 +98,7 @@
                 <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Currency</p>
                 <p class="font-semibold text-gray-900">{{ detail.currency }}</p>
               </div>
-              <div>
-                <p class="text-xs text-gray-500 mb-1">Shipping Terms</p>
-                <p class="text-gray-900">{{ detail.shipping_terms || 'Not specified' }}</p>
-              </div>
+            
               <div>
                 <p class="text-xs text-gray-500 mb-1">Special Instructions</p>
                 <p class="text-gray-900">{{ detail.instructions || 'None' }}</p>

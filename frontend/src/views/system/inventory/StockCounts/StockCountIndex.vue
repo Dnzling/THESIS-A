@@ -300,11 +300,11 @@ const toast = useToast()
 const router = useRouter()
 const authStore = useAuthStore()
 
-const canViewStockCounts = authStore.hasPermission('inventory.stock-counts.view')
-const canCreateStockCounts = authStore.hasPermission('inventory.stock-counts.create')
-const canUpdateStockCounts = authStore.hasPermission('inventory.stock-counts.update')
-const canCompleteStockCounts = authStore.hasPermission('inventory.stock-counts.complete')
-const canDeleteStockCounts = authStore.hasPermission('inventory.stock-counts.delete')
+const canViewStockCounts = authStore.hasPermission('inventory.stock_counts.view')
+const canCreateStockCounts = authStore.hasPermission('inventory.stock_counts.manage')
+const canUpdateStockCounts = authStore.hasPermission('inventory.stock_counts.manage')
+const canCompleteStockCounts = authStore.hasPermission('inventory.stock_counts.manage')
+const canDeleteStockCounts = authStore.hasPermission('inventory.stock_counts.delete')
 
 const filters = reactive({
   search: '',

@@ -3,6 +3,7 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\Core\User;
+use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,6 +16,7 @@ class EcommerceOrder extends Model
 
     protected $fillable = [
         'store_id',
+        'assigned_branch_id',
         'user_id',
         'order_number',
         'status',
@@ -24,6 +26,8 @@ class EcommerceOrder extends Model
         'shipping_phone',
         'shipping_email',
         'shipping_address',
+        'customer_latitude',
+        'customer_longitude',
         'subtotal',
         'tax_amount',
         'shipping_fee',
@@ -40,11 +44,18 @@ class EcommerceOrder extends Model
         'discount_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'placed_at' => 'datetime',
+        'customer_latitude' => 'decimal:7',
+        'customer_longitude' => 'decimal:7',
     ];
 
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function assignedBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'assigned_branch_id');
     }
 
     public function user(): BelongsTo

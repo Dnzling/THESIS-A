@@ -6,7 +6,8 @@
         <h1 class="text-xl font-bold text-gray-800">Purchase Orders</h1>
         <p class="text-gray-500 mt-1">Manage purchase orders and track delivery status</p>
       </div>
-      <Button label="New Purchase Order" icon="pi pi-plus" class="p-button-lg" @click="goToCreatePO" />
+      <Button v-if="canManagePurchaseOrders" label="New Purchase Order" icon="pi pi-plus" size="small"
+        @click="goToCreatePO" />
     </div>
   
     <!-- Quick Stats -->
@@ -75,15 +76,22 @@
       <template #content>
         <DataTable v-if="!loading" :value="orders" :loading="loading" :paginator="true" :rows="15"
           responsive-layout="scroll" class="p-datatable-sm">
+  
+          <Column header="Order Date" style="width: 9%" sortable >
+            <template #body="{ data }">
+              <span class="text-sm text-gray-700">{{ formatDate(data.order_date) }}</span>
+            </template>
+          </Column>
           <!-- PO Number -->
-          <Column field="po_number" header="PO No." style="width: 10%" sortable>
+          <Column field="po_number" header="PO No." style="width: 15%" sortable>
             <template #body="{ data }">
               <RouterLink :to="`/procurement/purchase-orders/${data.id}`"
-                class="text-blue-600 hover:underline font-semibold">
+                class="text-blue-600 text-xs hover:underline font-semibold">
                 {{ data.po_number }}
               </RouterLink>
             </template>
           </Column>
+  
   
           <!-- Supplier -->
           <Column header="Supplier" style="width: 15%">
@@ -95,20 +103,20 @@
             </template>
           </Column>
   
-          <!-- Source (Stock Request or Manual) -->
+          <!-- Source (Stock Request or Manual)
           <Column header="Source" style="width: 10%">
             <template #body="{ data }">
               <Badge v-if="data.stock_order_request_id" value="Stock Request" severity="info" class="text-xs" />
               <Badge v-else value="Manual Entry" severity="secondary" class="text-xs" />
             </template>
-          </Column>
+          </Column> -->
   
           <!-- Dates -->
           <Column header="Order" style="width: 14%">
             <template #body="{ data }">
               <div class="text-sm space-y-1">
                 <p>Order: {{ formatDate(data.order_date) }}</p>
-              
+  
               </div>
             </template>
           </Column>
@@ -123,7 +131,7 @@
           </Column>
   
           <!-- Status -->
-          <Column header="Status" style="width: 11%">
+          <Column header="Status" style="width: 15%">
             <template #body="{ data }">
               <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
@@ -134,16 +142,10 @@
             <template #body="{ data }">
               <div class="flex gap-2 justify-center">
                 <Button icon="pi pi-eye" text rounded @click="viewPO(data)" v-tooltip="'View'" />
-                <Button icon="pi pi-pencil" text rounded severity="info" @click="editPO(data)" v-tooltip="'Edit'" />
-                <Button
-                  v-if="data.status === 'approved'"
-                  icon="pi pi-send"
-                  text
-                  rounded
-                  severity="success"
-                  @click="sendToSupplier(data)"
-                  v-tooltip="'Send to Supplier'"
-                />
+                <Button v-if="canManagePurchaseOrders && data.status === 'draft'" icon="pi pi-pencil" text rounded severity="info"
+                  @click="editPO(data)" v-tooltip="'Edit'" />
+                <Button v-if="canManagePurchaseOrders && data.status === 'approved'" icon="pi pi-send" text rounded
+                  severity="success" @click="sendToSupplier(data)" v-tooltip="'Send to Supplier'" />
                 <Button v-if="data.status !== 'draft'" icon="pi pi-print" text rounded @click="printPO(data)"
                   v-tooltip="'Print'" />
               </div>
@@ -171,14 +173,17 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
 // State
 const orders = ref<any[]>([])

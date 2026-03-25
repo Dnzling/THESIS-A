@@ -19,6 +19,12 @@
       <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Month Sales</p><p class="text-3xl font-semibold">{{ money(stats.month_sales) }}</p></template></Card>
     </div>
 
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Paid Today</p><p class="text-2xl font-semibold">{{ money(stats.today_paid || 0) }}</p></template></Card>
+      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Pending Payments</p><p class="text-2xl font-semibold">{{ stats.pending_payments || 0 }}</p></template></Card>
+      <Card class="border border-gray-100 shadow-sm rounded-2xl"><template #content><p class="text-xs text-gray-500 uppercase">Methods Used</p><p class="text-2xl font-semibold">{{ (stats.payments_by_method || []).length }}</p></template></Card>
+    </div>
+
     <Card class="border border-gray-100 shadow-sm rounded-2xl">
       <template #title>Recent POS Orders</template>
       <template #content>
@@ -60,4 +66,3 @@ const dt = (v: string) => (v ? new Date(v).toLocaleString('en-PH') : '-')
 
 onMounted(load)
 </script>
-

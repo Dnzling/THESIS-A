@@ -158,6 +158,39 @@
       </div>
     </div>
 
+    <!-- Tax Profile -->
+    <div class="border-b pb-6">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">Tax Profile</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Default VAT / Tax Rate (%)</label>
+          <InputNumber
+            v-model="formData.default_tax_rate"
+            mode="decimal"
+            :min="0"
+            :max="100"
+            :step="0.25"
+            class="w-full"
+            :class="{ 'ng-invalid': errors.default_tax_rate }"
+          />
+          <small v-if="errors.default_tax_rate" class="text-red-600">{{ errors.default_tax_rate }}</small>
+        </div>
+        <div class="flex items-center gap-3 pt-7">
+          <Checkbox v-model="formData.is_tax_exempt" binary inputId="taxExempt" />
+          <label for="taxExempt" class="text-sm font-medium text-gray-700">Tax Exempt</label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Tax Note</label>
+          <InputTextarea
+            v-model="formData.tax_note"
+            placeholder="Notes about tax treatment (optional)"
+            rows="3"
+            class="w-full"
+          />
+        </div>
+      </div>
+    </div>
+
     <!-- Status Section (Edit Mode) -->
     <div v-if="mode === 'edit'" class="border-b pb-6">
       <h3 class="text-lg font-semibold text-gray-800 mb-4">Status</h3>
@@ -231,6 +264,9 @@ const formData = ref({
   status: 'active',
   tax_id: '',
   bank_details: '',
+  default_tax_rate: null,
+  is_tax_exempt: false,
+  tax_note: '',
 })
 
 const errors = ref<any>({})
@@ -343,6 +379,9 @@ watch(
         status: 'active',
         tax_id: '',
         bank_details: '',
+        default_tax_rate: null,
+        is_tax_exempt: false,
+        tax_note: '',
       }
     }
   },

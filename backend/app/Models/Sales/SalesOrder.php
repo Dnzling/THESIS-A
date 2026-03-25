@@ -8,6 +8,8 @@ use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Sales\SalesOrderDelivery;
 
 class SalesOrder extends Model
 {
@@ -21,6 +23,11 @@ class SalesOrder extends Model
         'customer_name',
         'customer_phone',
         'payment_method',
+        'payment_status',
+        'payment_channel',
+        'payment_reference',
+        'paid_at',
+        'receipt_number',
         'subtotal',
         'discount_amount',
         'tax_amount',
@@ -28,6 +35,16 @@ class SalesOrder extends Model
         'amount_tendered',
         'change_amount',
         'notes',
+        'delivery_required',
+        'delivery_address',
+        'delivery_notes',
+        'delivery_province',
+        'delivery_city',
+        'delivery_barangay',
+        'delivery_address_line',
+        'delivery_latitude',
+        'delivery_longitude',
+        'delivery_email',
         'created_by',
     ];
 
@@ -38,11 +55,17 @@ class SalesOrder extends Model
         'total_amount' => 'decimal:2',
         'amount_tendered' => 'decimal:2',
         'change_amount' => 'decimal:2',
+        'paid_at' => 'datetime',
+        'delivery_required' => 'boolean',
+        'delivery_latitude' => 'decimal:6',
+        'delivery_longitude' => 'decimal:6',
     ];
 
     public function store(): BelongsTo { return $this->belongsTo(Store::class, 'store_id'); }
     public function branch(): BelongsTo { return $this->belongsTo(Branch::class, 'branch_id'); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
     public function items(): HasMany { return $this->hasMany(SalesOrderItem::class, 'order_id'); }
+    public function payment(): HasOne { return $this->hasOne(SalesPayment::class, 'sales_order_id'); }
+    public function receipt(): HasOne { return $this->hasOne(SalesReceipt::class, 'sales_order_id'); }
+    public function delivery(): HasOne { return $this->hasOne(SalesOrderDelivery::class, 'sales_order_id'); }
 }
-

@@ -4,9 +4,9 @@
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-bold text-slate-900">Stores</h1>
         <div class="flex items-center gap-2">
-          <InputText v-model="search" placeholder="Search store or city" />
-          <Select v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" placeholder="Sort" class="w-40" />
-          <Button label="Search" severity="info" @click="loadStores" />
+          <InputText v-model="search" placeholder="Search store" fluid />
+          <Select v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" placeholder="Sort" fluid />
+          <Button icon="pi pi-search" severity="info" @click="loadStores" size="small" fluid/>
         </div>
       </div>
 

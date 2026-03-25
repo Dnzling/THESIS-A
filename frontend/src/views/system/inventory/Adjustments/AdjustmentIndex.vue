@@ -105,8 +105,8 @@ const loading = ref(false)
 const adjustments = ref<any[]>([])
 
 const canViewAdjustments = authStore.hasPermission('inventory.adjustments.view')
-const canCreateAdjustments = authStore.hasPermission('inventory.adjustments.create')
-const canSubmitAdjustments = authStore.hasPermission('inventory.adjustments.submit')
+const canCreateAdjustments = authStore.hasPermission('inventory.adjustments.manage')
+const canSubmitAdjustments = authStore.hasPermission('inventory.adjustments.manage')
 
 const pagination = reactive<Pagination>({
   current_page: 1,

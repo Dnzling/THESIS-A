@@ -71,15 +71,16 @@
               </div>
   
               <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Discount Amount</label>
+                <label class="text-sm font-semibold text-gray-700 block mb-2">Contract Discount Amount</label>
                 <InputNumber v-model="form.discount_amount" :min="0" mode="currency" currency="PHP" fluid
-                  @input="updateTotals" />
+                  disabled />
+                <p class="text-xs text-gray-500 mt-1">Auto-calculated from contract discount %</p>
               </div>
             </div>
   
             <!-- Supplier Details Card (Auto-populated) -->
             <div v-if="selectedSupplier" class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                 <div>
                   <p class="text-gray-600 font-semibold">Contact Person</p>
                   <p class="text-gray-800">{{ selectedSupplier.contact_person || '-' }}</p>
@@ -91,6 +92,18 @@
                 <div>
                   <p class="text-gray-600 font-semibold">Phone</p>
                   <p class="text-gray-800">{{ selectedSupplier.phone || '-' }}</p>
+                </div>
+                <div>
+                  <p class="text-gray-600 font-semibold">Contract Discount</p>
+                  <p class="text-gray-800">
+                    {{ contractDiscountDisplay }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-gray-600 font-semibold">Tax Rate</p>
+                  <p class="text-gray-800">
+                    {{ supplierTaxRateDisplay }} <span v-if="selectedContract?.is_tax_exempt" class="text-xs text-orange-600">(Exempt)</span>
+                  </p>
                 </div>
               </div>
             </div>
@@ -111,7 +124,7 @@
   
             <!-- Quick Add Frequently Purchased Products -->
             <div v-if="frequentProducts.length > 0" class="mb-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded">
-              <p class="text-sm font-semibold text-gray-700 mb-3">🔥 Quick Add (Top Products)</p>
+              <p class="text-sm font-semibold text-gray-700 mb-3">Quick Add (Top Products)</p>
               <div class="flex gap-2 flex-wrap">
                 <Button v-for="product in frequentProducts" :key="product.id"
                   :label="`${product.product_name} (${product.quantity_ordered})`" size="small" severity="secondary"
@@ -165,7 +178,7 @@
                           fluid
                         />
                         <p v-if="budgetWarnings[index]" class="text-xs text-red-500 mt-1">
-                          ⚠️ {{ budgetWarnings[index] }}
+                          Warning: {{ budgetWarnings[index] }}
                         </p>
                       </div>
 
@@ -177,26 +190,11 @@
                           mode="currency"
                           currency="PHP"
                           fluid
+                          disabled
                           @input="calculateItemTotal(index)"
                           class="w-full text-right"
                         />
-                        <p class="text-xs text-gray-500 mt-2">Tax Rate</p>
-                        <p class="text-sm font-semibold text-gray-900">
-                          {{ (Number(item.tax_rate ?? 0)).toFixed(2) }}%
-                        </p>
-                      </div>
-
-                      <div class="md:col-span-4">
-                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Discount %</label>
-                        <InputNumber
-                          v-model="item.discount_percent"
-                          :min="0"
-                          :max="100"
-                          suffix="%"
-                          fluid
-                          @input="calculateItemTotal(index)"
-                          class="w-full text-center"
-                        />
+                        <p class="text-xs text-gray-500 mt-2">Cost price from products table</p>
                       </div>
 
                       <div class="md:col-span-4">
@@ -229,7 +227,7 @@
 
             <Card class="bg-linear-to-br from-orange-50 to-orange-100 border border-orange-200">
               <template #content>
-                <p class="text-xs text-orange-600 font-semibold">Discount</p>
+                <p class="text-xs text-orange-600 font-semibold">Supplier Discount</p>
                 <p class="text-2xl font-bold text-orange-900">
                   {{ formatCurrency(form.discount_amount || 0) }}
                 </p>
@@ -276,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted, watch } from 'vue'
+import { reactive, ref, onMounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
@@ -290,8 +288,6 @@ const toast = useToast()
 const {
   autoFillSupplierDetails,
   generatePoNumber,
-  calculateLineTotal,
-  calculateTotals,
   validateQuantityAgainstBudget,
   checkSupplierStatus,
   getFrequentlyPurchasedProducts,
@@ -319,6 +315,9 @@ const products = ref<any[]>([])
 const branches = ref<any[]>([])
 const frequentProducts = ref<any[]>([])
 const selectedSupplier = ref<any>(null)
+const selectedContract = ref<any>(null)
+const contractDiscountPercent = ref(0)
+const contractTaxRate = ref(0)
 const storeCurrency = ref('PHP')
 const budgetWarnings = ref<Record<number, string>>({})
 const supplierWarning = reactive({ show: false, message: '', severity: 'warning' as string })
@@ -328,6 +327,12 @@ const totals = reactive({
   tax_amount: 0,
   total_amount: 0
 })
+
+const supplierTaxRate = computed(() =>
+  selectedContract.value?.is_tax_exempt ? 0 : (contractTaxRate.value ?? 0)
+)
+const supplierTaxRateDisplay = computed(() => `${Number(supplierTaxRate.value || 0).toFixed(2)}%`)
+const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
 
 // Load initial data
 onMounted(async () => {
@@ -389,6 +394,21 @@ const loadInitialData = async () => {
   }
 }
 
+const syncItemUnitCostsFromProducts = () => {
+  if (!Array.isArray(form.items) || form.items.length === 0) return
+  if (!Array.isArray(products.value) || products.value.length === 0) return
+
+  form.items.forEach((item) => {
+    if (!item || !item.product_id) return
+    const product = products.value.find((p) => Number(p.id) === Number(item.product_id))
+    if (!product) return
+    const current = Number(item.unit_cost || 0)
+    if (current > 0) return
+    const nextCost = Number(product.cost_price ?? 0) || 0
+    item.unit_cost = nextCost
+  })
+}
+
 const prefillFromRequisition = async (requisitionId: number) => {
   try {
       const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId)
@@ -410,9 +430,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
         product_id: item.product_id,
         product_name: item.product?.product_name || item.product_name || '',
         quantity_ordered: item.quantity_requested || 1,
-        unit_cost: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0,
-        tax_rate: parseFloat(item.tax_rate ?? item.product?.tax_rate ?? 0) || 0,
-        discount_percent: 0,
+        unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
         line_total: 0
       }))
 
@@ -427,10 +445,11 @@ const prefillFromRequisition = async (requisitionId: number) => {
           product_name: item.product?.product_name || item.product_name || 'Unknown Product',
           sku: item.product?.sku || item.sku || '',
           stock_level: 0,
-          last_price: parseFloat(item.estimated_unit_cost || item.product?.base_price || '0') || 0,
-          tax_rate: parseFloat(item.tax_rate ?? item.product?.tax_rate ?? 0) || 0
+          cost_price: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0
         }))
-  }
+    }
+
+    syncItemUnitCostsFromProducts()
 
     const firstSupplierId = requisition.items?.[0]?.product?.suppliers?.[0]?.id
     if (firstSupplierId) {
@@ -474,53 +493,41 @@ const prefillFromRFQ = async (rfqId: number) => {
       })
     }
 
-    if (form.supplier_id) {
-      await onSupplierChange()
-    }
+      const rfqItemsRaw =
+        rfq.items?.data || rfq.items || rfq.rfq_items || rfq.rfqItems || []
 
-      if (approvedFeedbacks.length > 0) {
-        form.items = approvedFeedbacks.map((feedback: any) => {
-          const rfqItem = feedback?.rfq_item || {}
-          const product = rfqItem?.product || {}
-          return {
-            id: `rfq-feedback-${feedback.id}`,
-            product_id: rfqItem.product_id || product.id || null,
-            product_name: product.product_name || rfqItem.product_name || '',
-            quantity_ordered: rfqItem.quantity || 1,
-            unit_cost: parseFloat(feedback.quoted_price || 0) || 0,
-            tax_rate: parseFloat(feedback.tax_rate ?? product.tax_rate ?? 0) || 0,
-            discount_percent: 0,
-            line_total: 0,
-            stock_level: 0
-          }
-        })
-      } else if (Array.isArray(rfq.items)) {
-        form.items = rfq.items.map((item: any) => {
+      if (Array.isArray(rfqItemsRaw)) {
+        form.items = rfqItemsRaw.map((item: any) => {
           const product = item.product || {}
           return {
             id: `rfq-item-${item.id || Date.now()}`,
             product_id: item.product_id || product.id || null,
             product_name: product.product_name || item.product_name || '',
             quantity_ordered: item.quantity || 1,
-            unit_cost: parseFloat(item.target_price || 0) || 0,
-            tax_rate: parseFloat(item.tax_rate ?? product.tax_rate ?? 0) || 0,
-            discount_percent: 0,
+            unit_cost: 0,
             line_total: 0,
             stock_level: 0
           }
-      })
-    }
+        })
+      } else {
+        form.items = []
+      }
 
-    if (products.value.length === 0) {
-      products.value = form.items
-        .filter(item => item.product_id)
-        .map(item => ({
-          id: item.product_id,
-          product_name: item.product_name || 'Unknown Product',
-          sku: item.sku || '',
-          tax_rate: item.tax_rate ?? 0
-        }))
-    }
+      if (form.supplier_id) {
+        await onSupplierChange()
+      }
+
+      if (products.value.length === 0) {
+        products.value = form.items
+          .filter(item => item.product_id)
+          .map(item => ({
+            id: item.product_id,
+            product_name: item.product_name || 'Unknown Product',
+            sku: item.sku || ''
+          }))
+      }
+
+    syncItemUnitCostsFromProducts()
 
     form.items.forEach((_, index) => calculateItemTotal(index))
     updateTotals()
@@ -561,9 +568,7 @@ const loadPOForEdit = async (poId: number) => {
         product_id: item.product_id,
         variation_id: item.variation_id,
         quantity_ordered: item.quantity_ordered,
-        unit_cost: item.unit_cost,
-        discount_percent: item.discount_percent,
-        tax_rate: item.tax_rate ?? 0
+        unit_cost: item.unit_cost
       }))
       form.items.forEach((_, index) => calculateItemTotal(index))
     }
@@ -597,11 +602,10 @@ const loadProductsByBranch = async (branchId: number) => {
       product_name: item.product?.product_name || item.product_name || 'Unknown Product',
       sku: item.product?.sku || item.sku,
       stock_level: item.quantity_available || 0,
-      last_price: item.unit_cost || 0,
+      cost_price: item.product?.cost_price ?? item.unit_cost ?? 0,
       quantity_on_hand: item.quantity_on_hand,
       reorder_point: item.reorder_point,
-      category_id: item.product?.category_id || item.category_id,
-      tax_rate: item.product?.tax_rate ?? item.tax_rate ?? 0
+      category_id: item.product?.category_id || item.category_id
     })).filter((p: any) => !!p.id)
 
     if (products.value.length === 0) {
@@ -612,11 +616,12 @@ const loadProductsByBranch = async (branchId: number) => {
         product_name: product.product_name || 'Unknown Product',
         sku: product.sku || '',
         stock_level: product.stock_level || 0,
-        last_price: product.base_price || 0,
-      category_id: product.category_id,
-      tax_rate: product.tax_rate ?? 0
+        cost_price: product.cost_price ?? 0,
+        category_id: product.category_id
       }))
     }
+
+    syncItemUnitCostsFromProducts()
   } catch (error) {
     console.error('Failed to load products for branch', error)
     toast.add({
@@ -628,11 +633,37 @@ const loadProductsByBranch = async (branchId: number) => {
   }
 }
 
+const loadProductsBySupplier = async (supplierId: number) => {
+  try {
+    const response = await procurementService.getSupplierProducts(supplierId, {
+      branch_id: form.branch_id
+    })
+    const payload = response?.data ?? response
+    const list = payload?.data ?? payload ?? []
+    products.value = list.map((product: any) => ({
+      id: product.id,
+      product_name: product.product_name || 'Unknown Product',
+      sku: product.sku || '',
+      stock_level: product.stock_level || 0,
+      cost_price: product.unit_cost ?? product.cost_price ?? 0,
+      category_id: product.category_id
+    }))
+    syncItemUnitCostsFromProducts()
+  } catch (error) {
+    console.error('Failed to load supplier products', error)
+    products.value = []
+  }
+}
+
 watch(
   () => form.branch_id,
   async (branchId) => {
     if (branchId) {
-      await loadProductsByBranch(branchId)
+      if (form.supplier_id) {
+        await loadProductsBySupplier(form.supplier_id)
+      } else {
+        await loadProductsByBranch(branchId)
+      }
     } else {
       products.value = []
     }
@@ -640,7 +671,7 @@ watch(
 )
 
 watch(
-  () => form.discount_amount,
+  () => contractDiscountPercent.value,
   () => {
     updateTotals()
   }
@@ -650,9 +681,7 @@ watch(
   () => form.items.map((item) => ({
     id: item.id,
     quantity: item.quantity_ordered,
-    unit_cost: item.unit_cost,
-    discount: item.discount_percent,
-    tax_rate: item.tax_rate
+    unit_cost: item.unit_cost
   })),
   () => {
     form.items.forEach((_, index) => calculateItemTotal(index))
@@ -663,6 +692,9 @@ watch(
 const onSupplierChange = async () => {
   if (!form.supplier_id) {
     selectedSupplier.value = null
+    selectedContract.value = null
+    contractDiscountPercent.value = 0
+    contractTaxRate.value = 0
     supplierWarning.show = false
     return
   }
@@ -680,6 +712,29 @@ const onSupplierChange = async () => {
       } else {
         supplierWarning.show = false
       }
+
+      try {
+        const contractRes = await procurementService.getSupplierContracts({
+          supplier_id: form.supplier_id,
+          active: 1,
+          per_page: 1
+        })
+        const contractPayload = contractRes?.data ?? contractRes
+        const contractPage = contractPayload?.data ?? []
+        const contractList = Array.isArray(contractPage) ? contractPage : (contractPage?.data ?? [])
+        const contract = Array.isArray(contractList) ? contractList[0] : null
+        selectedContract.value = contract || null
+        contractDiscountPercent.value = Number(contract?.discount_percentage || 0) || 0
+        contractTaxRate.value = Number(contract?.tax_rate || 0) || 0
+      } catch (err) {
+        selectedContract.value = null
+        contractDiscountPercent.value = 0
+        contractTaxRate.value = 0
+      }
+
+      await loadProductsBySupplier(form.supplier_id)
+      syncItemUnitCostsFromProducts()
+      updateTotals()
     }
   } catch (error) {
     console.error('Failed to auto-fill supplier details', error)
@@ -692,13 +747,13 @@ const onProductChange = (index: number, productId: any) => {
     const id = typeof productId === 'object' ? productId?.id : productId
 
     if (id) {
-      const product = products.value.find((p) => p.id === id)
+      const numericId = Number(id)
+      const product = products.value.find((p) => Number(p.id) === numericId)
       if (product) {
-        form.items[index].product_id = id
+        form.items[index].product_id = numericId
         form.items[index].product_name = product.product_name
         form.items[index].stock_level = product.stock_level || 0
-        form.items[index].unit_cost = product.last_price || 0
-        form.items[index].tax_rate = product.tax_rate ?? 0
+        form.items[index].unit_cost = Number(product.cost_price ?? 0) || 0
       }
     }
   }
@@ -711,8 +766,6 @@ const addLineItem = () => {
     product_id: null,
     quantity_ordered: 1,
     unit_cost: 0,
-    discount_percent: 0,
-    tax_rate: 0,
     line_total: 0
   })
 }
@@ -725,7 +778,9 @@ const removeLineItem = (index: number) => {
 
 const calculateItemTotal = (index: number) => {
   const item = form.items[index]
-  item.line_total = calculateLineTotal(item)
+  const qty = Number(item.quantity_ordered) || 0
+  const price = Number(item.unit_cost) || 0
+  item.line_total = qty * price
 
   // Check budget warning
   const budgetResult = validateQuantityAgainstBudget(item.quantity_ordered, item.unit_cost, 1000000) // Demo budget
@@ -739,10 +794,14 @@ const calculateItemTotal = (index: number) => {
 }
 
 const updateTotals = () => {
-  const totalsResult = calculateTotals(form.items, 0, form.discount_amount)
-  totals.subtotal = totalsResult.subtotal
-  totals.tax_amount = totalsResult.tax_amount
-  totals.total_amount = totalsResult.total_amount
+  const subtotal = form.items.reduce((sum, item) => sum + (Number(item.line_total) || 0), 0)
+  const taxRate = Number(supplierTaxRate.value || 0) / 100
+  const taxAmount = subtotal * taxRate
+  const discount = subtotal * (Number(contractDiscountPercent.value || 0) / 100)
+  form.discount_amount = discount
+  totals.subtotal = subtotal
+  totals.tax_amount = taxAmount
+  totals.total_amount = subtotal + taxAmount - discount
 }
 
 const addQuickProduct = (product: any) => {
@@ -751,9 +810,7 @@ const addQuickProduct = (product: any) => {
     product_id: product.product_id,
     product_name: product.product_name,
     quantity_ordered: product.quantity_ordered,
-    unit_cost: product.unit_cost,
-    discount_percent: 0,
-    tax_rate: product.tax_rate ?? 0,
+    unit_cost: product.cost_price ?? product.unit_cost ?? 0,
     line_total: 0
   }
   form.items.push(newItem)
@@ -801,9 +858,7 @@ const submitForm = async () => {
       items: form.items.map((item) => ({
         product_id: item.product_id,
         quantity_ordered: item.quantity_ordered,
-        unit_cost: item.unit_cost,
-        discount_percent: item.discount_percent,
-        tax_rate: item.tax_rate ?? 0
+        unit_cost: item.unit_cost
       })),
       status: saveDraft.value ? 'draft' : 'pending_finance_approval'
     }
@@ -881,4 +936,3 @@ const submitForm = async () => {
   transition: transform 0.3s ease;
 }
 </style>
-

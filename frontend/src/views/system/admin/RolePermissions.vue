@@ -8,14 +8,8 @@
       </div>
       <div class="flex items-center gap-2">
         <Button label="Export Roles" icon="pi pi-download" severity="secondary" @click="exportRolesCsv" />
-        <FileUpload
-          mode="basic"
-          name="file"
-          accept=".csv"
-          chooseLabel="Import Roles"
-          :customUpload="true"
-          @uploader="importRolesCsv"
-        />
+        <FileUpload mode="basic" name="file" accept=".csv" chooseLabel="Import Roles" :customUpload="true"
+          @uploader="importRolesCsv" />
         <Button label="Create Role" icon="pi pi-plus" @click="openCreateRoleDialog" />
       </div>
     </div>
@@ -107,15 +101,14 @@
               <div class="flex items-center justify-between">
                 <span>All Permissions</span>
                 <div class="flex items-center gap-2">
-                  <Button label="Export CSV" icon="pi pi-download" size="small" severity="secondary" @click="exportPermissionsCsv" />
-                  <FileUpload
-                    mode="basic"
-                    name="file"
-                    accept=".csv"
-                    chooseLabel="Import CSV"
-                    :customUpload="true"
-                    @uploader="importPermissionsCsv"
-                  />
+                  <Button label="Export CSV" icon="pi pi-download" size="small" severity="secondary"
+                    @click="exportPermissionsCsv" />
+                  <Button label="Import CSV" icon="pi pi-upload" size="small" severity="secondary" outlined
+                    @click="openImportPermissionsDialog" />
+                  <Button label="Bulk Edit" icon="pi pi-pencil" size="small" severity="warning" outlined
+                    :disabled="selectedPermissionsForBulk.length === 0" @click="openBulkPermissionDialog" />
+                  <Button label="Bulk Delete" icon="pi pi-trash" size="small" severity="danger" outlined
+                    :disabled="selectedPermissionsForBulk.length === 0" @click="openBulkDeletePermissionsDialog" />
                   <Button label="Add Permission" icon="pi pi-plus" size="small" @click="openCreatePermissionDialog" />
                 </div>
               </div>
@@ -123,24 +116,20 @@
             <template #content>
               <!-- Filter by Module -->
               <div class="mb-4 flex flex-wrap items-center gap-3">
-                <InputText
-                  v-model="permissionSearch"
-                  placeholder="Search permissions..."
-                  class="w-full md:w-1/3"
-                />
+                <InputText v-model="permissionSearch" placeholder="Search permissions..." class="w-full md:w-1/3" />
                 <Select v-model="selectedModule" :options="modules" optionLabel="label" optionValue="value"
                   placeholder="Filter by Module" class="w-full md:w-1/3" showClear />
-                <Button
-                  v-if="permissionSearch || selectedModule"
-                  label="Clear"
-                  icon="pi pi-times"
-                  text
-                  @click="clearPermissionFilters"
-                />
+                <Button v-if="permissionSearch || selectedModule" label="Clear" icon="pi pi-times" text
+                  @click="clearPermissionFilters" />
               </div>
   
-              <DataTable :value="filteredPermissions" :loading="loadingPermissions" paginator :rows="20" stripedRows
-                showGridlines>
+              <div v-if="selectedPermissionsForBulk.length > 0" class="mb-3 text-sm text-gray-600">
+                {{ selectedPermissionsForBulk.length }} permission(s) selected for bulk edit
+              </div>
+  
+              <DataTable v-model:selection="selectedPermissionsForBulk" :value="filteredPermissions"
+                :loading="loadingPermissions" dataKey="id" paginator :rows="20" stripedRows showGridlines>
+                <Column selectionMode="multiple" headerStyle="width: 3rem" />
                 <Column field="name" header="Permission Name" sortable style="min-width: 250px">
                   <template #body="{ data }">
                     <div class="flex items-center gap-2">
@@ -202,7 +191,7 @@
                 </div>
                 <Button v-if="navigationSearch" label="Clear" icon="pi pi-times" text @click="navigationSearch = ''" />
               </div>
-
+  
               <DataTable :value="filteredNavigationItems" :loading="loadingNavigation" paginator :rows="20" stripedRows>
                 <Column field="display_name" header="Navigation Item" sortable style="min-width: 200px">
                   <template #body="{ data }">
@@ -266,28 +255,18 @@
           <h3 class="font-semibold text-blue-900">{{ selectedRole.display_name }}</h3>
           <p class="text-sm text-blue-700">{{ selectedRole.description }}</p>
         </div>
-
+  
         <div class="flex flex-wrap items-center gap-3">
-          <InputText v-model="permissionAssignSearch" placeholder="Search module, sub module, action..." class="w-full md:w-80" />
-          <Select
-            v-model="selectedAssignModule"
-            :options="assignableModules"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Filter Module"
-            class="w-full md:w-64"
-            showClear
-          />
-          <Button
-            v-if="permissionAssignSearch || selectedAssignModule"
-            label="Clear"
-            icon="pi pi-times"
-            text
-            @click="clearAssignFilters"
-          />
+          <InputText v-model="permissionAssignSearch" placeholder="Search module, sub module, action..."
+            class="w-full md:w-80" />
+          <Select v-model="selectedAssignModule" :options="assignableModules" optionLabel="label" optionValue="value"
+            placeholder="Filter Module" class="w-full md:w-64" showClear />
+          <Button v-if="permissionAssignSearch || selectedAssignModule" label="Clear" icon="pi pi-times" text
+            @click="clearAssignFilters" />
         </div>
-
-        <div v-for="module in groupedPermissionTree" :key="module.name" class="border border-gray-200 rounded-lg overflow-hidden">
+  
+        <div v-for="module in groupedPermissionTree" :key="module.name"
+          class="border border-gray-200 rounded-lg overflow-hidden">
           <div class="bg-gray-100 px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
               <h4 class="font-semibold text-gray-800">{{ module.display_name }}</h4>
@@ -295,42 +274,30 @@
             </div>
             <div class="flex items-center gap-2">
               <small class="text-gray-600">All in module</small>
-              <Checkbox
-                :modelValue="isModuleChecked(module)"
-                :indeterminate="isModuleIndeterminate(module)"
-                :binary="true"
-                @update:modelValue="(checked) => toggleModuleGroup(module, checked)"
-              />
+              <Checkbox :modelValue="isModuleChecked(module)" :indeterminate="isModuleIndeterminate(module)"
+                :binary="true" @update:modelValue="(checked) => toggleModuleGroup(module, checked)" />
             </div>
           </div>
-
+  
           <div class="p-4 space-y-3">
-            <div v-for="submodule in module.submodules" :key="`${module.name}-${submodule.name}`" class="rounded-lg border border-gray-200">
+            <div v-for="submodule in module.submodules" :key="`${module.name}-${submodule.name}`"
+              class="rounded-lg border border-gray-200">
               <div class="bg-gray-50 px-3 py-2 flex items-center justify-between">
                 <div class="font-medium text-gray-800">{{ submodule.display_name }}</div>
                 <div class="flex items-center gap-2">
                   <small class="text-gray-600">All in sub module</small>
-                  <Checkbox
-                    :modelValue="isSubmoduleChecked(submodule)"
-                    :indeterminate="isSubmoduleIndeterminate(submodule)"
-                    :binary="true"
-                    @update:modelValue="(checked) => toggleSubmoduleGroup(submodule, checked)"
-                  />
+                  <Checkbox :modelValue="isSubmoduleChecked(submodule)"
+                    :indeterminate="isSubmoduleIndeterminate(submodule)" :binary="true"
+                    @update:modelValue="(checked) => toggleSubmoduleGroup(submodule, checked)" />
                 </div>
               </div>
-
+  
               <div class="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div
-                  v-for="permission in submodule.permissions"
-                  :key="permission.id"
-                  class="flex items-center justify-between gap-3 rounded border border-gray-100 p-2"
-                >
+                <div v-for="permission in submodule.permissions" :key="permission.id"
+                  class="flex items-center justify-between gap-3 rounded border border-gray-100 p-2">
                   <span class="text-sm text-gray-700">{{ permission.display_name }}</span>
-                  <Checkbox
-                    :modelValue="hasPermission(permission.id)"
-                    :binary="true"
-                    @update:modelValue="(checked) => togglePermission(permission.id, checked)"
-                  />
+                  <Checkbox :modelValue="hasPermission(permission.id)" :binary="true"
+                    @update:modelValue="(checked) => togglePermission(permission.id, checked)" />
                 </div>
               </div>
             </div>
@@ -412,8 +379,26 @@
           </div>
   
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold text-gray-700">Icon</label>
-            <InputText v-model="navigationForm.icon" placeholder="e.g., pi pi-box" />
+            <label class="text-sm font-semibold text-gray-700">Icon *</label>
+            <Select v-model="selectedIcon" :options="iconOptions" optionLabel="label" optionValue="value" filter
+              filterFields="label,value" filterPlaceholder="Search icons..."
+              placeholder="Select an icon" class="w-full" :class="{ 'p-invalid': !selectedIcon && showError }">
+              <template #value="slotProps">
+                <div v-if="slotProps.value" class="flex items-center gap-2">
+                  <i :class="['pi', slotProps.value]" class="text-gray-700"></i>
+                  <span>{{ formatIconLabel(slotProps.value) }}</span>
+                </div>
+                <span v-else class="text-gray-500">
+                  {{ slotProps.placeholder }}
+                </span>
+              </template>
+              <template #option="slotProps">
+                <div class="flex items-center gap-2 py-1">
+                  <i :class="['pi', slotProps.option.value]" class="text-gray-700" style="width: 20px"></i>
+                  <span>{{ slotProps.option.label }}</span>
+                </div>
+              </template>
+            </Select>
           </div>
         </div>
   
@@ -484,11 +469,86 @@
         <Button label="Delete" severity="danger" @click="deleteNavigation" />
       </template>
     </Dialog>
+  
+    <Dialog v-model:visible="importPermissionsDialog" :style="{ width: '520px' }" header="Import Permissions CSV"
+      :modal="true">
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600">
+          Attach your permissions CSV file and click <strong>Import</strong>.
+        </p>
+  
+        <input ref="permissionCsvInput" type="file" accept=".csv,text/csv" class="hidden"
+          @change="onPermissionCsvSelected" />
+  
+        <div class="rounded-lg border border-dashed border-gray-300 p-4 bg-gray-50">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium text-gray-700">Selected File</p>
+              <p class="text-xs text-gray-500 mt-1">{{ importPermissionsFile ? importPermissionsFile.name : 'No fileselected' }}</p>
+            </div>
+            <Button label="Attach CSV" icon="pi pi-paperclip" severity="secondary" outlined
+              @click="triggerPermissionCsvSelect" />
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="closeImportPermissionsDialog" />
+        <Button label="Import" icon="pi pi-upload" :loading="importingPermissionsCsv" :disabled="!importPermissionsFile"
+          @click="submitPermissionsCsvImport" />
+      </template>
+    </Dialog>
+  
+    <Dialog v-model:visible="bulkPermissionDialog" :style="{ width: '520px' }" header="Bulk Edit Permissions"
+      :modal="true">
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600">
+          Update selected fields for <strong>{{ selectedPermissionsForBulk.length }}</strong> permission(s).
+        </p>
+  
+        <div>
+          <label class="block text-sm font-medium mb-2">Module (optional)</label>
+          <Select v-model="bulkPermissionForm.module" :options="modules" optionLabel="label" optionValue="value"
+            placeholder="Keep current module" class="w-full" showClear />
+        </div>
+  
+        <div>
+          <label class="block text-sm font-medium mb-2">Status (optional)</label>
+          <Select v-model="bulkPermissionForm.is_active" :options="statusOptions" optionLabel="label" optionValue="value"
+            placeholder="Keep current status" class="w-full" showClear />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="bulkPermissionDialog = false" />
+        <Button label="Apply Changes" icon="pi pi-check" :loading="savingBulkPermissions"
+          :disabled="bulkPermissionForm.module === null && bulkPermissionForm.is_active === null"
+          @click="applyBulkPermissionUpdate" />
+      </template>
+    </Dialog>
+  
+    <Dialog v-model:visible="bulkDeletePermissionsDialog" :style="{ width: '520px' }" header="Confirm Bulk Delete"
+      :modal="true">
+      <div class="flex items-start gap-3">
+        <i class="pi pi-exclamation-triangle text-2xl text-orange-500 mt-1"></i>
+        <div>
+          <p class="text-sm text-gray-700">
+            Delete <strong>{{ selectedPermissionsForBulk.length }}</strong> selected permission(s)?
+          </p>
+          <p class="text-xs text-gray-500 mt-2">
+            This will permanently remove them and may fail for permissions linked by foreign keys.
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="bulkDeletePermissionsDialog = false" />
+        <Button label="Delete Selected" icon="pi pi-trash" severity="danger" :loading="deletingBulkPermissions"
+          @click="deleteSelectedPermissions" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 import Card from 'primevue/card'
@@ -535,10 +595,122 @@ const permissionDialog = ref(false)
 const navigationDialog = ref(false)
 const deletePermissionDialog = ref(false)
 const deleteNavigationDialog = ref(false)
+const importPermissionsDialog = ref(false)
+const bulkPermissionDialog = ref(false)
+const bulkDeletePermissionsDialog = ref(false)
 
 const savingPermissions = ref(false)
 const savingPermission = ref(false)
 const savingNavigation = ref(false)
+const importingPermissionsCsv = ref(false)
+const savingBulkPermissions = ref(false)
+const deletingBulkPermissions = ref(false)
+const importPermissionsFile = ref<File | null>(null)
+const permissionCsvInput = ref<HTMLInputElement | null>(null)
+const selectedPermissionsForBulk = ref<any[]>([])
+
+const props = defineProps({
+  modelValue: {
+    type: String,
+    default: ''
+  },
+  showError: {
+    type: Boolean,
+    default: false
+  }
+})
+
+const emit = defineEmits(['update:modelValue'])
+
+const selectedIcon = ref(props.modelValue)
+
+const normalizeIconValue = (value: string) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  // Support legacy values like "pi pi-home" by converting to "pi-home"
+  const token = raw.split(/\s+/).find((part) => part.startsWith('pi-'))
+  return token || raw
+}
+
+const formatIconLabel = (iconValue: string) => {
+  return String(iconValue || '').replace(/^pi-/, '')
+}
+
+// All available icons
+const allIcons = [
+  'pi-address-book', 'pi-align-center', 'pi-align-justify', 'pi-align-left', 'pi-align-right',
+  'pi-amazon', 'pi-android', 'pi-angle-double-down', 'pi-angle-double-left', 'pi-angle-double-right',
+  'pi-angle-double-up', 'pi-angle-down', 'pi-angle-left', 'pi-angle-right', 'pi-angle-up',
+  'pi-apple', 'pi-arrow-circle-down', 'pi-arrow-circle-left', 'pi-arrow-circle-right',
+  'pi-arrow-circle-up', 'pi-arrow-down', 'pi-arrow-down-left', 'pi-arrow-down-left-and-arrow-up-right-to-center',
+  'pi-arrow-down-right', 'pi-arrow-left', 'pi-arrow-right', 'pi-arrow-right-arrow-left', 'pi-arrow-up',
+  'pi-arrow-up-left', 'pi-arrow-up-right', 'pi-arrow-up-right-and-arrow-down-left-from-center',
+  'pi-arrows-alt', 'pi-arrows-h', 'pi-arrows-v', 'pi-asterisk', 'pi-at', 'pi-backward', 'pi-ban',
+  'pi-barcode', 'pi-bars', 'pi-bell', 'pi-bell-slash', 'pi-bitcoin', 'pi-bolt', 'pi-book',
+  'pi-bookmark', 'pi-bookmark-fill', 'pi-box', 'pi-briefcase', 'pi-building', 'pi-building-columns',
+  'pi-bullseye', 'pi-calculator', 'pi-calendar', 'pi-calendar-clock', 'pi-calendar-minus',
+  'pi-calendar-plus', 'pi-calendar-times', 'pi-camera', 'pi-car', 'pi-caret-down', 'pi-caret-left',
+  'pi-caret-right', 'pi-caret-up', 'pi-cart-arrow-down', 'pi-cart-minus', 'pi-cart-plus',
+  'pi-chart-bar', 'pi-chart-line', 'pi-chart-pie', 'pi-chart-scatter', 'pi-check', 'pi-check-circle',
+  'pi-check-square', 'pi-chevron-circle-down', 'pi-chevron-circle-left', 'pi-chevron-circle-right',
+  'pi-chevron-circle-up', 'pi-chevron-down', 'pi-chevron-left', 'pi-chevron-right', 'pi-chevron-up',
+  'pi-circle', 'pi-circle-fill', 'pi-clipboard', 'pi-clock', 'pi-clone', 'pi-cloud', 'pi-cloud-download',
+  'pi-cloud-upload', 'pi-code', 'pi-cog', 'pi-comment', 'pi-comments', 'pi-compass', 'pi-copy',
+  'pi-credit-card', 'pi-crown', 'pi-database', 'pi-delete-left', 'pi-desktop', 'pi-directions',
+  'pi-directions-alt', 'pi-discord', 'pi-dollar', 'pi-download', 'pi-eject', 'pi-ellipsis-h',
+  'pi-ellipsis-v', 'pi-envelope', 'pi-equals', 'pi-eraser', 'pi-ethereum', 'pi-euro',
+  'pi-exclamation-circle', 'pi-exclamation-triangle', 'pi-expand', 'pi-external-link', 'pi-eye',
+  'pi-eye-slash', 'pi-face-smile', 'pi-facebook', 'pi-fast-backward', 'pi-fast-forward', 'pi-file',
+  'pi-file-arrow-up', 'pi-file-check', 'pi-file-edit', 'pi-file-excel', 'pi-file-export',
+  'pi-file-import', 'pi-file-pdf', 'pi-file-plus', 'pi-file-word', 'pi-filter', 'pi-filter-fill',
+  'pi-filter-slash', 'pi-flag', 'pi-flag-fill', 'pi-folder', 'pi-folder-open', 'pi-folder-plus',
+  'pi-forward', 'pi-gauge', 'pi-gift', 'pi-github', 'pi-globe', 'pi-google', 'pi-graduation-cap',
+  'pi-hammer', 'pi-hashtag', 'pi-headphones', 'pi-heart', 'pi-heart-fill', 'pi-history', 'pi-home',
+  'pi-hourglass', 'pi-id-card', 'pi-image', 'pi-images', 'pi-inbox', 'pi-indian-rupee', 'pi-info',
+  'pi-info-circle', 'pi-instagram', 'pi-key', 'pi-language', 'pi-lightbulb', 'pi-link', 'pi-linkedin',
+  'pi-list', 'pi-list-check', 'pi-lock', 'pi-lock-open', 'pi-map', 'pi-map-marker', 'pi-mars',
+  'pi-megaphone', 'pi-microchip', 'pi-microchip-ai', 'pi-microphone', 'pi-microsoft', 'pi-minus',
+  'pi-minus-circle', 'pi-mobile', 'pi-money-bill', 'pi-moon', 'pi-objects-column', 'pi-palette',
+  'pi-paperclip', 'pi-pause', 'pi-pause-circle', 'pi-paypal', 'pi-pen-to-square', 'pi-pencil',
+  'pi-percentage', 'pi-phone', 'pi-pinterest', 'pi-play', 'pi-play-circle', 'pi-plus', 'pi-plus-circle',
+  'pi-pound', 'pi-power-off', 'pi-prime', 'pi-print', 'pi-qrcode', 'pi-question', 'pi-question-circle',
+  'pi-receipt', 'pi-reddit', 'pi-refresh', 'pi-replay', 'pi-reply', 'pi-save', 'pi-search',
+  'pi-search-minus', 'pi-search-plus', 'pi-send', 'pi-server', 'pi-share-alt', 'pi-shield',
+  'pi-shop', 'pi-shopping-bag', 'pi-shopping-cart', 'pi-sign-in', 'pi-sign-out', 'pi-sitemap',
+  'pi-slack', 'pi-sliders-h', 'pi-sliders-v', 'pi-sort', 'pi-sort-alpha-down', 'pi-sort-alpha-down-alt',
+  'pi-sort-alpha-up', 'pi-sort-alpha-up-alt', 'pi-sort-alt', 'pi-sort-alt-slash', 'pi-sort-amount-down',
+  'pi-sort-amount-down-alt', 'pi-sort-amount-up', 'pi-sort-amount-up-alt', 'pi-sort-down',
+  'pi-sort-down-fill', 'pi-sort-numeric-down', 'pi-sort-numeric-down-alt', 'pi-sort-numeric-up',
+  'pi-sort-numeric-up-alt', 'pi-sort-up', 'pi-sort-up-fill', 'pi-sparkles', 'pi-spinner',
+  'pi-spinner-dotted', 'pi-star', 'pi-star-fill', 'pi-star-half', 'pi-star-half-fill',
+  'pi-step-backward', 'pi-step-backward-alt', 'pi-step-forward', 'pi-step-forward-alt', 'pi-stop',
+  'pi-stop-circle', 'pi-stopwatch', 'pi-sun', 'pi-sync', 'pi-table', 'pi-tablet', 'pi-tag',
+  'pi-tags', 'pi-telegram', 'pi-th-large', 'pi-thumbs-down', 'pi-thumbs-down-fill', 'pi-thumbs-up',
+  'pi-thumbs-up-fill', 'pi-thumbtack', 'pi-ticket', 'pi-tiktok', 'pi-times', 'pi-times-circle',
+  'pi-trash', 'pi-trophy', 'pi-truck', 'pi-turkish-lira', 'pi-twitch', 'pi-twitter', 'pi-undo',
+  'pi-unlock', 'pi-upload', 'pi-user', 'pi-user-edit', 'pi-user-minus', 'pi-user-plus', 'pi-users',
+  'pi-venus', 'pi-verified', 'pi-video', 'pi-vimeo', 'pi-volume-down', 'pi-volume-off', 'pi-volume-up',
+  'pi-wallet', 'pi-warehouse', 'pi-wave-pulse', 'pi-whatsapp', 'pi-wifi', 'pi-window-maximize',
+  'pi-window-minimize', 'pi-wrench', 'pi-youtube'
+]
+
+const iconOptions = computed(() => {
+  return allIcons.map((value) => ({
+    value,
+    label: formatIconLabel(value)
+  }))
+})
+
+// Watch for external changes
+watch(() => props.modelValue, (newValue) => {
+  selectedIcon.value = normalizeIconValue(newValue)
+})
+
+// Watch for internal changes
+watch(selectedIcon, (newValue) => {
+  emit('update:modelValue', normalizeIconValue(newValue))
+})
+
 
 // Forms
 const editingPermission = ref(null)
@@ -551,6 +723,13 @@ const permissionForm = ref({
   is_active: true
 })
 const permissionErrors = ref({})
+const bulkPermissionForm = ref<{
+  module: string | null
+  is_active: boolean | null
+}>({
+  module: null,
+  is_active: null
+})
 
 const editingNavigation = ref(null)
 const navigationToDelete = ref(null)
@@ -599,11 +778,16 @@ const modules = ref([
   { label: 'Inventory', value: 'inventory' },
   { label: 'Sales', value: 'sales' },
   { label: 'Accounting', value: 'accounting' },
-   { label: 'Finance', value: 'finance' },
+  { label: 'Finance', value: 'finance' },
   { label: 'Procurement', value: 'procurement' },
   { label: 'Supplier', value: 'supplier' },
   { label: 'Store Manager', value: 'store_manager' }
 ])
+
+const statusOptions = [
+  { label: 'Active', value: true },
+  { label: 'Inactive', value: false }
+]
 
 // Computed
 const filteredPermissions = computed(() => {
@@ -830,6 +1014,45 @@ const importPermissionsCsv = async (event: any) => {
   }
 }
 
+const openImportPermissionsDialog = () => {
+  importPermissionsFile.value = null
+  importPermissionsDialog.value = true
+}
+
+const closeImportPermissionsDialog = () => {
+  importPermissionsDialog.value = false
+  importPermissionsFile.value = null
+}
+
+const triggerPermissionCsvSelect = () => {
+  permissionCsvInput.value?.click()
+}
+
+const onPermissionCsvSelected = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  importPermissionsFile.value = input.files?.[0] || null
+}
+
+const submitPermissionsCsvImport = async () => {
+  if (!importPermissionsFile.value) return
+
+  importingPermissionsCsv.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', importPermissionsFile.value)
+    await axios.post('/api/admin/permissions/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    toast.add({ severity: 'success', summary: 'Success', detail: 'Permissions imported successfully', life: 3000 })
+    closeImportPermissionsDialog()
+    loadPermissions()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to import permissions', life: 3000 })
+  } finally {
+    importingPermissionsCsv.value = false
+  }
+}
+
 const downloadBlob = (blob: Blob, filename: string) => {
   const url = window.URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -908,6 +1131,128 @@ const openCreatePermissionDialog = () => {
   }
   permissionErrors.value = {}
   permissionDialog.value = true
+}
+
+const openBulkPermissionDialog = () => {
+  bulkPermissionForm.value = {
+    module: null,
+    is_active: null
+  }
+  bulkPermissionDialog.value = true
+}
+
+const openBulkDeletePermissionsDialog = () => {
+  bulkDeletePermissionsDialog.value = true
+}
+
+const applyBulkPermissionUpdate = async () => {
+  const patch: Record<string, any> = {}
+
+  if (bulkPermissionForm.value.module !== null) {
+    patch.module = bulkPermissionForm.value.module
+  }
+  if (bulkPermissionForm.value.is_active !== null) {
+    patch.is_active = bulkPermissionForm.value.is_active
+  }
+
+  if (Object.keys(patch).length === 0 || selectedPermissionsForBulk.value.length === 0) {
+    return
+  }
+
+  savingBulkPermissions.value = true
+  try {
+    const requests = selectedPermissionsForBulk.value.map((permission: any) => {
+      const payload = {
+        name: permission.name,
+        display_name: permission.display_name,
+        module: patch.module ?? permission.module,
+        description: permission.description || '',
+        is_active: patch.is_active ?? permission.is_active
+      }
+      return axios.put(`/api/admin/permissions/${permission.id}`, payload)
+    })
+
+    const results = await Promise.allSettled(requests)
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const failedCount = results.length - successCount
+
+    if (successCount > 0) {
+      toast.add({
+        severity: 'success',
+        summary: 'Bulk Update Complete',
+        detail: `${successCount} permission(s) updated${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
+        life: 3000
+      })
+    }
+
+    if (failedCount > 0) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Some Updates Failed',
+        detail: `${failedCount} permission(s) could not be updated.`,
+        life: 3500
+      })
+    }
+
+    bulkPermissionDialog.value = false
+    selectedPermissionsForBulk.value = []
+    await loadPermissions()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to bulk update permissions',
+      life: 3000
+    })
+  } finally {
+    savingBulkPermissions.value = false
+  }
+}
+
+const deleteSelectedPermissions = async () => {
+  if (selectedPermissionsForBulk.value.length === 0) return
+
+  deletingBulkPermissions.value = true
+  try {
+    const requests = selectedPermissionsForBulk.value.map((permission: any) =>
+      axios.delete(`/api/admin/permissions/${permission.id}`)
+    )
+
+    const results = await Promise.allSettled(requests)
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const failedCount = results.length - successCount
+
+    if (successCount > 0) {
+      toast.add({
+        severity: 'success',
+        summary: 'Bulk Delete Complete',
+        detail: `${successCount} permission(s) deleted${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
+        life: 3000
+      })
+    }
+
+    if (failedCount > 0) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Some Deletes Failed',
+        detail: `${failedCount} permission(s) could not be deleted. They may still be linked to roles.`,
+        life: 3500
+      })
+    }
+
+    bulkDeletePermissionsDialog.value = false
+    selectedPermissionsForBulk.value = []
+    await loadPermissions()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to bulk delete permissions',
+      life: 3000
+    })
+  } finally {
+    deletingBulkPermissions.value = false
+  }
 }
 
 const editPermission = (permission: any) => {

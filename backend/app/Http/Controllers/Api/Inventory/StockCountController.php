@@ -445,7 +445,7 @@ class StockCountController extends Controller
     {
         try {
             $user = auth()->user();
-            if (!$user || !$user->hasPermissionTo('inventory.stock-counts.approve', (int) $user->store_id)) {
+            if (!$user || !$user->hasPermissionTo('inventory.stock_counts.approve', (int) $user->store_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized. Approval permission is required.',

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceCart;
 use App\Models\Ecommerce\EcommerceCartItem;
 use App\Models\Ecommerce\EcommerceAddressTemplate;
+use App\Models\Ecommerce\EcommerceChatMessage;
+use App\Models\Ecommerce\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
 use App\Models\Ecommerce\EcommerceOrderReturn;
@@ -17,6 +19,7 @@ use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Store\Store;
+use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -29,20 +32,20 @@ class EcommerceController extends Controller
     public function storeDirectory(Request $request)
     {
         $query = Store::query()
-            ->select(['id', 'name as store_name', 'phone as contact_number', 'city', 'address', 'status', 'created_at'])
+            ->select(['id', 'name', 'phone as contact_number', 'city', 'address', 'status', 'created_at'])
             ->whereIn('status', ['active', 'verified']);
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
             $query->where(function ($q) use ($search) {
-                $q->where('store_name', 'like', "%{$search}%")
+                $q->where('name', 'like', "%{$search}%")
                     ->orWhere('city', 'like', "%{$search}%");
             });
         }
 
         $sort = (string) $request->input('sort', 'latest');
         if ($sort === 'name') {
-            $query->orderBy('store_name');
+            $query->orderBy('name');
         } else {
             $query->orderByDesc('created_at');
         }
@@ -57,7 +60,7 @@ class EcommerceController extends Controller
 
             return [
                 'id' => $store->id,
-                'store_name' => $store->store_name,
+                'store_name' => $store->name,
                 'contact_person' => null,
                 'contact_number' => $store->contact_number,
                 'city' => $store->city,
@@ -104,7 +107,7 @@ class EcommerceController extends Controller
             })
             ->orderBy('category_name')
             ->get()
-            ->map(fn ($category) => ['id' => $category->id, 'name' => $category->category_name])
+            ->map(fn($category) => ['id' => $category->id, 'name' => $category->category_name])
             ->values();
 
         $vouchers = EcommerceVoucher::query()
@@ -118,7 +121,7 @@ class EcommerceController extends Controller
             })
             ->orderByDesc('created_at')
             ->get()
-            ->map(fn ($voucher) => [
+            ->map(fn($voucher) => [
                 'id' => $voucher->id,
                 'code' => $voucher->code,
                 'discount_type' => $voucher->discount_type,
@@ -258,7 +261,7 @@ class EcommerceController extends Controller
             })
             ->orderBy('category_name')
             ->get()
-            ->map(fn ($category) => ['id' => $category->id, 'name' => $category->category_name])
+            ->map(fn($category) => ['id' => $category->id, 'name' => $category->category_name])
             ->values();
 
         return response()->json([
@@ -349,62 +352,68 @@ class EcommerceController extends Controller
     public function products(Request $request)
     {
         $storeId = $this->resolveStoreId($request);
+        $perPage = min((int) $request->input('per_page', 16), 100); // Limit max per page
 
+        // Build optimized query with eager loading
         $query = Product::query()
-            ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order,model_format,file_name,default_camera_angle_x,default_camera_angle_y,default_zoom_level'])
-            ->where('store_id', $storeId)
-            ->where('is_active', true)
-            ->whereNull('deleted_at')
-            ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
-                $inventoryQuery->where('store_id', $storeId)
-                    ->where('quantity_available', '>', 0)
-                    ->where('stock_status', '!=', 'out_of_stock');
-            });
+            ->select([
+                'products.id',
+                'products.sku',
+                'products.product_name',
+                'products.description',
+                'products.category_id',
+                'products.base_price',
+                'products.discounted_price',
+                'products.tax_rate',
+                'products.store_id'
+            ])
+            ->with([
+                'category:id,category_name',
+            ])
+            ->where('products.store_id', $storeId)
+            ->where('products.is_active', true)
+            ->whereNull('products.deleted_at');
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
-            $query->where(function ($q) use ($search) {
-                $q->where('product_name', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%");
-            });
-        }
+        // Optimized inventory filter using EXISTS instead of WHERE HAS (faster)
+        $query->whereExists(function ($subQuery) use ($storeId) {
+            $subQuery->select(DB::raw(1))
+                ->from('branch_inventory')
+                ->whereColumn('branch_inventory.product_id', 'products.id')
+                ->where('branch_inventory.store_id', $storeId)
+                ->where('branch_inventory.quantity_available', '>', 0)
+                ->where('branch_inventory.stock_status', '!=', 'out_of_stock');
+        });
 
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->integer('category_id'));
-        }
+        // Apply filters with optimized conditions
+        $this->applyProductFilters($query, $request);
 
-        if ($request->filled('min_price')) {
-            $query->whereRaw('COALESCE(discounted_price, base_price, 0) >= ?', [(float) $request->min_price]);
-        }
+        // Execute pagination first, then prefetch for only the current page.
+        $products = $query->paginate($perPage);
+        $productIds = $products->getCollection()->pluck('id')->values()->all();
 
-        if ($request->filled('max_price')) {
-            $query->whereRaw('COALESCE(discounted_price, base_price, 0) <= ?', [(float) $request->max_price]);
-        }
+        // Prefetch supplemental data (single queries, page-sized)
+        $inventories = $this->getInventoryData($storeId, $productIds);
+        $productImages = $this->getProductImages($storeId, $productIds);
+        $product3dModels = $this->getProduct3dModels($storeId, $productIds);
 
-        $products = $query->paginate((int) ($request->input('per_page', 16)));
-
-        $products->getCollection()->transform(function (Product $product) use ($storeId) {
-            $inventory = BranchInventory::query()
-                ->where('store_id', $storeId)
-                ->where('product_id', $product->id)
-                ->orderByDesc('quantity_available')
-                ->first();
-
+        // Transform results with pre-fetched data
+        $products->getCollection()->transform(function (Product $product) use ($storeId, $inventories, $productImages, $product3dModels) {
+            $inventory = $inventories[$product->id] ?? null;
             $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
-            $image = $this->selectBestProductImage($product);
 
             return [
                 'id' => $product->id,
                 'sku' => $product->sku,
                 'product_name' => $product->product_name,
                 'description' => $product->description,
+                'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
-                'image' => $this->toAssetUrl($image?->file_path),
-                'has_3d_model' => (bool) $this->selectBest3DModel($product),
-                'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
-                'stock_status' => $inventory?->stock_status ?? 'out_of_stock',
+                'image' => $this->toAssetUrl($productImages[$product->id] ?? null),
+                'has_3d_model' => isset($product3dModels[$product->id]),
+                'quantity_available' => (int) ($inventory['quantity_available'] ?? 0),
+                'stock_status' => $inventory['stock_status'] ?? 'out_of_stock',
             ];
         });
 
@@ -413,6 +422,132 @@ class EcommerceController extends Controller
             'data' => $products,
         ]);
     }
+
+    /**
+     * Apply filters with optimized queries
+     */
+    private function applyProductFilters($query, Request $request): void
+    {
+        // Search filter with indexed columns
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('products.product_name', 'LIKE', "{$search}%") // Prefix match is faster
+                    ->orWhere('products.sku', 'LIKE', "{$search}%");
+            });
+        }
+
+        // Category filter
+        if ($request->filled('category_id')) {
+            $query->where('products.category_id', $request->integer('category_id'));
+        }
+
+        // Price range filter - optimized with direct column comparison
+        if ($request->filled('min_price')) {
+            $minPrice = (float) $request->min_price;
+            $query->where(function ($q) use ($minPrice) {
+                $q->where('products.discounted_price', '>=', $minPrice)
+                    ->orWhere(function ($subQ) use ($minPrice) {
+                        $subQ->whereNull('products.discounted_price')
+                            ->where('products.base_price', '>=', $minPrice);
+                    });
+            });
+        }
+
+        if ($request->filled('max_price')) {
+            $maxPrice = (float) $request->max_price;
+            $query->where(function ($q) use ($maxPrice) {
+                $q->where('products.discounted_price', '<=', $maxPrice)
+                    ->orWhere(function ($subQ) use ($maxPrice) {
+                        $subQ->whereNull('products.discounted_price')
+                            ->where('products.base_price', '<=', $maxPrice);
+                    });
+            });
+        }
+    }
+
+    /**
+     * Get inventory data in a single query with proper indexing
+     */
+    private function getInventoryData(int $storeId, array $productIds): array
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+
+        // DB-portable approach (no window functions): order by qty desc and pick first per product in PHP.
+        $inventories = BranchInventory::query()
+            ->select(['product_id', 'quantity_available', 'stock_status'])
+            ->where('store_id', $storeId)
+            ->whereIn('product_id', $productIds)
+            ->where('quantity_available', '>', 0)
+            ->orderBy('product_id')
+            ->orderByDesc('quantity_available')
+            ->get();
+
+        $result = [];
+        foreach ($inventories as $inventory) {
+            if (!array_key_exists($inventory->product_id, $result)) {
+                $result[$inventory->product_id] = [
+                    'quantity_available' => $inventory->quantity_available,
+                    'stock_status' => $inventory->stock_status,
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get primary product images in a single query
+     */
+    private function getProductImages(int $storeId, array $productIds): array
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+
+        $images = DB::table('product_assets')
+            ->select(['product_id', 'file_path'])
+            ->where('store_id', $storeId)
+            ->whereIn('product_id', $productIds)
+            ->whereNull('deleted_at')
+            ->whereIn('asset_type', ['Image_Main', 'Image_Gallery', 'Image_360'])
+            ->orderBy('is_primary', 'desc') // Primary images first
+            ->orderBy('display_order', 'asc')
+            ->get()
+            ->groupBy('product_id')
+            ->map(function ($group) {
+                return $group->first()->file_path; // Get the best image
+            })
+            ->toArray();
+
+        return $images;
+    }
+
+    /**
+     * Get 3D models in a single query
+     */
+    private function getProduct3dModels(int $storeId, array $productIds): array
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+
+        $models = DB::table('product_assets')
+            ->select(['product_id'])
+            ->where('store_id', $storeId)
+            ->whereIn('product_id', $productIds)
+            ->whereNull('deleted_at')
+            ->where('asset_type', '3D_Model')
+            ->get()
+            ->pluck('product_id')
+            ->flip()
+            ->toArray();
+
+        return $models;
+    }
+
 
     public function productShow(Request $request, int $id)
     {
@@ -444,6 +579,41 @@ class EcommerceController extends Controller
         $model3d = $this->selectBest3DModel($product);
         $storeSettings = is_array($product->store?->settings) ? $product->store->settings : [];
         $storeLogo = $storeSettings['logo'] ?? $storeSettings['logo_path'] ?? null;
+        $reviewPerPage = max(1, min((int) $request->input('reviews_per_page', 8), 30));
+
+        $reviewStats = EcommerceProductReview::query()
+            ->where('product_id', $product->id)
+            ->where('store_id', $storeId)
+            ->where('status', 'published')
+            ->selectRaw('COALESCE(AVG(rating), 0) as average_rating, COUNT(*) as total_reviews')
+            ->first();
+
+        $breakdownRaw = EcommerceProductReview::query()
+            ->where('product_id', $product->id)
+            ->where('store_id', $storeId)
+            ->where('status', 'published')
+            ->selectRaw('rating, COUNT(*) as total')
+            ->groupBy('rating')
+            ->pluck('total', 'rating');
+
+        $reviews = EcommerceProductReview::query()
+            ->with('user:id,fname,lname')
+            ->where('product_id', $product->id)
+            ->where('store_id', $storeId)
+            ->where('status', 'published')
+            ->latest('created_at')
+            ->paginate($reviewPerPage);
+
+        $reviews->getCollection()->transform(function (EcommerceProductReview $review) {
+            $name = trim(($review->user?->fname ?? '') . ' ' . ($review->user?->lname ?? ''));
+            return [
+                'id' => $review->id,
+                'rating' => (int) $review->rating,
+                'review_text' => $review->review_text,
+                'customer_name' => $name !== '' ? $name : 'Customer',
+                'created_at' => $review->created_at,
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -507,6 +677,15 @@ class EcommerceController extends Controller
                 })->values(),
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'stock_status' => $inventory?->stock_status ?? 'out_of_stock',
+                'reviews_summary' => [
+                    'average_rating' => round((float) ($reviewStats?->average_rating ?? 0), 2),
+                    'total_reviews' => (int) ($reviewStats?->total_reviews ?? 0),
+                    'breakdown' => collect([5, 4, 3, 2, 1])->map(fn($star) => [
+                        'star' => $star,
+                        'count' => (int) ($breakdownRaw[$star] ?? 0),
+                    ])->values(),
+                ],
+                'reviews' => $reviews,
             ],
         ]);
     }
@@ -514,7 +693,13 @@ class EcommerceController extends Controller
     public function getCart()
     {
         $cart = $this->getOrCreateCart();
-        $cart->load('items.product.store', 'items.product.assets', 'items.variation');
+        $cart->load([
+            'items.product.store:id,name',
+            'items.product.assets' => function ($q) {
+                $q->select(['id', 'product_id', 'file_path', 'asset_type', 'is_primary', 'created_at', 'display_order']);
+            },
+            'items.variation',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -556,7 +741,7 @@ class EcommerceController extends Controller
         $inventory = BranchInventory::query()
             ->where('store_id', $storeId)
             ->where('product_id', $product->id)
-            ->when($variation, fn ($q) => $q->where('variation_id', $variation->id))
+            ->when($variation, fn($q) => $q->where('variation_id', $variation->id))
             ->orderByDesc('quantity_available')
             ->first();
 
@@ -618,7 +803,13 @@ class EcommerceController extends Controller
             ]);
         }
 
-        $cart->load('items.product.store', 'items.product.assets', 'items.variation');
+        $cart->load([
+            'items.product.store:id,name',
+            'items.product.assets' => function ($q) {
+                $q->select(['id', 'product_id', 'file_path', 'asset_type', 'is_primary', 'created_at', 'display_order']);
+            },
+            'items.variation',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -642,7 +833,7 @@ class EcommerceController extends Controller
         $inventory = BranchInventory::query()
             ->where('store_id', $cart->store_id)
             ->where('product_id', $item->product_id)
-            ->when($item->variation_id, fn ($q) => $q->where('variation_id', $item->variation_id))
+            ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
             ->orderByDesc('quantity_available')
             ->first();
 
@@ -663,7 +854,13 @@ class EcommerceController extends Controller
         }
 
         $item->update(['quantity' => (int) $validated['quantity']]);
-        $cart->load('items.product.store', 'items.product.assets', 'items.variation');
+        $cart->load([
+            'items.product.store:id,name',
+            'items.product.assets' => function ($q) {
+                $q->select(['id', 'product_id', 'file_path', 'asset_type', 'is_primary', 'created_at', 'display_order']);
+            },
+            'items.variation',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -680,7 +877,13 @@ class EcommerceController extends Controller
             ->where('id', $itemId)
             ->delete();
 
-        $cart->load('items.product.store', 'items.product.assets', 'items.variation');
+        $cart->load([
+            'items.product.store:id,name',
+            'items.product.assets' => function ($q) {
+                $q->select(['id', 'product_id', 'file_path', 'asset_type', 'is_primary', 'created_at', 'display_order']);
+            },
+            'items.variation',
+        ]);
 
         return response()->json([
             'success' => true,
@@ -715,6 +918,8 @@ class EcommerceController extends Controller
             'item_ids' => ['nullable', 'array'],
             'item_ids.*' => ['integer', 'exists:ecommerce_cart_items,id'],
             'voucher_code' => ['nullable', 'string', 'max:40'],
+            'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
 
         $user = Auth::user();
@@ -724,7 +929,7 @@ class EcommerceController extends Controller
         $itemsForCheckout = $cart->items;
 
         if (!empty($validated['item_ids'])) {
-            $requestedItemIds = collect($validated['item_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+            $requestedItemIds = collect($validated['item_ids'])->map(fn($id) => (int) $id)->unique()->values();
             $itemsForCheckout = $cart->items->whereIn('id', $requestedItemIds);
 
             if ($itemsForCheckout->count() !== $requestedItemIds->count()) {
@@ -759,13 +964,28 @@ class EcommerceController extends Controller
             $appliedVoucherCode = (string) $voucherResult['voucher']['code'];
         }
 
-        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode) {
+        $fulfillmentBranch = $this->resolveFulfillmentBranch(
+            (int) $cart->store_id,
+            $itemsForCheckout,
+            isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null,
+            isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null
+        );
+
+        if (!$fulfillmentBranch) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No branch can fully fulfill this order right now.',
+            ], 422);
+        }
+
+        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch) {
             $subtotal = 0;
             $taxAmount = 0;
             $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
 
             $order = EcommerceOrder::create([
                 'store_id' => $cart->store_id,
+                'assigned_branch_id' => $fulfillmentBranch->id,
                 'user_id' => $user->id,
                 'order_number' => $this->generateOrderNumber(),
                 'status' => 'pending',
@@ -775,6 +995,8 @@ class EcommerceController extends Controller
                 'shipping_phone' => $validated['shipping_phone'] ?? null,
                 'shipping_email' => $validated['shipping_email'] ?? null,
                 'shipping_address' => $validated['shipping_address'],
+                'customer_latitude' => $validated['customer_latitude'] ?? null,
+                'customer_longitude' => $validated['customer_longitude'] ?? null,
                 'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
                 'placed_at' => now(),
             ]);
@@ -782,8 +1004,9 @@ class EcommerceController extends Controller
             foreach ($itemsForCheckout as $item) {
                 $inventory = BranchInventory::query()
                     ->where('store_id', $cart->store_id)
+                    ->where('branch_id', $fulfillmentBranch->id)
                     ->where('product_id', $item->product_id)
-                    ->when($item->variation_id, fn ($q) => $q->where('variation_id', $item->variation_id))
+                    ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
                     ->where('quantity_available', '>=', $item->quantity)
                     ->orderByDesc('quantity_available')
                     ->lockForUpdate()
@@ -792,6 +1015,7 @@ class EcommerceController extends Controller
                 if (!$inventory && $item->variation_id) {
                     $inventory = BranchInventory::query()
                         ->where('store_id', $cart->store_id)
+                        ->where('branch_id', $fulfillmentBranch->id)
                         ->where('product_id', $item->product_id)
                         ->whereNull('variation_id')
                         ->where('quantity_available', '>=', $item->quantity)
@@ -853,7 +1077,7 @@ class EcommerceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Order placed successfully.',
-            'data' => $order,
+            'data' => $order->fresh(['assignedBranch:id,name,branch_code,city,province,latitude,longitude']),
         ]);
     }
 
@@ -862,14 +1086,14 @@ class EcommerceController extends Controller
         $user = Auth::user();
         $storeId = $this->resolveAuthenticatedStoreId();
         $orders = EcommerceOrder::query()
-            ->with(['store:id,name', 'items.product.assets'])
+            ->with(['store:id,name', 'assignedBranch:id,name,branch_code,city,province,latitude,longitude', 'items.product.assets'])
             ->withCount('items')
             ->where('store_id', $storeId)
             ->where('user_id', $user->id)
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 10));
 
-        $orders->getCollection()->transform(fn (EcommerceOrder $order) => $this->formatOrder($order));
+        $orders->getCollection()->transform(fn(EcommerceOrder $order) => $this->formatOrder($order));
 
         return response()->json([
             'success' => true,
@@ -884,11 +1108,12 @@ class EcommerceController extends Controller
         $order = EcommerceOrder::query()
             ->with([
                 'store:id,name',
+                'assignedBranch:id,name,branch_code,city,province,latitude,longitude',
                 'cancellationRequests',
                 'items.product.assets',
                 'items.returnRequests',
                 'items.review',
-                'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,created_by,created_at',
+                'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
             ])
             ->withCount('items')
@@ -1062,6 +1287,179 @@ class EcommerceController extends Controller
             'message' => 'Review submitted successfully.',
             'data' => $review,
         ]);
+    }
+
+    public function dssRecommendations(Request $request)
+    {
+        $storeId = $this->resolveStoreId($request);
+
+        $validated = $request->validate([
+            'budget_min' => ['required', 'numeric', 'min:0'],
+            'budget_max' => ['required', 'numeric', 'min:0'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'length_cm' => ['nullable', 'numeric', 'min:0'],
+            'width_cm' => ['nullable', 'numeric', 'min:0'],
+            'height_cm' => ['nullable', 'numeric', 'min:0'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $budgetMin = (float) min($validated['budget_min'], $validated['budget_max']);
+        $budgetMax = (float) max($validated['budget_min'], $validated['budget_max']);
+        $targetDimensions = [
+            'length_cm' => isset($validated['length_cm']) ? (float) $validated['length_cm'] : null,
+            'width_cm' => isset($validated['width_cm']) ? (float) $validated['width_cm'] : null,
+            'height_cm' => isset($validated['height_cm']) ? (float) $validated['height_cm'] : null,
+        ];
+
+        $query = Product::query()
+            ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                $inventoryQuery->where('store_id', $storeId)
+                    ->where('quantity_available', '>', 0)
+                    ->where('stock_status', '!=', 'out_of_stock');
+            });
+
+        if (!empty($validated['category_id'])) {
+            $query->where('category_id', (int) $validated['category_id']);
+        }
+
+        $products = $query->get();
+
+        $scored = $products->map(function (Product $product) use ($budgetMin, $budgetMax, $targetDimensions, $storeId) {
+            $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
+            $budgetScore = $this->calculateBudgetScore($price, $budgetMin, $budgetMax);
+            $dimensionScore = $this->calculateDimensionScore($product, $targetDimensions);
+            $categoryScore = 1.0; // category filter is exact when provided.
+
+            $weightedScore = round(($budgetScore * 0.45) + ($dimensionScore * 0.40) + ($categoryScore * 0.15), 4);
+
+            $inventory = BranchInventory::query()
+                ->where('store_id', $storeId)
+                ->where('product_id', $product->id)
+                ->orderByDesc('quantity_available')
+                ->first();
+
+            return [
+                'id' => $product->id,
+                'sku' => $product->sku,
+                'product_name' => $product->product_name,
+                'category' => $product->category?->category_name,
+                'price' => round($price, 2),
+                'image' => $this->toAssetUrl($this->selectBestProductImage($product)?->file_path),
+                'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
+                'score' => $weightedScore,
+                'score_breakdown' => [
+                    'budget_score' => round($budgetScore, 4),
+                    'dimension_score' => round($dimensionScore, 4),
+                    'category_score' => round($categoryScore, 4),
+                ],
+            ];
+        })->sortByDesc('score')->values();
+
+        $perPage = (int) ($validated['per_page'] ?? 12);
+        $page = max((int) $request->input('page', 1), 1);
+        $offset = ($page - 1) * $perPage;
+        $paginated = $scored->slice($offset, $perPage)->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $scored->count(),
+                'last_page' => (int) ceil(max($scored->count(), 1) / $perPage),
+                'data' => $paginated,
+            ],
+        ]);
+    }
+
+    public function chatThreads(Request $request)
+    {
+        $user = Auth::user();
+
+        $threads = EcommerceChatThread::query()
+            ->with([
+                'store:id,name',
+                'messages' => fn($q) => $q->select(['id', 'thread_id', 'message', 'created_at'])->latest('created_at')->limit(1),
+            ])
+            ->withCount([
+                'messages as unread_count' => fn($q) => $q->where('sender_role', 'store')->whereNull('read_at'),
+            ])
+            ->where('customer_user_id', $user->id)
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('updated_at')
+            ->paginate((int) $request->input('per_page', 20));
+
+        $threads->getCollection()->transform(function (EcommerceChatThread $thread) use ($user) {
+            $lastMessage = $thread->messages->first();
+
+            return [
+                'id' => $thread->id,
+                'store_id' => $thread->store_id,
+                'store_name' => $thread->store?->name ?? 'Store',
+                'last_message' => $lastMessage?->message,
+                'last_message_at' => $thread->last_message_at ?? $lastMessage?->created_at,
+                'unread_count' => (int) ($thread->unread_count ?? 0),
+            ];
+        });
+
+        return response()->json(['success' => true, 'data' => $threads]);
+    }
+
+    public function chatMessages(Request $request, int $storeId)
+    {
+        $user = Auth::user();
+        Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
+
+        $thread = EcommerceChatThread::query()->firstOrCreate([
+            'store_id' => $storeId,
+            'customer_user_id' => $user->id,
+        ]);
+
+        $messages = EcommerceChatMessage::query()
+            ->with('sender:id,fname,lname')
+            ->where('thread_id', $thread->id)
+            ->orderByDesc('created_at')
+            ->paginate((int) $request->input('per_page', 40));
+
+        EcommerceChatMessage::query()
+            ->where('thread_id', $thread->id)
+            ->where('sender_role', 'store')
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->json(['success' => true, 'data' => $messages, 'thread_id' => $thread->id]);
+    }
+
+    public function sendChatMessage(Request $request, int $storeId)
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+            'order_id' => ['nullable', 'integer', 'exists:ecommerce_orders,id'],
+        ]);
+
+        $user = Auth::user();
+        Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
+
+        $thread = EcommerceChatThread::query()->firstOrCreate([
+            'store_id' => $storeId,
+            'customer_user_id' => $user->id,
+        ]);
+
+        $message = EcommerceChatMessage::query()->create([
+            'thread_id' => $thread->id,
+            'sender_user_id' => $user->id,
+            'sender_role' => 'customer',
+            'message' => trim($validated['message']),
+            'order_id' => $validated['order_id'] ?? null,
+        ]);
+
+        $thread->update(['last_message_at' => $message->created_at]);
+
+        return response()->json(['success' => true, 'data' => $message], 201);
     }
 
     public function addressTemplates()
@@ -1331,6 +1729,7 @@ class EcommerceController extends Controller
 
         return [
             'id' => $order->id,
+            'store_id' => $order->store_id,
             'order_number' => $order->order_number,
             'status' => $order->status,
             'can_cancel' => $orderStatus === 'pending' && (!$latestCancellation || $latestCancellation->status === 'rejected'),
@@ -1348,6 +1747,17 @@ class EcommerceController extends Controller
             'shipping_phone' => $order->shipping_phone,
             'shipping_email' => $order->shipping_email,
             'shipping_address' => $order->shipping_address,
+            'customer_latitude' => $order->customer_latitude,
+            'customer_longitude' => $order->customer_longitude,
+            'assigned_branch' => $order->assignedBranch ? [
+                'id' => $order->assignedBranch->id,
+                'name' => $order->assignedBranch->name,
+                'branch_code' => $order->assignedBranch->branch_code,
+                'city' => $order->assignedBranch->city,
+                'province' => $order->assignedBranch->province,
+                'latitude' => $order->assignedBranch->latitude,
+                'longitude' => $order->assignedBranch->longitude,
+            ] : null,
             'subtotal' => (float) $order->subtotal,
             'tax_amount' => (float) $order->tax_amount,
             'shipping_fee' => (float) $order->shipping_fee,
@@ -1357,11 +1767,20 @@ class EcommerceController extends Controller
             'created_at' => $order->created_at,
             'store_name' => $order->store?->name ?? 'Store',
             'items_count' => (int) $order->items_count,
+            'delivery' => $order->delivery ? [
+                'id' => $order->delivery->id,
+                'status' => $order->delivery->status,
+                'tracking_number' => $order->delivery->tracking_number,
+                'courier_name' => $order->delivery->courier_name,
+                'courier_contact' => $order->delivery->courier_contact,
+                'proof_photo_url' => $order->delivery->proof_of_delivery_path ? Storage::disk('public')->url($order->delivery->proof_of_delivery_path) : null,
+                'proof_signature_url' => $order->delivery->proof_signature_path ? Storage::disk('public')->url($order->delivery->proof_signature_path) : null,
+            ] : null,
             'timeline' => $this->formatOrderTimeline($order),
             'items' => $order->items->map(function ($item) use ($orderStatus) {
                 $latestReturn = $item->relationLoaded('returnRequests')
                     ? $item->returnRequests->sortByDesc('created_at')->first()
-                : null;
+                    : null;
                 $review = $item->relationLoaded('review') ? $item->review : null;
                 $eligibleAfterDelivery = in_array($orderStatus, ['delivered', 'completed'], true);
 
@@ -1418,6 +1837,7 @@ class EcommerceController extends Controller
                 'description' => $log->message ?: 'Order updated.',
                 'status_from' => $log->status_from,
                 'status_to' => $log->status_to,
+                'meta' => $log->meta,
                 'actor' => $actorName !== '' ? $actorName : 'Store',
                 'created_at' => $log->created_at,
             ];
@@ -1483,7 +1903,7 @@ class EcommerceController extends Controller
             ->where('user_id', $user->id)
             ->whereIn('store_id', $storeIds)
             ->pluck('store_id')
-            ->mapWithKeys(fn ($storeId) => [(int) $storeId => true])
+            ->mapWithKeys(fn($storeId) => [(int) $storeId => true])
             ->toArray();
     }
 
@@ -1511,36 +1931,36 @@ class EcommerceController extends Controller
 
         $reviewStats = $hasReviewsTable
             ? EcommerceProductReview::query()
-                ->selectRaw('store_id, COALESCE(AVG(rating), 0) as rating_avg, COUNT(*) as rating_count')
-                ->whereIn('store_id', $storeIds)
-                ->where('status', 'published')
-                ->groupBy('store_id')
-                ->get()
-                ->keyBy('store_id')
+            ->selectRaw('store_id, COALESCE(AVG(rating), 0) as rating_avg, COUNT(*) as rating_count')
+            ->whereIn('store_id', $storeIds)
+            ->where('status', 'published')
+            ->groupBy('store_id')
+            ->get()
+            ->keyBy('store_id')
             : collect();
 
         $followStats = $hasFollowsTable
             ? EcommerceStoreFollow::query()
-                ->selectRaw('store_id, COUNT(*) as followers_count')
-                ->whereIn('store_id', $storeIds)
-                ->groupBy('store_id')
-                ->get()
-                ->keyBy('store_id')
+            ->selectRaw('store_id, COUNT(*) as followers_count')
+            ->whereIn('store_id', $storeIds)
+            ->groupBy('store_id')
+            ->get()
+            ->keyBy('store_id')
             : collect();
 
         $orderStats = $hasOrdersTable
             ? EcommerceOrder::query()
-                ->selectRaw("
+            ->selectRaw("
                 store_id,
                 COUNT(*) as total_orders,
                 SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) as responded_orders,
                 SUM(CASE WHEN status IN ('cancelled', 'canceled') THEN 1 ELSE 0 END) as cancelled_orders,
                 AVG(CASE WHEN status IN ('delivered', 'completed') THEN TIMESTAMPDIFF(HOUR, COALESCE(placed_at, created_at), updated_at) END) as avg_shipping_hours
             ")
-                ->whereIn('store_id', $storeIds)
-                ->groupBy('store_id')
-                ->get()
-                ->keyBy('store_id')
+            ->whereIn('store_id', $storeIds)
+            ->groupBy('store_id')
+            ->get()
+            ->keyBy('store_id')
             : collect();
 
         $result = [];
@@ -1576,6 +1996,144 @@ class EcommerceController extends Controller
         }
 
         return $result;
+    }
+
+    private function resolveFulfillmentBranch(
+        int $storeId,
+        $itemsForCheckout,
+        ?float $customerLatitude = null,
+        ?float $customerLongitude = null
+    ): ?Branch {
+        $candidateBranches = Branch::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->get(['id', 'name', 'city', 'province', 'latitude', 'longitude']);
+
+        if ($candidateBranches->isEmpty()) {
+            return null;
+        }
+
+        $branchScores = [];
+        foreach ($candidateBranches as $branch) {
+            $allItemsAvailable = true;
+            $totalAvailable = 0;
+
+            foreach ($itemsForCheckout as $item) {
+                $inventory = BranchInventory::query()
+                    ->where('store_id', $storeId)
+                    ->where('branch_id', $branch->id)
+                    ->where('product_id', $item->product_id)
+                    ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
+                    ->first();
+
+                if (!$inventory && $item->variation_id) {
+                    $inventory = BranchInventory::query()
+                        ->where('store_id', $storeId)
+                        ->where('branch_id', $branch->id)
+                        ->where('product_id', $item->product_id)
+                        ->whereNull('variation_id')
+                        ->first();
+                }
+
+                $available = (int) ($inventory?->quantity_available ?? 0);
+                $totalAvailable += $available;
+                if ($available < (int) $item->quantity) {
+                    $allItemsAvailable = false;
+                    break;
+                }
+            }
+
+            if (!$allItemsAvailable) {
+                continue;
+            }
+
+            $distance = null;
+            if (!is_null($customerLatitude) && !is_null($customerLongitude) && !is_null($branch->latitude) && !is_null($branch->longitude)) {
+                $distance = $this->haversineKm(
+                    $customerLatitude,
+                    $customerLongitude,
+                    (float) $branch->latitude,
+                    (float) $branch->longitude
+                );
+            }
+
+            $branchScores[] = [
+                'branch' => $branch,
+                'distance' => $distance,
+                'stock_score' => $totalAvailable,
+            ];
+        }
+
+        if (empty($branchScores)) {
+            return null;
+        }
+
+        usort($branchScores, function (array $a, array $b) {
+            $aDistance = $a['distance'];
+            $bDistance = $b['distance'];
+
+            if (!is_null($aDistance) && !is_null($bDistance) && $aDistance !== $bDistance) {
+                return $aDistance <=> $bDistance;
+            }
+
+            // Fallback to stock score desc.
+            return $b['stock_score'] <=> $a['stock_score'];
+        });
+
+        return $branchScores[0]['branch'];
+    }
+
+    private function haversineKm(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $earthRadius = 6371.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+
+        $a = sin($dLat / 2) * sin($dLat / 2) +
+            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+            sin($dLon / 2) * sin($dLon / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
+    }
+
+    private function calculateBudgetScore(float $price, float $budgetMin, float $budgetMax): float
+    {
+        if ($price >= $budgetMin && $price <= $budgetMax) {
+            return 1.0;
+        }
+
+        $distance = $price < $budgetMin
+            ? ($budgetMin - $price)
+            : ($price - $budgetMax);
+
+        $range = max(1.0, $budgetMax - $budgetMin);
+        return max(0.0, 1.0 - ($distance / ($range * 2)));
+    }
+
+    private function calculateDimensionScore(Product $product, array $targetDimensions): float
+    {
+        $fields = ['length_cm', 'width_cm', 'height_cm'];
+        $scores = [];
+
+        foreach ($fields as $field) {
+            $target = $targetDimensions[$field] ?? null;
+            $actual = $product->{$field};
+            if (is_null($target) || $target <= 0 || is_null($actual) || (float) $actual <= 0) {
+                continue;
+            }
+
+            $targetValue = (float) $target;
+            $actualValue = (float) $actual;
+            $diffPercent = abs($actualValue - $targetValue) / $targetValue;
+            $scores[] = max(0.0, 1.0 - min($diffPercent, 1.0));
+        }
+
+        if (empty($scores)) {
+            return 0.75;
+        }
+
+        return array_sum($scores) / count($scores);
     }
 
     private function validateVoucherCode(string $code, float $orderAmount): array

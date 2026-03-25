@@ -159,20 +159,6 @@ class InvoiceController extends Controller
                     ], 422);
                 }
 
-                if (isset($validated['tax_amount']) && abs(((float) $validated['tax_amount']) - ((float) $po->tax_amount)) > $tolerance) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Tax amount must match PO tax amount.',
-                    ], 422);
-                }
-
-                if (isset($validated['shipping_cost']) && abs(((float) $validated['shipping_cost']) - ((float) $po->shipping_cost)) > $tolerance) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Shipping cost must match PO shipping cost.',
-                    ], 422);
-                }
-
                 if (!empty($validated['goods_receipt_id'])) {
                     $grnValid = \App\Models\Procurement\Receiving\GoodsReceipt::where('id', $validated['goods_receipt_id'])
                         ->where('purchase_order_id', $po->id)
@@ -190,6 +176,15 @@ class InvoiceController extends Controller
                 $taxAmount = $validated['tax_amount'] ?? 0;
                 $shippingCost = $validated['shipping_cost'] ?? 0;
                 $discountAmount = $validated['discount_amount'] ?? 0;
+                $itemsSubtotal = collect($validated['items'])->sum(function ($item) {
+                    return (float) ($item['line_amount'] ?? 0);
+                });
+                if (abs(((float) $validated['invoice_amount']) - $itemsSubtotal) > $tolerance) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invoice amount must equal the sum of item line amounts (product subtotal).',
+                    ], 422);
+                }
                 $netAmount = $validated['invoice_amount'] + $taxAmount + $shippingCost - $discountAmount;
 
                 // Create invoice
@@ -399,10 +394,17 @@ class InvoiceController extends Controller
 
             $invoice->update($validated);
 
-            // Recalculate net amount
-            if (isset($validated['invoice_amount'], $validated['tax_amount'], $validated['shipping_cost'], $validated['discount_amount'])) {
-                $netAmount = $validated['invoice_amount'] + ($validated['tax_amount'] ?? 0) + 
-                             ($validated['shipping_cost'] ?? 0) - ($validated['discount_amount'] ?? 0);
+            // Recalculate net amount when any relevant amount changes.
+            if (
+                array_key_exists('invoice_amount', $validated) ||
+                array_key_exists('tax_amount', $validated) ||
+                array_key_exists('shipping_cost', $validated) ||
+                array_key_exists('discount_amount', $validated)
+            ) {
+                $netAmount = ((float) ($validated['invoice_amount'] ?? $invoice->invoice_amount))
+                    + ((float) ($validated['tax_amount'] ?? $invoice->tax_amount ?? 0))
+                    + ((float) ($validated['shipping_cost'] ?? $invoice->shipping_cost ?? 0))
+                    - ((float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0));
                 $invoice->update(['net_amount' => $netAmount]);
             }
 

@@ -57,6 +57,15 @@ export interface Invoice {
   discount_amount?: number
   net_amount?: number
   currency?: string
+  remarks?: string
+  items?: Array<{
+    product_id?: number | null
+    quantity_invoiced: number
+    unit_price: number
+    line_amount: number
+    tax_rate?: number
+    tax_amount?: number
+  }>
   status?: 'draft' | 'pending_approval' | 'approved' | 'paid'
   match_status?: 'pending' | 'matched' | 'exception'
   payment_status?: 'pending' | 'paid'
@@ -210,8 +219,20 @@ class ProcurementService {
     return response.data
   }
 
+  async getProcurementProduct(id: number, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/products/${id}`, {
+      params: { include_cost: true, ...(params || {}) },
+    })
+    return response.data
+  }
+
   async getProductSuppliers(id: number) {
     const response = await axiosClient.get(`${this.baseUrl}/products/${id}/suppliers`)
+    return response.data
+  }
+
+  async getSupplierProducts(id: number, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/products`, { params })
     return response.data
   }
 

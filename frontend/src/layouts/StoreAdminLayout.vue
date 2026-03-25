@@ -103,9 +103,82 @@
                         severity="secondary" 
                         text 
                         rounded 
-                        :badge="notificationCount > 0 ? notificationCount.toString() : undefined" 
-                        badgeSeverity="danger" 
+                        :badge="unreadCount > 0 ? unreadCount.toString() : undefined" 
+                        badgeSeverity="danger"
+                        @click="toggleNotifications"
                     />
+                    <OverlayPanel ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
+                        <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
+                            <div class="font-semibold text-gray-900">Notifications</div>
+                            <Button 
+                                label="Mark all as read" 
+                                size="small" 
+                                text 
+                                class="text-xs"
+                                :disabled="unreadCount === 0 || notificationsLoading"
+                                @click="markAllNotificationsRead"
+                            />
+                        </div>
+
+                        <div class="px-4 pt-3">
+                            <div class="flex items-center gap-4 text-sm">
+                                <button
+                                    class="pb-2 border-b-2 transition"
+                                    :class="activeNotifTab === 'inbox' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                                    @click="activeNotifTab = 'inbox'"
+                                >
+                                    Inbox <span v-if="unreadCount" class="ml-1 text-xs bg-green-500 text-white rounded-full px-2 py-0.5">{{ unreadCount }}</span>
+                                </button>
+                                <button
+                                    class="pb-2 border-b-2 transition"
+                                    :class="activeNotifTab === 'general' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                                    @click="activeNotifTab = 'general'"
+                                >
+                                    General
+                                </button>
+                                <button
+                                    class="pb-2 border-b-2 transition"
+                                    :class="activeNotifTab === 'archived' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                                    @click="activeNotifTab = 'archived'"
+                                >
+                                    Archived
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="max-h-[420px] overflow-y-auto">
+                            <div v-if="notificationsLoading" class="p-4 space-y-3">
+                                <Skeleton height="56px" class="rounded-xl" />
+                                <Skeleton height="56px" class="rounded-xl" />
+                                <Skeleton height="56px" class="rounded-xl" />
+                            </div>
+
+                            <div v-else-if="filteredNotifications.length === 0" class="p-6 text-center text-sm text-gray-500">
+                                No notifications here yet.
+                            </div>
+
+                            <button
+                                v-for="notif in filteredNotifications"
+                                :key="notif.id"
+                                class="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-blue-50/50 transition"
+                                @click="openNotification(notif)"
+                            >
+                                <div class="relative">
+                                    <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-blue-700 font-semibold text-xs">
+                                        {{ getNotifInitials(notif) }}
+                                    </div>
+                                    <span v-if="!notif.is_read" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <p class="text-sm font-semibold text-gray-900 truncate">{{ notif.title }}</p>
+                                        <span class="text-xs text-gray-400 whitespace-nowrap">{{ formatTimeAgo(notif.created_at) }}</span>
+                                    </div>
+                                    <p class="text-xs text-gray-600 truncate">{{ notif.message || 'Tap to view' }}</p>
+                                </div>
+                            </button>
+                        </div>
+                    </OverlayPanel>
     
                     <!-- User Profile -->
                     <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
@@ -167,6 +240,8 @@ import UserDialog from '../components/dialogs/UserDialog.vue'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Skeleton from 'primevue/skeleton'
+import OverlayPanel from 'primevue/overlaypanel'
+import axiosClient from '../axios'
 
 const route = useRoute()
 const router = useRouter()
@@ -174,6 +249,11 @@ const authStore = useAuthStore()
 const userDialogRef = ref(null)
 const loadingNavigation = ref(true)
 const sidebarOpen = ref(false)
+const notificationPanel = ref()
+const notifications = ref<any[]>([])
+const notificationsLoading = ref(false)
+const unreadCount = ref(0)
+const activeNotifTab = ref<'inbox' | 'general' | 'archived'>('inbox')
 
 // Types
 interface NavigationItem {
@@ -210,10 +290,14 @@ const userInitials = computed(() => {
 
 const roleDisplay = computed(() => startCase(authStore.user?.role || 'Store Admin'))
 
-// Notification count (you can implement this based on your needs)
-const notificationCount = computed(() => {
-    // This could come from a notifications store or API
-    return 3
+const filteredNotifications = computed(() => {
+    if (activeNotifTab.value === 'inbox') {
+        return notifications.value.filter((n) => !n.is_read)
+    }
+    if (activeNotifTab.value === 'archived') {
+        return notifications.value.filter((n) => n.is_read)
+    }
+    return notifications.value
 })
 
 // Breadcrumbs
@@ -325,6 +409,7 @@ watch(() => route.path, () => {
 // Lifecycle
 onMounted(() => {
     loadNavigation()
+    loadNotifications()
 })
 
 // User dialog
@@ -332,6 +417,71 @@ const openUserDialog = (event: MouseEvent) => {
     if (userDialogRef.value) {
         (userDialogRef.value as any).toggle(event)
     }
+}
+
+const toggleNotifications = (event: MouseEvent) => {
+    if (notificationPanel.value) {
+        notificationPanel.value.toggle(event)
+    }
+}
+
+const loadNotifications = async () => {
+    notificationsLoading.value = true
+    try {
+        const response = await axiosClient.get('/api/notifications', { params: { per_page: 20 } })
+        const payload = response?.data || response
+        notifications.value = payload?.data || []
+        unreadCount.value = payload?.meta?.unread_count ?? notifications.value.filter((n: any) => !n.is_read).length
+    } catch (error) {
+        console.error('Failed to load notifications', error)
+    } finally {
+        notificationsLoading.value = false
+    }
+}
+
+const markAllNotificationsRead = async () => {
+    if (notificationsLoading.value) return
+    try {
+        await axiosClient.put('/api/notifications/mark-all-read')
+        notifications.value = notifications.value.map((n: any) => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
+        unreadCount.value = 0
+    } catch (error) {
+        console.error('Failed to mark notifications as read', error)
+    }
+}
+
+const openNotification = async (notif: any) => {
+    if (!notif.is_read) {
+        try {
+            await axiosClient.put(`/api/notifications/${notif.id}/read`)
+            notif.is_read = true
+            unreadCount.value = Math.max(0, unreadCount.value - 1)
+        } catch (error) {
+            console.error('Failed to mark notification as read', error)
+        }
+    }
+    if (notif.link) {
+        router.push(notif.link)
+        if (notificationPanel.value) notificationPanel.value.hide()
+    }
+}
+
+const getNotifInitials = (notif: any) => {
+    const text = notif.title || 'N'
+    const parts = text.trim().split(' ')
+    if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'N'
+    return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'N'
+}
+
+const formatTimeAgo = (iso: string) => {
+    if (!iso) return ''
+    const now = new Date()
+    const then = new Date(iso)
+    const diff = Math.floor((now.getTime() - then.getTime()) / 1000)
+    if (diff < 60) return 'Just now'
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    return then.toLocaleDateString()
 }
 </script>
 

@@ -23,6 +23,11 @@ return new class extends Migration
             $table->string('mobile', 50)->nullable();
             $table->string('fax', 50)->nullable();
             $table->string('website')->nullable();
+
+            // Tax profile
+            $table->decimal('default_tax_rate', 5, 2)->nullable(); // e.g., 12.00
+            $table->boolean('is_tax_exempt')->default(false);
+            $table->text('tax_note')->nullable();
             
             // Address
             $table->text('address')->nullable();

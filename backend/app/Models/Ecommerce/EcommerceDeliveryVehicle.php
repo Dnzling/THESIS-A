@@ -3,6 +3,7 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\Core\User;
+use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +15,7 @@ class EcommerceDeliveryVehicle extends Model
 
     protected $fillable = [
         'store_id',
+        'branch_id',
         'vehicle_name',
         'vehicle_type',
         'plate_number',
@@ -40,6 +42,11 @@ class EcommerceDeliveryVehicle extends Model
         return $this->belongsTo(Store::class, 'store_id');
     }
 
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'branch_id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -55,4 +62,3 @@ class EcommerceDeliveryVehicle extends Model
         return $this->hasMany(EcommerceOrderDelivery::class, 'vehicle_id');
     }
 }
-

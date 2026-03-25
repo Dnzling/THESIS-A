@@ -89,6 +89,32 @@ class BranchInventory extends Model
         return $this->belongsTo(Employee::class, 'last_counted_by');
     }
 
+    /**
+     * Fetch the active reorder rule for this branch + product.
+     *
+     * Note: reorder_rules is keyed by (branch_id, product_id). Variants currently share the same rule.
+     */
+    public function getActiveReorderRule(): ?ReorderRule
+    {
+        return ReorderRule::query()
+            ->where('branch_id', (int) $this->branch_id)
+            ->where('product_id', (int) $this->product_id)
+            ->where('is_active', true)
+            ->first();
+    }
+
+    public function effectiveReorderPoint(): float
+    {
+        $rule = $this->getActiveReorderRule();
+        return (float) ($rule?->reorder_point ?? $this->reorder_point ?? 0);
+    }
+
+    public function effectiveReorderQuantity(): float
+    {
+        $rule = $this->getActiveReorderRule();
+        return (float) ($rule?->reorder_quantity ?? $this->reorder_quantity ?? 0);
+    }
+
     // Scopes
     public function scopeLowStock($query)
     {
@@ -108,7 +134,7 @@ class BranchInventory extends Model
     // Helper Methods
     public function isLowStock(): bool
     {
-        return $this->quantity_available <= $this->reorder_point;
+        return $this->quantity_available <= $this->effectiveReorderPoint();
     }
 
     public function isOutOfStock(): bool
@@ -118,9 +144,10 @@ class BranchInventory extends Model
 
     public function updateStockStatus(): void
     {
+        $reorderPoint = $this->effectiveReorderPoint();
         if ($this->quantity_available <= 0) {
             $this->stock_status = 'out_of_stock';
-        } elseif ($this->quantity_available <= $this->reorder_point) {
+        } elseif ($this->quantity_available <= $reorderPoint) {
             $this->stock_status = 'low_stock';
         } else {
             $this->stock_status = 'in_stock';

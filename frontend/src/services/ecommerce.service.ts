@@ -25,6 +25,19 @@ const ecommerceService = {
     return axiosClient.get(`/api/ecommerce/stores/${storeId}/reviews`, { params })
   },
 
+  getDssRecommendations(payload: {
+    budget_min: number
+    budget_max: number
+    category_id?: number | null
+    length_cm?: number | null
+    width_cm?: number | null
+    height_cm?: number | null
+    per_page?: number
+    page?: number
+  }) {
+    return axiosClient.post('/api/ecommerce/dss/recommendations', payload)
+  },
+
   followStore(storeId: number | string) {
     return axiosClient.post(`/api/ecommerce/stores/${storeId}/follow`)
   },
@@ -105,6 +118,8 @@ const ecommerceService = {
     shipping_phone?: string
     shipping_email?: string
     shipping_address: string
+    customer_latitude?: number
+    customer_longitude?: number
     payment_method: 'cod' | 'bank_transfer' | 'card' | 'e_wallet'
     shipping_fee?: number
     discount_amount?: number
@@ -143,6 +158,18 @@ const ecommerceService = {
     review_text?: string
   }) {
     return axiosClient.post(`/api/ecommerce/order-items/${itemId}/reviews`, payload)
+  },
+
+  getChatThreads(params?: any) {
+    return axiosClient.get('/api/ecommerce/chat/threads', { params })
+  },
+
+  getStoreChatMessages(storeId: number | string, params?: any) {
+    return axiosClient.get(`/api/ecommerce/chat/stores/${storeId}/messages`, { params })
+  },
+
+  sendStoreChatMessage(storeId: number | string, payload: { message: string; order_id?: number }) {
+    return axiosClient.post(`/api/ecommerce/chat/stores/${storeId}/messages`, payload)
   },
 }
 

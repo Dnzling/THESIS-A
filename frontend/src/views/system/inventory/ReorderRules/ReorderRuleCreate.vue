@@ -40,16 +40,6 @@
             </div>
 
             <div>
-              <label class="text-xs font-semibold text-gray-600">Rule Type <span class="text-red-500">*</span></label>
-              <Select v-model="form.rule_type" :options="ruleTypeOptions" optionLabel="label" optionValue="value" class="w-full mt-1" />
-            </div>
-
-            <div>
-              <label class="text-xs font-semibold text-gray-600">Trigger Type <span class="text-red-500">*</span></label>
-              <Select v-model="form.trigger_type" :options="triggerTypeOptions" optionLabel="label" optionValue="value" class="w-full mt-1" />
-            </div>
-
-            <div>
               <label class="text-xs font-semibold text-gray-600">Basis Type <span class="text-red-500">*</span></label>
               <Select v-model="form.basis_type" :options="basisTypeOptions" optionLabel="label" optionValue="value" class="w-full mt-1" />
             </div>
@@ -80,11 +70,6 @@
             </div>
 
             <div v-if="form.basis_type === 'demand_lead_time'">
-              <label class="text-xs font-semibold text-gray-600">Average Daily Demand <span class="text-red-500">*</span></label>
-              <InputNumber v-model="form.avg_daily_demand" class="w-full mt-1" :min="0" :minFractionDigits="0" :maxFractionDigits="4" />
-            </div>
-
-            <div v-if="form.basis_type === 'demand_lead_time'">
               <label class="text-xs font-semibold text-gray-600">Review Period (Days)</label>
               <InputNumber v-model="form.review_period_days" class="w-full mt-1" :min="1" :max="365" />
             </div>
@@ -94,6 +79,10 @@
               <Select v-model="form.priority" :options="priorityOptions" optionLabel="label" optionValue="value" class="w-full mt-1" />
             </div>
           </div>
+
+          <Message v-if="form.basis_type === 'demand_lead_time'" severity="info" :closable="false">
+            Average Daily Demand is auto-computed by the backend from recent sales history.
+          </Message>
 
           <div class="flex items-center gap-6 pt-1">
             <div class="flex items-center gap-2">
@@ -123,13 +112,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
 import axios from 'axios'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const authStore = useAuthStore()
 
@@ -178,19 +168,6 @@ const form = reactive({
   is_active: true,
   notes: '',
 })
-
-const ruleTypeOptions = [
-  { label: 'Automatic', value: 'automatic' },
-  { label: 'Manual', value: 'manual' },
-  { label: 'Demand Based', value: 'demand_based' },
-]
-
-const triggerTypeOptions = [
-  { label: 'Reorder Point', value: 'reorder_point' },
-  { label: 'Safety Stock', value: 'safety_stock' },
-  { label: 'Forecast', value: 'forecast' },
-  { label: 'Seasonal', value: 'seasonal' },
-]
 
 const basisTypeOptions = [
   { label: 'Reorder Point', value: 'reorder_point' },
@@ -278,7 +255,12 @@ const submit = async () => {
   saving.value = true
   errors.value = {}
   try {
-    const payload = { ...form, branch_id: form.branch_id || branchId || undefined }
+    const payload = {
+      ...form,
+      rule_type: form.basis_type === 'demand_lead_time' ? 'demand_based' : 'automatic',
+      trigger_type: form.basis_type === 'demand_lead_time' ? 'forecast' : 'reorder_point',
+      branch_id: form.branch_id || branchId || undefined
+    }
     const res = await inventoryService.createReorderRule(payload)
     toast.add({ severity: 'success', summary: 'Success', detail: res?.message || 'Reorder rule created.', life: 2500 })
     router.push({ name: 'inventory.reorder-rules' })
@@ -308,8 +290,21 @@ onMounted(() => {
         form.branch_id = resolvedBranchId.value
       }
 
+      const queryBranchId = Number(route.query.branch_id || 0)
+      if (queryBranchId) {
+        form.branch_id = queryBranchId
+      }
+
       await loadBranchName(form.branch_id || resolvedBranchId.value || 0)
       await loadProducts()
+
+      const queryProductId = Number(route.query.product_id || 0)
+      if (queryProductId) {
+        const exists = productOptions.value.some((p: any) => Number(p.value) === queryProductId)
+        if (exists) {
+          form.product_id = queryProductId
+        }
+      }
     } finally {
       autoFillLoading.value = false
     }
@@ -322,9 +317,9 @@ watch(
     if (basis === 'demand_lead_time') {
       form.rule_type = 'demand_based'
       form.trigger_type = 'forecast'
-      if (form.avg_daily_demand == null) form.avg_daily_demand = 0
       if (!form.review_period_days) form.review_period_days = 7
     } else {
+      form.trigger_type = 'reorder_point'
       if (form.rule_type === 'demand_based') form.rule_type = 'automatic'
     }
   }

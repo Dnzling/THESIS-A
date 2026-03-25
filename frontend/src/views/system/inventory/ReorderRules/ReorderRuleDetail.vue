@@ -19,8 +19,6 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div><span class="text-gray-500">Product:</span> <span class="font-medium">{{ productLabel }}</span></div>
           <div><span class="text-gray-500">Branch:</span> <span class="font-medium">{{ rule.branch?.name || '-' }}</span></div>
-          <div><span class="text-gray-500">Rule Type:</span> <span class="font-medium">{{ toLabel(rule.rule_type) }}</span></div>
-          <div><span class="text-gray-500">Trigger:</span> <span class="font-medium">{{ toLabel(rule.trigger_type) }}</span></div>
           <div><span class="text-gray-500">Basis:</span> <span class="font-medium">{{ toLabel(rule.basis_type || 'reorder_point') }}</span></div>
           <div><span class="text-gray-500">Reorder Point:</span> <span class="font-medium">{{ rule.reorder_point ?? '-' }}</span></div>
           <div><span class="text-gray-500">Reorder Quantity:</span> <span class="font-medium">{{ rule.reorder_quantity ?? '-' }}</span></div>

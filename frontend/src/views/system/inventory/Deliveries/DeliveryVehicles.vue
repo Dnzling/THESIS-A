@@ -9,7 +9,7 @@
           </div>
           <div class="flex gap-2">
             <Button severity="info" outlined icon="pi pi-arrow-left" label="Back to Deliveries" @click="goBack" />
-            <Button severity="info" icon="pi pi-plus" label="Add Vehicle" @click="openCreate" />
+            <Button v-if="canManageDeliveries" severity="info" icon="pi pi-plus" label="Add Vehicle" @click="openCreate" />
           </div>
         </div>
       </template>
@@ -62,7 +62,7 @@
           </Column>
           <Column header="Actions">
             <template #body="{ data }">
-              <Button text severity="info" icon="pi pi-pencil" @click="openEdit(data)" />
+              <Button v-if="canManageDeliveries" text severity="info" icon="pi pi-pencil" @click="openEdit(data)" />
             </template>
           </Column>
         </DataTable>
@@ -129,7 +129,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import inventoryService from '@/services/inventory.service'
+import logisticsService from '@/services/logistics.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -143,14 +143,17 @@ import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import Message from 'primevue/message'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const saving = ref(false)
 const formDialog = ref(false)
 const editingId = ref<number | null>(null)
 const vehicles = ref<any[]>([])
+const canManageDeliveries = authStore.hasPermission('logistics.fleet.manage')
 
 const pageState = reactive({ page: 1, rows: 10, total: 0 })
 const filters = reactive({ search: '', status: null as string | null })
@@ -198,7 +201,7 @@ const resetForm = () => {
 const loadVehicles = async () => {
   loading.value = true
   try {
-    const res = await inventoryService.getDeliveryVehicles({
+    const res = await logisticsService.getVehicles({
       page: pageState.page,
       per_page: pageState.rows,
       search: filters.search || undefined,
@@ -247,10 +250,10 @@ const saveVehicle = async () => {
   }
   try {
     if (editingId.value) {
-      await inventoryService.updateDeliveryVehicle(editingId.value, payload)
+      await logisticsService.updateVehicle(editingId.value, payload)
       toast.add({ severity: 'success', summary: 'Updated', detail: 'Vehicle updated successfully.', life: 2200 })
     } else {
-      await inventoryService.createDeliveryVehicle(payload)
+      await logisticsService.createVehicle(payload)
       toast.add({ severity: 'success', summary: 'Created', detail: 'Vehicle registered successfully.', life: 2200 })
     }
     formDialog.value = false
@@ -270,7 +273,7 @@ const onPage = (event: any) => {
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 const statusSeverity = (status: string) => (status === 'active' ? 'success' : status === 'maintenance' ? 'warning' : 'secondary')
-const goBack = () => router.push({ name: 'inventory.ecommerce-deliveries' })
+const goBack = () => router.push({ name: 'logistics.deliveries' })
 
 watch(() => [filters.search, filters.status], () => {
   pageState.page = 1
@@ -279,4 +282,3 @@ watch(() => [filters.search, filters.status], () => {
 
 onMounted(loadVehicles)
 </script>
-

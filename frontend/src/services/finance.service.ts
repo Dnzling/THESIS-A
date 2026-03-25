@@ -13,8 +13,73 @@ const financeService = {
     return response.data
   },
 
-  async rejectPurchaseOrder(id: number, payload: { notes: string }) {
-    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/reject`, payload)
+  async rejectPurchaseOrder(id: number, payload: { reason: string }) {
+      const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/reject`, payload)
+      return response.data
+    },
+
+  async getPurchaseOrders(params?: any) {
+    const response = await axiosClient.get(`${baseUrl}/purchase-orders`, { params })
+    return response.data
+  },
+
+  async getPurchaseOrder(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/purchase-orders/${id}`)
+    return response.data
+  },
+
+  async createPurchaseOrder(payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders`, payload)
+    return response.data
+  },
+
+  async updatePurchaseOrder(id: number | string, payload: any) {
+    const response = await axiosClient.put(`${baseUrl}/purchase-orders/${id}`, payload)
+    return response.data
+  },
+
+  async deletePurchaseOrder(id: number | string) {
+    const response = await axiosClient.delete(`${baseUrl}/purchase-orders/${id}`)
+    return response.data
+  },
+
+  async sendPurchaseOrder(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/send`)
+    return response.data
+  },
+
+  async cancelPurchaseOrder(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/cancel`)
+    return response.data
+  },
+
+  async summaryPurchaseOrders() {
+    const response = await axiosClient.get(`${baseUrl}/purchase-orders/summary`)
+    return response.data
+  },
+
+  async printPurchaseOrder(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/purchase-orders/${id}/print`, { responseType: 'blob' })
+    return response
+  },
+
+  async emailPurchaseOrder(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/email`, payload)
+    return response.data
+  },
+
+  async labelPurchaseOrder(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/purchase-orders/${id}/label`, { responseType: 'blob' })
+    return response
+  },
+
+  async requestRevisionPurchaseOrder(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/purchase-orders/${id}/request-revision`, payload)
+    return response.data
+  },
+
+  async getPendingReceipt(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/purchase-orders/${id}/pending-receipt`)
     return response.data
   },
 

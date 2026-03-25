@@ -52,16 +52,30 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Reorder Point</label>
-              <InputNumber v-model="form.reorder_point" :min="0" showButtons class="w-full" />
+              <InputNumber v-model="form.reorder_point" :disabled="true" class="w-full" />
             </div>
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Reorder Quantity</label>
-              <InputNumber v-model="form.reorder_quantity" :min="0" showButtons class="w-full" />
+              <InputNumber v-model="form.reorder_quantity" :disabled="true" class="w-full" />
             </div>
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Safety Stock</label>
-              <InputNumber v-model="form.safety_stock" :min="0" showButtons class="w-full" />
+              <InputNumber v-model="form.safety_stock" :disabled="true" class="w-full" />
             </div>
+          </div>
+          <Message severity="secondary" :closable="false">
+            Reorder settings are managed in <strong>Reorder Rules</strong>.
+          </Message>
+          <div class="flex justify-end">
+            <Button
+              :label="reorderRuleId ? 'Update Reorder Rule' : 'Set Reorder Rule'"
+              icon="pi pi-sliders-h"
+              severity="info"
+              outlined
+              size="small"
+              type="button"
+              @click="goToReorderRule"
+            />
           </div>
 
           <!-- Warehouse Location -->
@@ -136,6 +150,7 @@ const itemId = Number(route.params.id)
 const loadingItem = ref(true)
 const submitting = ref(false)
 const item = ref<any>(null)
+const reorderRuleId = ref<number | null>(null)
 
 const form = reactive({
   quantity_on_hand: 0,
@@ -171,6 +186,7 @@ const loadItem = async () => {
     form.shelf = d.shelf ?? ''
     form.unit_cost = d.unit_cost ?? null
     form.average_cost = d.average_cost ?? null
+    await loadReorderRule()
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -210,13 +226,69 @@ const validate = (): boolean => {
   return Object.keys(errors).length === 0
 }
 
+const extractRows = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.data)) return payload.data.data
+  return []
+}
+
+const loadReorderRule = async () => {
+  const productId = Number(item.value?.product_id || 0)
+  const branchId = Number(item.value?.branch_id || 0)
+  if (!productId || !branchId) {
+    reorderRuleId.value = null
+    return
+  }
+
+  try {
+    const response = await inventoryService.getReorderRules({
+      product_id: productId,
+      branch_id: branchId,
+      per_page: 1
+    })
+    const rows = extractRows(response?.data)
+    const rule = rows[0]
+    reorderRuleId.value = rule?.id ? Number(rule.id) : null
+  } catch {
+    reorderRuleId.value = null
+  }
+}
+
+const goToReorderRule = () => {
+  const productId = Number(item.value?.product_id || 0)
+  const branchId = Number(item.value?.branch_id || 0)
+  if (!productId) return
+
+  if (reorderRuleId.value) {
+    router.push({ name: 'inventory.reorder-rules.edit', params: { id: reorderRuleId.value } })
+    return
+  }
+
+  router.push({
+    name: 'inventory.reorder-rules.create',
+    query: {
+      product_id: String(productId),
+      branch_id: branchId ? String(branchId) : undefined
+    }
+  })
+}
+
 const submitForm = async () => {
   if (!validate()) return
 
   submitting.value = true
   try {
-    const { quantity_on_hand, ...payload } = form
-    await inventoryService.updateInventoryItem(itemId, { ...payload })
+    const payload = {
+      quantity_damaged: form.quantity_damaged,
+      warehouse_section: form.warehouse_section,
+      aisle: form.aisle,
+      rack: form.rack,
+      shelf: form.shelf,
+      unit_cost: form.unit_cost,
+      average_cost: form.average_cost
+    }
+    await inventoryService.updateInventoryItem(itemId, payload)
     toast.add({
       severity: 'success',
       summary: 'Updated',

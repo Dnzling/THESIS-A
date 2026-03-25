@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\StockAlert;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\ReorderRule;
 use App\Support\EmployeeContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -148,7 +149,7 @@ class StockAlertController extends Controller
 
         // Check if alert condition is still valid
         $canResolve = match($alert->alert_type) {
-            'low_stock' => $inventory->quantity_available > $inventory->reorder_point,
+            'low_stock' => $inventory->quantity_available > $inventory->effectiveReorderPoint(),
             'out_of_stock' => $inventory->quantity_available > 0,
             'overstock' => $inventory->quantity_on_hand <= ($inventory->maximum_stock ?? PHP_INT_MAX),
             'reorder_needed' => $inventory->quantity_incoming > 0,
@@ -160,7 +161,7 @@ class StockAlertController extends Controller
                 'success' => false,
                 'message' => 'Alert condition has not been resolved yet',
                 'current_quantity' => $inventory->quantity_available,
-                'reorder_point' => $inventory->reorder_point,
+                'reorder_point' => $inventory->effectiveReorderPoint(),
             ], 422);
         }
 
@@ -233,10 +234,21 @@ class StockAlertController extends Controller
 
         // Get all inventory items for the branch
         $inventoryItems = BranchInventory::where('branch_id', $branchId)->get();
+        $productIds = $inventoryItems->pluck('product_id')->filter()->unique()->values()->all();
+        $rulesByProduct = ReorderRule::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('product_id', $productIds)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('product_id');
 
         foreach ($inventoryItems as $item) {
+            $rule = $rulesByProduct->get((int) $item->product_id);
+            $reorderPoint = (float) ($rule?->reorder_point ?? $item->reorder_point ?? 0);
+            $reorderQty = (float) ($rule?->reorder_quantity ?? $item->reorder_quantity ?? 0);
+
             // Check for low stock
-            if ($item->isLowStock() && $item->quantity_available > 0) {
+            if ($item->quantity_available > 0 && (float) $item->quantity_available <= $reorderPoint) {
                 $existing = StockAlert::where('branch_id', $branchId)
                     ->where('product_id', $item->product_id)
                     ->where('variation_id', $item->variation_id)
@@ -251,8 +263,8 @@ class StockAlertController extends Controller
                         'variation_id' => $item->variation_id,
                         'alert_type' => 'low_stock',
                         'current_quantity' => $item->quantity_available,
-                        'reorder_point' => $item->reorder_point,
-                        'recommended_order_quantity' => $item->reorder_quantity,
+                        'reorder_point' => $reorderPoint,
+                        'recommended_order_quantity' => $reorderQty,
                         'status' => 'active',
                     ]);
                     $alertsCreated++;
@@ -275,8 +287,8 @@ class StockAlertController extends Controller
                         'variation_id' => $item->variation_id,
                         'alert_type' => 'out_of_stock',
                         'current_quantity' => $item->quantity_available,
-                        'reorder_point' => $item->reorder_point,
-                        'recommended_order_quantity' => $item->reorder_quantity,
+                        'reorder_point' => $reorderPoint,
+                        'recommended_order_quantity' => $reorderQty,
                         'status' => 'active',
                     ]);
                     $alertsCreated++;

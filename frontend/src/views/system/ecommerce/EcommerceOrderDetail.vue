@@ -5,6 +5,7 @@
         <h1 class="text-2xl font-bold text-gray-900">Order Details</h1>
       </div>
       <div class="flex items-center gap-2">
+        <Button v-if="order?.store_id" label="Chat Store" severity="help" outlined @click="goChatStore" />
         <Button v-if="order?.can_cancel" label="Request Cancel" severity="danger" outlined @click="goCancelPage" />
         <Button label="Back" severity="secondary" outlined @click="goBack" />
       </div>
@@ -36,6 +37,10 @@
             <div><span class="text-slate-500">Status:</span> <Tag :value="order.status" /></div>
             <div><span class="text-slate-500">Payment:</span> <Tag :value="order.payment_status" severity="secondary" /></div>
             <div class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
+            <div><span class="text-slate-500">Tracking Number:</span> <span class="font-semibold">{{ order.delivery?.tracking_number || '-' }}</span></div>
+            <div><span class="text-slate-500">Courier:</span> <span class="font-semibold">{{ order.delivery?.courier_name || '-' }}</span></div>
+            <div><span class="text-slate-500">Courier Contact:</span> <span class="font-semibold">{{ order.delivery?.courier_contact || '-' }}</span></div>
+            <div><span class="text-slate-500">Delivery Status:</span> <Tag :value="formatStatus(order.delivery?.status || 'pending')" severity="info" /></div>
             <div v-if="order.cancellation_request" class="md:col-span-2">
               <span class="text-slate-500">Cancellation Request:</span>
               <Tag :value="order.cancellation_request.status" severity="warning" class="ml-2" />
@@ -47,8 +52,9 @@
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <div class="space-y-3">
-            <div class="border-b border-slate-100 pb-2">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
               <p class="text-sm font-semibold text-slate-800">Store: {{ order.store_name || 'Store' }}</p>
+              <Button v-if="order.store_id" label="Chat" size="small" severity="help" text @click="goChatStore" />
             </div>
 
             <div
@@ -107,6 +113,26 @@
                 <p class="mt-1 text-xs text-slate-400">
                   {{ formatDateTime(item.created_at) }} • {{ item.actor || 'System' }}
                 </p>
+                <div v-if="item.meta?.proof_photo_url || item.meta?.proof_signature_url" class="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    v-if="item.meta?.proof_photo_url"
+                    size="small"
+                    outlined
+                    severity="secondary"
+                    icon="pi pi-image"
+                    label="Proof Photo"
+                    @click="previewMedia(item.meta.proof_photo_url, 'Proof Photo')"
+                  />
+                  <Button
+                    v-if="item.meta?.proof_signature_url"
+                    size="small"
+                    outlined
+                    severity="secondary"
+                    icon="pi pi-pencil"
+                    label="Signature"
+                    @click="previewMedia(item.meta.proof_signature_url, 'Signature')"
+                  />
+                </div>
               </div>
             </template>
           </Timeline>
@@ -114,15 +140,25 @@
         </template>
       </Card>
     </template>
+
+    <Dialog v-model:visible="mediaPreview.visible" modal :header="mediaPreview.title" class="w-full max-w-4xl">
+      <div class="flex items-center justify-center rounded-lg bg-slate-50 p-2">
+        <img v-if="mediaPreview.url" :src="mediaPreview.url" alt="Delivery proof" class="max-h-[70vh] w-auto rounded-lg object-contain" />
+      </div>
+      <template #footer>
+        <Button label="Open Full View" icon="pi pi-external-link" outlined @click="openExternal(mediaPreview.url)" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
 import Timeline from 'primevue/timeline'
+import Dialog from 'primevue/dialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -130,6 +166,11 @@ const toast = useToast()
 
 const loading = ref(false)
 const order = ref<any>(null)
+const mediaPreview = reactive({
+  visible: false,
+  url: '',
+  title: 'Preview',
+})
 
 async function loadOrderDetail() {
   loading.value = true
@@ -165,6 +206,17 @@ function formatStatus(value: string) {
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
 
+function previewMedia(url: string, title: string) {
+  mediaPreview.url = url
+  mediaPreview.title = title
+  mediaPreview.visible = true
+}
+
+function openExternal(url: string) {
+  if (!url) return
+  window.open(url, '_blank')
+}
+
 function goBack() {
   router.push({ name: 'ecommerce.orders' })
 }
@@ -182,6 +234,11 @@ function goReturnPage(itemId: number) {
 function goReviewPage(itemId: number) {
   if (!order.value?.id) return
   router.push({ name: 'ecommerce.order-review', params: { id: order.value.id, itemId } })
+}
+
+function goChatStore() {
+  if (!order.value?.store_id) return
+  router.push({ name: 'ecommerce.chats', query: { store_id: String(order.value.store_id) } })
 }
 
 onMounted(loadOrderDetail)

@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\Finance\FinanceReceivablesController;
 use App\Http\Controllers\Api\Finance\FinancePayrollController;
 use App\Http\Controllers\Api\Finance\FinanceInvoiceController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
+use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
+use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 
 Route::prefix('finance')->group(function () {
     Route::get('/dashboard', [FinanceDashboardController::class, 'index']);
@@ -22,8 +24,30 @@ Route::prefix('finance')->group(function () {
     Route::post('/invoices/{id}/approve', [FinanceInvoiceController::class, 'approve']);
     Route::post('/invoices/{id}/mark-paid', [FinanceInvoiceController::class, 'markPaid']);
 
-    Route::post('/purchase-orders/{id}/approve', [PurchaseOrderController::class, 'approve']);
-    Route::post('/purchase-orders/{id}/reject', [PurchaseOrderController::class, 'reject']);
+    // Purchase Orders (Finance view) reusing procurement controller
+    Route::prefix('purchase-orders')->group(function () {
+        Route::get('/', [PurchaseOrderController::class, 'index'])->middleware('can:finance.purchase_orders.view');
+        Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders'])->middleware('can:finance.purchase_orders.view');
+        Route::get('/summary', [PurchaseOrderController::class, 'summary'])->middleware('can:finance.purchase_orders.view');
+        Route::get('/{id}', [PurchaseOrderController::class, 'show'])->middleware('can:finance.purchase_orders.view');
+
+        Route::post('/', [PurchaseOrderController::class, 'store'])->middleware('can:finance.purchase_orders.manage');
+        Route::put('/{id}', [PurchaseOrderController::class, 'update'])->middleware('can:finance.purchase_orders.manage');
+        Route::delete('/{id}', [PurchaseOrderController::class, 'destroy'])->middleware('can:finance.purchase_orders.manage');
+
+        Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve'])->middleware('can:finance.purchase_orders.approve');
+        Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject'])->middleware('can:finance.purchase_orders.approve');
+        Route::post('/{id}/send', [PurchaseOrderController::class, 'send'])->middleware('can:finance.purchase_orders.manage');
+        Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel'])->middleware('can:finance.purchase_orders.manage');
+
+        Route::get('/{id}/print', [PurchaseOrderPrintEmailController::class, 'generatePdf'])->middleware('can:finance.purchase_orders.view');
+        Route::post('/{id}/email', [PurchaseOrderPrintEmailController::class, 'emailPo'])->middleware('can:finance.purchase_orders.manage');
+        Route::get('/{id}/label', [PurchaseOrderPrintEmailController::class, 'generateLabel'])->middleware('can:finance.purchase_orders.view');
+        Route::post('/{id}/request-revision', [PurchaseOrderPrintEmailController::class, 'requestRevision'])->middleware('can:finance.purchase_orders.manage');
+
+        // Pending receipt for finance visibility
+        Route::get('/{poId}/pending-receipt', [GoodsReceiptController::class, 'pendingForPO'])->middleware('can:finance.purchase_orders.view');
+    });
 
     Route::get('/expenses', [FinanceExpenseController::class, 'index']);
     Route::post('/expenses', [FinanceExpenseController::class, 'store']);

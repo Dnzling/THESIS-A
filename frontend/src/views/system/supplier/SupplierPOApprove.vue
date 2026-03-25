@@ -39,6 +39,20 @@
             <p class="text-lg font-semibold text-green-600">₱ {{ formatMoney(po.total_amount) }}</p>
           </div>
         </div>
+            <div>
+              <p class="text-xs text-gray-500">Discount</p>
+              <p class="text-sm text-slate-700">
+                PHP {{ formatMoney(po.discount_amount) }}
+                <span v-if="contractDiscountPercent" class="text-xs text-slate-400">({{ contractDiscountPercent.toFixed(2) }}%)</span>
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500">Tax</p>
+              <p class="text-sm text-slate-700">
+                PHP {{ formatMoney(po.tax_amount) }}
+                <span v-if="contractTaxRate" class="text-xs text-slate-400">({{ contractTaxRate.toFixed(2) }}%)</span>
+              </p>
+            </div>
       </template>
     </Card>
 
@@ -136,6 +150,8 @@ const toast = useToast()
 const po = ref<any>(null)
 const shipment = ref<any>(null)
 const invoice = ref<any>(null)
+const contractTaxRate = ref(0)
+const contractDiscountPercent = ref(0)
 const submitting = ref(false)
 const rejectionDialog = ref(false)
 const rejectionReason = ref('')
@@ -158,6 +174,8 @@ const loadPO = async () => {
     const res = await supplierService.getSupplierPODetail(id)
     const payload = res.data || res
     po.value = payload?.data?.po || payload?.po || null
+    contractTaxRate.value = Number(payload?.data?.contract_tax_rate || 0) || 0
+    contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || 0) || 0
 
     if (po.value?.status === 'in_transit' || po.value?.status === 'delivered') {
       const shipRes = await supplierService.getPOShipment(id)

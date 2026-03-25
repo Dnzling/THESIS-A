@@ -22,7 +22,8 @@ class GoodsReceiptController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = GoodsReceipt::with(['purchaseOrder', 'branch', 'receivedBy']);
+        $query = GoodsReceipt::with(['purchaseOrder.supplier', 'branch', 'receivedBy', 'verifiedBy'])
+            ->withCount('items');
 
         // Filters
         if ($request->has('branch_id')) {
@@ -69,6 +70,50 @@ class GoodsReceiptController extends Controller
         return response()->json([
             'success' => true,
             'data' => $receipt,
+        ]);
+    }
+
+    /**
+     * Print goods receipt (PDF)
+     * GET /api/procurement/goods-receipts/{id}/print
+     */
+    public function print(int $id)
+    {
+        $receipt = GoodsReceipt::with([
+            'purchaseOrder.supplier',
+            'branch',
+            'items.product',
+            'items.purchaseOrderItem',
+            'receivedBy',
+            'verifiedBy'
+        ])->findOrFail($id);
+
+        $data = [
+            'grn_number' => $receipt->grn_number,
+            'receipt_date' => $receipt->receipt_date,
+            'receipt_time' => $receipt->receipt_time,
+            'receipt_status' => $receipt->receipt_status,
+            'delivery_note_number' => $receipt->delivery_note_number,
+            'vehicle_number' => $receipt->vehicle_number,
+            'driver_name' => $receipt->driver_name,
+            'discrepancy_notes' => $receipt->discrepancy_notes,
+            'quality_notes' => $receipt->quality_notes,
+            'purchase_order' => $receipt->purchaseOrder,
+            'supplier' => $receipt->purchaseOrder?->supplier,
+            'branch' => $receipt->branch,
+            'received_by' => $receipt->receivedBy,
+            'verified_by' => $receipt->verifiedBy,
+            'items' => $receipt->items,
+        ];
+
+        $pdf = \PDF::loadView('procurement.goods-receipt-pdf', $data)
+            ->setPaper('a4', 'portrait');
+
+        $filename = "GRN-{$receipt->grn_number}.pdf";
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"{$filename}\"",
         ]);
     }
 

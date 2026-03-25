@@ -20,6 +20,9 @@ class UserResource extends JsonResource
         $isManager = $request->user() && $request->user()->hasRole('manager');
         
         $canViewSensitive = $isAdmin || $isStoreAdmin || $isHR || $isManager;
+        // Users should always see their own store/branch assignment (needed by branch-scoped modules).
+        $canViewOwnStoreBranch = ($request->user()?->id && $request->user()->id === $this->id);
+        $canViewStoreBranch = $canViewSensitive || $canViewOwnStoreBranch;
         
         return [
             'id' => $this->id,
@@ -43,7 +46,7 @@ class UserResource extends JsonResource
             // }),
             
             // Store info - only show if allowed
-            'store' => $this->when($canViewSensitive && $this->relationLoaded('store'), function () {
+            'store' => $this->when($canViewStoreBranch && $this->relationLoaded('store'), function () {
                 return $this->store ? [
                     'id' => $this->store->id,
                     'name' => $this->store->store_name ?? $this->store->name ?? 'N/A',
@@ -52,7 +55,7 @@ class UserResource extends JsonResource
             }),
             
             // Branch info - only show if allowed
-            'branch' => $this->when($canViewSensitive && $this->relationLoaded('branch'), function () {
+            'branch' => $this->when($canViewStoreBranch && $this->relationLoaded('branch'), function () {
                 return $this->branch ? [
                     'id' => $this->branch->id,
                     'name' => $this->branch->name,

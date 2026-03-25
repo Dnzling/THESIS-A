@@ -16,11 +16,11 @@
         </div>
         
         <div class="flex gap-2">
-          <Button v-if="contract?.status === 'draft'" label="Edit" icon="pi pi-pencil" severity="warning" 
+          <Button v-if="canManageSupplierContracts && contract?.status === 'draft'" label="Edit" icon="pi pi-pencil" severity="warning" 
             @click="editContract" class="px-6" />
-          <Button v-if="contract?.status === 'draft'" label="Activate" icon="pi pi-check-circle" severity="success" 
+          <Button v-if="canApproveSupplierContracts && contract?.status === 'draft'" label="Activate" icon="pi pi-check-circle" severity="success" 
             @click="activateContract" :loading="activating" class="px-6" />
-          <Button v-if="contract?.status === 'active'" label="Terminate" icon="pi pi-ban" severity="danger" 
+          <Button v-if="canApproveSupplierContracts && contract?.status === 'active'" label="Terminate" icon="pi pi-ban" severity="danger" 
             @click="showTerminateDialog = true" class="px-6" />
         </div>
       </div>
@@ -247,14 +247,18 @@ import { onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const activating = ref(false)
 const showTerminateDialog = ref(false)
 const contract = ref<any>(null)
+const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
+const canApproveSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.approve'))
 
 const formatDate = (date: string | null): string => {
   if (!date) return 'N/A'

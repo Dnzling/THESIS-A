@@ -21,6 +21,9 @@ class SupplierContract extends Model
         'minimum_order_value',
         'payment_terms_days',
         'discount_percentage',
+        'tax_rate',
+        'is_tax_exempt',
+        'tax_note',
         'terms_conditions',
         'contract_file_path',
         'status',
@@ -33,6 +36,8 @@ class SupplierContract extends Model
         'minimum_order_value' => 'decimal:2',
         'payment_terms_days' => 'integer',
         'discount_percentage' => 'decimal:2',
+        'tax_rate' => 'decimal:2',
+        'is_tax_exempt' => 'boolean',
     ];
 
     // Relationships

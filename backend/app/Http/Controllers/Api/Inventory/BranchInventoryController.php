@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StoreInventoryRequest;
 use App\Models\Core\ActivityLog;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\ReorderRule;
 use App\Services\Inventory\InventoryService;
 use App\Services\Inventory\AlertService;
 use Illuminate\Http\Request;
@@ -105,15 +106,53 @@ class BranchInventoryController extends Controller
             }
 
             // Sorting
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
+            $sortBy = (string) $request->get('sort_by', 'created_at');
+            $sortOrder = strtolower((string) $request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSorts = [
+                'created_at',
+                'updated_at',
+                'quantity_on_hand',
+                'quantity_available',
+                'stock_status',
+                'reorder_point',
+                'reorder_quantity',
+            ];
+            if (!in_array($sortBy, $allowedSorts, true)) {
+                $sortBy = 'created_at';
+            }
             $query->orderBy($sortBy, $sortOrder);
 
             $inventory = $query->paginate($request->get('per_page', 15));
 
+            $itemsRaw = collect($inventory->items());
+            $productIds = $itemsRaw->pluck('product_id')->filter()->unique()->values()->all();
+            $rulesByProduct = ReorderRule::query()
+                ->where('branch_id', $targetBranchId)
+                ->whereIn('product_id', $productIds)
+                ->where('is_active', true)
+                ->get()
+                ->keyBy('product_id');
+
+            $items = $itemsRaw->map(function (BranchInventory $row) use ($rulesByProduct) {
+                $rule = $rulesByProduct->get((int) $row->product_id);
+                $row->reorder_point = $rule?->reorder_point ?? $row->reorder_point ?? 0;
+                $row->reorder_quantity = $rule?->reorder_quantity ?? $row->reorder_quantity ?? 0;
+
+                // Ensure UI sees correct status even if stock_status wasn't recalculated after rule changes
+                if ((int) $row->quantity_available <= 0) {
+                    $row->stock_status = 'out_of_stock';
+                } elseif ((float) $row->quantity_available <= (float) $row->reorder_point) {
+                    $row->stock_status = 'low_stock';
+                } else {
+                    $row->stock_status = 'in_stock';
+                }
+
+                return $row;
+            })->values();
+
             return response()->json([
                 'success' => true,
-                'data' => $inventory->items(),
+                'data' => $items,
                 'meta' => [
                     'total' => $inventory->total(),
                     'per_page' => $inventory->perPage(),
@@ -147,6 +186,14 @@ class BranchInventoryController extends Controller
             ->where('branch_id', $context['branch_id'])
             ->findOrFail($id);
 
+            $rule = ReorderRule::query()
+                ->where('branch_id', (int) $inventory->branch_id)
+                ->where('product_id', (int) $inventory->product_id)
+                ->where('is_active', true)
+                ->first();
+            $inventory->reorder_point = $rule?->reorder_point ?? $inventory->reorder_point ?? 0;
+            $inventory->reorder_quantity = $rule?->reorder_quantity ?? $inventory->reorder_quantity ?? 0;
+
             return response()->json([
                 'success' => true,
                 'data' => $inventory,
@@ -173,6 +220,10 @@ class BranchInventoryController extends Controller
         try {
             $context = $this->getUserContext();
             $validated = $request->validated();
+
+            $reorderPoint = array_key_exists('reorder_point', $validated) ? $validated['reorder_point'] : null;
+            $reorderQuantity = array_key_exists('reorder_quantity', $validated) ? $validated['reorder_quantity'] : null;
+            unset($validated['reorder_point'], $validated['reorder_quantity']);
             
             // Add branch and store context
             $validated['store_id'] = $context['store_id'];
@@ -200,6 +251,24 @@ class BranchInventoryController extends Controller
 
             $inventory = BranchInventory::create($validated);
 
+            // Reorder settings live in reorder_rules (primary). Create the rule if missing.
+            ReorderRule::query()->firstOrCreate(
+                [
+                    'product_id' => (int) $inventory->product_id,
+                    'branch_id' => (int) $inventory->branch_id,
+                ],
+                [
+                    'rule_type' => 'manual',
+                    'trigger_type' => 'reorder_point',
+                    'basis_type' => 'reorder_point',
+                    'reorder_point' => $reorderPoint ?? 10,
+                    'reorder_quantity' => $reorderQuantity ?? 10,
+                    'priority' => 'medium',
+                    'auto_generate_po' => false,
+                    'is_active' => true,
+                ]
+            );
+
             // Generate alerts if needed
             $this->alertService->generateAlerts($context['store_id'], $context['branch_id']);
 
@@ -212,7 +281,15 @@ class BranchInventoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Inventory record created successfully',
-                'data' => $inventory->load(['product', 'variation']),
+                'data' => tap($inventory->load(['product', 'variation']), function (BranchInventory $row) {
+                    $rule = ReorderRule::query()
+                        ->where('branch_id', (int) $row->branch_id)
+                        ->where('product_id', (int) $row->product_id)
+                        ->where('is_active', true)
+                        ->first();
+                    $row->reorder_point = $rule?->reorder_point ?? $row->reorder_point ?? 0;
+                    $row->reorder_quantity = $rule?->reorder_quantity ?? $row->reorder_quantity ?? 0;
+                }),
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -237,6 +314,10 @@ class BranchInventoryController extends Controller
 
             $validated = $request->validated();
 
+            $reorderPoint = array_key_exists('reorder_point', $validated) ? $validated['reorder_point'] : null;
+            $reorderQuantity = array_key_exists('reorder_quantity', $validated) ? $validated['reorder_quantity'] : null;
+            unset($validated['reorder_point'], $validated['reorder_quantity']);
+
             // Protect ledger integrity: on-hand quantity should only change through transactions.
             if (array_key_exists('quantity_on_hand', $validated) &&
                 (int) $validated['quantity_on_hand'] !== (int) $inventory->quantity_on_hand) {
@@ -256,6 +337,27 @@ class BranchInventoryController extends Controller
             $inventory->update($validated);
             $inventory->calculateTotalValue();
 
+            // If reorder fields were included, update/create the rule instead of branch_inventory columns.
+            if ($reorderPoint !== null || $reorderQuantity !== null) {
+                $rule = ReorderRule::query()->firstOrNew([
+                    'product_id' => (int) $inventory->product_id,
+                    'branch_id' => (int) $inventory->branch_id,
+                ]);
+
+                if (!$rule->exists) {
+                    $rule->rule_type = 'manual';
+                    $rule->trigger_type = 'reorder_point';
+                    $rule->basis_type = 'reorder_point';
+                    $rule->priority = 'medium';
+                    $rule->auto_generate_po = false;
+                    $rule->is_active = true;
+                }
+
+                if ($reorderPoint !== null) $rule->reorder_point = $reorderPoint;
+                if ($reorderQuantity !== null) $rule->reorder_quantity = $reorderQuantity;
+                $rule->save();
+            }
+
             $this->recordLog(
                 'inventory.branch_inventory.updated',
                 'Updated branch inventory settings',
@@ -265,7 +367,15 @@ class BranchInventoryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Inventory updated successfully',
-                'data' => $inventory->load(['product', 'variation']),
+                'data' => tap($inventory->load(['product', 'variation']), function (BranchInventory $row) {
+                    $rule = ReorderRule::query()
+                        ->where('branch_id', (int) $row->branch_id)
+                        ->where('product_id', (int) $row->product_id)
+                        ->where('is_active', true)
+                        ->first();
+                    $row->reorder_point = $rule?->reorder_point ?? $row->reorder_point ?? 0;
+                    $row->reorder_quantity = $rule?->reorder_quantity ?? $row->reorder_quantity ?? 0;
+                }),
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json([

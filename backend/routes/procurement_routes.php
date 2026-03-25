@@ -31,105 +31,107 @@ use App\Http\Controllers\Api\ProductCatalog\ProductController;
 Route::prefix('procurement')->group(function () {
 
     // Suppliers
-    Route::prefix('suppliers')->group(function () {
+    Route::prefix('suppliers')->middleware('can:procurement.suppliers.view')->group(function () {
         Route::get('/stats', [ProcurementDashboardController::class, 'getStats']);
         Route::get('/summary-cards', [ProcurementDashboardController::class, 'getSummaryCards']);
         Route::get('/', [SupplierController::class, 'index']);
         Route::get('/{id}', [SupplierController::class, 'show']);
-        Route::post('/', [SupplierController::class, 'store']);
-        Route::put('/{id}', [SupplierController::class, 'update']);
-        Route::delete('/{id}', [SupplierController::class, 'destroy']);
-        Route::post('/{id}/products', [SupplierController::class, 'attachProducts']);
+        Route::post('/', [SupplierController::class, 'store'])->middleware('can:procurement.suppliers.manage');
+        Route::put('/{id}', [SupplierController::class, 'update'])->middleware('can:procurement.suppliers.manage');
+        Route::delete('/{id}', [SupplierController::class, 'destroy'])->middleware('can:procurement.suppliers.manage');
+        Route::get('/{id}/products', [SupplierController::class, 'products']);
+        Route::post('/{id}/products', [SupplierController::class, 'attachProducts'])->middleware('can:procurement.suppliers.manage');
         Route::get('/{id}/performance', [SupplierController::class, 'performance']);
         Route::get('/{id}/delivery-history', [PurchaseOrderPrintEmailController::class, 'getSupplierDeliveryHistory']);
-        Route::post('/{id}/update-rating', [SupplierController::class, 'updateRating']);
+        Route::post('/{id}/update-rating', [SupplierController::class, 'updateRating'])->middleware('can:procurement.suppliers.manage');
     });
 
     // Supplier Contracts
-    Route::prefix('supplier-contracts')->group(function () {
+    Route::prefix('supplier-contracts')->middleware('can:procurement.supplier_contracts.view')->group(function () {
         Route::get('/', [SupplierContractController::class, 'index']);
         Route::get('/{id}', [SupplierContractController::class, 'show']);
-        Route::post('/', [SupplierContractController::class, 'store']);
-        Route::put('/{id}', [SupplierContractController::class, 'update']);
-        Route::delete('/{id}', [SupplierContractController::class, 'destroy']);
-        Route::post('/{id}/activate', [SupplierContractController::class, 'activate']);
-        Route::post('/{id}/terminate', [SupplierContractController::class, 'terminate']);
+        Route::post('/', [SupplierContractController::class, 'store'])->middleware('can:procurement.supplier_contracts.manage');
+        Route::put('/{id}', [SupplierContractController::class, 'update'])->middleware('can:procurement.supplier_contracts.manage');
+        Route::delete('/{id}', [SupplierContractController::class, 'destroy'])->middleware('can:procurement.supplier_contracts.manage');
+        Route::post('/{id}/activate', [SupplierContractController::class, 'activate'])->middleware('can:procurement.supplier_contracts.approve');
+        Route::post('/{id}/terminate', [SupplierContractController::class, 'terminate'])->middleware('can:procurement.supplier_contracts.approve');
         Route::get('/expiring', [SupplierContractController::class, 'expiring']);
     });
 
-    // Purchase Requisitions
-    Route::prefix('requisitions')->group(function () {
+    // Purchase Requisitions (Procurement module)
+    // Inventory has its own "stock-order-requests" endpoints under /api/inventory.
+    Route::prefix('requisitions')->middleware('can:procurement.requisitions.view')->group(function () {
         Route::get('/', [PurchaseRequisitionController::class, 'index']);
         Route::get('/{id}', [PurchaseRequisitionController::class, 'show']);
-        Route::post('/', [PurchaseRequisitionController::class, 'store']);
-        Route::put('/{id}', [PurchaseRequisitionController::class, 'update']);
-        Route::delete('/{id}', [PurchaseRequisitionController::class, 'destroy']);
-        Route::post('/{id}/submit', [PurchaseRequisitionController::class, 'submit']);
-        Route::post('/{id}/approve', [PurchaseRequisitionController::class, 'approve']);
-        Route::post('/{id}/reject', [PurchaseRequisitionController::class, 'reject']);
-        Route::post('/{id}/cancel', [PurchaseRequisitionController::class, 'cancel']);
+        Route::post('/', [PurchaseRequisitionController::class, 'store'])->middleware('can:procurement.requisitions.manage');
+        Route::put('/{id}', [PurchaseRequisitionController::class, 'update'])->middleware('can:procurement.requisitions.manage');
+        Route::delete('/{id}', [PurchaseRequisitionController::class, 'destroy'])->middleware('can:procurement.requisitions.manage');
+        Route::post('/{id}/submit', [PurchaseRequisitionController::class, 'submit'])->middleware('can:procurement.requisitions.manage');
+        Route::post('/{id}/approve', [PurchaseRequisitionController::class, 'approve'])->middleware('can:procurement.requisitions.approve');
+        Route::post('/{id}/reject', [PurchaseRequisitionController::class, 'reject'])->middleware('can:procurement.requisitions.approve');
+        Route::post('/{id}/cancel', [PurchaseRequisitionController::class, 'cancel'])->middleware('can:procurement.requisitions.manage');
     });
 
     // Stock Order Requests (from Branch Inventory low stock)
-    Route::prefix('stock-order-requests')->group(function () {
+    Route::prefix('stock-order-requests')->middleware('can:procurement.stock_order_requests.view')->group(function () {
         Route::get('/', [StockOrderRequestController::class, 'index']);
-        Route::post('/', [StockOrderRequestController::class, 'store']);
-        Route::put('/{id}', [StockOrderRequestController::class, 'update']);
+        Route::post('/', [StockOrderRequestController::class, 'store'])->middleware('can:procurement.stock_order_requests.manage');
+        Route::put('/{id}', [StockOrderRequestController::class, 'update'])->middleware('can:procurement.stock_order_requests.manage');
         // Named routes MUST come before wildcard {id} routes
-        Route::post('/bulk/create-from-low-stock', [StockOrderRequestController::class, 'createFromLowStock']);
+        Route::post('/bulk/create-from-low-stock', [StockOrderRequestController::class, 'createFromLowStock'])->middleware('can:procurement.stock_order_requests.manage');
         Route::get('/pending/for-conversion', [StockOrderRequestController::class, 'pendingForConversion']);
         Route::get('/summary', [StockOrderRequestController::class, 'summary']);
         // Wildcard routes last
         Route::get('/{id}', [StockOrderRequestController::class, 'show']);
-        Route::post('/{id}/approve', [StockOrderRequestController::class, 'approve']);
-        Route::post('/{id}/reject', [StockOrderRequestController::class, 'reject']);
+        Route::post('/{id}/approve', [StockOrderRequestController::class, 'approve'])->middleware('can:procurement.stock_order_requests.approve');
+        Route::post('/{id}/reject', [StockOrderRequestController::class, 'reject'])->middleware('can:procurement.stock_order_requests.approve');
     });
 
     // Request for Quotations (RFQ)
-    Route::prefix('rfqs')->group(function () {
+    Route::prefix('rfqs')->middleware('can:procurement.rfq.view')->group(function () {
         Route::get('/', [RequestForQuotationController::class, 'index']);
         Route::get('/{id}', [RequestForQuotationController::class, 'show']);
-        Route::post('/', [RequestForQuotationController::class, 'store']);
-        Route::put('/{id}', [RequestForQuotationController::class, 'update']);
-        Route::delete('/{id}', [RequestForQuotationController::class, 'destroy']);
-        Route::post('/{id}/send', [RequestForQuotationController::class, 'send']);
-        Route::post('/{id}/close', [RequestForQuotationController::class, 'close']);
-        Route::post('/{id}/award', [RequestForQuotationController::class, 'award']);
-        Route::post('/{id}/cancel', [RequestForQuotationController::class, 'cancel']);
-        Route::post('/{id}/portal-feedbacks/{feedbackId}/review', [RequestForQuotationController::class, 'reviewPortalFeedback']);
-        Route::post('/{id}/portal-feedbacks/{feedbackId}/negotiate', [RequestForQuotationController::class, 'negotiatePortalFeedback']);
-        Route::post('/{id}/portal-feedbacks/bulk-approve', [RequestForQuotationController::class, 'bulkApprovePortalFeedbacks']);
+        Route::post('/', [RequestForQuotationController::class, 'store'])->middleware('can:procurement.rfq.manage');
+        Route::put('/{id}', [RequestForQuotationController::class, 'update'])->middleware('can:procurement.rfq.manage');
+        Route::delete('/{id}', [RequestForQuotationController::class, 'destroy'])->middleware('can:procurement.rfq.manage');
+        Route::post('/{id}/send', [RequestForQuotationController::class, 'send'])->middleware('can:procurement.rfq.manage');
+        Route::post('/{id}/close', [RequestForQuotationController::class, 'close'])->middleware('can:procurement.rfq.manage');
+        Route::post('/{id}/award', [RequestForQuotationController::class, 'award'])->middleware('can:procurement.rfq.approve');
+        Route::post('/{id}/cancel', [RequestForQuotationController::class, 'cancel'])->middleware('can:procurement.rfq.manage');
+        Route::post('/{id}/portal-feedbacks/{feedbackId}/review', [RequestForQuotationController::class, 'reviewPortalFeedback'])->middleware('can:procurement.rfq.approve');
+        Route::post('/{id}/portal-feedbacks/{feedbackId}/negotiate', [RequestForQuotationController::class, 'negotiatePortalFeedback'])->middleware('can:procurement.rfq.manage');
+        Route::post('/{id}/portal-feedbacks/bulk-approve', [RequestForQuotationController::class, 'bulkApprovePortalFeedbacks'])->middleware('can:procurement.rfq.approve');
 
         // Compare quotations
         Route::get('/{rfqId}/quotations/compare', [SupplierQuotationController::class, 'compare']);
     });
 
     // Supplier Quotations
-    Route::prefix('quotations')->group(function () {
+    Route::prefix('quotations')->middleware('can:procurement.rfq.view')->group(function () {
         Route::get('/', [SupplierQuotationController::class, 'index']);
         Route::get('/{id}', [SupplierQuotationController::class, 'show']);
-        Route::post('/', [SupplierQuotationController::class, 'store']);
-        Route::post('/{id}/evaluate', [SupplierQuotationController::class, 'evaluate']);
-        Route::post('/{id}/accept', [SupplierQuotationController::class, 'accept']);
-        Route::post('/{id}/reject', [SupplierQuotationController::class, 'reject']);
+        Route::post('/', [SupplierQuotationController::class, 'store'])->middleware('can:procurement.rfq.manage');
+        Route::post('/{id}/evaluate', [SupplierQuotationController::class, 'evaluate'])->middleware('can:procurement.rfq.approve');
+        Route::post('/{id}/accept', [SupplierQuotationController::class, 'accept'])->middleware('can:procurement.rfq.approve');
+        Route::post('/{id}/reject', [SupplierQuotationController::class, 'reject'])->middleware('can:procurement.rfq.approve');
     });
 
     // Purchase Orders
-    Route::prefix('purchase-orders')->group(function () {
+    Route::prefix('purchase-orders')->middleware('can:procurement.purchase_orders.view')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index']);
         Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders']);
         Route::get('/{id}', [PurchaseOrderController::class, 'show']);
-        Route::post('/', [PurchaseOrderController::class, 'store']);
-        Route::put('/{id}', [PurchaseOrderController::class, 'update']);
-        Route::delete('/{id}', [PurchaseOrderController::class, 'destroy']);
-        Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve']);
-        Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject']);
-        Route::post('/{id}/send', [PurchaseOrderController::class, 'send']);
-        Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
+        Route::post('/', [PurchaseOrderController::class, 'store'])->middleware('can:procurement.purchase_orders.manage');
+        Route::put('/{id}', [PurchaseOrderController::class, 'update'])->middleware('can:procurement.purchase_orders.manage');
+        Route::delete('/{id}', [PurchaseOrderController::class, 'destroy'])->middleware('can:procurement.purchase_orders.manage');
+        Route::post('/{id}/approve', [PurchaseOrderController::class, 'approve'])->middleware('can:procurement.purchase_orders.approve');
+        Route::post('/{id}/reject', [PurchaseOrderController::class, 'reject'])->middleware('can:procurement.purchase_orders.approve');
+        Route::post('/{id}/send', [PurchaseOrderController::class, 'send'])->middleware('can:procurement.purchase_orders.manage');
+        Route::post('/{id}/cancel', [PurchaseOrderController::class, 'cancel'])->middleware('can:procurement.purchase_orders.manage');
         Route::get('/{id}/print', [PurchaseOrderPrintEmailController::class, 'generatePdf']);
-        Route::post('/{id}/email', [PurchaseOrderPrintEmailController::class, 'emailPo']);
+        Route::post('/{id}/email', [PurchaseOrderPrintEmailController::class, 'emailPo'])->middleware('can:procurement.purchase_orders.manage');
         Route::get('/{id}/label', [PurchaseOrderPrintEmailController::class, 'generateLabel']);
-        Route::post('/{id}/request-revision', [PurchaseOrderPrintEmailController::class, 'requestRevision']);
+        Route::post('/{id}/request-revision', [PurchaseOrderPrintEmailController::class, 'requestRevision'])->middleware('can:procurement.purchase_orders.manage');
         Route::get('/summary', [PurchaseOrderController::class, 'summary']);
 
         // Pending receipt
@@ -137,44 +139,45 @@ Route::prefix('procurement')->group(function () {
     });
 
     // Goods Receipts
-    Route::prefix('goods-receipts')->group(function () {
+    Route::prefix('goods-receipts')->middleware('can:procurement.receiving.view')->group(function () {
         Route::get('/', [GoodsReceiptController::class, 'index']);
+        Route::get('/{id}/print', [GoodsReceiptController::class, 'print']);
         Route::get('/{id}', [GoodsReceiptController::class, 'show']);
-        Route::post('/', [GoodsReceiptController::class, 'store']);
-        Route::post('/{id}/verify', [GoodsReceiptController::class, 'verify']);
+        Route::post('/', [GoodsReceiptController::class, 'store'])->middleware('can:procurement.receiving.manage');
+        Route::post('/{id}/verify', [GoodsReceiptController::class, 'verify'])->middleware('can:procurement.receiving.approve');
         Route::get('/summary', [GoodsReceiptController::class, 'summary']);
     });
 
     // Invoices
-    Route::prefix('invoices')->group(function () {
+    Route::prefix('invoices')->middleware('can:procurement.invoices.view')->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/pending/match', [InvoiceController::class, 'getPendingMatch']);
         Route::get('/exceptions', [InvoiceController::class, 'getExceptions']);
         Route::get('/{id}', [InvoiceController::class, 'show'])->whereNumber('id');
-        Route::post('/', [InvoiceController::class, 'store']);
-        Route::post('/from-grn', [InvoiceController::class, 'createFromGoodsReceipt']);
-        Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
-        Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id');
-        Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id');
-        Route::post('/{id}/mark-paid', [InvoiceController::class, 'markPaid'])->whereNumber('id');
-        Route::post('/{id}/schedule-payment', [InvoiceController::class, 'schedulePayment'])->whereNumber('id');
+        Route::post('/', [InvoiceController::class, 'store'])->middleware('can:procurement.invoices.manage');
+        Route::post('/from-grn', [InvoiceController::class, 'createFromGoodsReceipt'])->middleware('can:procurement.invoices.manage');
+        Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id')->middleware('can:procurement.invoices.manage');
+        Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id')->middleware('can:procurement.invoices.approve');
+        Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id')->middleware('can:procurement.invoices.approve');
+        Route::post('/{id}/mark-paid', [InvoiceController::class, 'markPaid'])->whereNumber('id')->middleware('can:procurement.invoices.approve');
+        Route::post('/{id}/schedule-payment', [InvoiceController::class, 'schedulePayment'])->whereNumber('id')->middleware('can:procurement.invoices.manage');
     });
 
     // Supplier Payments
-    Route::prefix('payments')->group(function () {
+    Route::prefix('payments')->middleware('can:procurement.payments.view')->group(function () {
         Route::get('/', [SupplierPaymentController::class, 'index']);
         Route::get('/pending', [SupplierPaymentController::class, 'pending']);
         Route::get('/summary', [SupplierPaymentController::class, 'summary']);
-        Route::post('/', [SupplierPaymentController::class, 'store']);
+        Route::post('/', [SupplierPaymentController::class, 'store'])->middleware('can:procurement.payments.manage');
         Route::get('/{id}', [SupplierPaymentController::class, 'show'])->whereNumber('id');
-        Route::delete('/{id}', [SupplierPaymentController::class, 'destroy'])->whereNumber('id');
-        Route::post('/{id}/approve', [SupplierPaymentController::class, 'approve'])->whereNumber('id');
-        Route::post('/{id}/process', [SupplierPaymentController::class, 'process'])->whereNumber('id');
-        Route::post('/{id}/cancel', [SupplierPaymentController::class, 'cancel'])->whereNumber('id');
+        Route::delete('/{id}', [SupplierPaymentController::class, 'destroy'])->whereNumber('id')->middleware('can:procurement.payments.manage');
+        Route::post('/{id}/approve', [SupplierPaymentController::class, 'approve'])->whereNumber('id')->middleware('can:procurement.payments.approve');
+        Route::post('/{id}/process', [SupplierPaymentController::class, 'process'])->whereNumber('id')->middleware('can:procurement.payments.approve');
+        Route::post('/{id}/cancel', [SupplierPaymentController::class, 'cancel'])->whereNumber('id')->middleware('can:procurement.payments.manage');
     });
 
     // Procurement Settings
-    Route::prefix('settings')->group(function () {
+    Route::prefix('settings')->middleware('can:procurement.settings.manage')->group(function () {
         Route::get('/', [ProcurementSettingsController::class, 'show']);
         Route::put('/', [ProcurementSettingsController::class, 'update']);
         Route::get('/presets', [ProcurementSettingsController::class, 'presets']);
@@ -185,44 +188,44 @@ Route::prefix('procurement')->group(function () {
     });
 
     // Role Approval Limits
-    Route::prefix('role-limits')->group(function () {
+    Route::prefix('role-limits')->middleware('can:procurement.role_limits.view')->group(function () {
         Route::get('/', [RoleApprovalLimitController::class, 'index']);
         Route::get('/{id}', [RoleApprovalLimitController::class, 'show']);
-        Route::post('/', [RoleApprovalLimitController::class, 'store']);
-        Route::put('/{id}', [RoleApprovalLimitController::class, 'update']);
-        Route::delete('/{id}', [RoleApprovalLimitController::class, 'destroy']);
+        Route::post('/', [RoleApprovalLimitController::class, 'store'])->middleware('can:procurement.role_limits.manage');
+        Route::put('/{id}', [RoleApprovalLimitController::class, 'update'])->middleware('can:procurement.role_limits.manage');
+        Route::delete('/{id}', [RoleApprovalLimitController::class, 'destroy'])->middleware('can:procurement.role_limits.manage');
         Route::get('/role/{roleId}', [RoleApprovalLimitController::class, 'getByRole']);
         Route::post('/check', [RoleApprovalLimitController::class, 'checkApproval']);
     });
 
     // Procurement Inventory Management
-    Route::prefix('inventory')->group(function () {
+    Route::prefix('inventory')->middleware('can:procurement.inventory.view')->group(function () {
         Route::get('/', [ProcurementInventoryController::class, 'index']);
         Route::get('/summary', [ProcurementInventoryController::class, 'summary']);
         Route::get('/low-stock', [ProcurementInventoryController::class, 'lowStock']);
         Route::get('/{id}', [ProcurementInventoryController::class, 'show']);
-        Route::post('/init', [ProcurementInventoryController::class, 'initialize']);
-        Route::put('/{id}', [ProcurementInventoryController::class, 'update']);
+        Route::post('/init', [ProcurementInventoryController::class, 'initialize'])->middleware('can:procurement.inventory.manage');
+        Route::put('/{id}', [ProcurementInventoryController::class, 'update'])->middleware('can:procurement.inventory.manage');
     });
 
     // Products (automation features)
-    Route::prefix('product-inventory')->group(function () {
+    Route::prefix('product-inventory')->middleware('can:procurement.products.view')->group(function () {
         Route::get('/', [BranchInventoryController::class, 'index']);
         Route::get('/history', [PurchaseOrderPrintEmailController::class, 'getProductHistory']);
         Route::get('/{id}', [BranchInventoryController::class, 'show']);
         Route::get('/{productId}/alternative-suppliers', [PurchaseOrderPrintEmailController::class, 'getAlternativeSuppliers']);
     });
 
-    Route::prefix('products')->group(function () {
+    Route::prefix('products')->middleware('can:procurement.products.view')->group(function () {
         Route::get('/', [ProductController::class, 'index']);
         Route::get('/{id}', [ProductController::class, 'show']);
-        Route::post('/', [ProductController::class, 'store']);
-        Route::put('/{id}', [ProductController::class, 'update']);
-        Route::delete('/{id}', [ProductController::class, 'destroy']);
+        Route::post('/', [ProductController::class, 'store'])->middleware('can:procurement.products.manage');
+        Route::put('/{id}', [ProductController::class, 'update'])->middleware('can:procurement.products.manage');
+        Route::delete('/{id}', [ProductController::class, 'destroy'])->middleware('can:procurement.products.manage');
     });
 
     // Branches (budget checking)
-    Route::prefix('branches')->group(function () {
+    Route::prefix('branches')->middleware('can:procurement.purchase_orders.view')->group(function () {
         Route::get('/{branchId}/budget', [PurchaseOrderPrintEmailController::class, 'getBranchBudget']);
     });
 });

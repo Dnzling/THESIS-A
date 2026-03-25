@@ -140,8 +140,8 @@ const loading = ref(false)
 const transfers = ref<Transfer[]>([])
 
 const canViewTransfers = authStore.hasPermission('inventory.transfers.view')
-const canCreateTransfers = authStore.hasPermission('inventory.transfers.create')
-const canCancelTransfers = authStore.hasPermission('inventory.transfers.cancel')
+const canCreateTransfers = authStore.hasPermission('inventory.transfers.manage')
+const canCancelTransfers = authStore.hasPermission('inventory.transfers.manage')
 
 const pagination = reactive<PaginationMeta>({
   current_page: 1,

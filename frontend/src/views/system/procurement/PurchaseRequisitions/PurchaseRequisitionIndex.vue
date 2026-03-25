@@ -2,12 +2,13 @@
   <div class="p-6  min-h-screen">
     <div class="mb-6 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Purchase Requisitions</h1>
-        <p class="text-gray-600 mt-1">Create, track and process PR requests for procurement</p>
+        <h1 class="text-lg font-bold text-gray-800">Purchase Requisitions</h1>
+        <p class="text-xs text-gray-600 mt-1">Create, track and process PR requests for procurement</p>
       </div>
-      <Button label="Create Requisition" icon="pi pi-plus" severity="success" @click="router.push({ name: 'procurement.purchase-requisitions.create' })" size="large" />
+      <Button v-if="canManageRequisitions" label="Create Requisition" icon="pi pi-plus" severity="success"
+        @click="router.push({ name: 'procurement.purchase-requisitions.create' })" size="small" />
     </div>
-
+  
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
       <Card>
         <template #content>
@@ -54,18 +55,18 @@
         </template>
       </Card>
     </div>
-
+  
     <Card class="mb-6">
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Filter by Status</label>
-            <Select v-model="filterStatus" :options="statusOptions" optionLabel="label" optionValue="value" 
+            <Select v-model="filterStatus" :options="statusOptions" optionLabel="label" optionValue="value"
               placeholder="All Statuses" clearable :change="loadRequisitions" />
           </div>
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Filter by Type</label>
-            <Select v-model="filterType" :options="requisitionTypeOptions" optionLabel="label" optionValue="value" 
+            <Select v-model="filterType" :options="requisitionTypeOptions" optionLabel="label" optionValue="value"
               placeholder="All Types" clearable :change="loadRequisitions" />
           </div>
           <div class="flex flex-col gap-2">
@@ -75,45 +76,39 @@
         </div>
       </template>
     </Card>
-
+  
     <Card>
       <template #content>
-        <DataTable 
-          :value="requisitions" 
-          :loading="loading" 
-          class="p-datatable-sm" 
-          stripedRows
-          :expandedRows="expandedRows"
-          @update:expandedRows="expandedRows = $event"
-          responsiveLayout="scroll"
-          paginator
-          :rows="perPage"
-          :totalRecords="total"
-          :first="(currentPage - 1) * perPage"
-          @page="onPageChange"
-        >
+        <DataTable :value="requisitions" :loading="loading" class="p-datatable-sm" stripedRows
+          :expandedRows="expandedRows" @update:expandedRows="expandedRows = $event" responsiveLayout="scroll" paginator
+          :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage" @page="onPageChange">
           <!-- <Column :expander="true" style="width: 3rem" /> -->
-          
-          <Column field="pr_number" header="PR No." style="width: 150px">
+          <Column header="Date" style="width: 120px" sortable>
+            <template #body="{ data }">
+              <span class="text-sm text-gray-700">{{ formatDate(data?.created_at) }}</span>
+            </template>
+          </Column>
+          <Column field="pr_number" header="PR No." style="width: 140px">
             <template #body="{ data }">
               <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ">
                 {{ data.pr_number }}
               </span>
             </template>
           </Column>
-
+  
+  
           <Column field="requisition_type" header="Type" style="width: 100px">
             <template #body="{ data }">
               <span class="inline-flex items-center px-2 py-1 rounded text-xs font-semibold" :class="{
-                'bg-blue-100 text-blue-800': data.requisition_type === 'regular',
-                'bg-red-100 text-red-800': data.requisition_type === 'urgent',
-                'bg-purple-100 text-purple-800': data.requisition_type === 'emergency',
-                'bg-green-100 text-green-800': data.requisition_type === 'new_product',
-                'bg-yellow-100 text-yellow-800': data.requisition_type === 'seasonal',
-              }">{{ capitalizeWords(data?.requisition_type) }}</span>
+                  'bg-blue-100 text-blue-800': data.requisition_type === 'regular',
+                  'bg-red-100 text-red-800': data.requisition_type === 'urgent',
+                  'bg-purple-100 text-purple-800': data.requisition_type === 'emergency',
+                  'bg-green-100 text-green-800': data.requisition_type === 'new_product',
+                  'bg-yellow-100 text-yellow-800': data.requisition_type === 'seasonal',
+                }">{{ capitalizeWords(data?.requisition_type) }}</span>
             </template>
           </Column>
-
+  
           <Column header="Branch" style="width: 120px">
             <template #body="{ data }">
               <div class="text-sm">
@@ -122,7 +117,7 @@
               </div>
             </template>
           </Column>
-
+  
           <Column header="Requester" style="width: 140px">
             <template #body="{ data }">
               <div class="text-sm">
@@ -131,50 +126,46 @@
               </div>
             </template>
           </Column>
-
+  
           <Column field="status" header="Status" style="width: 130px">
             <template #body="{ data }">
               <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-<!-- 
-          <Column header="Amount" style="width: 130px">
-            <template #body="{ data }">
-              <div class="text-sm">
-                <p class="font-bold text-orange-600">₱ {{ parseFloat(data?.estimated_amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
-                <p class="text-xs text-gray-600 capitalize mt-1">{{ data?.procurement_route || 'N/A' }}</p>
-              </div>
-            </template>
-          </Column> -->
-
-
+          <!-- 
+            <Column header="Amount" style="width: 130px">
+              <template #body="{ data }">
+                <div class="text-sm">
+                  <p class="font-bold text-orange-600">₱ {{ parseFloat(data?.estimated_amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
+                  <p class="text-xs text-gray-600 capitalize mt-1">{{ data?.procurement_route || 'N/A' }}</p>
+                </div>
+              </template>
+            </Column> -->
+  
+  
           <Column header="Actions" style="width: 160px">
             <template #body="{ data }">
               <div class="flex gap-2 items-center justify-start">
-                <Button icon="pi pi-eye" outlined rounded severity="info" 
+                <Button icon="pi pi-eye" outlined rounded severity="info"
                   @click="router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
-                <Button v-if="approvedStatuses.includes(data.status) && data.any_item_missing_supplier" icon="pi pi-send" outlined rounded severity="success"
-                  @click="createRfqFromRequisition(data.id)" v-tooltip="'Create RFQ'" />
-                <Button v-if="approvedStatuses.includes(data.status) && data.all_items_have_suppliers" icon="pi pi-shopping-cart" outlined rounded severity="info"
-                  @click="createPoFromRequisition(data.id)" v-tooltip="'Create PO'" />
-                <Button v-if="data.status === 'draft'" icon="pi pi-pencil" text rounded severity="warning" 
-                  @click="editPR(data.id)" v-tooltip="'Edit'" />
-                <Button v-if="data.status === 'draft'" icon="pi pi-trash" text rounded severity="danger" 
-                  @click="deletePR(data.id)" v-tooltip="'Delete'" />
+                <Button v-if="canManageRfq && approvedStatuses.includes(data.status) && data.any_item_missing_supplier"
+                  icon="pi pi-send" outlined rounded severity="success" @click="createRfqFromRequisition(data.id)"
+                  v-tooltip="'Create RFQ'" />
                 <Button
-                  v-if="data.status === 'delivered'"
-                  icon="pi pi-file"
-                  outlined
-                  rounded
-                  severity="warning"
-                  @click="createGoodsReceiptFromPR(data)"
-                  v-tooltip="'Create Goods Receipt'"
-                />
+                  v-if="canManagePurchaseOrders && approvedStatuses.includes(data.status) && data.all_items_have_suppliers"
+                  icon="pi pi-shopping-cart" outlined rounded severity="info" @click="createPoFromRequisition(data.id)"
+                  v-tooltip="'Create PO'" />
+                <Button v-if="canManageRequisitions && data.status === 'draft'" icon="pi pi-pencil" outlined rounded
+                  severity="warning" @click="editPR(data.id)" v-tooltip="'Edit'" />
+                <Button v-if="canManageRequisitions && data.status === 'draft'" icon="pi pi-trash" outlined rounded
+                  severity="danger" @click="deletePR(data.id)" v-tooltip="'Delete'" />
+                <Button v-if="canManageReceiving && data.status === 'delivered'" icon="pi pi-file" outlined rounded
+                  severity="warning" @click="createGoodsReceiptFromPR(data)" v-tooltip="'Create Goods Receipt'" />
               </div>
             </template>
           </Column>
-
+  
           <template #expansion="{ data }">
             <div class="p-6 bg-linear-to-r from-gray-50 to-gray-100 border-t">
               <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -204,7 +195,8 @@
                     </div>
                     <div>
                       <p class="text-gray-600">Requested By</p>
-                      <p class="font-medium text-gray-900">{{ data?.requested_by?.fname }} {{ data?.requested_by?.lname }}</p>
+                      <p class="font-medium text-gray-900">{{ data?.requested_by?.fname }} {{ data?.requested_by?.lname }}
+                      </p>
                     </div>
                     <div>
                       <p class="text-gray-600">Department</p>
@@ -217,7 +209,8 @@
                   <div class="space-y-2 text-sm">
                     <div>
                       <p class="text-gray-600">Estimated Amount</p>
-                      <p class="font-bold text-orange-600 text-lg">₱ {{ parseFloat(data?.estimated_amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</p>
+                      <p class="font-bold text-orange-600 text-lg">₱ {{ parseFloat(data?.estimated_amount ||
+                        0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</p>
                     </div>
                     <div>
                       <p class="text-gray-600">Procurement Route</p>
@@ -231,7 +224,8 @@
                     <div>
                       <p class="text-gray-600">Required Approvals</p>
                       <div class="mt-1 space-y-1">
-                        <p v-for="approval in (data?.required_approvals || [])" :key="approval" class="text-gray-900">• {{ capitalizeWords(approval) }}</p>
+                        <p v-for="approval in (data?.required_approvals || [])" :key="approval" class="text-gray-900">• {{
+                          capitalizeWords(approval) }}</p>
                         <p v-if="!data?.required_approvals?.length" class="text-gray-600">None required</p>
                       </div>
                     </div>
@@ -244,7 +238,7 @@
               </div>
             </div>
           </template>
-
+  
           <template #empty>
             <div class="text-center py-12">
               <i class="pi pi-inbox text-5xl text-gray-300 mb-4"></i>
@@ -262,9 +256,11 @@ import { onMounted, ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const requisitions = ref<any[]>([])
 const expandedRows = ref<any[]>([])
@@ -298,6 +294,10 @@ const requisitionTypeOptions = [
 ]
 
 const approvedStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
+const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
+const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
+const canManageReceiving = computed(() => authStore.hasPermission('procurement.receiving.manage'))
 
 const summary = computed(() => ({
   total: total.value,
@@ -332,6 +332,12 @@ const statusSeverity = (status: string): string => {
 const formatStatus = (status: string): string => {
   if (!status) return '-'
   return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
+const formatDate = (value: string | null | undefined): string => {
+  if (!value) return '-'
+  const d = new Date(value)
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const loadRequisitions = async (page: number = 1) => {
@@ -378,7 +384,7 @@ const createRfqFromRequisition = (id: number) => {
 }
 
 const createPoFromRequisition = (id: number) => {
-  router.push({ name: 'procurement.purchase-orders.create-legacy', query: { requisition_id: id } })
+  router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: id } })
 }
 
 const creatingGoodsReceipt = ref(false)

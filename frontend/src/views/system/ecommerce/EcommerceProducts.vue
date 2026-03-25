@@ -1,57 +1,79 @@
 ﻿<template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <section class="relative h-64 md:h-80 rounded-3xl overflow-hidden mb-12 shadow-lg">
-      <img src="https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1900&q=80"
-        alt="Furniture Banner" class="absolute inset-0 w-full h-full object-cover" />
-      <div class="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent flex items-center">
-        <div class="pl-10 md:pl-16 text-white">
-          <span
-            class="inline-block px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 text-xs font-bold uppercase tracking-widest mb-4 backdrop-blur-md">
-            New Collection 2026
-          </span>
-          <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight">Premium Living</h1>
-          <p class="mt-4 text-lg text-slate-200 max-w-md">Discover furniture that blends comfort with contemporary
-            aesthetics.</p>
-        </div>
-      </div>
-    </section>
+  <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-4 md:py-8">
+
+     <Carousel/>
+
   
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <aside class="lg:col-span-3 space-y-8">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-8">
+      <aside class="lg:col-span-3 space-y-5 md:space-y-8">
         <div>
           <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Categories</h3>
-          <nav class="flex flex-col gap-1">
+          <nav class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
             <button @click="setCategory('all')"
               :class="[selectedCategory === 'all' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100']"
-              class="flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium">
+              class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
               <span>All Collection</span>
               <Badge :value="products.length" severity="secondary" />
             </button>
             <button v-for="category in categoryOptions" :key="category" @click="setCategory(category)"
               :class="[selectedCategory === category ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100']"
-              class="flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium">
+              class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
               <span class="capitalize">{{ category }}</span>
               <Badge :value="categoryCount(category)" :severity="selectedCategory === category ? 'info' : 'secondary'" />
             </button>
           </nav>
         </div>
+  
+        <Card class="border border-blue-100 bg-blue-50/60 shadow-none">
+          <template #content>
+            <div class="space-y-3">
+  
+              <p class="text-xs font-bold uppercase tracking-wider text-blue-700">Recommendation</p>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label for="budget-min" class="block mb-1">Min Price</label>
+                  <InputNumber id="budget-min" v-model="dss.budgetMin" inputClass="text-sm" fluid placeholder="Min Budget"
+                    @blur="syncBudgetInputs" />
+                </div>
+                <div>
+                  <label for="budget-max" class="block mb-1">Max Price</label>
+                  <InputNumber id="budget-max" v-model="dss.budgetMax" inputClass="text-sm" fluid placeholder="Max Budget"
+                    @blur="syncBudgetInputs" />
+                </div>
+              </div>
+              <Slider v-model="dss.budgetRange" range class="mx-1" :min="0" :max="300000" @slideend="syncBudgetRange" />
+              <Select v-model="dss.categoryId" :options="dssCategoryOptions" optionLabel="label" optionValue="value" fluid
+                placeholder="Category" showClear />
+              <div class="grid grid-cols-3 gap-2">
+                <InputNumber v-model="dss.lengthCm" :min="0" inputClass="text-sm" fluid placeholder="L cm" />
+                <InputNumber v-model="dss.widthCm" :min="0" inputClass="text-sm" fluid placeholder="W cm" />
+                <InputNumber v-model="dss.heightCm" :min="0" inputClass="text-sm" fluid placeholder="H cm" />
+              </div>
+              <div class="flex gap-2">
+                <Button label="Reset" size="small" severity="secondary" text fluid @click="resetDss" />
+                <Button label="Recommend" size="small" severity="contrast" :loading="dssLoading" class="w-full"
+                  @click="runDss" />
+              </div>
+            </div>
+          </template>
+        </Card>
       </aside>
   
       <main class="lg:col-span-9">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 mb-5 md:mb-8">
           <div>
-            <h2 class="text-2xl font-bold text-slate-900">Featured Products</h2>
+            <h2 class="text-xl md:text-2xl font-bold text-slate-900">Featured Products</h2>
             <p class="text-slate-500 text-sm">Showing {{ filteredProducts.length }} items</p>
           </div>
   
-          <div class="flex items-center gap-3">
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
             <IconField iconPosition="left">
               <InputIcon class="pi pi-search" />
               <InputText v-model="search" placeholder="Search furniture..."
-                class="w-full md:w-64 !rounded-xl border-slate-200" />
+                class="w-full md:w-64 rounded-xl! border-slate-200" />
             </IconField>
             <Select v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value"
-              class="w-48 !rounded-xl border-slate-200" />
+              class="w-full sm:w-48 rounded-xl! border-slate-200" />
           </div>
         </div>
   
@@ -63,13 +85,23 @@
           </div>
         </div>
   
-        <div v-else-if="filteredProducts.length" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-          <div
-            v-for="product in filteredProducts"
-            :key="product.id"
+        <div v-if="dssResults.length" class="mb-8">
+          <h3 class="mb-3 text-lg font-semibold text-slate-900">DSS Result Recommended For You</h3>
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div v-for="item in dssResults" :key="`dss-${item.id}`"
+              class="rounded-2xl border border-blue-100 bg-blue-50/50 p-3 cursor-pointer" @click="goProduct(item.id)">
+              <p class="text-xs font-semibold uppercase text-blue-700">Match {{ Math.round((item.score || 0) * 100) }}%
+              </p>
+              <p class="mt-1 line-clamp-2 text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
+              <p class="text-sm text-emerald-700">₱{{ formatMoney(item.price) }}</p>
+            </div>
+          </div>
+        </div>
+  
+        <div v-else-if="filteredProducts.length" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+          <div v-for="product in filteredProducts" :key="product.id"
             class="group relative cursor-pointer bg-white rounded-2xl border border-slate-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
-            @click="goProduct(product.id)"
-          >
+            @click="goProduct(product.id)">
             <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
               <img :src="product.image || '/F.svg'" :alt="product.product_name"
                 class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
@@ -112,6 +144,9 @@ import { useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import Slider from 'primevue/slider'
+import InputNumber from 'primevue/inputnumber'
+import Carousel from '@/components/Ecommerce/carousel.vue'
 
 const router = useRouter()
 
@@ -120,6 +155,17 @@ const products = ref<any[]>([])
 const search = ref('')
 const selectedCategory = ref<string>('all')
 const sort = ref<'popular' | 'latest' | 'price_asc' | 'price_desc'>('popular')
+const dssLoading = ref(false)
+const dssResults = ref<any[]>([])
+const dss = ref({
+  budgetMin: 0,
+  budgetMax: 50000,
+  budgetRange: [0, 50000] as [number, number],
+  categoryId: null as number | null,
+  lengthCm: null as number | null,
+  widthCm: null as number | null,
+  heightCm: null as number | null,
+})
 
 const sortOptions = [
   { label: 'Featured', value: 'popular' },
@@ -135,6 +181,15 @@ const categoryOptions = computed(() => {
     if (category) set.add(category)
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b))
+})
+const dssCategoryOptions = computed(() => {
+  const map = new Map<number, string>()
+  for (const product of products.value) {
+    const id = Number(product.category_id || 0)
+    const label = String(product.category || '').trim()
+    if (id > 0 && label) map.set(id, label)
+  }
+  return [{ label: 'All Categories', value: null }, ...Array.from(map.entries()).map(([value, label]) => ({ value, label }))]
 })
 
 const filteredProducts = computed(() => {
@@ -174,6 +229,52 @@ function categoryCount(category: string) {
 
 function setCategory(category: string) {
   selectedCategory.value = category
+}
+
+function syncBudgetInputs() {
+  const min = Math.max(0, Number(dss.value.budgetMin || 0))
+  const max = Math.max(min, Number(dss.value.budgetMax || 0))
+  dss.value.budgetMin = min
+  dss.value.budgetMax = max
+  dss.value.budgetRange = [min, max]
+}
+
+function syncBudgetRange() {
+  const [min, max] = dss.value.budgetRange
+  dss.value.budgetMin = Math.max(0, Number(min || 0))
+  dss.value.budgetMax = Math.max(dss.value.budgetMin, Number(max || 0))
+}
+
+async function runDss() {
+  dssLoading.value = true
+  try {
+    syncBudgetInputs()
+    const res = await ecommerceService.getDssRecommendations({
+      budget_min: dss.value.budgetMin,
+      budget_max: dss.value.budgetMax,
+      category_id: dss.value.categoryId ?? undefined,
+      length_cm: dss.value.lengthCm ?? undefined,
+      width_cm: dss.value.widthCm ?? undefined,
+      height_cm: dss.value.heightCm ?? undefined,
+      per_page: 12,
+    })
+    dssResults.value = res.data?.data?.data || []
+  } finally {
+    dssLoading.value = false
+  }
+}
+
+function resetDss() {
+  dss.value = {
+    budgetMin: 0,
+    budgetMax: 50000,
+    budgetRange: [0, 50000],
+    categoryId: null,
+    lengthCm: null,
+    widthCm: null,
+    heightCm: null,
+  }
+  dssResults.value = []
 }
 
 function applyFilters() {

@@ -1,14 +1,10 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
-  
     <div class="flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
-      </div>
+      <h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
       <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" @click="loadOrders" />
     </div>
-  
-  
+
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
@@ -19,8 +15,7 @@
             </IconField>
           </div>
           <div class="md:col-span-3">
-            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-              placeholder="Filter status" showClear fluid />
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="Filter status" showClear fluid />
           </div>
           <div class="md:col-span-2">
             <Button severity="info" fluid label="Clear" outlined @click="clearFilters" />
@@ -28,12 +23,22 @@
         </div>
       </template>
     </Card>
-  
+
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
-        <DataTable :value="orders" :loading="loading" dataKey="id" stripedRows paginator lazy :rows="pageState.rows"
-          :first="(pageState.page - 1) * pageState.rows" :totalRecords="pageState.total"
-          :rowsPerPageOptions="[10, 20, 50]" @page="onPage">
+        <DataTable
+          :value="orders"
+          :loading="loading"
+          dataKey="id"
+          stripedRows
+          paginator
+          lazy
+          :rows="pageState.rows"
+          :first="(pageState.page - 1) * pageState.rows"
+          :totalRecords="pageState.total"
+          :rowsPerPageOptions="[10, 20, 50]"
+          @page="onPage"
+        >
           <Column field="order_number" header="Order">
             <template #body="{ data }">
               <button class="font-medium text-blue-600 hover:underline" @click="openDetail(data.id)">
@@ -70,14 +75,18 @@
           </Column>
           <Column header="Delivery">
             <template #body="{ data }">
-              <Tag v-if="data.delivery?.status" :value="formatStatus(data.delivery.status)"
-                :severity="deliverySeverity(data.delivery.status)" />
-              <span v-else class="text-xs text-gray-500">Not assigned</span>
+              <div class="space-y-1">
+                <Tag v-if="data.delivery?.status" :value="formatStatus(data.delivery.status)" :severity="deliverySeverity(data.delivery.status)" />
+                <span v-else class="text-xs text-gray-500">Not assigned</span>
+                <p v-if="data.delivery?.tracking_number" class="text-xs text-gray-500">{{ data.delivery.tracking_number }}</p>
+              </div>
             </template>
           </Column>
           <Column header="Actions">
             <template #body="{ data }">
-              <Button severity="info" text icon="pi pi-eye" @click="openDetail(data.id)" />
+              <div class="flex items-center gap-1">
+                <Button severity="info" text icon="pi pi-eye" @click="openDetail(data.id)" />
+              </div>
             </template>
           </Column>
         </DataTable>
@@ -90,7 +99,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import inventoryService from '@/services/inventory.service'
+import salesService from '@/services/sales.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -103,7 +112,6 @@ import InputIcon from 'primevue/inputicon'
 
 const router = useRouter()
 const toast = useToast()
-
 const loading = ref(false)
 const orders = ref<any[]>([])
 
@@ -132,7 +140,7 @@ const statusOptions = [
 const loadOrders = async () => {
   loading.value = true
   try {
-    const res = await inventoryService.getEcommerceOrders({
+    const res = await salesService.getEcommerceOrders({
       page: pageState.page,
       per_page: pageState.rows,
       search: filters.search || undefined,
@@ -160,7 +168,7 @@ const onPage = (event: any) => {
 }
 
 const openDetail = (id: number) => {
-  router.push({ name: 'inventory.ecommerce-orders.detail', params: { id } })
+  router.push({ name: 'sales.ecommerce-orders.detail', params: { id } })
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

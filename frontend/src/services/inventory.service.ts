@@ -1069,6 +1069,36 @@ class InventoryService {
     return response.data
   }
 
+  async assignEcommerceOrderDelivery(id: number | string, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/ecommerce-orders/${id}/assign-delivery`, payload)
+    return response.data
+  }
+
+  async updateEcommerceOrderDeliveryAssignment(id: number | string, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/ecommerce-orders/${id}/delivery-assignment`, payload)
+    return response.data
+  }
+
+  async getEcommerceOrderBranchCandidates(id: number | string) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-orders/${id}/branch-candidates`)
+    return response.data
+  }
+
+  async passEcommerceOrderToBranch(id: number | string, payload: { to_branch_id: number; notes?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/ecommerce-orders/${id}/pass-branch`, payload)
+    return response.data
+  }
+
+  async getEcommerceOrderChatMessages(id: number | string, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/ecommerce-orders/${id}/chat/messages`, { params })
+    return response.data
+  }
+
+  async sendEcommerceOrderChatMessage(id: number | string, payload: { message: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/ecommerce-orders/${id}/chat/messages`, payload)
+    return response.data
+  }
+
   // ==================== ECOMMERCE DELIVERIES ====================
   async getEcommerceDeliveries(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/ecommerce-deliveries`, { params })
@@ -1130,6 +1160,50 @@ class InventoryService {
 
   async updateDeliveryVehicle(id: number | string, payload: any) {
     const response = await axiosClient.put(`${this.baseUrl}/delivery-vehicles/${id}`, payload)
+    return response.data
+  }
+
+  // ==================== PURCHASE REQUISITIONS (INVENTORY / BRANCH-SCOPED) ====================
+  async getPurchaseRequisitions(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/requisitions`, { params })
+    return response.data
+  }
+
+  async getPurchaseRequisition(id: number | string) {
+    const response = await axiosClient.get(`${this.baseUrl}/requisitions/${id}`)
+    return response.data
+  }
+
+  // Inventory shortcut: create PR from a branch inventory item (single line item)
+  async createPurchaseRequisitionFromInventory(payload: {
+    branch_inventory_id: number
+    requested_quantity: number
+    reason?: string | null
+    requisition_type?: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
+    priority?: number | null
+    auto_submit?: boolean
+  }) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions`, payload)
+    return response.data
+  }
+
+  async submitPurchaseRequisition(id: number | string) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/submit`)
+    return response.data
+  }
+
+  async approvePurchaseRequisition(id: number | string, payload?: { notes?: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/approve`, payload || {})
+    return response.data
+  }
+
+  async rejectPurchaseRequisition(id: number | string, payload: { reason: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/reject`, payload)
+    return response.data
+  }
+
+  async cancelPurchaseRequisition(id: number | string, payload: { reason: string }) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/cancel`, payload)
     return response.data
   }
 }

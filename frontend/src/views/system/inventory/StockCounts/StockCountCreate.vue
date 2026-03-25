@@ -317,7 +317,9 @@ const currentBranchLabel = computed(() => {
     user?.employee?.branch_name
   const branchCode =
     user?.branch?.branch_code ||
+    user?.branch?.code ||
     user?.employee?.branch?.branch_code ||
+    user?.employee?.branch?.code ||
     user?.branch_code ||
     user?.employee?.branch_code
   const id = currentBranchId.value
@@ -608,15 +610,27 @@ const submitForm = async () => {
 
 onMounted(() => {
   form.reference_number = generateReferenceNumber()
-  if (!currentBranchId.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Branch Required',
-      detail: 'No branch is assigned to your user profile. Please contact your admin.',
-      life: 4000
-    })
-  }
-  loadBranchName()
-  loadProducts()
+
+  ;(async () => {
+    // Ensure we have the latest user profile (branch assignment is often not included in the login payload).
+    try {
+      await authStore.fetchCurrentUser()
+    } catch {
+      // If this fails, we'll still fall back to whatever was in localStorage.
+    }
+
+    if (!currentBranchId.value) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Branch Required',
+        detail: 'No branch is assigned to your user profile. Please contact your admin.',
+        life: 4000
+      })
+      return
+    }
+
+    await loadBranchName()
+    await loadProducts()
+  })()
 })
 </script>

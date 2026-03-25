@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <div class="rounded-3xl border border-slate-200 bg-white/70 p-4">
+    <div class="rounded-2xl md:rounded-3xl border border-slate-200 bg-white/70 p-3 md:p-4">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap gap-2">
           <Button
@@ -14,9 +14,9 @@
           />
         </div>
 
-        <IconField>
+        <IconField class="w-full sm:w-auto">
           <InputIcon class="pi pi-search" />
-          <InputText v-model="search" placeholder="Search order, product or variant" />
+          <InputText v-model="search" class="w-full sm:w-80" placeholder="Search order, product or variant" />
         </IconField>
       </div>
 
@@ -50,12 +50,12 @@
                   </div>
                 </div>
 
-                <div class="flex items-center gap-5">
+                <div class="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:items-center sm:gap-4 md:gap-5">
                   <Tag :value="statusLabel(item.status)" :class="statusTagClass(item.status)" />
-                  <p class="text-sm text-slate-600">{{ formatDate(item.created_at) }}</p>
-                  <p class="text-lg font-semibold text-slate-900">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
-                  <p class="text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
-                  <Button label="View" severity="info" outlined @click="goOrderDetail(item.order_id)" />
+                  <p class="text-xs sm:text-sm text-slate-600">{{ formatDate(item.created_at) }}</p>
+                  <p class="text-sm sm:text-lg font-semibold text-slate-900">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
+                  <p class="text-xs sm:text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
+                  <Button label="View" severity="info" outlined class="col-span-2 sm:col-span-1" @click="goOrderDetail(item.order_id)" />
                 </div>
               </div>
             </div>
@@ -198,4 +198,3 @@ function formatDate(value: string) {
 
 onMounted(loadOrders)
 </script>
-

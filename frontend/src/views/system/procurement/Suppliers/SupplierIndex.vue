@@ -5,7 +5,13 @@
         <h1 class="text-3xl font-bold text-gray-800">Suppliers</h1>
         <p class="text-gray-600 mt-1">Manage supplier profiles and contacts</p>
       </div>
-      <Button label="Add Supplier" icon="pi pi-plus" severity="success" @click="router.push({ name: 'procurement.suppliers.create' })" />
+      <Button
+        v-if="canManageSuppliers"
+        label="Add Supplier"
+        icon="pi pi-plus"
+        severity="success"
+        @click="router.push({ name: 'procurement.suppliers.create' })"
+      />
     </div>
 
     <Card class="mb-6">
@@ -46,7 +52,7 @@
             <template #body="{ data }">
               <div class="flex gap-2">
                 <Button icon="pi pi-eye" severity="info" text rounded @click="router.push({ name: 'procurement.suppliers.detail', params: { id: data.id } })" />
-                <Button icon="pi pi-pencil" severity="warning" text rounded @click="router.push({ name: 'procurement.suppliers.edit', params: { id: data.id } })" />
+                <Button v-if="canManageSuppliers" icon="pi pi-pencil" severity="warning" text rounded @click="router.push({ name: 'procurement.suppliers.edit', params: { id: data.id } })" />
               </div>
             </template>
           </Column>
@@ -57,11 +63,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import procurementService, { type Supplier } from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const canManageSuppliers = computed(() => authStore.hasPermission('procurement.suppliers.manage'))
 const loading = ref(false)
 const suppliers = ref<Supplier[]>([])
 

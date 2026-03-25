@@ -288,6 +288,21 @@ class StockOrderRequestController extends Controller
 
         $request->approve(Auth::id());
 
+        if ($request->created_by) {
+            $this->notify((int) $request->created_by, [
+                'store_id' => $request->store_id,
+                'branch_id' => $request->branchInventory?->branch_id,
+                'module' => 'inventory',
+                'entity_type' => 'stock_order_request',
+                'entity_id' => $request->id,
+                'action' => 'approved',
+                'title' => 'Stock Request Approved',
+                'message' => "Stock request {$request->uuid} approved.",
+                'severity' => 'success',
+                'link' => "/system/inventory/stock-requests/{$request->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Stock order request approved',
@@ -312,6 +327,21 @@ class StockOrderRequestController extends Controller
         }
 
         $request->reject();
+
+        if ($request->created_by) {
+            $this->notify((int) $request->created_by, [
+                'store_id' => $request->store_id,
+                'branch_id' => $request->branchInventory?->branch_id,
+                'module' => 'inventory',
+                'entity_type' => 'stock_order_request',
+                'entity_id' => $request->id,
+                'action' => 'rejected',
+                'title' => 'Stock Request Rejected',
+                'message' => "Stock request {$request->uuid} rejected.",
+                'severity' => 'danger',
+                'link' => "/system/inventory/stock-requests/{$request->id}",
+            ]);
+        }
 
         return response()->json([
             'success' => true,

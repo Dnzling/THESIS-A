@@ -29,6 +29,9 @@ class Supplier extends Model
         'mobile',
         'fax',
         'website',
+        'default_tax_rate',
+        'is_tax_exempt',
+        'tax_note',
         'address',
         'city',
         'province',
@@ -57,6 +60,8 @@ class Supplier extends Model
         'total_amount_purchased' => 'decimal:2',
         'on_time_deliveries' => 'integer',
         'late_deliveries' => 'integer',
+        'is_tax_exempt' => 'boolean',
+        'default_tax_rate' => 'decimal:2',
     ];
 
     // Relationships

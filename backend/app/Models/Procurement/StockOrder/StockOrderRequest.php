@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Store\Store;
 use App\Models\Inventory\BranchInventory;
-use App\Models\Hr\Employee;
+use App\Models\Core\User;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 
 class StockOrderRequest extends Model
@@ -22,6 +22,7 @@ class StockOrderRequest extends Model
         'branch_inventory_id',
         'requested_quantity',
         'notes',
+        'rejection_reason',
         'status',
         'created_by',
         'approved_by',
@@ -71,7 +72,7 @@ class StockOrderRequest extends Model
      */
     public function createdBy(): BelongsTo
     {
-        return $this->belongsTo(Employee::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     /**
@@ -79,7 +80,7 @@ class StockOrderRequest extends Model
      */
     public function approvedBy(): BelongsTo
     {
-        return $this->belongsTo(Employee::class, 'approved_by');
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     /**
@@ -153,11 +154,15 @@ class StockOrderRequest extends Model
     /**
      * Reject this request
      */
-    public function reject()
+    public function reject(?string $reason = null)
     {
-        $this->update([
+        $payload = [
             'status' => 'rejected',
-        ]);
+        ];
+        if ($reason !== null) {
+            $payload['rejection_reason'] = $reason;
+        }
+        $this->update($payload);
     }
 
     /**

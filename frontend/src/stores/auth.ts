@@ -218,21 +218,31 @@ export const useAuthStore = defineStore('auth', () => {
      * Check if user has a specific permission
      */
     const hasPermission = (permission: string): boolean => {
-        return permissions.value.includes(permission)
+        if (permissions.value.includes(permission)) {
+            return true
+        }
+
+        // Module admin bypass: e.g. procurement.admin grants procurement.*
+        const module = String(permission || '').split('.')[0]
+        if (module && permissions.value.includes(`${module}.admin`)) {
+            return true
+        }
+
+        return false
     }
 
     /**
      * Check if user has ANY of the permissions
      */
     const hasAnyPermission = (perms: string[]): boolean => {
-        return perms.some(p => permissions.value.includes(p))
+        return perms.some((p) => hasPermission(p))
     }
 
     /**
      * Check if user has ALL permissions
      */
     const hasAllPermissions = (perms: string[]): boolean => {
-        return perms.every(p => permissions.value.includes(p))
+        return perms.every((p) => hasPermission(p))
     }
 
     /**
@@ -397,11 +407,12 @@ export const useAuthStore = defineStore('auth', () => {
     /**
      * Fetch current user data
      */
-    const fetchCurrentUser = async () => {
+    const fetchCurrentUser = async (options?: { reloadPermissions?: boolean }) => {
         if (!token.value) return
 
         try {
-            const response = await axios.get('/api/auth/user')
+            // Prefer /api/auth/me (returns a richer user resource including store/branch).
+            const response = await axios.get('/api/auth/me')
             const payload = response.data || {}
             const resolvedUser =
                 payload?.data?.user ??
@@ -412,10 +423,16 @@ export const useAuthStore = defineStore('auth', () => {
             user.value = resolvedUser
             localStorage.setItem('user', JSON.stringify(resolvedUser))
 
-            // Reload permissions when user data is refreshed
-            permissionsLoaded.value = false
-            isLoadingPermissions.value = false
-            await loadPermissions()
+            const shouldReloadPermissions = options?.reloadPermissions === true
+            if (shouldReloadPermissions) {
+                // Explicit refresh requested (rare). Use this when role/permissions might have changed.
+                permissionsLoaded.value = false
+                isLoadingPermissions.value = false
+                await loadPermissions()
+            } else if (!permissionsLoaded.value && !isLoadingPermissions.value) {
+                // If permissions weren't loaded yet, load once. Otherwise keep cache to avoid reloading per page.
+                await loadPermissions()
+            }
 
             return resolvedUser
         } catch (err: any) {

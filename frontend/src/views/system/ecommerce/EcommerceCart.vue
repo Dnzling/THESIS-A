@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between gap-3">
       <h1 class="text-2xl font-bold text-gray-900">My Cart</h1>
     </div>
   
@@ -51,7 +51,8 @@
   
         <Card class="border border-slate-200 shadow-none">
           <template #content>
-            <DataTable :value="items" class="p-datatable-sm">
+            <div class="overflow-x-auto">
+              <DataTable :value="items" class="p-datatable-sm" responsiveLayout="scroll" tableStyle="min-width: 44rem">
               <Column header="" style="width: 56px">
                 <template #body="{ data }">
                   <Checkbox :modelValue="selectedItemIds.includes(data.id)" :binary="true"
@@ -59,7 +60,7 @@
                 </template>
               </Column>
   
-              <Column header="Product" style="min-width: 430px">
+              <Column header="Product" style="min-width: 320px">
                 <template #body="{ data }">
                   <div class="flex items-start justify-between gap-3">
                     <div class="flex min-w-0 items-start gap-3">
@@ -100,7 +101,8 @@
                   </div>
                 </template>
               </Column>
-            </DataTable>
+              </DataTable>
+            </div>
           </template>
         </Card>
       </div>

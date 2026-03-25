@@ -180,10 +180,10 @@
           <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6">Quick Actions</h2>
             <div class="space-y-3">
-              <Button label="➕ Add Supplier" class="w-full justify-start" @click="router.push({ name: 'procurement.suppliers.create' })" severity="info" text />
-              <Button label="📋 Create PR" class="w-full justify-start" @click="router.push({ name: 'procurement.purchase-requisitions.create' })" severity="secondary" text />
-              <Button label="📨 Create RFQ" class="w-full justify-start" @click="router.push({ name: 'procurement.rfqs.create' })" severity="warning" text />
-              <Button label="🛒 Create PO" class="w-full justify-start" @click="router.push({ name: 'procurement.purchase-orders.create' })" severity="success" text />
+              <Button v-if="canManageSuppliers" label="➕ Add Supplier" class="w-full justify-start" @click="router.push({ name: 'procurement.suppliers.create' })" severity="info" text />
+              <Button v-if="canManageRequisitions" label="📋 Create PR" class="w-full justify-start" @click="router.push({ name: 'procurement.purchase-requisitions.create' })" severity="secondary" text />
+              <Button v-if="canManageRfq" label="📨 Create RFQ" class="w-full justify-start" @click="router.push({ name: 'procurement.rfqs.create' })" severity="warning" text />
+              <Button v-if="canManagePurchaseOrders" label="🛒 Create PO" class="w-full justify-start" @click="router.push({ name: 'procurement.purchase-orders.create' })" severity="success" text />
             </div>
           </div>
 
@@ -208,13 +208,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import procurementService from '../../../services/procurement.service'
+import { useAuthStore } from '../../../stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const loading = ref(true)
 const stats = ref<any>({})
+
+const canManageSuppliers = computed(() => authStore.hasPermission('procurement.suppliers.manage'))
+const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
+const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
 const loadDashboard = async () => {
   loading.value = true

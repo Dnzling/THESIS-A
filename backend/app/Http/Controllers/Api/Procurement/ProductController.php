@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductCatalog\Product;
+use App\Models\Inventory\ReorderRule;
 use App\Models\Procurement\Supplier\SupplierPrice;
 use App\Models\Procurement\Inventory\ProcurementInventory;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ class ProductController extends Controller
             $storeId = auth()->user()->store_id;
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
             $includeCost = $request->boolean('include_cost', false);
+            $filterSupplierId = $request->get('supplier_id');
 
             $query = Product::where('store_id', $storeId)
                 ->with([
@@ -39,6 +41,19 @@ class ProductController extends Controller
                     }
                 ])
                 ->withCount(['variations']);
+
+            if ($filterSupplierId) {
+                $query->whereHas('suppliers', function($q) use ($filterSupplierId, $storeId) {
+                    $q->where('suppliers.id', $filterSupplierId)
+                      ->where('suppliers.store_id', $storeId);
+                });
+            }
+
+            if ($branchId) {
+                $query->whereHas('inventory', function($q) use ($branchId) {
+                    $q->where('branch_id', $branchId);
+                });
+            }
 
             // Filters
             if ($request->has('category_id')) {
@@ -59,9 +74,9 @@ class ProductController extends Controller
                 $status = $statusMap[$request->status] ?? null;
                 if ($status) {
                     // Will need inventory join to filter by status
-                    $query->whereHas('branchInventories', function($q) use ($branchId, $status) {
+                    $query->whereHas('inventory', function($q) use ($branchId, $status) {
                         $q->where('branch_id', $branchId)
-                          ->where('status', $status);
+                          ->where('stock_status', $status);
                     }, '>=', 0);
                 }
             }
@@ -161,7 +176,7 @@ class ProductController extends Controller
                 ->findOrFail($id);
 
             // Get inventory
-            $inventory = $product->branchInventories()
+            $inventory = $product->inventory()
                 ->where('branch_id', $branchId)
                 ->first();
 
@@ -171,7 +186,12 @@ class ProductController extends Controller
             $product->cost_price = $product->getRawOriginal('cost_price');
             $product->current_stock = $inventory?->quantity_on_hand ?? 0;
             $product->quantity_on_orders = $inventory?->quantity_on_orders ?? 0;
-            $product->reorder_point = $inventory?->reorder_point ?? 0;
+            $rule = ReorderRule::query()
+                ->where('product_id', $id)
+                ->where('branch_id', $branchId)
+                ->where('is_active', true)
+                ->first();
+            $product->reorder_point = $rule?->reorder_point ?? ($inventory?->reorder_point ?? 0);
             $product->last_purchase_date = $inventory?->last_purchase_date;
             $product->last_purchase_price = $inventory?->last_purchase_price;
 

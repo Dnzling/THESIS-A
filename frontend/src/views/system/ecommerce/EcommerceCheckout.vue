@@ -1,10 +1,10 @@
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Checkout</h1>
       </div>
-      <Button label="Back to Cart" icon="pi pi-arrow-left" severity="secondary" @click="goCart" />
+      <Button label="Back to Cart" icon="pi pi-arrow-left" severity="secondary" class="w-full sm:w-auto" @click="goCart" />
     </div>
 
     <Card v-if="loading" class="border border-slate-200 shadow-none">
@@ -87,9 +87,9 @@
 
             <div class="rounded-lg border border-slate-200 p-3">
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Voucher</label>
-              <div class="flex gap-2">
+              <div class="flex flex-col gap-2 sm:flex-row">
                 <InputText v-model="voucherCode" fluid placeholder="Enter voucher code" />
-                <Button label="Apply" size="small" severity="info" :loading="applyingVoucher" @click="applyVoucher" />
+                <Button label="Apply" size="small" severity="info" class="w-full sm:w-auto" :loading="applyingVoucher" @click="applyVoucher" />
               </div>
               <p v-if="appliedVoucher" class="mt-1 text-xs text-emerald-600">
                 Applied: {{ appliedVoucher.code }} ({{ voucherLabel }})
@@ -106,7 +106,7 @@
             </div>
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ totalAmount.toFixed(2) }}</span></div>
-            <Button label="Place Order" severity="info" class="mt-2 w-full" :loading="placing" @click="placeOrder" />
+            <Button label="Place Order" severity="info" class="mt-2 w-full" :loading="placing || paymongoCreating" @click="placeOrder" />
           </div>
         </template>
       </Card>
@@ -177,6 +177,51 @@
         <Button label="Use Payment Method" severity="info" fluid @click="paymentDrawerVisible = false" />
       </div>
     </Drawer>
+
+    <Dialog
+      v-model:visible="gcashModal.visible"
+      modal
+      :draggable="false"
+      :closable="!gcashModal.processing"
+      class="w-full max-w-md"
+      :pt="{ root: { class: 'overflow-hidden' } }"
+    >
+      <template #header>
+        <div class="flex w-full items-center gap-2 rounded-t-lg bg-blue-600 px-3 py-2 text-white">
+          <i class="pi pi-wallet text-sm"></i>
+          <span class="text-sm font-semibold">GCash Checkout Details</span>
+        </div>
+      </template>
+      <div class="space-y-3 p-1">
+        <Message severity="info" :closable="false">
+          Enter your GCash number and receipt email before redirecting to PayMongo.
+        </Message>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
+          <InputMask
+            v-model="gcashModal.phone"
+            mask="09999999999"
+            fluid
+            placeholder="09999999999"
+            :autoClear="false"
+          />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
+          <InputText v-model="gcashModal.email" type="email" fluid placeholder="name@example.com" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined :disabled="gcashModal.processing" @click="gcashModal.visible = false" />
+        <Button
+          label="Continue to PayMongo"
+          severity="info"
+          :loading="gcashModal.processing"
+          :disabled="gcashModal.processing"
+          @click="proceedGcashCheckout"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -189,7 +234,9 @@ import RadioButton from 'primevue/radiobutton'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
+import Dialog from 'primevue/dialog'
 import ecommerceService from '@/services/ecommerce.service'
+import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 import InputMask from 'primevue/inputmask'
 
@@ -216,6 +263,7 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 const placing = ref(false)
+const paymongoCreating = ref(false)
 const applyingVoucher = ref(false)
 const loading = ref(false)
 const checkoutItems = ref<any[]>([])
@@ -223,6 +271,17 @@ const selectedItemIds = ref<number[]>([])
 const addressDrawerVisible = ref(false)
 const paymentDrawerVisible = ref(false)
 const showAddAddressForm = ref(false)
+const pendingGcashIntentId = ref<string | null>(null)
+const pendingGcashOrderId = ref<number | null>(null)
+const customerLatitude = ref<number | null>(null)
+const customerLongitude = ref<number | null>(null)
+
+const gcashModal = reactive({
+  visible: false,
+  processing: false,
+  phone: '',
+  email: '',
+})
 
 const shippingFeePerItem = 120
 const estimatedDeliveryDate = computed(() => {
@@ -482,16 +541,98 @@ async function placeOrder() {
       voucher_code: appliedVoucher.value?.code,
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
       item_ids: selectedItemIds.value.length ? selectedItemIds.value : undefined,
+      customer_latitude: customerLatitude.value ?? undefined,
+      customer_longitude: customerLongitude.value ?? undefined,
     }
 
     const response = await ecommerceService.checkout(payload)
     const orderId = response.data?.data?.id
+    const orderStoreId = Number(response.data?.data?.store_id || checkoutItems.value?.[0]?.store_id || 0)
+
+    if (selectedPaymentMethod.value === 'gcash') {
+      if (!orderId || !orderStoreId) {
+        throw new Error('Order ID or store ID is missing for PayMongo checkout.')
+      }
+
+      paymongoCreating.value = true
+      const intentResponse = await paymongoService.createIntent({
+        amount: Math.max(Math.round(totalAmount.value * 100), 1),
+        payment_method_allowed: ['gcash'],
+        store_id: orderStoreId,
+        payable_type: 'ecommerce_order',
+        payable_id: Number(orderId),
+      })
+      const intentId = intentResponse?.data?.data?.id
+      if (!intentId) {
+        throw new Error('Failed to initialize PayMongo payment intent.')
+      }
+
+      pendingGcashIntentId.value = String(intentId)
+      pendingGcashOrderId.value = Number(orderId)
+      gcashModal.phone = cleanPhoneNumber(selectedAddress.value.contact_number || '')
+      gcashModal.email = authStore.user?.email || payload.shipping_email || ''
+      gcashModal.visible = true
+      toast.add({ severity: 'success', summary: 'Order Placed', detail: 'Enter GCash details to continue payment.', life: 2500 })
+      return
+    }
+
     toast.add({ severity: 'success', summary: 'Order Placed', detail: 'Your order was created successfully.', life: 2500 })
     router.push({ name: 'ecommerce.orders', query: { placed: orderId } })
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.', life: 3000 })
   } finally {
     placing.value = false
+    paymongoCreating.value = false
+  }
+}
+
+function cleanPhoneNumber(raw: string) {
+  const digits = String(raw || '').replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('63') && digits.length >= 12) {
+    return `0${digits.slice(2, 12)}`
+  }
+  if (digits.length > 11) {
+    return digits.slice(digits.length - 11)
+  }
+  return digits
+}
+
+async function proceedGcashCheckout() {
+  if (!pendingGcashIntentId.value || !pendingGcashOrderId.value) {
+    toast.add({ severity: 'warn', summary: 'Missing Payment Context', detail: 'Please place the order again.', life: 2500 })
+    return
+  }
+
+  const phone = cleanPhoneNumber(gcashModal.phone)
+  if (!/^09\d{9}$/.test(phone)) {
+    toast.add({ severity: 'warn', summary: 'Invalid Number', detail: 'Use an 11-digit GCash number (09XXXXXXXXX).', life: 2500 })
+    return
+  }
+  if (!gcashModal.email.trim()) {
+    toast.add({ severity: 'warn', summary: 'Email Required', detail: 'Please provide receipt email.', life: 2500 })
+    return
+  }
+
+  gcashModal.processing = true
+  paymongoCreating.value = true
+  try {
+    const gcashResponse = await paymongoService.startGcash(pendingGcashIntentId.value, {
+      name: selectedAddress.value?.full_name || 'Customer',
+      email: gcashModal.email.trim(),
+      phone,
+      return_url: `${window.location.origin}/shop/orders/${pendingGcashOrderId.value}`,
+    })
+    const redirectUrl = gcashResponse?.data?.redirect_url
+    if (!redirectUrl) {
+      throw new Error('PayMongo did not return a checkout URL.')
+    }
+    window.location.href = redirectUrl
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Unable to start GCash checkout.', life: 3200 })
+  } finally {
+    gcashModal.processing = false
+    paymongoCreating.value = false
   }
 }
 
@@ -500,6 +641,20 @@ function goCart() {
 }
 
 onMounted(async () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        customerLatitude.value = Number(position.coords.latitude)
+        customerLongitude.value = Number(position.coords.longitude)
+      },
+      () => {
+        customerLatitude.value = null
+        customerLongitude.value = null
+      },
+      { enableHighAccuracy: false, maximumAge: 120000, timeout: 5000 }
+    )
+  }
+
   loading.value = true
   try {
     await fetchProvinces()

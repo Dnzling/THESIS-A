@@ -37,12 +37,12 @@ class ReorderRuleRequest extends FormRequest
                 Rule::exists('branches', 'id'),
             ],
             'rule_type' => [
-                'required',
+                'nullable',
                 'string',
                 Rule::in(['manual', 'automatic', 'demand_based']),
             ],
             'trigger_type' => [
-                'required',
+                'nullable',
                 'string',
                 Rule::in(['reorder_point', 'safety_stock', 'forecast', 'seasonal']),
             ],
@@ -103,7 +103,6 @@ class ReorderRuleRequest extends FormRequest
                 'numeric',
                 'min:0',
                 'decimal:0,4',
-                'required_if:basis_type,demand_lead_time',
             ],
             'priority' => [
                 'required',
@@ -186,7 +185,6 @@ class ReorderRuleRequest extends FormRequest
         return [
             'reorder_point.required_if' => 'Reorder point is required when trigger type is reorder point.',
             'safety_stock.required_if' => 'Safety stock is required when trigger type is safety stock.',
-            'avg_daily_demand.required_if' => 'Average daily demand is required for Demand + Lead Time basis.',
             'lead_time_days.required_if' => 'Lead time is required for Demand + Lead Time basis.',
             'maximum_stock.gte' => 'Maximum stock must be greater than or equal to reorder point.',
             'supplier_preferences.*.supplier_id.exists' => 'Selected supplier does not exist.',
@@ -230,9 +228,6 @@ class ReorderRuleRequest extends FormRequest
 
             // Demand + Lead Time basis guardrails
             if (($this->basis_type ?? 'reorder_point') === 'demand_lead_time') {
-                if (!$this->avg_daily_demand || (float) $this->avg_daily_demand <= 0) {
-                    $validator->errors()->add('avg_daily_demand', 'Average daily demand must be greater than zero.');
-                }
                 if (!$this->lead_time_days || (int) $this->lead_time_days <= 0) {
                     $validator->errors()->add('lead_time_days', 'Lead time days must be greater than zero.');
                 }
@@ -255,8 +250,17 @@ class ReorderRuleRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        $basisType = $this->input('basis_type') ?: (($this->input('rule_type') === 'demand_based') ? 'demand_lead_time' : 'reorder_point');
-        $this->merge(['basis_type' => $basisType]);
+        $basisType = $this->input('basis_type')
+            ?: (($this->input('rule_type') === 'demand_based') ? 'demand_lead_time' : 'reorder_point');
+
+        $derivedRuleType = $basisType === 'demand_lead_time' ? 'demand_based' : ($this->input('rule_type') ?: 'automatic');
+        $derivedTriggerType = $basisType === 'demand_lead_time' ? 'forecast' : 'reorder_point';
+
+        $this->merge([
+            'basis_type' => $basisType,
+            'rule_type' => $derivedRuleType,
+            'trigger_type' => $derivedTriggerType,
+        ]);
 
         if ($this->filled('branch_id')) {
             return;

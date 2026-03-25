@@ -23,12 +23,14 @@ use App\Http\Controllers\Api\Hr\PayrollController;
 use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
+use App\Http\Controllers\Api\Payments\PaymongoController;
 use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\Core\SystemNotificationController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
 
@@ -66,6 +68,7 @@ Route::prefix('ecommerce')->group(function () {
 
 // Public 3D/image asset serve route (must stay outside auth middleware)
 Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
+Route::post('/payments/paymongo/webhook', [PaymongoController::class, 'webhook']);
 
 // ========== PROTECTED ROUTES ==========
 
@@ -80,6 +83,15 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::post('/customer-verification/trigger', [CustomerVerificationTriggerController::class, 'trigger']);
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [SystemNotificationController::class, 'index']);
+        Route::get('/unread', [SystemNotificationController::class, 'getUnread']);
+        Route::get('/{id}', [SystemNotificationController::class, 'show']);
+        Route::put('/{id}/read', [SystemNotificationController::class, 'markAsRead']);
+        Route::put('/mark-all-read', [SystemNotificationController::class, 'markAllAsRead']);
+        Route::delete('/{id}', [SystemNotificationController::class, 'delete']);
+        Route::post('/batch-delete', [SystemNotificationController::class, 'batchDelete']);
+    });
 
     Route::prefix('admin')->group(function () {
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
@@ -132,6 +144,13 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/permissions', [StoreRoleController::class, 'getPermissions']);
         Route::get('/roles/{id}/permissions', [StoreRoleController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [StoreRoleController::class, 'updateRolePermissions']);
+    });
+
+    Route::prefix('payments')->group(function () {
+        Route::post('paymongo/create', [PaymongoController::class, 'create']);
+        Route::get('paymongo/latest', [PaymongoController::class, 'latestByPayable']);
+        Route::get('paymongo/{id}', [PaymongoController::class, 'status']);
+        Route::post('paymongo/{id}/gcash-start', [PaymongoController::class, 'startGcash']);
     });
 
 
@@ -288,6 +307,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     require __DIR__ . '/supplier_routes.php';
     require __DIR__ . '/supplier_portal_routes.php';
     require __DIR__ . '/inventory_routes.php';
+    require __DIR__ . '/logistics_routes.php';
     require __DIR__ . '/ecommerce_routes.php';
     require __DIR__ . '/sales_routes.php';
     require __DIR__ . '/job_hiring_routes.php';

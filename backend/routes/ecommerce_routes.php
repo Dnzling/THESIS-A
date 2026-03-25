@@ -18,9 +18,14 @@ Route::prefix('ecommerce')->group(function () {
     Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
 
     Route::post('/checkout', [EcommerceController::class, 'checkout']);
+    Route::post('/dss/recommendations', [EcommerceController::class, 'dssRecommendations']);
     Route::get('/orders', [EcommerceController::class, 'orders']);
     Route::get('/orders/{id}', [EcommerceController::class, 'orderShow']);
     Route::post('/orders/{id}/cancel-requests', [EcommerceController::class, 'requestOrderCancellation']);
     Route::post('/order-items/{itemId}/return-requests', [EcommerceController::class, 'requestOrderReturn']);
     Route::post('/order-items/{itemId}/reviews', [EcommerceController::class, 'submitItemReview']);
+
+    Route::get('/chat/threads', [EcommerceController::class, 'chatThreads']);
+    Route::get('/chat/stores/{storeId}/messages', [EcommerceController::class, 'chatMessages']);
+    Route::post('/chat/stores/{storeId}/messages', [EcommerceController::class, 'sendChatMessage']);
 });

@@ -228,6 +228,44 @@ class SupplierController extends Controller
     }
 
     /**
+     * Get products linked to a supplier (from pivot)
+     * GET /api/procurement/suppliers/{id}/products
+     */
+    public function products(int $id, Request $request): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        $branchId = $request->get('branch_id');
+
+        $productsQuery = $supplier->products()
+            ->with([
+                'category:id,category_name',
+                'inventory' => function($q) use ($branchId) {
+                    if ($branchId) {
+                        $q->where('branch_id', $branchId);
+                    }
+                }
+            ])
+            ->select('products.id', 'products.product_name', 'products.sku', 'products.category_id', 'products.cost_price');
+
+        $products = $productsQuery->get()->map(function($product) use ($branchId) {
+            $inv = $branchId ? $product->inventory->first() : null;
+            return [
+                'id' => $product->id,
+                'product_name' => $product->product_name,
+                'sku' => $product->sku,
+                'category_id' => $product->category_id,
+                'stock_level' => $inv?->quantity_available ?? 0,
+                'unit_cost' => $product->getRawOriginal('cost_price'),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $products,
+        ]);
+    }
+
+    /**
      * Get supplier performance metrics
      * GET /api/procurement/suppliers/{id}/performance
      */

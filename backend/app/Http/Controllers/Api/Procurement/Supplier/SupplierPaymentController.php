@@ -150,6 +150,23 @@ class SupplierPaymentController extends Controller
 
         $payment->approve(auth()->id());
 
+        $po = $payment->purchaseOrder;
+        $creatorUserId = $po?->createdBy?->user_id;
+        if ($creatorUserId && $po) {
+            $this->notify($creatorUserId, [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'finance',
+                'entity_type' => 'supplier_payment',
+                'entity_id' => $payment->id,
+                'action' => 'approved',
+                'title' => 'Payment Approved',
+                'message' => "Payment {$payment->payment_number} approved for PO {$po->po_number}.",
+                'severity' => 'success',
+                'link' => "/system/finance/payments/{$payment->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Payment approved successfully',
@@ -262,6 +279,23 @@ class SupplierPaymentController extends Controller
         $payment->update([
             'notes' => ($payment->notes ?? '') . "\n\nCancellation reason: " . $validated['reason'],
         ]);
+
+        $po = $payment->purchaseOrder;
+        $creatorUserId = $po?->createdBy?->user_id;
+        if ($creatorUserId && $po) {
+            $this->notify($creatorUserId, [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'finance',
+                'entity_type' => 'supplier_payment',
+                'entity_id' => $payment->id,
+                'action' => 'rejected',
+                'title' => 'Payment Rejected',
+                'message' => "Payment {$payment->payment_number} rejected for PO {$po->po_number}.",
+                'severity' => 'danger',
+                'link' => "/system/finance/payments/{$payment->id}",
+            ]);
+        }
 
         return response()->json([
             'success' => true,

@@ -82,7 +82,17 @@
               </div>
               <div class="flex items-center justify-between mt-2">
                 <span class="text-slate-500">VAT</span>
-                <span class="font-semibold text-slate-900">PHP {{ formatMoney(taxVat) }}</span>
+                <span class="font-semibold text-slate-900">
+                  PHP {{ formatMoney(taxVat) }}
+                  <span v-if="contractTaxRate" class="text-xs text-slate-400">({{ contractTaxRate.toFixed(2) }}%)</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between mt-2">
+                <span class="text-slate-500">Discount</span>
+                <span class="font-semibold text-slate-900">
+                  PHP {{ formatMoney(discountAmount) }}
+                  <span v-if="contractDiscountPercent" class="text-xs text-slate-400">({{ contractDiscountPercent.toFixed(2) }}%)</span>
+                </span>
               </div>
               <div class="flex items-center justify-between mt-2">
                 <span class="text-slate-500">Delivery Charge</span>
@@ -119,10 +129,6 @@
                 <span>{{ distanceDisplay }}</span>
               </div>
               <div class="flex items-center justify-between">
-                <span class="text-slate-500">Tax Rate</span>
-                <span>{{ Number(draft?.tax_rate || 12).toFixed(2) }}%</span>
-              </div>
-              <div class="flex items-center justify-between">
                 <span class="text-slate-500">Expected Delivery</span>
                 <span>{{ formatDate(draft?.expected_delivery_date) }}</span>
               </div>
@@ -134,44 +140,7 @@
           </template>
         </Card>
 
-        <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-          <template #content>
-            <h3 class="text-lg font-semibold text-slate-900">Delivery Logs</h3>
-            <p class="text-sm text-slate-500 mb-4">Timeline of recorded events.</p>
-            <div class="space-y-3">
-              <div v-if="logsLoading" class="text-sm text-slate-500">Loading logs…</div>
-              <div v-else-if="!deliveryLogs.length" class="text-sm text-slate-500">No events yet. Add one below.</div>
-              <div v-else class="space-y-2">
-                <div v-for="log in deliveryLogs" :key="log.id" class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div class="flex items-center justify-between text-xs uppercase text-slate-500">
-                    <span>{{ log.event_type }}</span>
-                    <span>{{ formatDate(log.logged_at, true) }}</span>
-                  </div>
-                  <p class="text-slate-700 mt-2">{{ log.notes || 'No notes recorded' }}</p>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 grid grid-cols-1 gap-3">
-              <Select
-                v-model="logEventType"
-                :options="logTypes"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select milestone"
-                class="w-full"
-              />
-              <TextArea v-model="logNotes" rows="2" placeholder="Notes (optional)" autoResize />
-              <Button
-                label="Add Log"
-                icon="pi pi-save"
-                class="w-full"
-                :loading="logSubmitting"
-                @click="submitLog"
-                :disabled="!shipment?.id"
-              />
-            </div>
-          </template>
-        </Card>
+  
 
         <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
@@ -222,6 +191,8 @@ const logsLoading = ref(false)
 const logEventType = ref('Arrived')
 const logNotes = ref('')
 const logSubmitting = ref(false)
+const contractTaxRate = ref(0)
+const contractDiscountPercent = ref(0)
 
 const steps = [
   { label: 'Review PO', description: 'Approve or reject' },
@@ -277,8 +248,9 @@ const subtotalAmount = computed(() => {
 })
 
 const taxVat = computed(() => Number(po.value?.tax_amount ?? po.value?.vat_amount ?? 0))
+const discountAmount = computed(() => Number(po.value?.discount_amount ?? 0))
 
-const totalAmount = computed(() => subtotalAmount.value + deliveryCharge.value + taxVat.value)
+const totalAmount = computed(() => subtotalAmount.value - discountAmount.value + taxVat.value + deliveryCharge.value)
 
 const statusSeverity = (status: string) => {
   if (status === 'sent_to_supplier') return 'info'
@@ -295,6 +267,8 @@ const loadPO = async () => {
     const res = await supplierService.getSupplierPODetail(poId)
     const payload = res.data || res
     po.value = payload?.data?.po || payload?.po || null
+    contractTaxRate.value = Number(payload?.data?.contract_tax_rate || 0) || 0
+    contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || 0) || 0
   } finally {
     loading.value = false
   }
@@ -390,7 +364,6 @@ const submitDelivery = async () => {
       distance_km: draft.value.distance_km ?? null,
       current_latitude: draft.value.current_latitude ?? null,
       current_longitude: draft.value.current_longitude ?? null,
-      tax_rate: Number(draft.value.tax_rate || 12),
       expected_delivery_date: draft.value.expected_delivery_date || null,
     })
     const payload = response.data || response
@@ -450,9 +423,10 @@ const printShipment = () => {
       <div class="row"><span>Driver</span><span>${draft.value.driver_name || '-'}</span></div>
       <div class="row"><span>Plate Number</span><span>${draft.value.plate_number || '-'}</span></div>
       <div class="row"><span>Distance</span><span>${distanceDisplay.value}</span></div>
-      <div class="row"><span>Tax Rate</span><span>${Number(draft.value.tax_rate || 12).toFixed(2)}%</span></div>
       <div class="row"><span>Expected Delivery</span><span>${formatDate(draft.value.expected_delivery_date)}</span></div>
       <div class="row"><span>Delivery Charge</span><span>PHP ${formatMoney(deliveryCharge.value)}</span></div>
+      <div class="row"><span>Discount</span><span>PHP ${formatMoney(discountAmount.value)}${contractDiscountPercent.value ? ` (${contractDiscountPercent.value.toFixed(2)}%)` : ''}</span></div>
+      <div class="row"><span>Tax</span><span>PHP ${formatMoney(taxVat.value)}${contractTaxRate.value ? ` (${contractTaxRate.value.toFixed(2)}%)` : ''}</span></div>
 
       <h2>Items</h2>
       <table>

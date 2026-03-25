@@ -20,19 +20,20 @@
       </div>
       <div class="flex items-center gap-3">
         <div v-if="detail?.status === 'pending_finance_approval'" class="flex items-center gap-2">
-          <button
-            @click="confirmApprove"
-            class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-          >
-            <i class="pi pi-check text-sm"></i>
-            <span>Approve</span>
-          </button>
+   
           <button
             @click="confirmReject"
             class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
           >
             <i class="pi pi-times text-sm"></i>
             <span>Reject</span>
+          </button>
+                 <button
+            @click="confirmApprove"
+            class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+          >
+            <i class="pi pi-check text-sm"></i>
+            <span>Approve</span>
           </button>
         </div>
         <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="text-xs" />
@@ -58,7 +59,7 @@
     <!-- Main Content -->
     <div v-else-if="detail" class="space-y-6">
       <!-- iOS-style Stats Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">PO Number</span>
@@ -81,16 +82,7 @@
           <p class="text-xs text-gray-500 mt-2">Expected: {{ formatDate(detail?.expected_delivery_date) }}</p>
         </div>
 
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Terms</span>
-            <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-              <i class="pi pi-credit-card text-orange-600 text-sm"></i>
-            </div>
-          </div>
-          <p class="text-xl font-semibold text-gray-900">{{ formatPaymentTerms(detail?.payment_terms) }}</p>
-          <p class="text-xs text-gray-500 mt-2">Due: {{ formatDate(detail?.payment_due_date) }}</p>
-        </div>
+    
 
         <div class="bg-linear-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
           <div class="flex items-center justify-between mb-3">
@@ -184,8 +176,7 @@
                 <th class="px-6 py-4 text-left font-medium">Product</th>
                 <th class="px-6 py-4 text-center font-medium">Quantity</th>
                 <th class="px-6 py-4 text-right font-medium">Unit Price</th>
-                <th class="px-6 py-4 text-center font-medium">Tax</th>
-                <th class="px-6 py-4 text-right font-medium">Line Total</th>
+                  <th class="px-6 py-4 text-right font-medium">Line Total</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
@@ -199,10 +190,9 @@
                 </td>
                 <td class="px-6 py-4 text-center font-medium">{{ item?.quantity_ordered || 0 }}</td>
                 <td class="px-6 py-4 text-right font-mono">{{ formatCurrency(parseFloat(item?.unit_cost || 0)) }}</td>
-                <td class="px-6 py-4 text-center text-gray-600">{{ parseFloat(item?.tax_rate || 0).toFixed(0) }}%</td>
-                <td class="px-6 py-4 text-right font-mono font-medium text-blue-600">
-                  {{ formatCurrency(parseFloat(item?.line_total || 0)) }}
-                </td>
+                  <td class="px-6 py-4 text-right font-mono font-medium text-blue-600">
+                    {{ formatCurrency(parseFloat(item?.line_total || 0)) }}
+                  </td>
               </tr>
             </tbody>
           </table>
@@ -210,30 +200,30 @@
       </div>
   
       <!-- Financial Summary -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Subtotal</p>
-          <p class="text-2xl font-semibold text-gray-900">{{ formatCurrency(parseFloat(detail?.subtotal || 0)) }}</p>
-        </div>
-  
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Tax (VAT)</p>
-          <p class="text-2xl font-semibold text-gray-900">{{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}</p>
-        </div>
-  
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Net Charges</p>
-          <p class="text-2xl font-semibold text-gray-900">{{ formatCurrency(calculateNetCharges()) }}</p>
-          <div v-if="parseFloat(detail?.shipping_cost || 0) > 0 || parseFloat(detail?.discount_amount || 0) > 0"
-            class="text-xs text-gray-500 mt-2 flex flex-col">
-            <span v-if="parseFloat(detail?.shipping_cost || 0) > 0" class="flex items-center gap-1">
-              <i class="pi pi-truck text-xs"></i> +{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}
-            </span>
-            <span v-if="parseFloat(detail?.discount_amount || 0) > 0" class="flex items-center gap-1">
-              <i class="pi pi-tag text-xs"></i> -{{ formatCurrency(parseFloat(detail?.discount_amount || 0)) }}
-            </span>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Subtotal</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ formatCurrency(parseFloat(detail?.subtotal || 0)) }}</p>
           </div>
-        </div>
+
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Discount</p>
+            <p class="text-2xl font-semibold text-gray-900">
+              -{{ formatCurrency(parseFloat(detail?.discount_amount || 0)) }}
+              <span v-if="contractDiscountPercent" class="text-xs text-gray-400 ml-2">({{ contractDiscountPercent.toFixed(2) }}%)</span>
+            </p>
+            <div v-if="parseFloat(detail?.shipping_cost || 0) > 0" class="text-xs text-gray-500 mt-2 flex items-center gap-1">
+              <i class="pi pi-truck text-xs"></i> +{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Tax (VAT)</p>
+            <p class="text-2xl font-semibold text-gray-900">
+              {{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}
+              <span v-if="contractTaxRate" class="text-xs text-gray-400 ml-2">({{ contractTaxRate.toFixed(2) }}%)</span>
+            </p>
+          </div>
   
         <div class="bg-linear-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
           <p class="text-xs text-blue-100 font-medium uppercase tracking-wider mb-2">Total Amount</p>
@@ -369,7 +359,6 @@ import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useAuthStore } from '@/stores/auth'
 import financeService from '@/services/finance.service'
-import procurementService from '@/services/procurement.service'
 
 const route = useRoute()
 const router = useRouter()
@@ -381,6 +370,8 @@ const poId = Number(route.params.id)
 // State
 const loading = ref(false)
 const detail = ref<any>(null)
+const contractTaxRate = ref(0)
+const contractDiscountPercent = ref(0)
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 
@@ -388,7 +379,7 @@ const rejectReason = ref('')
 const loadDetail = async () => {
   loading.value = true
   try {
-    const response = await procurementService.getPurchaseOrder(poId)
+    const response = await financeService.getPurchaseOrder(poId)
     // Handle nested data structure
     if (response.data?.success && response.data?.data) {
       detail.value = response.data.data
@@ -397,6 +388,9 @@ const loadDetail = async () => {
     } else {
       detail.value = response.data
     }
+    const payload = response.data || response
+    contractTaxRate.value = Number(payload?.contract_tax_rate || payload?.data?.contract_tax_rate || 0) || 0
+    contractDiscountPercent.value = Number(payload?.contract_discount_percent || payload?.data?.contract_discount_percent || 0) || 0
   } catch (error) {
     console.error('Failed to load purchase order detail', error)
     toast.add({
@@ -461,12 +455,6 @@ const formatPaymentTerms = (term: string) => {
     advance_payment: 'Advance Payment'
   }
   return terms[term] || term?.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') || '-'
-}
-
-const calculateNetCharges = () => {
-  const shipping = parseFloat(detail.value?.shipping_cost || 0)
-  const discount = parseFloat(detail.value?.discount_amount || 0)
-  return shipping - discount
 }
 
 const confirmApprove = () => {
@@ -544,7 +532,7 @@ const submitReject = async () => {
   const reason = rejectReason.value.trim()
   if (!reason) return
   try {
-    await procurementService.rejectPurchaseOrder(poId, reason)
+    await financeService.rejectPurchaseOrder(poId, { reason })
     toast.add({
       severity: 'success',
       summary: 'Success',

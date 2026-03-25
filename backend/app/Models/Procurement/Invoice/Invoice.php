@@ -53,6 +53,10 @@ class Invoice extends Model
         'payment_amount' => 'decimal:2',
     ];
 
+    protected $appends = [
+        'subtotal',
+    ];
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
@@ -151,14 +155,16 @@ class Invoice extends Model
             }
         }
 
-        // Check amount match
-        $poAmount = $this->purchaseOrder->total_amount;
-        $invoiceAmount = $this->net_amount;
-        $tolerance = $poAmount * 0.02; // 2% tolerance
+        // 3-way amount comparison should use product subtotal only.
+        // Taxes/freight/discounts are invoice-level charges and are tracked separately.
+        $poAmount = (float) ($this->purchaseOrder->subtotal ?? 0);
+        $invoiceAmount = (float) ($this->invoice_amount ?? 0);
+        $tolerance = max($poAmount * 0.02, 0.01); // 2% tolerance, minimum 0.01
+        $base = $poAmount > 0 ? $poAmount : 1;
 
         if (abs($poAmount - $invoiceAmount) > $tolerance) {
-            $result['issues'][] = "Amount variance: PO={$poAmount}, Invoice={$invoiceAmount}, Variance=" . number_format(
-                (($invoiceAmount - $poAmount) / $poAmount) * 100,
+            $result['issues'][] = "Subtotal variance: PO={$poAmount}, Invoice={$invoiceAmount}, Variance=" . number_format(
+                (($invoiceAmount - $poAmount) / $base) * 100,
                 2
             ) . "%";
         } else {
@@ -177,6 +183,11 @@ class Invoice extends Model
         $this->save();
 
         return $result;
+    }
+
+    public function getSubtotalAttribute(): string
+    {
+        return (string) $this->invoice_amount;
     }
 
     /**

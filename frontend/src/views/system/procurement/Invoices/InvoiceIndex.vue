@@ -188,7 +188,7 @@
                         {{ formatStatus(inv.match_status) }}
                       </span>
                       <button
-                        v-if="inv.match_status === 'pending'"
+                        v-if="canApproveInvoices && inv.match_status === 'pending'"
                         @click="performMatch(inv)"
                         class="ml-2 text-xs text-blue-500 hover:text-blue-600 font-medium"
                       >
@@ -222,7 +222,7 @@
                         <i class="pi pi-eye text-gray-500 text-sm"></i>
                       </button>
                       <button
-                        v-if="inv.status === 'draft'"
+                        v-if="canManageInvoices && inv.status === 'draft'"
                         @click="editInvoice(inv)"
                         class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                         title="Edit"
@@ -363,8 +363,9 @@
                   </div>
                 </div>
 
-                <button
-                  @click="approveInvoice(inv)"
+                  <button
+                    v-if="canApproveInvoices"
+                    @click="approveInvoice(inv)"
                   class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2"
                 >
                   <i class="pi pi-check"></i>
@@ -433,9 +434,13 @@ import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManageInvoices = computed(() => authStore.hasPermission('procurement.invoices.manage'))
+const canApproveInvoices = computed(() => authStore.hasPermission('procurement.invoices.approve'))
 
 // State
 const invoices = ref<any[]>([])

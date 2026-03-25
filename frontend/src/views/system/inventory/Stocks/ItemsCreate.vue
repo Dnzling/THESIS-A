@@ -43,20 +43,21 @@
             </div>
           </div>
 
-          <!-- Stock Thresholds -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Reorder Point</label>
-              <InputNumber v-model="form.reorder_point" :min="0" showButtons class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Reorder Quantity</label>
-              <InputNumber v-model="form.reorder_quantity" :min="0" showButtons class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Safety Stock</label>
-              <InputNumber v-model="form.safety_stock" :min="0" showButtons class="w-full" />
-            </div>
+          <!-- Reorder Policy -->
+          <Message severity="secondary" :closable="false">
+            Reorder Point, Reorder Quantity, and Safety Stock are managed in <strong>Reorder Rules</strong> to avoid duplicate settings.
+          </Message>
+          <div class="flex justify-end">
+            <Button
+              label="Configure Reorder Rule"
+              icon="pi pi-sliders-h"
+              severity="info"
+              outlined
+              size="small"
+              type="button"
+              :disabled="!form.product_id"
+              @click="goToReorderRule"
+            />
           </div>
 
           <!-- Warehouse Location -->
@@ -132,9 +133,6 @@ const products = ref<any[]>([])
 
 const form = reactive({
   product_id: null as number | null,
-  reorder_point: 10,
-  reorder_quantity: 10,
-  safety_stock: 5,
   warehouse_section: '',
   aisle: '',
   rack: '',
@@ -195,6 +193,14 @@ const submitForm = async () => {
   } finally {
     submitting.value = false
   }
+}
+
+const goToReorderRule = () => {
+  if (!form.product_id) return
+  router.push({
+    name: 'inventory.reorder-rules.create',
+    query: { product_id: String(form.product_id) }
+  })
 }
 
 onMounted(() => {

@@ -54,8 +54,16 @@
             header="Purchase Order"
             :body="({ data }) => data.purchase_order?.po_number || data.po_number"
           />
-          <Column field="supplier_name" header="Supplier" />
-          <Column field="receipt_date" header="Receipt Date" />
+          <Column header="Supplier">
+            <template #body="{ data }">
+              {{ data.purchase_order?.supplier?.supplier_name || data.supplier_name || '-' }}
+            </template>
+          </Column>
+          <Column header="Receipt Date">
+            <template #body="{ data }">
+              <span class="text-sm text-gray-700">{{ formatDate(data.receipt_date) }}</span>
+            </template>
+          </Column>
           <Column header="Receipt Status">
             <template #body="{ data }">
               <Tag :value="data.receipt_status" :severity="statusSeverity(data.receipt_status)" />
@@ -63,7 +71,7 @@
           </Column>
           <Column header="Qty Items">
             <template #body="{ data }">
-              {{ data.items?.length || 0 }}
+              {{ data.items_count ?? data.items?.length ?? 0 }}
             </template>
           </Column>
           <Column header="Actions" style="width: 180px">
@@ -123,7 +131,8 @@ const loadReceipts = async () => {
   loading.value = true
   try {
     const response = await procurementService.getGoodsReceipts()
-    receipts.value = response.data?.data || []
+    const payload = response?.data ?? response
+    receipts.value = payload?.data?.data || payload?.data || payload || []
   } catch (error) {
     console.error('Failed to load goods receipts', error)
     receipts.value = []
@@ -137,6 +146,12 @@ const statusSeverity = (status: string) => {
   if (status === 'partial') return 'warning'
   if (['damaged', 'rejected'].includes(status)) return 'danger'
   return 'secondary'
+}
+
+const formatDate = (value: string | null | undefined): string => {
+  if (!value) return '-'
+  const d = new Date(value)
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const router = useRouter()

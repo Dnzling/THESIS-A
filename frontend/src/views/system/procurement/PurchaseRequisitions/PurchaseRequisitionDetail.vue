@@ -119,7 +119,7 @@
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3 flex-wrap">
         <button
-          v-if="detail.status === 'draft'"
+          v-if="canManageRequisitions && detail.status === 'draft'"
           @click="submit"
           :disabled="processing"
           class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
@@ -149,7 +149,7 @@
         </button>
         
         <button
-          v-if="detail.status === 'delivered' && deliveredPO"
+          v-if="canManageReceiving && detail.status === 'delivered' && deliveredPO"
           @click="createGoodsReceipt(deliveredPO)"
           class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
         >
@@ -358,9 +358,42 @@ const userRole = computed(() => authStore.userRole || '')
 const showRejectDialog = ref(false)
 const rejectReason = ref('')
 
+const normalize = (value: unknown): string =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+
+const hasApprovalPermission = computed(() => {
+  const has = (perm: string) => authStore.hasPermission?.(perm)
+  return (
+    has('procurement.requisitions.approve') ||
+    has('procurement.admin')
+  )
+})
+const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
+const canManageReceiving = computed(() => authStore.hasPermission('procurement.receiving.manage'))
+
 const canApprove = computed(() => {
   if (!detail.value) return false
-  return ['pending', 'warehouse_approved', 'branch_manager_approved'].includes(detail.value.status) && !!userRole.value
+  const status = normalize(detail.value.status)
+  const approvableStatuses = new Set([
+    'pending',
+    'warehouse_approved',
+    'branch_manager_approved',
+    'pending_central_review',
+  ])
+
+  return approvableStatuses.has(status) && hasApprovalPermission.value
+})
+
+const approvalRole = computed(() => {
+  const explicitRole = normalize(userRole.value)
+  if (explicitRole) return explicitRole
+
+  const raw = normalize((authStore.user as any)?.role)
+  if (raw) return raw
+  return ''
 })
 
 // Helper functions
@@ -475,11 +508,11 @@ const submit = async () => {
 const approve = async () => {
   processing.value = true
   try {
-    if (!userRole.value) {
+    if (!approvalRole.value) {
       toast.add({ severity: 'warn', summary: 'Missing Role', detail: 'Unable to determine your role.', life: 3000 })
       return
     }
-    const response = await procurementService.approvePurchaseRequisition(requisitionId, { role: userRole.value, notes: '' })
+    const response = await procurementService.approvePurchaseRequisition(requisitionId, { role: approvalRole.value, notes: '' })
     if (response.success) {
       toast.add({ severity: 'success', summary: 'Success', detail: 'PR approved', life: 3000 })
       await loadDetail()

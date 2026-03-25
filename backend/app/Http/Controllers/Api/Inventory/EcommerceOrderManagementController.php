@@ -3,9 +3,14 @@
 namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Models\Core\User;
+use App\Models\Ecommerce\EcommerceChatMessage;
+use App\Models\Ecommerce\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Models\Inventory\BranchInventory;
+use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +35,9 @@ class EcommerceOrderManagementController extends Controller
             ->with([
                 'user:id,fname,lname,email',
                 'store',
-                'delivery:id,order_id,status,vehicle_id,tracking_number,courier_name,estimated_delivery_at,dispatched_at,delivered_at',
+                'assignedBranch:id,name,branch_code,city,province',
+                'delivery:id,order_id,status,vehicle_id,driver_user_id,tracking_number,courier_name,courier_contact,estimated_delivery_at,dispatched_at,delivered_at',
+                'delivery.driver:id,fname,lname,email',
             ])
             ->withCount('items');
 
@@ -61,10 +68,14 @@ class EcommerceOrderManagementController extends Controller
             ->with([
                 'user:id,fname,lname,email',
                 'store',
-                'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
+                'assignedBranch:id,name,branch_code,city,province',
+                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_total',
                 'items.product:id,product_name,sku',
+                'items.branchInventory:id,branch_id,product_id,variation_id,quantity_available,stock_status',
+                'items.branchInventory.branch:id,name,branch_code,city,province',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type,status',
-                'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,created_by,created_at',
+                'delivery.driver:id,fname,lname,email',
+                'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
             ]);
 
@@ -203,6 +214,374 @@ class EcommerceOrderManagementController extends Controller
         ]);
     }
 
+    public function assignDelivery(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'driver_user_id' => 'required|exists:users,id',
+            'vehicle_id' => 'nullable|exists:ecommerce_delivery_vehicles,id',
+            'estimated_delivery_at' => 'nullable|date',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $query = EcommerceOrder::query()->with(['delivery', 'delivery.logs']);
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        if (in_array((string) $order->status, ['delivered', 'cancelled'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot assign delivery for completed or cancelled orders.',
+            ], 422);
+        }
+
+        $driver = $this->resolveDriver($order->store_id, (int) $validated['driver_user_id']);
+
+        DB::transaction(function () use ($request, $validated, $order, $driver): void {
+            $delivery = EcommerceOrderDelivery::query()->firstOrNew(['order_id' => $order->id], [
+                'store_id' => $order->store_id,
+                'created_by' => $request->user()->id,
+            ]);
+
+            $isNew = !$delivery->exists;
+            $previousDeliveryStatus = (string) ($delivery->status ?: 'assigned');
+            $previousOrderStatus = (string) $order->status;
+
+            $delivery->store_id = $order->store_id;
+            $delivery->vehicle_id = $validated['vehicle_id'] ?? $delivery->vehicle_id;
+            $delivery->driver_user_id = $driver->id;
+            $delivery->courier_name = trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? ''));
+            $delivery->courier_contact = $this->resolveDriverContact($driver) ?: $delivery->courier_contact;
+            $delivery->tracking_number = $delivery->tracking_number ?: $this->nextTrackingNumber($order->store_id);
+            $delivery->estimated_delivery_at = $validated['estimated_delivery_at'] ?? $delivery->estimated_delivery_at;
+            $delivery->notes = $validated['notes'] ?? $delivery->notes;
+            $delivery->status = 'in_transit';
+            $delivery->dispatched_at = $delivery->dispatched_at ?: now();
+            $delivery->updated_by = $request->user()->id;
+            $delivery->save();
+
+            if ($isNew) {
+                EcommerceDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'created',
+                    'status_to' => 'in_transit',
+                    'message' => 'Delivery assignment created.',
+                    'created_by' => $request->user()->id,
+                ]);
+            }
+
+            EcommerceDeliveryLog::query()->create([
+                'delivery_id' => $delivery->id,
+                'order_id' => $order->id,
+                'store_id' => $order->store_id,
+                'event_type' => 'driver_assigned',
+                'status_from' => $previousDeliveryStatus,
+                'status_to' => 'in_transit',
+                'message' => 'Courier assigned: ' . $delivery->courier_name,
+                'meta' => [
+                    'driver_user_id' => $driver->id,
+                    'driver_name' => $delivery->courier_name,
+                    'driver_contact' => $delivery->courier_contact,
+                    'tracking_number' => $delivery->tracking_number,
+                ],
+                'created_by' => $request->user()->id,
+            ]);
+
+            if ($previousDeliveryStatus !== 'in_transit') {
+                EcommerceDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'status_updated',
+                    'status_from' => $previousDeliveryStatus,
+                    'status_to' => 'in_transit',
+                    'message' => "Delivery status updated from {$previousDeliveryStatus} to in_transit.",
+                    'created_by' => $request->user()->id,
+                ]);
+            }
+
+            if ($previousOrderStatus !== 'shipped') {
+                $order->status = 'shipped';
+                $order->save();
+
+                EcommerceDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'status_updated',
+                    'status_from' => $previousOrderStatus,
+                    'status_to' => 'shipped',
+                    'message' => "Order status updated from {$previousOrderStatus} to shipped.",
+                    'created_by' => $request->user()->id,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery assigned successfully.',
+            'data' => EcommerceOrder::query()
+                ->with(['delivery.vehicle', 'delivery.driver:id,fname,lname,email'])
+                ->find($order->id),
+        ]);
+    }
+
+    public function updateDeliveryAssignment(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'driver_user_id' => 'nullable|exists:users,id',
+            'vehicle_id' => 'nullable|exists:ecommerce_delivery_vehicles,id',
+            'estimated_delivery_at' => 'nullable|date',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $query = EcommerceOrder::query()->with('delivery');
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+        $delivery = $order->delivery;
+
+        if (!$delivery) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No delivery assignment found for this order.',
+            ], 422);
+        }
+
+        $driver = null;
+        if (!empty($validated['driver_user_id'])) {
+            $driver = $this->resolveDriver($order->store_id, (int) $validated['driver_user_id']);
+        }
+
+        DB::transaction(function () use ($request, $validated, $delivery, $order, $driver): void {
+            $previousDriver = (int) ($delivery->driver_user_id ?? 0);
+
+            if (array_key_exists('vehicle_id', $validated)) {
+                $delivery->vehicle_id = $validated['vehicle_id'] ?: null;
+            }
+            if (array_key_exists('estimated_delivery_at', $validated)) {
+                $delivery->estimated_delivery_at = $validated['estimated_delivery_at'] ?: null;
+            }
+            if (array_key_exists('notes', $validated)) {
+                $delivery->notes = $validated['notes'] ?: null;
+            }
+            if ($driver) {
+                $delivery->driver_user_id = $driver->id;
+                $delivery->courier_name = trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? ''));
+                $delivery->courier_contact = $this->resolveDriverContact($driver) ?: $delivery->courier_contact;
+            }
+            if (!$delivery->tracking_number) {
+                $delivery->tracking_number = $this->nextTrackingNumber($order->store_id);
+            }
+            $delivery->updated_by = $request->user()->id;
+            $delivery->save();
+
+            EcommerceDeliveryLog::query()->create([
+                'delivery_id' => $delivery->id,
+                'order_id' => $order->id,
+                'store_id' => $order->store_id,
+                'event_type' => 'note',
+                'message' => 'Delivery assignment updated.',
+                'meta' => [
+                    'driver_user_id' => $delivery->driver_user_id,
+                    'driver_changed' => $previousDriver !== (int) ($delivery->driver_user_id ?? 0),
+                    'tracking_number' => $delivery->tracking_number,
+                ],
+                'created_by' => $request->user()->id,
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery assignment updated.',
+            'data' => EcommerceOrder::query()
+                ->with(['delivery.vehicle', 'delivery.driver:id,fname,lname,email'])
+                ->find($order->id),
+        ]);
+    }
+
+    public function branchTransferCandidates(Request $request, int $id): JsonResponse
+    {
+        $query = EcommerceOrder::query()->with(['items:id,order_id,product_id,quantity', 'assignedBranch:id,name,branch_code']);
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        $branches = Branch::query()
+            ->where('store_id', $order->store_id)
+            ->where('status', 'active')
+            ->where('id', '!=', $order->assigned_branch_id)
+            ->get(['id', 'name', 'branch_code', 'city', 'province']);
+
+        $rows = $branches->map(function (Branch $branch) use ($order) {
+            $allAvailable = true;
+            $items = [];
+
+            foreach ($order->items as $item) {
+                $inventory = BranchInventory::query()
+                    ->where('store_id', $order->store_id)
+                    ->where('branch_id', $branch->id)
+                    ->where('product_id', $item->product_id)
+                    ->first();
+
+                $available = (int) ($inventory?->quantity_available ?? 0);
+                $required = (int) $item->quantity;
+                $status = (string) ($inventory?->stock_status ?? 'out_of_stock');
+                $isAvailable = $available >= $required;
+
+                if (!$isAvailable) {
+                    $allAvailable = false;
+                }
+
+                $items[] = [
+                    'product_id' => $item->product_id,
+                    'required_qty' => $required,
+                    'available_qty' => $available,
+                    'stock_status' => $status,
+                    'is_available' => $isAvailable,
+                ];
+            }
+
+            return [
+                'branch' => $branch,
+                'can_fulfill' => $allAvailable,
+                'items' => $items,
+            ];
+        })->values();
+
+        return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    public function passToBranch(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'to_branch_id' => 'required|exists:branches,id',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $query = EcommerceOrder::query()->with(['items', 'delivery']);
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        if (!in_array((string) $order->status, ['pending', 'processing', 'packed'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Branch pass is only allowed for pending/processing/packed orders.',
+            ], 422);
+        }
+
+        $toBranch = Branch::query()
+            ->where('store_id', $order->store_id)
+            ->where('status', 'active')
+            ->findOrFail((int) $validated['to_branch_id']);
+
+        DB::transaction(function () use ($request, $order, $toBranch, $validated): void {
+            foreach ($order->items as $item) {
+                $targetInventory = BranchInventory::query()
+                    ->where('store_id', $order->store_id)
+                    ->where('branch_id', $toBranch->id)
+                    ->where('product_id', $item->product_id)
+                    ->first();
+
+                $available = (int) ($targetInventory?->quantity_available ?? 0);
+                if ($available < (int) $item->quantity) {
+                    abort(response()->json([
+                        'success' => false,
+                        'message' => "Selected branch cannot fulfill {$item->product_name}.",
+                    ], 422));
+                }
+
+                $item->branch_inventory_id = $targetInventory->id;
+                $item->save();
+            }
+
+            $fromBranchId = $order->assigned_branch_id;
+            $order->assigned_branch_id = $toBranch->id;
+            if (!empty($validated['notes'])) {
+                $line = '[' . now()->format('Y-m-d H:i') . '] Branch handoff: ' . trim((string) $validated['notes']);
+                $existing = trim((string) $order->notes);
+                $order->notes = $existing === '' ? $line : "{$existing}\n{$line}";
+            }
+            $order->save();
+
+            if ($order->delivery) {
+                EcommerceDeliveryLog::query()->create([
+                    'delivery_id' => $order->delivery->id,
+                    'order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'note',
+                    'message' => "Order fulfillment reassigned from branch {$fromBranchId} to branch {$toBranch->id}.",
+                    'meta' => [
+                        'from_branch_id' => $fromBranchId,
+                        'to_branch_id' => $toBranch->id,
+                    ],
+                    'created_by' => $request->user()->id,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order reassigned to selected branch.',
+            'data' => EcommerceOrder::query()
+                ->with(['assignedBranch:id,name,branch_code,city,province', 'items.branchInventory:id,branch_id,product_id,quantity_available,stock_status'])
+                ->find($order->id),
+        ]);
+    }
+
+    public function chatMessages(Request $request, int $id): JsonResponse
+    {
+        $query = EcommerceOrder::query()->with('user:id,fname,lname,email');
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        $thread = EcommerceChatThread::query()->firstOrCreate([
+            'store_id' => $order->store_id,
+            'customer_user_id' => $order->user_id,
+        ]);
+
+        $messages = EcommerceChatMessage::query()
+            ->with('sender:id,fname,lname')
+            ->where('thread_id', $thread->id)
+            ->orderByDesc('created_at')
+            ->paginate((int) $request->input('per_page', 50));
+
+        EcommerceChatMessage::query()
+            ->where('thread_id', $thread->id)
+            ->where('sender_role', 'customer')
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->json(['success' => true, 'data' => $messages, 'thread_id' => $thread->id]);
+    }
+
+    public function sendChatMessage(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'message' => 'required|string|max:2000',
+        ]);
+
+        $query = EcommerceOrder::query();
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        $thread = EcommerceChatThread::query()->firstOrCreate([
+            'store_id' => $order->store_id,
+            'customer_user_id' => $order->user_id,
+        ]);
+
+        $message = EcommerceChatMessage::query()->create([
+            'thread_id' => $thread->id,
+            'sender_user_id' => $request->user()->id,
+            'sender_role' => 'store',
+            'order_id' => $order->id,
+            'message' => trim((string) $validated['message']),
+        ]);
+
+        $thread->update(['last_message_at' => $message->created_at]);
+
+        return response()->json(['success' => true, 'data' => $message], 201);
+    }
+
     private function applyStoreScope(Request $request, $query): void
     {
         $user = $request->user();
@@ -263,6 +642,7 @@ class EcommerceOrderManagementController extends Controller
                 'description' => $log->message ?: 'Order updated.',
                 'status_from' => $log->status_from,
                 'status_to' => $log->status_to,
+                'meta' => $log->meta,
                 'actor' => $actor !== '' ? $actor : 'System',
                 'created_at' => $log->created_at,
             ];
@@ -286,5 +666,32 @@ class EcommerceOrderManagementController extends Controller
             'proof_uploaded' => 'Proof uploaded',
             default => 'Order update',
         };
+    }
+
+    private function resolveDriver(int $storeId, int $driverUserId): User
+    {
+        return User::query()
+            ->with('employee:id,user_id,phone,status')
+            ->where('id', $driverUserId)
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->firstOrFail();
+    }
+
+    private function resolveDriverContact(User $driver): ?string
+    {
+        $employeePhone = $driver->employee?->phone;
+        $userPhone = $driver->phone_number ?? null;
+
+        return $employeePhone ?: $userPhone;
+    }
+
+    private function nextTrackingNumber(int $storeId): string
+    {
+        do {
+            $tracking = sprintf('TRK-%s-%d-%04d', now()->format('YmdHis'), $storeId, random_int(1000, 9999));
+        } while (EcommerceOrderDelivery::query()->where('tracking_number', $tracking)->exists());
+
+        return $tracking;
     }
 }

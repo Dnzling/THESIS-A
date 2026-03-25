@@ -54,6 +54,18 @@ class AppServiceProvider extends ServiceProvider
             if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
                 return true;
             }
+
+            // Module admin bypass: e.g. procurement.admin grants procurement.*
+            if (str_contains($ability, '.')) {
+                $module = explode('.', $ability)[0] ?? null;
+                if ($module && method_exists($user, 'hasPermissionTo')) {
+                    $moduleAdmin = $module . '.admin';
+                    if ($user->hasPermissionTo($moduleAdmin)) {
+                        return true;
+                    }
+                }
+            }
+
             if (method_exists($user, 'hasPermissionTo')) {
                 return $user->hasPermissionTo($ability);
             }

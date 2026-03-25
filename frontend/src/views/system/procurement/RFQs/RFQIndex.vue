@@ -1,14 +1,15 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="p-6 min-h-screen">
     <!-- Header -->
     <div class="mb-6 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Request for Quotations</h1>
-        <p class="text-gray-600 mt-1">Manage RFQ lifecycle and supplier responses</p>
+        <h1 class="text-lg font-bold text-gray-800">Request for Quotations</h1>
+        <p class="text-xs text-gray-600 mt-1">Manage RFQ lifecycle and supplier responses</p>
       </div>
-      <Button label="Create RFQ" icon="pi pi-plus" severity="success" @click="router.push({ name: 'procurement.rfqs.create' })" size="large" />
+      <Button v-if="canManageRfq" label="Create RFQ" icon="pi pi-plus" severity="success"
+        @click="router.push({ name: 'procurement.rfqs.create' })" size="small" />
     </div>
-
+  
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
       <Card>
@@ -22,7 +23,7 @@
           </div>
         </template>
       </Card>
-
+  
       <Card>
         <template #content>
           <div class="flex items-center justify-between">
@@ -34,7 +35,7 @@
           </div>
         </template>
       </Card>
-
+  
       <Card>
         <template #content>
           <div class="flex items-center justify-between">
@@ -46,7 +47,7 @@
           </div>
         </template>
       </Card>
-
+  
       <Card>
         <template #content>
           <div class="flex items-center justify-between">
@@ -59,19 +60,19 @@
         </template>
       </Card>
     </div>
-
+  
     <!-- Filters -->
     <Card class="mb-6">
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold">Filter by Status</label>
-            <Select v-model="filterStatus" :options="statusOptions" optionLabel="label" optionValue="value" 
-              placeholder="All Statuses" clearable :change="loadRFQs" />
-          </div>
-          <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Search</label>
             <InputText v-model="searchQuery" placeholder="Search RFQ number or title..." @keyup="loadRFQs" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold">Filter by Status</label>
+            <Select v-model="filterStatus" :options="statusOptions" optionLabel="label" optionValue="value"
+              placeholder="All Statuses" clearable :change="loadRFQs" />
           </div>
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold">Per Page</label>
@@ -80,25 +81,20 @@
         </div>
       </template>
     </Card>
-
+  
     <!-- DataTable -->
     <Card>
       <template #content>
-        <DataTable 
-          :value="rfqs" 
-          :loading="loading" 
-          class="p-datatable-sm" 
-          stripedRows
-          :expandedRows="expandedRows"
-          responsiveLayout="scroll"
-          paginator
-          :rows="perPage"
-          :totalRecords="total"
-          :first="(currentPage - 1) * perPage"
-          @page="onPageChange"
-        >
-
-          
+        <DataTable :value="rfqs" :loading="loading" class="p-datatable-sm" stripedRows :expandedRows="expandedRows"
+          responsiveLayout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage"
+          @page="onPageChange">
+  
+          <Column header="Date" style="width: 120px">
+            <template #body="{ data }">
+              <span class="text-sm text-gray-700">{{ formatDate(data.issue_date) }}</span>
+            </template>
+          </Column>
+  
           <!-- RFQ Number -->
           <Column field="rfq_number" header="RFQ No." style="width: 120px">
             <template #body="{ data }">
@@ -107,27 +103,30 @@
               </span>
             </template>
           </Column>
-
+  
           <!-- Title -->
           <Column field="title" header="Title" style="width: 250px">
             <template #body="{ data }">
               <div>
                 <p class="font-semibold text-gray-900">{{ data.title }}</p>
-                <p class="text-xs text-gray-600 mt-1">Type: <span class="font-medium">{{ capitalizeWords(data.rfq_type) }}</span></p>
+                <p class="text-xs text-gray-600 mt-1">Type: <span class="font-medium">{{ capitalizeWords(data.rfq_type)
+                    }}</span></p>
               </div>
             </template>
           </Column>
-
-        
-
+  
+  
+  
+  
+  
           <!-- Status -->
           <Column field="status" header="Status" style="width: 130px">
             <template #body="{ data }">
               <Tag :value="data.status.toUpperCase()" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-
-            <!-- Created By -->
+  
+          <!-- Created By -->
           <Column field="created_by" header="Created By" style="width: 150px">
             <template #body="{ data }">
               <div v-if="data.created_by">
@@ -136,51 +135,25 @@
               </div>
             </template>
           </Column>
-      
-
+  
+  
           <!-- Actions -->
           <Column header="Actions" style="width: 160px">
             <template #body="{ data }">
-              <div class="flex gap-2 items-center justify-center">
-                <Button 
-                  icon="pi pi-eye" 
-                  text 
-                  rounded 
-                  severity="info" 
+              <div class="flex gap-2 items-center justify-start">
+                <Button icon="pi pi-eye" outlined rounded severity="info"
                   @click="router.push({ name: 'procurement.rfqs.detail', params: { id: data.id } })"
-                  v-tooltip="'View Details'"
-                />
-                <Button
-                  v-if="data.status === 'approved'"
-                  icon="pi pi-shopping-cart"
-                  text
-                  rounded
-                  severity="success"
-                  @click="createPOFromRFQ(data.id)"
-                  v-tooltip="'Create PO'"
-                />
-                <Button 
-                  v-if="data.status === 'draft'"
-                  icon="pi pi-pencil" 
-                  text 
-                  rounded 
-                  severity="warning" 
-                  @click="editRFQ(data.id)"
-                  v-tooltip="'Edit'"
-                />
-                <Button 
-                  v-if="data.status === 'draft'"
-                  icon="pi pi-trash" 
-                  text 
-                  rounded 
-                  severity="danger" 
-                  @click="deleteRFQ(data.id)"
-                  v-tooltip="'Delete'"
-                />
+                  v-tooltip="'View Details'" />
+                <Button v-if="canManagePurchaseOrders && data.status === 'approved'" icon="pi pi-shopping-cart" outlined
+                  rounded severity="success" @click="createPOFromRFQ(data.id)" v-tooltip="'Create PO'" />
+                <Button v-if="canManageRfq && data.status === 'draft'" icon="pi pi-pencil" outlined rounded
+                  severity="warning" @click="editRFQ(data.id)" v-tooltip="'Edit'" />
+                <Button v-if="canManageRfq && data.status === 'draft'" icon="pi pi-trash" outlined rounded
+                  severity="danger" @click="deleteRFQ(data.id)" v-tooltip="'Delete'" />
               </div>
             </template>
           </Column>
-
+  
           <!-- Expanded Row Detail -->
           <template #expansion="{ data }">
             <div class="p-6 bg-linear-to-r from-gray-50 to-gray-100 border-t">
@@ -203,7 +176,7 @@
                     </div>
                   </div>
                 </div>
-
+  
                 <!-- Terms Info -->
                 <div>
                   <h4 class="font-semibold text-gray-800 mb-3">💰 Terms & Conditions</h4>
@@ -222,7 +195,7 @@
                     </div>
                   </div>
                 </div>
-
+  
                 <!-- Assignment Info -->
                 <div>
                   <h4 class="font-semibold text-gray-800 mb-3">👤 Assignment</h4>
@@ -244,7 +217,7 @@
               </div>
             </div>
           </template>
-
+  
           <!-- Empty State -->
           <template #empty>
             <div class="text-center py-12">
@@ -253,7 +226,7 @@
               <p class="text-sm text-gray-500 mt-1">Create a new RFQ to get started</p>
             </div>
           </template>
-
+  
           <!-- Loading -->
           <template #loadingicon>
             <i class="pi pi-spin pi-spinner"></i>
@@ -269,9 +242,13 @@ import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
 const loading = ref(false)
 const rfqs = ref<any[]>([])

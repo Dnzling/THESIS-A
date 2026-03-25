@@ -15,9 +15,18 @@ class InventoryPermissionsSeeder extends Seeder
             // Dashboard / Configuration / Notifications / Requisites
             ['name' => 'inventory.dashboard.view', 'display_name' => 'View Inventory Dashboard', 'module' => 'inventory'],
             ['name' => 'inventory.configuration.manage', 'display_name' => 'Manage Inventory Configuration', 'module' => 'inventory'],
+            ['name' => 'inventory.ecommerce-orders.view', 'display_name' => 'View Ecommerce Orders (Inventory)', 'module' => 'inventory'],
+            ['name' => 'inventory.ecommerce-orders.manage', 'display_name' => 'Manage Ecommerce Orders (Inventory)', 'module' => 'inventory'],
+            ['name' => 'inventory.ecommerce-deliveries.view', 'display_name' => 'View Ecommerce Deliveries (Inventory)', 'module' => 'inventory'],
+            ['name' => 'inventory.ecommerce-deliveries.manage', 'display_name' => 'Manage Ecommerce Deliveries (Inventory)', 'module' => 'inventory'],
             ['name' => 'inventory.notifications.view', 'display_name' => 'View Inventory Notifications', 'module' => 'inventory'],
             ['name' => 'inventory.notifications.manage', 'display_name' => 'Manage Inventory Notifications', 'module' => 'inventory'],
             ['name' => 'inventory.requisites.view', 'display_name' => 'View Inventory Requisites', 'module' => 'inventory'],
+            ['name' => 'inventory.requisites.manage', 'display_name' => 'Manage Inventory Requisites', 'module' => 'inventory'],
+            ['name' => 'inventory.requisites.create', 'display_name' => 'Create Inventory Requisites', 'module' => 'inventory'],
+            ['name' => 'inventory.requisites.update', 'display_name' => 'Update Inventory Requisites', 'module' => 'inventory'],
+            ['name' => 'inventory.requisites.delete', 'display_name' => 'Delete Inventory Requisites', 'module' => 'inventory'],
+            ['name' => 'inventory.requisites.approve', 'display_name' => 'Approve Inventory Requisites', 'module' => 'inventory'],
 
             // Branch Inventory / Items
             ['name' => 'inventory.items.view', 'display_name' => 'View Branch Inventory', 'module' => 'inventory'],

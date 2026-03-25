@@ -29,6 +29,10 @@ class InventoryRolePermissionsSeeder extends Seeder
                 ->where('module', 'inventory')
                 ->whereIn('name', [
                     'inventory.dashboard.view',
+                    'inventory.ecommerce-orders.view',
+                    'inventory.ecommerce-orders.manage',
+                    'inventory.ecommerce-deliveries.view',
+                    'inventory.ecommerce-deliveries.manage',
                     'inventory.items.view',
                     'inventory.items.create',
                     'inventory.items.edit',
@@ -56,6 +60,10 @@ class InventoryRolePermissionsSeeder extends Seeder
                 ->where('module', 'inventory')
                 ->whereIn('name', [
                     'inventory.dashboard.view',
+                    'inventory.ecommerce-orders.view',
+                    'inventory.ecommerce-orders.manage',
+                    'inventory.ecommerce-deliveries.view',
+                    'inventory.ecommerce-deliveries.manage',
                     'inventory.items.view',
                     'inventory.items.create',
                     'inventory.items.edit',
@@ -76,6 +84,10 @@ class InventoryRolePermissionsSeeder extends Seeder
                 ->where('module', 'inventory')
                 ->whereIn('name', [
                     'inventory.dashboard.view',
+                    'inventory.ecommerce-orders.view',
+                    'inventory.ecommerce-orders.manage',
+                    'inventory.ecommerce-deliveries.view',
+                    'inventory.ecommerce-deliveries.manage',
                     'inventory.items.view',
                     'inventory.adjustments.view',
                     'inventory.transfers.view',
@@ -106,6 +118,8 @@ class InventoryRolePermissionsSeeder extends Seeder
                 ->where('module', 'inventory')
                 ->whereIn('name', [
                     'inventory.items.view',
+                    'inventory.ecommerce-orders.view',
+                    'inventory.ecommerce-deliveries.view',
                     'inventory.alerts.view',
                 ])
                 ->pluck('id'),

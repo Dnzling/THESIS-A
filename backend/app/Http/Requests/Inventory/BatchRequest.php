@@ -16,11 +16,7 @@ class BatchRequest extends FormRequest
             return false;
         }
 
-        if ($this->isMethod('POST')) {
-            return auth()->user()->can('inventory.batches.create');
-        }
-
-        return auth()->user()->can('inventory.batches.update');
+        return auth()->user()?->can('inventory.master_data.manage') ?? false;
     }
 
     /**

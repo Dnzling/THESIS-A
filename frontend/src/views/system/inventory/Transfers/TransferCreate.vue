@@ -27,7 +27,7 @@
                   optionValue="id" 
                   placeholder="Select source branch"
                   :loading="loadingBranches"
-                  :disabled="true"
+                  :disabled="true" fluid
                   @change="onFromBranchChange"
                   :class="{ 'p-invalid': errors.from_branch_id }"
                 />
@@ -59,7 +59,7 @@
               <DatePicker 
                 v-model="form.expected_receive_date" 
                 dateFormat="yy-mm-dd" 
-                class="w-full"
+                fluid showIcon
                 :minDate="new Date()"
                 :class="{ 'p-invalid': errors.expected_receive_date }"
               />
@@ -129,7 +129,7 @@
                   :max="selectedProduct?.quantity_on_hand || 999999"
                   showButtons
                   buttonLayout="horizontal"
-                  class="w-full"
+                 fluid
                 />
               </div>
 

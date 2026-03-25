@@ -19,6 +19,12 @@ class PermissionSeeder extends Seeder
     {
         DB::transaction(function (): void {
             $permissions = $this->generatePermissionAtoms();
+            $permissions[] = [
+                'name' => 'store.role.permission',
+                'display_name' => 'Access Store Roles UI',
+                'module' => 'store',
+                'description' => 'Allow store admins to manage store-specific roles and permissions.',
+            ];
 
             foreach ($permissions as $permission) {
                 Permission::query()->updateOrCreate(
@@ -62,6 +68,10 @@ class PermissionSeeder extends Seeder
                 })
                 ->pluck('id')
                 ->all();
+            $storeRolePermissionId = Permission::query()->where('name', 'store.role.permission')->value('id');
+            if ($storeRolePermissionId) {
+                $managerPermissions[] = $storeRolePermissionId;
+            }
 
             $staffPermissions = Permission::query()
                 ->where(function ($q): void {

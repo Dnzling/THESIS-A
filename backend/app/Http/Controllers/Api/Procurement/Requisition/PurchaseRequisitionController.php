@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\Config\ProcurementSettings;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -146,9 +147,20 @@ class PurchaseRequisitionController extends Controller
             // Generate PR number using datetime for uniqueness
             $prNumber = 'PR-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
+            // Resolve item estimated unit costs with fallback:
+            // request value -> best supplier linked price -> product cost_price -> product base_price
+            $resolvedItems = [];
+            foreach ($validated['items'] as $item) {
+                $item['estimated_unit_cost'] = $this->resolveEstimatedUnitCost(
+                    (int) $item['product_id'],
+                    $item['estimated_unit_cost'] ?? null
+                );
+                $resolvedItems[] = $item;
+            }
+
             // Calculate estimated amount
             $estimatedAmount = 0;
-            foreach ($validated['items'] as $item) {
+            foreach ($resolvedItems as $item) {
                 $estimatedAmount += ($item['quantity_requested'] * ($item['estimated_unit_cost'] ?? 0));
             }
 
@@ -194,7 +206,7 @@ class PurchaseRequisitionController extends Controller
             ]);
 
             // Create items
-            foreach ($validated['items'] as $item) {
+            foreach ($resolvedItems as $item) {
                 PurchaseRequisitionItem::create([
                     'requisition_id' => $pr->id,
                     'product_id' => $item['product_id'],
@@ -221,6 +233,37 @@ class PurchaseRequisitionController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function resolveEstimatedUnitCost(int $productId, $requestedCost): float
+    {
+        $requested = is_null($requestedCost) ? null : (float) $requestedCost;
+        if (!is_null($requested) && $requested > 0) {
+            return round($requested, 2);
+        }
+
+        $bestLinkedSupplierPrice = DB::table('supplier_products')
+            ->where('product_id', $productId)
+            ->whereNotNull('supplier_price')
+            ->orderByDesc('is_preferred_supplier')
+            ->orderBy('supplier_price')
+            ->value('supplier_price');
+
+        if (!is_null($bestLinkedSupplierPrice) && (float) $bestLinkedSupplierPrice > 0) {
+            return round((float) $bestLinkedSupplierPrice, 2);
+        }
+
+        $product = Product::query()
+            ->select(['id', 'cost_price', 'base_price'])
+            ->find($productId);
+
+        $costPrice = (float) ($product?->cost_price ?? 0);
+        if ($costPrice > 0) {
+            return round($costPrice, 2);
+        }
+
+        $basePrice = (float) ($product?->base_price ?? 0);
+        return round(max(0, $basePrice), 2);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 
 use App\Models\Inventory\ReorderRule;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\InventoryTransaction;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
@@ -18,6 +19,7 @@ class ReorderRuleService
         try {
             // Set default values
             $data['is_active'] = $data['is_active'] ?? true;
+            $data = $this->hydrateDemandDefaults($data);
 
             $rule = ReorderRule::create($data);
 
@@ -47,6 +49,8 @@ class ReorderRuleService
     {
         try {
             $oldData = $rule->toArray();
+            $mergedData = array_merge($oldData, $data);
+            $data = $this->hydrateDemandDefaults($data, $mergedData);
 
             $rule->update($data);
 
@@ -426,5 +430,66 @@ class ReorderRuleService
         return BranchInventory::where('product_id', $productId)
             ->where('branch_id', $branchId)
             ->sum('quantity_on_hand');
+    }
+
+    /**
+     * Fill demand-related values for demand+lead-time basis if caller did not provide them.
+     */
+    private function hydrateDemandDefaults(array $data, ?array $context = null): array
+    {
+        $basisType = (string) ($data['basis_type'] ?? $context['basis_type'] ?? 'reorder_point');
+        if ($basisType !== 'demand_lead_time') {
+            return $data;
+        }
+
+        $branchId = (int) ($data['branch_id'] ?? $context['branch_id'] ?? 0);
+        $productId = (int) ($data['product_id'] ?? $context['product_id'] ?? 0);
+
+        $incomingAvg = isset($data['avg_daily_demand']) ? (float) $data['avg_daily_demand'] : null;
+        if ($incomingAvg === null || $incomingAvg <= 0) {
+            $computed = $this->computeAverageDailyDemand($branchId, $productId);
+            if ($computed > 0) {
+                $data['avg_daily_demand'] = $computed;
+            }
+        }
+
+        // Safe fallback when there is still no historical demand.
+        $finalAvg = (float) ($data['avg_daily_demand'] ?? 0);
+        if ($finalAvg <= 0) {
+            $reorderPoint = (float) ($data['reorder_point'] ?? $context['reorder_point'] ?? 0);
+            $leadTime = (int) ($data['lead_time_days'] ?? $context['lead_time_days'] ?? 7);
+            if ($reorderPoint > 0 && $leadTime > 0) {
+                $data['avg_daily_demand'] = round(max(0.0001, $reorderPoint / $leadTime), 4);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Estimate average daily demand from recent branch sales transactions.
+     */
+    private function computeAverageDailyDemand(int $branchId, int $productId, int $lookbackDays = 30): float
+    {
+        if ($branchId <= 0 || $productId <= 0 || $lookbackDays <= 0) {
+            return 0.0;
+        }
+
+        $fromDate = now()->subDays($lookbackDays);
+
+        $unitsSold = (float) InventoryTransaction::query()
+            ->where('branch_id', $branchId)
+            ->where('product_id', $productId)
+            ->where('transaction_type', 'sale')
+            ->where('transaction_date', '>=', $fromDate)
+            ->where('quantity_change', '<', 0)
+            ->sum('quantity_change');
+
+        $unitsSold = abs($unitsSold);
+        if ($unitsSold <= 0) {
+            return 0.0;
+        }
+
+        return round($unitsSold / $lookbackDays, 4);
     }
 }

@@ -19,6 +19,14 @@ class PermissionService
             return true;
         }
 
+        // Treat ".manage" as an implicit superset of ".view" for the same resource.
+        if (str_ends_with($permissionName, '.view')) {
+            $managePermission = preg_replace('/\.view$/', '.manage', $permissionName);
+            if ($managePermission && in_array($managePermission, $permissions, true)) {
+                return true;
+            }
+        }
+
         // Allow wildcard fallback: module.*.action, module.resource.*
         $segments = explode('.', $permissionName);
 

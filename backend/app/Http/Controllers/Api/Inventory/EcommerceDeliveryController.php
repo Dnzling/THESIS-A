@@ -8,6 +8,7 @@ use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -71,7 +72,11 @@ class EcommerceDeliveryController extends Controller
         $this->applyStoreScope($request, $query);
         $delivery = $query->findOrFail($id);
 
-        return response()->json(['success' => true, 'data' => $delivery]);
+        $data = $delivery->toArray();
+        $data['proof_photo_url'] = $delivery->proof_of_delivery_path ? Storage::disk('public')->url($delivery->proof_of_delivery_path) : null;
+        $data['proof_signature_url'] = $delivery->proof_signature_path ? Storage::disk('public')->url($delivery->proof_signature_path) : null;
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function updateStatus(Request $request, int $id): JsonResponse
@@ -146,11 +151,20 @@ class EcommerceDeliveryController extends Controller
         $storeId = $user->hasRole('super_admin') && $request->filled('store_id')
             ? (int) $request->input('store_id')
             : (int) $user->store_id;
+        $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+
+        $roleIds = DB::table('role_permissions')
+            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+            ->whereIn('permissions.name', ['logistics.deliveries.view', 'logistics.deliveries.manage'])
+            ->pluck('role_permissions.role_id')
+            ->unique();
 
         $drivers = User::query()
-            ->with('role:id,name,display_name')
+            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,phone,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
+            ->when($roleIds->isNotEmpty(), fn ($q) => $q->whereIn('role_id', $roleIds))
+            ->when($branchId, fn ($q) => $q->whereHas('employee', fn ($employee) => $employee->where('branch_id', $branchId)))
             ->orderBy('fname')
             ->orderBy('lname')
             ->get()
@@ -158,6 +172,8 @@ class EcommerceDeliveryController extends Controller
                 'id' => $driver->id,
                 'name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                 'email' => $driver->email,
+                'contact' => $driver->employee?->phone ?? $driver->phone_number,
+                'branch_id' => $driver->employee?->branch_id,
                 'role' => $driver->role?->display_name ?? $driver->role?->name ?? 'N/A',
             ])
             ->values();
@@ -175,10 +191,17 @@ class EcommerceDeliveryController extends Controller
         $this->applyStoreScope($request, $query);
         $delivery = $query->findOrFail($id);
 
+        $roleIds = DB::table('role_permissions')
+            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+            ->whereIn('permissions.name', ['logistics.deliveries.view', 'logistics.deliveries.manage'])
+            ->pluck('role_permissions.role_id')
+            ->unique();
+
         $driver = User::query()
             ->where('id', (int) $validated['driver_user_id'])
             ->where('store_id', $delivery->store_id)
             ->where('is_active', true)
+            ->when($roleIds->isNotEmpty(), fn ($q) => $q->whereIn('role_id', $roleIds))
             ->firstOrFail();
 
         $delivery->driver_user_id = $driver->id;
@@ -224,22 +247,60 @@ class EcommerceDeliveryController extends Controller
         if (!empty($validated['notes'])) {
             $delivery->notes = trim((string) $validated['notes']);
         }
+        $previousStatus = (string) $delivery->status;
+        $delivery->status = 'delivered';
+        $delivery->delivered_at = $delivery->delivered_at ?: now();
         $delivery->updated_by = $request->user()->id;
         $delivery->save();
+
+        if ($delivery->order->status !== 'delivered') {
+            $delivery->order->status = 'delivered';
+            if ($delivery->order->payment_method === 'cod' && $delivery->order->payment_status === 'unpaid') {
+                $delivery->order->payment_status = 'paid';
+            }
+            $delivery->order->save();
+        }
+
+        $proofPhotoUrl = $delivery->proof_of_delivery_path ? Storage::disk('public')->url($delivery->proof_of_delivery_path) : null;
+        $proofSignatureUrl = $delivery->proof_signature_path ? Storage::disk('public')->url($delivery->proof_signature_path) : null;
 
         $this->logEvent(
             $delivery,
             'proof_uploaded',
             'Delivery proof uploaded.',
             $request->user()->id,
+            null,
+            null,
+            [
+                'proof_photo_url' => $proofPhotoUrl,
+                'proof_signature_url' => $proofSignatureUrl,
+            ],
         );
+
+        if ($previousStatus !== 'delivered') {
+            $this->logEvent(
+                $delivery,
+                'status_updated',
+                "Delivery status updated from {$previousStatus} to delivered.",
+                $request->user()->id,
+                $previousStatus,
+                'delivered'
+            );
+            $this->logEvent(
+                $delivery,
+                'note',
+                'Delivery marked as Delivered after proof submission.',
+                $request->user()->id
+            );
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Delivery proof uploaded successfully.',
             'data' => [
-                'proof_photo_url' => $delivery->proof_of_delivery_path ? Storage::disk('public')->url($delivery->proof_of_delivery_path) : null,
-                'proof_signature_url' => $delivery->proof_signature_path ? Storage::disk('public')->url($delivery->proof_signature_path) : null,
+                'proof_photo_url' => $proofPhotoUrl,
+                'proof_signature_url' => $proofSignatureUrl,
+                'status' => $delivery->status,
             ],
         ]);
     }

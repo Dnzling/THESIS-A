@@ -77,8 +77,9 @@
                   optionValue="value"
                   placeholder="Next"
                   class="w-40"
+                  :disabled="!canManageDeliveries"
                 />
-                <Button severity="info" text label="Update" @click="updateDelivery(data)" />
+                <Button severity="info" text label="Update" :disabled="!canManageDeliveries" @click="updateDelivery(data)" />
                 <Button severity="info" text icon="pi pi-eye" @click="openDetail(data.id)" />
               </div>
             </template>
@@ -93,7 +94,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import inventoryService from '@/services/inventory.service'
+import logisticsService from '@/services/logistics.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -103,11 +104,14 @@ import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const deliveries = ref<any[]>([])
+const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage')
 
 const filters = reactive({
   search: '',
@@ -128,7 +132,7 @@ const statusOptions = [
 const loadDeliveries = async () => {
   loading.value = true
   try {
-    const res = await inventoryService.getEcommerceDeliveries({
+    const res = await logisticsService.getDeliveries({
       page: pageState.page,
       per_page: pageState.rows,
       search: filters.search || undefined,
@@ -147,7 +151,7 @@ const loadDeliveries = async () => {
 const updateDelivery = async (row: any) => {
   if (!row.__next_status || row.__next_status === row.status) return
   try {
-    await inventoryService.updateEcommerceDeliveryStatus(row.id, { status: row.__next_status })
+    await logisticsService.updateDeliveryStatus(row.id, { status: row.__next_status })
     toast.add({ severity: 'success', summary: 'Updated', detail: 'Delivery status updated.', life: 2000 })
     loadDeliveries()
   } catch (error: any) {
@@ -161,8 +165,8 @@ const onPage = (event: any) => {
   loadDeliveries()
 }
 
-const openVehicles = () => router.push({ name: 'inventory.delivery-vehicles' })
-const openDetail = (id: number) => router.push({ name: 'inventory.ecommerce-deliveries.detail', params: { id } })
+const openVehicles = () => router.push({ name: 'logistics.vehicles' })
+const openDetail = (id: number) => router.push({ name: 'logistics.deliveries.detail', params: { id } })
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 const formatDateTime = (v: string | null) => (v ? new Date(v).toLocaleString('en-PH') : '-')
 const statusSeverity = (status: string) => {

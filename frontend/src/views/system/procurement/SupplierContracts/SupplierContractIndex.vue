@@ -5,7 +5,14 @@
         <h1 class="text-3xl font-bold text-gray-800">Supplier Contracts</h1>
         <p class="text-gray-600 mt-1">Manage supplier contracts with terms and document attachments</p>
       </div>
-      <Button label="Create Contract" icon="pi pi-plus" severity="success" @click="router.push({ name: 'procurement.supplier-contracts.create' })" size="large" />
+      <Button
+        v-if="canManageSupplierContracts"
+        label="Create Contract"
+        icon="pi pi-plus"
+        severity="success"
+        @click="router.push({ name: 'procurement.supplier-contracts.create' })"
+        size="large"
+      />
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -165,9 +172,9 @@
                 <Button icon="pi pi-eye" text rounded severity="info" 
                   @click="router.push({ name: 'procurement.supplier-contracts.detail', params: { id: data?.id } })"
                   v-tooltip="'View Details'" />
-                <Button v-if="data?.status === 'draft'" icon="pi pi-pencil" text rounded severity="warning" 
+                <Button v-if="canManageSupplierContracts && data?.status === 'draft'" icon="pi pi-pencil" text rounded severity="warning" 
                   @click="editContract(data?.id)" v-tooltip="'Edit'" />
-                <Button v-if="data?.status === 'draft'" icon="pi pi-trash" text rounded severity="danger" 
+                <Button v-if="canManageSupplierContracts && data?.status === 'draft'" icon="pi pi-trash" text rounded severity="danger" 
                   @click="deleteContract(data?.id)" v-tooltip="'Delete'" />
               </div>
             </template>
@@ -255,9 +262,12 @@ import { onMounted, ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const loading = ref(false)
 const contracts = ref<any[]>([])
 const expandedRows = ref<any[]>([])

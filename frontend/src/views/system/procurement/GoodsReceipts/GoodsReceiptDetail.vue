@@ -16,7 +16,7 @@
           <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
           <div>
             <h1 class="text-3xl font-bold text-gray-900">{{ receipt.grn_number }}</h1>
-            <p class="text-gray-500 mt-1">Goods Receipt for {{ receipt.po_number }}</p>
+            <p class="text-gray-500 mt-1">Goods Receipt for {{ receipt.po_number || '-' }}</p>
           </div>
         </div>
         <div class="flex gap-2">
@@ -42,7 +42,7 @@
           <template #content>
             <div>
               <p class="text-gray-500 text-sm">Status</p>
-              <Badge :value="receipt.status" :severity="statusSeverity(receipt.status)" class="mt-2" />
+              <Badge :value="receipt.receipt_status" :severity="statusSeverity(receipt.receipt_status)" class="mt-2" />
             </div>
           </template>
         </Card>
@@ -66,7 +66,7 @@
           <template #content>
             <div>
               <p class="text-gray-500 text-sm">Received Date</p>
-              <p class="text-xl font-bold text-gray-800 mt-2">{{ formatDate(receipt.received_date) }}</p>
+              <p class="text-xl font-bold text-gray-800 mt-2">{{ formatDate(receipt.receipt_date) }}</p>
             </div>
           </template>
         </Card>
@@ -106,7 +106,7 @@
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-600">Received Date</span>
-                    <span class="font-semibold">{{ formatDate(receipt.received_date) }}</span>
+                    <span class="font-semibold">{{ formatDate(receipt.receipt_date) }}</span>
                   </div>
                   <Divider />
                   <div class="flex justify-between">
@@ -177,9 +177,7 @@
             <template #content>
               <DataTable :value="receipt.items || []" class="p-datatable-sm" stripedRows>
                 <Column field="po_line_number" header="Line" style="width: 8%">
-                  <template #body="{ data }">
-                    #{{ data.po_line_number }}
-                  </template>
+                  <template #body="{ data }">#{{ data.po_line_number }}</template>
                 </Column>
                 <Column field="description" header="Description" style="width: 28%" />
                 <Column header="PO Qty" style="width: 10%">
@@ -399,14 +397,14 @@ const displayQualityStatus = computed(() => {
 
 // Computed
 const isLate = computed(() => {
-  if (!receipt.value?.received_date || !receipt.value?.expected_delivery_date) return false
-  return new Date(receipt.value.received_date) > new Date(receipt.value.expected_delivery_date)
+  if (!receipt.value?.receipt_date || !receipt.value?.expected_delivery_date) return false
+  return new Date(receipt.value.receipt_date) > new Date(receipt.value.expected_delivery_date)
 })
 
 const daysVariance = computed(() => {
-  if (!receipt.value?.received_date || !receipt.value?.expected_delivery_date) return 0
+  if (!receipt.value?.receipt_date || !receipt.value?.expected_delivery_date) return 0
   const expected = new Date(receipt.value.expected_delivery_date).getTime()
-  const received = new Date(receipt.value.received_date).getTime()
+  const received = new Date(receipt.value.receipt_date).getTime()
   return Math.floor((received - expected) / (1000 * 60 * 60 * 24))
 })
 
@@ -415,7 +413,9 @@ async function loadReceipt() {
   loading.value = true
   try {
     const response = await procurementService.getGoodsReceipt(Number(route.params.id))
-    receipt.value = response.data?.data || response.data
+    const payload = response?.data ?? response
+    const raw = payload?.data ?? payload
+    receipt.value = normalizeReceipt(raw)
     buildTimeline()
   } catch (error) {
     toast.add({
@@ -444,7 +444,7 @@ function buildTimeline() {
     },
     {
       label: 'Goods Received',
-      date: formatDate(receipt.value?.received_date),
+      date: formatDate(receipt.value?.receipt_date),
       color: isLate.value ? '#ef4444' : '#10b981',
     },
   ]
@@ -483,8 +483,9 @@ async function saveQualityCheck() {
 }
 
 function statusSeverity(status: string): string {
-  if (status === 'received' || status === 'verified') return 'success'
-  if (status === 'pending') return 'warning'
+  if (status === 'full') return 'success'
+  if (status === 'partial') return 'warning'
+  if (status === 'damaged' || status === 'rejected') return 'danger'
   return 'secondary'
 }
 
@@ -498,6 +499,45 @@ function qualitySeverity(status: string): string {
 function formatDate(date: string): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function normalizeReceipt(raw: any) {
+  if (!raw) return null
+  const po = raw.purchase_order || {}
+  const supplier = po.supplier || {}
+  const items = Array.isArray(raw.items)
+    ? raw.items.map((item: any) => {
+        const poItem = item.purchase_order_item || {}
+        const product = item.product || {}
+        return {
+          id: item.id,
+          po_line_number: item.purchase_order_item_id || poItem.id,
+          description: product.product_name || 'Unknown Product',
+          po_quantity: Number(poItem.quantity_ordered ?? item.quantity_expected ?? 0),
+          received_quantity: Number(item.quantity_received ?? 0),
+          unit: product.unit || '',
+          quality_status: item.condition || 'pending',
+          defect_notes: item.notes || '',
+        }
+      })
+    : []
+
+  return {
+    ...raw,
+    receipt_date: raw.receipt_date,
+    receipt_status: raw.receipt_status,
+    po_id: po.id,
+    po_number: po.po_number,
+    po_date: po.order_date,
+    expected_delivery_date: po.expected_delivery_date,
+    supplier_id: po.supplier_id,
+    supplier_name: supplier.supplier_name,
+    contact_person: supplier.contact_person,
+    email: supplier.email,
+    received_by: raw.received_by,
+    verified_by: raw.verified_by,
+    items,
+  }
 }
 
 function personName(person: any) {

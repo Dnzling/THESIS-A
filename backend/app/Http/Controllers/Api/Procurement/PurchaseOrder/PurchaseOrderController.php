@@ -11,6 +11,7 @@ use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Procurement\StockOrder\StockOrderRequest;
 use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
+use App\Models\Procurement\Supplier\SupplierContract;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -20,7 +21,7 @@ class PurchaseOrderController extends Controller
 {
     /**
      * List all purchase orders
-     * GET /api/procurement/purchase-orders
+     * GET /api/procurement/ purchase_orders
      */
     public function index(Request $request): JsonResponse
     {
@@ -75,7 +76,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Show single purchase order
-     * GET /api/procurement/purchase-orders/{id}
+     * GET /api/procurement/ purchase_orders/{id}
      */
     public function show(int $id): JsonResponse
     {
@@ -109,7 +110,7 @@ class PurchaseOrderController extends Controller
     /**
      * Create purchase order from stock order requests
      * PO can no longer be created from scratch - must come from stock requests
-     * POST /api/procurement/purchase-orders
+     * POST /api/procurement/ purchase_orders
      * 
      * Request body:
      * {
@@ -165,6 +166,12 @@ class PurchaseOrderController extends Controller
             $subtotal = 0;
             $taxAmount = 0;
             $items = [];
+            $contract = SupplierContract::where('store_id', $storeId)
+                ->where('supplier_id', $validated['supplier_id'])
+                ->active()
+                ->orderBy('end_date', 'desc')
+                ->first();
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
 
             if ($hasStockRequests) {
                 // Fetch all stock order requests
@@ -207,14 +214,15 @@ class PurchaseOrderController extends Controller
                         'variation_id' => $stockRequest->branchInventory->variation_id,
                         'quantity_ordered' => $stockRequest->requested_quantity,
                         'unit_cost' => $unitCost,
-                    'discount_percent' => 0,
-                    'tax_rate' => $product->tax_rate ?? 0,
-                ];
-            }
+                        'discount_percent' => 0,
+                        'tax_rate' => $headerTaxRate,
+                    ];
+                }
 
                 $shippingCost = 0;
                 $discountAmount = $validated['discount_amount'] ?? 0;
-                $totalAmount = $subtotal + $shippingCost - $discountAmount;
+                $taxAmount = $subtotal * ($headerTaxRate / 100);
+                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
 
                 // Get procurement settings for approval tiers
                 $settings = ProcurementSettings::where('store_id', $storeId)->first();
@@ -241,7 +249,7 @@ class PurchaseOrderController extends Controller
                     'required_approvers' => $approvalTier['approvers'] ?? [],
                     'rfq_required' => $rfqRequired,
                     'payment_status' => 'pending',
-                    'payment_terms' => $validated['payment_terms'] ?? 'net_30',
+                    'payment_terms' => $validated['payment_terms'] ?? null,
                     'order_date' => now()->toDateString(),
                     'expected_delivery_date' => null,
                     'created_by' => auth()->user()?->employee?->id,
@@ -250,7 +258,7 @@ class PurchaseOrderController extends Controller
                 ]);
 
                 // Calculate payment due date
-                $paymentTerms = $validated['payment_terms'] ?? 'net_30';
+                $paymentTerms = $validated['payment_terms'] ?? null;
                 $paymentDueDays = match ($paymentTerms) {
                     'net_7' => 7,
                     'net_15' => 15,
@@ -270,12 +278,12 @@ class PurchaseOrderController extends Controller
                         'quantity_ordered' => $item['quantity_ordered'],
                         'quantity_received' => 0,
                         'quantity_cancelled' => 0,
-                    'unit_cost' => $item['unit_cost'],
-                    'discount_percent' => $item['discount_percent'] ?? 0,
-                    'line_total' => $item['unit_cost'] * $item['quantity_ordered'],
-                    'tax_rate' => $item['tax_rate'] ?? 0,
-                ]);
-            }
+                        'unit_cost' => $item['unit_cost'],
+                        'discount_percent' => $item['discount_percent'] ?? 0,
+                        'line_total' => $item['unit_cost'] * $item['quantity_ordered'],
+                        'tax_rate' => $item['tax_rate'] ?? 0,
+                    ]);
+                }
 
                 // Mark stock order requests as converted
                 foreach ($stockOrderRequests as $stockRequest) {
@@ -302,6 +310,8 @@ class PurchaseOrderController extends Controller
                     }
                     $subtotal += $itemSubtotal;
 
+                    // Prefill tax from supplier default unless provided, fallback to 0
+                    $lineTaxRate = $headerTaxRate;
                     $items[] = [
                         'product_id' => $item['product_id'],
                         'variation_id' => $item['variation_id'] ?? null,
@@ -309,13 +319,14 @@ class PurchaseOrderController extends Controller
                         'unit_cost' => $unitCostValue,
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $itemSubtotal,
-                        'tax_rate' => $item['tax_rate'] ?? $product?->tax_rate ?? 0,
+                        'tax_rate' => $lineTaxRate,
                     ];
                 }
 
                 $shippingCost = 0;
                 $discountAmount = $validated['discount_amount'] ?? 0;
-                $totalAmount = $subtotal + $shippingCost - $discountAmount;
+                $taxAmount = $subtotal * ($headerTaxRate / 100);
+                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
 
                 // Get procurement settings for approval tiers
                 $settings = ProcurementSettings::where('store_id', $storeId)->first();
@@ -338,7 +349,7 @@ class PurchaseOrderController extends Controller
                     'required_approvers' => $approvalTier['approvers'] ?? [],
                     'rfq_required' => $rfqRequired,
                     'payment_status' => 'pending',
-                    'payment_terms' => $validated['payment_terms'] ?? 'net_30',
+                    'payment_terms' => $validated['payment_terms'] ?? null,
                     'order_date' => $validated['order_date'],
                     'expected_delivery_date' => null,
                     'created_by' => auth()->user()?->employee?->id,
@@ -346,7 +357,7 @@ class PurchaseOrderController extends Controller
                     'terms_conditions' => $validated['terms_conditions'] ?? null,
                 ]);
 
-                $paymentTerms = $validated['payment_terms'] ?? 'net_30';
+                $paymentTerms = $validated['payment_terms'] ?? null;
                 $paymentDueDays = match ($paymentTerms) {
                     'net_7' => 7,
                     'net_15' => 15,
@@ -407,7 +418,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Update purchase order
-     * PUT /api/procurement/purchase-orders/{id}
+     * PUT /api/procurement/ purchase_orders/{id}
      * Only allows draft POs to be edited
      */
     public function update(Request $request, int $id): JsonResponse
@@ -441,6 +452,15 @@ class PurchaseOrderController extends Controller
 
         DB::beginTransaction();
         try {
+            $storeId = $po->store_id ?? auth()->user()->store_id;
+            $supplierId = $validated['supplier_id'] ?? $po->supplier_id;
+            $contract = SupplierContract::where('store_id', $storeId)
+                ->where('supplier_id', $supplierId)
+                ->active()
+                ->orderBy('end_date', 'desc')
+                ->first();
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+
             // Update basic info
             $po->update([
                 'branch_id' => $validated['branch_id'] ?? $po->branch_id,
@@ -479,6 +499,7 @@ class PurchaseOrderController extends Controller
                         'unit_cost' => $item['unit_cost'],
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $itemSubtotal,
+                        'tax_rate' => $headerTaxRate,
                         'notes' => $item['notes'] ?? null,
                     ]);
                 }
@@ -486,11 +507,12 @@ class PurchaseOrderController extends Controller
                 // Update totals
                 $shippingCost = $po->shipping_cost ?? 0;
                 $discountAmount = $validated['discount_amount'] ?? $po->discount_amount;
-                $totalAmount = $subtotal + $shippingCost - $discountAmount;
+                $taxAmount = $subtotal * ($headerTaxRate / 100);
+                $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
 
                 $po->update([
                     'subtotal' => $subtotal,
-                    'tax_amount' => 0,
+                    'tax_amount' => $taxAmount,
                     'total_amount' => $totalAmount,
                 ]);
             }
@@ -514,7 +536,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Approve purchase order
-     * POST /api/procurement/purchase-orders/{id}/approve
+     * POST /api/procurement/ purchase_orders/{id}/approve
      */
     public function approve(Request $request, int $id): JsonResponse
     {
@@ -526,8 +548,8 @@ class PurchaseOrderController extends Controller
 
         $user = auth()->user();
         $approvalPermissions = [
-            'finance.purchase-orders.approve',
-            'procurement.purchase-orders.approve',
+            'finance.purchase_orders.approve',
+            'procurement.purchase_orders.approve',
         ];
 
         if (!$this->userHasAnyPermission($approvalPermissions, $user)) {
@@ -562,8 +584,13 @@ class PurchaseOrderController extends Controller
 
         // Check if this role is actually required for approval
         $requiredRoles = $po->required_approvers ?? [];
-        $requiresPermissions = collect($requiredRoles)->contains(fn($value) => is_string($value) && str_contains($value, '.'));
-        if ($requiresPermissions && !in_array($approvalPermission, $requiredRoles, true)) {
+        $normalizePermissionKey = static function ($value) {
+            return $value;
+        };
+
+        $normalizedRequiredRoles = array_map($normalizePermissionKey, $requiredRoles);
+        $requiresPermissions = collect($normalizedRequiredRoles)->contains(fn($value) => is_string($value) && str_contains($value, '.'));
+        if ($requiresPermissions && !in_array($approvalPermission, $normalizedRequiredRoles, true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'This permission is not required for approval of this purchase order',
@@ -572,9 +599,13 @@ class PurchaseOrderController extends Controller
 
         // Check if this role has already approved
         $approversReceived = collect($po->approvals_received ?? []);
-        $approverPermissions = $approversReceived->pluck('approver_permission')->filter()->toArray();
+        $approverPermissions = $approversReceived
+            ->pluck('approver_permission')
+            ->filter()
+            ->map($normalizePermissionKey)
+            ->toArray();
         if (in_array($approvalPermission, $approverPermissions, true)) {
-            if ($approvalPermission === 'finance.purchase-orders.approve' && $po->status !== 'approved') {
+            if ($approvalPermission === 'finance.purchase_orders.approve' && $po->status !== 'approved') {
                 $po->update(['status' => 'approved']);
                 return response()->json([
                     'success' => true,
@@ -599,7 +630,7 @@ class PurchaseOrderController extends Controller
         );
 
         // Finance approval is final in this workflow
-        if ($approvalPermission === 'finance.purchase-orders.approve') {
+        if ($approvalPermission === 'finance. purchase_orders.approve') {
             $po->update(['status' => 'approved']);
         } else {
             $this->tryAutoFinanceApprovalForDualRole($po, $user, $settings, $isSelfApproval);
@@ -621,6 +652,22 @@ class PurchaseOrderController extends Controller
             $po->id
         );
 
+        $creatorUserId = $po->createdBy?->user_id;
+        if ($creatorUserId) {
+            $this->notify($creatorUserId, [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'procurement',
+                'entity_type' => 'purchase_order',
+                'entity_id' => $po->id,
+                'action' => 'approved',
+                'title' => 'Purchase Order Approved',
+                'message' => "PO {$po->po_number} approved.",
+                'severity' => 'success',
+                'link' => "/system/procurement/purchase-orders/{$po->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Purchase order approved successfully',
@@ -630,7 +677,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Reject purchase order
-     * POST /api/procurement/purchase-orders/{id}/reject
+     * POST /api/procurement/ purchase_orders/{id}/reject
      */
     public function reject(Request $request, int $id): JsonResponse
     {
@@ -656,6 +703,22 @@ class PurchaseOrderController extends Controller
 
         $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'rejected');
 
+        $creatorUserId = $po->createdBy?->user_id;
+        if ($creatorUserId) {
+            $this->notify($creatorUserId, [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'procurement',
+                'entity_type' => 'purchase_order',
+                'entity_id' => $po->id,
+                'action' => 'rejected',
+                'title' => 'Purchase Order Rejected',
+                'message' => "PO {$po->po_number} rejected. Reason: {$validated['reason']}",
+                'severity' => 'danger',
+                'link' => "/system/procurement/purchase-orders/{$po->id}",
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Purchase order rejected',
@@ -664,7 +727,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Send PO to supplier
-     * POST /api/procurement/purchase-orders/{id}/send
+     * POST /api/procurement/ purchase_orders/{id}/send
      */
     public function send(int $id): JsonResponse
     {
@@ -691,6 +754,22 @@ class PurchaseOrderController extends Controller
                 $po->id
             );
 
+            $creatorUserId = $po->createdBy?->user_id;
+            if ($creatorUserId) {
+                $this->notify($creatorUserId, [
+                    'store_id' => $po->store_id,
+                    'branch_id' => $po->branch_id,
+                    'module' => 'procurement',
+                    'entity_type' => 'purchase_order',
+                    'entity_id' => $po->id,
+                    'action' => 'sent_to_supplier',
+                    'title' => 'Purchase Order Sent',
+                    'message' => "PO {$po->po_number} sent to supplier.",
+                    'severity' => 'info',
+                    'link' => "/system/procurement/purchase-orders/{$po->id}",
+                ]);
+            }
+
             DB::commit();
 
             return response()->json([
@@ -710,7 +789,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Cancel purchase order
-     * POST /api/procurement/purchase-orders/{id}/cancel
+     * POST /api/procurement/ purchase_orders/{id}/cancel
      */
     public function cancel(Request $request, int $id): JsonResponse
     {
@@ -748,7 +827,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Get PO summary/statistics
-     * GET /api/procurement/purchase-orders/summary
+     * GET /api/procurement/ purchase_orders/summary
      */
     public function summary(Request $request): JsonResponse
     {
@@ -782,7 +861,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Delete purchase order
-     * DELETE /api/procurement/purchase-orders/{id}
+     * DELETE /api/procurement/ purchase_orders/{id}
      */
     public function destroy(int $id): JsonResponse
     {
@@ -846,18 +925,18 @@ class PurchaseOrderController extends Controller
             return;
         }
 
-        if (!$this->userHasAnyPermission(['finance.purchase-orders.approve'], $user)) {
+        if (!$this->userHasAnyPermission(['finance. purchase_orders.approve'], $user)) {
             return;
         }
 
         $approvalsReceived = collect($po->approvals_received ?? []);
         $alreadyFinanceApproved = $approvalsReceived
             ->pluck('approver_permission')
-            ->contains('finance.purchase-orders.approve');
+            ->contains('finance.purchase_orders.approve');
 
         if (!$alreadyFinanceApproved) {
             $po->addApproval(
-                'finance.purchase-orders.approve',
+                'finance. purchase_orders.approve',
                 (int) $user->id,
                 (string) $user->full_name,
                 'Auto-approved by dual-role workflow policy.',

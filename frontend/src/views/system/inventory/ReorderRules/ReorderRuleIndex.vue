@@ -35,7 +35,7 @@
 
     <Card class="mb-4">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-gray-600">Search</label>
             <InputText v-model="filters.search" placeholder="Product name or SKU" />
@@ -43,10 +43,6 @@
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-gray-600">Priority</label>
             <Select v-model="filters.priority" :options="priorityOptions" optionLabel="label" optionValue="value" showClear />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-semibold text-gray-600">Rule Type</label>
-            <Select v-model="filters.rule_type" :options="ruleTypeOptions" optionLabel="label" optionValue="value" showClear />
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-gray-600">Status</label>
@@ -77,11 +73,8 @@
               </div>
             </template>
           </Column>
-          <Column field="rule_type" header="Rule Type" style="width: 120px">
-            <template #body="{ data }">{{ toLabel(data.rule_type) }}</template>
-          </Column>
-          <Column field="trigger_type" header="Trigger" style="width: 140px">
-            <template #body="{ data }">{{ toLabel(data.trigger_type) }}</template>
+          <Column field="basis_type" header="Basis" style="width: 160px">
+            <template #body="{ data }">{{ toLabel(data.basis_type || 'reorder_point') }}</template>
           </Column>
           <Column field="reorder_point" header="Reorder Point" style="width: 120px" />
           <Column field="reorder_quantity" header="Reorder Qty" style="width: 120px" />
@@ -138,7 +131,6 @@ const pagination = reactive({
 const filters = reactive({
   search: '',
   priority: null as string | null,
-  rule_type: null as string | null,
   is_active: null as boolean | null,
   page: 1,
   per_page: 15,
@@ -156,12 +148,6 @@ const priorityOptions = [
   { label: 'High', value: 'high' },
   { label: 'Medium', value: 'medium' },
   { label: 'Low', value: 'low' },
-]
-
-const ruleTypeOptions = [
-  { label: 'Automatic', value: 'automatic' },
-  { label: 'Manual', value: 'manual' },
-  { label: 'Demand Based', value: 'demand_based' },
 ]
 
 const activeOptions = [
@@ -277,7 +263,7 @@ const onPage = (event: any) => {
 
 let watchTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  () => [filters.search, filters.priority, filters.rule_type, filters.is_active],
+  () => [filters.search, filters.priority, filters.is_active],
   () => {
     filters.page = 1
     if (watchTimer) clearTimeout(watchTimer)

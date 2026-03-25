@@ -35,26 +35,26 @@ const inventoryRoutes: RouteRecordRaw[] = [
       {
         path: 'ecommerce-orders',
         name: 'inventory.ecommerce-orders',
-        component: () => import('../../views/system/inventory/EcommerceOrders/EcommerceOrderIndex.vue'),
+        redirect: '/sales/ecommerce-orders',
         meta: {
           title: 'Ecommerce Orders',
-          permission: 'inventory.items.view',
+          permission: 'sales.ecommerce-orders.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
-            { label: 'Ecommerce Orders' },
+            { label: 'Ecommerce Orders', to: '/sales/ecommerce-orders' },
           ],
         },
       },
       {
         path: 'ecommerce-orders/:id',
         name: 'inventory.ecommerce-orders.detail',
-        component: () => import('../../views/system/inventory/EcommerceOrders/EcommerceOrderDetail.vue'),
+        redirect: to => `/sales/ecommerce-orders/${to.params.id}`,
         meta: {
           title: 'Order Detail',
-          permission: 'inventory.items.view',
+          permission: 'sales.ecommerce-orders.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
-            { label: 'Ecommerce Orders', to: '/inventory/ecommerce-orders' },
+            { label: 'Ecommerce Orders', to: '/sales/ecommerce-orders' },
             { label: 'Detail' },
           ],
         },
@@ -64,10 +64,10 @@ const inventoryRoutes: RouteRecordRaw[] = [
       {
         path: 'ecommerce-deliveries',
         name: 'inventory.ecommerce-deliveries',
-        component: () => import('../../views/system/inventory/Deliveries/DeliveryIndex.vue'),
+        redirect: '/logistics/deliveries',
         meta: {
           title: 'Delivery Management',
-          permission: 'inventory.items.view',
+          permission: 'inventory.ecommerce_deliveries.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Deliveries' },
@@ -77,10 +77,10 @@ const inventoryRoutes: RouteRecordRaw[] = [
       {
         path: 'ecommerce-deliveries/:id',
         name: 'inventory.ecommerce-deliveries.detail',
-        component: () => import('../../views/system/inventory/Deliveries/DeliveryDetail.vue'),
+        redirect: to => `/logistics/deliveries/${to.params.id}`,
         meta: {
           title: 'Delivery Detail',
-          permission: 'inventory.items.view',
+          permission: 'inventory.ecommerce_deliveries.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Deliveries', to: '/inventory/ecommerce-deliveries' },
@@ -92,10 +92,10 @@ const inventoryRoutes: RouteRecordRaw[] = [
       {
         path: 'delivery-vehicles',
         name: 'inventory.delivery-vehicles',
-        component: () => import('../../views/system/inventory/Deliveries/DeliveryVehicles.vue'),
+        redirect: '/logistics/vehicles',
         meta: {
           title: 'Delivery Vehicles',
-          permission: 'inventory.items.view',
+          permission: 'inventory.ecommerce_deliveries.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Delivery Vehicles' },
@@ -110,7 +110,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Stocks/StocksIndex.vue'),
         meta: {
           title: 'Branch Inventory',
-          permission: 'inventory.items.view',
+          permission: 'inventory.branch_inventory.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Branch Inventory' },
@@ -123,7 +123,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Stocks/ItemsCreate.vue'),
         meta: {
           title: 'Add Inventory Item',
-          permission: 'inventory.items.create',
+          permission: 'inventory.branch_inventory.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Branch Inventory', to: '/inventory/items' },
@@ -137,7 +137,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Stocks/ItemsEdit.vue'),
         meta: {
           title: 'Edit Inventory Item',
-          permission: 'inventory.items.update',
+          permission: 'inventory.branch_inventory.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Branch Inventory', to: '/inventory/items' },
@@ -153,7 +153,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Products/ProductIndex.vue'),
         meta: {
           title: 'Product Catalog',
-          permission: 'inventory.products.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Products' },
@@ -166,7 +166,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Products/ProductDetail.vue'),
         meta: {
           title: 'Product Details',
-          permission: 'inventory.products.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Products', to: '/inventory/products' },
@@ -181,7 +181,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Categories/CategoryIndex.vue'),
         meta: {
           title: 'Categories',
-          permission: 'inventory.categories.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Categories' },
@@ -194,7 +194,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Categories/CategoryDetail.vue'),
         meta: {
           title: 'Category Details',
-          permission: 'inventory.categories.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Categories', to: '/inventory/categories' },
@@ -210,7 +210,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Units/UnitIndex.vue'),
         meta: {
           title: 'Units',
-          permission: 'inventory.units.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Units' },
@@ -223,7 +223,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Units/UnitCreate.vue'),
         meta: {
           title: 'Create Unit',
-          permission: 'inventory.units.create',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Units', to: '/inventory/units' },
@@ -237,7 +237,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Units/UnitDetail.vue'),
         meta: {
           title: 'Unit Details',
-          permission: 'inventory.units.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Units', to: '/inventory/units' },
@@ -251,7 +251,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Units/UnitEdit.vue'),
         meta: {
           title: 'Edit Unit',
-          permission: 'inventory.units.update',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Units', to: '/inventory/units' },
@@ -267,7 +267,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockIssues/StockIssueIndex.vue'),
         meta: {
           title: 'Stock Issues',
-          permission: 'inventory.stock-issues.view',
+          permission: 'inventory.stock_issues.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Issues' },
@@ -280,7 +280,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockIssues/StockIssueCreate.vue'),
         meta: {
           title: 'Create Stock Issue',
-          permission: 'inventory.stock-issues.create',
+          permission: 'inventory.stock_issues.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Issues', to: '/inventory/stock-issues' },
@@ -294,7 +294,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockIssues/StockIssueDetail.vue'),
         meta: {
           title: 'Stock Issue Details',
-          permission: 'inventory.stock-issues.view',
+          permission: 'inventory.stock_issues.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Issues', to: '/inventory/stock-issues' },
@@ -308,7 +308,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockIssues/StockIssueEdit.vue'),
         meta: {
           title: 'Stock Issue Edit',
-          permission: 'inventory.stock-issues.edit',
+          permission: 'inventory.stock_issues.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Issues', to: '/inventory/stock-issues' },
@@ -318,10 +318,10 @@ const inventoryRoutes: RouteRecordRaw[] = [
       },
 
       // =================== Purchase ORders ===========
-      { path: 'requisites', name: 'requisites.index', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionIndex.vue'), meta: { title: 'Stock Order Requests', subtitle: 'Manage stock order requests for low stock items', permission: 'inventory.requisites.view' } },
-      { path: 'requisites/create', name: 'requisites.create', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionCreate.vue'), meta: { title: 'Create Stock Order Request', subtitle: 'Request inventory for low stock items', permission: 'inventory.requisites.view' } },
-      { path: 'requisites/:id', name: 'requisites.detail', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionDetail.vue'), meta: { title: 'Stock Order Request Details', subtitle: 'View stock order request details', permission: 'inventory.requisites.view' } },
-      // { path: 'requisites/:id/edit', name: 'requisites.edit', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionEdit.vue'), meta: { title: 'Edit Stock Order Request', subtitle: 'Update stock order request details' } },
+      { path: 'requisites', name: 'inventory.requisites.index', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionIndex.vue'), meta: { title: 'Purchase Requisitions', subtitle: 'Manage purchase requisitions for your branch', permission: 'inventory.requisites.view' } },
+      { path: 'requisites/create', name: 'inventory.requisites.create', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionCreate.vue'), meta: { title: 'Create Purchase Requisition', subtitle: 'Request inventory replenishment for your branch', permission: 'inventory.requisites.manage' } },
+      { path: 'requisites/:id', name: 'inventory.requisites.detail', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionDetail.vue'), meta: { title: 'Purchase Requisition Details', subtitle: 'View purchase requisition details', permission: 'inventory.requisites.view' } },
+      // { path: 'requisites/:id/edit', name: 'inventory.requisites.edit', component: () => import('../../views/system/inventory/PurchaseRequisitions/PurchaseRequisitionEdit.vue'), meta: { title: 'Edit Stock Order Request', subtitle: 'Update stock order request details' } },
 
       // ==================== STOCK RETURNS ====================
       {
@@ -330,7 +330,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockReturns/StockReturnIndex.vue'),
         meta: {
           title: 'Stock Returns',
-          permission: 'inventory.stock-returns.view',
+          permission: 'inventory.stock_returns.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Returns' },
@@ -343,7 +343,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockReturns/StockReturnCreate.vue'),
         meta: {
           title: 'Create Stock Return',
-          permission: 'inventory.stock-returns.create',
+          permission: 'inventory.stock_returns.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Returns', to: '/inventory/stock-returns' },
@@ -357,7 +357,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockReturns/StockReturnDetail.vue'),
         meta: {
           title: 'Stock Return Details',
-          permission: 'inventory.stock-returns.view',
+          permission: 'inventory.stock_returns.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Returns', to: '/inventory/stock-returns' },
@@ -373,7 +373,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockCounts/StockCountIndex.vue'),
         meta: {
           title: 'Stock Counts',
-          permission: 'inventory.stock-counts.view',
+          permission: 'inventory.stock_counts.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Counts' },
@@ -386,7 +386,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockCounts/StockCountCreate.vue'),
         meta: {
           title: 'Create Stock Count',
-          permission: 'inventory.stock-counts.create',
+          permission: 'inventory.stock_counts.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Counts', to: '/inventory/stock-counts' },
@@ -400,7 +400,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/StockCounts/StockCountDetail.vue'),
         meta: {
           title: 'Stock Count Details',
-          permission: 'inventory.stock-counts.view',
+          permission: 'inventory.stock_counts.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Counts', to: '/inventory/stock-counts' },
@@ -416,7 +416,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Warehouses/WarehouseIndex.vue'),
         meta: {
           title: 'Warehouses',
-          permission: 'inventory.warehouses.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Warehouses' },
@@ -429,7 +429,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Warehouses/WarehouseCreate.vue'),
         meta: {
           title: 'Create Warehouse',
-          permission: 'inventory.warehouses.create',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Warehouses', to: '/inventory/warehouses' },
@@ -443,7 +443,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Warehouses/WarehouseDetail.vue'),
         meta: {
           title: 'Warehouse Details',
-          permission: 'inventory.warehouses.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Warehouses', to: '/inventory/warehouses' },
@@ -457,7 +457,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Warehouses/WarehouseEdit.vue'),
         meta: {
           title: 'Edit Warehouse',
-          permission: 'inventory.warehouses.update',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Warehouses', to: '/inventory/warehouses' },
@@ -473,7 +473,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Locations/LocationIndex.vue'),
         meta: {
           title: 'Locations',
-          permission: 'inventory.locations.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Locations' },
@@ -486,7 +486,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Locations/LocationCreate.vue'),
         meta: {
           title: 'Create Location',
-          permission: 'inventory.locations.create',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Locations', to: '/inventory/locations' },
@@ -500,7 +500,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Locations/LocationDetail.vue'),
         meta: {
           title: 'Location Details',
-          permission: 'inventory.locations.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Locations', to: '/inventory/locations' },
@@ -514,7 +514,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Locations/LocationEdit.vue'),
         meta: {
           title: 'Edit Location',
-          permission: 'inventory.locations.update',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Locations', to: '/inventory/locations' },
@@ -530,7 +530,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleIndex.vue'),
         meta: {
           title: 'Reorder Rules',
-          permission: 'inventory.reorder-rules.view',
+          permission: 'inventory.reorder_rules.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Reorder Rules' },
@@ -543,7 +543,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleCreate.vue'),
         meta: {
           title: 'Create Reorder Rule',
-          permission: 'inventory.reorder-rules.create',
+          permission: 'inventory.reorder_rules.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Reorder Rules', to: '/inventory/reorder-rules' },
@@ -557,7 +557,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleDetail.vue'),
         meta: {
           title: 'Reorder Rule Details',
-          permission: 'inventory.reorder-rules.view',
+          permission: 'inventory.reorder_rules.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Reorder Rules', to: '/inventory/reorder-rules' },
@@ -571,7 +571,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/ReorderRules/ReorderRuleEdit.vue'),
         meta: {
           title: 'Edit Reorder Rule',
-          permission: 'inventory.reorder-rules.update',
+          permission: 'inventory.reorder_rules.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Reorder Rules', to: '/inventory/reorder-rules' },
@@ -587,7 +587,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/ReorderSuggestions/ReorderSuggestionIndex.vue'),
         meta: {
           title: 'Reorder Suggestions',
-          permission: 'inventory.reorder-suggestions.view',
+          permission: 'inventory.reorder_suggestions.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Reorder Suggestions' },
@@ -600,7 +600,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/ReorderSuggestions/ReorderSuggestionDetail.vue'),
         meta: {
           title: 'Reorder Suggestion Details',
-          permission: 'inventory.reorder-suggestions.view',
+          permission: 'inventory.reorder_suggestions.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Reorder Suggestions', to: '/inventory/reorder-suggestions' },
@@ -616,7 +616,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberIndex.vue'),
         meta: {
           title: 'Serial Numbers',
-          permission: 'inventory.serial-numbers.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Serial Numbers' },
@@ -629,7 +629,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberCreate.vue'),
         meta: {
           title: 'Create Serial Number',
-          permission: 'inventory.serial-numbers.create',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Serial Numbers', to: '/inventory/serial-numbers' },
@@ -643,7 +643,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberDetail.vue'),
         meta: {
           title: 'Serial Number Details',
-          permission: 'inventory.serial-numbers.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Serial Numbers', to: '/inventory/serial-numbers' },
@@ -657,7 +657,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/SerialNumbers/SerialNumberEdit.vue'),
         meta: {
           title: 'Edit Serial Number',
-          permission: 'inventory.serial-numbers.update',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Serial Numbers', to: '/inventory/serial-numbers' },
@@ -673,7 +673,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Batches/BatchIndex.vue'),
         meta: {
           title: 'Batches',
-          permission: 'inventory.batches.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Batches' },
@@ -686,7 +686,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Batches/BatchCreate.vue'),
         meta: {
           title: 'Create Batch',
-          permission: 'inventory.batches.create',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Batches', to: '/inventory/batches' },
@@ -700,7 +700,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Batches/BatchDetail.vue'),
         meta: {
           title: 'Batch Details',
-          permission: 'inventory.batches.view',
+          permission: 'inventory.master_data.view',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Batches', to: '/inventory/batches' },
@@ -714,7 +714,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Batches/BatchEdit.vue'),
         meta: {
           title: 'Edit Batch',
-          permission: 'inventory.batches.update',
+          permission: 'inventory.master_data.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Batches', to: '/inventory/batches' },
@@ -743,7 +743,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Adjustments/AdjustmentCreate.vue'),
         meta: {
           title: 'Create Stock Adjustment',
-          permission: 'inventory.adjustments.create',
+          permission: 'inventory.adjustments.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Adjustments', to: '/inventory/adjustments' },
@@ -786,7 +786,7 @@ const inventoryRoutes: RouteRecordRaw[] = [
         component: () => import('../../views/system/inventory/Transfers/TransferCreate.vue'),
         meta: {
           title: 'Create Stock Transfer',
-          permission: 'inventory.transfers.create',
+          permission: 'inventory.transfers.manage',
           breadcrumb: [
             { label: 'Inventory', to: '/inventory' },
             { label: 'Stock Transfers', to: '/inventory/transfers' },
