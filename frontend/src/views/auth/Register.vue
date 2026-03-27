@@ -6,12 +6,13 @@
 import axios from 'axios';
 import { ref } from 'vue';
 import { useToast } from 'primevue/usetoast'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { RegisterFormData } from '../../components/auth/RegisterForm.vue'
 import RegisterForm from '../../components/auth/RegisterForm.vue';
 
 const toast = useToast()
 const router = useRouter()
+const route = useRoute()
 const isSubmitting = ref(false)
 
 // Handle form submission ===== for API =====
@@ -34,6 +35,10 @@ const handleRegister = async (formData: RegisterFormData) => {
     // Success
     localStorage.setItem('register_token', response.data.user.access_token)
     localStorage.setItem('otp_context', 'saas')
+
+    const selectedPlan = typeof route.query.plan === 'string' ? route.query.plan : 'simple'
+    localStorage.setItem('trial_plan', selectedPlan)
+
     router.push('/verify-otp')
 
   } catch (error: any) {

@@ -133,8 +133,38 @@ const financeService = {
     return response.data
   },
 
+  async getCashflowAccount() {
+    const response = await axiosClient.get(`${baseUrl}/cashflow/account`)
+    return response.data
+  },
+
+  async getCashflowTransactions(params?: any) {
+    const response = await axiosClient.get(`${baseUrl}/cashflow/transactions`, { params })
+    return response.data
+  },
+
+  async topUpCashflow(payload: {
+    amount: number
+    payment_method?: string
+    description?: string
+    notes?: string
+  }) {
+    const response = await axiosClient.post(`${baseUrl}/cashflow/top-up`, payload)
+    return response.data
+  },
+
+  async getReceivableDetail(source: 'sales' | 'ecommerce', id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/receivables/${source}/${id}`)
+    return response.data
+  },
+
   async getExpenses(params?: any) {
     const response = await axiosClient.get(`${baseUrl}/expenses`, { params })
+    return response.data
+  },
+
+  async getExpenseDetail(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/expenses/${id}`)
     return response.data
   },
 
@@ -193,13 +223,74 @@ const financeService = {
     return response.data
   },
 
+  async getPayrollPeriodDetail(payPeriodId: number | string, params?: any) {
+    const response = await axiosClient.get(`/api/payroll/pay-periods/${payPeriodId}/payroll`, { params })
+    return response.data
+  },
+
+  async submitPayroll(id: number) {
+    const response = await axiosClient.post(`/api/payroll/${id}/submit`)
+    return response.data
+  },
+
+  async bulkSubmitPayroll(payrollIds: Array<number | string>) {
+    const response = await axiosClient.post('/api/payroll/bulk-submit', { payroll_ids: payrollIds })
+    return response.data
+  },
+
+  async bulkApprovePayroll(payrollIds: Array<number | string>) {
+    const response = await axiosClient.post('/api/payroll/bulk-approve', { payroll_ids: payrollIds })
+    return response.data
+  },
+
   async approvePayroll(id: number) {
     const response = await axiosClient.post(`/api/payroll/${id}/approve`)
     return response.data
   },
 
-  async markPayrollPaid(id: number) {
-    const response = await axiosClient.post(`/api/payroll/${id}/mark-paid`)
+  async releasePayroll(id: number, payload?: { notes?: string }) {
+    const response = await axiosClient.post(`/api/payroll/${id}/release`, payload || {})
+    return response.data
+  },
+
+  async markPayrollPaid(
+    id: number,
+    payload?: {
+      payment_date?: string
+      payment_method?: string
+      reference_number?: string
+      notes?: string
+    }
+  ) {
+    const normalizedPayload = {
+      payment_date: payload?.payment_date ?? new Date().toISOString().slice(0, 10),
+      payment_method: payload?.payment_method ?? 'bank_transfer',
+      reference_number: payload?.reference_number,
+      notes: payload?.notes,
+    }
+
+    const response = await axiosClient.post(`/api/payroll/${id}/mark-paid`, normalizedPayload)
+    return response.data
+  },
+
+  async bulkMarkPayrollPaid(
+    payrollIds: Array<number | string>,
+    payload?: {
+      payment_date?: string
+      payment_method?: string
+      reference_number?: string
+      notes?: string
+    }
+  ) {
+    const normalizedPayload = {
+      payroll_ids: payrollIds,
+      payment_date: payload?.payment_date ?? new Date().toISOString().slice(0, 10),
+      payment_method: payload?.payment_method ?? 'bank_transfer',
+      reference_number: payload?.reference_number,
+      notes: payload?.notes,
+    }
+
+    const response = await axiosClient.post('/api/payroll/bulk-mark-paid', normalizedPayload)
     return response.data
   },
 }

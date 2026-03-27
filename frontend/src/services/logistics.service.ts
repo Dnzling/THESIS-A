@@ -3,6 +3,53 @@ import axiosClient from '../axios'
 class LogisticsService {
   private baseUrl = '/api/logistics'
 
+  async getDeliveryOrders(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-orders`, { params })
+    return response.data
+  }
+
+  async getDeliveryOrderDetail(source: 'ecommerce' | 'sales', orderId: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-orders/${source}/${orderId}`)
+    return response.data
+  }
+
+  async getLogisticsEmployees(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-orders/logistics-employees`, { params })
+    return response.data
+  }
+
+  async estimateDeliveryDistance(payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/distance-estimate`, payload)
+    return response.data
+  }
+
+  async assignDelivery(payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/assign`, payload)
+    return response.data
+  }
+
+  async updateUnifiedDeliveryStatus(source: 'ecommerce' | 'sales', orderId: string | number, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/delivery-orders/${source}/${orderId}/status`, payload)
+    return response.data
+  }
+
+  async getUnifiedDeliveryLogs(source: 'ecommerce' | 'sales', orderId: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/delivery-orders/${source}/${orderId}/logs`)
+    return response.data
+  }
+
+  async addUnifiedDeliveryLog(source: 'ecommerce' | 'sales', orderId: string | number, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/logs`, payload)
+    return response.data
+  }
+
+  async markUnifiedDelivered(source: 'ecommerce' | 'sales', orderId: string | number, payload: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/delivery-orders/${source}/${orderId}/delivered`, payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
   async getDeliveries(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/deliveries`, { params })
     return response.data

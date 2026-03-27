@@ -361,9 +361,9 @@ const loadDepartments = async () => {
 const loadRoles = async () => {
   loadingRoles.value = true
   try {
-    const response = await hrService.getRoles()
-    const items = response?.data || []
-    const excludedRoleNames = ['super_admin', 'admin', 'store_admin', 'owner', 'hr_manager', 'accountant', 'supplier', 'supplier_portal']
+    const response = await hrService.api.get('/api/store/roles/scoped')
+    const items = response?.data?.data || response?.data || []
+    const excludedRoleNames = ['super_admin', 'admin', 'store_admin', 'owner', 'supplier_portal']
     const excludedCodes = ['SA', 'ADM', 'OWN', 'SUPP']
 
     roleOptions.value = items

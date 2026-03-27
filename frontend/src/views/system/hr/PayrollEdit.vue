@@ -6,7 +6,7 @@
         <div>
           <h3 class="text-lg font-semibold">{{ batchInfo.name }}</h3>
           <p class="text-sm text-gray-600">
-            {{ formatDate(batchInfo.start_date) }}  {{ formatDate(batchInfo.end_date) }}
+            {{ formatDate(batchInfo.start_date) }} {{ formatDate(batchInfo.end_date) }}
             | Pay Date: {{ formatDate(batchInfo.pay_date) }}
           </p>
         </div>
@@ -16,58 +16,37 @@
         </div>
       </div>
     </div>
-
+  
     <!-- Search and Filters -->
-    <div class="flex gap-3 mb-4 flex-wrap">
-      <IconField iconPosition="left">
+    <div class="flex gap-2 mb-4">
+      <IconField iconPosition="left" class="w-64">
         <InputIcon>
           <i class="pi pi-search" />
         </InputIcon>
-        <InputText v-model="filters.search" placeholder="Search employee..." class="w-full" />
+        <InputText v-model="filters.search" placeholder="Search employee..." class="w-full" size="small" />
       </IconField>
-      <Select v-model="filters.branch" :options="branches" placeholder="All Branches" showClear class="w-48" />
-      <Select v-model="filters.department" :options="departments" placeholder="All Departments" showClear class="w-48" />
-      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-48" />
-      <Button
-        label="Save All Changes"
-        icon="pi pi-save"
-        severity="success"
-        :disabled="loading || saveAllLoading"
-        :loading="saveAllLoading"
-        @click="saveAllChanges"
-      />
-      <Button
-        label="Bulk Submit for Approval"
-        class="ml-auto"
-        icon="pi pi-send"
-        severity="info"
-        :disabled="!hasSelectedItems || bulkSubmitting"
-        :loading="bulkSubmitting"
-        @click="submitBatchForApproval"
-      />
+      <Select v-model="filters.branch" :options="branches" placeholder="All Branches" showClear class="w-40"
+        size="small" />
+      <Select v-model="filters.department" :options="departments" placeholder="All Departments" showClear class="w-40"
+        size="small" />
+      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-36"
+        size="small" />
+      <Button label="Save All Changes" icon="pi pi-save" severity="success" size="small"
+        :disabled="loading || saveAllLoading" :loading="saveAllLoading" @click="saveAllChanges" />
+      <Button label="Bulk Submit" icon="pi pi-send" severity="info" size="small"
+        :disabled="!hasSelectedItems || bulkSubmitting" :loading="bulkSubmitting" @click="submitBatchForApproval" />
     </div>
-
+  
     <!-- Payroll Table -->
-    <DataTable
-      :value="filteredPayrollItems"
-      :paginator="true"
-      :rows="10"
-      :rowsPerPageOptions="[10, 20, 50]"
-      tableStyle="min-width: 155rem"
-      :loading="loading"
+    <DataTable :value="filteredPayrollItems" :paginator="true" :rows="10" :rowsPerPageOptions="[10, 20, 50]"
+      tableStyle="min-width: 155rem" :loading="loading"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} employees"
-      sortMode="multiple"
-      rowHover
-      scrollable
-      scrollHeight="calc(100vh - 300px)"
-      v-model:selection="selectedItems"
-      removableSort
-      selectionMode="multiple"
-    >
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} employees" sortMode="multiple" rowHover
+      scrollable scrollHeight="calc(100vh - 300px)" v-model:selection="selectedItems" removableSort
+      selectionMode="multiple">
       <!-- Selection Column -->
       <Column selectionMode="multiple" headerStyle="width: 3rem" />
-
+  
       <!-- Employee Columns -->
       <Column class="text-xs" field="employeeName" header="Employee" sortable>
         <template #body="{ data }">
@@ -75,245 +54,135 @@
           <small class="text-gray-500">{{ data.employeeId }}</small>
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="branch" header="Branch" sortable />
       <Column class="text-xs" field="department" header="Department" sortable />
-
+  
       <!-- Financial Columns -->
       <Column class="text-xs" field="baseSalary" header="Base Salary" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.baseSalary"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.baseSalary" mode="currency" currency="PHP" locale="en-PH" :min="0"
+            @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="salaryPerHour" header="Rate/Hour" sortable>
         <template #body="{ data }">
           {{ formatCurrency(data.salaryPerHour) }}
         </template>
       </Column>
-
+  
       <!-- Earnings -->
       <Column class="text-xs" field="basicPay" header="Basic Pay" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.basicPay"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.basicPay" mode="currency" currency="PHP" locale="en-PH" :min="0"
+            @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="overtimePay" header="OT Pay" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.overtimePay"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.overtimePay" mode="currency" currency="PHP" locale="en-PH"
+            :min="0" @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="allowanceAmount" header="Allowance" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.allowanceAmount"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.allowanceAmount" mode="currency" currency="PHP" locale="en-PH"
+            :min="0" @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <!-- Deductions -->
       <Column class="text-xs font-semibold" header="Gov't Deductions" style="min-width: 180px">
         <template #body="{ data }">
           <div class="text-xs space-y-1">
             <div class="flex items-center gap-1">
               <span class="w-16">Tax:</span>
-              <InputNumber
-                size="small"
-                fluid
-                v-model="data.governmentDeductions.tax"
-                mode="currency"
-                currency="PHP"
-                locale="en-PH"
-                :min="0"
-                @blur="recalculateTotals(data)"
-              />
+              <InputNumber size="small" fluid v-model="data.governmentDeductions.tax" mode="currency" currency="PHP"
+                locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
             </div>
             <div class="flex items-center gap-1">
               <span class="w-16">SSS:</span>
-              <InputNumber
-                size="small"
-                fluid
-                v-model="data.governmentDeductions.sss"
-                mode="currency"
-                currency="PHP"
-                locale="en-PH"
-                :min="0"
-                @blur="recalculateTotals(data)"
-              />
+              <InputNumber size="small" fluid v-model="data.governmentDeductions.sss" mode="currency" currency="PHP"
+                locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
             </div>
             <div class="flex items-center gap-1">
               <span class="w-16">PhilHealth:</span>
-              <InputNumber
-                size="small"
-                fluid
-                v-model="data.governmentDeductions.philhealth"
-                mode="currency"
-                currency="PHP"
-                locale="en-PH"
-                :min="0"
-                @blur="recalculateTotals(data)"
-              />
+              <InputNumber size="small" fluid v-model="data.governmentDeductions.philhealth" mode="currency"
+                currency="PHP" locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
             </div>
             <div class="flex items-center gap-1">
               <span class="w-16">Pag-IBIG:</span>
-              <InputNumber
-                size="small"
-                fluid
-                v-model="data.governmentDeductions.pagibig"
-                mode="currency"
-                currency="PHP"
-                locale="en-PH"
-                :min="0"
-                @blur="recalculateTotals(data)"
-              />
+              <InputNumber size="small" fluid v-model="data.governmentDeductions.pagibig" mode="currency" currency="PHP"
+                locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
             </div>
           </div>
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="lateDeductions" header="Late" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.lateDeductions"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.lateDeductions" mode="currency" currency="PHP" locale="en-PH"
+            :min="0" @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="leaveDeductions" header="Leave" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.leaveDeductions"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.leaveDeductions" mode="currency" currency="PHP" locale="en-PH"
+            :min="0" @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="bonusPay" header="Bonus Pay" sortable>
         <template #body="{ data }">
-          <InputNumber
-            size="small"
-            fluid
-            v-model="data.bonusPay"
-            mode="currency"
-            currency="PHP"
-            locale="en-PH"
-            :min="0"
-            @blur="recalculateTotals(data)"
-          />
+          <InputNumber size="small" fluid v-model="data.bonusPay" mode="currency" currency="PHP" locale="en-PH" :min="0"
+            @blur="recalculateTotals(data)" />
         </template>
       </Column>
-
+  
       <!-- Totals -->
       <Column class="text-xs" field="grossPay" header="Gross Pay" sortable>
         <template #body="{ data }">
           <span class="font-bold text-green-600">{{ formatCurrency(data.grossPay) }}</span>
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="totalDeductions" header="Total Deductions" sortable>
         <template #body="{ data }">
           <span class="font-bold text-red-600">- {{ formatCurrency(data.totalDeductions) }}</span>
         </template>
       </Column>
-
+  
       <Column class="text-xs" field="netPay" header="Net Pay" sortable>
         <template #body="{ data }">
           <span class="font-bold text-blue-600">{{ formatCurrency(data.netPay) }}</span>
         </template>
       </Column>
-
+  
       <!-- Status -->
       <Column class="text-xs" field="status" header="Status" sortable>
         <template #body="{ data }">
           <Tag :severity="getStatusSeverity(data.status)" :value="data.status" />
         </template>
       </Column>
-
+  
       <!-- Actions -->
       <Column class="text-xs" header="Actions" style="min-width: 130px">
         <template #body="{ data }">
           <div class="flex gap-1">
-            <Button
-              icon="pi pi-save"
-              severity="success"
-              text
-              size="small"
-              @click="savePayrollItem(data)"
-              v-tooltip.top="'Save changes'"
-              :loading="data.saving"
-              :disabled="data.status !== 'draft'"
-            />
-            <Button
-              icon="pi pi-send"
-              severity="info"
-              text
-              size="small"
-              @click="submitForApproval(data)"
-              v-tooltip.top="'Submit for approval'"
-              :loading="data.submitting"
-              :disabled="data.status !== 'draft'"
-            />
-            <Button
-              icon="pi pi-print"
-              severity="secondary"
-              text
-              size="small"
-              @click="printPayslip(data)"
-              v-tooltip.top="'Print payslip'"
-            />
+            <Button icon="pi pi-save" severity="success" text size="small" @click="savePayrollItem(data)"
+              v-tooltip.top="'Save changes'" :loading="data.saving" :disabled="data.status !== 'draft'" />
+            <Button icon="pi pi-send" severity="info" text size="small" @click="submitForApproval(data)"
+              v-tooltip.top="'Submit for approval'" :loading="data.submitting" :disabled="data.status !== 'draft'" />
+            <Button icon="pi pi-print" severity="secondary" text size="small" @click="printPayslip(data)"
+              v-tooltip.top="'Print payslip'" />
           </div>
         </template>
       </Column>
-
+  
       <template #empty>
         <div class="text-center py-8 text-gray-500">
           <i class="pi pi-file text-4xl mb-2 block"></i>
@@ -754,18 +623,33 @@ onMounted(() => {
 }
 
 @container (min-width: 0px) and (max-width: 639px) {
-  .payroll-list :deep(.p-datatable) { font-size: 0.8rem; }
-  .payroll-list :deep(.p-inputnumber) { width: 100px; }
+  .payroll-list :deep(.p-datatable) {
+    font-size: 0.8rem;
+  }
+
+  .payroll-list :deep(.p-inputnumber) {
+    width: 100px;
+  }
 }
 
 @container (min-width: 640px) and (max-width: 1023px) {
-  .payroll-list :deep(.p-datatable) { font-size: 0.9rem; }
-  .payroll-list :deep(.p-inputnumber) { width: 120px; }
+  .payroll-list :deep(.p-datatable) {
+    font-size: 0.9rem;
+  }
+
+  .payroll-list :deep(.p-inputnumber) {
+    width: 120px;
+  }
 }
 
 @container (min-width: 1024px) {
-  .payroll-list :deep(.p-datatable) { font-size: 1rem; }
-  .payroll-list :deep(.p-inputnumber) { width: 140px; }
+  .payroll-list :deep(.p-datatable) {
+    font-size: 1rem;
+  }
+
+  .payroll-list :deep(.p-inputnumber) {
+    width: 140px;
+  }
 }
 </style>
 

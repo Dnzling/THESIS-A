@@ -17,7 +17,7 @@ const logisticsRoutes: RouteRecordRaw[] = [
       {
         path: 'deliveries',
         name: 'logistics.deliveries',
-        component: () => import('../../views/system/inventory/Deliveries/DeliveryIndex.vue'),
+        component: () => import('../../views/system/logistics/Deliveries/DeliveryIndex.vue'),
         meta: {
           title: 'Deliveries',
           permission: 'logistics.deliveries.view',
@@ -28,9 +28,23 @@ const logisticsRoutes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'deliveries/:id',
+        path: 'deliveries/create',
+        name: 'logistics.deliveries.create',
+        component: () => import('../../views/system/logistics/Deliveries/DeliveryCreate.vue'),
+        meta: {
+          title: 'Create Delivery',
+          permission: 'logistics.deliveries.manage',
+          breadcrumb: [
+            { label: 'Logistics', to: '/logistics' },
+            { label: 'Deliveries', to: '/logistics/deliveries' },
+            { label: 'Create' },
+          ],
+        },
+      },
+      {
+        path: 'deliveries/:source/:orderId',
         name: 'logistics.deliveries.detail',
-        component: () => import('../../views/system/inventory/Deliveries/DeliveryDetail.vue'),
+        component: () => import('../../views/system/logistics/Deliveries/DeliveryDetail.vue'),
         meta: {
           title: 'Delivery Detail',
           permission: 'logistics.deliveries.view',

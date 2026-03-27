@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Invoice\Invoice;
+use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class FinanceInvoiceController extends Controller
@@ -219,51 +221,68 @@ class FinanceInvoiceController extends Controller
             }
 
             $validated = $request->validate([
-                'payment_method' => 'required|in:cash,check,bank_transfer,credit_card',
+                'payment_method' => 'required|in:cash,check,bank_transfer,credit_card,paymongo_gcash,gcash',
                 'payment_amount' => 'required|numeric|min:0',
             ]);
 
-            if (!$invoice->markAsPaid($validated['payment_method'], (float) $validated['payment_amount'])) {
+            try {
+                DB::transaction(function () use ($invoice, $validated) {
+                    $cashflow = new CashflowService();
+                    $cashflow->debit(
+                        (int) $invoice->store_id,
+                        (float) $validated['payment_amount'],
+                        'invoice',
+                        (int) $invoice->id,
+                        auth()->id(),
+                        'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)),
+                        $validated['payment_method']
+                    );
+
+                    if (!$invoice->markAsPaid($validated['payment_method'], (float) $validated['payment_amount'])) {
+                        throw new \RuntimeException('Failed to mark invoice as paid');
+                    }
+
+                    $invoice->update([
+                        'status' => 'paid',
+                        'payment_date' => now()->toDateString(),
+                    ]);
+
+                    $financeService = new FinanceExpenseService();
+                    $expense = $financeService->ensureExpense([
+                        'store_id' => $invoice->store_id,
+                        'department' => 'procurement',
+                        'category' => 'supplier_invoice',
+                        'amount' => (float) $validated['payment_amount'],
+                        'expense_date' => $invoice->invoice_date,
+                        'status' => 'pending_approval',
+                        'reference_number' => $invoice->invoice_number,
+                        'reference_type' => 'invoice',
+                        'reference_id' => $invoice->id,
+                        'currency' => $invoice->currency ?? 'PHP',
+                        'description' => "Supplier invoice {$invoice->invoice_number}",
+                        'notes' => $invoice->remarks,
+                        'requested_by' => auth()->id(),
+                    ], true, auth()->id());
+
+                    if ($expense->status !== 'paid') {
+                        $expense->update([
+                            'status' => 'paid',
+                            'payment_method' => $validated['payment_method'],
+                            'payment_date' => now()->toDateString(),
+                            'paid_by' => auth()->id(),
+                            'paid_at' => now(),
+                        ]);
+                    }
+
+                    if ($invoice->purchaseOrder) {
+                        $invoice->purchaseOrder->update(['payment_status' => 'paid']);
+                    }
+                });
+            } catch (\RuntimeException $e) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to mark invoice as paid',
-                ], 500);
-            }
-
-            $invoice->update([
-                'status' => 'paid',
-                'payment_date' => now()->toDateString(),
-            ]);
-
-            $financeService = new FinanceExpenseService();
-            $expense = $financeService->ensureExpense([
-                'store_id' => $invoice->store_id,
-                'department' => 'procurement',
-                'category' => 'supplier_invoice',
-                'amount' => $invoice->net_amount ?? $invoice->invoice_amount,
-                'expense_date' => $invoice->invoice_date,
-                'status' => 'pending_approval',
-                'reference_number' => $invoice->invoice_number,
-                'reference_type' => 'invoice',
-                'reference_id' => $invoice->id,
-                'currency' => $invoice->currency ?? 'PHP',
-                'description' => "Supplier invoice {$invoice->invoice_number}",
-                'notes' => $invoice->remarks,
-                'requested_by' => auth()->id(),
-            ], true, auth()->id());
-
-            if ($expense->status !== 'paid') {
-                $expense->update([
-                    'status' => 'paid',
-                    'payment_method' => $validated['payment_method'],
-                    'payment_date' => now()->toDateString(),
-                    'paid_by' => auth()->id(),
-                    'paid_at' => now(),
-                ]);
-            }
-
-            if ($invoice->purchaseOrder) {
-                $invoice->purchaseOrder->update(['payment_status' => 'paid']);
+                    'message' => $e->getMessage(),
+                ], 422);
             }
 
             return response()->json([

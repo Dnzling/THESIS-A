@@ -1,9 +1,35 @@
 <template>
   <div class="space-y-6">
+    <Card class="border border-blue-100 bg-blue-50/40">
+      <template #content>
+        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div class="space-y-1">
+            <h3 class="text-base font-semibold text-gray-800">Enabled Store Modules</h3>
+            <p class="text-sm text-gray-600">Permissions are filtered to these modules only.</p>
+          </div>
+          <div class="flex w-full flex-col gap-2 md:w-auto md:min-w-120">
+            <MultiSelect
+              v-model="selectedModules"
+              :options="availableModuleOptions"
+              optionLabel="label"
+              optionValue="value"
+              display="chip"
+              filter
+              placeholder="Select enabled modules"
+              class="w-full"
+            />
+            <div class="flex justify-end">
+              <Button label="Save Modules" icon="pi pi-check" size="small" :loading="savingModules" @click="saveModules" />
+            </div>
+          </div>
+        </div>
+      </template>
+    </Card>
+
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Roles & Permissions</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage roles for your store</p>
+        <p class="text-sm text-gray-500 mt-1">Manage roles and assign permissions for enabled modules only</p>
       </div>
       <Button label="Create Role" icon="pi pi-plus" @click="openCreateRoleDialog" />
     </div>
@@ -60,10 +86,12 @@
 
     <Menu ref="roleMenu" :model="roleMenuItems" :popup="true" />
 
-    <Dialog v-model:visible="permissionsDialog" :style="{ width: '980px' }" header="Manage Permissions" modal>
-      <div v-if="selectedRole" class="mb-4">
-        <p class="text-sm text-gray-600">Role: <strong>{{ selectedRole.display_name }}</strong></p>
-      </div>
+    <Dialog v-model:visible="permissionsDialog" :style="{ width: '980px' }" header="Manage Permissions" :modal="true" maximizable>
+      <div v-if="selectedRole" class="space-y-4">
+        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <h3 class="font-semibold text-blue-900">{{ selectedRole.display_name }}</h3>
+          <p class="text-sm text-blue-700">{{ selectedRole.description || 'Manage role access by module and action.' }}</p>
+        </div>
 
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <InputText v-model="permissionAssignSearch" placeholder="Search module, sub module, action..." class="w-full md:w-80" />
@@ -85,7 +113,15 @@
         />
       </div>
 
-      <div class="max-h-[60vh] overflow-y-auto space-y-4">
+      <div v-if="loadingPermissionDialog" class="py-12 text-center text-gray-500">
+        Loading permissions...
+      </div>
+
+      <div v-else-if="groupedPermissionTree.length === 0" class="py-12 text-center text-gray-500">
+        No permissions available. Enable store modules first, then reopen this dialog.
+      </div>
+
+      <div v-else class="max-h-[60vh] overflow-y-auto space-y-4">
         <div v-for="module in groupedPermissionTree" :key="module.name" class="border border-gray-200 rounded-lg overflow-hidden">
           <div class="bg-gray-100 px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -140,19 +176,16 @@
           </div>
         </div>
       </div>
-
-      <div class="flex justify-end gap-2 mt-6">
-        <Button label="Cancel" text @click="permissionsDialog = false" />
-        <Button label="Save" :loading="savingPermissions" @click="saveRolePermissions" />
       </div>
+
+      <template #footer>
+        <Button label="Cancel" text @click="permissionsDialog = false" />
+        <Button label="Save Permissions" icon="pi pi-check" :loading="savingPermissions" @click="saveRolePermissions" />
+      </template>
     </Dialog>
 
     <Dialog v-model:visible="roleDialog" :style="{ width: '520px' }" :header="editingRole ? 'Edit Role' : 'Create Role'" modal>
       <form class="space-y-4" @submit.prevent="saveRole">
-        <div>
-          <label class="text-sm font-semibold">Name</label>
-          <InputText v-model="roleForm.name" class="w-full" placeholder="e.g. purchasing_manager" />
-        </div>
         <div>
           <label class="text-sm font-semibold">Display Name</label>
           <InputText v-model="roleForm.display_name" class="w-full" placeholder="Purchasing Manager" />
@@ -189,6 +222,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import axiosClient from '../../../axios'
+import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import Avatar from 'primevue/avatar'
@@ -199,8 +233,18 @@ import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Checkbox from 'primevue/checkbox'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
+import Card from 'primevue/card'
 
 const toast = useToast()
+const authStore = useAuthStore()
+
+const resolveUserStoreId = (): number | null => {
+  const user = authStore.currentUser as any
+  const rawStoreId = user?.store_id ?? user?.user_store_id
+  const parsed = Number(rawStoreId)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
 
 const roles = ref<any[]>([])
 const allPermissions = ref<any[]>([])
@@ -209,22 +253,33 @@ const selectedRolePermissions = ref<number[]>([])
 
 const permissionsDialog = ref(false)
 const savingPermissions = ref(false)
+const loadingPermissionDialog = ref(false)
 const permissionAssignSearch = ref('')
 const selectedAssignModule = ref<string | null>(null)
 
 const roleDialog = ref(false)
 const deleteRoleDialog = ref(false)
 const savingRole = ref(false)
+const savingModules = ref(false)
 const editingRole = ref<any>(null)
 const roleToDelete = ref<any>(null)
+const selectedModules = ref<string[]>([])
+const availableModules = ref<string[]>([])
 
 const roleForm = ref({
-  name: '',
   display_name: '',
   code: '',
   description: '',
   is_active: true,
 })
+
+const formatRoleName = (displayName: string): string => {
+  return displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
 
 const roleMenu = ref()
 const roleMenuItems = ref([
@@ -248,28 +303,6 @@ const roleMenuItems = ref([
     command: () => confirmDeleteRole(selectedRole.value),
   },
 ])
-
-const permissionsByModule = computed(() => {
-  const grouped: Record<string, any> = {}
-  allPermissions.value.forEach((permission: any) => {
-    if (!grouped[permission.module]) {
-      grouped[permission.module] = {
-        name: permission.module,
-        display_name: permission.module.charAt(0).toUpperCase() + permission.module.slice(1),
-        permissions: [],
-        total: 0,
-        selected: 0,
-      }
-    }
-    grouped[permission.module].permissions.push(permission)
-    grouped[permission.module].total++
-    if (selectedRolePermissions.value.includes(permission.id)) {
-      grouped[permission.module].selected++
-    }
-  })
-
-  return Object.values(grouped)
-})
 
 const groupedPermissionTree = computed(() => {
   const groups: Record<string, any> = {}
@@ -343,14 +376,61 @@ const assignableModules = computed(() =>
     }))
 )
 
+const availableModuleOptions = computed(() =>
+  availableModules.value.map((module) => ({
+    label: module.charAt(0).toUpperCase() + module.slice(1).replace(/_/g, ' '),
+    value: module,
+  }))
+)
+
 const loadRoles = async () => {
-  const response = await axiosClient.get('/api/store/roles')
+  const response = await axiosClient.get('/api/store/roles/scoped', {
+    params: {
+      user_store_id: resolveUserStoreId(),
+    },
+  })
   roles.value = response.data.data || response.data
 }
 
 const loadPermissions = async () => {
-  const response = await axiosClient.get('/api/store/permissions')
-  allPermissions.value = response.data.data || response.data
+  try {
+    const response = await axiosClient.get('/api/store/permissions', {
+      params: {
+        user_store_id: resolveUserStoreId(),
+      },
+    })
+    allPermissions.value = response.data.data || response.data
+  } catch (error: any) {
+    allPermissions.value = []
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to load permissions', life: 3000 })
+  }
+}
+
+const loadModules = async () => {
+  const response = await axiosClient.get('/api/store/modules', {
+    params: {
+      user_store_id: resolveUserStoreId(),
+    },
+  })
+  const data = response.data?.data || {}
+  selectedModules.value = data.enabled_modules || []
+  availableModules.value = data.available_modules || []
+}
+
+const saveModules = async () => {
+  savingModules.value = true
+  try {
+    await axiosClient.put('/api/store/modules', {
+      modules: selectedModules.value,
+      user_store_id: resolveUserStoreId(),
+    })
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Enabled modules updated', life: 3000 })
+    await loadPermissions()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to update modules', life: 3000 })
+  } finally {
+    savingModules.value = false
+  }
 }
 
 const hasPermission = (permissionId: number) => selectedRolePermissions.value.includes(permissionId)
@@ -407,13 +487,39 @@ const clearAssignFilters = () => {
 
 const openPermissionsDialog = async (role: any) => {
   selectedRole.value = role
-  const response = await axiosClient.get(`/api/store/roles/${role.id}/permissions`)
-  selectedRolePermissions.value = response.data.permissions.map((p: any) => p.id)
+  selectedRolePermissions.value = []
+  permissionAssignSearch.value = ''
+  selectedAssignModule.value = null
   permissionsDialog.value = true
+  loadingPermissionDialog.value = true
+
+  try {
+    const [permissionsResponse, rolePermissionsResponse] = await Promise.all([
+      axiosClient.get('/api/store/permissions', {
+        params: {
+          user_store_id: resolveUserStoreId(),
+        },
+      }),
+      axiosClient.get(`/api/store/roles/${role.id}/permissions`, {
+        params: {
+          user_store_id: resolveUserStoreId(),
+        },
+      }),
+    ])
+
+    allPermissions.value = permissionsResponse.data.data || permissionsResponse.data || []
+    selectedRolePermissions.value = (rolePermissionsResponse.data.permissions || []).map((p: any) => p.id)
+  } catch (error: any) {
+    allPermissions.value = []
+    selectedRolePermissions.value = []
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to load role permissions', life: 3000 })
+  } finally {
+    loadingPermissionDialog.value = false
+  }
 }
 
 const saveRolePermissions = async () => {
-  if (!selectedRole.value?.store_id) {
+  if (selectedRole.value?.store_id == null) {
     toast.add({ severity: 'warn', summary: 'Read-only', detail: 'System roles cannot be modified', life: 3000 })
     return
   }
@@ -422,10 +528,11 @@ const saveRolePermissions = async () => {
   try {
     await axiosClient.post(`/api/store/roles/${selectedRole.value.id}/permissions`, {
       permissions: selectedRolePermissions.value,
+      user_store_id: resolveUserStoreId(),
     })
     toast.add({ severity: 'success', summary: 'Success', detail: 'Permissions updated', life: 3000 })
     permissionsDialog.value = false
-    loadRoles()
+    await loadRoles()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to update permissions', life: 3000 })
   } finally {
@@ -435,18 +542,17 @@ const saveRolePermissions = async () => {
 
 const openCreateRoleDialog = () => {
   editingRole.value = null
-  roleForm.value = { name: '', display_name: '', code: '', description: '', is_active: true }
+  roleForm.value = { display_name: '', code: '', description: '', is_active: true }
   roleDialog.value = true
 }
 
 const openEditRoleDialog = (role: any) => {
-  if (!role?.store_id) {
+  if (role?.store_id == null) {
     toast.add({ severity: 'warn', summary: 'Read-only', detail: 'System roles cannot be edited', life: 3000 })
     return
   }
   editingRole.value = role
   roleForm.value = {
-    name: role.name,
     display_name: role.display_name,
     code: role.code || '',
     description: role.description || '',
@@ -458,11 +564,27 @@ const openEditRoleDialog = (role: any) => {
 const saveRole = async () => {
   savingRole.value = true
   try {
+    const generatedName = formatRoleName(roleForm.value.display_name)
+    if (!generatedName) {
+      toast.add({ severity: 'warn', summary: 'Invalid Display Name', detail: 'Please enter a valid display name.', life: 3000 })
+      return
+    }
+
+    const payload = {
+      ...roleForm.value,
+      name: generatedName,
+      user_store_id: resolveUserStoreId(),
+    }
+
     if (editingRole.value) {
-      await axiosClient.put(`/api/store/roles/${editingRole.value.id}`, roleForm.value)
+      await axiosClient.put(`/api/store/roles/${editingRole.value.id}`, payload, {
+        params: {
+          user_store_id: resolveUserStoreId(),
+        },
+      })
       toast.add({ severity: 'success', summary: 'Updated', detail: 'Role updated', life: 3000 })
     } else {
-      await axiosClient.post('/api/store/roles', roleForm.value)
+      await axiosClient.post('/api/store/roles', payload)
       toast.add({ severity: 'success', summary: 'Created', detail: 'Role created', life: 3000 })
     }
     roleDialog.value = false
@@ -475,7 +597,7 @@ const saveRole = async () => {
 }
 
 const confirmDeleteRole = (role: any) => {
-  if (!role?.store_id) {
+  if (role?.store_id == null) {
     toast.add({ severity: 'warn', summary: 'Read-only', detail: 'System roles cannot be deleted', life: 3000 })
     return
   }
@@ -487,10 +609,14 @@ const deleteRole = async () => {
   if (!roleToDelete.value) return
   savingRole.value = true
   try {
-    await axiosClient.delete(`/api/store/roles/${roleToDelete.value.id}`)
+    await axiosClient.delete(`/api/store/roles/${roleToDelete.value.id}`, {
+      params: {
+        user_store_id: resolveUserStoreId(),
+      },
+    })
     toast.add({ severity: 'success', summary: 'Deleted', detail: 'Role deleted', life: 3000 })
     deleteRoleDialog.value = false
-    loadRoles()
+    await loadRoles()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to delete role', life: 3000 })
   } finally {
@@ -504,6 +630,7 @@ const toggleRoleMenu = (event: Event, role: any) => {
 }
 
 onMounted(async () => {
+  await loadModules()
   await loadRoles()
   await loadPermissions()
 })

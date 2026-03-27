@@ -138,6 +138,7 @@
             <label class="block text-sm font-medium mb-1">First Name *</label>
             <InputText v-model="employeeForm.firstName" class="w-full" />
           </div>
+
           <div>
             <label class="block text-sm font-medium mb-1">Last Name *</label>
             <InputText v-model="employeeForm.lastName" class="w-full" />
@@ -155,13 +156,13 @@
         </div>
   
         <div>
-          <label class="block text-sm font-medium mb-1">Phone</label>
-          <InputText v-model="employeeForm.phone" class="w-full" />
+          <label class="block text-sm font-medium mb-1">Password *</label>
+          <InputText v-model="employeeForm.password" type="password" class="w-full" />
         </div>
-  
-        <div v-if="isEditMode">
-          <label class="block text-sm font-medium mb-1">Status</label>
-          <Select v-model="employeeForm.status" :options="statuses" optionLabel="label" class="w-full" />
+
+        <div>
+          <label class="block text-sm font-medium mb-1">Confirm Password *</label>
+          <InputText v-model="employeeForm.confirmPassword" type="password" class="w-full" />
         </div>
       </div>
   
@@ -219,7 +220,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../../../stores/auth'
-import hrService from '@/services/hr.services'
+import hrService from '../../../services/hr.services'
 import { useRouter } from 'vue-router'
 
 interface Department {
@@ -232,14 +233,14 @@ interface Status {
   value: string
 }
 
-interface EmployeeForm {
-  id: number | null;
-  firstName: string;
-  lastName: string;
-  role: RoleOption | null;
-  email: string;
-  phone: string;
-  status: string;
+interface EmployeeFormState {
+  id: number | null
+  firstName: string
+  lastName: string
+  role: RoleOption | null
+  email: string
+  password: string
+  confirmPassword: string
 }
 
 interface Employee {
@@ -291,14 +292,14 @@ const employeeStats = ref<StatCard[]>([
 
 
 // Form data
-const employeeForm = ref({
+const employeeForm = ref<EmployeeFormState>({
   id: null,
   firstName: '',
   lastName: '',
   role: null,
   email: '',
-  phone: '',
-  status: { label: 'Active', value: 'active' }
+  password: '',
+  confirmPassword: ''
 })
 
 // Departments for dropdown
@@ -421,21 +422,12 @@ const dialogHeader = computed(() => {
   return isEditMode.value ? 'Edit Employee' : 'Add New Employee'
 })
 
-// Reset filters
-const resetFilters = () => {
-  searchQuery.value = ''
-  filterDepartment.value = ''
-  filterStatus.value = ''
-}
-
-const hasActiveFilters = computed(() => {
-  return searchQuery.value !== '' || filterStatus.value !== null
-})
-
 // Helper functions
-const getInitials = (name: string) => {
-  if (!name) return '?'
-  return name.split(' ').map(n => n[0]).join('').toUpperCase()
+const getInitials = (firstName: string, lastName = '') => {
+  const first = String(firstName || '').trim()
+  const last = String(lastName || '').trim()
+  if (!first && !last) return '?'
+  return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase()
 }
 
 const getStatusClass = (status: string) => {
@@ -477,54 +469,97 @@ const editEmployee = (employee: Employee) => {
     lastName: employee.lname,
     role: matchedRole,
     email: employee.email,
-    phone: employee.phone,
-    status: statuses.value.find(s => s.value === employee.status) // Find by value to match your data
+    password: '',
+    confirmPassword: ''
   }
   showAddDialog.value = true
 }
 
-const saveEmployee = () => {
-  if (!employeeForm.value.firstName || !employeeForm.value.lastName ||
-    !employeeForm.value.role ||
-    !employeeForm.value.email) {
+const saveEmployee = async () => {
+  if (!employeeForm.value.firstName || !employeeForm.value.lastName || !employeeForm.value.role || !employeeForm.value.email) {
     alert('Please fill in all required fields')
     return
+  }
+
+  const selectedRole = employeeForm.value.role
+  if (!selectedRole) {
+    alert('Please select a role')
+    return
+  }
+
+  if (!isEditMode.value) {
+    if (!employeeForm.value.password || !employeeForm.value.confirmPassword) {
+      alert('Please enter password and confirm password')
+      return
+    }
+
+    if (employeeForm.value.password !== employeeForm.value.confirmPassword) {
+      alert('Password and confirm password do not match')
+      return
+    }
   }
 
   const employeeData = {
     fname: employeeForm.value.firstName,
     lname: employeeForm.value.lastName,
-    role_name: employeeForm.value.role.display_name,
+    role_name: selectedRole.display_name,
     email: employeeForm.value.email,
-    phone: employeeForm.value.phone,
-    status: employeeForm.value.status?.value || 'Active', // Use status.value
+    phone: '',
+    status: 'Active',
+    department: 'N/A',
     branch: 'Main Branch' // Add default branch or get from somewhere
   }
 
   if (isEditMode.value) {
+    const formId = employeeForm.value.id
+    if (formId === null) {
+      alert('Cannot update employee without a valid ID')
+      return
+    }
+
     // Update existing employee
-    const index = employees.value.findIndex(e => e.id === employeeForm.value.id)
+    const index = employees.value.findIndex(e => e.id === formId)
     if (index !== -1) {
+      const existingEmployee = employees.value[index]
+      if (!existingEmployee) {
+        return
+      }
       employees.value[index] = {
-        ...employees.value[index],
+        employee_number: existingEmployee.employee_number,
+        hireDate: existingEmployee.hireDate,
         ...employeeData,
-        id: employeeForm.value.id // Preserve the ID
+        id: formId
       }
     }
   } else {
-    // Add new employee
-    const newId = employees.value.length > 0
-      ? Math.max(...employees.value.map(e => e.id)) + 1
-      : 1
+    // Persist to backend so both users and employees tables are written.
+    try {
+      await hrService.api.post('/api/employees', {
+        fname: employeeForm.value.firstName,
+        lname: employeeForm.value.lastName,
+        email: employeeForm.value.email,
+        password: employeeForm.value.password,
+        role_id: selectedRole.id,
+        hire_date: new Date().toISOString().slice(0, 10),
+        department: 'Store Operations',
+        employment_type: 'full_time',
+        salary: 0,
+        status: 'active'
+      }, {
+        headers: {
+          'Authorization': `Bearer ${authStore.token}`
+        }
+      })
 
-    const newEmployee: Employee = {
-      id: newId,
-      employee_number: `EMP-${String(newId).padStart(3, '0')}`,
-      hireDate: new Date().toISOString(),
-      ...employeeData
+      await fetchEmployeesAxios()
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message
+      const apiErrors = error?.response?.data?.errors
+      const firstValidationError = apiErrors && Object.values(apiErrors)[0]
+      const firstMessage = Array.isArray(firstValidationError) ? firstValidationError[0] : null
+      alert(firstMessage || apiMessage || 'Failed to create employee')
+      return
     }
-
-    employees.value?.push(newEmployee)
   }
 
   cancelDialog()
@@ -539,8 +574,8 @@ const cancelDialog = () => {
     lastName: '',
     role: null,
     email: '',
-    phone: '',
-    status: { label: 'Active', value: 'active' }
+    password: '',
+    confirmPassword: ''
   }
 }
 

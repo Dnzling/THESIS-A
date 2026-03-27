@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\Finance\FinanceExpense;
+use App\Services\Finance\CashflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FinanceExpenseController extends Controller
 {
@@ -155,14 +157,38 @@ class FinanceExpenseController extends Controller
             'reference_number' => 'nullable|string',
         ]);
 
-        $expense->update([
-            'status' => 'paid',
-            'payment_method' => $validated['payment_method'],
-            'payment_date' => $validated['payment_date'],
-            'reference_number' => $validated['reference_number'] ?? null,
-            'paid_by' => auth()->id(),
-            'paid_at' => now(),
-        ]);
+        try {
+            DB::transaction(function () use ($expense, $validated) {
+                $cashflow = new CashflowService();
+                $cashflow->debit(
+                    (int) $expense->store_id,
+                    (float) $expense->amount,
+                    'finance_expense',
+                    (int) $expense->id,
+                    auth()->id(),
+                    'Expense payment #' . $expense->id,
+                    $validated['payment_method'] ?? null,
+                    [
+                        'category' => $expense->category,
+                        'department' => $expense->department,
+                    ]
+                );
+
+                $expense->update([
+                    'status' => 'paid',
+                    'payment_method' => $validated['payment_method'],
+                    'payment_date' => $validated['payment_date'],
+                    'reference_number' => $validated['reference_number'] ?? null,
+                    'paid_by' => auth()->id(),
+                    'paid_at' => now(),
+                ]);
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,

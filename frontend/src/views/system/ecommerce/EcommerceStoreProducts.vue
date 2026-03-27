@@ -179,9 +179,10 @@ async function loadStoreSummary() {
 async function loadProducts() {
   loadingProducts.value = true
   try {
-    const response = await ecommerceService.getStoreProducts(route.params.storeId as string, {
+    const response = await ecommerceService.getActiveStockProducts({
+      store_id: Number(route.params.storeId),
       search: search.value || undefined,
-      sort: sort.value,
+      sort: sort.value === 'popular' ? undefined : sort.value,
       category_id: selectedCategoryId.value || undefined,
       per_page: 24,
     })

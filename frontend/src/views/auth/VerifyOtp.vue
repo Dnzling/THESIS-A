@@ -28,7 +28,7 @@
               Enter 6-digit verification code
             </label>
             <div class="flex justify-center space-x-2 mb-6">
-              <input v-for="(digit, index) in otpDigits" :key="index" ref="otpInputs" v-model="otpDigits[index]"
+              <input v-for="(_, index) in otpDigits" :key="index" ref="otpInputs" v-model="otpDigits[index]"
                 type="text" maxlength="1" @input="handleOtpInput(index, $event)"
                 @keydown="handleOtpKeydown(index, $event)" @paste="handlePaste"
                 class="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition"
@@ -90,6 +90,7 @@
         </form>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -101,14 +102,14 @@ import axios from 'axios'
 const router = useRouter()
 
 // OTP handling
-const otpDigits = ref(Array(6).fill(''))
-const otpInputs = ref([])
+const otpDigits = ref<string[]>(Array(6).fill(''))
+const otpInputs = ref<(HTMLInputElement | null)[]>([])
 const isLoading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 const isVerified = ref(false)
 const resendCooldown = ref(0)
-const accessToken = ref('')
+const accessToken = ref<string | null>(null)
 
 // Compute full OTP from digits
 const fullOtp = computed(() => otpDigits.value.join(''))
@@ -116,9 +117,15 @@ const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
 const otpContextLabel = computed(() => isCustomerOtp.value ? 'FurniShop Customer Verification' : 'FurniSync SaaS Verification')
 
+const focusOtpInput = (index: number) => {
+  const input = otpInputs.value[index]
+  if (input) input.focus()
+}
+
 // Handle OTP input
-const handleOtpInput = (index, event) => {
-  const value = event.target.value
+const handleOtpInput = (index: number, event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  const value = target?.value || ''
 
   // Only allow numbers
   if (!/^\d*$/.test(value)) {
@@ -128,7 +135,7 @@ const handleOtpInput = (index, event) => {
 
   // Auto-focus next input if a digit is entered
   if (value && index < 5) {
-    otpInputs.value[index + 1]?.focus()
+    focusOtpInput(index + 1)
   }
 
   // Clear error when user types
@@ -136,35 +143,35 @@ const handleOtpInput = (index, event) => {
 }
 
 // Handle keyboard navigation
-const handleOtpKeydown = (index, event) => {
+const handleOtpKeydown = (index: number, event: KeyboardEvent) => {
   // Handle backspace
   if (event.key === 'Backspace' && !otpDigits.value[index] && index > 0) {
-    otpInputs.value[index - 1]?.focus()
+    focusOtpInput(index - 1)
   }
 
   // Handle arrow keys
   if (event.key === 'ArrowLeft' && index > 0) {
-    otpInputs.value[index - 1]?.focus()
+    focusOtpInput(index - 1)
   }
   if (event.key === 'ArrowRight' && index < 5) {
-    otpInputs.value[index + 1]?.focus()
+    focusOtpInput(index + 1)
   }
 }
 
 // Handle paste
-const handlePaste = (event) => {
+const handlePaste = (event: ClipboardEvent) => {
   event.preventDefault()
-  const pastedData = event.clipboardData.getData('text').trim()
+  const pastedData = event.clipboardData?.getData('text').trim() || ''
 
   // Only accept numbers and exactly 6 digits
   if (/^\d{6}$/.test(pastedData)) {
     const digits = pastedData.split('')
-    digits.forEach((digit, index) => {
+    digits.forEach((digit: string, index: number) => {
       if (index < 6) {
         otpDigits.value[index] = digit
       }
     })
-    otpInputs.value[5]?.focus()
+    focusOtpInput(5)
     errorMessage.value = ''
   }
 }
@@ -177,7 +184,7 @@ const verifyOtp = async () => { // Add async here
   // Check if all digits are filled
   if (enteredOtp.length !== 6) {
     errorMessage.value = 'Please enter all 6 digits'
-    otpInputs.value[0]?.focus()
+    focusOtpInput(0)
     return
   }
 
@@ -200,16 +207,15 @@ const verifyOtp = async () => { // Add async here
       successMessage.value = response.data.message || 'Email verified successfully!'
       isVerified.value = true
 
-      // Clear the register_token after successful verification
-      localStorage.removeItem('register_token')
+      // Clear OTP context once verified.
       localStorage.removeItem('otp_context')
 
       // Remove axios auth header since token is no longer needed
       delete axios.defaults.headers.common['Authorization']
 
-      // Redirect to login after delay
-      setTimeout(() => {
-        if (isCustomerOtp.value) {
+      if (isCustomerOtp.value) {
+        setTimeout(() => {
+          localStorage.removeItem('register_token')
           router.push({
             path: '/customer/login',
             query: {
@@ -217,23 +223,19 @@ const verifyOtp = async () => { // Add async here
               email: response.data.user?.email || ''
             }
           })
-        } else {
-          router.push({
-            path: '/login',
-            query: {
-              registered: 'true',
-              email: response.data.user?.email || ''
-            }
-          })
-        }
-      }, 2000)
+        }, 1200)
+      } else {
+        setTimeout(() => {
+          router.push({ path: '/trial-onboarding' })
+        }, 1200)
+      }
     } else {
       // Handle verification failure from API
       errorMessage.value = response.data.message || 'Invalid verification code. Please try again.'
 
       // Clear OTP for retry
       otpDigits.value = Array(6).fill('')
-      otpInputs.value[0]?.focus()
+      focusOtpInput(0)
     }
   } catch (error: any) {
     console.error('Verification error:', error)
@@ -251,7 +253,7 @@ const verifyOtp = async () => { // Add async here
 
     // Clear OTP for retry
     otpDigits.value = Array(6).fill('')
-    otpInputs.value[0]?.focus()
+    focusOtpInput(0)
   } finally {
     isLoading.value = false
   }
@@ -263,7 +265,7 @@ const resendCode = async () => {
 
   try {
     // Make API call to resend OTP
-    const response = await axios.post('/api/auth/resend-otp', {
+    const response = await axios.post('/api/auth/resend-otp', {}, {
       headers: {
         'Authorization': `Bearer ${accessToken.value}`
       }
@@ -289,22 +291,17 @@ const resendCode = async () => {
 
     // Clear OTP inputs for fresh entry
     otpDigits.value = Array(6).fill('')
-    otpInputs.value[0]?.focus()
+    focusOtpInput(0)
   } catch (error: any) {
     console.error('Resend error:', error)
     errorMessage.value = error.response?.data?.message || 'Failed to resend code. Please try again.'
   }
 }
 
-// Go back to login
-const goBack = () => {
-  router.push('/login')
-}
-
 // Auto-focus first input on mount
 onMounted(() => {
   setTimeout(() => {
-    otpInputs.value[0]?.focus()
+    focusOtpInput(0)
   }, 100)
 
   accessToken.value = localStorage.getItem('register_token')
@@ -339,6 +336,7 @@ input::-webkit-inner-spin-button {
 }
 
 input[type=number] {
+  appearance: textfield;
   -moz-appearance: textfield;
 }
 </style>

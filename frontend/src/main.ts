@@ -151,8 +151,8 @@ const authStore = useAuthStore()
 // Set Authorization header if token exists in localStorage
 if (authStore.token) {
   axios.defaults.headers.common['Authorization'] = `Bearer ${authStore.token}`
-  console.log('🔐 Token restored from localStorage')
-  console.log(`Bearer ${authStore.token}`)
+  // console.log('🔐 Token restored from localStorage')
+  // console.log(`Bearer ${authStore.token}`)
 
   // Initialize permissions (async, but don't wait)
   authStore.initialize().catch(err => {

@@ -407,7 +407,13 @@ const selectPlan = (plan: string) => {
 }
 
 const startFreeTrial = () => {
-  router.push('/register')
+  router.push({
+    path: '/register',
+    query: {
+      plan: 'simple',
+      trial: '1'
+    }
+  })
 }
 
 const scheduleDemo = () => {

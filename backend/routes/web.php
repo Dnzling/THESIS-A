@@ -16,12 +16,40 @@ Route::prefix('stores/{store}')->group(function () {
 });
 
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
+    return Inertia::render('Marketing/Home', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
     ]);
+});
+
+Route::get('/about', function () {
+    return Inertia::render('Marketing/About');
+});
+
+Route::get('/pricing', function () {
+    return Inertia::render('Marketing/Pricing');
+});
+
+Route::get('/customer/login', function () {
+    return Inertia::render('Auth/CustomerLogin');
+})->name('customer.login');
+
+Route::get('/customer/register', function () {
+    return Inertia::render('Auth/CustomerRegister');
+})->name('customer.register');
+
+Route::get('/verify-otp', function () {
+    return Inertia::render('Auth/VerifyOtp');
+})->name('verify-otp');
+
+Route::get('/trial-onboarding', function () {
+    return Inertia::render('Auth/TrialOnboarding');
+})->name('trial-onboarding');
+
+Route::get('/system/store/verification', function () {
+    return Inertia::render('Auth/VerifyStore');
 });
 
 Route::get('/dashboard', function () {

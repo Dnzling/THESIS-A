@@ -8,6 +8,7 @@ use App\Models\Customer\Customer;
 use App\Models\Hr\Employee;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Store\Store;
+use App\Models\Store\TrialOnboardingProfile;
 use App\Models\Customer\CustomerVerificationDocument;
 use App\Services\Core\PermissionService;
 use App\Models\Store\Branch;
@@ -124,6 +125,11 @@ class User extends Authenticatable
     public function store()
     {
         return $this->belongsTo(Store::class, 'store_id');
+    }
+
+    public function trialOnboardingProfile()
+    {
+        return $this->hasOne(TrialOnboardingProfile::class, 'user_id', 'id');
     }
 
     public function createdProducts()

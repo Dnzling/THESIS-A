@@ -18,22 +18,9 @@
           <InfoItem v-if="formData.businessAddress?.latitude || formData.businessAddress?.longitude" label="Coordinates"
             :value="formattedCoordinates" class="md:col-span-2" />
         </div>
-      </ReviewSection>
-  
-      <!-- Owner ID Review -->
-      <ReviewSection title="Owner Identification" :canEdit="true" @edit="$emit('edit-step', 2)">
-        <div class="space-y-4">
-          <InfoItem label="Primary ID Type" :value="formatIdType(formData.primaryIdType)" />
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FilePreview :file="formData.idFront" label="ID Front" />
-            <FilePreview :file="formData.idBack" label="ID Back" />
-            <FilePreview :file="formData.selfiePhoto" label="Selfie with ID" />
-          </div>
-        </div>
-      </ReviewSection>
-  
+      </ReviewSection>  
       <!-- Business Documents Review -->
-      <ReviewSection title="Business Documents" :canEdit="true" @edit="$emit('edit-step', 3)">
+      <ReviewSection title="Business Documents" :canEdit="true" @edit="$emit('edit-step', 2)">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FilePreview :file="formData.registrationPermit" label="Registration Permit" />
           <FilePreview :file="formData.taxCertificate" label="Tax Certificate" />
@@ -96,12 +83,21 @@ const authStore = useAuthStore()
 const isSubmitting = ref<boolean>(false)
 const storeId = ref<number>()
 
+const getContactPersonName = (): string => {
+  const user = authStore.user as any
+  const firstName = String(user?.first_name ?? user?.fname ?? '').trim()
+  const lastName = String(user?.last_name ?? user?.lname ?? '').trim()
+  const fullName = `${firstName} ${lastName}`.trim()
+  return fullName || 'Store Owner'
+}
+
 interface Props {
   formData: any
 }
 
 interface Emits {
   (e: 'update:formData', data: any): void
+  (e: 'next'): void
   (e: 'prev'): void
   (e: 'submit'): void
   (e: 'edit-step', step: number): void
@@ -109,29 +105,6 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
-
-// City map for formatting
-const cityMap: Record<string, string> = {
-  'bacoor': 'Bacoor',
-  'carmona': 'Carmona',
-  'cavite-city': 'Cavite City',
-  'dasmarinas': 'Dasmarinañas',
-  'general-mariano-alvarez': 'General Mariano Alvarez',
-  'general-trias': 'General Trias',
-  'imus': 'Imus',
-  'indang': 'Indang',
-  'kawit': 'Kawit',
-  'magallanes': 'Magallanes',
-  'mendez': 'Mendez',
-  'naic': 'Naic',
-  'novaleta': 'Noveleta',
-  'rosario': 'Rosario',
-  'silang': 'Silang',
-  'tagaytay': 'Tagaytay City',
-  'tanza': 'Tanza',
-  'ternate': 'Ternate',
-  'trece-martires': 'Trece Martires City'
-}
 
 // Local form data
 const localForm = ref({
@@ -162,11 +135,11 @@ const formattedAddress = computed(() => {
   const addr = localForm.value.businessAddress
   if (!addr) return 'Not provided'
 
-  const cityName = cityMap[addr.city] || addr.city
   const parts = []
 
   if (addr.address) parts.push(addr.address)
-  if (cityName) parts.push(cityName)
+  if (addr.barangay) parts.push(addr.barangay)
+  if (addr.city) parts.push(addr.city)
   parts.push('Cavite')
 
   return parts.join(', ') || 'Not provided'
@@ -182,30 +155,49 @@ const formattedCoordinates = computed(() => {
   return 'Not set'
 })
 
-const formatIdType = (type: string) => {
-  const types: Record<string, string> = {
-    umid: 'UMID',
-    driver: "Driver's License",
-    passport: 'Passport',
-    national: 'National ID'
+const parseNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') {
+    return null
   }
-  return types[type] || type || 'Not provided'
-}
-
-// Map frontend ID type to backend format
-const mapIdType = (frontendType: string): string => {
-  const mapping: Record<string, string> = {
-    'umid': 'umid',
-    'driver': 'driver_license',
-    'passport': 'passport',
-    'national': 'national_id'
-  }
-  return mapping[frontendType] || 'other'
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 // Submit registration
 const submitRegistration = async () => {
   if (!isStepValid.value) return
+
+  const missingStoreFields: string[] = []
+  if (!String(localForm.value.storeName || '').trim()) missingStoreFields.push('Store Name')
+  if (!String(localForm.value.contactNumber || '').trim()) missingStoreFields.push('Contact Number')
+  if (!String(localForm.value.businessAddress?.city || '').trim()) missingStoreFields.push('City')
+  if (!String(localForm.value.businessAddress?.barangay || '').trim()) missingStoreFields.push('Barangay')
+  if (!String(localForm.value.businessAddress?.address || '').trim()) missingStoreFields.push('Business Address')
+
+  if (missingStoreFields.length > 0) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing Required Fields',
+      detail: `Please complete: ${missingStoreFields.join(', ')}`,
+      life: 5000,
+    })
+    return
+  }
+
+  const missingRequiredFiles: string[] = []
+  if (!(localForm.value.registrationPermit instanceof File)) missingRequiredFiles.push('Business Registration Permit')
+  if (!(localForm.value.taxCertificate instanceof File)) missingRequiredFiles.push('BIR Tax Certificate')
+  if (!(localForm.value.mayorPermit instanceof File)) missingRequiredFiles.push("Mayor's Permit")
+
+  if (missingRequiredFiles.length > 0) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Missing Required Documents',
+      detail: `Please upload: ${missingRequiredFiles.join(', ')}`,
+      life: 5000,
+    })
+    return
+  }
 
   isSubmitting.value = true
 
@@ -215,26 +207,11 @@ const submitRegistration = async () => {
 
     // Step 1: Store Information
     formData.append('business_registration_number', localForm.value.businessNumber)
+    formData.append('business_registration_date', new Date().toISOString().slice(0, 10))
 
-    // Step 2: Owner Identification
-    formData.append('gov_id_type', mapIdType(localForm.value.primaryIdType))
-    formData.append('gov_id_number', localForm.value.primaryIdNumber || '')
-
-    // Step 3: Documents - Append files if they exist
+    // Step 2: Documents - Append files if they exist
     if (localForm.value.registrationPermit instanceof File) {
       formData.append('business_registration_file', localForm.value.registrationPermit)
-    }
-
-    if (localForm.value.idFront instanceof File) {
-      formData.append('gov_id_front_file', localForm.value.idFront)
-    }
-
-    if (localForm.value.idBack instanceof File) {
-      formData.append('gov_id_back_file', localForm.value.idBack)
-    }
-
-    if (localForm.value.selfiePhoto instanceof File) {
-      formData.append('selfie_with_id_file', localForm.value.selfiePhoto)
     }
 
     if (localForm.value.taxCertificate instanceof File) {
@@ -254,10 +231,11 @@ const submitRegistration = async () => {
       email: localForm.value.email,
       address: localForm.value.businessAddress?.address || '',
       city: localForm.value.businessAddress?.city || '',
+      barangay: localForm.value.businessAddress?.barangay || '',
       province: 'Cavite',
-      latitude: localForm.value.businessAddress?.latitude || '',
-      longitude: localForm.value.businessAddress?.longitude || '',
-      contact_person: authStore.user.fname + ' ' + authStore.user.lname
+      latitude: parseNullableNumber(localForm.value.businessAddress?.latitude),
+      longitude: parseNullableNumber(localForm.value.businessAddress?.longitude),
+      contact_person: getContactPersonName()
     }
 
     const storeResponse = await axios.post('api/stores/register', payload, {
@@ -267,7 +245,12 @@ const submitRegistration = async () => {
       }
     })
 
-    storeId.value = storeResponse.data.store.store_id;
+    const createdStoreId = Number(storeResponse?.data?.store?.store_id || storeResponse?.data?.store?.id)
+    if (!Number.isFinite(createdStoreId) || createdStoreId <= 0) {
+      throw new Error('Store registration succeeded but no valid store id was returned.')
+    }
+
+    storeId.value = createdStoreId
 
     // Make API call
     const verifyResponse = await axios.post(
@@ -279,19 +262,6 @@ const submitRegistration = async () => {
         }
       }
     )
-
-    // Update store_id for user
-    const updateUser = await axios.put(
-      `api/users/${authStore.user.id}`,
-      {
-        store_id: storeId.value
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${authStore.token}`
-        }
-      }
-    );
 
     // 4. Handle success
     toast.add({
@@ -308,25 +278,31 @@ const submitRegistration = async () => {
     console.error('Submission error:', error)
 
     try {
-      await axios.delete(`/api/stores/${storeId.value}`, {
-        headers: {
-          'Authorization': `Bearer ${authStore.token}`
-        }
-      });
+      if (storeId.value) {
+        await axios.delete(`/api/stores/${storeId.value}`, {
+          headers: {
+            'Authorization': `Bearer ${authStore.token}`
+          }
+        })
+      }
     } catch (rollbackError) {
-      console.error('Failed to rollback store creation:', rollbackError);
-      // You might want to notify admin about orphaned store
+      console.error('Failed to rollback store creation:', rollbackError)
     }
 
     if (error.response?.status === 422) {
       // Validation errors
-      const errors = error.response.data.errors
-      const firstError = Object.values(errors)[0]
+      const errors = error.response?.data?.errors
+      const errorValues = errors && typeof errors === 'object' ? Object.values(errors) : []
+      const firstError = errorValues.length > 0 ? errorValues[0] : null
+      const backendError = error.response?.data?.error
+      const backendMessage = error.response?.data?.message
 
       toast.add({
         severity: 'error',
         summary: 'Validation Error',
-        detail: Array.isArray(firstError) ? firstError[0] : 'Please check your input',
+        detail: Array.isArray(firstError)
+          ? String(firstError[0] || 'Please check your input')
+          : (backendError || backendMessage || 'Please check your input'),
         life: 5000
       })
     } else if (error.response?.status === 403) {
@@ -349,3 +325,7 @@ const submitRegistration = async () => {
   }
 }
 </script>
+
+
+
+

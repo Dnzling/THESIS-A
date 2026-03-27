@@ -321,7 +321,10 @@ class PayPeriodController extends Controller
                 ->whereHas('employee', function ($query) use ($user) {
                     $query->where('store_id', $user->store_id);
                 })
-                ->with(['employee:id,fname,lname,employee_number,department'])
+                ->with([
+                    'employee:id,fname,lname,employee_number,department',
+                    'items:id,payroll_id,type,name,amount,calculation_type,rate'
+                ])
                 ->get();
 
             // Calculate period statistics
@@ -339,11 +342,22 @@ class PayPeriodController extends Controller
                         'base_salary' => (float) $payroll->base_salary,
                         'overtime_amount' => (float) $payroll->overtime_amount,
                         'deductions_total' => (float) $payroll->deductions_total,
+                        'late_deduction' => (float) $payroll->late_deduction,
                         'bonuses_total' => (float) $payroll->bonuses_total,
                         'allowances_total' => (float) $payroll->allowances_total,
                         'tax_amount' => (float) $payroll->tax_amount,
                         'net_salary' => (float) $payroll->net_salary,
                         'status' => $payroll->status,
+                        'deduction_items' => $payroll->items
+                            ->where('type', 'deduction')
+                            ->values()
+                            ->map(fn($item) => [
+                                'id' => $item->id,
+                                'name' => $item->name,
+                                'amount' => (float) $item->amount,
+                                'calculation_type' => $item->calculation_type,
+                                'rate' => $item->rate,
+                            ]),
                         'formatted' => [
                             'net_salary' => '₱' . number_format($payroll->net_salary, 2),
                             'gross_pay' => '₱' . number_format(
@@ -550,13 +564,15 @@ class PayPeriodController extends Controller
         $statusCounts = [
             'draft' => $payrolls->where('status', 'draft')->count(),
             'calculated' => $payrolls->where('status', 'calculated')->count(),
+            'processing' => $payrolls->where('status', 'processing')->count(),
             'approved' => $payrolls->where('status', 'approved')->count(),
+            'released' => $payrolls->where('status', 'released')->count(),
             'paid' => $payrolls->where('status', 'paid')->count(),
             'cancelled' => $payrolls->where('status', 'cancelled')->count()
         ];
 
         // Processing progress
-        $processedCount = $payrolls->whereIn('status', ['approved', 'paid'])->count();
+        $processedCount = $payrolls->whereIn('status', ['approved', 'released', 'paid'])->count();
         $progressPercentage = $employeeCount > 0 ?
             round(($processedCount / $employeeCount) * 100, 2) : 0;
 
@@ -591,8 +607,10 @@ class PayPeriodController extends Controller
      */
     private function getDepartmentBreakdown($payrolls)
     {
+        $grandTotalNet = (float) $payrolls->sum('net_salary');
+
         return $payrolls->groupBy('employee.department')
-            ->map(function ($deptPayrolls, $department) {
+            ->map(function ($deptPayrolls, $department) use ($grandTotalNet) {
                 $totalNet = $deptPayrolls->sum('net_salary');
                 $employeeCount = $deptPayrolls->count();
 
@@ -602,8 +620,8 @@ class PayPeriodController extends Controller
                     'total_net_pay' => round($totalNet, 2),
                     'average_per_employee' => $employeeCount > 0 ?
                         round($totalNet / $employeeCount, 2) : 0,
-                    'percentage_of_total' => $payrolls->sum('net_salary') > 0 ?
-                        round(($totalNet / $payrolls->sum('net_salary')) * 100, 2) : 0,
+                    'percentage_of_total' => $grandTotalNet > 0 ?
+                        round(($totalNet / $grandTotalNet) * 100, 2) : 0,
                     'formatted' => [
                         'total_net_formatted' => '₱' . number_format($totalNet, 2)
                     ]
@@ -628,6 +646,10 @@ class PayPeriodController extends Controller
             'approved' => [
                 'count' => $payrolls->where('status', 'approved')->count(),
                 'total' => round($payrolls->where('status', 'approved')->sum('net_salary'), 2)
+            ],
+            'released' => [
+                'count' => $payrolls->where('status', 'released')->count(),
+                'total' => round($payrolls->where('status', 'released')->sum('net_salary'), 2)
             ],
             'paid' => [
                 'count' => $payrolls->where('status', 'paid')->count(),

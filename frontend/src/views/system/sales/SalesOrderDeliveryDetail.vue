@@ -69,7 +69,7 @@ const loadDelivery = async () => {
   const res = await salesService.getOrderDelivery(deliveryId)
   delivery.value = res?.data || res
 }
-}
+
 
 const statusSeverity = (value: string) => {
   if (value === 'delivered') return 'success'

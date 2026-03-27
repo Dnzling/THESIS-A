@@ -1,51 +1,80 @@
-<template>
+﻿<template>
   <div class="space-y-4">
-    <!-- Year Selector -->
+    <!-- Toolbar -->
     <div class="flex justify-between items-center">
       <div class="flex items-center gap-2">
-        <Select v-model="selectedYear" :options="yearOptions" placeholder="Select Year" class="w-32"
-          @change="fetchPayslipHistory" />
-        <Select v-model="selectedMonth" :options="monthOptions" optionLabel="label" optionValue="value"
-          placeholder="Select Month" class="w-40" @change="fetchPayslipHistory" />
+        <Button
+          :label="showFilters ? 'Hide Filters' : 'Show Filters'"
+          icon="pi pi-filter"
+          severity="secondary"
+          size="small"
+          outlined
+          @click="showFilters = !showFilters"
+        />
+      </div>
+      <div class="flex gap-2 items-center">
         <Button label="Generate" icon="pi pi-file-pdf" severity="info" size="small" @click="generatePayslip"
           :disabled="!selectedYear || !selectedMonth" />
-      </div>
-      <div class="flex gap-2">
+        <Button label="Print Rundown" icon="pi pi-print" severity="warning" size="small" outlined
+          @click="printPayrollRundown" :disabled="loading" />
         <Button label="Export All" icon="pi pi-download" severity="success" size="small" outlined
           @click="exportAllPayslips" :disabled="!payslipHistory.length" />
       </div>
     </div>
 
-    <!-- Payslip Summary -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="bg-blue-50 rounded-lg p-4">
-        <div class="text-sm text-blue-700">YTD Gross Pay</div>
-        <div class="text-2xl font-semibold text-blue-700 mt-1">
-          ₱{{ formatNumber(payrollSummary?.total_gross || 0) }}
-        </div>
-        <div class="text-xs text-blue-500 mt-1">
-          {{ payrollSummary?.payroll_count || 0 }} payroll{{ payrollSummary?.payroll_count !== 1 ? 's' : '' }}
-        </div>
+    <div v-if="showFilters" class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <Select v-model="selectedYear" :options="yearOptions" placeholder="All Years" class="w-32" showClear />
+        <Select v-model="selectedMonth" :options="monthOptions" optionLabel="label" optionValue="value"
+          placeholder="All Months" class="w-40" showClear />
+        <Button label="Apply" icon="pi pi-check" size="small" severity="info" @click="fetchPayslipHistory(1)" />
+        <Button label="Reset" icon="pi pi-refresh" size="small" severity="secondary" outlined @click="resetFilters" />
       </div>
-      <div class="bg-green-50 rounded-lg p-4">
-        <div class="text-sm text-green-700">YTD Net Pay</div>
-        <div class="text-2xl font-semibold text-green-700 mt-1">
-          ₱{{ formatNumber(payrollSummary?.total_net || 0) }}
-        </div>
-        <div class="text-xs text-green-500 mt-1">
-          Total take-home pay
-        </div>
-      </div>
-      <div class="bg-orange-50 rounded-lg p-4">
-        <div class="text-sm text-orange-700">Avg Monthly</div>
-        <div class="text-2xl font-semibold text-orange-700 mt-1">
-          ₱{{ formatNumber(payrollSummary?.average_monthly || 0) }}
-        </div>
-        <div class="text-xs text-orange-500 mt-1">
-          {{ payrollSummary?.month_count || 0 }} month{{ payrollSummary?.month_count !== 1 ? 's' : '' }}
-        </div>
-      </div>
+      <p class="mt-2 text-xs text-slate-500">Showing all paid payslips by default. Use filters only if needed.</p>
     </div>
+
+        <!-- Payslip Summary -->
+    <!-- <div v-if="payrollSummary" class="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <Card class="rounded-xl border border-blue-100 bg-blue-50/70 shadow-sm">
+        <template #content>
+          <div class="p-4">
+            <div class="text-sm text-blue-700">YTD Gross Pay</div>
+            <div class="mt-1 text-2xl font-semibold text-blue-700">
+              ₱{{ formatNumber(payrollSummary?.total_gross || 0) }}
+            </div>
+            <div class="mt-1 text-xs text-blue-500">
+              {{ payrollSummary?.payroll_count || 0 }} payroll{{ payrollSummary?.payroll_count !== 1 ? 's' : '' }}
+            </div>
+          </div>
+        </template>
+      </Card>
+      <Card class="rounded-xl border border-emerald-100 bg-emerald-50/70 shadow-sm">
+        <template #content>
+          <div class="p-4">
+            <div class="text-sm text-emerald-700">YTD Net Pay</div>
+            <div class="mt-1 text-2xl font-semibold text-emerald-700">
+              ₱{{ formatNumber(payrollSummary?.total_net || 0) }}
+            </div>
+            <div class="mt-1 text-xs text-emerald-500">
+              Total take-home pay
+            </div>
+          </div>
+        </template>
+      </Card>
+      <Card class="rounded-xl border border-amber-100 bg-amber-50/70 shadow-sm">
+        <template #content>
+          <div class="p-4">
+            <div class="text-sm text-amber-700">Avg Monthly</div>
+            <div class="mt-1 text-2xl font-semibold text-amber-700">
+              ₱{{ formatNumber(payrollSummary?.average_monthly || 0) }}
+            </div>
+            <div class="mt-1 text-xs text-amber-500">
+              {{ payrollSummary?.month_count || 0 }} month{{ payrollSummary?.month_count !== 1 ? 's' : '' }}
+            </div>
+          </div>
+        </template>
+      </Card>
+    </div> -->
 
     <!-- Pagination Info -->
     <div v-if="pagination.total > 0" class="flex justify-between items-center text-sm text-gray-500">
@@ -141,12 +170,12 @@
         <template #body="{ data }">
           <div class="flex gap-1">
             <Button icon="pi pi-eye" text rounded severity="info" size="small" @click="viewPayslip(data)"
-              v-tooltip.top="'View payslip'" />
-            <Button icon="pi pi-download" text rounded severity="success" size="small"
+              v-tooltip.top="'View payslip'" :disabled="data.status !== 'paid'" />
+            <!-- <Button icon="pi pi-download" text rounded severity="success" size="small"
               @click="downloadPayslip(data)" v-tooltip.top="'Download PDF'"
-              :disabled="data.status !== 'paid' && data.status !== 'approved'" />
+              :disabled="data.status !== 'paid'" /> -->
             <Button icon="pi pi-print" text rounded severity="warning" size="small" @click="printPayslip(data)"
-              v-tooltip.top="'Print'" />
+              v-tooltip.top="'Print'" :disabled="data.status !== 'paid'" />
           </div>
         </template>
       </Column>
@@ -174,8 +203,6 @@
             <div class="font-medium">{{ getPayPeriodName(selectedPayslip) }}</div>
           </div>
         </div>
-
-=
 
         <!-- Earnings -->
         <div>
@@ -228,8 +255,8 @@
       </div>
       <template #footer>
         <Button label="Close" icon="pi pi-times" @click="showPayslipDialog = false" />
-        <Button label="Download PDF" icon="pi pi-download" severity="success"
-          @click="downloadPayslip(selectedPayslip)" />
+        <!-- <Button label="Download PDF" icon="pi pi-download" severity="success"
+          @click="downloadPayslip(selectedPayslip)" /> -->
         <Button label="Print" icon="pi pi-print" severity="info" @click="printPayslip(selectedPayslip)" />
       </template>
     </Dialog>
@@ -238,9 +265,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import Card from 'primevue/card'
 import { useToast } from 'primevue/usetoast'
 import hrService from '@/services/hr.services'
-import { useAuthStore } from '../../../../../stores/auth'
 
 // ==================== INTERFACES ====================
 interface PayPeriod {
@@ -344,15 +371,15 @@ const emit = defineEmits<{
 
 // ==================== STATE ====================
 const toast = useToast()
-const authStore = useAuthStore()
 const loading = ref(false)
 const showPayslipDialog = ref(false)
 const selectedPayslip = ref<Payslip | null>(null)
+const showFilters = ref(false)
 
 // Year and Month selection
 const currentYear = new Date().getFullYear()
-const selectedYear = ref<number>(currentYear)
-const selectedMonth = ref<number>(new Date().getMonth() + 1)
+const selectedYear = ref<number | null>(null)
+const selectedMonth = ref<number | null>(null)
 
 // Data
 const payslipHistory = ref<Payslip[]>([])
@@ -412,8 +439,8 @@ const fetchPayslipHistory = async (page = 1) => {
 
     const response = await hrService.api.get(`/api/payroll/payslip/${props.employeeId}`, {
       params: {
-        year: selectedYear.value !== currentYear ? selectedYear.value : undefined,
-        month: selectedMonth.value,
+        year: selectedYear.value || undefined,
+        month: selectedMonth.value || undefined,
         page: page
       }
     })
@@ -475,7 +502,29 @@ const getEarnings = (payslip: Payslip): PayslipItem[] => {
 }
 
 const getDeductions = (payslip: Payslip): PayslipItem[] => {
-  return payslip.items?.deductions || []
+  const fromItems = payslip.items?.deductions || []
+  if (fromItems.length > 0) return fromItems
+
+  const fallback: PayslipItem[] = []
+  if (Number(payslip.deductions_total || 0) > 0) {
+    fallback.push({
+      id: -1,
+      payroll_id: payslip.id,
+      type: 'deduction',
+      name: 'Employee Deductions',
+      amount: Number(payslip.deductions_total || 0),
+    })
+  }
+  if (Number(payslip.tax_amount || 0) > 0) {
+    fallback.push({
+      id: -2,
+      payroll_id: payslip.id,
+      type: 'tax',
+      name: 'Withholding Tax',
+      amount: Number(payslip.tax_amount || 0),
+    })
+  }
+  return fallback
 }
 
 const calculateGrossPay = (payslip: Payslip): number => {
@@ -520,6 +569,13 @@ const formatDate = (dateString: string | null): string => {
 const formatDateRange = (start: string | null, end: string | null): string => {
   if (!start || !end) return ''
   return `${formatDate(start)} - ${formatDate(end)}`
+}
+
+const formatEmployeeCode = (employeeId: number | string | null | undefined): string => {
+  const numericId = Number(employeeId || 0)
+  if (!numericId || Number.isNaN(numericId)) return 'N/A'
+  const year = new Date().getFullYear()
+  return `SM-${year}-${String(numericId).padStart(5, '0')}`
 }
 
 const viewPayslip = async (payslip: Payslip) => {
@@ -594,8 +650,85 @@ const printPayslip = async (payslip: Payslip | null) => {
     // Emit event to parent
     emit('print-payslip', payslip)
 
-    // Open print-friendly version
-    window.open(`/api/payrolls/${payslip.id}/payslip/print`, '_blank')
+    // Reuse PayrollView-style print rendering (client-side HTML -> browser print).
+    const deductionRows = getDeductions(payslip).length
+      ? getDeductions(payslip)
+          .map((item) => `<tr><td>${item.name}</td><td>- ${formatNumber(Number(item.amount || 0))}</td></tr>`)
+          .join('')
+      : '<tr><td colspan="2" style="text-align:left;color:#666;">No deduction items</td></tr>'
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Payslip - ${props.employeeName || payslip.employee_name || 'Employee'}</title>
+        <style>
+          body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
+          h2 { text-align: center; margin-bottom: 4px; }
+          .subtitle { text-align: center; color: #666; margin-bottom: 16px; font-size: 11px; }
+          .section { margin-bottom: 12px; }
+          .section-title { font-weight: bold; background: #f0f0f0; padding: 4px 8px; border-left: 3px solid #333; margin-bottom: 6px; }
+          table { width: 100%; border-collapse: collapse; }
+          td { padding: 4px 8px; }
+          td:last-child { text-align: right; }
+          .total-row td { font-weight: bold; border-top: 2px solid #333; }
+          .net-row td { font-weight: bold; font-size: 14px; background: #e8f5e9; }
+          .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px; }
+          .header-grid div { padding: 2px 0; }
+          .label { color: #666; }
+          @media print { body { margin: 10px; } }
+        </style>
+      </head>
+      <body>
+        <h2>PAYSLIP</h2>
+        <div class="subtitle">${getPayPeriodName(payslip)}</div>
+
+        <div class="header-grid">
+          <div><span class="label">Employee:</span> <strong>${props.employeeName || payslip.employee_name || 'N/A'}</strong></div>
+          <div><span class="label">Employee ID:</span> ${formatEmployeeCode(payslip.employee_id)}</div>
+          <div><span class="label">Status:</span> ${(payslip.status || '').toUpperCase()}</div>
+          <div><span class="label">Payment Date:</span> ${formatDate(payslip.payment_date)}</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">EARNINGS</div>
+          <table>
+            <tr><td>Base Salary</td><td>${formatNumber(payslip.base_salary || 0)}</td></tr>
+            <tr><td>Overtime</td><td>${formatNumber(payslip.overtime_amount || 0)}</td></tr>
+            <tr><td>Bonuses</td><td>${formatNumber(payslip.bonuses_total || 0)}</td></tr>
+            <tr><td>Allowances</td><td>${formatNumber(payslip.allowances_total || 0)}</td></tr>
+            <tr class="total-row"><td>Gross Pay</td><td>${formatNumber(calculateGrossPay(payslip))}</td></tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="section-title">DEDUCTIONS</div>
+          <table>
+            ${deductionRows}
+            <tr class="total-row"><td>Total Deductions</td><td>- ${formatNumber((payslip.deductions_total || 0) + (payslip.tax_amount || 0))}</td></tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <table>
+            <tr class="net-row"><td>NET PAY</td><td>${formatNumber(payslip.net_salary || 0)}</td></tr>
+          </table>
+        </div>
+
+        <div style="margin-top:20px; text-align:center; font-size:10px; color:#999;">
+          Printed on: ${new Date().toLocaleString('en-PH')}
+        </div>
+      </body>
+      </html>
+    `
+
+    const win = window.open('', '_blank', 'width=700,height=900')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      win.focus()
+      setTimeout(() => win.print(), 400)
+    }
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -633,12 +766,18 @@ const generatePayslip = () => {
   }, 1000)
 }
 
+const resetFilters = () => {
+  selectedYear.value = null
+  selectedMonth.value = null
+  fetchPayslipHistory(1)
+}
+
 const exportAllPayslips = async () => {
   if (!payslipHistory.value.length) return
 
   try {
     // Emit event to parent
-    emit('export-all', selectedYear.value, selectedMonth.value)
+    emit('export-all', selectedYear.value ?? currentYear, selectedMonth.value ?? (new Date().getMonth() + 1))
 
     const response = await hrService.api.get('/api/payrolls/export', {
       params: {
@@ -673,6 +812,30 @@ const exportAllPayslips = async () => {
   }
 }
 
+const printPayrollRundown = async () => {
+  try {
+    const response = await hrService.api.get(`/api/payroll/payslip/${props.employeeId}/rundown/print`, {
+      params: {
+        year: selectedYear.value || undefined,
+        month: selectedMonth.value || undefined,
+      },
+      responseType: 'blob'
+    })
+
+    const file = new Blob([response.data], { type: 'application/pdf' })
+    const fileURL = window.URL.createObjectURL(file)
+    window.open(fileURL, '_blank')
+    setTimeout(() => window.URL.revokeObjectURL(fileURL), 60_000)
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to print payroll rundown',
+      life: 3000
+    })
+  }
+}
+
 // ==================== WATCHERS ====================
 watch(() => props.employeeId, (newId) => {
   if (newId) {
@@ -680,19 +843,22 @@ watch(() => props.employeeId, (newId) => {
   }
 }, { immediate: true })
 
-watch(selectedYear, () => {
-  fetchPayslipHistory()
-})
-
-watch(selectedMonth, () => {
-  fetchPayslipHistory()
-})
-
 // ==================== EXPOSE ====================
 defineExpose({
   fetchPayslipHistory,
   refresh: fetchPayslipHistory
 })
 </script>
+
+
+
+
+
+
+
+
+
+
+
 
 

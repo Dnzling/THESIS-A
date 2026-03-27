@@ -20,9 +20,24 @@ class PayrollIndexResource extends JsonResource
             'overtime_hours' => $this->overtime_hours,
             'overtime_amount' => $this->overtime_amount,
             'deductions_total' => $this->deductions_total,
+            'late_deduction' => $this->late_deduction,
             'bonuses_total' => $this->bonuses_total,
             'allowances_total' => $this->allowances_total,
             'tax_amount' => $this->tax_amount,
+            'deduction_items' => $this->whenLoaded('items', function () {
+                return $this->items
+                    ->where('type', 'deduction')
+                    ->values()
+                    ->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'name' => $item->name,
+                            'amount' => (float) $item->amount,
+                            'calculation_type' => $item->calculation_type,
+                            'rate' => $item->rate,
+                        ];
+                    });
+            }, []),
             
             'employee' => [
                 'id' => $this->employee->id,
@@ -30,7 +45,7 @@ class PayrollIndexResource extends JsonResource
                 'lname' => $this->employee->lname,
                 'employee_number' => $this->employee->employee_number,
                 'department' => $this->employee->department,
-                'branch' => $this->employee->branch->name
+                'branch' => $this->employee?->branch?->name
             ],
             
             'pay_period' => [

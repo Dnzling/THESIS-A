@@ -23,28 +23,18 @@
             placeholder="Select business type" class="w-full" />
         </div>
   
-        <!-- Business Registration Number -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            Business Registration Number *
-          </label>
-          <InputText v-model="localForm.businessNumber" type="text" required
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="e.g., DTI-1234567" />
-        </div>
-  
         <!-- Contact Number -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">
             Contact Number *
           </label>
-          <InputText v-model="localForm.contactNumber" type="tel" required
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="e.g., +639123456789" />
+          <InputMask v-model="localForm.contactNumber" mask="+639999999999" type="tel" required
+            class="w-full px-4 py-2 border" placeholder="+63" />
         </div>
   
+  
         <!-- Email -->
-        <div class="md:col-span-2">
+        <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">
             Business Email *
           </label>
@@ -52,60 +42,38 @@
             class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             placeholder="business@example.com" />
         </div>
-        <div class="grid grid-cols-2 gap-6">
-          <!-- City -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              Province
-            </label>
-            <InputText type="text" class="w-full" value="Cavite" read-only disabled />
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Province</label>
+          <InputText type="text" class="w-full" value="Cavite" read-only />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">City *</label>
+          <Select v-model="localForm.businessAddress.cityId" :options="cityOptions" optionLabel="label"
+            optionValue="value" placeholder="Select city" fluid :loading="isCitiesLoading"
+            :disabled="!provinceId || isCitiesLoading" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Barangay *</label>
+          <div class="flex gap-2">
+            <Select v-model="localForm.businessAddress.barangayCode" :options="barangayOptions" optionLabel="label"
+              optionValue="value" placeholder="Select barangay" fluid :loading="isBarangaysLoading"
+              :disabled="!localForm.businessAddress.cityId || isBarangaysLoading" />
+            <Button type="button" class="h-11" icon="pi pi-map-marker" severity="contrast" :loading="isLocating"
+              :disabled="isLocating" @click="useCurrentLocation" />
           </div>
-          <!-- City -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              City *
-            </label>
-            <Select v-model="localForm.businessAddress.city" :options="cities" optionLabel="label" optionValue="value"
-              placeholder="Select city" class="w-full" />
-          </div>
-  
         </div>
   
   
-        <!--Coordinates Lat and Long -->
-        <div class="flex gap-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              Latitude
-            </label>
-            <InputText v-model="localForm.businessAddress.latitude" type="text"
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              placeholder="e.g., 123.00001" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              Longitude
-            </label>
-            <InputText v-model="localForm.businessAddress.longitude" type="text"
-              class="w-full px-4 py-2 border"
-              placeholder="e.g., 123.00001" />
-          </div>
-          <Button class="h-11 mt-auto w-1/5" icon="pi pi-map-marker" />
-        </div>
+        <small v-if="locationError" class="text-red-500 block -mt-3">{{ locationError }}</small>
   
         <!-- Business Address -->
         <div class="md:col-span-2">
           <label class="block text-sm font-medium text-gray-700 mb-2">
             Business Address *
           </label>
-          <Textarea v-model="localForm.businessAddress.address" required rows="3" cols="30"
-            class="w-full px-4 py-2"/>
-
+          <Textarea v-model="localForm.businessAddress.address" required rows="3" cols="30" class="w-full px-4 py-2" />
         </div>
-  
-  
       </div>
-  
       <!-- Navigation Buttons -->
       <div class="flex justify-end mt-8 pt-6 border-t border-gray-200">
         <Button type="submit" class="w-1/5" severity="contrast" label="Next" />
@@ -115,10 +83,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import ecommerceService from '../../../services/ecommerce.service'
 
 interface Props {
   formData: Record<string, any>
@@ -139,33 +108,198 @@ const businessTypes = [
   { value: 'other', label: 'Other' }
 ]
 
-const cities = [
-  { value: 'bacoor', label: 'Bacoor' },
-  { value: 'carmona', label: 'Carmona' },
-  { value: 'cavite-city', label: 'Cavite City' },
-  { value: 'dasmarinas', label: 'Dasmariñas' },
-  { value: 'general-mariano-alvarez', label: 'General Mariano Alvarez' },
-  { value: 'general-trias', label: 'General Trias' },
-  { value: 'imus', label: 'Imus' },
-  { value: 'indang', label: 'Indang' },
-  { value: 'kawit', label: 'Kawit' },
-  { value: 'magallanes', label: 'Magallanes' },
-  { value: 'mendez', label: 'Mendez' },
-  { value: 'naic', label: 'Naic' },
-  { value: 'novaleta', label: 'Noveleta' },
-  { value: 'rosario', label: 'Rosario' },
-  { value: 'silang', label: 'Silang' },
-  { value: 'tagaytay', label: 'Tagaytay City' },
-  { value: 'tanza', label: 'Tanza' },
-  { value: 'ternate', label: 'Ternate' },
-  { value: 'trece-martires', label: 'Trece Martires City' }
-]
-
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 // Local form data - only update from parent on component creation
 const localForm = ref({ ...props.formData })
+const isLocating = ref(false)
+const locationError = ref('')
+const provinceId = ref('')
+const provinces = ref<any[]>([])
+const cities = ref<any[]>([])
+const barangays = ref<any[]>([])
+const citiesCache = ref<Record<string, any[]>>({})
+const isCitiesLoading = ref(false)
+const isBarangaysLoading = ref(false)
+
+const cityOptions = computed(() =>
+  cities.value.map((c: any) => ({
+    label: c.name,
+    value: c.city_id
+  }))
+)
+
+const barangayOptions = computed(() =>
+  barangays.value.map((b: any) => ({
+    label: b.name,
+    value: b.code
+  }))
+)
+
+const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase()
+
+const resolveCityFromId = (cityId: string) => {
+  if (!cityId) return
+  const match = cities.value.find((c: any) => String(c.city_id) === String(cityId))
+  if (match) {
+    localForm.value.businessAddress.city = match.name
+  }
+}
+
+const resolveBarangayFromCode = (barangayCode: string) => {
+  if (!barangayCode) return
+  const match = barangays.value.find((b: any) => String(b.code) === String(barangayCode))
+  if (match) {
+    localForm.value.businessAddress.barangay = match.name
+  }
+}
+
+const fetchProvinces = async () => {
+  try {
+    const response = await ecommerceService.getProvinces()
+    provinces.value = response.data || []
+
+    const cavite = provinces.value.find((p: any) => normalize(p.name) === 'cavite')
+    if (cavite) {
+      provinceId.value = cavite.province_id
+    }
+  } catch (error) {
+    console.error('Failed to load provinces:', error)
+    provinces.value = []
+  }
+}
+
+const fetchCities = async (selectedProvinceId: string) => {
+  if (!selectedProvinceId) {
+    cities.value = []
+    return
+  }
+
+  if (citiesCache.value[selectedProvinceId]) {
+    cities.value = citiesCache.value[selectedProvinceId]
+    return
+  }
+
+  try {
+    isCitiesLoading.value = true
+    const response = await ecommerceService.getCities(selectedProvinceId)
+    citiesCache.value[selectedProvinceId] = response.data || []
+    cities.value = citiesCache.value[selectedProvinceId]
+  } catch (error) {
+    console.error('Failed to load cities:', error)
+    cities.value = []
+  } finally {
+    isCitiesLoading.value = false
+  }
+}
+
+const fetchBarangays = async (cityId: string) => {
+  if (!cityId) {
+    barangays.value = []
+    return
+  }
+
+  try {
+    isBarangaysLoading.value = true
+    const response = await ecommerceService.getBarangays(cityId)
+    barangays.value = response.data || []
+  } catch (error) {
+    console.error('Failed to load barangays:', error)
+    barangays.value = []
+  } finally {
+    isBarangaysLoading.value = false
+  }
+}
+
+const useCurrentLocation = () => {
+  locationError.value = ''
+
+  if (!navigator.geolocation) {
+    locationError.value = 'Geolocation is not supported by this browser.'
+    return
+  }
+
+  isLocating.value = true
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      if (!localForm.value.businessAddress) {
+        localForm.value.businessAddress = {}
+      }
+
+      localForm.value.businessAddress.latitude = Number(position.coords.latitude.toFixed(6))
+      localForm.value.businessAddress.longitude = Number(position.coords.longitude.toFixed(6))
+      isLocating.value = false
+    },
+    (error) => {
+      isLocating.value = false
+      if (error.code === error.PERMISSION_DENIED) {
+        locationError.value = 'Location access denied. Please allow location permission.'
+      } else if (error.code === error.TIMEOUT) {
+        locationError.value = 'Location request timed out. Please try again.'
+      } else {
+        locationError.value = 'Unable to fetch location right now.'
+      }
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    }
+  )
+}
+
+watch(provinceId, async (newProvince) => {
+  if (newProvince) {
+    await fetchCities(newProvince)
+
+    if (!localForm.value.businessAddress.cityId && localForm.value.businessAddress.city) {
+      const match = cities.value.find((c: any) => normalize(c.name) === normalize(localForm.value.businessAddress.city))
+      if (match) {
+        localForm.value.businessAddress.cityId = match.city_id
+      }
+    }
+  }
+})
+
+watch(
+  () => localForm.value.businessAddress.cityId,
+  async (newCityId) => {
+    localForm.value.businessAddress.barangayCode = ''
+    localForm.value.businessAddress.barangay = ''
+
+    if (newCityId) {
+      resolveCityFromId(String(newCityId))
+      await fetchBarangays(String(newCityId))
+
+      if (!localForm.value.businessAddress.barangayCode && localForm.value.businessAddress.barangay) {
+        const match = barangays.value.find((b: any) => normalize(b.name) === normalize(localForm.value.businessAddress.barangay))
+        if (match) {
+          localForm.value.businessAddress.barangayCode = match.code
+        }
+      }
+    } else {
+      barangays.value = []
+    }
+  }
+)
+
+watch(
+  () => localForm.value.businessAddress.barangayCode,
+  (newBarangayCode) => {
+    if (newBarangayCode) {
+      resolveBarangayFromCode(String(newBarangayCode))
+    }
+  }
+)
+
+onMounted(async () => {
+  await fetchProvinces()
+
+  if (provinceId.value) {
+    await fetchCities(provinceId.value)
+  }
+})
 
 // Validation
 const handleNext = () => {
@@ -174,3 +308,4 @@ const handleNext = () => {
   emit('next')
 }
 </script>
+

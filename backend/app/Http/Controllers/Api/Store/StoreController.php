@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
+use App\Models\Store\TrialOnboardingProfile;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 
 class StoreController extends Controller
 {
@@ -63,29 +65,81 @@ class StoreController extends Controller
                 'email' => 'nullable|string|max:255',
                 'contact_person' => 'required|string|max:255',
                 'contact_number' => 'nullable|string|max:20',
+                'business_type' => 'nullable|string|max:100',
+                'province' => 'nullable|string|max:100',
                 'city' => 'required|string|max:100',
                 'address' => 'required|string|max:200',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
             ]);
 
-            $store = Store::create($validated);
+            $payload = [
+                'name' => $validated['store_name'],
+                'type' => $validated['business_type'] ?? 'retail',
+                'phone' => $validated['contact_number'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'province' => $validated['province'] ?? 'Cavite',
+                'city' => $validated['city'],
+                'address' => $validated['address'],
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+            ];
+
+            $onboarding = TrialOnboardingProfile::where('user_id', optional($request->user())->id)->first();
+            $storeSettings = [
+                'contact_person' => $validated['contact_person'],
+            ];
+
+            if ($onboarding) {
+                $storeSettings = array_merge($storeSettings, [
+                    'enabled_modules' => $onboarding->modules ?? [],
+                    'trial_onboarding' => [
+                        'plan' => $onboarding->plan,
+                        'employee_range' => $onboarding->employee_range,
+                        'branch_range' => $onboarding->branch_range,
+                        'primary_goal' => $onboarding->primary_goal,
+                        'first_team' => $onboarding->first_team,
+                        'completed_at' => optional($onboarding->completed_at)->toDateTimeString(),
+                    ],
+                ]);
+            }
+
+            $payload['settings'] = $storeSettings;
+
+            $store = Store::create($payload);
+
+            if ($request->user()) {
+                $request->user()->update([
+                    'store_id' => $store->id,
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Store successfully registered',
                 'store' => [
-                    'store_id' => $store->store_id,
-                    'store_name' => $store->store_name,
-                    'contact_person' => $store->contact_person,
+                    'store_id' => $store->id,
+                    'store_name' => $store->name,
+                    'contact_person' => $validated['contact_person'],
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
+            Log::error('Store registration failed', [
+                'user_id' => optional($request->user())->id,
+                'message' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Store registration failed',
                 'error' => $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
@@ -107,7 +161,23 @@ class StoreController extends Controller
                 'contact_number' => 'sometimes|string|max:20',
             ]);
 
-            $store->update($validated);
+            $updateData = [];
+            if (array_key_exists('store_name', $validated)) {
+                $updateData['name'] = $validated['store_name'];
+            }
+            if (array_key_exists('contact_number', $validated)) {
+                $updateData['phone'] = $validated['contact_number'];
+            }
+            if (!empty($updateData)) {
+                $store->update($updateData);
+            }
+
+            if (array_key_exists('contact_person', $validated)) {
+                $settings = is_array($store->settings) ? $store->settings : [];
+                $settings['contact_person'] = $validated['contact_person'];
+                $store->settings = $settings;
+                $store->save();
+            }
 
             return response()->json([
                 'success' => true,

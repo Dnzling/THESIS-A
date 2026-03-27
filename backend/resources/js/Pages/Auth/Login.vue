@@ -1,100 +1,105 @@
-<script setup>
-import Checkbox from '@/Components/Checkbox.vue';
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
-
-defineProps({
-    canResetPassword: {
-        type: Boolean,
-    },
-    status: {
-        type: String,
-    },
-});
-
-const form = useForm({
-    email: '',
-    password: '',
-    remember: false,
-});
-
-const submit = () => {
-    form.post(route('login'), {
-        onFinish: () => form.reset('password'),
-    });
-};
-</script>
-
 <template>
-    <GuestLayout>
-        <Head title="Log in" />
-
-        <div v-if="status" class="mb-4 text-sm font-medium text-green-600">
-            {{ status }}
-        </div>
-
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="email" value="Email" />
-
-                <TextInput
-                    id="email"
-                    type="email"
-                    class="mt-1 block w-full"
-                    v-model="form.email"
-                    required
-                    autofocus
-                    autocomplete="username"
-                />
-
-                <InputError class="mt-2" :message="form.errors.email" />
-            </div>
-
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
-
-                <TextInput
-                    id="password"
-                    type="password"
-                    class="mt-1 block w-full"
-                    v-model="form.password"
-                    required
-                    autocomplete="current-password"
-                />
-
-                <InputError class="mt-2" :message="form.errors.password" />
-            </div>
-
-            <div class="mt-4 block">
-                <label class="flex items-center">
-                    <Checkbox name="remember" v-model:checked="form.remember" />
-                    <span class="ms-2 text-sm text-gray-600"
-                        >Remember me</span
-                    >
-                </label>
-            </div>
-
-            <div class="mt-4 flex items-center justify-end">
-                <Link
-                    v-if="canResetPassword"
-                    :href="route('password.request')"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                >
-                    Forgot your password?
-                </Link>
-
-                <PrimaryButton
-                    class="ms-4"
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Log in
-                </PrimaryButton>
-            </div>
-        </form>
-    </GuestLayout>
+  <Toast />
+  <LoginForm 
+    :is-submitting="isSubmitting" 
+    @submit="handleLogin" 
+    @error="handleFormError" 
+  />
 </template>
+
+<script setup lang="ts">
+import LoginForm from '@/Components/auth/LoginForm.vue'
+import { ref } from 'vue'
+import { useToast } from 'primevue/usetoast'
+import Toast from 'primevue/toast'
+import { router, usePage } from '@inertiajs/vue3'
+import { LoginFormData } from '@/Components/auth/LoginForm.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const page = usePage()
+const toast = useToast()
+const authStore = useAuthStore()
+const isSubmitting = ref(false)
+
+const getQueryParam = (key: string): string | null => {
+  const query = String(page.url || '').split('?')[1] || ''
+  return new URLSearchParams(query).get(key)
+}
+
+const handleLogin = async (formData: LoginFormData) => {
+  if (isSubmitting.value) {
+    console.log('⏸️ Already submitting, ignoring...')
+    return
+  }
+
+  isSubmitting.value = true
+
+  try {
+    // Let authStore handle the entire login process
+    await authStore.login(formData.login, formData.password)
+
+    console.log('✅ Login successful')
+    console.log('User role:', authStore.user?.role)
+    console.log('User:', authStore.user)
+
+    // ✅ Show success toast
+    toast.add({
+      severity: 'success',
+      summary: 'Login Successful!',
+      detail: 'Redirecting to dashboard...',
+      life: 2000
+    })
+
+    // ✅ Default routing (SystemLayout)
+    let redirectTo = authStore.defaultRoute
+
+    // Override with query redirect if available
+    const redirectParam = getQueryParam('redirect')
+    if (redirectParam) {
+      redirectTo = redirectParam
+    }
+
+    // ✅ Single redirect with delay (for toast to show)
+    setTimeout(() => {
+      router.visit(redirectTo)
+    }, 500) // Reduced from 1500ms
+
+  } catch (error: any) {
+    console.error('❌ Login error:', error)
+
+    // Handle validation errors
+    if (error.response?.status === 422) {
+      const errors = error.response.data?.errors
+
+      if (errors && Object.keys(errors).length > 0) {
+        const firstError = Object.values(errors)[0] as string[]
+        toast.add({
+          severity: 'error',
+          summary: 'Validation Error',
+          detail: firstError[0],
+          life: 5000
+        })
+      }
+    } else {
+      // General error
+      toast.add({
+        severity: 'error',
+        summary: 'Login Failed',
+        detail: error.response?.data?.message || error.message || 'Something went wrong. Please try again.',
+        life: 5000
+      })
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const handleFormError = (errorMessage: string) => {
+  toast.add({
+    severity: 'warn',
+    summary: 'Form Error',
+    detail: errorMessage,
+    life: 3000
+  })
+}
+</script>

@@ -3,8 +3,7 @@
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">PO Finance Approvals</h1>
-        <p class="text-sm text-gray-500 mt-1">Review and approve purchase orders from procurement</p>
+        <h1 class="text-xl font-semibold text-gray-900 tracking-tight">PO Finance Approvals</h1>
       </div>
     </div>
 
@@ -19,7 +18,7 @@
                 <i class="pi pi-clock text-orange-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.pending }}</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.pending }}</p>
           </div>
         </template>
       </Card>
@@ -33,7 +32,7 @@
                 <i class="pi pi-check-circle text-green-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.approved }}</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.approved }}</p>
           </div>
         </template>
       </Card>
@@ -47,21 +46,21 @@
                 <i class="pi pi-times-circle text-red-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.rejected }}</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.rejected }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br">
         <template #content>
           <div class="p-5">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-blue-100 uppercase tracking-wider">Total Amount</span>
+              <span class="text-xs font-medium uppercase tracking-wider">Total Amount</span>
               <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-credit-card text-white text-sm"></i>
+                <i class="pi pi-credit-cardtext-sm"></i>
               </div>
             </div>
-            <p class="text-xl font-bold text-white">₱{{ formatNumber(stats.totalAmount) }}</p>
+            <p class="text-xl font-bold">₱{{ formatNumber(stats.totalAmount) }}</p>
           </div>
         </template>
       </Card>
@@ -72,9 +71,6 @@
       <template #header>
         <div class="px-6 pt-6">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-              <i class="pi pi-filter text-purple-600 text-sm"></i>
-            </div>
             <h2 class="text-lg font-semibold text-gray-900">Filter Purchase Orders</h2>
           </div>
         </div>
@@ -87,8 +83,7 @@
             <div class="md:col-span-2 space-y-2">
               <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Search</label>
               <div class="relative">
-                <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input
+                <InputText size="small"
                   v-model="filters.search"
                   type="text"
                   placeholder="Search by PO number"
@@ -101,21 +96,16 @@
             <!-- Status Filter -->
             <div class="space-y-2">
               <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">Status</label>
-              <select
+              <Select
                 v-model="filters.status"
-                class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
+                :options="statusOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="All Statuses"
+                size="small"
+                fluid
                 @change="loadPOs"
-              >
-                <option value="">All Statuses</option>
-                <option value="pending_finance_approval">Pending Finance Approval</option>
-                <option value="approved">Approved</option>
-                <option value="sent_to_supplier">Sent to Supplier</option>
-                <option value="supplier_accepted">Supplier Accepted</option>
-                <option value="in_transit">In Transit</option>
-                <option value="delivered">Delivered</option>
-                <option value="rejected_finance">Rejected (Finance)</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              />
             </div>
 
             <!-- Refresh Button -->
@@ -138,9 +128,6 @@
       <template #header>
         <div class="px-6 pt-6">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <i class="pi pi-list text-blue-600 text-sm"></i>
-            </div>
             <h2 class="text-lg font-semibold text-gray-900">Purchase Orders</h2>
           </div>
         </div>
@@ -169,20 +156,18 @@
             :loading="loading"
             stripedRows
             responsiveLayout="scroll"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs"
             paginator
+            
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
           >
             <!-- PO Number Column -->
-            <Column field="po_number" header="PO Number" style="min-width: 140px" sortable>
+            <Column field="po_number" header="PO Number" style="min-width: 160px" sortable>
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                    <i class="pi pi-file text-blue-600 text-xs"></i>
-                  </div>
-                  <span class="font-medium text-blue-600 hover:underline cursor-pointer" @click="viewPO(data)">
+                  <span class="font-medium text-xs text-blue-600 hover:underline cursor-pointer" @click="viewPO(data)">
                     {{ data.po_number }}
                   </span>
                 </div>
@@ -193,12 +178,8 @@
             <Column header="Supplier" style="min-width: 180px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
-                    <i class="pi pi-building text-green-600 text-xs"></i>
-                  </div>
                   <div>
-                    <p class="font-medium text-gray-900">{{ data.supplier?.supplier_name || '-' }}</p>
-                    <p class="text-xs text-gray-500">{{ data.supplier?.supplier_code || '' }}</p>
+                    <p class="font-medium text-xs text-gray-900">{{ data.supplier?.supplier_name || '-' }}</p>
                   </div>
                 </div>
               </template>
@@ -293,10 +274,10 @@ import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
+import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
-import financeService from '@/services/finance.service'
+import financeService from '../../../services/finance.service'
 
 const router = useRouter()
 const toast = useToast()
@@ -310,6 +291,7 @@ const filters = ref({
 
 // Status options for filter
 const statusOptions = [
+  { label: 'All Statuses', value: '' },
   { label: 'Pending Finance Approval', value: 'pending_finance_approval' },
   { label: 'Approved', value: 'approved' },
   { label: 'Sent to Supplier', value: 'sent_to_supplier' },

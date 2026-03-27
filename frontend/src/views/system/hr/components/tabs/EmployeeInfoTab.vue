@@ -15,7 +15,7 @@
             </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Gender</span>
-              <span class="text-sm text-slate-700 capitalize">{{ employeeInfo.basic_info?.gender || '-' }}</span>
+              <span class="text-sm text-slate-700 capitalize">{{ formatLabel(employeeInfo.basic_info?.gender) }}</span>
             </div>
           </div>
         </template>
@@ -69,15 +69,15 @@
             </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Department</span>
-              <span class="text-sm text-slate-700">{{ employeeInfo.employment_details?.department || '-' }}</span>
+              <span class="text-sm text-slate-700">{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
             </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Role</span>
-              <span class="text-sm text-slate-700">{{ employeeInfo.employment_details?.role || '-' }}</span>
+              <span class="text-sm text-slate-700">{{ formatLabel(employeeInfo.employment_details?.role) }}</span>
             </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Employment Type</span>
-              <Tag :value="employeeInfo.employment_details?.type || 'Regular'"
+              <Tag :value="formatLabel(employeeInfo.employment_details?.type) || 'Regular'"
                 :severity="getEmploymentTypeSeverity(employeeInfo.employment_details?.type)" rounded />
             </div>
             <div class="flex items-start justify-between gap-4">
@@ -145,6 +145,14 @@ const formatDate = (date: string) => {
 
 const formatNumber = (num: number) => {
   return num?.toLocaleString() || '0'
+}
+
+const formatLabel = (value: string | null | undefined) => {
+  if (!value) return '-'
+  return value
+    .toString()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 const getEmploymentTypeSeverity = (type: string) => {

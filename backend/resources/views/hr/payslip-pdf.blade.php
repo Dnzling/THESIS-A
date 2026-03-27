@@ -15,6 +15,20 @@
     </style>
   </head>
   <body>
+    @php
+      $earningItems = ($payroll?->items ?? collect())->where('type', 'earning');
+      $deductionItems = ($payroll?->items ?? collect())->where('type', 'deduction');
+      $taxItems = ($payroll?->items ?? collect())->where('type', 'tax');
+      $hasItemizedEarnings = $earningItems->isNotEmpty();
+      $hasItemizedDeductions = $deductionItems->isNotEmpty() || $taxItems->isNotEmpty();
+      $baseSalary = (float) ($payroll?->base_salary ?? 0);
+      $overtimeAmount = (float) ($payroll?->overtime_amount ?? 0);
+      $bonusesTotal = (float) ($payroll?->bonuses_total ?? 0);
+      $allowancesTotal = (float) ($payroll?->allowances_total ?? 0);
+      $deductionsTotal = (float) ($payroll?->deductions_total ?? 0);
+      $taxTotal = (float) ($payroll?->tax_amount ?? 0);
+    @endphp
+
     <div class="header">
       <div>
         <div class="title">Payslip</div>
@@ -56,12 +70,31 @@
           </tr>
         </thead>
         <tbody>
-          @foreach(($payroll?->items?->where('type', 'earning') ?? []) as $item)
+          @if($hasItemizedEarnings)
+            @foreach($earningItems as $item)
+              <tr>
+                <td>{{ $item->name }}</td>
+                <td class="totals">{{ number_format($item->amount, 2) }}</td>
+              </tr>
+            @endforeach
+          @else
             <tr>
-              <td>{{ $item->name }}</td>
-              <td class="totals">{{ number_format($item->amount, 2) }}</td>
+              <td>Base Salary</td>
+              <td class="totals">{{ number_format($baseSalary, 2) }}</td>
             </tr>
-          @endforeach
+            <tr>
+              <td>Overtime</td>
+              <td class="totals">{{ number_format($overtimeAmount, 2) }}</td>
+            </tr>
+            <tr>
+              <td>Bonuses</td>
+              <td class="totals">{{ number_format($bonusesTotal, 2) }}</td>
+            </tr>
+            <tr>
+              <td>Allowances</td>
+              <td class="totals">{{ number_format($allowancesTotal, 2) }}</td>
+            </tr>
+          @endif
         </tbody>
       </table>
     </div>
@@ -76,12 +109,33 @@
           </tr>
         </thead>
         <tbody>
-          @foreach(($payroll?->items?->where('type', 'deduction') ?? []) as $item)
+          @if($hasItemizedDeductions)
+            @foreach($deductionItems as $item)
+              <tr>
+                <td>{{ $item->name }}</td>
+                <td class="totals">{{ number_format($item->amount, 2) }}</td>
+              </tr>
+            @endforeach
+            @foreach($taxItems as $item)
+              <tr>
+                <td>{{ $item->name }}</td>
+                <td class="totals">{{ number_format($item->amount, 2) }}</td>
+              </tr>
+            @endforeach
+          @else
             <tr>
-              <td>{{ $item->name }}</td>
-              <td class="totals">{{ number_format($item->amount, 2) }}</td>
+              <td>Employee Deductions</td>
+              <td class="totals">{{ number_format($deductionsTotal, 2) }}</td>
             </tr>
-          @endforeach
+            <tr>
+              <td>Withholding Tax</td>
+              <td class="totals">{{ number_format($taxTotal, 2) }}</td>
+            </tr>
+          @endif
+          <tr>
+            <td><strong>Total Deductions</strong></td>
+            <td class="totals"><strong>{{ number_format($deductionsTotal + $taxTotal, 2) }}</strong></td>
+          </tr>
         </tbody>
       </table>
     </div>

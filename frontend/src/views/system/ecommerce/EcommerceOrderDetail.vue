@@ -157,6 +157,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
+import paymongoService from '@/services/paymongo.service'
 import Timeline from 'primevue/timeline'
 import Dialog from 'primevue/dialog'
 
@@ -177,11 +178,41 @@ async function loadOrderDetail() {
   try {
     const response = await ecommerceService.getOrder(route.params.id as string)
     order.value = response.data?.data || null
+    await syncPaymongoPaymentStatus()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order details', life: 2500 })
     router.push({ name: 'ecommerce.orders' })
   } finally {
     loading.value = false
+  }
+}
+
+async function syncPaymongoPaymentStatus() {
+  const currentOrder = order.value
+  if (!currentOrder?.id) return
+  if (String(currentOrder.payment_method || '').toLowerCase() !== 'e_wallet') return
+  if (String(currentOrder.payment_status || '').toLowerCase() === 'paid') return
+
+  try {
+    const latestIntentResponse = await paymongoService.getLatestIntentByPayable('ecommerce_order', Number(currentOrder.id))
+    const latestIntent = latestIntentResponse?.data
+    const intentId = latestIntent?.payment_intent_id
+    if (!intentId) return
+
+    await paymongoService.getIntent(String(intentId))
+
+    const refreshed = await ecommerceService.getOrder(currentOrder.id)
+    const refreshedOrder = refreshed.data?.data || currentOrder
+    const beforeStatus = String(currentOrder.payment_status || '').toLowerCase()
+    const afterStatus = String(refreshedOrder.payment_status || '').toLowerCase()
+
+    order.value = refreshedOrder
+
+    if (beforeStatus !== 'paid' && afterStatus === 'paid') {
+      toast.add({ severity: 'success', summary: 'Payment Confirmed', detail: 'Your GCash payment was confirmed.', life: 2800 })
+    }
+  } catch {
+    // Keep order page usable even if PayMongo status refresh fails.
   }
 }
 

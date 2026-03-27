@@ -342,7 +342,7 @@ async function loadProduct() {
 
 async function loadRecommendedProducts() {
   try {
-    const response = await ecommerceService.getProducts({ per_page: 8, search: '' })
+    const response = await ecommerceService.getActiveStockProducts({ per_page: 8, search: '' })
     const all = response.data?.data?.data || []
     recommendedProducts.value = all.filter((p: any) => Number(p.id) !== Number(product.value?.id)).slice(0, 4)
   } catch {

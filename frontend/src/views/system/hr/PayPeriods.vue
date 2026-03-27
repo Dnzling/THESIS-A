@@ -27,7 +27,22 @@
           <Column field="cutoffStart" header="Start Date" sortable></Column>
           <Column field="cutoffEnd" header="End Date" sortable></Column>
           <Column field="payDate" header="Pay Date" sortable></Column>
-          <Column field="status" header="Status" sortable></Column>
+          <Column field="status" header="Status" sortable>
+            <template #body="slotProps">
+              <div class="flex items-center gap-2">
+                <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)" class="capitalize" />
+                <Select
+                  :modelValue="slotProps.data.status"
+                  :options="statusOptions"
+                  placeholder="Change status"
+                  class="w-36"
+                  size="small"
+                  :disabled="isStatusLocked(slotProps.data.status) || updatingStatusId === slotProps.data.id"
+                  @update:modelValue="(value) => changePeriodStatus(slotProps.data, value)"
+                />
+              </div>
+            </template>
+          </Column>
           <Column header="Actions">
             <template #body="slotProps">
               <div class="flex gap-2">
@@ -137,6 +152,7 @@ const editingId = ref<number | null>(null)
 const showDeleteModal = ref(false)
 const periodToDelete = ref<PayPeriods | null>(null)
 const authStore = useAuthStore()
+const updatingStatusId = ref<number | null>(null)
 
 const filters = ref<Filters>({
   search: '',
@@ -152,7 +168,7 @@ const periodForm = ref({
   payDate: null as Date | null
 })
 
-const statusOptions = ref(['draft', 'for-review', 'approved', 'released'])
+const statusOptions = ref(['draft', 'processing', 'locked', 'completed'])
 
 // Computed
 const filteredPayPeriods = computed(() => {
@@ -360,6 +376,55 @@ const savePeriod = async () => {
         life: 3000
       })
     }
+  }
+}
+
+const getStatusSeverity = (status: string): 'info' | 'success' | 'warn' | 'secondary' | 'danger' => {
+  const map: Record<string, 'info' | 'success' | 'warn' | 'secondary' | 'danger'> = {
+    draft: 'secondary',
+    processing: 'warn',
+    locked: 'info',
+    completed: 'success'
+  }
+  return map[status] || 'info'
+}
+
+const isStatusLocked = (status: string) => ['locked', 'completed'].includes(status)
+
+const changePeriodStatus = async (period: PayPeriods, status: string) => {
+  if (!status || status === period.status || isStatusLocked(period.status)) return
+
+  updatingStatusId.value = period.id
+  try {
+    const response = await hrService.api.put(`/api/payroll/periods/${period.id}`, {
+      status
+    })
+
+    if (response.data.success) {
+      period.status = status
+      toast.add({
+        severity: 'success',
+        summary: 'Updated',
+        detail: `Status changed to ${status}`,
+        life: 2500
+      })
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: response.data.message || 'Failed to update status',
+        life: 3000
+      })
+    }
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: err.response?.data?.message || 'Failed to update status',
+      life: 3000
+    })
+  } finally {
+    updatingStatusId.value = null
   }
 }
 

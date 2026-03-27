@@ -551,8 +551,6 @@ class EcommerceController extends Controller
 
     public function productShow(Request $request, int $id)
     {
-        $storeId = $this->resolveStoreId($request);
-
         $product = Product::query()
             ->with([
                 'category:id,category_name',
@@ -564,13 +562,26 @@ class EcommerceController extends Controller
                         ->orderBy('variation_name');
                 },
             ])
-            ->where('store_id', $storeId)
+            ->where('id', $id)
             ->where('is_active', true)
-            ->findOrFail($id);
+            ->whereNull('deleted_at')
+            ->when($request->filled('store_id'), function ($query) use ($request) {
+                $query->where('store_id', (int) $request->input('store_id'));
+            })
+            ->whereHas('inventory', function ($inventoryQuery) {
+                $inventoryQuery
+                    ->where('quantity_available', '>', 0)
+                    ->whereIn('stock_status', ['in_stock', 'low_stock']);
+            })
+            ->firstOrFail();
+
+        $storeId = (int) $product->store_id;
 
         $inventory = BranchInventory::query()
             ->where('store_id', $storeId)
             ->where('product_id', $product->id)
+            ->where('quantity_available', '>', 0)
+            ->whereIn('stock_status', ['in_stock', 'low_stock'])
             ->orderByDesc('quantity_available')
             ->first();
 
@@ -964,11 +975,20 @@ class EcommerceController extends Controller
             $appliedVoucherCode = (string) $voucherResult['voucher']['code'];
         }
 
+        $customerLatitude = isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null;
+        $customerLongitude = isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null;
+
+        if ($customerLatitude === null || $customerLongitude === null) {
+            [$resolvedLatitude, $resolvedLongitude] = $this->resolveCoordinatesFromAddress((string) $validated['shipping_address']);
+            $customerLatitude = $customerLatitude ?? $resolvedLatitude;
+            $customerLongitude = $customerLongitude ?? $resolvedLongitude;
+        }
+
         $fulfillmentBranch = $this->resolveFulfillmentBranch(
             (int) $cart->store_id,
             $itemsForCheckout,
-            isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null,
-            isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null
+            $customerLatitude,
+            $customerLongitude
         );
 
         if (!$fulfillmentBranch) {
@@ -978,7 +998,7 @@ class EcommerceController extends Controller
             ], 422);
         }
 
-        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch) {
+        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude) {
             $subtotal = 0;
             $taxAmount = 0;
             $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
@@ -995,8 +1015,8 @@ class EcommerceController extends Controller
                 'shipping_phone' => $validated['shipping_phone'] ?? null,
                 'shipping_email' => $validated['shipping_email'] ?? null,
                 'shipping_address' => $validated['shipping_address'],
-                'customer_latitude' => $validated['customer_latitude'] ?? null,
-                'customer_longitude' => $validated['customer_longitude'] ?? null,
+                'customer_latitude' => $customerLatitude,
+                'customer_longitude' => $customerLongitude,
                 'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
                 'placed_at' => now(),
             ]);
@@ -1079,6 +1099,48 @@ class EcommerceController extends Controller
             'message' => 'Order placed successfully.',
             'data' => $order->fresh(['assignedBranch:id,name,branch_code,city,province,latitude,longitude']),
         ]);
+    }
+
+    private function resolveCoordinatesFromAddress(string $shippingAddress): array
+    {
+        $address = trim($shippingAddress);
+        if ($address === '') {
+            return [null, null];
+        }
+
+        try {
+            $query = http_build_query([
+                'q' => $address,
+                'format' => 'jsonv2',
+                'limit' => 1,
+            ]);
+
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'timeout' => 6,
+                    'header' => "Accept: application/json\r\nUser-Agent: FurnitureStoresPlatform/1.0 (checkout-geocoder)\r\n",
+                ],
+            ]);
+
+            $rawBody = @file_get_contents('https://nominatim.openstreetmap.org/search?' . $query, false, $context);
+            if (!is_string($rawBody) || $rawBody === '') {
+                return [null, null];
+            }
+
+            $payload = json_decode($rawBody, true);
+            $first = is_array($payload) ? collect($payload)->first() : null;
+            if (!is_array($first) || !isset($first['lat'], $first['lon'])) {
+                return [null, null];
+            }
+
+            $latitude = is_numeric($first['lat']) ? (float) $first['lat'] : null;
+            $longitude = is_numeric($first['lon']) ? (float) $first['lon'] : null;
+
+            return [$latitude, $longitude];
+        } catch (\Throwable $exception) {
+            return [null, null];
+        }
     }
 
     public function orders(Request $request)

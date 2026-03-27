@@ -10,7 +10,7 @@
       <div class="flex items-center gap-1 sm:gap-2">
         <Button label="Stores" icon="pi pi-shop" severity="info" outlined rounded class="!text-xs sm:!text-sm" @click="router.push({ name: 'ecommerce.stores' })" />
         <Button label="Cart" icon="pi pi-shopping-cart" :badge="cartCount.toString()" severity="info"
-          badgeSeverity="secondary" class="!text-xs sm:!text-sm" rounded @click="goCart" />
+          badgeSeverity="secondary" class="!text-xs sm:text-sm!" rounded @click="goCart" />
         <Button v-if="!isLoggedIn" label="Login" rounded outlined severity="info" class="!text-xs sm:!text-sm" @click="goLogin" />
         <Button v-else icon="pi pi-user" rounded severity="info" v-tooltip.bottom="'Profile'"
           @click="toggleProfilePopover" />
@@ -94,7 +94,7 @@ function goCart() {
 }
 
 function goLogin() {
-  router.push({ name: 'CustomerLogin', query: { redirect: route.fullPath || '/shop' } })
+  router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
 }
 
 function goProfile() {
@@ -126,7 +126,7 @@ async function logoutCustomer() {
   profilePopoverRef.value?.hide()
   await authStore.logout()
   toast.add({ severity: 'success', summary: 'Logged out', detail: 'See you again soon!', life: 1600 })
-  router.push({ name: 'CustomerLogin', query: { redirect: '/shop' } })
+  router.push({ name: 'customer.login', query: { redirect: '/shop' } })
 }
 
 function handleCartUpdated() {

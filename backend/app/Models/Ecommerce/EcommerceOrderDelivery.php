@@ -22,6 +22,9 @@ class EcommerceOrderDelivery extends Model
         'courier_contact',
         'status',
         'estimated_delivery_at',
+        'distance_km',
+        'per_km_charge',
+        'estimated_fee',
         'dispatched_at',
         'out_for_delivery_at',
         'delivered_at',
@@ -35,6 +38,9 @@ class EcommerceOrderDelivery extends Model
 
     protected $casts = [
         'estimated_delivery_at' => 'datetime',
+        'distance_km' => 'decimal:2',
+        'per_km_charge' => 'decimal:2',
+        'estimated_fee' => 'decimal:2',
         'dispatched_at' => 'datetime',
         'out_for_delivery_at' => 'datetime',
         'delivered_at' => 'datetime',

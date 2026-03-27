@@ -707,7 +707,12 @@ async function loadLatestPaymongoInvoiceIntent() {
   try {
     const response = await paymongoService.getLatestIntentByPayable('invoice', Number(invoice.value.id))
     const latest = response?.data
-    if (!latest) return
+    if (!latest) {
+      paymongoInvoiceIntentId.value = null
+      paymongoInvoiceStatus.value = 'idle'
+      stopInvoicePaymongoPolling()
+      return
+    }
 
     paymongoInvoiceIntentId.value = latest.payment_intent_id || null
     paymongoInvoiceStatus.value = latest.status || paymongoInvoiceStatus.value
@@ -731,14 +736,20 @@ async function createInvoicePaymongoIntent() {
       payable_type: 'invoice',
       payable_id: Number(invoice.value.id),
     })
-    paymongoInvoiceIntentId.value = intentResponse?.data?.id || null
-    paymongoInvoiceStatus.value = intentResponse?.data?.attributes?.status || 'awaiting_payment_method'
+    paymongoInvoiceIntentId.value = intentResponse?.data?.data?.id || null
+    paymongoInvoiceStatus.value = intentResponse?.data?.data?.attributes?.status || 'awaiting_payment_method'
+    invoiceMarkedPaidByPaymongo.value = false
+
+    if (!paymongoInvoiceIntentId.value) {
+      throw new Error(intentResponse?.message || 'PayMongo intent was created without an ID.')
+    }
+
     startInvoicePaymongoPolling()
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'PayMongo',
-      detail: error?.response?.data?.message || 'Failed to create PayMongo intent for invoice.',
+      detail: error?.response?.data?.message || error?.message || 'Failed to create PayMongo intent for invoice.',
       life: 3500,
     })
   } finally {
@@ -787,15 +798,28 @@ async function pollInvoicePaymongoStatus() {
   paymongoInvoiceLoading.value = true
   try {
     const response = await paymongoService.getIntent(paymongoInvoiceIntentId.value)
-    paymongoInvoiceStatus.value = response?.data?.data?.attributes?.status || paymongoInvoiceStatus.value
+    paymongoInvoiceStatus.value = response?.data?.attributes?.status || paymongoInvoiceStatus.value
 
     if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase()) && invoice.value?.payment_status !== 'paid' && !invoiceMarkedPaidByPaymongo.value) {
       invoiceMarkedPaidByPaymongo.value = true
-      await financeService.markInvoicePaid(Number(invoice.value.id), {
+      const payload = {
         payment_method: 'paymongo_gcash',
         payment_amount: Number(invoice.value?.net_amount || invoice.value?.invoice_amount || 0),
-      })
+      }
+
+      if (isFinanceRoute.value) {
+        await financeService.markInvoicePaid(Number(invoice.value.id), payload)
+      } else {
+        await procurementService.markInvoiceAsPaid(Number(invoice.value.id), payload)
+      }
+
       await loadInvoice()
+      toast.add({
+        severity: 'success',
+        summary: 'PayMongo',
+        detail: 'Invoice payment completed and expense updated.',
+        life: 3500,
+      })
     }
 
     if (['succeeded', 'failed', 'canceled', 'cancelled', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {

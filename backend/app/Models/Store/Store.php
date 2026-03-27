@@ -16,10 +16,12 @@ class Store extends Model
     public $incrementing = true;
 
     protected $fillable = [
-        'store_name',
+        'name',
+        'store_code',
+        'province',
+        'type',
+        'phone',
         'email',
-        'contact_person',
-        'contact_number',
         'city',
         'address',
         'status',
@@ -113,9 +115,20 @@ class Store extends Model
     public function scopeSearch($query, $searchTerm)
     {
         return $query->where(function ($q) use ($searchTerm) {
-            $q->where('store_name', 'LIKE', "%{$searchTerm}%")
-                ->orWhere('contact_person', 'LIKE', "%{$searchTerm}%");
+            $q->where('name', 'LIKE', "%{$searchTerm}%")
+                ->orWhere('phone', 'LIKE', "%{$searchTerm}%")
+                ->orWhere('email', 'LIKE', "%{$searchTerm}%");
         });
+    }
+
+    public function getStoreNameAttribute(): string
+    {
+        return (string) ($this->attributes['name'] ?? '');
+    }
+
+    public function getContactNumberAttribute(): ?string
+    {
+        return $this->attributes['phone'] ?? null;
     }
 
     // ========== HELPER METHODS ==========

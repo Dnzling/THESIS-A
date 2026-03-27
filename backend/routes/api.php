@@ -15,6 +15,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\ProfileController as ApiProfileController;
 use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\BranchController;
+use App\Http\Controllers\Api\Store\TrialOnboardingController;
 
 use App\Http\Controllers\Api\Hr\EmployeeController;
 use App\Http\Controllers\Api\Hr\PayPeriodController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Api\Hr\PayrollController;
 use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
+use App\Http\Controllers\Api\Store\StoreScopedRoleController;
 use App\Http\Controllers\Api\Payments\PaymongoController;
 use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
@@ -31,6 +33,7 @@ use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\Core\SystemNotificationController;
+use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
 
@@ -59,6 +62,7 @@ require __DIR__ . '/job_portal_routes.php';
 // Public ecommerce browsing (guest-friendly)
 Route::prefix('ecommerce')->group(function () {
     Route::get('/products', [EcommerceController::class, 'products']);
+    Route::get('/products/active-stock', [EcommerceActiveStockProductsController::class, 'index']);
     Route::get('/products/{id}', [EcommerceController::class, 'productShow']);
     Route::get('/stores', [EcommerceController::class, 'storeDirectory']);
     Route::get('/stores/{storeId}', [EcommerceController::class, 'storeProfile']);
@@ -137,11 +141,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // ========== STORE ROLES & PERMISSIONS ==========
     Route::prefix('store')->group(function () {
+        Route::get('/roles/scoped', [StoreScopedRoleController::class, 'index']);
         Route::get('/roles', [StoreRoleController::class, 'index']);
         Route::post('/roles', [StoreRoleController::class, 'store']);
         Route::put('/roles/{id}', [StoreRoleController::class, 'update']);
         Route::delete('/roles/{id}', [StoreRoleController::class, 'destroy']);
         Route::get('/permissions', [StoreRoleController::class, 'getPermissions']);
+        Route::get('/modules', [StoreRoleController::class, 'getModules']);
+        Route::put('/modules', [StoreRoleController::class, 'updateModules']);
         Route::get('/roles/{id}/permissions', [StoreRoleController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [StoreRoleController::class, 'updateRolePermissions']);
     });
@@ -162,6 +169,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('logout-with-clock-out', [AuthController::class, 'logoutWithClockOut']);
         Route::post('refresh', [AuthController::class, 'refresh']);
         Route::post('change-password', [AuthController::class, 'changePassword']);
+        Route::get('trial-onboarding', [TrialOnboardingController::class, 'show']);
+        Route::post('trial-onboarding', [TrialOnboardingController::class, 'store']);
 
         // User info
         Route::get('user', fn(Request $request) => response()->json([
@@ -227,7 +236,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/generate', [PayrollController::class, 'generate']);
         Route::post('/bulk-submit', [PayrollController::class, 'bulkSubmitForApproval']);
         Route::post('/bulk-approve', [PayrollController::class, 'bulkApprove']);
+        Route::post('/bulk-mark-paid', [PayrollController::class, 'bulkMarkPaid']);
         Route::get('/payslip/{employeeId}', [PayrollController::class, 'getEmployeePayslips']);
+        Route::get('/payslip/{employeeId}/rundown/print', [PayrollController::class, 'printEmployeePayrollRundown']);
         Route::get('/{id}/payslip/pdf', [PayrollController::class, 'downloadPayslipPdf']);
         Route::get('/{id}/payslip/print', [PayrollController::class, 'printPayslip']);
 
@@ -239,6 +250,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::put('/{id}', [PayrollController::class, 'update']);
         Route::post('/{id}/submit', [PayrollController::class, 'submit']);
         Route::post('/{id}/approve', [PayrollController::class, 'approve']);
+        Route::post('/{id}/release', [PayrollController::class, 'release']);
         Route::post('/{id}/mark-paid', [PayrollController::class, 'markPaid']);
     });
 

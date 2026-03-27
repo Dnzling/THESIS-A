@@ -50,26 +50,26 @@ const tabs = [
     label: 'Deduction Types',
     icon: 'pi pi-percentage'
   },
-  {
-    id: 'overtime-rules',
-    label: 'Overtime Rules',
-    icon: 'pi pi-clock'
-  },
-  {
-    id: 'payroll-settings',
-    label: 'Payroll Settings',
-    icon: 'pi pi-dollar'
-  },
-  {
-    id: 'company-info',
-    label: 'Company Info',
-    icon: 'pi pi-building'
-  },
-  {
-    id: 'activity-log',
-    label: 'Activity Log',
-    icon: 'pi pi-book'
-  }
+  // {
+  //   id: 'overtime-rules',
+  //   label: 'Overtime Rules',
+  //   icon: 'pi pi-clock'
+  // },
+  // {
+  //   id: 'payroll-settings',
+  //   label: 'Payroll Settings',
+  //   icon: 'pi pi-dollar'
+  // },
+  // {
+  //   id: 'company-info',
+  //   label: 'Company Info',
+  //   icon: 'pi pi-building'
+  // },
+  // {
+  //   id: 'activity-log',
+  //   label: 'Activity Log',
+  //   icon: 'pi pi-book'
+  // }
 ]
 
 const activeTab = ref('deduction-types')

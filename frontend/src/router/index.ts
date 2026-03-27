@@ -17,6 +17,7 @@ const Pricing = () => import('../views/marketing/Pricing.vue')
 const Register = () => import('../views/auth/Register.vue')
 const Unauthorized = () => import('../views/Unauthorized.vue')
 const VerifyOtp = () => import('../views/auth/VerifyOtp.vue')
+const TrialOnboarding = () => import('../views/auth/TrialOnboarding.vue')
 const Verification = () => import('../views/auth/VerifyStore.vue')
 
 // Import the unified SystemLayout for all authenticated modules
@@ -72,10 +73,6 @@ const ProfileIndex = () => import('../views/system/profile/ProfileIndex.vue')
 // HR Views
 const HrDashboard = () => import('../views/system/hr/index.vue')
 
-// Stores
-const StoreRegister = () => import('../views/system/store/Registration.vue')
-
-
 // Routes
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'Home', component: Home, meta: { requiresGuest: true } },
@@ -86,6 +83,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/about', name: 'About', component: About, meta: { requiresGuest: true } },
   { path: '/pricing', name: 'Pricing', component: Pricing, meta: { requiresGuest: true } },
   { path: '/verify-otp', name: 'VerifyOtp', component: VerifyOtp, meta: { requiresGuest: true, title: 'Verify Email' } },
+  { path: '/trial-onboarding', name: 'TrialOnboarding', component: TrialOnboarding, meta: { requiresGuest: true, title: 'Trial Onboarding' } },
 
   {
     path: '/shop',
@@ -112,7 +110,7 @@ const routes: RouteRecordRaw[] = [
 
   {
     path: '/system',
-    component: StoreAdminLayout,
+    component: SystemLayout,
     meta: { requiresAuth: true },
     children: [
       { path: 'index', name: 'store.dashboard', component: Dashboard, meta: { title: 'Dashboard' } },
@@ -276,7 +274,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'products', name: 'merchandising.products', component: () => import('../views/system/merchandising/products/ProductsList.vue'), meta: { title: 'All Products', subtitle: 'Manage your furniture product catalog', permissions: ['merchandising.products.view'] } },
       { path: 'products/logs', name: 'merchandising.products.logs', component: () => import('../views/system/merchandising/products/ProductLogs.vue'), meta: { title: 'Product Logs', subtitle: 'View product module activity logs', permissions: ['merchandising.products.view'] } },
       { path: 'products/new', name: 'merchandising.products.create', component: () => import('../views/system/merchandising/products/ProductForm.vue'), meta: { title: 'Add New Product', subtitle: 'Create a new furniture product', permissions: ['merchandising.products.create'] } },
-      { path: 'products/raw/new', name: 'merchandising.products.raw.create', component: () => import('../views/system/merchandising/products/ProductForm.vue'), meta: { title: 'Add Raw Material', subtitle: 'Create a new raw material', permissions: ['merchandising.products.create'] } },
+      { path: 'products/raw/new', name: 'merchandising.products.raw.create', component: () => import('../views/system/merchandising/products/RawMaterialForm.vue'), meta: { title: 'Add Raw Material', subtitle: 'Create a new raw material', permissions: ['merchandising.products.create'] } },
       { path: 'products/:id/edit', name: 'merchandising.products.edit', component: () => import('../views/system/merchandising/products/ProductForm.vue'), meta: { title: 'Edit Product', subtitle: 'Update product information', permissions: ['merchandising.products.update'] } },
       { path: 'products/:id', name: 'merchandising.products.view', component: () => import('../views/system/merchandising/products/ProductView.vue'), meta: { title: 'Product Details', subtitle: 'View detailed product information and 3D model', permissions: ['merchandising.products.read'] } },
       { path: 'variations', name: 'merchandising.variations', component: () => import('../views/system/merchandising/variations/VariationsList.vue'), meta: { title: 'Product Variations', subtitle: 'Manage colors, sizes, and materials', permissions: ['merchandising.variations.view'] } },
@@ -348,18 +346,23 @@ const routes: RouteRecordRaw[] = [
     component: SystemLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: 'dashboard', name: 'finance.dashboard', component: () => import('../views/system/finance/FinanceDashboard.vue'), meta: { title: 'Finance Dashboard' } },
-      { path: 'payables', name: 'finance.payables', component: () => import('../views/system/finance/FinancePayablesIndex.vue'), meta: { title: 'Accounts Payable' } },
-      { path: 'invoices/:id', name: 'finance.invoices.detail', component: () => import('../views/system/procurement/Invoices/InvoiceDetail.vue'), meta: { title: 'Invoice Review' } },
-      { path: 'purchase-orders', name: 'finance.purchase-orders', component: () => import('../views/system/finance/FinancePurchaseOrderIndex.vue'), meta: { title: 'PO Finance Approvals' } },
-      { path: 'purchase-orders/:id', name: 'finance.purchase-orders.detail', component: () => import('../views/system/finance/FinancePurchaseOrderDetail.vue'), meta: { title: 'PO Finance Review' } },
-      { path: 'price-approvals', name: 'finance.price-approvals', component: () => import('../views/system/finance/FinancePriceApprovalIndex.vue'), meta: { title: 'Price Approvals' } },
-      { path: 'price-approvals/:id', name: 'finance.price-approvals.detail', component: () => import('../views/system/finance/FinancePriceApprovalDetail.vue'), meta: { title: 'Price Approval Review' } },
-      { path: 'receivables', name: 'finance.receivables', component: () => import('../views/system/finance/FinanceReceivablesIndex.vue'), meta: { title: 'Accounts Receivable' } },
-      { path: 'expenses', name: 'finance.expenses', component: () => import('../views/system/finance/FinanceExpensesIndex.vue'), meta: { title: 'Expenses' } },
-      { path: 'payroll', name: 'finance.payroll', component: () => import('../views/system/finance/FinancePayrollIndex.vue'), meta: { title: 'Payroll' } },
-      { path: 'budgets', name: 'finance.budgets', component: () => import('../views/system/finance/FinanceBudgetsIndex.vue'), meta: { title: 'Budgets' } },
-      { path: 'reports', name: 'finance.reports', component: () => import('../views/system/finance/FinanceReportsIndex.vue'), meta: { title: 'Reports' } },
+      { path: 'dashboard', name: 'finance.dashboard', component: () => import('../views/system/finance/FinanceDashboard.vue'), meta: { title: 'Finance Dashboard', permission: 'finance.dashboard.view' } },
+      { path: 'payables', name: 'finance.payables', component: () => import('../views/system/finance/FinancePayablesIndex.vue'), meta: { title: 'Accounts Payable', permission: 'finance.payables.view' } },
+      { path: 'invoices/:id', name: 'finance.invoices.detail', component: () => import('../views/system/procurement/Invoices/InvoiceDetail.vue'), meta: { title: 'Invoice Review', permission: 'finance.invoices.view' } },
+      { path: 'purchase-orders', name: 'finance.purchase-orders', component: () => import('../views/system/finance/FinancePurchaseOrderIndex.vue'), meta: { title: 'PO Finance Approvals', permission: 'finance.purchase-orders.view' } },
+      { path: 'purchase-orders/:id', name: 'finance.purchase-orders.detail', component: () => import('../views/system/finance/FinancePurchaseOrderDetail.vue'), meta: { title: 'PO Finance Review', permission: 'finance.purchase-orders.view' } },
+      { path: 'price-approvals', name: 'finance.price-approvals', component: () => import('../views/system/finance/FinancePriceApprovalIndex.vue'), meta: { title: 'Price Approvals', permission: 'finance.price-approvals.view' } },
+      { path: 'price-approvals/:id', name: 'finance.price-approvals.detail', component: () => import('../views/system/finance/FinancePriceApprovalDetail.vue'), meta: { title: 'Price Approval Review', permission: 'finance.price-approvals.view' } },
+      { path: 'receivables', name: 'finance.receivables', component: () => import('../views/system/finance/FinanceReceivablesIndex.vue'), meta: { title: 'Accounts Receivable', permission: 'finance.receivables.view' } },
+      { path: 'receivables/:source/:id', name: 'finance.receivables.detail', component: () => import('../views/system/finance/FinanceReceivablesDetail.vue'), meta: { title: 'Receivable Detail', permission: 'finance.receivables.view' } },
+      { path: 'expenses', name: 'finance.expenses', component: () => import('../views/system/finance/FinanceExpensesIndex.vue'), meta: { title: 'Expenses', permission: 'finance.expenses.view' } },
+      { path: 'expenses/:id', name: 'finance.expenses.detail', component: () => import('../views/system/finance/FinanceExpenseDetail.vue'), meta: { title: 'Expense Detail', permission: 'finance.expenses.view' } },
+      { path: 'payroll', name: 'finance.payroll', component: () => import('../views/system/finance/FinancePayrollIndex.vue'), meta: { title: 'Payroll', permission: 'finance.payroll.view' } },
+      { path: 'payroll/basic', name: 'finance.payroll.basic', component: () => import('../views/system/finance/FinancePayrollBasicIndex.vue'), meta: { title: 'Basic Payroll', permission: 'finance.payroll.view' } },
+      { path: 'payroll/:payPeriodId', name: 'finance.payroll.detail', component: () => import('../views/system/finance/FinancePayrollDetail.vue'), meta: { title: 'Payroll Period Detail', permission: 'finance.payroll.view' } },
+      { path: 'cashflow', name: 'finance.cashflow', component: () => import('../views/system/finance/FinanceCashflowIndex.vue'), meta: { title: 'Cashflow', permission: 'finance.cashflow.view' } },
+      { path: 'budgets', name: 'finance.budgets', component: () => import('../views/system/finance/FinanceBudgetsIndex.vue'), meta: { title: 'Budgets', permission: 'finance.budgets.view' } },
+      { path: 'reports', name: 'finance.reports', component: () => import('../views/system/finance/FinanceReportsIndex.vue'), meta: { title: 'Reports', permission: 'finance.reports.view' } },
       { path: '', redirect: { name: 'finance.dashboard' } },
     ],
   },
@@ -409,7 +412,7 @@ router.beforeEach(async (to, from, next) => {
   // Check if route requires authentication
   if (to.meta.requiresAuth && !isAuthenticated) {
     console.log('Not authenticated')
-    const loginRoute = to.path.startsWith('/shop') ? 'CustomerLogin' : 'Login'
+    const loginRoute = to.path.startsWith('/shop') ? 'customer.login' : 'Login'
     return next({ name: loginRoute, query: { redirect: to.fullPath } })
   }
 

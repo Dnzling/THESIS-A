@@ -112,8 +112,8 @@ class DeductionTypeController extends Controller
                 'min_amount' => 'nullable|numeric|min:0',
                 'max_amount' => 'nullable|numeric|min:0|gt:min_amount',
                 
-                // For formula type
-                'formula_data' => 'required_if:calculation_type,formula|nullable|json',
+                // For formula type (accept JSON string or array payload)
+                'formula_data' => 'required_if:calculation_type,formula',
                 
                 // General fields
                 'is_mandatory' => 'boolean',
@@ -136,9 +136,38 @@ class DeductionTypeController extends Controller
             $data['store_id'] = $storeId;
             $data['created_by'] = $user->id;
             
-            // Handle JSON fields
-            if (isset($data['formula_data']) && is_string($data['formula_data'])) {
-                $data['formula_data'] = json_decode($data['formula_data'], true);
+            // Normalize formula payload
+            if (($data['calculation_type'] ?? null) === 'formula') {
+                if (!array_key_exists('formula_data', $data)) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => [
+                            'formula_data' => ['Formula data is required for formula calculation type.']
+                        ]
+                    ], 422);
+                }
+
+                if (is_string($data['formula_data'])) {
+                    $decoded = json_decode($data['formula_data'], true);
+                    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+                        return response()->json([
+                            'success' => false,
+                            'errors' => [
+                                'formula_data' => ['Formula data must be a valid JSON object or array.']
+                            ]
+                        ], 422);
+                    }
+                    $data['formula_data'] = $decoded;
+                } elseif (!is_array($data['formula_data'])) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => [
+                            'formula_data' => ['Formula data must be an object/array or valid JSON string.']
+                        ]
+                    ], 422);
+                }
+            } else {
+                $data['formula_data'] = null;
             }
 
             $deductionType = DeductionType::create($data);
@@ -240,8 +269,8 @@ class DeductionTypeController extends Controller
                 'min_amount' => 'nullable|numeric|min:0',
                 'max_amount' => 'nullable|numeric|min:0|gt:min_amount',
                 
-                // For formula type
-                'formula_data' => 'required_if:calculation_type,formula|nullable|json',
+                // For formula type (accept JSON string or array payload)
+                'formula_data' => 'required_if:calculation_type,formula',
                 
                 // General fields
                 'is_mandatory' => 'boolean',
@@ -262,9 +291,40 @@ class DeductionTypeController extends Controller
             $data = $validator->validated();
             $data['updated_by'] = $user->id;
 
-            // Handle JSON fields
-            if (isset($data['formula_data']) && is_string($data['formula_data'])) {
-                $data['formula_data'] = json_decode($data['formula_data'], true);
+            // Normalize formula payload
+            if (($data['calculation_type'] ?? $deductionType->calculation_type) === 'formula') {
+                if (!array_key_exists('formula_data', $data)) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => [
+                            'formula_data' => ['Formula data is required for formula calculation type.']
+                        ]
+                    ], 422);
+                }
+
+                if (is_string($data['formula_data'])) {
+                    $decoded = json_decode($data['formula_data'], true);
+                    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+                        return response()->json([
+                            'success' => false,
+                            'errors' => [
+                                'formula_data' => ['Formula data must be a valid JSON object or array.']
+                            ]
+                        ], 422);
+                    }
+                    $data['formula_data'] = $decoded;
+                } elseif (!is_array($data['formula_data'])) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => [
+                            'formula_data' => ['Formula data must be an object/array or valid JSON string.']
+                        ]
+                    ], 422);
+                }
+            }
+
+            if (($data['calculation_type'] ?? $deductionType->calculation_type) !== 'formula') {
+                $data['formula_data'] = null;
             }
 
             $deductionType->update($data);

@@ -215,7 +215,6 @@
                   icon="pi pi-shopping-cart"
                   severity="success"
                   text
-                  severity="success"
                   rounded
                   @click="quickOrderProduct(data)"
                   v-tooltip="'Quick Order'"

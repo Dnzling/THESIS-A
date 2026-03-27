@@ -565,7 +565,7 @@ class InvoiceController extends Controller
             $invoice = Invoice::findOrFail($id);
 
             $validated = $request->validate([
-                'payment_method' => 'required|in:cash,check,bank_transfer,credit_card',
+                'payment_method' => 'required|in:cash,check,bank_transfer,credit_card,paymongo_gcash,gcash',
                 'payment_amount' => 'required|numeric|min:0',
             ]);
 
@@ -575,7 +575,7 @@ class InvoiceController extends Controller
                     'store_id' => $invoice->store_id,
                     'department' => 'procurement',
                     'category' => 'supplier_invoice',
-                    'amount' => $invoice->net_amount ?? $invoice->invoice_amount,
+                    'amount' => (float) $validated['payment_amount'],
                     'expense_date' => $invoice->invoice_date,
                     'status' => 'pending_approval',
                     'reference_number' => $invoice->invoice_number,

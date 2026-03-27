@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Sales\SalesOrder;
-use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderItem;
 use App\Models\Sales\SalesPayment;
 use App\Services\Payment\PaymongoService;
@@ -166,11 +165,6 @@ class SalesPosController extends Controller
             ]);
 
             $order = $order->fresh(['items', 'branch']);
-
-            if ($order->delivery_required) {
-                $this->createDeliveryForOrder($order, $user->id);
-                $order = $order->fresh(['items', 'branch', 'delivery']);
-            }
 
             return $order;
         });
@@ -498,33 +492,4 @@ class SalesPosController extends Controller
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
     }
 
-    private function createDeliveryForOrder(SalesOrder $order, int $userId): SalesOrderDelivery
-    {
-        $tracking = $this->nextDeliveryTrackingNumber();
-
-        return SalesOrderDelivery::create([
-            'sales_order_id' => $order->id,
-            'store_id' => $order->store_id,
-            'branch_id' => $order->branch_id,
-            'tracking_number' => $tracking,
-            'status' => 'assigned',
-            'notes' => $order->delivery_notes,
-            'created_by' => $userId,
-            'updated_by' => $userId,
-        ]);
-    }
-
-    private function nextDeliveryTrackingNumber(): string
-    {
-        $prefix = 'DEL-' . now()->format('Ymd') . '-';
-        $last = SalesOrderDelivery::query()
-            ->where('tracking_number', 'like', "{$prefix}%")
-            ->orderByDesc('id')
-            ->value('tracking_number');
-        $seq = 1;
-        if ($last && preg_match('/(\d+)$/', (string) $last, $m)) {
-            $seq = ((int) $m[1]) + 1;
-        }
-        return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
-    }
 }

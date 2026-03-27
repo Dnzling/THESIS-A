@@ -1,6 +1,6 @@
 <!-- views/system/employees/EmployeeInformation.vue -->
 <template>
-  <div class="min-h-screen bg-slate-50/70">
+  <div class="min-h-screen">
     <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center h-96">
@@ -48,11 +48,11 @@
                 :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
             </div>
             <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-              <span>{{ employeeInfo.employment_details?.role || '-' }}</span>
+              <span>{{ formatLabel(employeeInfo.employment_details?.role) }}</span>
               <span class="text-slate-300">|</span>
               <span>{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
               <span class="text-slate-300">|</span>
-              <span>{{ employeeInfo.employment_details?.department || '-' }}</span>
+              <span>{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
             </div>
 
             <div class="mt-5 grid gap-3 md:grid-cols-4">
@@ -62,7 +62,7 @@
               </div>
               <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
                 <div class="text-xs text-slate-500">Employment</div>
-                <div class="mt-1 text-sm font-semibold text-slate-900">{{ employeeInfo.employment_details?.type || '-' }}</div>
+                <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatLabel(employeeInfo.employment_details?.type) }}</div>
               </div>
               <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
                 <div class="text-xs text-slate-500">Leave Balance</div>
@@ -157,6 +157,66 @@
           </TabPanels>
         </Tabs>
       </div>
+
+      <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '760px' }" modal>
+        <div v-if="selectedPayslip" class="space-y-4 text-sm">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <p><span class="font-semibold text-slate-700">Employee:</span> {{ employeeInfo.basic_info?.name || '-' }}</p>
+              <p><span class="font-semibold text-slate-700">Employee #:</span> {{ employeeInfo.basic_info?.employee_number || '-' }}</p>
+              <p><span class="font-semibold text-slate-700">Pay Period:</span> {{ getPayPeriodLabel(selectedPayslip) }}</p>
+              <p><span class="font-semibold text-slate-700">Status:</span> {{ String(selectedPayslip.status || '-').toUpperCase() }}</p>
+              <p><span class="font-semibold text-slate-700">Payment Date:</span> {{ formatDate(selectedPayslip.payment_date || selectedPayslip.paid_at || null) }}</p>
+              <p><span class="font-semibold text-slate-700">Payment Method:</span> {{ selectedPayslip.payment_method || '-' }}</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+              <p class="mb-2 font-semibold text-emerald-800">Earnings</p>
+              <div class="space-y-1">
+                <p class="flex justify-between"><span>Base Salary</span><span>{{ formatCurrency(selectedPayslip.base_salary) }}</span></p>
+                <p class="flex justify-between"><span>Overtime</span><span>{{ formatCurrency(selectedPayslip.overtime_amount) }}</span></p>
+                <p class="flex justify-between"><span>Bonuses</span><span>{{ formatCurrency(selectedPayslip.bonuses_total) }}</span></p>
+                <p class="flex justify-between"><span>Allowances</span><span>{{ formatCurrency(selectedPayslip.allowances_total) }}</span></p>
+                <p class="flex justify-between border-t border-emerald-300 pt-1 font-semibold">
+                  <span>Gross Pay</span>
+                  <span>{{ formatCurrency(calculateGrossPay(selectedPayslip)) }}</span>
+                </p>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
+              <p class="mb-2 font-semibold text-rose-800">Deductions</p>
+              <div v-if="getDeductionItems(selectedPayslip).length" class="space-y-1">
+                <p v-for="item in getDeductionItems(selectedPayslip)" :key="`${selectedPayslip.id}-${item.id || item.name}`" class="flex justify-between">
+                  <span>{{ item.name }}</span>
+                  <span>-{{ formatCurrency(item.amount) }}</span>
+                </p>
+              </div>
+              <p v-else class="text-slate-500">No itemized deductions</p>
+              <p class="mt-1 flex justify-between"><span>Tax</span><span>-{{ formatCurrency(selectedPayslip.tax_amount) }}</span></p>
+              <p class="flex justify-between border-t border-rose-300 pt-1 font-semibold">
+                <span>Total Deductions</span>
+                <span>-{{ formatCurrency(Number(selectedPayslip.deductions_total || 0) + Number(selectedPayslip.tax_amount || 0)) }}</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <p class="flex items-center justify-between text-base font-semibold text-blue-900">
+              <span>Net Pay</span>
+              <span>{{ formatCurrency(selectedPayslip.net_salary) }}</span>
+            </p>
+          </div>
+        </div>
+
+        <template #footer>
+          <Button label="Close" text @click="showPayslipDialog = false" />
+          <Button label="Download PDF" icon="pi pi-download" severity="secondary" @click="handleDownloadPayslip(selectedPayslip)" />
+          <Button label="Print" icon="pi pi-print" severity="info" @click="handlePrintPayslip(selectedPayslip)" />
+        </template>
+      </Dialog>
     </template>
     </div>
   </div>
@@ -189,6 +249,8 @@ const payslipHistoryRef = ref<InstanceType<typeof PayslipHistory> | null>(null)
 // Loading states
 const loading = ref(false)
 const error = ref('')
+const showPayslipDialog = ref(false)
+const selectedPayslip = ref<any | null>(null)
 
 // State
 const activeTab = ref('info')
@@ -251,8 +313,43 @@ const formatDate = (date: string) => {
   })
 }
 
-const formatNumber = (num: number) => {
-  return num?.toLocaleString() || '0'
+const formatLabel = (value: string | null | undefined) => {
+  if (!value) return '-'
+  return value
+    .toString()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+const formatCurrency = (value: number | string | null | undefined) => {
+  const amount = typeof value === 'string' ? parseFloat(value) : Number(value || 0)
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0)
+}
+
+const calculateGrossPay = (payslip: any) => {
+  return Number(payslip?.base_salary || 0)
+    + Number(payslip?.overtime_amount || 0)
+    + Number(payslip?.bonuses_total || 0)
+    + Number(payslip?.allowances_total || 0)
+}
+
+const getDeductionItems = (payslip: any) => {
+  const deductionItems = Array.isArray(payslip?.items?.deductions) ? payslip.items.deductions : []
+  return deductionItems
+}
+
+const getPayPeriodLabel = (payslip: any) => {
+  const name = payslip?.pay_period?.name
+  const start = payslip?.pay_period?.start_date
+  const end = payslip?.pay_period?.end_date
+  if (name) return name
+  if (start && end) return `${formatDate(start)} - ${formatDate(end)}`
+  return '-'
 }
 
 const getStatusSeverity = (status: string) => {
@@ -275,7 +372,7 @@ const editEmployee = () => {
 }
 
 const exportData = () => {
-  window.open(`api/employees/${employeeId}/export`, '_blank')
+  window.open(`/api/employees/${employeeId}/export`, '_blank')
 }
 
 // Event Handlers
@@ -300,21 +397,66 @@ const handleViewLeaveDetails = (leave: any) => {
   console.log('Viewing leave details:', leave)
 }
 
-const handleViewPayslip = (payslip: any) => {
-  console.log('Viewing payslip:', payslip)
+const handleViewPayslip = async (payslip: any) => {
+  try {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip`)
+    selectedPayslip.value = {
+      ...payslip,
+      ...(response?.data?.payslip || {}),
+    }
+  } catch {
+    selectedPayslip.value = payslip
+  }
+
+  showPayslipDialog.value = true
 }
 
-const handleDownloadPayslip = (payslip: any) => {
-  toast.add({
-    severity: 'info',
-    summary: 'Downloading',
-    detail: `Downloading payslip for ${payslip.pay_period?.name}`,
-    life: 2000
-  })
+const handleDownloadPayslip = async (payslip: any) => {
+  if (!payslip?.id) return
+
+  try {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/pdf`, {
+      responseType: 'blob'
+    })
+
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    const periodLabel = String(getPayPeriodLabel(payslip)).replace(/\s+/g, '_')
+    link.setAttribute('download', `payslip_${periodLabel || payslip.id}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch {
+    toast.add({
+      severity: 'error',
+      summary: 'Download Failed',
+      detail: 'Unable to download payslip PDF.',
+      life: 2500,
+    })
+  }
 }
 
-const handlePrintPayslip = (payslip: any) => {
-  console.log('Printing payslip:', payslip)
+const handlePrintPayslip = async (payslip: any) => {
+  if (!payslip?.id) return
+
+  try {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/print`, {
+      responseType: 'blob'
+    })
+    const file = new Blob([response.data], { type: 'application/pdf' })
+    const fileURL = window.URL.createObjectURL(file)
+    window.open(fileURL, '_blank')
+    setTimeout(() => window.URL.revokeObjectURL(fileURL), 60_000)
+  } catch {
+    toast.add({
+      severity: 'error',
+      summary: 'Print Failed',
+      detail: 'Unable to open payslip print preview.',
+      life: 2500,
+    })
+  }
 }
 
 const handleGeneratePayslip = (year: number, month: number) => {

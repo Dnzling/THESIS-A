@@ -28,6 +28,26 @@
                 </div>
 
                 <template v-else>
+                    <div class="px-4 pb-3">
+                        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-3 mb-3">Store</div>
+                        <div class="space-y-1">
+                            <router-link
+                                to="/system/store/verification"
+                                class="nav-item text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            >
+                                <i class="pi pi-building w-5"></i>
+                                <span class="flex-1">Store Registration</span>
+                            </router-link>
+                            <router-link
+                                to="/system/roles-permissions"
+                                class="nav-item text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            >
+                                <i class="pi pi-shield w-5"></i>
+                                <span class="flex-1">Roles & Permissions</span>
+                            </router-link>
+                        </div>
+                    </div>
+
                     <!-- All Store Admin Navigation Items -->
                     <div v-if="storeNavigation.length > 0" class="px-4 space-y-1 pb-4">
                         <div v-for="section in groupedNavigation" :key="section.name">

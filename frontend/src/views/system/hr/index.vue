@@ -1,61 +1,90 @@
 <template>
   <div class="space-y-6">
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-white p-4 rounded-2xl shadow-sm">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">Team health snapshot</h1>
-        <p class="text-sm text-slate-500 mt-1">Today · {{ todayStats.date || '-' }} · {{ todayStats.day_name || '-' }}</p>
-      </div>
-      <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined @click="reloadDashboard" />
-    </div>
-
-    <div class="grid gap-3 md:grid-cols-5">
-      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-slate-500 uppercase tracking-wider">Employees</span>
-          <Tag value="Live" severity="success" size="small" />
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-900">HR Operations Dashboard</h1>
+          <p class="mt-1 text-sm text-slate-500">
+            {{ todayStats.day_name || 'Today' }} · {{ todayStats.date || '-' }}
+          </p>
         </div>
-        <p class="text-3xl font-bold text-slate-900">{{ todayStats.total_employees }}</p>
-        <p class="text-xs text-slate-500">Scheduled today {{ todayStats.scheduled_today }}</p>
-      </div>
-      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-slate-500 uppercase tracking-wider">Attendance</span>
-          <Tag :value="`${todayStats.attendance_rate}%`" severity="info" size="small" />
+        <div class="flex items-center gap-2">
+          <Tag :value="healthBadge.label" :severity="healthBadge.severity" rounded />
+          <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined :loading="loading" @click="reloadDashboard" />
         </div>
-        <p class="text-3xl font-bold text-emerald-600">{{ todayStats.attended_today }}</p>
-        <p class="text-xs text-slate-500">Present · {{ todayStats.attended_today }} of {{ todayStats.scheduled_today }}</p>
-      </div>
-      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-slate-500 uppercase tracking-wider">On Leave</span>
-          <Tag value="Today" severity="secondary" size="small" />
-        </div>
-        <p class="text-3xl font-bold text-amber-600">{{ todayStats.on_leave_today }}</p>
-        <p class="text-xs text-slate-500">Leave coverage today</p>
-      </div>
-      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-slate-500 uppercase tracking-wider">Absences</span>
-          <Tag value="Alert" severity="warning" size="small" />
-        </div>
-        <p class="text-3xl font-bold text-rose-600">{{ todayStats.absent_today }}</p>
-        <p class="text-xs text-slate-500">Leave hold {{ todayStats.pending_leave_requests }}</p>
-      </div>
-      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-slate-500 uppercase tracking-wider">Overtime</span>
-          <Tag :value="todayStats.pending_overtime" severity="info" size="small" />
-        </div>
-        <p class="text-3xl font-bold text-amber-600">{{ todayStats.pending_overtime }}</p>
-        <p class="text-xs text-slate-500">Requests waiting</p>
       </div>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
+      <template #title>
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-slate-700">Needs Attention Today</span>
+          <small class="text-slate-500">Highest-priority HR queue</small>
+        </div>
+      </template>
+      <template #content>
+        <div class="grid gap-3 md:grid-cols-3">
+          <button
+            class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-left transition hover:bg-rose-100"
+            @click="router.push({ name: 'hr.leave' })"
+          >
+            <p class="text-xs uppercase tracking-wider text-rose-600">Pending Leave Requests</p>
+            <p class="mt-1 text-3xl font-bold text-rose-700">{{ todayStats.pending_leave_requests }}</p>
+            <p class="mt-1 text-xs text-rose-700/80">Review and approve leave requests</p>
+          </button>
+          <button
+            class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:bg-amber-100"
+            @click="router.push({ name: 'hr.attendance' })"
+          >
+            <p class="text-xs uppercase tracking-wider text-amber-700">Pending Overtime</p>
+            <p class="mt-1 text-3xl font-bold text-amber-700">{{ todayStats.pending_overtime }}</p>
+            <p class="mt-1 text-xs text-amber-700/80">Validate overtime before payroll cut-off</p>
+          </button>
+          <button
+            class="rounded-xl border border-orange-200 bg-orange-50 p-4 text-left transition hover:bg-orange-100"
+            @click="router.push({ name: 'hr.shifts' })"
+          >
+            <p class="text-xs uppercase tracking-wider text-orange-700">Uncovered Shifts</p>
+            <p class="mt-1 text-3xl font-bold text-orange-700">{{ coverageGap }}</p>
+            <p class="mt-1 text-xs text-orange-700/80">Reschedule to avoid operations gaps</p>
+          </button>
+        </div>
+      </template>
+    </Card>
+
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div class="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+        <p class="text-xs uppercase tracking-wider text-slate-500">Total Employees</p>
+        <p class="mt-2 text-3xl font-bold text-slate-900">{{ todayStats.total_employees }}</p>
+        <p class="mt-1 text-xs text-slate-500">Scheduled today: {{ todayStats.scheduled_today }}</p>
+      </div>
+      <div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+        <p class="text-xs uppercase tracking-wider text-emerald-700">Attendance Rate</p>
+        <p class="mt-2 text-3xl font-bold text-emerald-700">{{ todayStats.attendance_rate }}%</p>
+        <p class="mt-1 text-xs text-emerald-700/80">Present: {{ todayStats.attended_today }}</p>
+      </div>
+      <div class="rounded-2xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
+        <p class="text-xs uppercase tracking-wider text-amber-700">On Leave Today</p>
+        <p class="mt-2 text-3xl font-bold text-amber-700">{{ todayStats.on_leave_today }}</p>
+        <p class="mt-1 text-xs text-amber-700/80">Planned leave count</p>
+      </div>
+      <div class="rounded-2xl border border-rose-100 bg-rose-50 p-4 shadow-sm">
+        <p class="text-xs uppercase tracking-wider text-rose-700">Absent Today</p>
+        <p class="mt-2 text-3xl font-bold text-rose-700">{{ todayStats.absent_today }}</p>
+        <p class="mt-1 text-xs text-rose-700/80">Unplanned absences</p>
+      </div>
+      <div class="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 shadow-sm">
+        <p class="text-xs uppercase tracking-wider text-indigo-700">Productive Coverage</p>
+        <p class="mt-2 text-3xl font-bold text-indigo-700">{{ productiveCoverage }}%</p>
+        <p class="mt-1 text-xs text-indigo-700/80">Present vs scheduled</p>
+      </div>
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
       <Card class="rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center justify-between">
-            <span class="text-sm font-semibold text-slate-700">Weekly Attendance</span>
+            <span class="text-sm font-semibold text-slate-700">Weekly Attendance Trend</span>
             <Tag :value="weeklyStats.attendance_summary" severity="info" size="small" />
           </div>
         </template>
@@ -65,90 +94,110 @@
             type="bar"
             :data="attendanceChartData"
             :options="attendanceChartOptions"
-            class="h-60"
+            class="h-64"
           />
-          <div v-else class="text-xs text-slate-500 text-center py-12">
-            {{ weeklyError || 'Loading attendance history…' }}
+          <div v-else class="py-12 text-center text-xs text-slate-500">
+            {{ weeklyError || 'Loading attendance history...' }}
           </div>
-          <div class="mt-4 grid grid-cols-4 gap-3 text-center text-xs">
+          <div class="mt-4 grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
             <div class="rounded-2xl bg-emerald-50 p-3">
-              <p class="text-xxs text-slate-500">Present</p>
+              <p class="text-xs text-slate-500">Present</p>
               <p class="text-lg font-semibold text-emerald-700">{{ weeklyTotals.present }}</p>
             </div>
             <div class="rounded-2xl bg-orange-50 p-3">
-              <p class="text-xxs text-slate-500">Late</p>
+              <p class="text-xs text-slate-500">Late</p>
               <p class="text-lg font-semibold text-orange-700">{{ weeklyTotals.late }}</p>
             </div>
             <div class="rounded-2xl bg-amber-50 p-3">
-              <p class="text-xxs text-slate-500">Leave</p>
+              <p class="text-xs text-slate-500">Leave</p>
               <p class="text-lg font-semibold text-amber-700">{{ weeklyTotals.leave }}</p>
             </div>
             <div class="rounded-2xl bg-rose-50 p-3">
-              <p class="text-xxs text-slate-500">Absent</p>
+              <p class="text-xs text-slate-500">Absent</p>
               <p class="text-lg font-semibold text-rose-700">{{ weeklyTotals.absent }}</p>
             </div>
           </div>
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold text-slate-700">Monthly Summary</span>
-          <div class="flex flex-wrap gap-2">
-            <Select v-model="selectedPayPeriod" :options="payPeriodOptions" optionLabel="label" optionValue="value" class="w-40" placeholder="Pay period" showClear />
-            <Select v-model="selectedMonth" :options="monthOptions" optionLabel="label" optionValue="value" class="w-32" />
-            <Select v-model="selectedYear" :options="yearOptions" optionLabel="label" optionValue="value" class="w-24" />
-          </div>
-        </div>
-        <div v-if="monthlyError" class="text-xs text-rose-600">{{ monthlyError }}</div>
-        <div class="space-y-3">
-          <div v-for="item in monthlySummaryDisplay" :key="item.label" class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-xs text-slate-500">{{ item.label }}</p>
-              <p class="text-sm font-semibold text-slate-900">{{ item.value }}</p>
+      <Card class="rounded-2xl border border-slate-200 shadow-sm">
+        <template #title>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-slate-700">Monthly Workforce Summary</span>
+              <Tag value="Filterable" severity="secondary" size="small" />
             </div>
-            <ProgressBar :value="item.percent" :showValue="false" class="w-32 h-2" />
+            <div class="flex flex-wrap gap-2">
+              <Select v-model="selectedPayPeriod" :options="payPeriodOptions" optionLabel="label" optionValue="value" class="w-44" placeholder="Pay period" showClear />
+              <Select v-model="selectedMonth" :options="monthOptions" optionLabel="label" optionValue="value" class="w-32" />
+              <Select v-model="selectedYear" :options="yearOptions" optionLabel="label" optionValue="value" class="w-28" />
+            </div>
           </div>
-        </div>
-        <div class="pt-4 border-t border-slate-100">
-          <p class="text-xs text-slate-500 uppercase tracking-[0.3em]">Overtime requests</p>
-          <p class="text-2xl font-bold text-amber-600">{{ monthlySummary.total_overtime || 0 }}</p>
-        </div>
+        </template>
+        <template #content>
+          <div v-if="monthlyError" class="mb-3 text-xs text-rose-600">{{ monthlyError }}</div>
+          <div class="space-y-3">
+            <div v-for="item in monthlySummaryDisplay" :key="item.label" class="space-y-1">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">{{ item.label }}</span>
+                <span class="font-semibold text-slate-900">{{ item.value }}</span>
+              </div>
+              <ProgressBar :value="item.percent" :showValue="false" class="h-2" />
+            </div>
+          </div>
+          <div class="mt-4 rounded-xl border border-amber-100 bg-amber-50 p-3">
+            <p class="text-xs uppercase tracking-wider text-amber-700">Overtime Requests (Month)</p>
+            <p class="text-2xl font-bold text-amber-700">{{ monthlySummary.total_overtime || 0 }}</p>
+          </div>
+        </template>
       </Card>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-3">
-      <Card class="rounded-2xl border border-slate-200 shadow-sm space-y-3">
-        <p class="text-sm font-semibold text-slate-700">Action Shortcuts</p>
-        <div class="space-y-2">
-          <Button label="Approve Leaves" icon="pi pi-calendar" severity="info" text class="justify-start" @click="router.push({ name: 'hr.leave' })" />
-          <Button label="Review Overtime" icon="pi pi-clock" severity="info" text class="justify-start" @click="router.push({ name: 'hr.attendance' })" />
-          <Button label="Check Shifts" icon="pi pi-calendar-plus" severity="info" text class="justify-start" @click="router.push({ name: 'hr.shifts' })" />
-          <Button label="Open Payroll" icon="pi pi-money-bill" severity="info" text class="justify-start" @click="router.push({ name: 'hr.payroll' })" />
-        </div>
-      </Card>
+    <!-- <div class="grid gap-4 xl:grid-cols-3">
       <Card class="rounded-2xl border border-slate-200 shadow-sm">
-        <template #title>Pending Alerts</template>
+        <template #title>Recommended Actions</template>
         <template #content>
-          <div class="space-y-2">
-            <button class="w-full flex items-center justify-between rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-left" @click="router.push({ name: 'hr.leave' })">
-              <span class="text-xs text-rose-600">Pending leaves</span>
-              <span class="text-sm font-semibold text-rose-700">{{ todayStats.pending_leave_requests }}</span>
-            </button>
-            <button class="w-full flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-left" @click="router.push({ name: 'hr.attendance' })">
-              <span class="text-xs text-amber-600">Pending overtime</span>
-              <span class="text-sm font-semibold text-amber-700">{{ todayStats.pending_overtime }}</span>
-            </button>
+          <div class="space-y-3">
+            <div
+              v-for="item in recommendedActions"
+              :key="item.title"
+              class="rounded-xl border p-3"
+              :class="item.tone"
+            >
+              <p class="text-xs uppercase tracking-wider">{{ item.priority }}</p>
+              <p class="mt-1 text-sm font-semibold">{{ item.title }}</p>
+              <p class="mt-1 text-xs opacity-80">{{ item.detail }}</p>
+            </div>
           </div>
         </template>
       </Card>
+
       <Card class="rounded-2xl border border-slate-200 shadow-sm">
-        <template #title>Next focus</template>
+        <template #title>Quick Navigation</template>
         <template #content>
-          <p class="text-sm text-slate-600">Use the latest attendance data to plan reschedules, confirm leave coverage, and ensure payroll accuracy before submitting.</p>
+          <div class="space-y-2">
+            <Button label="Leave Management" icon="pi pi-calendar" severity="secondary" text class="justify-start w-full" @click="router.push({ name: 'hr.leave' })" />
+            <Button label="Attendance" icon="pi pi-clock" severity="secondary" text class="justify-start w-full" @click="router.push({ name: 'hr.attendance' })" />
+            <Button label="Shift Management" icon="pi pi-calendar-plus" severity="secondary" text class="justify-start w-full" @click="router.push({ name: 'hr.shifts' })" />
+            <Button label="Payroll" icon="pi pi-money-bill" severity="secondary" text class="justify-start w-full" @click="router.push({ name: 'hr.payroll' })" />
+            <Button label="Employees" icon="pi pi-users" severity="secondary" text class="justify-start w-full" @click="router.push({ name: 'hr.employees' })" />
+          </div>
         </template>
       </Card>
-    </div>
+
+      <Card class="rounded-2xl border border-slate-200 shadow-sm">
+        <template #title>Current Focus</template>
+        <template #content>
+          <p class="text-sm text-slate-600">
+            Use this dashboard to clear pending approvals first, then stabilize shift coverage,
+            and finish attendance validation before running payroll.
+          </p>
+          <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            Last refresh: {{ lastRefreshLabel }}
+          </div>
+        </template>
+      </Card>
+    </div> -->
   </div>
 </template>
 
@@ -161,9 +210,11 @@ import Button from 'primevue/button'
 import Select from 'primevue/select'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import hrService from '@/services/hr.services'
+import hrService from '../../../services/hr.services'
 
 const router = useRouter()
+const loading = ref(false)
+const lastRefreshAt = ref<Date | null>(null)
 const todayStats = ref({
   date: '',
   day_name: '',
@@ -275,6 +326,65 @@ const weeklyStats = computed(() => {
   return { attendance_summary: `${rate}% in week` }
 })
 
+const coverageGap = computed(() => {
+  const gap = Number(todayStats.value.scheduled_today || 0) - Number(todayStats.value.attended_today || 0)
+  return gap > 0 ? gap : 0
+})
+
+const productiveCoverage = computed(() => {
+  const scheduled = Number(todayStats.value.scheduled_today || 0)
+  if (!scheduled) return 0
+  return Math.round((Number(todayStats.value.attended_today || 0) / scheduled) * 100)
+})
+
+const healthBadge = computed(() => {
+  if (todayStats.value.pending_leave_requests > 5 || todayStats.value.pending_overtime > 5 || coverageGap.value > 5) {
+    return { label: 'High workload', severity: 'warn' as const }
+  }
+  if (todayStats.value.pending_leave_requests > 0 || todayStats.value.pending_overtime > 0 || coverageGap.value > 0) {
+    return { label: 'Needs review', severity: 'info' as const }
+  }
+  return { label: 'Stable', severity: 'success' as const }
+})
+
+const recommendedActions = computed(() => [
+  {
+    priority: todayStats.value.pending_leave_requests > 0 ? 'High Priority' : 'Monitor',
+    title: 'Resolve Leave Queue',
+    detail: `${todayStats.value.pending_leave_requests} leave request(s) are awaiting action.`,
+    tone: todayStats.value.pending_leave_requests > 0
+      ? 'border-rose-200 bg-rose-50 text-rose-700'
+      : 'border-slate-200 bg-slate-50 text-slate-700'
+  },
+  {
+    priority: todayStats.value.pending_overtime > 0 ? 'High Priority' : 'Monitor',
+    title: 'Review Overtime Requests',
+    detail: `${todayStats.value.pending_overtime} overtime request(s) need validation.`,
+    tone: todayStats.value.pending_overtime > 0
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : 'border-slate-200 bg-slate-50 text-slate-700'
+  },
+  {
+    priority: coverageGap.value > 0 ? 'Medium Priority' : 'Healthy',
+    title: 'Close Coverage Gaps',
+    detail: `${coverageGap.value} uncovered schedule slot(s) detected today.`,
+    tone: coverageGap.value > 0
+      ? 'border-orange-200 bg-orange-50 text-orange-700'
+      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  }
+])
+
+const lastRefreshLabel = computed(() => {
+  if (!lastRefreshAt.value) return 'Not refreshed yet'
+  return lastRefreshAt.value.toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+})
+
 const monthlySummaryDisplay = computed(() => {
   const total = monthlySummary.value.total_scheduled || 1
   return [
@@ -324,10 +434,24 @@ const fetchPayPeriods = async () => {
   }
 }
 
-const reloadDashboard = () => {
-  fetchTodayStats()
-  fetchWeeklyAttendance()
-  fetchMonthlySummary()
+const settle = async (task: Promise<unknown>) => {
+  try {
+    await task
+  } catch {
+    // Errors are handled by each fetch function so the dashboard can load partial data.
+  }
+}
+
+const reloadDashboard = async () => {
+  loading.value = true
+  await Promise.all([
+    settle(fetchTodayStats()),
+    settle(fetchWeeklyAttendance()),
+    settle(fetchMonthlySummary()),
+    settle(fetchPayPeriods())
+  ])
+  lastRefreshAt.value = new Date()
+  loading.value = false
 }
 
 watch([selectedMonth, selectedYear], () => {
@@ -346,6 +470,5 @@ watch(selectedPayPeriod, (periodId) => {
 })
 
 onMounted(reloadDashboard)
-onMounted(fetchPayPeriods)
 </script>
 

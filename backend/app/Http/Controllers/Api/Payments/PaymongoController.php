@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Payments;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\PaymongoIntent;
 use App\Models\Sales\SalesPayment;
 use App\Services\Payment\PaymongoService;
@@ -104,7 +105,9 @@ class PaymongoController extends Controller
                 'client_key' => data_get($attrs, 'client_key', $intent->client_key),
                 'metadata' => data_get($attrs, 'metadata', $intent->metadata),
             ]);
-            $this->syncSalesPaymentFromIntent($intent->fresh(), $status);
+            $freshIntent = $intent->fresh();
+            $this->syncSalesPaymentFromIntent($freshIntent, $status);
+            $this->syncEcommerceOrderFromIntent($freshIntent, $status);
         }
 
         return response()->json(['data' => $payload]);
@@ -210,6 +213,7 @@ class PaymongoController extends Controller
 
         if ($intent) {
             $this->syncSalesPaymentFromIntent($intent, (string) $intent->status);
+            $this->syncEcommerceOrderFromIntent($intent, (string) $intent->status);
             return response()->json(['message' => 'Event processed']);
         }
 
@@ -268,6 +272,31 @@ class PaymongoController extends Controller
 
         if ($nextPaymentStatus === 'failed' && $payment->order) {
             $this->salesSettlementService->markPaymentFailed($payment->order, $payment);
+        }
+    }
+
+    private function syncEcommerceOrderFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
+    {
+        if ($intent->payable_type !== 'ecommerce_order') {
+            return;
+        }
+
+        $order = EcommerceOrder::query()->find((int) $intent->payable_id);
+        if (!$order) {
+            return;
+        }
+
+        $normalizedStatus = strtolower(trim($paymongoStatus));
+        $nextOrderPaymentStatus = match ($normalizedStatus) {
+            'succeeded' => 'paid',
+            'failed', 'cancelled', 'canceled' => 'failed',
+            default => 'unpaid',
+        };
+
+        if ($order->payment_status !== $nextOrderPaymentStatus) {
+            $order->update([
+                'payment_status' => $nextOrderPaymentStatus,
+            ]);
         }
     }
 }

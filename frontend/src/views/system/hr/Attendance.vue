@@ -114,8 +114,6 @@
             <div class="flex gap-1">
               <Button icon="pi pi-eye" severity="info" text rounded size="small" @click="viewDetails(data)"
                 v-tooltip.top="'View Details'" />
-              <Button icon="pi pi-pencil" severity="contrast" text rounded size="small" @click="editAttendance(data)"
-                v-tooltip.top="'Edit'" />
             </div>
           </template>
         </Column>

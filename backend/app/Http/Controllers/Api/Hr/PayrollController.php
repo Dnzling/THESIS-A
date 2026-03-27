@@ -15,10 +15,28 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use App\Models\Core\ActivityLog;
+use Carbon\CarbonInterface;
+use App\Services\Finance\CashflowService;
 
 class PayrollController extends Controller
 {
+    private function currentRoleName(): string
+    {
+        return strtolower((string) (auth()->user()?->role?->name ?? ''));
+    }
+
+    private function isHrActor(): bool
+    {
+        return in_array($this->currentRoleName(), ['hr_manager', 'store_admin', 'super_admin'], true);
+    }
+
+    private function isFinanceActor(): bool
+    {
+        return in_array($this->currentRoleName(), ['accountant', 'store_admin', 'super_admin'], true);
+    }
+
     public function index(Request $request)
     {
         try {
@@ -43,7 +61,10 @@ class PayrollController extends Controller
                 },
                 'payPeriod' => function ($q) {
                     $q->select('id', 'name');
-                }
+                },
+                'items' => function ($q) {
+                    $q->select('id', 'payroll_id', 'type', 'name', 'amount', 'calculation_type', 'rate');
+                },
             ]);
 
             // Filter by pay period
@@ -154,6 +175,7 @@ class PayrollController extends Controller
 
             $generated = [];
             $errors = [];
+            $skipped = [];
 
             foreach ($employees as $employee) {
                 try {
@@ -164,6 +186,15 @@ class PayrollController extends Controller
 
                     if ($existing && !($validated['recalculate'] ?? false)) {
                         $generated[] = $existing;
+                        continue;
+                    }
+
+                    if (!$this->hasPayrollSourceData((int) $employee->id, $payPeriod)) {
+                        $skipped[] = [
+                            'employee_id' => $employee->id,
+                            'employee' => $employee->fname . ' ' . $employee->lname,
+                            'reason' => 'No attendance or approved paid leave in this pay period'
+                        ];
                         continue;
                     }
 
@@ -208,7 +239,9 @@ class PayrollController extends Controller
                 'message' => 'Payroll generated successfully',
                 'data' => [
                     'generated' => count($generated),
+                    'skipped' => count($skipped),
                     'errors' => $errors,
+                    'skipped_employees' => $skipped,
                     'payrolls' => $generated
                 ]
             ]);
@@ -219,6 +252,30 @@ class PayrollController extends Controller
                 'message' => 'Failed to generate payroll: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    private function hasPayrollSourceData(int $employeeId, PayPeriod $period): bool
+    {
+        $hasAttendance = Attendance::where('employee_id', $employeeId)
+            ->whereBetween('attendance_date', [$period->start_date, $period->cutoff_date])
+            ->exists();
+
+        if ($hasAttendance) {
+            return true;
+        }
+
+        return Leave::where('employee_id', $employeeId)
+            ->where('status', 'approved')
+            ->where('is_paid', true)
+            ->where(function ($query) use ($period) {
+                $query->whereBetween('start_date', [$period->start_date, $period->cutoff_date])
+                    ->orWhereBetween('end_date', [$period->start_date, $period->cutoff_date])
+                    ->orWhere(function ($nested) use ($period) {
+                        $nested->where('start_date', '<=', $period->start_date)
+                            ->where('end_date', '>=', $period->cutoff_date);
+                    });
+            })
+            ->exists();
     }
 
     public function show($id)
@@ -255,6 +312,13 @@ class PayrollController extends Controller
     public function submit(Request $request, $id)
     {
         try {
+            if (!$this->isHrActor()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only HR can submit payroll for finance review',
+                ], 403);
+            }
+
             $payroll = Payroll::findOrFail($id);
 
             if (!in_array($payroll->status, ['draft', 'calculated'])) {
@@ -287,13 +351,28 @@ class PayrollController extends Controller
     public function approve(Request $request, $id)
     {
         try {
-            $payroll = Payroll::findOrFail($id);
-
-            if (!in_array($payroll->status, ['draft', 'calculated', 'processing'])) {
+            if (!$this->isFinanceActor()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only draft, calculated, or processing payrolls can be approved'
+                    'message' => 'Only Finance can approve payroll budget',
+                ], 403);
+            }
+
+            $payroll = Payroll::findOrFail($id);
+
+            if ($payroll->status !== 'processing') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only payrolls in processing status can be finance-approved'
                 ], 400);
+            }
+
+            $budgetError = $this->validateFinanceBudgetForApproval(collect([$payroll]));
+            if ($budgetError !== null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $budgetError,
+                ], 422);
             }
 
             $validated = $request->validate([
@@ -312,7 +391,7 @@ class PayrollController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payroll approved successfully',
+                'message' => 'Payroll finance approval completed successfully',
                 'data' => $payroll->load(['approvedBy'])
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -331,12 +410,19 @@ class PayrollController extends Controller
     public function markPaid(Request $request, $id)
     {
         try {
-            $payroll = Payroll::findOrFail($id);
-
-            if ($payroll->status !== 'approved') {
+            if (!$this->isHrActor()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only approved payrolls can be marked as paid'
+                    'message' => 'Only HR can distribute released payroll as paid',
+                ], 403);
+            }
+
+            $payroll = Payroll::findOrFail($id);
+
+            if ($payroll->status !== 'released') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only released payrolls can be marked as paid'
                 ], 400);
             }
 
@@ -347,18 +433,55 @@ class PayrollController extends Controller
                 'notes' => 'nullable|string',
             ]);
 
-            $payroll->update([
-                ...$validated,
-                'status' => 'paid',
-                'paid_by' => auth()->id(),
-                'paid_at' => now(),
-            ]);
+            try {
+                DB::transaction(function () use ($payroll, $validated) {
+                    $employeeStoreId = (int) ($payroll->employee?->store_id ?? 0);
+                    if ($employeeStoreId <= 0) {
+                        throw new \RuntimeException('Unable to resolve employee store for payroll settlement.');
+                    }
+
+                    $cashflow = new CashflowService();
+                    $cashflow->debit(
+                        $employeeStoreId,
+                        (float) $payroll->net_salary,
+                        'payroll',
+                        (int) $payroll->id,
+                        auth()->id(),
+                        'Payroll settlement #' . $payroll->id,
+                        $validated['payment_method'] ?? null,
+                        [
+                            'pay_period_id' => (int) $payroll->pay_period_id,
+                            'employee_id' => (int) $payroll->employee_id,
+                        ]
+                    );
+
+                    $payroll->update([
+                        ...$validated,
+                        'status' => 'paid',
+                        'paid_by' => auth()->id(),
+                        'paid_at' => now(),
+                    ]);
+                });
+            } catch (\RuntimeException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+
+            $this->syncPeriodStatus($payroll->pay_period_id);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Payroll marked as paid successfully',
                 'data' => $payroll->load(['paidBy'])
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
@@ -368,6 +491,57 @@ class PayrollController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to mark payroll as paid: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Individual release: approved -> released
+     */
+    public function release(Request $request, $id)
+    {
+        try {
+            if (!$this->isHrActor()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only HR can release payroll after finance approval',
+                ], 403);
+            }
+
+            $payroll = Payroll::findOrFail($id);
+
+            if ($payroll->status !== 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only finance-approved payrolls can be released',
+                ], 400);
+            }
+
+            $validated = $request->validate([
+                'notes' => 'nullable|string',
+            ]);
+
+            $payroll->update([
+                'status' => 'released',
+                'notes' => $validated['notes'] ?? $payroll->notes,
+            ]);
+
+            $this->syncPeriodStatus($payroll->pay_period_id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payroll released successfully',
+                'data' => $payroll,
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payroll not found'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to release payroll: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -499,10 +673,20 @@ class PayrollController extends Controller
         // Gross pay = base salary + overtime + night diff + rest day + leave pay
         $grossPay = $baseSalary + $overtimeAmount + $nightDiffPay + $restDayPay + $leavePay;
 
-        // Total deductions = late deduction + absent deduction + half day deduction + other deductions
+        // Total deductions = attendance deductions + configured employee deductions from deduction types
+        $deductionReferenceDate = Carbon::parse($period->cutoff_date)->toDateString();
         $otherDeductions = EmployeeDeduction::where('employee_id', $employee->id)
             ->active()
-            ->sum('amount');
+            ->where('effective_date', '<=', $deductionReferenceDate)
+            ->where(function ($query) use ($deductionReferenceDate) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', $deductionReferenceDate);
+            })
+            ->with('deductionType')
+            ->get()
+            ->sum(function (EmployeeDeduction $deduction) use ($baseSalary, $grossPay, $period, $employee) {
+                return $this->calculateDeductionAmountForPeriod($deduction, $baseSalary, $grossPay, $period, (int) $employee->id);
+            });
 
         $totalDeductions = $lateDeduction + $absentDeduction + $halfDayDeduction + $otherDeductions;
 
@@ -634,20 +818,132 @@ class PayrollController extends Controller
         }
 
         // Add other deductions
+        $referenceDate = optional($payroll->payPeriod)->cutoff_date
+            ? Carbon::parse($payroll->payPeriod->cutoff_date)->toDateString()
+            : now()->toDateString();
+
+        $grossPayForDeduction =
+            (float) ($payrollData['base_salary'] ?? 0) +
+            (float) ($payrollData['overtime_amount'] ?? 0) +
+            (float) ($payrollData['bonuses_total'] ?? 0) +
+            (float) ($payrollData['allowances_total'] ?? 0);
+
         $deductions = EmployeeDeduction::where('employee_id', $payroll->employee_id)
             ->active()
+            ->where('effective_date', '<=', $referenceDate)
+            ->where(function ($query) use ($referenceDate) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', $referenceDate);
+            })
             ->with('deductionType')
             ->get();
 
         foreach ($deductions as $deduction) {
+            if (!$deduction instanceof EmployeeDeduction) {
+                continue;
+            }
+
+            $deductionType = $deduction->deductionType;
+            if (!$deductionType) {
+                continue;
+            }
+
+            $deductionAmount = $this->calculateDeductionAmountForPeriod(
+                $deduction,
+                (float) ($payrollData['base_salary'] ?? 0),
+                $grossPayForDeduction,
+                $payroll->payPeriod,
+                (int) $payroll->employee_id
+            );
+
+            if ($deductionAmount <= 0) {
+                continue;
+            }
+
             $payroll->items()->create([
                 'type' => 'deduction',
-                'name' => $deduction->deductionType->name,
-                'amount' => $deduction->amount,
-                'calculation_type' => 'fixed',
+                'name' => $deductionType->name,
+                'amount' => $deductionAmount,
+                'calculation_type' => $deductionType->calculation_type,
+                'rate' => (float) ($deductionType->percentage_rate ?? $deductionType->percentage_value ?? 0),
                 'notes' => $deduction->notes,
             ]);
         }
+    }
+
+    private function calculateDeductionAmountForPeriod(
+        EmployeeDeduction $deduction,
+        float $baseSalary,
+        float $grossPay,
+        ?PayPeriod $period,
+        int $employeeId
+    ): float {
+        $deductionType = $deduction->deductionType;
+        if (!$deductionType || !$period) {
+            return 0;
+        }
+
+        $baseAmount = (float) $deduction->calculateAmount($baseSalary, $grossPay);
+        if ($baseAmount <= 0) {
+            return 0;
+        }
+
+        return $this->applyDeductionFrequencyRule($deduction, $baseAmount, $period, $employeeId);
+    }
+
+    private function applyDeductionFrequencyRule(
+        EmployeeDeduction $deduction,
+        float $amount,
+        PayPeriod $period,
+        int $employeeId
+    ): float {
+        $frequency = strtolower((string) ($deduction->frequency ?? $deduction->deductionType?->frequency ?? 'bi-monthly'));
+
+        return match ($frequency) {
+            'bi-monthly' => round($amount, 2),
+            'monthly' => round($amount / 2, 2),
+            'one-time' => $this->hasOneTimeDeductionAlreadyApplied(
+                $employeeId,
+                (string) ($deduction->deductionType?->name ?? ''),
+                $deduction->effective_date,
+                $period->cutoff_date
+            ) ? 0.0 : round($amount, 2),
+            // MVP rule: don't auto-apply quarterly/annual until a schedule policy is defined.
+            'quarterly', 'annual' => 0.0,
+            default => round($amount, 2),
+        };
+    }
+
+    private function hasOneTimeDeductionAlreadyApplied(
+        int $employeeId,
+        string $deductionName,
+        $effectiveDate,
+        $currentCutoffDate
+    ): bool {
+        if ($deductionName === '') {
+            return false;
+        }
+
+        $effective = $effectiveDate instanceof CarbonInterface
+            ? $effectiveDate->toDateString()
+            : Carbon::parse($effectiveDate)->toDateString();
+
+        $currentCutoff = $currentCutoffDate instanceof CarbonInterface
+            ? $currentCutoffDate->toDateString()
+            : Carbon::parse($currentCutoffDate)->toDateString();
+
+        return Payroll::query()
+            ->where('employee_id', $employeeId)
+            ->whereHas('payPeriod', function ($query) use ($effective, $currentCutoff) {
+                $query->where('cutoff_date', '>=', $effective)
+                    ->where('cutoff_date', '<', $currentCutoff);
+            })
+            ->whereHas('items', function ($query) use ($deductionName) {
+                $query->where('type', 'deduction')
+                    ->where('name', $deductionName)
+                    ->where('amount', '>', 0);
+            })
+            ->exists();
     }
 
     public function getEmployeeBasicSalary(Request $request)
@@ -1079,6 +1375,13 @@ class PayrollController extends Controller
     public function bulkSubmitForApproval(Request $request)
     {
         try {
+            if (!$this->isHrActor()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only HR can submit payrolls for finance review',
+                ], 403);
+            }
+
             $validated = $request->validate([
                 'payroll_ids' => 'required|array|min:1',
                 'payroll_ids.*' => 'exists:payrolls,id',
@@ -1128,20 +1431,35 @@ class PayrollController extends Controller
     public function bulkApprove(Request $request)
     {
         try {
+            if (!$this->isFinanceActor()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only Finance can bulk approve payroll budget',
+                ], 403);
+            }
+
             $validated = $request->validate([
                 'payroll_ids' => 'required|array|min:1',
                 'payroll_ids.*' => 'exists:payrolls,id',
             ]);
 
             $payrolls = Payroll::whereIn('id', $validated['payroll_ids'])
-                ->whereIn('status', ['draft', 'calculated', 'processing'])
+                ->where('status', 'processing')
                 ->get();
 
             if ($payrolls->isEmpty()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No eligible payrolls found for approval',
+                    'message' => 'No eligible payrolls found for finance approval (must be processing)',
                 ], 400);
+            }
+
+            $budgetError = $this->validateFinanceBudgetForApproval($payrolls);
+            if ($budgetError !== null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $budgetError,
+                ], 422);
             }
 
             DB::beginTransaction();
@@ -1176,11 +1494,104 @@ class PayrollController extends Controller
     }
 
     /**
-     * Sync pay period status based on its payroll statuses:
-     * - ANY draft/calculated  → period = draft
-     * - ALL processing        → period = processing
-     * - ALL approved          → period = locked
-     * - ALL paid              → period = completed
+     * Bulk mark paid: released -> paid
+     */
+    public function bulkMarkPaid(Request $request)
+    {
+        try {
+            if (!$this->isHrActor()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only HR can bulk distribute payroll as paid',
+                ], 403);
+            }
+
+            $validated = $request->validate([
+                'payroll_ids' => 'required|array|min:1',
+                'payroll_ids.*' => 'exists:payrolls,id',
+                'payment_date' => 'nullable|date',
+                'payment_method' => 'nullable|string|max:50',
+                'reference_number' => 'nullable|string|max:100',
+                'notes' => 'nullable|string',
+            ]);
+
+            $payrolls = Payroll::with('employee:id,store_id')
+                ->whereIn('id', $validated['payroll_ids'])
+                ->where('status', 'released')
+                ->get();
+
+            if ($payrolls->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No eligible payrolls found to mark as paid (must be released)',
+                ], 400);
+            }
+
+            $paymentDate = $validated['payment_date'] ?? now()->toDateString();
+            $paymentMethod = $validated['payment_method'] ?? 'bank_transfer';
+
+            try {
+                DB::transaction(function () use ($payrolls, $validated, $paymentDate, $paymentMethod) {
+                    $cashflow = new CashflowService();
+
+                    foreach ($payrolls as $payroll) {
+                        $employeeStoreId = (int) ($payroll->employee?->store_id ?? 0);
+                        if ($employeeStoreId <= 0) {
+                            throw new \RuntimeException('Unable to resolve employee store for payroll settlement.');
+                        }
+
+                        $cashflow->debit(
+                            $employeeStoreId,
+                            (float) $payroll->net_salary,
+                            'payroll',
+                            (int) $payroll->id,
+                            auth()->id(),
+                            'Payroll settlement #' . $payroll->id,
+                            $paymentMethod,
+                            [
+                                'pay_period_id' => (int) $payroll->pay_period_id,
+                                'employee_id' => (int) $payroll->employee_id,
+                            ]
+                        );
+
+                        $payroll->update([
+                            'status' => 'paid',
+                            'payment_date' => $paymentDate,
+                            'payment_method' => $paymentMethod,
+                            'reference_number' => $validated['reference_number'] ?? null,
+                            'notes' => $validated['notes'] ?? $payroll->notes,
+                            'paid_by' => auth()->id(),
+                            'paid_at' => now(),
+                        ]);
+                    }
+                });
+            } catch (\RuntimeException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+
+            $payPeriodIds = $payrolls->pluck('pay_period_id')->unique()->values();
+            foreach ($payPeriodIds as $periodId) {
+                $this->syncPeriodStatus((int) $periodId);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $payrolls->count() . ' payroll(s) marked as paid successfully',
+                'paid_count' => $payrolls->count(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to bulk mark payrolls as paid: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Sync pay period status based on payroll statuses.
      */
     private function syncPeriodStatus(int $payPeriodId): void
     {
@@ -1199,7 +1610,7 @@ class PayrollController extends Controller
             $newStatus = 'draft';
         } elseif (in_array('processing', $statuses)) {
             $newStatus = 'processing';
-        } elseif (count($statuses) === 1 && $statuses[0] === 'approved') {
+        } elseif (count($statuses) === 1 && in_array($statuses[0], ['approved', 'released'], true)) {
             $newStatus = 'locked';
         } elseif (count($statuses) === 1 && $statuses[0] === 'paid') {
             $newStatus = 'completed';
@@ -1210,6 +1621,46 @@ class PayrollController extends Controller
         if ($period->status !== $newStatus) {
             $period->update(['status' => $newStatus]);
         }
+    }
+
+    /**
+     * Validate available operating balance before finance approval.
+     * This prevents approving payroll that cannot be covered by current budget.
+     */
+    private function validateFinanceBudgetForApproval(Collection $payrolls): ?string
+    {
+        if ($payrolls->isEmpty()) {
+            return null;
+        }
+
+        $payrollIds = $payrolls->pluck('id')->map(fn($id) => (int) $id)->all();
+
+        $requiredByStore = Payroll::query()
+            ->join('employees', 'employees.id', '=', 'payrolls.employee_id')
+            ->whereIn('payrolls.id', $payrollIds)
+            ->groupBy('employees.store_id')
+            ->selectRaw('employees.store_id as store_id, COALESCE(SUM(payrolls.net_salary), 0) as required_total')
+            ->get();
+
+        $cashflow = new CashflowService();
+
+        foreach ($requiredByStore as $row) {
+            $storeId = (int) ($row->store_id ?? 0);
+            if ($storeId <= 0) {
+                return 'Unable to resolve employee store for payroll approval budget validation.';
+            }
+
+            $requiredTotal = round((float) ($row->required_total ?? 0), 2);
+            $available = round($cashflow->getAvailableBalance($storeId), 2);
+
+            if ($available + 0.0001 < $requiredTotal) {
+                return 'Insufficient operating budget for finance approval. Store #' . $storeId
+                    . ' available: ' . number_format($available, 2)
+                    . ', required: ' . number_format($requiredTotal, 2) . '.';
+            }
+        }
+
+        return null;
     }
 
     public function update(Request $request, $id)
@@ -1484,7 +1935,6 @@ class PayrollController extends Controller
                 }
             ])
                 ->where('employee_id', $employeeId)
-                ->where('reference_number', '!=', null)
                 ->whereHas('payPeriod', function ($q) use ($user) {
                     $q->where('store_id', $user->store_id);
                 });
@@ -1583,7 +2033,7 @@ class PayrollController extends Controller
 
         $printedAt = now();
 
-        $pdf = \PDF::loadView('hr.payslip-pdf', [
+        $pdf = app('dompdf.wrapper')->loadView('hr.payslip-pdf', [
             'payroll' => $payroll,
             'employee' => $payroll->employee,
             'user' => $payroll->employee?->user,
@@ -1611,7 +2061,7 @@ class PayrollController extends Controller
 
         $printedAt = now();
 
-        $pdf = \PDF::loadView('hr.payslip-pdf', [
+        $pdf = app('dompdf.wrapper')->loadView('hr.payslip-pdf', [
             'payroll' => $payroll,
             'employee' => $payroll->employee,
             'user' => $payroll->employee?->user,
@@ -1628,6 +2078,98 @@ class PayrollController extends Controller
         );
 
         return $pdf->stream('payslip_' . $payroll->id . '.pdf');
+    }
+
+    public function printEmployeePayrollRundown(Request $request, $employeeId)
+    {
+        $user = Auth::user();
+
+        if (!$user->store_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User is not associated with any store'
+            ], 403);
+        }
+
+        $employee = Employee::where('store_id', $user->store_id)->findOrFail($employeeId);
+
+        $query = Payroll::with(['payPeriod'])
+            ->where('employee_id', $employeeId)
+            ->whereHas('payPeriod', function ($q) use ($user) {
+                $q->where('store_id', $user->store_id);
+            });
+
+        if ($request->filled('year')) {
+            $query->whereHas('payPeriod', function ($q) use ($request) {
+                $q->whereYear('start_date', $request->year);
+            });
+        }
+
+        if ($request->filled('month')) {
+            $query->whereHas('payPeriod', function ($q) use ($request) {
+                $q->whereMonth('start_date', $request->month);
+            });
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $payrolls = $query->orderByDesc('created_at')->get();
+
+        $rows = $payrolls->map(function ($payroll) {
+            $gross = (float) $payroll->base_salary
+                + (float) $payroll->overtime_amount
+                + (float) $payroll->bonuses_total
+                + (float) $payroll->allowances_total;
+            $deductions = (float) $payroll->deductions_total + (float) $payroll->tax_amount;
+
+            return [
+                'id' => (int) $payroll->id,
+                'period' => $payroll->payPeriod?->name ?? ('Period ' . $payroll->pay_period_id),
+                'base_salary' => (float) $payroll->base_salary,
+                'overtime_amount' => (float) $payroll->overtime_amount,
+                'bonuses_total' => (float) $payroll->bonuses_total,
+                'allowances_total' => (float) $payroll->allowances_total,
+                'gross_pay' => $gross,
+                'deductions_total' => $deductions,
+                'net_salary' => (float) $payroll->net_salary,
+                'status' => (string) $payroll->status,
+                'payment_date' => $payroll->payment_date,
+            ];
+        })->values();
+
+        $totals = [
+            'gross' => (float) $rows->sum('gross_pay'),
+            'deductions' => (float) $rows->sum('deductions_total'),
+            'net' => (float) $rows->sum('net_salary'),
+            'count' => (int) $rows->count(),
+        ];
+
+        $byStatus = $rows->groupBy('status')->map(function ($items, $status) {
+            return [
+                'status' => $status,
+                'count' => (int) $items->count(),
+                'net_total' => (float) $items->sum('net_salary'),
+            ];
+        })->values();
+
+        $printedAt = now();
+
+        $pdf = app('dompdf.wrapper')->loadView('hr.payroll-rundown-pdf', [
+            'employee' => $employee,
+            'rows' => $rows,
+            'totals' => $totals,
+            'byStatus' => $byStatus,
+            'filters' => [
+                'year' => $request->year,
+                'month' => $request->month,
+                'status' => $request->status,
+            ],
+            'printedAt' => $printedAt,
+        ])->setPaper('A4', 'portrait');
+
+        return $pdf->stream('payroll_rundown_' . ($employee->employee_number ?? $employee->id) . '.pdf');
     }
 
     /**
@@ -1674,12 +2216,12 @@ class PayrollController extends Controller
             'created_at' => $payroll->created_at,
             'updated_at' => $payroll->updated_at,
             'gross_pay' => $grossPay,
-            'pay_period' => $payroll->pay_period ? [
-                'id' => $payroll->pay_period->id,
-                'name' => $payroll->pay_period->name,
-                'start_date' => $payroll->pay_period->start_date,
-                'end_date' => $payroll->pay_period->end_date,
-                'status' => $payroll->pay_period->status
+            'pay_period' => $payroll->payPeriod ? [
+                'id' => $payroll->payPeriod->id,
+                'name' => $payroll->payPeriod->name,
+                'start_date' => $payroll->payPeriod->start_date,
+                'end_date' => $payroll->payPeriod->end_date,
+                'status' => $payroll->payPeriod->status
             ] : null,
             'items' => [
                 'earnings' => $earnings,

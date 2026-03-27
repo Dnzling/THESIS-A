@@ -9,7 +9,6 @@ use App\Models\Store\StoreVerification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class StoreVerificationController extends Controller
@@ -55,13 +54,13 @@ class StoreVerificationController extends Controller
             }
 
             // Upload other documents if any
-            if ($request->has('other_documents')) {
+            if ($request->hasFile('other_documents')) {
                 $otherDocs = [];
                 foreach ($request->file('other_documents') as $file) {
                     $path = $file->store("store-verifications/{$store->id}/other", 'public');
                     $otherDocs[] = $path;
                 }
-                $uploads['other_documents'] = json_encode($otherDocs);
+                $uploads['other_documents'] = $otherDocs;
             }
 
             // Create or update verification record
@@ -77,8 +76,8 @@ class StoreVerificationController extends Controller
                 )
             );
 
-            // Update store status to under_review
-            $store->update(['status' => 'under_review']);
+            // Use valid DB enum status; "pending" means submitted/under review.
+            $store->update(['status' => 'pending']);
 
             return response()->json([
                 'success' => true,
@@ -118,12 +117,24 @@ class StoreVerificationController extends Controller
 
             $verification = $store->verification;
 
+            $workflowStatus = 'pending';
+            if ($verification) {
+                if (!is_null($verification->reviewed_at) && !is_null($verification->rejection_reason)) {
+                    $workflowStatus = 'rejected';
+                } elseif (!is_null($verification->reviewed_at)) {
+                    $workflowStatus = 'approved';
+                } else {
+                    $workflowStatus = 'reviewing';
+                }
+            }
+
             $status = [
-                'store_status' => $store->status,
-                'is_verified' => $store->status === 'verified',
-                'is_under_review' => $store->status === 'under_review',
-                'is_pending' => $store->status === 'pending',
-                'is_rejected' => $store->status === 'rejected',
+                'store_status' => $workflowStatus,
+                'raw_store_status' => $store->status,
+                'is_verified' => $workflowStatus === 'approved',
+                'is_under_review' => $workflowStatus === 'reviewing',
+                'is_pending' => $workflowStatus === 'pending',
+                'is_rejected' => $workflowStatus === 'rejected',
                 'submitted_at' => $verification->submitted_at ?? null,
                 'reviewed_at' => $verification->reviewed_at ?? null,
                 'rejection_reason' => $verification->rejection_reason ?? null,
@@ -221,16 +232,15 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => null
                 ]);
 
-                // 2. Update store status to verified
+                // 2. Update store status using valid enum values.
                 $store = $verification->store;
-                $store->update(['status' => 'verified']);
+                $store->update(['status' => 'active']);
 
-                // 3. Find user by store email (store owner)
-                $storeCreate = Store::find($verification->store_id);
+                // 3. Find store owner user by store email and link to store.
+                $storeOwner = User::where('email', $store->email)->first();
 
-                if ($storeCreate) {
-                    // 4. Link user to store and set as store_admin
-                    $storeCreate->update([
+                if ($storeOwner) {
+                    $storeOwner->update([
                         'store_id' => $store->id,
                         'role_id' => 2 // store_admin role ID
                     ]);
@@ -241,7 +251,7 @@ class StoreVerificationController extends Controller
                     if (!$existingEmployee) {
                         // 6. Create employee record for store owner
                         \App\Models\Hr\Employee::create([
-                            'user_id' => $storeCreate->id,
+                            'user_id' => $storeOwner->id,
                             'store_id' => $store->id,
                             'employee_number' => 'ST' . str_pad($store->id, 3, '0', STR_PAD_LEFT) . 'ADM001',
                             'department' => 'Management',
@@ -263,8 +273,8 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => $validated['rejection_reason']
                 ]);
 
-                // 2. Update store status to rejected
-                $verification->store->update(['status' => 'rejected']);
+                // 2. Keep store in pending state after rejection.
+                $verification->store->update(['status' => 'pending']);
             });
 
             $message = 'Store verification rejected';

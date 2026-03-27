@@ -88,12 +88,32 @@
         <div v-if="dssResults.length" class="mb-8">
           <h3 class="mb-3 text-lg font-semibold text-slate-900">DSS Result Recommended For You</h3>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div v-for="item in dssResults" :key="`dss-${item.id}`"
-              class="rounded-2xl border border-blue-100 bg-blue-50/50 p-3 cursor-pointer" @click="goProduct(item.id)">
-              <p class="text-xs font-semibold uppercase text-blue-700">Match {{ Math.round((item.score || 0) * 100) }}%
-              </p>
-              <p class="mt-1 line-clamp-2 text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
-              <p class="text-sm text-emerald-700">₱{{ formatMoney(item.price) }}</p>
+            <div
+              v-for="item in dssResults"
+              :key="`dss-${item.id}`"
+              class="group relative cursor-pointer bg-white rounded-2xl border border-blue-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
+              @click="goProduct(item.id)"
+            >
+              <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
+                <img
+                  :src="item.image || '/F.svg'"
+                  :alt="item.product_name"
+                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div class="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  Match {{ Math.round((item.score || 0) * 100) }}%
+                </div>
+              </div>
+
+              <div class="px-2 pb-2">
+                <div class="mb-1 text-[10px] font-bold uppercase tracking-widest text-sky-600">{{ item.category || 'Home' }}</div>
+                <h3 class="font-semibold text-slate-800 truncate mb-2 group-hover:text-sky-600 transition-colors">
+                  {{ item.product_name }}
+                </h3>
+                <div class="flex items-center justify-between">
+                  <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(item.price) }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -288,7 +308,7 @@ function goProduct(productId: number) {
 async function loadProducts() {
   loading.value = true
   try {
-    const response = await ecommerceService.getProducts({ per_page: 80 })
+    const response = await ecommerceService.getActiveStockProducts({ per_page: 80 })
     products.value = response.data?.data?.data || response.data?.data || []
   } finally {
     loading.value = false

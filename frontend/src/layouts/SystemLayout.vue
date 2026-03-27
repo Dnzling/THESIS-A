@@ -312,51 +312,136 @@ const handleKeyboardShortcut = (event: KeyboardEvent) => {
 const supplierFallbackNavigation = [
   {
     id: -101,
+    name: 'supplier.dashboard',
     display_name: "Supplier's Dashboard",
     module: 'supplier',
+    route_name: 'supplier.dashboard',
     route_path: '/supplier-portal/dashboard',
     icon: 'pi pi-home',
     parent_id: null,
     display_order: 1,
+    section: 'General',
+    meta: null,
     is_active: true,
+    badge_count: 0,
   },
   {
     id: -102,
+    name: 'supplier.purchase_orders',
     display_name: 'Purchase Orders',
     module: 'supplier',
+    route_name: 'supplier.pos',
     route_path: '/supplier-portal/pos',
     icon: 'pi pi-shopping-cart',
     parent_id: null,
     display_order: 2,
+    section: 'General',
+    meta: null,
     is_active: true,
+    badge_count: 0,
   },
   {
     id: -103,
+    name: 'supplier.rfqs',
     display_name: 'RFQs',
     module: 'supplier',
+    route_name: 'supplier.rfqs',
     route_path: '/supplier-portal/rfqs',
     icon: 'pi pi-file',
     parent_id: null,
     display_order: 3,
+    section: 'General',
+    meta: null,
     is_active: true,
+    badge_count: 0,
   },
   {
     id: -104,
+    name: 'supplier.transactions',
     display_name: 'Transactions',
     module: 'supplier',
+    route_name: 'supplier.transactions',
     route_path: '/supplier-portal/transactions',
     icon: 'pi pi-credit-card',
     parent_id: null,
     display_order: 4,
+    section: 'General',
+    meta: null,
     is_active: true,
+    badge_count: 0,
+  },
+]
+
+const storeFallbackNavigation = [
+  {
+    id: -201,
+    name: 'store.dashboard',
+    display_name: 'Store Dashboard',
+    module: 'store',
+    route_name: 'store.dashboard',
+    route_path: '/system/index',
+    icon: 'pi pi-home',
+    parent_id: null,
+    display_order: 1,
+    section: 'General',
+    meta: null,
+    is_active: true,
+    badge_count: 0,
+  },
+  {
+    id: -202,
+    name: 'store.registration',
+    display_name: 'Store Registration',
+    module: 'store',
+    route_name: 'StoreVerification',
+    route_path: '/system/store/verification',
+    icon: 'pi pi-building',
+    parent_id: null,
+    display_order: 2,
+    section: 'General',
+    meta: null,
+    is_active: true,
+    badge_count: 0,
+  },
+  {
+    id: -203,
+    name: 'store.roles_permissions',
+    display_name: 'Roles & Permissions',
+    module: 'store',
+    route_name: 'store.role-permissions',
+    route_path: '/system/roles-permissions',
+    icon: 'pi pi-shield',
+    parent_id: null,
+    display_order: 3,
+    section: 'General',
+    meta: null,
+    is_active: true,
+    badge_count: 0,
   },
 ]
 
 const groupedNavigation = computed(() => {
   const isSupplierRole = (authStore.userRole || '').toLowerCase().includes('supplier')
-  const baseNavigation = authStore.navigation.length > 0
-    ? authStore.navigation
-    : (isSupplierRole ? supplierFallbackNavigation : [])
+  const isStoreRole = (authStore.userRole || '').toLowerCase().includes('store')
+  let baseNavigation = authStore.navigation.length > 0
+    ? [...authStore.navigation]
+    : []
+
+  if (baseNavigation.length === 0) {
+    if (isSupplierRole) {
+      baseNavigation = [...supplierFallbackNavigation]
+    } else if (isStoreRole) {
+      baseNavigation = [...storeFallbackNavigation]
+    }
+  }
+
+  if (isStoreRole) {
+    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
+    const missingStoreItems = storeFallbackNavigation.filter((item) => !existingPaths.has(item.route_path))
+    if (missingStoreItems.length > 0) {
+      baseNavigation = [...baseNavigation, ...missingStoreItems]
+    }
+  }
 
   const activeItems = baseNavigation.filter((item: any) => item.is_active)
 
@@ -369,7 +454,7 @@ const groupedNavigation = computed(() => {
       if (!childrenByParent[item.parent_id]) {
         childrenByParent[item.parent_id] = []
       }
-      childrenByParent[item.parent_id].push(item)
+      childrenByParent[item.parent_id]!.push(item)
     }
   })
 
@@ -394,7 +479,7 @@ const groupedNavigation = computed(() => {
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['supplier', 'procurement', 'inventory', 'merchandising', 'hr', 'admin']
+  const moduleOrder = ['store', 'supplier', 'procurement', 'inventory', 'merchandising', 'hr', 'admin']
 
   for (const module of moduleOrder) {
     if (itemsByModule[module]) {
@@ -421,13 +506,16 @@ const groupedNavigation = computed(() => {
 // Get icon by module
 const getModuleIcon = (module: string): string => {
   const icons: Record<string, string> = {
+    store: 'pi pi-building-columns',
     procurement: 'pi pi-shopping-cart text-amber-600',
     inventory: 'pi pi-inbox text-emerald-600',
-    merchandising: 'pi pi-image text-purple-600',
+    merchandising: 'pi pi-image ',
     hr: 'pi pi-users text-rose-600',
     admin: 'pi pi-cog text-gray-600',
     system: 'pi pi-home text-blue-600',
     supplier: 'pi pi-briefcase text-slate-600',
+    sales: 'pi pi-dollar text-slate-600',
+    finance: 'pi pi-wallet',
   }
   return icons[module] || 'pi pi-circle text-gray-500'
 }

@@ -576,12 +576,24 @@
                             <p class="font-medium">{{ selectedViewStore.storeType }}</p>
                         </div>
                         <div>
+                          <p class="text-sm text-gray-500">Store Code</p>
+                          <p class="font-medium">{{ selectedViewStore.storeCode || 'N/A' }}</p>
+                        </div>
+                        <div>
                             <p class="text-sm text-gray-500">Address</p>
                             <p class="font-medium">{{ selectedViewStore.address }}</p>
                         </div>
                         <div>
                             <p class="text-sm text-gray-500">Contact Number</p>
                             <p class="font-medium">{{ selectedViewStore.contactNumber }}</p>
+                        </div>
+                        <div>
+                          <p class="text-sm text-gray-500">City / Province</p>
+                          <p class="font-medium">{{ selectedViewStore.city || 'N/A' }} / {{ selectedViewStore.province || 'N/A' }}</p>
+                        </div>
+                        <div>
+                          <p class="text-sm text-gray-500">Coordinates</p>
+                          <p class="font-medium">{{ selectedViewStore.coordinates || 'N/A' }}</p>
                         </div>
                     </div>
                 </div>
@@ -610,6 +622,30 @@
                     </div>
                 </div>
 
+                      <div>
+                        <h4 class="font-medium text-gray-800 mb-3">Submitted Verification Details</h4>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                          <div class="grid grid-cols-2 gap-4">
+                            <div>
+                              <p class="text-sm text-gray-500">Business Registration Number</p>
+                              <p class="font-medium">{{ selectedViewStore.businessRegistrationNumber || 'N/A' }}</p>
+                            </div>
+                            <div>
+                              <p class="text-sm text-gray-500">Business Registration Date</p>
+                              <p class="font-medium">{{ selectedViewStore.businessRegistrationDate ? formatDate(selectedViewStore.businessRegistrationDate) : 'N/A' }}</p>
+                            </div>
+                            <div>
+                              <p class="text-sm text-gray-500">Government ID Type</p>
+                              <p class="font-medium">{{ selectedViewStore.govIdType || 'N/A' }}</p>
+                            </div>
+                            <div>
+                              <p class="text-sm text-gray-500">Government ID Number</p>
+                              <p class="font-medium">{{ selectedViewStore.govIdNumber || 'N/A' }}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                 <div>
                     <h4 class="font-medium text-gray-800 mb-3">Documents</h4>
                     <div v-if="selectedViewStore.documents?.length" class="space-y-3">
@@ -629,6 +665,20 @@
                 </div>
             </div>
             <template #footer>
+                <Button
+                    v-if="selectedViewStore?.verificationId"
+                    label="Reject"
+                    icon="pi pi-times"
+                    severity="danger"
+                    @click="rejectStore(selectedViewStore)"
+                />
+                <Button
+                    v-if="selectedViewStore?.verificationId"
+                    label="Approve"
+                    icon="pi pi-check"
+                    severity="success"
+                    @click="approveStore(selectedViewStore)"
+                />
                 <Button label="Close" severity="secondary" @click="showViewDialog = false" />
             </template>
         </Dialog>
@@ -784,6 +834,9 @@ import InputSwitch from 'primevue/inputswitch'
 const activeView = ref('pending')
 const loading = ref(false)
 const searchTerm = ref('')
+const pendingStores = ref<any[]>([])
+const approvedStores = ref<any[]>([])
+const rejectedStores = ref<any[]>([])
 const showReviewDialog = ref(false)
 const showViewDialog = ref(false)
 const showRejectDialog = ref(false)
@@ -798,7 +851,7 @@ const selectedReviewStore = ref<any>(null)
 const selectedViewStore = ref<any>(null)
 const storeToReject = ref<any>(null)
 const reviewNotes = ref('')
-const rejectionReason = ref(null)
+const rejectionReason = ref<{ name?: string; value?: string } | null>(null)
 const rejectionNotes = ref('')
 const bulkRejectionReason = ref(null)
 
@@ -820,234 +873,6 @@ const smsNotifications = ref(false)
 const minDocuments = ref(3)
 const maxReviewDays = ref(7)
 
-// Store Data
-const pendingStores = ref([
-  {
-    id: 1,
-    storeId: 'STORE-2024-001',
-    storeName: 'Modern Furniture Hub',
-    ownerName: 'Juan Dela Cruz',
-    ownerEmail: 'juan@email.com',
-    ownerPhone: '+639123456789',
-    storeType: 'Furniture Retail',
-    address: '123 Main St, Manila',
-    contactNumber: '+6328123456',
-    registrationDate: '2024-01-15',
-    waitingTime: '2 days',
-    documentStatus: 'Complete',
-    priority: 'High',
-    documents: [
-      { name: 'Business Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Mayor\'s Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Tax Certificate', status: 'Pending', verificationStatus: 'pending' }
-    ]
-  },
-  {
-    id: 2,
-    storeId: 'STORE-2024-002',
-    storeName: 'Wood Crafts Studio',
-    ownerName: 'Maria Santos',
-    ownerEmail: 'maria@email.com',
-    ownerPhone: '+639234567890',
-    storeType: 'Furniture Manufacturing',
-    address: '456 Oak Ave, Quezon City',
-    contactNumber: '+6328234567',
-    registrationDate: '2024-01-16',
-    waitingTime: '1 day',
-    documentStatus: 'Incomplete',
-    priority: 'Medium',
-    documents: [
-      { name: 'Business Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Mayor\'s Permit', status: 'Missing', verificationStatus: 'missing' }
-    ]
-  },
-  {
-    id: 3,
-    storeId: 'STORE-2024-003',
-    storeName: 'Luxury Home Decor',
-    ownerName: 'Robert Lim',
-    ownerEmail: 'robert@email.com',
-    ownerPhone: '+639345678901',
-    storeType: 'Home Decor',
-    address: '789 Luxury Blvd, Makati',
-    contactNumber: '+6328345678',
-    registrationDate: '2024-01-14',
-    waitingTime: '3 days',
-    documentStatus: 'Complete',
-    priority: 'Low',
-    documents: [
-      { name: 'Business Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Mayor\'s Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Tax Certificate', status: 'Verified', verificationStatus: 'verified' }
-    ]
-  },
-  {
-    id: 4,
-    storeId: 'STORE-2024-004',
-    storeName: 'Office Solutions Inc',
-    ownerName: 'Sarah Chen',
-    ownerEmail: 'sarah@email.com',
-    ownerPhone: '+639456789012',
-    storeType: 'Office Furniture',
-    address: '101 Corporate St, Taguig',
-    contactNumber: '+6328456789',
-    registrationDate: '2024-01-17',
-    waitingTime: 'Just now',
-    documentStatus: 'Pending Review',
-    priority: 'High',
-    documents: [
-      { name: 'Business Permit', status: 'Pending', verificationStatus: 'pending' },
-      { name: 'Mayor\'s Permit', status: 'Pending', verificationStatus: 'pending' }
-    ]
-  },
-  {
-    id: 5,
-    storeId: 'STORE-2024-005',
-    storeName: 'Eco Furniture Co',
-    ownerName: 'David Green',
-    ownerEmail: 'david@email.com',
-    ownerPhone: '+639567890123',
-    storeType: 'Sustainable Furniture',
-    address: '202 Green St, Pasig',
-    contactNumber: '+6328567890',
-    registrationDate: '2024-01-13',
-    waitingTime: '4 days',
-    documentStatus: 'Complete',
-    priority: 'Medium',
-    documents: [
-      { name: 'Business Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Mayor\'s Permit', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Tax Certificate', status: 'Verified', verificationStatus: 'verified' },
-      { name: 'Environmental Permit', status: 'Verified', verificationStatus: 'verified' }
-    ]
-  }
-])
-
-const approvedStores = ref([
-  {
-    id: 6,
-    storeId: 'STORE-2023-101',
-    storeName: 'Classic Furniture Gallery',
-    ownerName: 'James Wilson',
-    ownerEmail: 'james@email.com',
-    storeType: 'Antique Furniture',
-    address: '303 Heritage Rd, Cebu',
-    registrationDate: '2023-12-10',
-    approvalDate: '2023-12-15',
-    approvedBy: 'Admin 1',
-    status: 'Active',
-    productsCount: 145,
-    revenue: 1250000
-  },
-  {
-    id: 7,
-    storeId: 'STORE-2023-102',
-    storeName: 'Modern Living Spaces',
-    ownerName: 'Lisa Garcia',
-    ownerEmail: 'lisa@email.com',
-    storeType: 'Modern Furniture',
-    address: '404 Modern Ave, Davao',
-    registrationDate: '2023-11-25',
-    approvalDate: '2023-11-30',
-    approvedBy: 'Admin 2',
-    status: 'Active',
-    productsCount: 89,
-    revenue: 980000
-  },
-  {
-    id: 8,
-    storeId: 'STORE-2023-103',
-    storeName: 'Kids Furniture World',
-    ownerName: 'Michael Tan',
-    ownerEmail: 'michael@email.com',
-    storeType: 'Kids Furniture',
-    address: '505 Playground St, Iloilo',
-    registrationDate: '2023-12-05',
-    approvalDate: '2023-12-10',
-    approvedBy: 'Admin 1',
-    status: 'Active',
-    productsCount: 67,
-    revenue: 750000
-  },
-  {
-    id: 9,
-    storeId: 'STORE-2024-006',
-    storeName: 'Outdoor Living Co',
-    ownerName: 'Anna Lee',
-    ownerEmail: 'anna@email.com',
-    storeType: 'Outdoor Furniture',
-    address: '606 Garden St, Baguio',
-    registrationDate: '2024-01-05',
-    approvalDate: '2024-01-10',
-    approvedBy: 'Admin 3',
-    status: 'Active',
-    productsCount: 42,
-    revenue: 560000
-  },
-  {
-    id: 10,
-    storeId: 'STORE-2024-007',
-    storeName: 'Smart Furniture Tech',
-    ownerName: 'Paul Rivera',
-    ownerEmail: 'paul@email.com',
-    storeType: 'Smart Furniture',
-    address: '707 Tech Blvd, Pasay',
-    registrationDate: '2024-01-08',
-    approvalDate: '2024-01-12',
-    approvedBy: 'Admin 2',
-    status: 'Active',
-    productsCount: 31,
-    revenue: 420000
-  }
-])
-
-const rejectedStores = ref([
-  {
-    id: 11,
-    storeId: 'STORE-2023-201',
-    storeName: 'Quick Furniture Mart',
-    ownerName: 'John Doe',
-    ownerEmail: 'john@email.com',
-    storeType: 'Furniture Retail',
-    address: '808 Fast St, Mandaluyong',
-    registrationDate: '2023-11-20',
-    rejectionDate: '2023-11-25',
-    rejectedBy: 'Admin 1',
-    status: 'Rejected',
-    rejectionReason: 'Incomplete Documentation',
-    notes: 'Missing required permits and identification'
-  },
-  {
-    id: 12,
-    storeId: 'STORE-2023-202',
-    storeName: 'Budget Furniture Store',
-    ownerName: 'Jane Smith',
-    ownerEmail: 'jane@email.com',
-    storeType: 'Budget Furniture',
-    address: '909 Budget Rd, Paranaque',
-    registrationDate: '2023-12-01',
-    rejectionDate: '2023-12-05',
-    rejectedBy: 'Admin 2',
-    status: 'Rejected',
-    rejectionReason: 'Business Location Issues',
-    notes: 'Registered address does not match business location'
-  },
-  {
-    id: 13,
-    storeId: 'STORE-2024-008',
-    storeName: 'Luxury Bedroom Sets',
-    ownerName: 'Carlos Reyes',
-    ownerEmail: 'carlos@email.com',
-    storeType: 'Bedroom Furniture',
-    address: '1010 Sleep St, Alabang',
-    registrationDate: '2024-01-10',
-    rejectionDate: '2024-01-14',
-    rejectedBy: 'Admin 3',
-    status: 'Rejected',
-    rejectionReason: 'Duplicate Registration',
-    notes: 'Multiple applications detected from same owner'
-  }
-])
 
 // Filter Options
 const dateFilterOptions = ref([
@@ -1133,7 +958,7 @@ const delayOptions = ref([
   { name: '3 days', value: '72' }
 ])
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/, '')
+const apiBaseUrl = String(axiosClient.defaults.baseURL || '').replace(/\/api\/?$/, '')
 
 const buildFileUrl = (path: string | null) => {
   if (!path) return ''
@@ -1181,15 +1006,23 @@ const mapVerification = (verification: any) => {
     id: verification.id,
     verificationId: verification.id,
     storeId: store.id ? `STORE-${String(store.id).padStart(6, '0')}` : `STORE-${verification.store_id}`,
-    storeName: store.store_name || 'Unknown Store',
-    ownerName: store.contact_person || 'N/A',
+    storeName: store.name || store.store_name || 'Unknown Store',
+    ownerName: store.settings?.contact_person || store.contact_person || 'N/A',
     ownerEmail: store.email || 'N/A',
-    ownerPhone: store.contact_number || 'N/A',
-    storeType: store.settings?.store_type || 'General',
+    ownerPhone: store.phone || store.contact_number || 'N/A',
+    storeType: store.type || store.settings?.store_type || 'General',
+    storeCode: store.store_code || '',
     address: store.address || 'N/A',
-    contactNumber: store.contact_number || 'N/A',
+    city: store.city || '',
+    province: store.province || '',
+    coordinates: store.latitude && store.longitude ? `${store.latitude}, ${store.longitude}` : '',
+    contactNumber: store.phone || store.contact_number || 'N/A',
     registrationDate: verification.submitted_at || store.created_at,
     waitingTime: verification.submitted_at ? `${Math.max(0, Math.floor((Date.now() - new Date(verification.submitted_at).getTime()) / 86400000))} days` : 'N/A',
+    businessRegistrationNumber: verification.business_registration_number || '',
+    businessRegistrationDate: verification.business_registration_date || '',
+    govIdType: verification.gov_id_type || '',
+    govIdNumber: verification.gov_id_number || '',
     documentStatus,
     priority: 'Medium',
     documents: docs,
@@ -1395,6 +1228,21 @@ const getDocumentColor = (status: string) => {
   }
 }
 
+const getDocumentTypeIcon = (_type: string) => 'pi-file'
+const getDocumentTypeColor = (_type: string) => 'text-gray-500'
+
+const applyFilters = () => {
+  // Filters are reactive via computed lists.
+}
+
+const clearFilters = () => {
+  waitingTimeFilter.value = null
+  documentStatusFilter.value = []
+  priorityFilter.value = null
+  storeTypeFilter.value = []
+  dateFilter.value = null
+}
+
 // Action Functions
 const setActiveView = (view: string) => {
   activeView.value = view
@@ -1433,10 +1281,19 @@ const rejectStore = (store: any) => {
 const confirmReject = async () => {
   if (!storeToReject.value?.verificationId) return
 
+    const selectedReason = rejectionReason.value?.name || rejectionReason.value?.value || ''
+    const detailedReason = String(rejectionNotes.value || '').trim()
+    const combinedReason = [selectedReason, detailedReason].filter(Boolean).join(' - ')
+
+    if (!combinedReason) {
+        toast.add({ severity: 'warn', summary: 'Reason Required', detail: 'Please select or enter a rejection reason.', life: 3000 })
+        return
+    }
+
   try {
     await axiosClient.post(`/api/store-verification/${storeToReject.value.verificationId}/review`, {
       action: 'reject',
-      rejection_reason: rejectionNotes.value || 'Rejected'
+            rejection_reason: combinedReason
     })
     toast.add({ severity: 'success', summary: 'Rejected', detail: 'Store rejected', life: 3000 })
     await loadStoreVerifications()
@@ -1444,6 +1301,7 @@ const confirmReject = async () => {
     toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to reject store', life: 3000 })
   } finally {
     showRejectDialog.value = false
+        showViewDialog.value = false
     rejectionReason.value = null
     rejectionNotes.value = ''
     storeToReject.value = null

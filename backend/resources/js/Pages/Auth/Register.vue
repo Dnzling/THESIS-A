@@ -1,113 +1,89 @@
-<script setup>
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
-
-const form = useForm({
-    name: '',
-    email: '',
-    password: '',
-    password_confirmation: '',
-});
-
-const submit = () => {
-    form.post(route('register'), {
-        onFinish: () => form.reset('password', 'password_confirmation'),
-    });
-};
-</script>
-
 <template>
-    <GuestLayout>
-        <Head title="Register" />
-
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="name" value="Name" />
-
-                <TextInput
-                    id="name"
-                    type="text"
-                    class="mt-1 block w-full"
-                    v-model="form.name"
-                    required
-                    autofocus
-                    autocomplete="name"
-                />
-
-                <InputError class="mt-2" :message="form.errors.name" />
-            </div>
-
-            <div class="mt-4">
-                <InputLabel for="email" value="Email" />
-
-                <TextInput
-                    id="email"
-                    type="email"
-                    class="mt-1 block w-full"
-                    v-model="form.email"
-                    required
-                    autocomplete="username"
-                />
-
-                <InputError class="mt-2" :message="form.errors.email" />
-            </div>
-
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
-
-                <TextInput
-                    id="password"
-                    type="password"
-                    class="mt-1 block w-full"
-                    v-model="form.password"
-                    required
-                    autocomplete="new-password"
-                />
-
-                <InputError class="mt-2" :message="form.errors.password" />
-            </div>
-
-            <div class="mt-4">
-                <InputLabel
-                    for="password_confirmation"
-                    value="Confirm Password"
-                />
-
-                <TextInput
-                    id="password_confirmation"
-                    type="password"
-                    class="mt-1 block w-full"
-                    v-model="form.password_confirmation"
-                    required
-                    autocomplete="new-password"
-                />
-
-                <InputError
-                    class="mt-2"
-                    :message="form.errors.password_confirmation"
-                />
-            </div>
-
-            <div class="mt-4 flex items-center justify-end">
-                <Link
-                    :href="route('login')"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                >
-                    Already registered?
-                </Link>
-
-                <PrimaryButton
-                    class="ms-4"
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Register
-                </PrimaryButton>
-            </div>
-        </form>
-    </GuestLayout>
+  <Toast />
+  <RegisterForm :is-submitting="isSubmitting" @submit="handleRegister" @error="handleFormError" />
 </template>
+
+<script setup lang="ts">
+import axios from 'axios';
+import { ref } from 'vue';
+import { useToast } from 'primevue/usetoast'
+import Toast from 'primevue/toast'
+import { router, usePage } from '@inertiajs/vue3'
+import { RegisterFormData } from '@/Components/auth/RegisterForm.vue'
+import RegisterForm from '@/Components/auth/RegisterForm.vue';
+
+const toast = useToast()
+const page = usePage()
+const isSubmitting = ref(false)
+const getQueryParam = (key: string): string | null => {
+  const query = String(page.url || '').split('?')[1] || ''
+  return new URLSearchParams(query).get(key)
+}
+
+// Handle form submission ===== for API =====
+const handleRegister = async (formData: RegisterFormData) => {
+
+  isSubmitting.value = true
+  try {
+    // await axios.get('/sanctum/csrf-cookie')
+
+    const response = await axios.post('/api/auth/register', {
+      fname: formData.fname,
+      lname: formData.lname,
+      email: formData.email,
+      password: formData.password,
+      role_id: 2,
+      birthday: formData.birthday,
+      device_name: 'web-browswer'
+    })
+
+    // Success
+    localStorage.setItem('register_token', response.data.user.access_token)
+    localStorage.setItem('otp_context', 'saas')
+
+    const selectedPlan = getQueryParam('plan') || 'simple'
+    localStorage.setItem('trial_plan', selectedPlan)
+
+    router.visit('/verify-otp')
+
+  } catch (error: any) {
+    console.error('Registration error:', error)
+
+    // Handle validation errors
+    if (error.response?.status === 422) {
+      const errors = error.response.data?.errors
+
+      // Show first error in toast
+      if (errors && Object.keys(errors).length > 0) {
+        const firstError = Object.values(errors)[0][0]
+        toast.add({
+          severity: 'error',
+          summary: 'Validation Error',
+          detail: firstError,
+          life: 5000
+        })
+      }
+    } else {
+      // General error
+      toast.add({
+        severity: 'error',
+        summary: 'Registration Failed',
+        detail: error.response?.data?.message || 'Something went wrong. Please try again.',
+        life: 5000
+      })
+    }
+    throw error
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const handleFormError = (errorMessage: string) => {
+  toast.add({
+    severity: 'warn',
+    summary: 'Form Error',
+    detail: errorMessage,
+    life: 3000
+  })
+}
+</script>

@@ -18,52 +18,36 @@
     </div>
   
     <!-- Search and Filters -->
-    <div class="flex gap-3 mb-4 flex-wrap">
-      <IconField iconPosition="left" class="flex-1">
+    <div class="flex gap-2 mb-4">
+      <IconField iconPosition="left" class="w-64">
         <InputIcon>
           <i class="pi pi-search" />
         </InputIcon>
-        <InputText v-model="filters.search" placeholder="Search employee..." class="w-full" @input="debouncedFetch" />
+        <InputText v-model="filters.search" placeholder="Search employee..." size="small" @input="debouncedFetch" />
       </IconField>
-      <Select v-model="filters.branch" :options="branches" placeholder="All Branches" showClear class="w-48"
+      <Select v-model="filters.branch" :options="branches" placeholder="All Branches" showClear class="w-40" size="small"
         @change="applyFilters" />
-      <Select v-model="filters.department" :options="departments" placeholder="All Departments" showClear class="w-48"
-        @change="applyFilters" />
-      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-48"
-        @change="applyFilters" />
-      <Button
-        v-if="hasDraftPayrolls"
-        label="Bulk Submit for Approval"
-        icon="pi pi-send"
-        severity="info"
-        outlined
-        :disabled="selectedItems.length === 0 || loading"
-        :loading="bulkSubmitting"
-        @click="bulkSubmitForApproval"
-      />
-      <Button label="Export" icon="pi pi-file-excel" severity="success" outlined @click="exportPayroll"
+      <Select v-model="filters.department" :options="departments" placeholder="All Departments" showClear class="w-40"
+        size="small" @change="applyFilters" />
+      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-36"
+        size="small" @change="applyFilters" />
+      <Button v-if="hasDraftPayrolls" label="Bulk Submit" icon="pi pi-send" severity="info" size="small" outlined
+        :disabled="selectedItems.length === 0 || loading" :loading="bulkSubmitting" @click="bulkSubmitForApproval" />
+      <Button label="Bulk Paid" icon="pi pi-money-bill" severity="success" size="small" outlined
+        :disabled="selectedReleasedItems.length === 0 || loading" :loading="bulkMarkingPaid" @click="bulkMarkPaid" />
+      <Button label="Export" icon="pi pi-file-excel" severity="success" outlined size="small" @click="exportPayroll"
         :disabled="loading || payrollItems.length === 0" />
     </div>
   
     <!-- Payroll Table -->
-    <DataTable
-      :value="filteredPayrollItems"
-      :paginator="true"
-      :rows="10"
-      :rowsPerPageOptions="[10, 20, 50]"
-      tableStyle="min-width: 110rem"
-      :loading="loading"
-      removableSort
+    <DataTable :value="filteredPayrollItems" :paginator="true" :rows="10" :rowsPerPageOptions="[10, 20, 50]"
+      tableStyle="min-width: 110rem" :loading="loading" removableSort
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
-      sortMode="multiple"
-      rowHover
-      v-model:selection="selectedItems"
-      selectionMode="multiple"
-    >
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries" sortMode="multiple" rowHover
+      v-model:selection="selectedItems" selectionMode="multiple">
       <!-- Selection Column -->
       <Column selectionMode="multiple" headerStyle="width: 3rem" />
-
+  
       <!-- Employee Columns -->
       <Column class="text-xs" field="employeeName" header="Employee" sortable>
         <template #body="{ data }">
@@ -99,10 +83,10 @@
   
       <!-- Earnings -->
       <!-- <Column class="text-xs" field="basicPay" header="Basic Pay" sortable>
-            <template #body="{ data }">
-              {{ formatCurrency(data.basicPay) }}
-            </template>
-          </Column> -->
+              <template #body="{ data }">
+                {{ formatCurrency(data.basicPay) }}
+              </template>
+            </Column> -->
   
       <Column class="text-xs" field="overtimePay" header="OT Pay" sortable>
         <template #body="{ data }">
@@ -117,12 +101,12 @@
       </Column>
   
       <!-- Deductions -->
-      <Column class="text-xs font-semibold" header="Gov't Deductions">
+      <Column class="text-xs font-semibold" header="Deductions (Itemized)">
         <template #body="{ data }">
-          <div>Tax: {{ formatCurrency(data.governmentDeductions.tax) }}</div>
-          <div>SSS: {{ formatCurrency(data.governmentDeductions.sss) }}</div>
-          <div>PhilHealth: {{ formatCurrency(data.governmentDeductions.philhealth) }}</div>
-          <div>Pag-IBIG: {{ formatCurrency(data.governmentDeductions.pagibig) }}</div>
+          <div v-if="!data.deductionItems.length" class="text-gray-500">No itemized deductions</div>
+          <div v-for="deduction in data.deductionItems" :key="`${data.id}-${deduction.name}`">
+            {{ deduction.name }}: {{ formatCurrency(deduction.amount) }}
+          </div>
         </template>
       </Column>
   
@@ -168,16 +152,16 @@
       <Column header="Actions" style="min-width: 120px">
         <template #body="{ data }">
           <div class="flex gap-2">
-            <Button
-              v-if="data.status === 'draft' || data.status === 'calculated'"
-              icon="pi pi-send"
-              severity="info"
-              text
-              @click="submitForApproval(data)"
-              v-tooltip="'Submit for approval'"
-              :loading="data.submitting"
-            />
-            <Button icon="pi pi-print" severity="secondary" text @click="printPayslip(data)" v-tooltip="'Print payslip'" />
+            <Button v-if="data.status === 'draft' || data.status === 'calculated'" icon="pi pi-send" severity="info" text
+              @click="submitForApproval(data)" v-tooltip="'Submit for approval'" :loading="data.submitting" />
+            <Button v-if="data.status === 'approved'" icon="pi pi-wallet" severity="help" text
+              @click="releasePayroll(data)" v-tooltip="'Release payroll for distribution'" :loading="data.releasing" />
+            <Button v-if="data.status === 'released'" icon="pi pi-money-bill" severity="success" text
+              @click="markPayrollPaid(data)" v-tooltip="'Mark payroll as paid'" :loading="data.paying" />
+            <Button v-if="data.status === 'paid'" icon="pi pi-receipt" severity="contrast" text
+              @click="openPayslipDetails(data)" v-tooltip="'View payslip details'" />
+            <Button icon="pi pi-print" severity="secondary" text @click="printPayslip(data)"
+              v-tooltip="'Print payslip'" />
           </div>
         </template>
       </Column>
@@ -189,6 +173,62 @@
         </div>
       </template>
     </DataTable>
+
+    <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '720px' }" modal>
+      <div v-if="selectedPayslip" class="space-y-4 text-sm">
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+            <p><span class="font-semibold">Employee:</span> {{ selectedPayslip.employeeName }}</p>
+            <p><span class="font-semibold">Employee #:</span> {{ selectedPayslip.employeeId || '-' }}</p>
+            <p><span class="font-semibold">Branch:</span> {{ selectedPayslip.branch || '-' }}</p>
+            <p><span class="font-semibold">Department:</span> {{ selectedPayslip.department || '-' }}</p>
+            <p><span class="font-semibold">Period:</span> {{ batchInfo ? formatDate(batchInfo.start_date) : '-' }} - {{ batchInfo ? formatDate(batchInfo.end_date) : '-' }}</p>
+            <p><span class="font-semibold">Pay Date:</span> {{ selectedPayslip.paymentDate ? formatDate(selectedPayslip.paymentDate) : (batchInfo ? formatDate(batchInfo.pay_date) : '-') }}</p>
+            <p><span class="font-semibold">Payment Method:</span> {{ selectedPayslip.paymentMethod || '-' }}</p>
+            <p><span class="font-semibold">Reference #:</span> {{ selectedPayslip.referenceNumber || '-' }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <p class="mb-2 font-semibold text-emerald-800">Earnings</p>
+            <div class="space-y-1">
+              <p class="flex justify-between"><span>Base Salary</span><span>{{ formatCurrency(selectedPayslip.baseSalary) }}</span></p>
+              <p class="flex justify-between"><span>Overtime</span><span>{{ formatCurrency(selectedPayslip.overtimePay) }}</span></p>
+              <p class="flex justify-between"><span>Allowance</span><span>{{ formatCurrency(selectedPayslip.allowanceAmount) }}</span></p>
+              <p class="flex justify-between border-t border-emerald-300 pt-1 font-semibold"><span>Gross Pay</span><span>{{ formatCurrency(selectedPayslip.grossPay) }}</span></p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-rose-200 bg-rose-50 p-3">
+            <p class="mb-2 font-semibold text-rose-800">Deductions</p>
+            <div class="space-y-1" v-if="selectedPayslip.deductionItems.length">
+              <p v-for="deduction in selectedPayslip.deductionItems" :key="`${selectedPayslip.id}-${deduction.name}`" class="flex justify-between">
+                <span>{{ deduction.name }}</span>
+                <span>-{{ formatCurrency(deduction.amount) }}</span>
+              </p>
+            </div>
+            <p v-else class="text-gray-500">No itemized deductions</p>
+            <p class="mt-1 flex justify-between"><span>Late Deductions</span><span>-{{ formatCurrency(selectedPayslip.lateDeductions) }}</span></p>
+            <p class="flex justify-between"><span>Leave Deductions</span><span>-{{ formatCurrency(selectedPayslip.leaveDeductions) }}</span></p>
+            <p class="flex justify-between border-t border-rose-300 pt-1 font-semibold"><span>Total Deductions</span><span>-{{ formatCurrency(selectedPayslip.totalDeductions) }}</span></p>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <p class="flex justify-between text-base font-semibold text-blue-900">
+            <span>Net Pay</span>
+            <span>{{ formatCurrency(selectedPayslip.netPay) }}</span>
+          </p>
+          <p class="mt-1 text-xs text-blue-700">Status: {{ selectedPayslip.status.toUpperCase() }}</p>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button label="Close" text @click="showPayslipDialog = false" />
+        <Button label="Print" icon="pi pi-print" severity="secondary" @click="selectedPayslip && printPayslip(selectedPayslip)" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -197,15 +237,15 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRoute, useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
-import { useAuthStore } from '../../../stores/auth'
+import financeService from '@/services/finance.service'
 import { debounce } from 'lodash'
 
 // ==================== INTERFACES ====================
-interface GovernmentDeductions {
-  tax: number
-  sss: number
-  philhealth: number
-  pagibig: number
+interface DeductionItem {
+  name: string
+  amount: number
+  calculation_type?: string
+  rate?: number | null
 }
 
 interface PayrollItem {
@@ -221,7 +261,7 @@ interface PayrollItem {
   overtimePay: number
   allowanceAmount: number
   // Deductions
-  governmentDeductions: GovernmentDeductions
+  deductionItems: DeductionItem[]
   lateDeductions: number
   leaveDeductions: number
   otherDeductions: number
@@ -229,9 +269,12 @@ interface PayrollItem {
   grossPay: number
   totalDeductions: number
   netPay: number
-  status: 'draft' | 'calculated' | 'processing' | 'approved' | 'paid' | 'cancelled'
+  status: 'draft' | 'calculated' | 'processing' | 'approved' | 'released' | 'paid' | 'cancelled'
   remarks?: string
   payroll_id?: number
+  paymentDate?: string | null
+  paymentMethod?: string | null
+  referenceNumber?: string | null
 }
 
 interface BatchInfo {
@@ -268,10 +311,12 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const authStore = useAuthStore()
 const loading = ref(false)
 const bulkSubmitting = ref(false)
+const bulkMarkingPaid = ref(false)
 const selectedItems = ref<PayrollItem[]>([])
+const showPayslipDialog = ref(false)
+const selectedPayslip = ref<PayrollItem | null>(null)
 
 // Get batch ID from route params if not passed as prop
 const batchId = computed(() => props.batchId || route.params.id as string)
@@ -299,11 +344,15 @@ const filters = ref<Filters>({
 // Options for filters
 const branches = ref<string[]>([])
 const departments = ref<string[]>([])
-const statusOptions = ref(['draft', 'calculated', 'processing', 'approved', 'paid', 'cancelled'])
+const statusOptions = ref(['draft', 'calculated', 'processing', 'approved', 'released', 'paid', 'cancelled'])
 
 // ==================== COMPUTED ====================
 const hasDraftPayrolls = computed(() =>
   payrollItems.value.some(i => i.status === 'draft' || i.status === 'calculated')
+)
+
+const selectedReleasedItems = computed(() =>
+  selectedItems.value.filter(i => i.status === 'released' && !!i.payroll_id)
 )
 
 const filteredPayrollItems = computed(() => {
@@ -374,16 +423,16 @@ const fetchBatchInfo = async () => {
 
 const transformPayrollData = (apiData: any[]): PayrollItem[] => {
   return apiData.map((item: any) => {
-    // Calculate government deductions breakdown
-    // This assumes you have these values in your API response
-    // You may need to adjust based on your actual data structure
-
-    const governmentDeductions = {
-      tax: item.tax_amount || 0,
-      sss: item.deductions_total ? item.deductions_total * 0.4 : 0, // Example split
-      philhealth: item.deductions_total ? item.deductions_total * 0.3 : 0,
-      pagibig: item.deductions_total ? item.deductions_total * 0.1 : 0
-    }
+    const rawDeductionItems = Array.isArray(item.deduction_items) ? item.deduction_items : []
+    const deductionItems = rawDeductionItems
+      .map((d: any) => ({
+        name: String(d?.name || ''),
+        amount: Number(d?.amount || 0),
+        calculation_type: d?.calculation_type,
+        rate: d?.rate ?? null
+      }))
+      // Late deduction has a dedicated column in this table.
+      .filter((d: DeductionItem) => d.name.toLowerCase() !== 'late deduction')
 
     const grossPay = [
       item.base_salary,
@@ -392,26 +441,37 @@ const transformPayrollData = (apiData: any[]): PayrollItem[] => {
       item.allowances_total
     ].reduce((sum, value) => sum + (parseFloat(value) || 0), 0)
 
+    const branchName = typeof item.employee?.branch === 'string'
+      ? item.employee.branch
+      : (item.employee?.branch?.name || item.employee?.branch_name || null)
+
+    const employeeFullName = item.employee
+      ? `${item.employee.fname || ''} ${item.employee.lname || ''}`.trim()
+      : (item.employee_name || '')
+
     return {
       id: item.id?.toString() || '',
-      employeeId: item.employee?.employee_number || '',
-      employeeName: item.employee ? `${item.employee.fname} ${item.employee.lname}` : '',
-      branch: item.employee?.branch || 'N/A',
-      department: item.employee?.department || 'N/A',
+      employeeId: item.employee?.employee_number || item.employee_id?.toString() || '',
+      employeeName: employeeFullName || 'Unknown Employee',
+      branch: branchName || 'N/A',
+      department: item.employee?.department || item.department || 'N/A',
       baseSalary: item.base_salary || 0,
       salaryPerHour: item.base_salary ? item.base_salary / 160 : 0,
       basicPay: item.base_salary || 0,
       overtimePay: item.overtime_amount || 0,
       allowanceAmount: item.allowances_total || 0,
-      governmentDeductions: governmentDeductions,
-      lateDeductions: 0, // You'll need to calculate this from attendance
+      deductionItems,
+      lateDeductions: Number(item.late_deduction || 0),
       leaveDeductions: 0, // You'll need to calculate this from leaves
       otherDeductions: 0,
       grossPay: grossPay,
       totalDeductions: item.deductions_total || 0,
       netPay: item.net_salary || 0,
       status: item.status || 'draft',
-      payroll_id: item.id
+      payroll_id: item.id,
+      paymentDate: item.payment_date || item.paid_at || null,
+      paymentMethod: item.payment_method || null,
+      referenceNumber: item.reference_number || null,
     }
   })
 }
@@ -490,15 +550,16 @@ const formatCurrency = (value: number): string => {
 
 const getStatusSeverity = (status: string): 'info' | 'success' | 'warn' | 'secondary' | 'danger' => {
   const map: Record<string, any> = {
-    'draft':      'secondary',
+    'draft': 'secondary',
     'calculated': 'secondary',
     'processing': 'warn',
-    'approved':   'success',
-    'paid':       'success',
-    'cancelled':  'danger',
+    'approved': 'success',
+    'released': 'info',
+    'paid': 'success',
+    'cancelled': 'danger',
     // pay period statuses
-    'locked':     'info',
-    'completed':  'success',
+    'locked': 'info',
+    'completed': 'success',
   }
   return map[status] || 'info'
 }
@@ -522,7 +583,7 @@ const goBack = () => {
 }
 
 const submitForApproval = async (item: PayrollItem) => {
-  ;(item as any).submitting = true
+  ; (item as any).submitting = true
   try {
     await hrService.api.post(`/api/payroll/${item.payroll_id}/submit`)
     item.status = 'processing'
@@ -543,8 +604,66 @@ const submitForApproval = async (item: PayrollItem) => {
       life: 3000
     })
   } finally {
-    ;(item as any).submitting = false
+    ; (item as any).submitting = false
   }
+}
+
+const releasePayroll = async (item: PayrollItem) => {
+  ;(item as any).releasing = true
+  try {
+    await hrService.api.post(`/api/payroll/${item.payroll_id}/release`, {})
+    item.status = 'released'
+    calculateStatistics(payrollItems.value)
+    await fetchBatchInfo()
+    toast.add({
+      severity: 'success',
+      summary: 'Released',
+      detail: `${item.employeeName}'s payroll has been released.`,
+      life: 3000,
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Release Failed',
+      detail: error?.response?.data?.message || 'Failed to release payroll.',
+      life: 3000,
+    })
+  } finally {
+    ;(item as any).releasing = false
+  }
+}
+
+const markPayrollPaid = async (item: PayrollItem) => {
+  ;(item as any).paying = true
+  try {
+    await hrService.api.post(`/api/payroll/${item.payroll_id}/mark-paid`, {
+      payment_date: new Date().toISOString().slice(0, 10),
+      payment_method: 'bank_transfer',
+    })
+    item.status = 'paid'
+    calculateStatistics(payrollItems.value)
+    await fetchBatchInfo()
+    toast.add({
+      severity: 'success',
+      summary: 'Payroll Paid',
+      detail: `${item.employeeName}'s payroll has been marked as paid.`,
+      life: 3000,
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Mark Paid Failed',
+      detail: error?.response?.data?.message || 'Failed to mark payroll as paid.',
+      life: 3000,
+    })
+  } finally {
+    ;(item as any).paying = false
+  }
+}
+
+const openPayslipDetails = (item: PayrollItem) => {
+  selectedPayslip.value = item
+  showPayslipDialog.value = true
 }
 
 const bulkSubmitForApproval = async () => {
@@ -594,8 +713,58 @@ const bulkSubmitForApproval = async () => {
   }
 }
 
+const bulkMarkPaid = async () => {
+  const releasedItems = selectedReleasedItems.value
+
+  if (!releasedItems.length) {
+    toast.add({
+      severity: 'warn',
+      summary: 'No Eligible Items',
+      detail: 'Select payroll rows with Released status to mark them as paid.',
+      life: 3000
+    })
+    return
+  }
+
+  bulkMarkingPaid.value = true
+  try {
+    const ids = releasedItems.map(i => Number(i.payroll_id)).filter(id => id > 0)
+    const response = await financeService.bulkMarkPayrollPaid(ids, {
+      payment_date: new Date().toISOString().slice(0, 10),
+      payment_method: 'bank_transfer'
+    })
+
+    releasedItems.forEach(item => {
+      item.status = 'paid'
+    })
+    calculateStatistics(payrollItems.value)
+    selectedItems.value = []
+    await fetchBatchInfo()
+
+    toast.add({
+      severity: 'success',
+      summary: 'Bulk Paid Complete',
+      detail: response?.message || `${releasedItems.length} payroll(s) marked as paid.`,
+      life: 3000
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Bulk Paid Failed',
+      detail: error?.response?.data?.message || 'Failed to bulk mark payrolls as paid.',
+      life: 3000
+    })
+  } finally {
+    bulkMarkingPaid.value = false
+  }
+}
+
 const printPayslip = (item: PayrollItem) => {
   const period = batchInfo.value
+  const itemizedDeductionRows = item.deductionItems.length
+    ? item.deductionItems.map(d => `<tr><td>${d.name}</td><td>- ${formatCurrency(d.amount)}</td></tr>`).join('')
+    : '<tr><td colspan="2" style="text-align:left;color:#666;">No itemized deductions</td></tr>'
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -645,10 +814,7 @@ const printPayslip = (item: PayrollItem) => {
       <div class="section">
         <div class="section-title">DEDUCTIONS</div>
         <table>
-          <tr><td>Income Tax</td><td>- ${formatCurrency(item.governmentDeductions.tax)}</td></tr>
-          <tr><td>SSS</td><td>- ${formatCurrency(item.governmentDeductions.sss)}</td></tr>
-          <tr><td>PhilHealth</td><td>- ${formatCurrency(item.governmentDeductions.philhealth)}</td></tr>
-          <tr><td>Pag-IBIG</td><td>- ${formatCurrency(item.governmentDeductions.pagibig)}</td></tr>
+          ${itemizedDeductionRows}
           <tr><td>Late Deductions</td><td>- ${formatCurrency(item.lateDeductions)}</td></tr>
           <tr><td>Leave Deductions</td><td>- ${formatCurrency(item.leaveDeductions)}</td></tr>
           <tr class="total-row"><td>Total Deductions</td><td>- ${formatCurrency(item.totalDeductions)}</td></tr>
@@ -667,15 +833,15 @@ const printPayslip = (item: PayrollItem) => {
       </div>
 
       <div style="margin-top:30px; text-align:center; font-size:10px; color:#999;">
-        Printed on: ${new Date().toLocaleString('en-PH', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric', 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          second: '2-digit',
-          hour12: true 
-        })}
+        Printed on: ${new Date().toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  })}
       </div>
     </body>
     </html>

@@ -28,33 +28,39 @@ class EmployeeController extends Controller
         try {
             $user = Auth::user();
 
-            // Get total count for the user's store
-            $totalEmployees = Employee::where('store_id', $user->store_id)->count();
+            if (!$user || !$user->store_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not assigned to a store.'
+                ], 400);
+            }
 
-            $activeEmployees = Employee::where('store_id', $user->store_id)
+            $storeId = $user->store_id;
+
+            // Get total count for the user's store
+            $totalEmployees = Employee::where('store_id', $storeId)->count();
+
+            $activeEmployees = Employee::where('store_id', $storeId)
                 ->where('status', 'active')
                 ->count();
 
-            $inactiveEmployees = Employee::where('store_id', $user->store_id)
+            $inactiveEmployees = Employee::where('store_id', $storeId)
                 ->where('status', 'inactive')
                 ->count();
 
-            $onLeaveEmployees = Employee::where('store_id', $user->store_id)
+            $onLeaveEmployees = Employee::where('store_id', $storeId)
                 ->where('status', 'on_leave')
                 ->count();
 
             // Get department count
-            $departmentCount = Employee::where('store_id', $user->store_id)
+            $departmentCount = Employee::where('store_id', $storeId)
                 ->distinct('department')
                 ->count('department');
 
-            $query = Employee::with('user');
+            // Always scope employee listing to the authenticated user's store.
+            $query = Employee::with('user')->where('store_id', $storeId);
 
             // Add filters
-            if ($request->has('store_id')) {
-                $query->where('store_id', $request->store_id);
-            }
-
             if ($request->has('department')) {
                 $query->where('department', $request->department);
             }
@@ -174,6 +180,7 @@ class EmployeeController extends Controller
             // Simple validation
             $validated = $request->validate([
                 'branch_id' => 'nullable|exists:branches,id',
+                'is_active' => 'nullable|boolean',
                 'fname' => 'required|string|max:100',
                 'lname' => 'required|string|max:100',
                 'email' => 'required|email|unique:users,email',
@@ -200,7 +207,7 @@ class EmployeeController extends Controller
                 'role_id' => $validated['role_id'],
                 'store_id' => $storeId, // Using the authenticated user's store_id
                 'branch_id' => $request->branch_id ?? $user->branch_id,
-                'is_active' => $request->is_active ?? 'active',
+                'is_active' => $request->boolean('is_active', true),
                 'registered_by' => $current_user_id // Using the authenticated user's ID
             ]);
 
@@ -211,10 +218,13 @@ class EmployeeController extends Controller
             $employee = Employee::create([
                 'user_id' => $newUser->id,
                 'store_id' => $storeId, // Using the authenticated user's store_id
-                'branch_id' => $validated['branch_id'],
+                'branch_id' => $validated['branch_id'] ?? $user->branch_id,
+                'role_id' => $validated['role_id'],
                 'employee_number' => $employeeNumber,
-                'date_of_birth' => $validated['date_of_birth'],
-                'gender' => $validated['gender'],
+                'fname' => $validated['fname'],
+                'lname' => $validated['lname'],
+                'date_of_birth' => $validated['date_of_birth'] ?? null,
+                'gender' => $validated['gender'] ?? null,
                 'hire_date' => $validated['hire_date'],
                 'department' => $validated['department'],
                 'employment_type' => $validated['employment_type'],

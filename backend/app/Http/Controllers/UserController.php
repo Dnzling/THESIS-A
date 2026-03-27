@@ -270,7 +270,7 @@ class UserController extends Controller
     {
         try {
             // Find user by primary key (id)
-            $user = User::find($user);
+            $user = User::find($user->id);
 
             if (!$user) {
                 return response()->json([
@@ -283,8 +283,8 @@ class UserController extends Controller
                 'name' => 'sometimes|string|max:255',
                 'email' => 'sometimes|email|unique:users,email,' . $user->id . ',id',
                 'role' => 'sometimes|in:admin,manager,clerk,sales,customer',
-                'store_id' => 'sometimes|nullable|exists:stores,store_id',
-                'branch_id' => 'sometimes|nullable|exists:branches,branch_id',
+                'store_id' => 'sometimes|nullable|exists:stores,id',
+                'branch_id' => 'sometimes|nullable|exists:branches,id',
                 'phone_number' => 'sometimes|nullable|string|max:20',
                 'status' => 'sometimes|in:active,inactive,suspended'
             ]);
