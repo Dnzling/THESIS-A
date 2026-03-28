@@ -1,116 +1,392 @@
 <template>
-  <Topnav/>
+  <div class="about-shell">
+    <TopNav />
 
-  <div class="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 p-4">
-    <div class="max-w-4xl mx-auto pt-16">
-      <!-- Animated construction elements -->
-      <div class="flex justify-center mb-8">
-        <div class="relative">
-          <!-- Crane -->
-          <div class="w-48 h-48 mx-auto">
-            <div class="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-32 bg-gray-800"></div>
-            <div class="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-2 bg-gray-800"></div>
-            <div class="absolute top-16 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-yellow-500 rounded-full animate-pulse"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="text-center">
-        <h1 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-          🚧 Work in Progress 🚧
-        </h1>
-        
-        <div class="bg-white rounded-2xl shadow-xl p-8 mb-8 max-w-2xl mx-auto">
-          <div class="flex items-center justify-center mb-6">
-            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mr-4">
-              <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-              </svg>
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div>
+            <span class="eyebrow">About FurniSync</span>
+            <h1 class="hero-title">We build the operating system for furniture businesses.</h1>
+            <p class="hero-sub">
+              From inventory intelligence to immersive 3D retail, our mission is to help teams ship faster, sell smarter, and serve every customer with confidence.
+            </p>
+            <div class="hero-actions">
+              <Link href="/pricing" class="btn primary">See Pricing</Link>
+              <Link href="/register" class="btn ghost">Start Trial</Link>
             </div>
-            <h2 class="text-2xl font-bold text-gray-800">Page Under Construction</h2>
           </div>
-          
-          <p class="text-gray-600 text-lg mb-6">
-            Our team is hard at work building something amazing here. 
-            We apologize for the inconvenience and appreciate your patience.
-          </p>
-          
-          <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link 
-              href="/" 
-              class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg flex items-center"
-            >
-              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-              </svg>
-              Return to Homepage
-            </Link>
-            
-            <button 
-              @click="goBack"
-              class="px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-all flex items-center"
-            >
-              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-              </svg>
-              Go Back
-            </button>
+          <div class="hero-panel">
+            <div class="panel-card">
+              <h3>Why we exist</h3>
+              <p>
+                Furniture operations are complex, but most tools are built for generic retail. We designed FurniSync specifically for bulky inventory, long lead times, and showroom-first selling.
+              </p>
+            </div>
+            <div class="panel-card">
+              <h3>What we deliver</h3>
+              <p>
+                A single platform that unifies merchandising, procurement, logistics, and finance while keeping your customer experience premium.
+              </p>
+            </div>
           </div>
         </div>
+      </section>
 
-        <!-- Progress bar -->
-        <div class="max-w-md mx-auto mb-8">
-          <div class="flex justify-between mb-2">
-            <span class="text-sm font-medium text-gray-700">Construction Progress</span>
-            <span class="text-sm font-medium text-blue-600">{{ progress }}%</span>
+      <section class="story">
+        <div class="container story-grid">
+          <div>
+            <h2 class="section-title">A smarter backbone for every store.</h2>
+            <p class="section-sub">
+              We partnered with store managers, warehouse leads, and purchasing teams to map out the real workflows that keep furniture businesses moving. The result is a product that replaces spreadsheets, siloed apps, and guesswork with a unified control center.
+            </p>
+            <div class="value-list">
+              <div class="value-item">Operational clarity with real-time inventory truth.</div>
+              <div class="value-item">Decision support that balances demand, cash flow, and lead time.</div>
+              <div class="value-item">3D experiences that help shoppers commit faster.</div>
+            </div>
           </div>
-          <div class="w-full bg-gray-200 rounded-full h-3">
-            <div 
-              class="bg-blue-600 h-3 rounded-full transition-all duration-1000 ease-out"
-              :style="{ width: progress + '%' }"
-            ></div>
+          <div class="story-card">
+            <div class="story-metric">
+              <div class="metric-value">8+</div>
+              <div class="metric-label">Core modules connected</div>
+            </div>
+            <div class="story-metric">
+              <div class="metric-value">120 hrs</div>
+              <div class="metric-label">Monthly ops time saved</div>
+            </div>
+            <div class="story-metric">
+              <div class="metric-value">18%</div>
+              <div class="metric-label">Lower holding costs</div>
+            </div>
           </div>
         </div>
+      </section>
 
-        <!-- Contact info -->
-        <div class="text-gray-500 text-sm">
-          <p>Need immediate assistance? <a href="mailto:support@example.com" class="text-blue-600 hover:underline">Contact our support team</a></p>
+      <section class="principles">
+        <div class="container">
+          <div class="section-head">
+            <span class="eyebrow">Our Principles</span>
+            <h2 class="section-title">Designed with operators, not just developers.</h2>
+            <p class="section-sub">Every feature is tested against a real store workflow before it ships.</p>
+          </div>
+          <div class="principle-grid">
+            <div class="principle-card">
+              <h3>Showroom-first UX</h3>
+              <p>Retail teams can sell faster because the right data appears exactly when they need it.</p>
+            </div>
+            <div class="principle-card">
+              <h3>Operational transparency</h3>
+              <p>Procurement, logistics, and finance see the same numbers, reducing delays and disputes.</p>
+            </div>
+            <div class="principle-card">
+              <h3>Automation with control</h3>
+              <p>Smart suggestions, human approvals. You decide when the system acts.</p>
+            </div>
+          </div>
         </div>
+      </section>
+
+      <section class="cta">
+        <div class="container cta-card">
+          <div>
+            <h2>Ready to build the next generation of your business?</h2>
+            <p>Let us walk you through a tailored demo of FurniSync in action.</p>
+          </div>
+          <div class="cta-actions">
+            <Link href="/register" class="btn primary">Book a Demo</Link>
+            <Link href="/" class="btn ghost">Back to Home</Link>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div>
+            <div class="logo">FurniSync</div>
+            <p>Furniture-first operations, powered by intelligent automation.</p>
+          </div>
+          <div>
+            <div class="footer-title">Explore</div>
+            <a href="/pricing">Pricing</a>
+            <a href="/about">About</a>
+             <a href="/job-portal">Jobs</a>
+            <a href="/shop">Ecommerce</a>
+          </div>
+          <div>
+            <div class="footer-title">Contact</div>
+            <a href="mailto:support@furnisync.app">support@furnisync.app</a>
+            <a href="/customer/login">Customer Login</a>
+          </div>
+        </div>
+        <div class="footer-bottom">� 2026 FurniSync. All rights reserved.</div>
       </div>
-    </div>
+    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import Topnav from '@/Components/TopNav.vue'
-import { ref, onMounted } from 'vue'
+import TopNav from '@/Components/TopNav.vue'
 import { Link } from '@inertiajs/vue3'
-
-const progress = ref(0)
-
-// Animate progress bar
-onMounted(() => {
-  const interval = setInterval(() => {
-    if (progress.value < 65) { // Stop at 65% for "under construction" feel
-      progress.value += 1
-    } else {
-      clearInterval(interval)
-    }
-  }, 50)
-})
-
-const goBack = () => {
-  window.history.back()
-}
 </script>
 
 <style scoped>
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=domine:400,700');
+
+.about-shell {
+  --ink: #111827;
+  --muted: #495665;
+  --brand: #0f766e;
+  --paper: #f8f4ee;
+  font-family: 'Manrope', sans-serif;
+  color: var(--ink);
+  background: var(--paper);
 }
 
-.animate-float {
-  animation: float 3s ease-in-out infinite;
+.container {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.hero {
+  padding: 96px 0 72px;
+  background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
+}
+
+.hero-grid {
+  display: grid;
+  gap: 40px;
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .hero-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+}
+
+.hero-title {
+  font-family: 'Domine', serif;
+  font-size: clamp(2.4rem, 4vw, 3.6rem);
+  margin: 16px 0;
+}
+
+.hero-sub {
+  color: var(--muted);
+  font-size: 1.1rem;
+  max-width: 560px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.hero-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.panel-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  color: var(--brand);
+}
+
+.section-title {
+  font-family: 'Domine', serif;
+  font-size: clamp(2rem, 3vw, 2.6rem);
+}
+
+.section-sub {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.story {
+  padding: 84px 0;
+}
+
+.story-grid {
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 900px) {
+  .story-grid {
+    grid-template-columns: 1.2fr 0.8fr;
+  }
+}
+
+.value-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.value-item {
+  padding: 14px 16px;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+}
+
+.story-card {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 22px;
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+}
+
+.story-metric {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding-bottom: 16px;
+}
+
+.story-metric:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.metric-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.metric-label {
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.principles {
+  padding: 84px 0;
+  background: #fff;
+}
+
+.section-head {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 36px;
+}
+
+.principle-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.principle-card {
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.btn {
+  padding: 12px 24px;
+  border-radius: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.btn.primary {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.22);
+}
+
+.btn.ghost {
+  border-color: rgba(15, 118, 110, 0.4);
+  color: var(--brand);
+  background: #fff;
+}
+
+.cta {
+  padding: 72px 0;
+}
+
+.cta-card {
+  background: #fff;
+  border-radius: 22px;
+  padding: 30px;
+  display: grid;
+  gap: 20px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
+}
+
+@media (min-width: 900px) {
+  .cta-card {
+    grid-template-columns: 1.2fr 0.8fr;
+    align-items: center;
+  }
+}
+
+.cta-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.footer {
+  padding: 56px 0 32px;
+  background: #0b1b2b;
+  color: #d1d5db;
+}
+
+.footer-grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 900px) {
+  .footer-grid {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+}
+
+.footer a {
+  display: block;
+  margin-top: 8px;
+  color: #d1d5db;
+  text-decoration: none;
+}
+
+.footer-title {
+  font-weight: 600;
+  color: #fff;
+}
+
+.logo {
+  font-family: 'Domine', serif;
+  font-size: 1.4rem;
+  color: #fff;
+}
+
+.footer-bottom {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.85rem;
+  color: #94a3b8;
 }
 </style>

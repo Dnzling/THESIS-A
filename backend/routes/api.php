@@ -5,8 +5,6 @@ use App\Http\Controllers\Api\Store\StoreVerificationController;
 
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\AuthController;
@@ -37,12 +35,6 @@ use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
 
-
-// ========== RATE LIMITING ==========
-RateLimiter::for('login', fn(Request $request) => Limit::perMinute(100)->by($request->ip()));
-RateLimiter::for('api', fn(Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
-RateLimiter::for('register', fn(Request $request) => Limit::perHour(100)->by($request->ip()));
-RateLimiter::for('password-reset', fn(Request $request) => Limit::perHour(5)->by($request->ip()));
 
 // ========== PUBLIC ROUTES ==========
 Route::prefix('auth')->group(function () {

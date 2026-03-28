@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\StoreVerificationController;
+use App\Http\Controllers\Api\Store\StoreVerificationController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -62,4 +62,5 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+require __DIR__ . '/inertia.php';
 require __DIR__ . '/auth.php';

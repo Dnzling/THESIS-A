@@ -21,6 +21,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'resources/js'), // Point to your actual JS source
+            'vue-router': path.resolve(__dirname, 'resources/js/router-compat.ts'),
         }
     }
 });

@@ -173,7 +173,7 @@ const emit = defineEmits<{
 }>()
 
 // Types
-interface RegisterFormData {
+export interface RegisterFormData {
   fname: string
   lname: string
   email: string

@@ -1,322 +1,154 @@
 <template>
-  <div class="min-h-screen bg-linear-to-b from-gray-50 to-white">
-    <!-- Navigation -->
+  <div class="pricing-shell">
     <TopNav />
-    
-    <!-- Hero Section -->
-    <section class="pt-20 pb-16 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-7xl mx-auto text-center">
-        <div class="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold mb-6">
-          <i class="pi pi-tag mr-2"></i>
-          Simple & Transparent Pricing
-        </div>
-        
-        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">
-          Choose Your
-          <span class="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-purple-600">
-            Furniture Management Plan
-          </span>
-        </h1>
-        
-        <p class="text-xl text-gray-600 max-w-3xl mx-auto mb-10">
-          Start for free, upgrade when you need. No hidden fees, cancel anytime.
-          Perfect for businesses of all sizes.
-        </p>
-        
-        <!-- Toggle: Monthly/Yearly -->
-        <div class="flex items-center justify-center space-x-4 mb-12">
-          <span class="text-gray-700 font-medium">Monthly</span>
-          <InputSwitch 
-            v-model="isYearly" 
-            @change="toggleBillingCycle"
-          />
-          <div class="flex items-center">
-            <span class="text-gray-700 font-medium">Yearly</span>
-            <span class="ml-2 px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
-              Save 20%
-            </span>
+  
+    <main>
+      <section class="hero">
+        <div class="container hero-inner">
+          <span class="eyebrow">Pricing</span>
+          <h1 class="hero-title">Simple plans for modern furniture teams.</h1>
+          <p class="hero-sub">
+            Start small, scale fast. Every plan includes 3D product tools, DSS insights, and onboarding support.
+          </p>
+          <div class="billing-toggle">
+            <span :class="{ active: !isYearly }">Monthly</span>
+            <button class="switch" @click="toggleBillingCycle">
+              <span :class="{ on: isYearly }"></span>
+            </button>
+            <span :class="{ active: isYearly }">Yearly</span>
+            <span class="save">Save 20%</span>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- Pricing Cards -->
-    <section class="py-12 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-6xl mx-auto">
-        <div class="grid md:grid-cols-2 gap-8 lg:gap-12">
-          <!-- Simple Plan -->
-          <Card class="border-2 border-gray-200 hover:border-blue-300 transition-all duration-300">
-            <template #header>
-              <div class="text-center p-8">
-                <div class="w-16 h-16 mx-auto bg-blue-100 rounded-xl flex items-center justify-center mb-6">
-                  <i class="pi pi-box text-blue-600 text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-bold text-gray-900 mb-2">Simple</h3>
-                <p class="text-gray-600">Perfect for small furniture stores</p>
-              </div>
-            </template>
-            
-            <template #content>
-              <div class="p-6 pt-0">
-                <!-- Price -->
-                <div class="text-center mb-8">
-                  <div class="flex items-center justify-center">
-                    <span class="text-5xl font-bold text-gray-900">₱{{ simplePrice }}</span>
-                    <span class="text-gray-500 ml-2">/{{ billingPeriod }}</span>
-                  </div>
-                  <p class="text-gray-500 mt-2">Billed {{ isYearly ? 'yearly' : 'monthly' }}</p>
-                </div>
-
-                <!-- Features -->
-                <div class="space-y-4 mb-8">
-                  <div v-for="feature in simpleFeatures" :key="feature" class="flex items-center">
-                    <i class="pi pi-check text-green-500 mr-3"></i>
-                    <span class="text-gray-700">{{ feature }}</span>
-                  </div>
-                  
-                  <div class="flex items-center text-gray-400">
-                    <i class="pi pi-times mr-3"></i>
-                    <span class="line-through">Advanced Analytics</span>
-                  </div>
-                  <div class="flex items-center text-gray-400">
-                    <i class="pi pi-times mr-3"></i>
-                    <span class="line-through">Custom API Access</span>
-                  </div>
-                </div>
-
-                <!-- CTA Button -->
-                <Button 
-                  label="Get Started Free" 
-                  class="w-full bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 border-none"
-                  @click="selectPlan('simple')"
-                >
-                  <template #icon>
-                    <i class="pi pi-rocket mr-2"></i>
-                  </template>
-                </Button>
-              </div>
-            </template>
-            
-            <template #footer>
-              <div class="text-center p-4 border-t border-gray-100">
-                <p class="text-sm text-gray-500">
-                  <i class="pi pi-shield mr-1"></i>
-                  14-day free trial included
-                </p>
-              </div>
-            </template>
-          </Card>
-
-          <!-- Unlimited Plan (Featured) -->
-          <Card class="border-2 border-purple-300 shadow-xl relative overflow-hidden">
-            <!-- Featured Badge -->
-            <div class="absolute top-0 right-0">
-              <div class="bg-linear-to-r from-purple-600 to-pink-600 text-white px-6 py-2 transform rotate-45 translate-x-8 translate-y-4">
-                <span class="text-sm font-bold">MOST POPULAR</span>
+      </section>
+  
+      <section class="plans">
+        <div class="container plan-grid">
+          <div class="plan-card">
+            <div class="plan-head">
+              <div class="plan-icon">S</div>
+              <div>
+                <h2>Simple</h2>
+                <p>For boutique stores and single locations.</p>
               </div>
             </div>
-            
-            <template #header>
-              <div class="text-center p-8">
-                <div class="w-16 h-16 mx-auto bg-linear-to-r from-purple-100 to-pink-100 rounded-xl flex items-center justify-center mb-6">
-                  <i class="pi pi-infinity text-purple-600 text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-bold text-gray-900 mb-2">Unlimited</h3>
-                <p class="text-gray-600">For growing furniture businesses</p>
+            <div class="plan-price">
+              <span class="price">₱{{ simplePrice }}</span>
+              <span class="period">/ {{ billingPeriod }}</span>
+            </div>
+            <div class="plan-note">Billed {{ isYearly ? 'yearly' : 'monthly' }}</div>
+            <div class="plan-features">
+              <div v-for="feature in simpleFeatures" :key="feature" class="feature-row">
+                <span class="check"></span>
+                <span>{{ feature }}</span>
               </div>
-            </template>
-            
-            <template #content>
-              <div class="p-6 pt-0">
-                <!-- Price -->
-                <div class="text-center mb-8">
-                  <div class="flex items-center justify-center">
-                    <span class="text-5xl font-bold text-gray-900">₱{{ unlimitedPrice }}</span>
-                    <span class="text-gray-500 ml-2">/{{ billingPeriod }}</span>
-                  </div>
-                  <p class="text-gray-500 mt-2">Billed {{ isYearly ? 'yearly' : 'monthly' }}</p>
-                  <div v-if="isYearly" class="mt-2">
-                    <span class="text-green-600 font-semibold">
-                      <i class="pi pi-check-circle mr-1"></i>
-                      Save ₱{{ unlimitedYearlySavings }} yearly
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Features -->
-                <div class="space-y-4 mb-8">
-                  <div v-for="feature in unlimitedFeatures" :key="feature" class="flex items-center">
-                    <i class="pi pi-check text-green-500 mr-3"></i>
-                    <span class="text-gray-700">{{ feature }}</span>
-                  </div>
-                </div>
-
-                <!-- CTA Button -->
-                <Button 
-                  label="Start Unlimited Trial" 
-                  severity="secondary"
-                  class="w-full bg-linear-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 border-none text-white"
-                  @click="selectPlan('unlimited')"
-                >
-                  <template #icon>
-                    <i class="pi pi-star mr-2"></i>
-                  </template>
-                </Button>
-              </div>
-            </template>
-            
-            <template #footer>
-              <div class="text-center p-4 border-t border-gray-100">
-                <p class="text-sm text-gray-500">
-                  <i class="pi pi-crown mr-1"></i>
-                  Includes all features + priority support
-                </p>
-              </div>
-            </template>
-          </Card>
-        </div>
-      </div>
-    </section>
-
-    <!-- Comparison Table -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
-      <div class="max-w-5xl mx-auto">
-        <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">
-          Compare Plans Side by Side
-        </h2>
-        
-        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-          <DataTable :value="comparisonFeatures" class="p-datatable-sm">
-            <Column field="feature" header="Feature" headerClass="font-bold">
-              <template #body="{ data }">
-                <span class="font-medium">{{ data.feature }}</span>
-              </template>
-            </Column>
-            <Column header="Simple" headerClass="text-center">
-              <template #body="{ data }">
-                <div class="flex justify-center">
-                  <i v-if="data.simple" class="pi pi-check text-green-500 text-lg"></i>
-                  <i v-else class="pi pi-times text-gray-300 text-lg"></i>
-                </div>
-              </template>
-            </Column>
-            <Column header="Unlimited" headerClass="text-center">
-              <template #body="{ data }">
-                <div class="flex justify-center">
-                  <i v-if="data.unlimited" class="pi pi-check text-green-500 text-lg"></i>
-                  <i v-else class="pi pi-times text-gray-300 text-lg"></i>
-                </div>
-              </template>
-            </Column>
-          </DataTable>
-        </div>
-      </div>
-    </section>
-
-    <!-- FAQ Section -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-4xl mx-auto">
-        <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">
-          Frequently Asked Questions
-        </h2>
-        
-        <div class="space-y-6">
-          <Accordion :activeIndex="0">
-            <AccordionTab header="Can I switch plans anytime?">
-              <p class="text-gray-600">
-                Yes! You can upgrade or downgrade your plan at any time. When upgrading, you'll get immediate access to new features. When downgrading, changes take effect at the end of your billing cycle.
-              </p>
-            </AccordionTab>
-            
-            <AccordionTab header="Is there a free trial?">
-              <p class="text-gray-600">
-                Absolutely! Both plans come with a 14-day free trial. No credit card required to start. You'll get full access to all features during the trial period.
-              </p>
-            </AccordionTab>
-            
-            <AccordionTab header="What payment methods do you accept?">
-              <p class="text-gray-600">
-                We accept all major credit cards (Visa, MasterCard, American Express), PayPal, and bank transfers for annual plans. All payments are processed securely through Stripe.
-              </p>
-            </AccordionTab>
-            
-            <AccordionTab header="Can I cancel anytime?">
-              <p class="text-gray-600">
-                Yes, you can cancel your subscription anytime. There are no long-term contracts. If you cancel, you'll have access until the end of your billing period.
-              </p>
-            </AccordionTab>
-          </Accordion>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA Section -->
-    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-linear-to-r from-blue-600 to-purple-600">
-      <div class="max-w-4xl mx-auto text-center">
-        <h2 class="text-3xl font-bold text-white mb-6">
-          Ready to Transform Your Furniture Business?
-        </h2>
-        <p class="text-xl text-blue-100 mb-10">
-          Join 1,000+ furniture stores already using our platform
-        </p>
-        
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button 
-            label="Start Free Trial" 
-            severity="secondary"
-            class="px-8 py-3 bg-white text-blue-600 font-bold hover:bg-gray-100"
-            @click="startFreeTrial"
-          >
-            <template #icon>
-              <i class="pi pi-play mr-2"></i>
-            </template>
-          </Button>
-          
-          <Button 
-            label="Schedule a Demo" 
-            outlined
-            class="px-8 py-3 border-2 border-white text-white hover:bg-white/10"
-            @click="scheduleDemo"
-          >
-            <template #icon>
-              <i class="pi pi-calendar mr-2"></i>
-            </template>
-          </Button>
-        </div>
-        
-        <p class="text-blue-200 text-sm mt-8">
-          <i class="pi pi-lock mr-1"></i>
-          Secure payment • 24/7 support • 30-day money-back guarantee
-        </p>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="bg-gray-900 text-white py-12 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-7xl mx-auto">
-        <div class="flex flex-col md:flex-row justify-between items-center">
-          <div class="mb-6 md:mb-0">
-            <div class="text-2xl font-bold mb-2">Furnisync</div>
-            <p class="text-gray-400">Professional furniture management solutions</p>
+            </div>
+            <button class="btn primary" @click="selectPlan('simple')">Start Free Trial</button>
           </div>
-          
-          <div class="flex space-x-6">
-            <a href="#" class="text-gray-400 hover:text-white">
-              <i class="pi pi-file text-xl"></i>
-            </a>
-            <a href="#" class="text-gray-400 hover:text-white">
-              <i class="pi pi-book text-xl"></i>
-            </a>
-            <a href="#" class="text-gray-400 hover:text-white">
-              <i class="pi pi-phone text-xl"></i>
-            </a>
+  
+          <div class="plan-card featured">
+            <div class="badge">Most Popular</div>
+            <div class="plan-head">
+              <div class="plan-icon">U</div>
+              <div>
+                <h2>Unlimited</h2>
+                <p>For multi-store operations and fast growth.</p>
+              </div>
+            </div>
+            <div class="plan-price">
+              <span class="price">₱{{ unlimitedPrice }}</span>
+              <span class="period">/ {{ billingPeriod }}</span>
+            </div>
+            <div class="plan-note">
+              Billed {{ isYearly ? 'yearly' : 'monthly' }}
+              <span v-if="isYearly" class="save-inline">Save ₱{{ unlimitedYearlySavings }}</span>
+            </div>
+            <div class="plan-features">
+              <div v-for="feature in unlimitedFeatures" :key="feature" class="feature-row">
+                <span class="check"></span>
+                <span>{{ feature }}</span>
+              </div>
+            </div>
+            <button class="btn primary" @click="selectPlan('unlimited')">Start Unlimited Trial</button>
           </div>
         </div>
-        
-        <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>© 2026 Furnisync. All rights reserved.</p>
+      </section>
+  
+      <section class="comparison">
+        <div class="container">
+          <div class="section-head">
+            <span class="eyebrow">Compare Plans</span>
+            <h2 class="section-title">See the difference at a glance.</h2>
+          </div>
+          <div class="compare-grid">
+            <div class="compare-row header">
+              <span>Feature</span>
+              <span>Simple</span>
+              <span>Unlimited</span>
+            </div>
+            <div v-for="row in comparisonFeatures" :key="row.feature" class="compare-row">
+              <span>{{ row.feature }}</span>
+              <span class="center">
+                <span v-if="row.simple === true" class="check"></span>
+                <span v-else>{{ row.simple }}</span>
+              </span>
+              <span class="center">
+                <span v-if="row.unlimited === true" class="check"></span>
+                <span v-else>{{ row.unlimited }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+  
+      <section class="faq">
+        <div class="container">
+          <div class="section-head">
+            <span class="eyebrow">FAQ</span>
+            <h2 class="section-title">Questions? We have answers.</h2>
+          </div>
+          <div class="faq-list">
+            <details v-for="item in faqs" :key="item.q">
+              <summary>{{ item.q }}</summary>
+              <p>{{ item.a }}</p>
+            </details>
+          </div>
+        </div>
+      </section>
+  
+      <section class="cta">
+        <div class="container cta-card">
+          <div>
+            <h2>Ready to transform your furniture business?</h2>
+            <p>Start your trial today and let our team tailor FurniSync to your workflow.</p>
+          </div>
+          <div class="cta-actions">
+            <button class="btn primary" @click="startFreeTrial">Start Free Trial</button>
+            <button class="btn ghost" @click="scheduleDemo">Schedule a Demo</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div>
+          <div class="logo">FurniSync</div>
+          <p>Professional furniture management solutions.</p>
+        </div>
+        <div>
+          <div class="footer-title">Explore</div>
+          <a href="/">Home</a>
+          <a href="/about">About</a>
+          <a href="/job-portal">Jobs</a>
+          <a href="/shop">Ecommerce</a>
+        </div>
+        <div>
+          <div class="footer-title">Support</div>
+          <a href="mailto:support@furnisync.app">support@furnisync.app</a>
+          <a href="/customer/login">Customer Login</a>
         </div>
       </div>
+      <div class="footer-bottom">� 2026 FurniSync. All rights reserved.</div>
     </footer>
   </div>
 </template>
@@ -325,29 +157,19 @@
 import { ref, computed } from 'vue'
 import { router } from '@inertiajs/vue3'
 import TopNav from '@/Components/TopNav.vue'
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import InputSwitch from 'primevue/inputswitch'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
-import Accordion from 'primevue/accordion'
-import AccordionTab from 'primevue/accordiontab'
 
 const isYearly = ref(false)
 
-// Pricing
 const simpleMonthlyPrice = 1490
-const simpleYearlyPrice = 14304 // * 12 * 0.8 (20% discount)
+const simpleYearlyPrice = 14304
 const unlimitedMonthlyPrice = 3500
-const unlimitedYearlyPrice = 33600 // * 12 * 0.8
+const unlimitedYearlyPrice = 33600
 
-const simplePrice = computed(() => isYearly.value ? simpleYearlyPrice : simpleMonthlyPrice)
-const unlimitedPrice = computed(() => isYearly.value ? unlimitedYearlyPrice : unlimitedMonthlyPrice)
-const billingPeriod = computed(() => isYearly.value ? 'year' : 'month')
-
+const simplePrice = computed(() => (isYearly.value ? simpleYearlyPrice : simpleMonthlyPrice))
+const unlimitedPrice = computed(() => (isYearly.value ? unlimitedYearlyPrice : unlimitedMonthlyPrice))
+const billingPeriod = computed(() => (isYearly.value ? 'year' : 'month'))
 const unlimitedYearlySavings = computed(() => (unlimitedMonthlyPrice * 12) - unlimitedYearlyPrice)
 
-// Features
 const simpleFeatures = [
   'Up to 500 furniture items',
   'Basic inventory tracking',
@@ -361,16 +183,15 @@ const unlimitedFeatures = [
   'Unlimited furniture items',
   'Advanced inventory management',
   'Unlimited staff accounts',
-  'Priority phone & email support',
-  'Advanced analytics & reports',
+  'Priority phone and email support',
+  'Advanced analytics and reports',
   'Multiple store locations',
   'Custom API access',
   '3D model integration',
-  'Bulk import/export',
+  'Bulk import and export',
   'Custom branding'
 ]
 
-// Comparison table
 const comparisonFeatures = ref([
   { feature: 'Furniture Items', simple: 'Up to 500', unlimited: 'Unlimited' },
   { feature: 'Staff Accounts', simple: '2', unlimited: 'Unlimited' },
@@ -384,19 +205,31 @@ const comparisonFeatures = ref([
   { feature: 'Custom Branding', simple: false, unlimited: true }
 ])
 
-// Methods
+const faqs = [
+  {
+    q: 'Can I switch plans anytime?',
+    a: 'Yes. You can upgrade or downgrade at any time, and changes apply to the next billing cycle.'
+  },
+  {
+    q: 'Is there a free trial?',
+    a: 'Absolutely. Both plans include a 14-day free trial with full access.'
+  },
+  {
+    q: 'What payment methods do you accept?',
+    a: 'We accept major cards and bank transfers for annual subscriptions.'
+  },
+  {
+    q: 'Can I cancel anytime?',
+    a: 'Yes. Cancel anytime and keep access until the end of your billing period.'
+  }
+]
+
 const toggleBillingCycle = () => {
-  console.log(`Switched to ₱{isYearly.value ? 'yearly' : 'monthly'} billing`)
+  isYearly.value = !isYearly.value
 }
 
 const selectPlan = (plan: string) => {
-  console.log(`Selected ${plan} plan`)
-  if (plan === 'unlimited') {
-    // Redirect to signup with plan parameter
-    router.get('/register', { plan: 'unlimited' }, { preserveState: true })
-  } else {
-    router.get('/register', { plan: 'simple' }, { preserveState: true })
-  }
+  router.get('/register', { plan }, { preserveState: true })
 }
 
 const startFreeTrial = () => {
@@ -404,36 +237,379 @@ const startFreeTrial = () => {
 }
 
 const scheduleDemo = () => {
-  // Open calendar scheduling or redirect
-  window.open('https://calendly.com/furnimanage/demo', '_blank')
+  window.open('https://calendly.com/furnisync/demo', '_blank')
 }
 </script>
 
 <style scoped>
-:deep(.p-card) {
-  border-radius: 1rem;
+@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=domine:400,700');
+
+.pricing-shell {
+  --ink: #0f172a;
+  --muted: #475569;
+  --brand: #0f766e;
+  --accent: #f59e0b;
+  font-family: 'Manrope', sans-serif;
+  color: var(--ink);
+  background: #f8fafc;
 }
 
-:deep(.p-card .p-card-header) {
-  padding-bottom: 0;
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
-:deep(.p-card .p-card-content) {
-  padding: 1.5rem;
+.hero {
+  padding: 96px 0 64px;
+  background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
+  text-align: center;
 }
 
-:deep(.p-button) {
-  padding: 0.75rem 1.5rem;
+.hero-title {
+  font-family: 'Domine', serif;
+  font-size: clamp(2.4rem, 4vw, 3.4rem);
+  margin: 14px 0;
+}
+
+.hero-sub {
+  color: var(--muted);
+  max-width: 660px;
+  margin: 0 auto;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  color: var(--brand);
+}
+
+.billing-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
   font-weight: 600;
 }
 
-:deep(.p-datatable .p-datatable-thead > tr > th) {
-  background-color: #f9fafb;
+.billing-toggle span {
+  color: var(--muted);
+}
+
+.billing-toggle span.active {
+  color: var(--ink);
+}
+
+.switch {
+  width: 44px;
+  height: 24px;
+  background: #cbd5f5;
+  border-radius: 999px;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.switch span {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 999px;
+  transition: transform 0.2s ease;
+}
+
+.switch span.on {
+  transform: translateX(20px);
+  background: var(--brand);
+}
+
+.save {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.plans {
+  padding: 48px 0 72px;
+}
+
+.plan-grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 900px) {
+  .plan-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.plan-card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 28px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+  position: relative;
+}
+
+.plan-card.featured {
+  border: 2px solid rgba(15, 118, 110, 0.5);
+  background: linear-gradient(160deg, #ffffff 0%, #f0fdfa 100%);
+}
+
+.badge {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: var(--brand);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.plan-head {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.plan-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: rgba(15, 118, 110, 0.15);
+  color: var(--brand);
+}
+
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.price {
+  font-size: 2.4rem;
   font-weight: 700;
 }
 
-:deep(.p-accordion .p-accordion-header .p-accordion-header-link) {
-  padding: 1.25rem;
+.period {
+  color: var(--muted);
+}
+
+.plan-note {
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+
+.save-inline {
+  margin-left: 8px;
+  color: #b45309;
   font-weight: 600;
+}
+
+.plan-features {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 24px;
+}
+
+.feature-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.check {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--brand);
+  position: relative;
+}
+
+.check::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-top: 0;
+  border-left: 0;
+  transform: rotate(45deg);
+  left: 5px;
+  top: 1px;
+}
+
+.btn {
+  padding: 12px 24px;
+  border-radius: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn.primary {
+  background: var(--brand);
+  color: #fff;
+  width: 100%;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.comparison {
+  padding: 72px 0;
+  background: #fff;
+}
+
+.section-head {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.section-title {
+  font-family: 'Domine', serif;
+  font-size: clamp(2rem, 3vw, 2.6rem);
+}
+
+.compare-grid {
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  align-items: center;
+}
+
+.compare-row.header {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+
+.compare-row:last-child {
+  border-bottom: none;
+}
+
+.center {
+  display: flex;
+  justify-content: center;
+}
+
+.faq {
+  padding: 72px 0;
+}
+
+.faq-list {
+  display: grid;
+  gap: 14px;
+}
+
+details {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+}
+
+summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+summary+p {
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.cta {
+  padding: 72px 0;
+}
+
+.cta-card {
+  background: linear-gradient(160deg, #0f766e 0%, #0f172a 100%);
+  color: #f8fafc;
+  border-radius: 24px;
+  padding: 32px;
+  display: grid;
+  gap: 20px;
+}
+
+.cta-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.cta .btn.primary {
+  background: #fff;
+  color: #0f172a;
+  width: auto;
+}
+
+.cta .btn.ghost {
+  border-color: #fff;
+  color: #fff;
+}
+
+.footer {
+  background: #0b1b2b;
+  color: #d1d5db;
+  padding: 56px 0 32px;
+}
+
+.footer-grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 900px) {
+  .footer-grid {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+}
+
+.footer a {
+  display: block;
+  color: #d1d5db;
+  text-decoration: none;
+  margin-top: 8px;
+}
+
+.footer-title {
+  font-weight: 600;
+  color: #fff;
+}
+
+.logo {
+  font-family: 'Domine', serif;
+  font-size: 1.4rem;
+  color: #fff;
+}
+
+.footer-bottom {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.85rem;
+  color: #94a3b8;
 }
 </style>

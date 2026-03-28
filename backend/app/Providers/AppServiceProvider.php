@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
@@ -43,6 +46,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Rate limiters must be registered outside routes when route caching is enabled.
+        RateLimiter::for('login', fn(Request $request) => Limit::perMinute(100)->by($request->ip()));
+        RateLimiter::for('login-with-clock-in', fn(Request $request) => Limit::perMinute(100)->by($request->ip()));
+        RateLimiter::for('api', fn(Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('register', fn(Request $request) => Limit::perHour(100)->by($request->ip()));
+        RateLimiter::for('password-reset', fn(Request $request) => Limit::perHour(5)->by($request->ip()));
+
         Vite::prefetch(concurrency: 3);
 
         // Register Inventory Observers
