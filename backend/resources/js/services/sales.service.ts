@@ -167,6 +167,46 @@ class SalesService {
     const res = await axiosClient.post(`/api/sales/chats/threads/${threadId}/messages`, payload)
     return res.data
   }
+
+  async getReviews(params?: any) {
+    const res = await axiosClient.get('/api/sales/reviews', { params })
+    return res.data
+  }
+
+  async getReview(id: number | string) {
+    const res = await axiosClient.get(`/api/sales/reviews/${id}`)
+    return res.data
+  }
+
+  async replyReview(id: number | string, payload: { reply: string }) {
+    const res = await axiosClient.put(`/api/sales/reviews/${id}/reply`, payload)
+    return res.data
+  }
+
+  async getRefunds(params?: any) {
+    const res = await axiosClient.get('/api/sales/refunds', { params })
+    return res.data
+  }
+
+  async getRefund(id: number | string) {
+    const res = await axiosClient.get(`/api/sales/refunds/${id}`)
+    return res.data
+  }
+
+  async createRefund(payload: any) {
+    const res = await axiosClient.post('/api/sales/refunds', payload)
+    return res.data
+  }
+
+  async updateRefundStatus(id: number | string, payload: { status: 'approved' | 'rejected'; notes?: string }) {
+    const res = await axiosClient.put(`/api/sales/refunds/${id}/status`, payload)
+    return res.data
+  }
+
+  async getReportsSummary(params?: any) {
+    const res = await axiosClient.get('/api/sales/reports/summary', { params })
+    return res.data
+  }
 }
 
 export default new SalesService()

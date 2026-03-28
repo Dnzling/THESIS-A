@@ -1,0 +1,411 @@
+accept-offers
+accountant
+admin.customer-management
+admin.customers.require-verification
+admin.customers.view
+Administration
+Aisle 1 Rack 1 Shelf 1 Bin 1
+Aisle 1 Rack 2 Shelf 1 Bin 1
+Aluminum
+applicant
+Basic Salary
+Beds
+Beige
+Black
+Brass Fittings
+Brown
+Burgundy
+cashier
+Charcoal
+Cherry
+Clothing Allowance
+Communication Allowance
+Cotton Fabric
+Cream
+create-job-offers
+create-job-postings
+Crystal
+Customer Service
+Dasmarinas Main Branch
+Dasmarinas Main Warehouse
+decline-offers
+delete-interviews
+delete-job-applications
+delete-job-offers
+delete-job-postings
+Delivery & Logistics
+Delivery Incentive
+delivery_staff
+Dual-role detection auto-approval
+edit-job-offers
+edit-job-postings
+Espresso
+Fabric
+Finance & Accounting
+finance.budgets
+finance.cashflow
+finance.dashboard
+finance.expenses
+finance.payables
+finance.payroll
+finance.price-approvals
+finance.purchase-orders.approve
+finance.purchase-orders.reject
+finance.purchase-orders.view
+finance.receivables
+finance.reports
+Flexi Shift
+Foam
+Furniture Stores Platform
+Glass
+Gray
+Hazard Pay
+Health Insurance
+High-value transaction requires manager
+hr.activity-logs.view
+hr.analytics
+hr.analytics.view
+hr.apply-job
+hr.attendance
+hr.attendance.record
+hr.attendance.view
+hr.dashboard
+hr.dashboard.view
+hr.departments
+hr.departments.manage
+hr.departments.view
+hr.employees
+hr.employees.create
+hr.employees.edit
+hr.employees.view
+hr.group.hiring
+hr.group.leave
+hr.group.overview
+hr.group.payroll
+hr.group.people
+hr.group.settings
+hr.group.time
+hr.job-hiring
+hr.job-hiring.job-postings
+hr.job-hiring.screening-pipeline
+hr.job-postings
+hr.leave
+hr.leave.approve
+hr.leave.balances
+hr.leave.request
+hr.leave.view
+hr.payroll
+hr.payroll.approve
+hr.payroll.create
+hr.payroll.edit
+hr.payroll.list
+hr.payroll.overview
+hr.payroll.periods
+hr.payroll.view
+hr.screening-pipeline
+hr.settings
+hr.settings.manage
+hr.shifts
+hr.shifts.create
+hr.shifts.edit
+hr.shifts.employees
+hr.shifts.view
+hr_manager
+Human Resources
+Interior Design Services
+Inter-store transfer needs both managers
+Inventory & Warehouse
+Inventory Allowance
+inventory.adjustments.approve
+inventory.adjustments.create
+inventory.adjustments.reject
+inventory.adjustments.submit
+inventory.adjustments.view
+inventory.alerts.acknowledge
+inventory.alerts.delete
+inventory.alerts.generate
+inventory.alerts.resolve
+inventory.alerts.view
+inventory.batches
+inventory.batches.create
+inventory.batches.delete
+inventory.batches.update
+inventory.batches.view
+inventory.branch_inventory.create
+inventory.branch_inventory.delete
+inventory.branch_inventory.manage
+inventory.branch_inventory.update
+inventory.branch_inventory.view
+inventory.branch_inventory.view_all
+inventory.categories
+inventory.categories.create
+inventory.categories.delete
+inventory.categories.update
+inventory.categories.view
+inventory.configuration.manage
+inventory.dashboard
+inventory.dashboard.view
+inventory.ecommerce-deliveries.manage
+inventory.ecommerce-deliveries.view
+inventory.ecommerce-orders.manage
+inventory.ecommerce-orders.view
+inventory.group.catalog
+inventory.group.overview
+inventory.group.reorder
+inventory.group.stock
+inventory.group.storage
+inventory.group.tracking
+inventory.items.create
+inventory.items.delete
+inventory.items.edit
+inventory.items.update
+inventory.items.view
+inventory.locations
+inventory.locations.create
+inventory.locations.delete
+inventory.locations.update
+inventory.locations.view
+inventory.notifications.manage
+inventory.notifications.view
+inventory.products
+inventory.products.create
+inventory.products.delete
+inventory.products.update
+inventory.products.view
+inventory.reorder-rules
+inventory.reorder-rules.create
+inventory.reorder-rules.delete
+inventory.reorder-rules.update
+inventory.reorder-rules.view
+inventory.reorder-suggestions
+inventory.reorder-suggestions.approve
+inventory.reorder-suggestions.create
+inventory.reorder-suggestions.delete
+inventory.reorder-suggestions.implement
+inventory.reorder-suggestions.reject
+inventory.reorder-suggestions.update
+inventory.reorder-suggestions.view
+inventory.reports.export
+inventory.reports.view
+inventory.reports.view_all_branches
+inventory.requisites.approve
+inventory.requisites.create
+inventory.requisites.delete
+inventory.requisites.manage
+inventory.requisites.update
+inventory.requisites.view
+inventory.serial-numbers
+inventory.serial-numbers.create
+inventory.serial-numbers.delete
+inventory.serial-numbers.update
+inventory.serial-numbers.view
+inventory.stock-counts
+inventory.stock-counts.approve
+inventory.stock-counts.complete
+inventory.stock-counts.create
+inventory.stock-counts.delete
+inventory.stock-counts.start
+inventory.stock-counts.update
+inventory.stock-counts.view
+inventory.stock-issues
+inventory.stock-issues.approve
+inventory.stock-issues.create
+inventory.stock-issues.edit
+inventory.stock-issues.update
+inventory.stock-issues.view
+inventory.stock-returns
+inventory.stock-returns.approve
+inventory.stock-returns.create
+inventory.stock-returns.delete
+inventory.stock-returns.receive
+inventory.stock-returns.reject
+inventory.stock-returns.ship
+inventory.stock-returns.update
+inventory.stock-returns.view
+inventory.transactions.export
+inventory.transactions.view
+inventory.transfers.approve
+inventory.transfers.cancel
+inventory.transfers.create
+inventory.transfers.receive
+inventory.transfers.ship
+inventory.transfers.view
+inventory.units
+inventory.units.create
+inventory.units.delete
+inventory.units.update
+inventory.units.view
+inventory.warehouses
+inventory.warehouses.create
+inventory.warehouses.delete
+inventory.warehouses.update
+inventory.warehouses.view
+inventory_staff
+Ivory
+Leather
+logistics.admin
+logistics.deliveries
+logistics.deliveries.manage
+logistics.deliveries.view
+logistics.fleet.manage
+logistics.fleet.view
+logistics.vehicles
+logistics.zones
+logistics.zones.manage
+logistics.zones.view
+Mahogany
+Maple
+Marble
+Marketing & E-commerce
+merchandising.assets.delete
+merchandising.assets.upload
+merchandising.assets.view
+merchandising.attributes
+merchandising.attributes.edit
+merchandising.attributes.view
+merchandising.categories
+merchandising.categories.edit
+merchandising.categories.view
+merchandising.dashboard
+merchandising.dashboard.view
+merchandising.group.catalog
+merchandising.group.inventory
+merchandising.group.overview
+merchandising.inventory
+merchandising.inventory.edit
+merchandising.inventory.view
+merchandising.pricing.bulk
+merchandising.pricing.edit
+merchandising.pricing.view
+merchandising.pricing-history
+merchandising.products
+merchandising.products.create
+merchandising.products.delete
+merchandising.products.edit
+merchandising.products.view
+merchandising.reports.view
+merchandising.tags
+merchandising.tags.view
+merchandising.variations.edit
+merchandising.variations.view
+Metal Frame
+Migrated Deduction 
+Morning Shift
+Navy Blue
+Night Differential
+Night Shift
+Oak
+Oak Wood
+Olive Green
+Overtime Pay
+owner
+Pag-IBIG
+Pag-IBIG Fund
+Part Time
+Pay Period 1 - April 2026 (1st Half)
+Pay Period 1 - August 2026 (1st Half)
+Pay Period 1 - December 2026 (1st Half)
+Pay Period 1 - February 2026 (1st Half)
+Pay Period 1 - January 2026 (1st Half)
+Pay Period 1 - July 2026 (1st Half)
+Pay Period 1 - June 2026 (1st Half)
+Pay Period 1 - March 2026 (1st Half)
+Pay Period 1 - May 2026 (1st Half)
+Pay Period 1 - November 2025 (1st Half)
+Pay Period 1 - November 2026 (1st Half)
+Pay Period 1 - October 2026 (1st Half)
+Pay Period 1 - September 2026 (1st Half)
+Pay Period 2 - April 2026 (2nd Half)
+Pay Period 2 - August 2026 (2nd Half)
+Pay Period 2 - December 2026 (2nd Half)
+Pay Period 2 - February 2026 (2nd Half)
+Pay Period 2 - January 2026 (2nd Half)
+Pay Period 2 - July 2026 (2nd Half)
+Pay Period 2 - June 2026 (2nd Half)
+Pay Period 2 - March 2026 (2nd Half)
+Pay Period 2 - May 2026 (2nd Half)
+Pay Period 2 - November 2025 (2nd Half)
+Pay Period 2 - November 2026 (2nd Half)
+Pay Period 2 - October 2026 (2nd Half)
+Pay Period 2 - September 2026 (2nd Half)
+Performance Bonus
+PhilHealth
+Plywood
+Polyester Fabric
+Procurement & Merchandising
+Quality Assurance & Assembly
+Rattan
+Rice Subsidy
+Salary Loan
+Sales & Showroom
+Sales Commission
+sales.analytics.view
+sales.chats
+sales.chats.manage
+sales.chats.view
+sales.crm
+sales.crm.manage
+sales.crm.view
+sales.dashboard
+sales.dashboard.view
+sales.deliveries
+sales.deliveries.manage
+sales.deliveries.view
+sales.ecommerce-orders
+sales.ecommerce-orders.manage
+sales.ecommerce-orders.view
+sales.pos
+sales.pos.manage
+sales.pos.overview
+sales.pos.view
+sales_staff
+schedule-interviews
+Self-created PO under 50k auto-approve
+Slate
+Sofas
+SSS Contribution
+staff
+Stainless Steel
+Store Operations
+store.role.permission
+store_admin
+store_manager
+super_admin
+supplier
+supplier_coordinator
+supplier-portal.dashboard
+supplier-portal.dashboard.view
+supplier-portal.pos
+supplier-portal.pos.detail
+supplier-portal.pos.respond
+supplier-portal.pos.view
+supplier-portal.registration
+supplier-portal.registration.submit
+supplier-portal.registration.view
+supplier-portal.rfqs
+supplier-portal.rfqs.detail
+supplier-portal.rfqs.respond
+supplier-portal.rfqs.view
+supplier-verifications
+supplier-verifications.approve
+supplier-verifications.reject
+supplier-verifications.view
+Tables
+Taupe
+Teak Wood
+Teal
+Transportation Allowance
+update-application-status
+update-interviews
+Velvet
+view-interviews
+view-job-applications
+view-job-offers
+view-job-postings
+Walnut
+Walnut Wood
+warehouse_manager
+White
+Wicker
+Withholding Tax
+Write-off over 10k needs manager and finance

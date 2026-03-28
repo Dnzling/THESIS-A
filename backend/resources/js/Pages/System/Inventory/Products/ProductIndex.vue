@@ -6,7 +6,7 @@
         <h1 class="text-3xl font-bold text-gray-800">Products</h1>
         <p class="text-gray-600 mt-1">Manage your product catalog</p>
       </div>
-      <Button @click="$router.push({ name: 'merchandising.products.create' })" icon="pi pi-plus" label="Add Product"
+      <Button @click="$router.push({ name: 'inventory.products.create' })" icon="pi pi-plus" label="Add Product"
         severity="success" />
     </div>
   

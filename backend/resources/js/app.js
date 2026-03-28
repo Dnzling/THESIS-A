@@ -8,9 +8,8 @@ import { createApp, h } from 'vue';
 import { createPinia } from 'pinia';
 import SystemLayout from '@/Layouts/SystemLayout.vue';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import StoreAdminLayout from '@/Layouts/StoreAdminLayout.vue';
-import JobPortalLayout from '@/Pages/System/HR/JobPortal/JobPortalLayout.vue';
 import EcommerceLayout from '@/Layouts/EcommerceLayout.vue';
+import GuestLayout from '@/Layouts/GuestLayout.vue';
 import PrimeVue from 'primevue/config';
 import Aura from '@primeuix/themes/aura';
 import 'primeicons/primeicons.css';
@@ -90,15 +89,15 @@ createInertiaApp({
                     component.layout = AdminLayout;
                 } else if (name.startsWith('System/Ecommerce/')) {
                     component.layout = EcommerceLayout;
+                } else if (name.startsWith('System/')) {
+                    component.layout = SystemLayout;
                 } else if (
+                    name.startsWith('Auth/') ||
+                    name.startsWith('Profile/') ||
                     name.startsWith('System/HR/JobPortal/') ||
                     name.startsWith('System/HR/Applicant/')
                 ) {
-                    component.layout = JobPortalLayout;
-                } else if (name.startsWith('System/StoreAdmin/')) {
-                    component.layout = StoreAdminLayout;
-                } else if (name.startsWith('System/')) {
-                    component.layout = SystemLayout;
+                    component.layout = GuestLayout;
                 }
             }
             return module;

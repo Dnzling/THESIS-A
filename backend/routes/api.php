@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\ProfileController as ApiProfileController;
 use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\BranchController;
 use App\Http\Controllers\Api\Store\TrialOnboardingController;
+use App\Http\Controllers\Api\Store\StoreSettingsController;
 
 use App\Http\Controllers\Api\Hr\EmployeeController;
 use App\Http\Controllers\Api\Hr\PayPeriodController;
@@ -133,6 +134,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // ========== STORE ROLES & PERMISSIONS ==========
     Route::prefix('store')->group(function () {
+        Route::get('/settings', [StoreSettingsController::class, 'show']);
+        Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
         Route::get('/roles/scoped', [StoreScopedRoleController::class, 'index']);
         Route::get('/roles', [StoreRoleController::class, 'index']);
         Route::post('/roles', [StoreRoleController::class, 'store']);

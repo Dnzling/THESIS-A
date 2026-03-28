@@ -228,11 +228,19 @@ const toggleBillingCycle = () => {
   isYearly.value = !isYearly.value
 }
 
+const setTrialPlan = (plan: 'simple' | 'unlimited') => {
+  localStorage.setItem('trial_plan', plan)
+  localStorage.setItem('trial_entry', 'pricing')
+}
+
 const selectPlan = (plan: string) => {
-  router.get('/register', { plan }, { preserveState: true })
+  const normalized = plan === 'unlimited' ? 'unlimited' : 'simple'
+  setTrialPlan(normalized)
+  router.get('/register', { plan: normalized, trial: '1' }, { preserveState: true })
 }
 
 const startFreeTrial = () => {
+  setTrialPlan('simple')
   router.get('/register', { plan: 'simple', trial: '1' }, { preserveState: true })
 }
 

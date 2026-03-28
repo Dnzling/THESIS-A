@@ -32,6 +32,11 @@ class SalesRolePermissionsSeeder extends Seeder
                     'sales.deliveries.view',
                     'sales.ecommerce-orders.view',
                     'sales.ecommerce-orders.manage',
+                    'sales.reviews.view',
+                    'sales.reviews.manage',
+                    'sales.reports.view',
+                    'sales.refunds.view',
+                    'sales.refunds.manage',
                 ])
                 ->pluck('id'),
             'inventory_staff' => DB::table('permissions')
@@ -41,6 +46,9 @@ class SalesRolePermissionsSeeder extends Seeder
                     'sales.pos.view',
                     'sales.deliveries.view',
                     'sales.ecommerce-orders.view',
+                    'sales.reviews.view',
+                    'sales.reports.view',
+                    'sales.refunds.view',
                 ])
                 ->pluck('id'),
         ];

@@ -516,6 +516,7 @@ const getModuleIcon = (module: string): string => {
     supplier: 'pi pi-briefcase text-slate-600',
     sales: 'pi pi-dollar text-slate-600',
     finance: 'pi pi-wallet',
+    store_admin: 'pi pi-bolt text-indigo-600',
   }
   return icons[module] || 'pi pi-circle text-gray-500'
 }

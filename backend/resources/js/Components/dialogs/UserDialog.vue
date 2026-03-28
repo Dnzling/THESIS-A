@@ -57,11 +57,10 @@ import Dialog from "primevue/dialog";
 import ProgressSpinner from "primevue/progressspinner";
 import { ref } from "vue";
 import { useAuthStore } from "../../stores/auth";
-import { useRouter } from "vue-router";
+import { router } from "@inertiajs/vue3";
 import axios from "axios";
 
 const authStore = useAuthStore();
-const router = useRouter();
 const op = ref(null);
 const isLoggingOut = ref<boolean>(false);
 
@@ -81,12 +80,12 @@ const hide = () => {
 /* ACTIONS */
 const goProfile = () => {
   hide();
-  router.push('/profile'); // Better than window.location.href for SPA
+  router.visit('/profile');
 };
 
 const goSettings = () => {
   hide();
-  router.push('/settings');
+  router.visit('/system/settings');
 };
 
 const handleLogout = async () => {
@@ -103,13 +102,13 @@ const handleLogout = async () => {
     // Uncomment when backend is ready
     // await axios.post('/api/auth/logout');
     
-    authStore.logout();
+    await authStore.logout({ redirect: false });
     delete axios.defaults.headers.common['Authorization'];
     
     // Add a small delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    router.replace('/login');
+    window.location.href = '/login';
   } catch (error) {
     console.error('Logout error:', error);
 
@@ -118,7 +117,7 @@ const handleLogout = async () => {
     sessionStorage.clear();
     delete axios.defaults.headers.common['Authorization'];
     
-    router.replace('/login');
+    window.location.href = '/login';
   } finally {
     isLoggingOut.value = false;
   }

@@ -345,7 +345,7 @@ export const useAuthStore = defineStore('auth', () => {
     /**
      * Logout user
      */
-    const logout = async () => {
+    const logout = async (options?: { redirect?: boolean }) => {
         try {
             if (token.value && user.value) {
                 await axios.post('/api/auth/logout-with-clock-out', {
@@ -353,6 +353,8 @@ export const useAuthStore = defineStore('auth', () => {
                     method: 'web'
                 })
             }
+            // Always attempt to destroy the web session (prevents /login redirect back)
+            await axios.post('/logout')
         } catch (err) {
             console.warn('Logout API error:', err)
         } finally {
@@ -377,7 +379,9 @@ export const useAuthStore = defineStore('auth', () => {
                     .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/")
             })
 
-            router.visit('/login')
+            if (options?.redirect !== false) {
+                window.location.href = '/login'
+            }
         }
     }
 

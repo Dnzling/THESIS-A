@@ -13,7 +13,7 @@
             </p>
             <div class="hero-actions">
               <Link href="/pricing" class="btn primary">See Pricing</Link>
-              <Link href="/register" class="btn ghost">Start Trial</Link>
+            <Link href="/register?plan=simple&trial=1" class="btn ghost" @click="setTrialPlan('simple')">Start Trial</Link>
             </div>
           </div>
           <div class="hero-panel">
@@ -130,6 +130,11 @@
 <script setup lang="ts">
 import TopNav from '@/Components/TopNav.vue'
 import { Link } from '@inertiajs/vue3'
+
+const setTrialPlan = (plan: 'simple' | 'unlimited') => {
+  localStorage.setItem('trial_plan', plan)
+  localStorage.setItem('trial_entry', 'marketing')
+}
 </script>
 
 <style scoped>

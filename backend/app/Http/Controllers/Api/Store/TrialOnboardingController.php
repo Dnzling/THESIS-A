@@ -23,7 +23,7 @@ class TrialOnboardingController extends Controller
         $validated = $request->validate([
             'plan' => 'required|string|in:simple,unlimited',
             'employee_range' => 'required|string|max:30',
-            'branch_range' => 'required|string|max:30',
+            'branch_range' => 'nullable|string|max:30',
             'modules' => 'required|array|min:1',
             'modules.*' => 'required|string|max:50',
             'primary_goal' => 'required|string|max:100',
@@ -35,13 +35,21 @@ class TrialOnboardingController extends Controller
             [
                 'plan' => $validated['plan'],
                 'employee_range' => $validated['employee_range'],
-                'branch_range' => $validated['branch_range'],
+                'branch_range' => $validated['branch_range'] ?? '1',
                 'modules' => array_values(array_unique($validated['modules'])),
                 'primary_goal' => $validated['primary_goal'],
                 'first_team' => $validated['first_team'],
                 'completed_at' => now(),
             ]
         );
+
+        $store = $request->user()->store;
+        if ($store) {
+            $settings = is_array($store->settings) ? $store->settings : [];
+            $settings['enabled_modules'] = $profile->modules;
+            $store->settings = $settings;
+            $store->save();
+        }
 
         return response()->json([
             'success' => true,

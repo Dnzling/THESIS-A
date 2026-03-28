@@ -4,6 +4,9 @@ use App\Http\Controllers\Api\Sales\SalesCrmController;
 use App\Http\Controllers\Api\Sales\SalesChatController;
 use App\Http\Controllers\Api\Sales\SalesPosController;
 use App\Http\Controllers\Api\Sales\SalesOrderDeliveryController;
+use App\Http\Controllers\Api\Sales\SalesReviewController;
+use App\Http\Controllers\Api\Sales\SalesRefundController;
+use App\Http\Controllers\Api\Sales\SalesReportsController;
 use App\Http\Controllers\Api\Inventory\EcommerceOrderManagementController;
 use Illuminate\Support\Facades\Route;
 
@@ -56,4 +59,19 @@ Route::prefix('sales')->group(function () {
         Route::get('/{id}/chat/messages', [EcommerceOrderManagementController::class, 'chatMessages'])->middleware('can:sales.ecommerce-orders.view');
         Route::post('/{id}/chat/messages', [EcommerceOrderManagementController::class, 'sendChatMessage'])->middleware('can:sales.ecommerce-orders.manage');
     });
+
+    Route::prefix('reviews')->group(function () {
+        Route::get('/', [SalesReviewController::class, 'index'])->middleware('can:sales.reviews.view');
+        Route::get('/{review}', [SalesReviewController::class, 'show'])->middleware('can:sales.reviews.view');
+        Route::put('/{review}/reply', [SalesReviewController::class, 'reply'])->middleware('can:sales.reviews.manage');
+    });
+
+    Route::prefix('refunds')->group(function () {
+        Route::get('/', [SalesRefundController::class, 'index'])->middleware('can:sales.refunds.view');
+        Route::get('/{refund}', [SalesRefundController::class, 'show'])->middleware('can:sales.refunds.view');
+        Route::post('/', [SalesRefundController::class, 'store'])->middleware('can:sales.refunds.manage');
+        Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus'])->middleware('can:sales.refunds.manage');
+    });
+
+    Route::get('/reports/summary', [SalesReportsController::class, 'summary'])->middleware('can:sales.reports.view');
 });

@@ -5,7 +5,7 @@
       :modal="true"
       :closable="false"
       :draggable="false"
-      :style="{ width: '760px', maxWidth: '96vw' }"
+      :style="{ width: '500px', maxWidth: '96vw' }"
       header="Set up your free trial"
     >
       <div class="space-y-5">
@@ -20,9 +20,9 @@
           </span>
         </div>
 
-        <div v-if="currentStep === 1" class="space-y-4">
-          <p class="text-sm text-slate-600">Tell us your team size so we can tailor limits and defaults.</p>
-          <div class="grid gap-4 md:grid-cols-2">
+        <div v-if="currentStep === 1" class="space-y-1">
+          <p class="text-sm text-slate-600">Select your employee count so we can assign the right preset.</p>
+          <div class="grid gap-4">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">How many employees do you have?</label>
               <Select
@@ -34,37 +34,28 @@
                 class="w-full"
               />
             </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">How many branches do you operate?</label>
-              <Select
-                v-model="form.branch_range"
-                :options="branchRangeOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select branch count"
-                class="w-full"
-              />
-            </div>
+          </div>
+          <div class="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+            Preset tier: <span class="font-semibold text-slate-800">{{ storeSizeLabel }}</span>
           </div>
         </div>
 
         <div v-if="currentStep === 2" class="space-y-4">
-          <p class="text-sm text-slate-600">Choose modules to activate for your trial workspace.</p>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-gray-700">Modules</label>
-            <MultiSelect
-              v-model="form.modules"
-              :options="moduleOptions"
-              optionLabel="label"
-              optionValue="value"
-              display="chip"
-              filter
-              placeholder="Select modules"
-              class="w-full"
-            />
-          </div>
-          <div class="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-            Pick at least one module. You can enable or disable modules later.
+          <p class="text-sm text-slate-600">Modules are pre-selected for the {{ storeSizeLabel }} preset.</p>
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Included Modules</div>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="module in selectedModuleLabels"
+                :key="module"
+                class="px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
+              >
+                {{ module }}
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mt-3">
+              You can manage modules later in Settings.
+            </p>
           </div>
         </div>
 
@@ -129,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 
@@ -149,7 +140,7 @@ const form = ref({
 })
 
 const steps = [
-  { id: 1, label: 'Team Size' },
+  { id: 1, label: 'Company Size' },
   { id: 2, label: 'Modules' },
   { id: 3, label: 'Goals' },
 ]
@@ -160,13 +151,6 @@ const employeeRangeOptions = [
   { label: '21-50 employees', value: '21-50' },
   { label: '51-100 employees', value: '51-100' },
   { label: '100+ employees', value: '100+' },
-]
-
-const branchRangeOptions = [
-  { label: '1 branch', value: '1' },
-  { label: '2-3 branches', value: '2-3' },
-  { label: '4-10 branches', value: '4-10' },
-  { label: '10+ branches', value: '10+' },
 ]
 
 const moduleOptions = [
@@ -200,7 +184,7 @@ const trialPlanLabel = computed(() => (form.value.plan === 'unlimited' ? 'Unlimi
 
 const canProceedCurrentStep = computed(() => {
   if (currentStep.value === 1) {
-    return Boolean(form.value.employee_range && form.value.branch_range)
+    return Boolean(form.value.employee_range)
   }
   if (currentStep.value === 2) {
     return form.value.modules.length > 0
@@ -211,12 +195,48 @@ const canProceedCurrentStep = computed(() => {
 const canFinish = computed(() => {
   return Boolean(
     form.value.employee_range &&
-    form.value.branch_range &&
     form.value.modules.length > 0 &&
     form.value.primary_goal &&
     form.value.first_team &&
     !loading.value
   )
+})
+
+const getPresetModules = (employeeRange: string): string[] => {
+  if (!employeeRange) {
+    return []
+  }
+  const isSmallTeam = employeeRange === '1-5'
+  if (isSmallTeam) {
+    return ['inventory', 'sales', 'procurement', 'finance', 'hr']
+  }
+
+  const isMidTeam = ['6-20', '21-50'].includes(employeeRange)
+  if (isMidTeam) {
+    return ['inventory', 'sales', 'procurement', 'logistics', 'finance', 'hr']
+  }
+
+  return ['inventory', 'sales', 'procurement', 'logistics', 'finance', 'hr', 'merchandising', 'supplier', 'ecommerce']
+}
+
+const selectedModules = computed(() => {
+  return getPresetModules(form.value.employee_range)
+})
+
+const selectedModuleLabels = computed(() => {
+  const map = new Map(moduleOptions.map(option => [option.value, option.label]))
+  return selectedModules.value.map((value) => map.get(value) || value)
+})
+
+watch(selectedModules, (modules) => {
+  form.value.modules = modules
+})
+
+const storeSizeLabel = computed(() => {
+  if (form.value.employee_range === '1-5') return 'Small'
+  if (['6-20', '21-50'].includes(form.value.employee_range)) return 'Mid'
+  if (['51-100', '100+'].includes(form.value.employee_range)) return 'Enterprise'
+  return 'Small'
 })
 
 const nextStep = () => {

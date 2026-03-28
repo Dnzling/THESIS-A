@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
             'self' => \App\Http\Middleware\CheckSelfOrRole::class,
             'store_manager' => \App\Http\Middleware\CheckStoreManager::class,
+            'trial.setup' => \App\Http\Middleware\EnsureTrialSetupComplete::class,
         ]);
 
     })

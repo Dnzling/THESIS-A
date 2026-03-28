@@ -25,6 +25,11 @@ class SalesPermissionsSeeder extends Seeder
             ['name' => 'sales.deliveries.manage', 'display_name' => 'Manage Sales Deliveries', 'module' => 'sales'],
             ['name' => 'sales.ecommerce-orders.view', 'display_name' => 'View Ecommerce Orders (Sales)', 'module' => 'sales'],
             ['name' => 'sales.ecommerce-orders.manage', 'display_name' => 'Manage Ecommerce Orders (Sales)', 'module' => 'sales'],
+            ['name' => 'sales.reviews.view', 'display_name' => 'View Sales Reviews', 'module' => 'sales'],
+            ['name' => 'sales.reviews.manage', 'display_name' => 'Manage Sales Reviews', 'module' => 'sales'],
+            ['name' => 'sales.reports.view', 'display_name' => 'View Sales Reports', 'module' => 'sales'],
+            ['name' => 'sales.refunds.view', 'display_name' => 'View Sales Refunds', 'module' => 'sales'],
+            ['name' => 'sales.refunds.manage', 'display_name' => 'Manage Sales Refunds', 'module' => 'sales'],
         ];
 
         foreach ($permissions as $permission) {

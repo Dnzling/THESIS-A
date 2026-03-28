@@ -39,6 +39,13 @@
                                 <span class="flex-1">Store Registration</span>
                             </Link>
                             <Link
+                                to="/system/settings"
+                                class="nav-item text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            >
+                                <i class="pi pi-cog w-5"></i>
+                                <span class="flex-1">Settings</span>
+                            </Link>
+                            <Link
                                 to="/system/roles-permissions"
                                 class="nav-item text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
                             >
@@ -84,16 +91,7 @@
                 </template>
             </nav>
 
-            <!-- Sidebar Footer -->
-            <div class="px-4 py-3 border-t border-gray-200">
-                <Link 
-                    to="/system/index"
-                    class="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors py-2 px-3 rounded-lg hover:bg-gray-50"
-                >
-                    <i class="pi pi-arrow-left"></i>
-                    <span>Back to System</span>
-                </Link>
-            </div>
+           
         </aside>
     
         <!-- Main content -->
@@ -240,6 +238,21 @@
                     </template>
                 </nav>
             </div>
+
+            <div v-if="showTrialBanner" class="px-6 py-3 bg-amber-50 border-b border-amber-200">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-sm text-amber-900">
+                        <span class="font-semibold">Trial in progress:</span>
+                        {{ trialBannerMessage }}
+                    </div>
+                    <Button
+                        label="Manage Trial"
+                        size="small"
+                        severity="secondary"
+                        @click="goToSettings"
+                    />
+                </div>
+            </div>
     
             <!-- Scrollable content -->
             <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
@@ -273,6 +286,10 @@ const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
 const unreadCount = ref(0)
 const activeNotifTab = ref<'inbox' | 'general' | 'archived'>('inbox')
+const trialStatus = ref<'trial' | 'active' | 'expired'>('trial')
+const trialEndsAt = ref<string | null>(null)
+const trialDaysRemaining = ref<number | null>(null)
+const trialPlan = ref<'simple' | 'unlimited'>('simple')
 
 // Types
 interface NavigationItem {
@@ -308,6 +325,20 @@ const userInitials = computed(() => {
 })
 
 const roleDisplay = computed(() => startCase(authStore.user?.role || 'Store Admin'))
+const showTrialBanner = computed(() => {
+    if (roleDisplay.value.toLowerCase() !== 'store admin') return false
+    return trialStatus.value === 'trial' || trialStatus.value === 'expired'
+})
+
+const trialBannerMessage = computed(() => {
+    if (trialStatus.value === 'expired') {
+        return 'Your trial has ended. Upgrade to regain module access.'
+    }
+    if (trialDaysRemaining.value !== null) {
+        return `${trialDaysRemaining.value} days left · Plan: ${trialPlan.value === 'unlimited' ? 'Unlimited' : 'Simple'}`
+    }
+    return `Plan: ${trialPlan.value === 'unlimited' ? 'Unlimited' : 'Simple'}`
+})
 
 const filteredNotifications = computed(() => {
     if (activeNotifTab.value === 'inbox') {
@@ -434,6 +465,7 @@ watch(() => currentPath.value, () => {
 onMounted(() => {
     loadNavigation()
     loadNotifications()
+    loadTrialStatus()
 })
 
 // User dialog
@@ -506,6 +538,23 @@ const formatTimeAgo = (iso: string) => {
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
     return then.toLocaleDateString()
+}
+
+const loadTrialStatus = async () => {
+    try {
+        const response = await axiosClient.get('/api/store/settings')
+        const data = response?.data?.data || {}
+        trialStatus.value = (data.subscription?.status || 'trial') as 'trial' | 'active' | 'expired'
+        trialEndsAt.value = data.subscription?.ends_at || null
+        trialDaysRemaining.value = data.subscription?.days_remaining ?? null
+        trialPlan.value = (data.onboarding?.plan || 'simple') as 'simple' | 'unlimited'
+    } catch (error) {
+        console.error('Failed to load trial status', error)
+    }
+}
+
+const goToSettings = () => {
+    router.visit('/system/settings')
 }
 </script>
 

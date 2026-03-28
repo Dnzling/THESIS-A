@@ -38,10 +38,14 @@ $inertia('/job-portal/postings/{id}/apply', 'System/HR/Applicant/ApplicantApplic
 $inertia('/job-portal/applications', 'System/HR/Applicant/ApplicantDashboard', 'job-portal.dashboard', 'My Applications');
 $inertia('/job-portal/applications/{id}', 'System/HR/Applicant/ApplicantApplicationDetail', 'job-portal.applications.detail', 'Application Details');
 
-Route::middleware('auth')->group(function () use ($inertia) {
+Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
     // System (Store Admin)
     $inertia('/system/index', 'System/StoreAdmin/Dashboard', 'store.dashboard', 'Dashboard');
     $inertia('/system/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
+    $inertia('/system/settings', 'System/StoreAdmin/Settings', 'store.settings', 'Settings', 'Trial & Configuration');
+    $inertia('/system/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
+    $inertia('/system/employees', 'System/StoreAdmin/Lite/HRLite', 'store.employees', 'Employees', 'Simple Payroll');
+    $inertia('/system/finance', 'System/StoreAdmin/Lite/FinanceLite', 'store.finance', 'Finance', 'Expenses & Cashflow');
 
     // Admin
     $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
@@ -99,6 +103,7 @@ Route::middleware('auth')->group(function () use ($inertia) {
     $inertia('/inventory/items/create', 'System/Inventory/Stocks/ItemsCreate', 'inventory.items.create', 'Add Inventory Item');
     $inertia('/inventory/items/{id}/edit', 'System/Inventory/Stocks/ItemsEdit', 'inventory.items.edit', 'Edit Inventory Item');
     $inertia('/inventory/products', 'System/Inventory/Products/ProductIndex', 'inventory.products.index', 'Product Catalog');
+    $inertia('/inventory/products/create', 'System/Merchandising/products/ProductForm', 'inventory.products.create', 'Add Product', 'Create a new product');
     $inertia('/inventory/products/{id}', 'System/Inventory/Products/ProductDetail', 'inventory.products.detail', 'Product Details');
     $inertia('/inventory/categories', 'System/Inventory/Categories/CategoryIndex', 'inventory.categories', 'Categories');
     $inertia('/inventory/categories/{id}', 'System/Inventory/Categories/CategoryDetail', 'inventory.categories.detail', 'Category Details');
@@ -233,13 +238,19 @@ Route::middleware('auth')->group(function () use ($inertia) {
     $inertia('/sales/dashboard', 'System/Sales/SalesDashboard', 'sales.dashboard', 'Sales Dashboard');
     $inertia('/sales/crm', 'System/Sales/SalesCRM', 'sales.crm', 'CRM Leads');
     $inertia('/sales/chats', 'System/Sales/SalesChats', 'sales.chats', 'Customer Chats');
+    $inertia('/sales/orders', 'System/Sales/SalesOrdersUnified', 'sales.orders', 'Orders');
     $inertia('/sales/pos/overview', 'System/Sales/SalesPOSOverview', 'sales.pos.overview', 'POS Overview');
-    $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'In-Store POS');
+    $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
     $inertia('/sales/deliveries', 'System/Sales/SalesOrderDeliveriesIndex', 'sales.deliveries', 'Sales Deliveries');
     $inertia('/sales/deliveries/{id}', 'System/Sales/SalesOrderDeliveryDetail', 'sales.deliveries.detail', 'Delivery Detail');
     $inertia('/sales/ecommerce-orders', 'System/Inventory/EcommerceOrders/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
     $inertia('/sales/ecommerce-orders/{id}', 'System/Inventory/EcommerceOrders/EcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
+    $inertia('/sales/reviews', 'System/Sales/SalesReviews', 'sales.reviews', 'Reviews');
+    $inertia('/sales/reviews/{id}', 'System/Sales/SalesReviewDetail', 'sales.reviews.detail', 'Review Detail');
+    $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
+    $inertia('/sales/refunds', 'System/Sales/SalesRefunds', 'sales.refunds', 'Refunds');
+    $inertia('/sales/refunds/{id}', 'System/Sales/SalesRefundDetail', 'sales.refunds.detail', 'Refund Detail');
 
     // Merchandising
     Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');

@@ -100,6 +100,9 @@ class UserNavigationController extends Controller
         $allPermissions = array_merge($rolePermissions, $userGrants);
         $finalPermissions = array_diff($allPermissions, $userRevokes);
 
+        $finalPermissions = $this->filterPermissionsByModules($user, $finalPermissions);
+        $finalPermissions = $this->filterPermissionsByTier($user, $finalPermissions);
+
         return array_values(array_unique($finalPermissions));
     }
 
@@ -110,6 +113,8 @@ class UserNavigationController extends Controller
     {
         $roleName = strtolower($user->role->name ?? '');
         $isSupplierRole = str_contains($roleName, 'supplier');
+        $allowedModules = $this->getStoreAdminAllowedModules($user);
+        $tier = $this->getStoreAdminTier($user);
 
         // Get all active navigation items
         $navigationItems = NavigationItem::where('is_active', true)
@@ -144,6 +149,17 @@ class UserNavigationController extends Controller
                 }
             }
 
+            if ($roleName === 'store_admin' && !empty($allowedModules)) {
+                $whitelist = ['store_admin', 'store', 'system'];
+                if (!in_array($navItem->module, $allowedModules, true) && !in_array($navItem->module, $whitelist, true)) {
+                    continue;
+                }
+            }
+
+        if ($roleName === 'store_admin' && $tier === 'small' && in_array($navItem->module, ['hr', 'finance'], true)) {
+            continue;
+        }
+
             // Check if user has permission to access this navigation item
             if ($this->canAccessNavigationItem($navItem, $permissions)) {
                 $accessibleNavigation[] = [
@@ -164,7 +180,149 @@ class UserNavigationController extends Controller
             }
         }
 
+        if ($roleName === 'store_admin' && $tier === 'small') {
+            $accessibleNavigation[] = [
+                'id' => 9001,
+                'name' => 'store.employees',
+                'display_name' => 'Employees',
+                'module' => 'store_admin',
+                'route_name' => 'store.employees',
+                'route_path' => '/system/employees',
+                'icon' => 'pi pi-users',
+                'parent_id' => null,
+                'display_order' => 20,
+                'section' => 'Quick Start',
+                'meta' => [],
+                'is_active' => true,
+                'badge_count' => 0,
+            ];
+
+            $accessibleNavigation[] = [
+                'id' => 9002,
+                'name' => 'store.finance',
+                'display_name' => 'Finance',
+                'module' => 'store_admin',
+                'route_name' => 'store.finance',
+                'route_path' => '/system/finance',
+                'icon' => 'pi pi-wallet',
+                'parent_id' => null,
+                'display_order' => 21,
+                'section' => 'Quick Start',
+                'meta' => [],
+                'is_active' => true,
+                'badge_count' => 0,
+            ];
+        }
+
         return $accessibleNavigation;
+    }
+
+    private function getStoreAdminAllowedModules($user): array
+    {
+        if (!$user || strtolower($user->role?->name ?? '') !== 'store_admin') {
+            return [];
+        }
+
+        $storeModules = [];
+        if ($user->store && is_array($user->store->settings ?? null)) {
+            $storeModules = $user->store->settings['enabled_modules'] ?? [];
+        }
+
+        $profileModules = $user->trialOnboardingProfile?->modules ?? [];
+
+        return array_values(array_unique(array_filter(array_merge($storeModules, $profileModules))));
+    }
+
+    private function filterPermissionsByModules($user, array $permissions): array
+    {
+        $allowedModules = $this->getStoreAdminAllowedModules($user);
+
+        if (empty($allowedModules)) {
+            return $permissions;
+        }
+
+        $alwaysAllowPrefixes = ['store.', 'store_admin.', 'system.', 'profile.', 'auth.'];
+
+        return array_values(array_filter($permissions, function ($permission) use ($allowedModules, $alwaysAllowPrefixes) {
+            foreach ($alwaysAllowPrefixes as $prefix) {
+                if (str_starts_with($permission, $prefix)) {
+                    return true;
+                }
+            }
+
+            foreach ($allowedModules as $module) {
+                if (str_starts_with($permission, $module . '.')) {
+                    return true;
+                }
+            }
+
+            return false;
+        }));
+    }
+
+    private function filterPermissionsByTier($user, array $permissions): array
+    {
+        $tier = $this->getStoreAdminTier($user);
+
+        if ($tier === 'enterprise') {
+            return $permissions;
+        }
+
+        $modulePrefixes = ['inventory.', 'procurement.', 'sales.', 'finance.', 'hr.'];
+        $alwaysAllowPrefixes = ['store.', 'store_admin.', 'system.', 'profile.', 'auth.'];
+
+        $smallDeny = [
+            '.approve', '.reject', '.export', '.import', '.delete', '.manage',
+            '.reports', '.analytics', '.settings', '.roles', '.permissions',
+            '.budget', '.price', '.audit',
+        ];
+
+        $midDeny = [
+            '.export', '.import', '.settings', '.roles', '.permissions',
+            '.audit',
+        ];
+
+        $denyList = $tier === 'small' ? $smallDeny : $midDeny;
+
+        return array_values(array_filter($permissions, function ($permission) use ($modulePrefixes, $alwaysAllowPrefixes, $denyList) {
+            foreach ($alwaysAllowPrefixes as $prefix) {
+                if (str_starts_with($permission, $prefix)) {
+                    return true;
+                }
+            }
+
+            $matchesModule = false;
+            foreach ($modulePrefixes as $prefix) {
+                if (str_starts_with($permission, $prefix)) {
+                    $matchesModule = true;
+                    break;
+                }
+            }
+
+            if (!$matchesModule) {
+                return false;
+            }
+
+            foreach ($denyList as $fragment) {
+                if (str_contains($permission, $fragment)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+    }
+
+    private function getStoreAdminTier($user): string
+    {
+        if (!$user || strtolower($user->role?->name ?? '') !== 'store_admin') {
+            return 'enterprise';
+        }
+
+        $range = $user->trialOnboardingProfile?->employee_range ?? '';
+        if ($range === '1-5') return 'small';
+        if (in_array($range, ['6-20', '21-50'], true)) return 'mid';
+        return 'enterprise';
     }
 
     /**

@@ -17,14 +17,14 @@
                 support engine keep your stock smart and your sales fast.
               </p>
               <div class="hero-actions">
-                <Link href="/register" class="btn primary">Start Free Trial</Link>
+                <Link href="/register?plan=simple&trial=1" class="btn primary" @click="setTrialPlan('simple')">Start Free Trial</Link>
                 <button class="btn ghost" @click="scrollToOverview">See How It Works</button>
               </div>
               <div class="hero-meta">
                 <span>14-day trial</span>
-                <span>�</span>
+                <span></span>
                 <span>No credit card</span>
-                <span>�</span>
+                <span></span>
                 <span>Live onboarding</span>
               </div>
             </div>
@@ -155,7 +155,7 @@
             <p>Launch a trial and let our team map your current workflow into a smarter, faster system.</p>
           </div>
           <div class="cta-actions">
-            <Link href="/register" class="btn primary">Start Free Trial</Link>
+            <Link href="/register?plan=simple&trial=1" class="btn primary" @click="setTrialPlan('simple')">Start Free Trial</Link>
             <Link href="/pricing" class="btn ghost">View Pricing</Link>
           </div>
         </div>
@@ -195,6 +195,11 @@ const overviewSection = ref<HTMLElement | null>(null)
 
 const scrollToOverview = () => {
   overviewSection.value?.scrollIntoView({ behavior: 'smooth' })
+}
+
+const setTrialPlan = (plan: 'simple' | 'unlimited') => {
+  localStorage.setItem('trial_plan', plan)
+  localStorage.setItem('trial_entry', 'marketing')
 }
 
 const features = [
