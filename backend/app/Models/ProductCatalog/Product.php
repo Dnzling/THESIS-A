@@ -120,6 +120,11 @@ class Product extends Model
         return $this->hasMany(ProductAsset::class);
     }
 
+    public function reconstructions()
+    {
+        return $this->hasMany(Product3DReconstruction::class, 'product_id');
+    }
+
     public function variations()
     {
         return $this->hasMany(ProductVariation::class);

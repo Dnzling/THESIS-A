@@ -17,6 +17,7 @@ class SalesOrderDelivery extends Model
         'sales_order_id',
         'store_id',
         'branch_id',
+        'trip_id',
         'driver_user_id',
         'tracking_number',
         'courier_name',
@@ -70,5 +71,10 @@ class SalesOrderDelivery extends Model
     public function logs(): HasMany
     {
         return $this->hasMany(SalesOrderDeliveryLog::class, 'delivery_id');
+    }
+
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Logistics\DeliveryTrip::class, 'trip_id');
     }
 }

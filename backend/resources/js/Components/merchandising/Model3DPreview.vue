@@ -20,6 +20,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
+import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { useAuthStore } from '@/stores/auth'
 
@@ -153,6 +154,18 @@ const loadModel = async () => {
     if (format === 'obj') {
       const text = await response.text()
       const obj = new OBJLoader().parse(text)
+      normalizeModel(obj)
+      scene.add(obj)
+      model = obj
+    } else if (format === 'ply') {
+      const buffer = await response.arrayBuffer()
+      const geometry = new PLYLoader().parse(buffer)
+      geometry.computeVertexNormals()
+      const hasColor = geometry.hasAttribute('color')
+      const material = geometry.index
+        ? new THREE.MeshStandardMaterial({ color: 0x94a3b8, vertexColors: hasColor })
+        : new THREE.PointsMaterial({ size: 0.01, vertexColors: hasColor, color: 0x94a3b8 })
+      const obj = geometry.index ? new THREE.Mesh(geometry, material) : new THREE.Points(geometry, material)
       normalizeModel(obj)
       scene.add(obj)
       model = obj

@@ -35,6 +35,7 @@ Route::prefix('sales')->group(function () {
         Route::get('/orders', [SalesPosController::class, 'orders'])->middleware('can:sales.pos.view');
         Route::get('/orders/{id}', [SalesPosController::class, 'show'])->middleware('can:sales.pos.view');
         Route::post('/orders/{id}/sync-payment', [SalesPosController::class, 'syncPayment'])->middleware('can:sales.pos.manage');
+        Route::post('/orders/{id}/send-to-logistics', [SalesPosController::class, 'sendToLogistics'])->middleware('can:sales.order.approve');
     });
 
     Route::prefix('order-deliveries')->group(function () {

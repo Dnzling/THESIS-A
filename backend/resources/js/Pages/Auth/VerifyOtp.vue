@@ -11,11 +11,12 @@
           {{ otpContextLabel }}
         </span>
       </div>
-      <h2 class="mt-6 text-center text-3xl font-bold text-gray-900" style="font-family: 'Poppins';">
+      <h2 class="mt-6 text-center text-3xl font-bold text-gray-900">
         Verify Your Email
       </h2>
       <p class="mt-2 text-center text-sm text-gray-600">
         {{ isCustomerOtp ? "We've sent a FurniShop 6-digit code to your email." : "We've sent a 6-digit code to email." }}
+        <span class="block text-xs text-gray-500 mt-1">Code expires in 15 minutes.</span>
       </p>
     </div>
   
@@ -61,7 +62,7 @@
   
           <!-- Submit Button -->
           <div>
-            <Button type="submit" severity="info" :disabled="isLoading || isVerified"
+            <Button type="submit" severity="warn" :disabled="isLoading || isVerified"
               class="w-full flex justify-center py-3 px-4 font-semibold">
               <span v-if="isLoading">
                 <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
@@ -107,6 +108,7 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const isVerified = ref(false)
 const resendCooldown = ref(0)
+const resendCooldownSeconds = 60
 const accessToken = ref<string | null>(null)
 
 // Compute full OTP from digits
@@ -266,8 +268,8 @@ const resendCode = async () => {
       }
     })
 
-    // Start 30-second cooldown
-    resendCooldown.value = 30
+    // Start 60-second cooldown
+    resendCooldown.value = resendCooldownSeconds
 
     const interval = setInterval(() => {
       resendCooldown.value--

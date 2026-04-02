@@ -57,19 +57,52 @@
       </template>
     </Card>
 
-    <Dialog v-model:visible="zoneDialog" modal :header="editingZoneId ? 'Edit Zone' : 'Create Zone'" class="w-full max-w-2xl">
-      <div class="space-y-4">
-        <div>
-          <label class="text-sm text-gray-600">Zone Name</label>
-          <InputText v-model="zoneForm.name" fluid placeholder="e.g. Cavite North" />
+    <Dialog v-model:visible="zoneDialog" modal :header="editingZoneId ? 'Edit Zone' : 'Create Zone'" class="w-full max-w-3xl">
+      <div class="space-y-6">
+        <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm text-blue-800">
+          Define the service area first, then add pricing rules in the Rates tab. Keep names short and use clear coverage notes so dispatch can decide fast.
         </div>
-        <div>
-          <label class="text-sm text-gray-600">Service Areas</label>
-          <Textarea v-model="zoneForm.service_areas" rows="4" fluid placeholder="Cities/barangays/notes..." />
-        </div>
-        <div class="flex items-center gap-2">
-          <Checkbox v-model="zoneForm.is_active" :binary="true" />
-          <span class="text-sm text-gray-700">Active</span>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-[1.2fr_0.8fr]">
+          <div class="space-y-4">
+            <div>
+              <label class="text-sm font-medium text-gray-700">Zone Name</label>
+              <InputText v-model="zoneForm.name" fluid placeholder="e.g. Cavite North" />
+              <p class="mt-1 text-xs text-gray-500">Use geographic labels customers understand (city / district / north-south).</p>
+            </div>
+            <div>
+              <div class="flex items-center justify-between">
+                <label class="text-sm font-medium text-gray-700">Service Areas</label>
+                <span class="text-xs text-gray-400">{{ serviceAreasCount }}/5000</span>
+              </div>
+              <Textarea
+                v-model="zoneForm.service_areas"
+                rows="6"
+                fluid
+                placeholder="List cities, barangays, or notes. One per line is easiest to scan.&#10;Example:&#10;• Dasmariñas (all barangays)&#10;• General Trias (North)&#10;• Imus - Bucandala area"
+              />
+              <p class="mt-1 text-xs text-gray-500">This is shown to internal teams (not customers). Keep it practical.</p>
+            </div>
+            <div class="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <Checkbox v-model="zoneForm.is_active" :binary="true" />
+              <div>
+                <p class="text-sm font-medium text-gray-700">Active</p>
+                <p class="text-xs text-gray-500">Inactive zones won’t be used in checkout or logistics estimates.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 bg-white p-4">
+            <p class="text-xs uppercase tracking-widest text-slate-400">Preview</p>
+            <p class="mt-2 text-lg font-semibold text-slate-900">{{ zoneForm.name || 'Zone Name' }}</p>
+            <div class="mt-2 space-y-1 text-sm text-slate-600">
+              <p v-if="serviceAreasPreview.length">{{ serviceAreasPreview.join(', ') }}</p>
+              <p v-else class="text-slate-400">Add service areas to preview.</p>
+            </div>
+            <div class="mt-4 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-700">
+              Tip: After creating a zone, add distance/weight rates so the checkout can show delivery fees.
+            </div>
+          </div>
         </div>
       </div>
       <template #footer>
@@ -173,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
@@ -218,6 +251,15 @@ const zoneForm = reactive<any>({
   service_areas: '',
   is_active: true,
 })
+
+const serviceAreasCount = computed(() => (zoneForm.service_areas || '').length)
+const serviceAreasPreview = computed(() =>
+  (zoneForm.service_areas || '')
+    .split(/\r?\n/)
+    .map((line: string) => line.replace(/^[-•\s]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+)
 
 const ratesDialog = ref(false)
 const rateDialog = ref(false)
@@ -379,4 +421,3 @@ watch(() => [filters.search, filters.is_active], () => loadZones())
 
 onMounted(loadZones)
 </script>
-

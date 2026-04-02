@@ -148,6 +148,26 @@ class RoleController extends Controller
         return response()->json(['data' => $roles]);
     }
 
+    public function storeSpecific(Request $request): JsonResponse
+    {
+        $storeId = $this->resolveStoreId($request);
+
+        if (empty($storeId)) {
+            return response()->json(['data' => []]);
+        }
+
+        $roles = DB::table('roles')
+            ->select('roles.*')
+            ->selectRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) as display_name')
+            ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
+            ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
+            ->where('store_id', $storeId)
+            ->orderByRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) ASC')
+            ->get();
+
+        return response()->json(['data' => $roles]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $storeId = $this->resolveStoreId($request);

@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\Logistics\DeliveryController;
+use App\Http\Controllers\Api\Logistics\DeliveryTripController;
 use App\Http\Controllers\Api\Logistics\DeliveryZoneController;
 use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
@@ -51,5 +52,15 @@ Route::prefix('logistics')->group(function () {
         Route::post('/{zoneId}/rates', [DeliveryZoneController::class, 'addRate'])->middleware('can:logistics.zones.manage');
         Route::put('/{zoneId}/rates/{rateId}', [DeliveryZoneController::class, 'updateRate'])->middleware('can:logistics.zones.manage');
         Route::delete('/{zoneId}/rates/{rateId}', [DeliveryZoneController::class, 'deleteRate'])->middleware('can:logistics.zones.manage');
+    });
+
+    // Delivery Trips
+    Route::prefix('trips')->group(function () {
+        Route::get('/', [DeliveryTripController::class, 'index'])->middleware('can:logistics.deliveries.view');
+        Route::post('/', [DeliveryTripController::class, 'store'])->middleware('can:logistics.deliveries.manage');
+        Route::get('/{id}', [DeliveryTripController::class, 'show'])->middleware('can:logistics.deliveries.view');
+        Route::put('/{id}/status', [DeliveryTripController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
+        Route::post('/{id}/orders', [DeliveryTripController::class, 'addOrders'])->middleware('can:logistics.deliveries.manage');
+        Route::post('/{id}/orders/remove', [DeliveryTripController::class, 'removeOrders'])->middleware('can:logistics.deliveries.manage');
     });
 });

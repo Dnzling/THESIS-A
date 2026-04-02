@@ -378,6 +378,14 @@ function handleImageError() {
                 <footer
                     class="py-16 text-center text-sm text-black dark:text-white/70"
                 >
+                    <div class="mb-3">
+                        <Link
+                            :href="route('login')"
+                            class="text-xs font-semibold uppercase tracking-[0.2em] text-black/60 hover:text-black dark:text-white/60 dark:hover:text-white"
+                        >
+                            Staff Access
+                        </Link>
+                    </div>
                     Laravel v{{ laravelVersion }} (PHP v{{ phpVersion }})
                 </footer>
             </div>

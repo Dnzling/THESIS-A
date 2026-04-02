@@ -278,6 +278,7 @@ import axiosClient from '@/axios'
 
 const page = usePage()
 const authStore = useAuthStore()
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 const userDialogRef = ref(null)
 const loadingNavigation = ref(true)
 const sidebarOpen = ref(false)
@@ -433,6 +434,7 @@ const groupedNavigation = computed<NavigationSection[]>(() => {
 const loadNavigation = async () => {
     loadingNavigation.value = true
     try {
+        if (!isAuthenticated.value) return
         if (authStore.navigation.length === 0) {
             await authStore.fetchNavigation()
         }
@@ -463,9 +465,20 @@ watch(() => currentPath.value, () => {
 
 // Lifecycle
 onMounted(() => {
+    if (!isAuthenticated.value) {
+        router.visit('/login')
+        return
+    }
     loadNavigation()
     loadNotifications()
     loadTrialStatus()
+})
+
+watch(isAuthenticated, (value) => {
+    if (value) return
+    notifications.value = []
+    unreadCount.value = 0
+    router.visit('/login')
 })
 
 // User dialog
@@ -482,6 +495,7 @@ const toggleNotifications = (event: MouseEvent) => {
 }
 
 const loadNotifications = async () => {
+    if (!isAuthenticated.value) return
     notificationsLoading.value = true
     try {
         const response = await axiosClient.get('/api/notifications', { params: { per_page: 20 } })
@@ -542,6 +556,7 @@ const formatTimeAgo = (iso: string) => {
 
 const loadTrialStatus = async () => {
     try {
+        if (!isAuthenticated.value) return
         const response = await axiosClient.get('/api/store/settings')
         const data = response?.data?.data || {}
         trialStatus.value = (data.subscription?.status || 'trial') as 'trial' | 'active' | 'expired'

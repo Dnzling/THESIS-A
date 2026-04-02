@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ProductCatalog\TagController;
 use App\Http\Controllers\Api\ProductCatalog\AttributeController;
 use App\Http\Controllers\Api\ProductCatalog\DashboardController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
+use App\Http\Controllers\Api\ProductCatalog\Product3DReconstructionController;
 
 // Product Catalog Routes
 Route::prefix('product-catalog')->group(function () {
@@ -44,6 +45,16 @@ Route::prefix('product-catalog')->group(function () {
         Route::delete('/{id}', [ProductAssetController::class, 'destroy']);
         Route::post('/reorder', [ProductAssetController::class, 'reorder']);
         Route::get('/product/{productId}', [ProductAssetController::class, 'getByProduct']);
+    });
+
+    // 3D Reconstruction (photo set -> generated 3D model)
+    Route::prefix('3d-reconstructions')->group(function () {
+        Route::get('/', [Product3DReconstructionController::class, 'index']);
+        Route::post('/', [Product3DReconstructionController::class, 'store']);
+        Route::get('/{id}', [Product3DReconstructionController::class, 'show']);
+        Route::get('/{id}/status', [Product3DReconstructionController::class, 'status']);
+        Route::post('/{id}/cancel', [Product3DReconstructionController::class, 'cancel']);
+        Route::get('/{id}/result', [Product3DReconstructionController::class, 'result']);
     });
 
     // Attributes

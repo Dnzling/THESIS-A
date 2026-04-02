@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\Core\SystemNotificationController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 
 // ========== PUBLIC ROUTES ==========
@@ -61,6 +62,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::get('/stores/{storeId}', [EcommerceController::class, 'storeProfile']);
     Route::get('/stores/{storeId}/products', [EcommerceController::class, 'storeProducts']);
     Route::get('/stores/{storeId}/reviews', [EcommerceController::class, 'storeReviews']);
+    Route::post('/dss/recommendations', [EcommerceController::class, 'dssRecommendations']);
 });
 
 // Public 3D/image asset serve route (must stay outside auth middleware)
@@ -138,6 +140,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
         Route::get('/roles/scoped', [StoreScopedRoleController::class, 'index']);
         Route::get('/roles', [StoreRoleController::class, 'index']);
+        Route::get('/roles/store-specific', [StoreRoleController::class, 'storeSpecific']);
         Route::post('/roles', [StoreRoleController::class, 'store']);
         Route::put('/roles/{id}', [StoreRoleController::class, 'update']);
         Route::delete('/roles/{id}', [StoreRoleController::class, 'destroy']);
@@ -161,7 +164,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::prefix('auth')->group(function () {
         Route::get('me', [AuthController::class, 'me']);
         Route::post('logout', [AuthController::class, 'logout']);
-        Route::post('logout-with-clock-out', [AuthController::class, 'logoutWithClockOut']);
+        Route::post('logout-with-clock-out', [AuthController::class, 'logoutWithClockOut'])
+            ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class]);
+        Route::post('logout-no-csrf', [AuthController::class, 'logout'])
+            ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class]);
         Route::post('refresh', [AuthController::class, 'refresh']);
         Route::post('change-password', [AuthController::class, 'changePassword']);
         Route::get('trial-onboarding', [TrialOnboardingController::class, 'show']);

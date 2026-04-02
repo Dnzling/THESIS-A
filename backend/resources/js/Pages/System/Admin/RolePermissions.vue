@@ -196,7 +196,7 @@
                 <Column field="display_name" header="Navigation Item" sortable style="min-width: 200px">
                   <template #body="{ data }">
                     <div class="flex items-center gap-2">
-                      <i :class="data.icon || 'pi pi-circle'" class="text-blue-600"></i>
+                      <i :class="resolveIconClass(data.icon)" class="text-blue-600"></i>
                       <span class="font-medium">{{ data.display_name }}</span>
                     </div>
                   </template>
@@ -381,8 +381,8 @@
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Icon *</label>
             <Select v-model="selectedIcon" :options="iconOptions" optionLabel="label" optionValue="value" filter
-              filterFields="label,value" filterPlaceholder="Search icons..."
-              placeholder="Select an icon" class="w-full" :class="{ 'p-invalid': !selectedIcon && showError }">
+              :filterFields="['label', 'value']" filterPlaceholder="Search icons..."
+              placeholder="Select an icon" class="w-full">
               <template #value="slotProps">
                 <div v-if="slotProps.value" class="flex items-center gap-2">
                   <i :class="['pi', slotProps.value]" class="text-gray-700"></i>
@@ -609,27 +609,25 @@ const importPermissionsFile = ref<File | null>(null)
 const permissionCsvInput = ref<HTMLInputElement | null>(null)
 const selectedPermissionsForBulk = ref<any[]>([])
 
-const props = defineProps({
-  modelValue: {
-    type: String,
-    default: ''
-  },
-  showError: {
-    type: Boolean,
-    default: false
-  }
-})
-
-const emit = defineEmits(['update:modelValue'])
-
-const selectedIcon = ref(props.modelValue)
-
 const normalizeIconValue = (value: string) => {
   const raw = String(value || '').trim()
   if (!raw) return ''
   // Support legacy values like "pi pi-home" by converting to "pi-home"
   const token = raw.split(/\s+/).find((part) => part.startsWith('pi-'))
   return token || raw
+}
+
+const normalizeIconClass = (value: string) => {
+  const token = normalizeIconValue(value)
+  return token ? `pi ${token}` : ''
+}
+
+const resolveIconClass = (value: string) => {
+  const raw = String(value || '').trim()
+  if (!raw) return 'pi pi-circle'
+  if (raw.includes('pi ')) return raw
+  const token = normalizeIconValue(raw)
+  return token ? `pi ${token}` : 'pi pi-circle'
 }
 
 const formatIconLabel = (iconValue: string) => {
@@ -701,16 +699,6 @@ const iconOptions = computed(() => {
   }))
 })
 
-// Watch for external changes
-watch(() => props.modelValue, (newValue) => {
-  selectedIcon.value = normalizeIconValue(newValue)
-})
-
-// Watch for internal changes
-watch(selectedIcon, (newValue) => {
-  emit('update:modelValue', normalizeIconValue(newValue))
-})
-
 
 // Forms
 const editingPermission = ref(null)
@@ -746,6 +734,13 @@ const navigationForm = ref({
   is_active: true
 })
 
+const selectedIcon = computed({
+  get: () => normalizeIconValue(navigationForm.value.icon),
+  set: (newValue) => {
+    navigationForm.value.icon = normalizeIconClass(String(newValue || ''))
+  }
+})
+
 // Role Menu
 const roleMenu = ref()
 const roleMenuItems = ref([
@@ -773,11 +768,11 @@ const roleMenuItems = ref([
 // Modules
 const modules = ref([
   { label: 'Admin', value: 'admin' },
-  { label: 'HR', value: 'hr' },
+  { label: 'Human Resources', value: 'hr' },
   { label: 'Merchandising', value: 'merchandising' },
   { label: 'Inventory', value: 'inventory' },
   { label: 'Sales', value: 'sales' },
-  { label: 'Accounting', value: 'accounting' },
+ { label: 'Logistics', value: 'logistics' },
   { label: 'Finance', value: 'finance' },
   { label: 'Procurement', value: 'procurement' },
   { label: 'Supplier', value: 'supplier' },
@@ -1333,11 +1328,16 @@ const saveNavigation = async () => {
   savingNavigation.value = true
 
   try {
+    const payload = {
+      ...navigationForm.value,
+      icon: normalizeIconClass(navigationForm.value.icon)
+    }
+
     if (editingNavigation.value) {
-      await axios.put(`/api/admin/navigation-items/${editingNavigation.value.id}`, navigationForm.value)
+      await axios.put(`/api/admin/navigation-items/${editingNavigation.value.id}`, payload)
       toast.add({ severity: 'success', summary: 'Success', detail: 'Navigation updated successfully', life: 3000 })
     } else {
-      await axios.post('/api/admin/navigation-items', navigationForm.value)
+      await axios.post('/api/admin/navigation-items', payload)
       toast.add({ severity: 'success', summary: 'Success', detail: 'Navigation created successfully', life: 3000 })
     }
 

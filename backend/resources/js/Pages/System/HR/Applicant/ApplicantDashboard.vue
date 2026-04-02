@@ -1,12 +1,13 @@
 <template>
-  <div class="space-y-4">
+  <JobPortalLayout>
+    <div class="py-6 lg:py-10">
+      <div class="space-y-4">
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Applicant Portal</p>
         <h1 class="text-3xl font-semibold text-slate-900">My Applications</h1>
       </div>
       <div class="flex gap-3">
-        <Button label="Browse Jobs" severity="info" outlined icon="pi pi-search"
+        <Button label="Browse Jobs" severity="warn" outlined icon="pi pi-search"
           @click="router.push({ name: 'job-portal.index' })" />
       </div>
     </div>
@@ -45,7 +46,7 @@
             <div class="flex flex-wrap gap-3">
               <Button label="View Job Post" severity="secondary" outlined icon="pi pi-external-link"
                 @click="goToJobPost(application.job_posting_id)" />
-              <Button label="View Application" severity="info" icon="pi pi-arrow-right"
+              <Button label="View Application" severity="warn" icon="pi pi-arrow-right"
                 @click="router.push({ name: 'job-portal.applications.detail', params: { id: application.id } })" />
             </div>
           </div>
@@ -57,16 +58,19 @@
           <div class="py-10 text-center">
             <h3 class="text-lg font-semibold text-surface-900">No submitted applications yet</h3>
             <p class="mt-1 text-sm text-surface-500">Browse available job openings and submit your first application.</p>
-                <Button class="mt-4" severity="info" label="Browse Jobs"
+                <Button class="mt-4" severity="warn" label="Browse Jobs"
               @click="router.push({ name: 'job-portal.index' })" />
           </div>
         </template>
       </Card>
     </div>
-  </div>
+      </div>
+    </div>
+  </JobPortalLayout>
 </template>
 
 <script setup lang="ts">
+import JobPortalLayout from '../JobPortal/JobPortalLayout.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
@@ -107,7 +111,7 @@ const goToJobPost = (jobPostingId?: number) => {
 
 const statusSeverity = (status?: string) => {
   const map: Record<string, string> = {
-    Applied: 'info',
+    Applied: 'warn',
     Screening: 'contrast',
     Interview: 'warn',
     Offer: 'success',

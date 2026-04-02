@@ -15,6 +15,7 @@ class EcommerceOrderDelivery extends Model
     protected $fillable = [
         'order_id',
         'store_id',
+        'trip_id',
         'vehicle_id',
         'driver_user_id',
         'tracking_number',
@@ -79,5 +80,10 @@ class EcommerceOrderDelivery extends Model
     public function logs(): HasMany
     {
         return $this->hasMany(EcommerceDeliveryLog::class, 'delivery_id');
+    }
+
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Logistics\DeliveryTrip::class, 'trip_id');
     }
 }

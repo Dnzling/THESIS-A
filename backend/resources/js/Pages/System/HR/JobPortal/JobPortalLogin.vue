@@ -1,87 +1,64 @@
 <template>
-  <div class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.22),_transparent_40%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_46%,_#ffffff_100%)] px-4 py-10">
-    <div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-      <section class="hidden rounded-[2rem] border border-blue-100 bg-white/75 p-10 shadow-sm backdrop-blur lg:block">
-        <div class="max-w-xl space-y-6">
-          <div class="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
-            <i class="pi pi-briefcase" />
-            Applicant Portal
-          </div>
-          <div class="space-y-3">
-            <h1 class="text-4xl font-semibold tracking-tight text-slate-900">Find the right role and keep every application in one place.</h1>
-            <p class="text-base leading-7 text-slate-600">
-              Sign in to continue your job applications, review interview updates, and track every response from partner stores.
-            </p>
-          </div>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <Card class="border border-blue-100 bg-blue-50/70 shadow-none">
-              <template #content>
-                <div class="space-y-2">
-                  <span class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white">
-                    <i class="pi pi-send text-sm" />
-                  </span>
-                  <p class="font-semibold text-slate-900">Resume your application</p>
-                  <p class="text-sm leading-6 text-slate-600">We bring you back to the job you were viewing after login.</p>
-                </div>
-              </template>
-            </Card>
-            <Card class="border border-blue-100 bg-white shadow-none">
-              <template #content>
-                <div class="space-y-2">
-                  <span class="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
-                    <i class="pi pi-bell text-sm" />
-                  </span>
-                  <p class="font-semibold text-slate-900">Stay updated</p>
-                  <p class="text-sm leading-6 text-slate-600">Interview schedules and hiring responses stay visible in your dashboard.</p>
-                </div>
-              </template>
-            </Card>
+  <JobPortalLayout>
+    <div class="flex min-h-[calc(100vh-88px)] items-center justify-center px-4 py-10">
+      <div
+        class="grid w-full max-w-6xl overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-2xl lg:grid-cols-2">
+        <div class="bg-gradient-to-br from-orange-500 via-orange-500 to-orange-600 p-10 text-white">
+          <div class="space-y-6">
+            <div>
+              <h2 class="mt-4 text-4xl font-semibold leading-tight">Find roles, track applications, and stay updated.</h2>
+              <p class="mt-4 text-sm leading-6 text-orange-100">
+                Use one applicant profile to apply across partner stores, follow interview updates, and keep every
+                response organized.
+              </p>
+            </div>
+            <div class="space-y-3 text-sm text-orange-100">
+              <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">Centralized application history</div>
+              <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">Interview updates in one place</div>
+              <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">Faster re-apply with saved profile
+              </div>
+            </div>
           </div>
         </div>
-      </section>
-
-      <Card class="border border-blue-100 bg-white shadow-xl shadow-blue-100/60">
-        <template #content>
-          <form class="space-y-5" @submit.prevent="submitLogin">
-            <div class="space-y-2 text-center">
-              <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-200">
-                <i class="pi pi-sign-in text-xl" />
-              </div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Job Portal</p>
-              <h1 class="text-3xl font-semibold text-slate-900">Applicant Login</h1>
-              <p class="text-sm text-slate-500">Sign in to continue your application flow.</p>
+        <div class="p-8 lg:p-10">
+          <form class="space-y-6" @submit.prevent="submitLogin">
+            <div class="space-y-2">
+              <h1 class="text-3xl font-semibold text-slate-900">Welcome Back</h1>
+              <p class="text-sm text-slate-500">Sign in to your applicant account.</p>
             </div>
-
-            <Message severity="info" :closable="false">
-              Use your applicant account here. This is separate from the internal system login.
+  
+            <Message severity="warn" :closable="false">
+              This login is only for the applicant job portal.
             </Message>
-
+  
             <div class="space-y-2">
               <label class="text-sm font-medium text-slate-700">Email</label>
               <InputText v-model="form.email" type="email" class="w-full" placeholder="you@example.com" />
             </div>
-
+  
             <div class="space-y-2">
               <label class="text-sm font-medium text-slate-700">Password</label>
               <Password v-model="form.password" class="w-full" inputClass="w-full" :feedback="false" toggleMask />
             </div>
-
-            <Button type="submit" label="Login" icon="pi pi-sign-in" severity="info" :loading="submitting" fluid />
-
+  
+            <Button type="submit" label="Log In" severity="warn" :loading="submitting" fluid />
+  
             <div class="text-center text-sm text-slate-500">
               No applicant account yet?
-              <button type="button" class="font-semibold text-blue-600 transition hover:text-blue-700" @click="router.push({ name: 'job-portal.register' })">
+              <button type="button" class="font-semibold text-orange-600 transition hover:text-orange-700"
+                @click="router.push({ name: 'job-portal.register' })">
                 Create one here
               </button>
             </div>
           </form>
-        </template>
-      </Card>
+        </div>
+      </div>
     </div>
-  </div>
+  </JobPortalLayout>
 </template>
 
 <script setup lang="ts">
+import JobPortalLayout from './JobPortalLayout.vue'
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'

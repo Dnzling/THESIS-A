@@ -703,7 +703,17 @@ class EcommerceController extends Controller
 
     public function getCart()
     {
-        $cart = $this->getOrCreateCart();
+        $user = Auth::user();
+        $requestedStoreId = (int) request()->input('store_id');
+        if ($requestedStoreId > 0) {
+            $cart = $this->getOrCreateCart($requestedStoreId);
+        } else {
+            $existingCart = EcommerceCart::query()
+                ->where('user_id', $user->id)
+                ->latest('updated_at')
+                ->first();
+            $cart = $existingCart ?: $this->getOrCreateCart();
+        }
         $cart->load([
             'items.product.store:id,name',
             'items.product.assets' => function ($q) {
@@ -724,14 +734,19 @@ class EcommerceController extends Controller
             'product_id' => ['required', 'exists:products,id'],
             'variation_id' => ['nullable', 'exists:product_variations,id'],
             'quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'store_id' => ['nullable', 'integer', 'exists:stores,id'],
         ]);
 
-        $storeId = $this->resolveAuthenticatedStoreId();
-
         $product = Product::query()
-            ->where('store_id', $storeId)
             ->where('is_active', true)
             ->findOrFail($validated['product_id']);
+        $storeId = (int) $product->store_id;
+        if (!empty($validated['store_id']) && (int) $validated['store_id'] !== $storeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Selected product does not belong to the provided store.',
+            ], 422);
+        }
 
         $variation = null;
         if (!empty($validated['variation_id'])) {
@@ -780,7 +795,7 @@ class EcommerceController extends Controller
         $variationName = $variation
             ? ($variation->variation_name ?: trim(collect([$variation->color, $variation->size, $variation->material])->filter()->join(' / ')))
             : null;
-        $cart = $this->getOrCreateCart();
+        $cart = $this->getOrCreateCart($storeId);
 
         $item = EcommerceCartItem::query()
             ->where('cart_id', $cart->id)
@@ -835,11 +850,20 @@ class EcommerceController extends Controller
             'quantity' => ['required', 'integer', 'min:1', 'max:999'],
         ]);
 
-        $cart = $this->getOrCreateCart();
+        $user = Auth::user();
         $item = EcommerceCartItem::query()
-            ->where('cart_id', $cart->id)
             ->where('id', $itemId)
-            ->firstOrFail();
+            ->whereHas('cart', fn($q) => $q->where('user_id', $user->id))
+            ->with('cart')
+            ->first();
+
+        if (!$item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cart item not found. Please refresh your cart.',
+            ], 404);
+        }
+        $cart = $item->cart;
 
         $inventory = BranchInventory::query()
             ->where('store_id', $cart->store_id)
@@ -882,11 +906,22 @@ class EcommerceController extends Controller
 
     public function removeCartItem(int $itemId)
     {
-        $cart = $this->getOrCreateCart();
-        EcommerceCartItem::query()
-            ->where('cart_id', $cart->id)
+        $user = Auth::user();
+        $item = EcommerceCartItem::query()
             ->where('id', $itemId)
-            ->delete();
+            ->whereHas('cart', fn($q) => $q->where('user_id', $user->id))
+            ->with('cart')
+            ->first();
+
+        if (!$item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cart item not found. Please refresh your cart.',
+            ], 404);
+        }
+
+        $cart = $item->cart;
+        $item->delete();
 
         $cart->load([
             'items.product.store:id,name',
@@ -934,14 +969,16 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-        $cart = $this->getOrCreateCart();
-        $cart->load('items.product', 'items.variation');
-
-        $itemsForCheckout = $cart->items;
+        $cart = null;
+        $itemsForCheckout = collect();
 
         if (!empty($validated['item_ids'])) {
             $requestedItemIds = collect($validated['item_ids'])->map(fn($id) => (int) $id)->unique()->values();
-            $itemsForCheckout = $cart->items->whereIn('id', $requestedItemIds);
+            $itemsForCheckout = EcommerceCartItem::query()
+                ->whereIn('id', $requestedItemIds)
+                ->whereHas('cart', fn($q) => $q->where('user_id', $user->id))
+                ->with(['cart', 'product', 'variation'])
+                ->get();
 
             if ($itemsForCheckout->count() !== $requestedItemIds->count()) {
                 return response()->json([
@@ -949,6 +986,21 @@ class EcommerceController extends Controller
                     'message' => 'Some selected cart items are invalid.',
                 ], 422);
             }
+
+            $storeIds = $itemsForCheckout->pluck('cart.store_id')->unique()->values();
+            if ($storeIds->count() > 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected items must belong to the same store for checkout.',
+                ], 422);
+            }
+            $cart = $itemsForCheckout->first()?->cart;
+        }
+
+        if (!$cart) {
+            $cart = $this->getOrCreateCart();
+            $cart->load('items.product', 'items.variation');
+            $itemsForCheckout = $cart->items;
         }
 
         if ($itemsForCheckout->isEmpty()) {
@@ -1146,12 +1198,16 @@ class EcommerceController extends Controller
     public function orders(Request $request)
     {
         $user = Auth::user();
-        $storeId = $this->resolveAuthenticatedStoreId();
-        $orders = EcommerceOrder::query()
+        $ordersQuery = EcommerceOrder::query()
             ->with(['store:id,name', 'assignedBranch:id,name,branch_code,city,province,latitude,longitude', 'items.product.assets'])
             ->withCount('items')
-            ->where('store_id', $storeId)
-            ->where('user_id', $user->id)
+            ->where('user_id', $user->id);
+
+        if ($request->filled('store_id')) {
+            $ordersQuery->where('store_id', (int) $request->input('store_id'));
+        }
+
+        $orders = $ordersQuery
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 10));
 
@@ -1166,7 +1222,6 @@ class EcommerceController extends Controller
     public function orderShow(int $id)
     {
         $user = Auth::user();
-        $storeId = $this->resolveAuthenticatedStoreId();
         $order = EcommerceOrder::query()
             ->with([
                 'store:id,name',
@@ -1179,7 +1234,6 @@ class EcommerceController extends Controller
                 'delivery.logs.creator:id,fname,lname',
             ])
             ->withCount('items')
-            ->where('store_id', $storeId)
             ->where('user_id', $user->id)
             ->findOrFail($id);
 
@@ -1197,9 +1251,7 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-        $storeId = $this->resolveAuthenticatedStoreId();
         $order = EcommerceOrder::query()
-            ->where('store_id', $storeId)
             ->where('user_id', $user->id)
             ->findOrFail($id);
 
@@ -1389,6 +1441,38 @@ class EcommerceController extends Controller
         }
 
         $products = $query->get();
+
+        if ($products->isEmpty() && !$request->filled('store_id') && !Auth::user()?->store_id) {
+            $fallbackStoreId = Product::query()
+                ->select('products.store_id')
+                ->join('branch_inventory', 'branch_inventory.product_id', '=', 'products.id')
+                ->where('products.is_active', true)
+                ->whereNull('products.deleted_at')
+                ->where('branch_inventory.quantity_available', '>', 0)
+                ->where('branch_inventory.stock_status', '!=', 'out_of_stock')
+                ->distinct()
+                ->value('products.store_id');
+
+            if ($fallbackStoreId) {
+                $storeId = (int) $fallbackStoreId;
+                $query = Product::query()
+                    ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
+                    ->where('store_id', $storeId)
+                    ->where('is_active', true)
+                    ->whereNull('deleted_at')
+                    ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                        $inventoryQuery->where('store_id', $storeId)
+                            ->where('quantity_available', '>', 0)
+                            ->where('stock_status', '!=', 'out_of_stock');
+                    });
+
+                if (!empty($validated['category_id'])) {
+                    $query->where('category_id', (int) $validated['category_id']);
+                }
+
+                $products = $query->get();
+            }
+        }
 
         $scored = $products->map(function (Product $product) use ($budgetMin, $budgetMax, $targetDimensions, $storeId) {
             $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
@@ -1635,10 +1719,10 @@ class EcommerceController extends Controller
         ]);
     }
 
-    private function getOrCreateCart(): EcommerceCart
+    private function getOrCreateCart(?int $storeId = null): EcommerceCart
     {
         $user = Auth::user();
-        $storeId = $this->resolveAuthenticatedStoreId();
+        $storeId = $storeId ?: $this->resolveAuthenticatedStoreId();
 
         return EcommerceCart::query()->firstOrCreate([
             'store_id' => $storeId,

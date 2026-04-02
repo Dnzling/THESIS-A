@@ -28,40 +28,36 @@ $inertia = function (
     return $route;
 };
 
-// Job Portal (public portal)
-$inertia('/job-portal', 'System/HR/JobPortal/JobPortalIndex', 'job-portal.index', 'Job Portal');
-$inertia('/job-portal/login', 'System/HR/JobPortal/JobPortalLogin', 'job-portal.login', 'Applicant Login');
-$inertia('/job-portal/register', 'System/HR/JobPortal/JobPortalRegister', 'job-portal.register', 'Applicant Register');
-$inertia('/job-portal/verify-otp', 'System/HR/JobPortal/JobPortalVerifyOtp', 'job-portal.verify-otp', 'Verify Applicant Email');
-$inertia('/job-portal/postings/{id}', 'System/HR/JobPortal/JobPortalDetail', 'job-portal.detail', 'Job Details');
-$inertia('/job-portal/postings/{id}/apply', 'System/HR/Applicant/ApplicantApplicationCreate', 'job-portal.apply', 'Apply for Job');
-$inertia('/job-portal/applications', 'System/HR/Applicant/ApplicantDashboard', 'job-portal.dashboard', 'My Applications');
-$inertia('/job-portal/applications/{id}', 'System/HR/Applicant/ApplicantApplicationDetail', 'job-portal.applications.detail', 'Application Details');
 
-Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
+Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($inertia) {
+
+
+    // Admin (Super Admin only)
+    Route::middleware('role:super_admin')->group(function () use ($inertia) {
+        $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
+        $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
+        $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
+        $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
+        $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
+        $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
+        $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');
+        $inertia('/admin/stores/{id}', 'System/Admin/StoreDetail', 'admin.stores.detail', 'Store Detail');
+        $inertia('/admin/users', 'System/Admin/UsersIndex', 'admin.users', 'Users');
+        Route::redirect('/admin/suppliers', '/admin/suppliers/list')->name('admin.suppliers');
+        $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
+        $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
+        $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
+    });
+
     // System (Store Admin)
-    $inertia('/system/index', 'System/StoreAdmin/Dashboard', 'store.dashboard', 'Dashboard');
-    $inertia('/system/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
-    $inertia('/system/settings', 'System/StoreAdmin/Settings', 'store.settings', 'Settings', 'Trial & Configuration');
-    $inertia('/system/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
-    $inertia('/system/employees', 'System/StoreAdmin/Lite/HRLite', 'store.employees', 'Employees', 'Simple Payroll');
-    $inertia('/system/finance', 'System/StoreAdmin/Lite/FinanceLite', 'store.finance', 'Finance', 'Expenses & Cashflow');
-
-    // Admin
-    $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
-    $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
-    $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
-    $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
-    $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
-    $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
-    $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');
-    $inertia('/admin/stores/{id}', 'System/Admin/StoreDetail', 'admin.stores.detail', 'Store Detail');
-    $inertia('/admin/users', 'System/Admin/UsersIndex', 'admin.users', 'Users');
-    Route::redirect('/admin/suppliers', '/admin/suppliers/list')->name('admin.suppliers');
-    $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
-    $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
-    $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
-
+    Route::middleware('role:store_admin')->group(function () use ($inertia) {
+        $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.dashboard', 'Dashboard');
+        $inertia('/store/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
+        $inertia('/store/settings', 'System/StoreAdmin/Settings', 'store.settings', 'Settings', 'Trial & Configuration');
+        $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
+        $inertia('/store/employees', 'System/StoreAdmin/Lite/HRLite', 'store.employees', 'Employees', 'Simple Payroll');
+        $inertia('/store/finance', 'System/StoreAdmin/Lite/FinanceLite', 'store.finance', 'Finance', 'Expenses & Cashflow');
+    });
     // HR
     $inertia('/hr/index', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');
@@ -95,12 +91,13 @@ Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
     Route::redirect('/inventory', '/inventory/dashboard')->name('inventory');
     $inertia('/inventory/dashboard', 'System/Inventory/InventoryDashboard', 'inventory.dashboard', 'Inventory Dashboard');
     Route::redirect('/inventory/ecommerce-orders', '/sales/ecommerce-orders')->name('inventory.ecommerce-orders');
-    Route::get('/inventory/ecommerce-orders/{id}', fn ($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');
+    Route::get('/inventory/ecommerce-orders/{id}', fn($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');
     Route::redirect('/inventory/ecommerce-deliveries', '/logistics/deliveries')->name('inventory.ecommerce-deliveries');
-    Route::get('/inventory/ecommerce-deliveries/{id}', fn ($id) => redirect("/logistics/deliveries/{$id}"))->name('inventory.ecommerce-deliveries.detail');
+    Route::get('/inventory/ecommerce-deliveries/{id}', fn($id) => redirect("/logistics/deliveries/{$id}"))->name('inventory.ecommerce-deliveries.detail');
     Route::redirect('/inventory/delivery-vehicles', '/logistics/vehicles')->name('inventory.delivery-vehicles');
     $inertia('/inventory/items', 'System/Inventory/Stocks/StocksIndex', 'inventory.items', 'Branch Inventory');
     $inertia('/inventory/items/create', 'System/Inventory/Stocks/ItemsCreate', 'inventory.items.create', 'Add Inventory Item');
+    $inertia('/inventory/items/{id}', 'System/Inventory/Stocks/StockShow', 'inventory.items.show', 'Stock Details');
     $inertia('/inventory/items/{id}/edit', 'System/Inventory/Stocks/ItemsEdit', 'inventory.items.edit', 'Edit Inventory Item');
     $inertia('/inventory/products', 'System/Inventory/Products/ProductIndex', 'inventory.products.index', 'Product Catalog');
     $inertia('/inventory/products/create', 'System/Merchandising/products/ProductForm', 'inventory.products.create', 'Add Product', 'Create a new product');
@@ -230,6 +227,8 @@ Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
+    $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
+    $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');
     $inertia('/logistics/zones', 'System/Logistics/Zones/DeliveryZonesIndex', 'logistics.zones', 'Delivery Zones');
 
@@ -267,6 +266,7 @@ Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
     $inertia('/merchandising/assets', 'System/Merchandising/assets/AssetsList', 'merchandising.assets', '3D Models & Assets', 'Upload and manage 3D models, images, and videos');
     $inertia('/merchandising/assets/upload', 'System/Merchandising/assets/AssetUpload', 'merchandising.assets.upload', 'Upload Asset', 'Upload new 3D model or image');
     $inertia('/merchandising/3d-gallery', 'System/Merchandising/assets/Gallery3D', 'merchandising.3d-gallery', '3D Models Gallery', 'Browse all 3D models');
+    $inertia('/merchandising/3d-reconstruction', 'System/Merchandising/assets/Reconstructions', 'merchandising.3d-reconstruction', '3D Reconstruction', 'Generate 3D models from photos');
     $inertia('/merchandising/inventory', 'System/Merchandising/inventory/InventoryList', 'merchandising.inventory', 'Inventory Status', 'Monitor stock levels across all products');
     $inertia('/merchandising/categories', 'System/Merchandising/categories/CategoriesList', 'merchandising.categories', 'Product Categories', 'Organize your furniture catalog');
     $inertia('/merchandising/categories/new', 'System/Merchandising/categories/CategoryForm', 'merchandising.categories.create', 'Add Category', 'Create a new product category');
@@ -286,7 +286,7 @@ Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
     $inertia('/supplier-portal/registration', 'System/Supplier/SupplierPortalRegistration', 'supplier.registration', 'Supplier Registration');
     $inertia('/supplier-portal/rfqs', 'System/Supplier/SupplierRFQIndex', 'supplier.rfqs', 'RFQs');
     $inertia('/supplier-portal/rfqs/{id}', 'System/Supplier/SupplierRFQDetail', 'supplier.rfqs.detail', 'RFQ Details');
-    Route::get('/supplier-portal/rfqs/{id}/view', fn ($id) => redirect("/supplier-portal/rfqs/{$id}"));
+    Route::get('/supplier-portal/rfqs/{id}/view', fn($id) => redirect("/supplier-portal/rfqs/{$id}"));
     $inertia('/supplier-portal/pos', 'System/Supplier/SupplierPOIndex', 'supplier.pos', 'Purchase Orders');
     $inertia('/supplier-portal/pos/{id}', 'System/Supplier/SupplierPOApprove', 'supplier.pos.approve', 'Review Purchase Order');
     $inertia('/supplier-portal/pos/{id}/view', 'System/Supplier/SupplierPODetail', 'supplier.pos.view', 'Purchase Order Details');
@@ -296,8 +296,20 @@ Route::middleware(['auth', 'trial.setup'])->group(function () use ($inertia) {
     $inertia('/supplier-portal/deliveries', 'System/Supplier/SupplierDriverShipmentsIndex', 'supplier.deliveries', 'Delivery Logs');
     $inertia('/supplier-portal/deliveries/{id}', 'System/Supplier/SupplierDriverShipmentDetail', 'supplier.deliveries.detail', 'Delivery Log Detail');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
-    Route::get('/supplier-portal/profile', fn () => redirect('/supplier-portal/registration'));
+    Route::get('/supplier-portal/profile', fn() => redirect('/supplier-portal/registration'));
 });
+
+// Job Portal (public portal)
+$inertia('/job-portal', 'System/HR/JobPortal/JobPortalIndex', 'job-portal.index', 'Job Portal');
+$inertia('/job-portal/login', 'System/HR/JobPortal/JobPortalLogin', 'job-portal.login', 'Applicant Login');
+$inertia('/job-portal/register', 'System/HR/JobPortal/JobPortalRegister', 'job-portal.register', 'Applicant Register');
+$inertia('/job-portal/verify-otp', 'System/HR/JobPortal/JobPortalVerifyOtp', 'job-portal.verify-otp', 'Verify Applicant Email');
+$inertia('/job-portal/postings/{id}', 'System/HR/JobPortal/JobPortalDetail', 'job-portal.detail', 'Job Details');
+$inertia('/job-portal/postings/{id}/apply', 'System/HR/Applicant/ApplicantApplicationCreate', 'job-portal.apply', 'Apply for Job');
+$inertia('/job-portal/applications', 'System/HR/Applicant/ApplicantDashboard', 'job-portal.dashboard', 'My Applications');
+$inertia('/job-portal/applications/{id}', 'System/HR/Applicant/ApplicantApplicationDetail', 'job-portal.applications.detail', 'Application Details');
+$inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-portal.profile', 'Applicant Profile');
+
 
 // Ecommerce storefront
 $inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
@@ -306,7 +318,7 @@ $inertia('/shop/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ec
 $inertia('/shop/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
 $inertia('/shop/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
 
-Route::middleware('auth')->group(function () use ($inertia) {
+Route::middleware('auth:sanctum')->group(function () use ($inertia) {
     $inertia('/shop/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
     $inertia('/shop/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
     $inertia('/shop/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');

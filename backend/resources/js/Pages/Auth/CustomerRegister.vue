@@ -1,68 +1,78 @@
 <template>
   <Toast />
-  <div class="relative min-h-screen bg-[#f2f3f7] px-3 py-5 sm:px-4 sm:py-8">
-    <div class="mx-auto mt-6 w-full max-w-125 rounded-[26px] bg-white/70 p-0 shadow-sm sm:mt-10 sm:rounded-[44px]">
-      <div class="rounded-[22px] bg-white px-4 py-7 sm:rounded-[40px] sm:px-8 sm:py-10 md:px-12">
-        <div class="mb-6 text-center sm:mb-8">
-          <div class="flex items-center justify-center rounded-lg">
-            <img src="/Furnishop.png" alt="Furni Shop" class="w-auto object-contain sm:w-28 md:w-100 " />
+  <div class="min-h-screen bg-slate-50">
+    <div class="h-screen w-full bg-white">
+      <div class="grid h-full gap-0 lg:grid-cols-2">
+        <div class="flex flex-col justify-center p-8 lg:p-12">
+          <div class="mb-6 text-center sm:mb-8">
+            <div class="portal-title text-orange-500 text-2xl font-bold">Furnisync Shop</div>
+            <p class="mt-2 text-sm text-slate-500 sm:text-lg">Create your customer account to start shopping</p>
           </div>
-          <p class="mt-2 text-sm text-slate-500 sm:text-lg">Create your customer account</p>
+  
+          <form class="space-y-5 sm:space-y-6" @submit.prevent="submitRegister">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="space-y-2">
+                <label class="text-base font-semibold text-slate-900 sm:text-lg">First Name</label>
+                <InputText v-model="form.fname" fluid placeholder="First name" autocomplete="given-name" />
+              </div>
+              <div class="space-y-2">
+                <label class="text-base font-semibold text-slate-900 sm:text-lg">Last Name</label>
+                <InputText v-model="form.lname" fluid placeholder="Last name" autocomplete="family-name" />
+              </div>
+            </div>
+  
+            <div class="space-y-2">
+              <label class="text-base font-semibold text-slate-900 sm:text-lg">Email</label>
+              <InputText v-model="form.email" fluid placeholder="Email address" autocomplete="email" />
+            </div>
+  
+            <div class="space-y-2">
+              <label class="text-base font-semibold text-slate-900 sm:text-lg">Birthday</label>
+              <DatePicker v-model="form.birthday" :maxDate="new Date()" fluid showIcon dateFormat="yy-mm-dd"
+                placeholder="Select birthday" />
+            </div>
+  
+  
+            <div class="space-y-2">
+              <label class="text-base font-semibold text-slate-900 sm:text-lg">Password</label>
+              <Password v-model="form.password" fluid :feedback="false" autocomplete="new-password"
+  name="new_password" toggleMask
+                placeholder="Password" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-base font-semibold text-slate-900 sm:text-lg">Confirm Password</label>
+              <Password v-model="form.confirmPassword" autocomplete="new-password"
+  name="new_password" fluid :feedback="false" toggleMask
+                placeholder="Confirm password" />
+            </div>
+  
+  
+            <div class="flex items-start gap-2 text-sm sm:text-base">
+              <Checkbox v-model="acceptedTerms" inputId="acceptedTerms" :binary="true" />
+              <label for="acceptedTerms" class="leading-6 text-slate-700">
+                I agree to the
+                <a href="#" class="font-medium text-orange-500 hover:underline">Terms</a>
+                and
+                <a href="#" class="font-medium text-orange-500 hover:underline">Privacy Policy</a>.
+              </label>
+            </div>
+  
+            <Button type="submit" :loading="isSubmitting" fluid severity="warn"
+              class="text-base font-semibold text-white sm:py-3 sm:text-xl">
+              Register
+            </Button>
+  
+            <p class="text-center text-sm text-slate-600 sm:text-base">
+              Already have an account?
+              <button type="button" @click="router.visit('/customer/login')"
+                class="font-semibold text-orange-500 hover:underline"> Login </button>
+            </p>
+          </form>
         </div>
   
-        <form class="space-y-5 sm:space-y-6" @submit.prevent="submitRegister">
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-lg">First Name</label>
-              <InputText v-model="form.fname" fluid placeholder="First name" autocomplete="given-name" />
-            </div>
-            <div class="space-y-2">
-              <label class="text-base font-semibold text-slate-900 sm:text-lg">Last Name</label>
-              <InputText v-model="form.lname" fluid placeholder="Last name" autocomplete="family-name" />
-            </div>
-          </div>
-  
-          <div class="space-y-2">
-            <label class="text-base font-semibold text-slate-900 sm:text-lg">Email</label>
-            <InputText v-model="form.email" fluid placeholder="Email address" autocomplete="email" />
-          </div>
-  
-          <div class="space-y-2">
-            <label class="text-base font-semibold text-slate-900 sm:text-lg">Birthday</label>
-            <DatePicker v-model="form.birthday" fluid showIcon dateFormat="yy-mm-dd" placeholder="Select birthday" />
-          </div>
-  
-  
-          <div class="space-y-2">
-            <label class="text-base font-semibold text-slate-900 sm:text-lg">Password</label>
-            <Password v-model="form.password" fluid :feedback="false" toggleMask placeholder="Password" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-base font-semibold text-slate-900 sm:text-lg">Confirm Password</label>
-            <Password v-model="form.confirmPassword" fluid :feedback="false" toggleMask placeholder="Confirm password" />
-          </div>
-  
-  
-          <div class="flex items-start gap-2 text-sm sm:text-base">
-            <Checkbox v-model="acceptedTerms" inputId="acceptedTerms" :binary="true" />
-            <label for="acceptedTerms" class="leading-6 text-slate-700">
-              I agree to the
-              <a href="#" class="font-medium text-[#6d5efc] hover:underline">Terms</a>
-              and
-              <a href="#" class="font-medium text-[#6d5efc] hover:underline">Privacy Policy</a>.
-            </label>
-          </div>
-  
-          <Button type="submit" :loading="isSubmitting" fluid severity="info"
-            class="text-base font-semibold text-white sm:py-3 sm:text-xl">
-            Register
-          </Button>
-  
-          <p class="text-center text-sm text-slate-600 sm:text-base">
-            Already have an account?
-            <Button @click="router.visit('/customer/login')" severity="info" link label="Login" />
-          </p>
-        </form>
+        <CustomerAuth3DHero class="h-full" title="Register to join!"
+          subtitle="Save favorites, build a cart, and inspect every piece from every angle."
+          footer="Furnisync makes furniture shopping feel real before delivery." />
       </div>
     </div>
   </div>
@@ -79,6 +89,7 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import DatePicker from 'primevue/datepicker'
+import CustomerAuth3DHero from '@/Components/auth/CustomerAuth3DHero.vue'
 
 const toast = useToast()
 const isSubmitting = ref(false)
@@ -147,3 +158,11 @@ async function submitRegister() {
   }
 }
 </script>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+.portal-title {
+  font-family: 'Space Grotesk', sans-serif;
+}
+</style>

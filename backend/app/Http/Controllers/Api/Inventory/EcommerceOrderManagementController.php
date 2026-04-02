@@ -21,6 +21,7 @@ class EcommerceOrderManagementController extends Controller
     private const ORDER_STATUSES = [
         'pending',
         'processing',
+        'ready_for_dispatch',
         'packed',
         'shipped',
         'in_transit',
@@ -107,6 +108,15 @@ class EcommerceOrderManagementController extends Controller
         $order = $query->findOrFail($id);
 
         $targetStatus = (string) $validated['status'];
+        if ($targetStatus === 'ready_for_dispatch') {
+            $storeId = (int) ($order->store_id ?? 0);
+            if (!$request->user()->hasPermissionTo('sales.order.approve', $storeId ?: null)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You do not have permission to approve orders.',
+                ], 403);
+            }
+        }
         $this->ensureValidTransition($order->status, $targetStatus);
 
         DB::transaction(function () use ($request, $order, $validated, $targetStatus) {
@@ -602,8 +612,9 @@ class EcommerceOrderManagementController extends Controller
         }
 
         $flow = [
-            'pending' => ['processing', 'cancelled'],
-            'processing' => ['packed', 'cancelled'],
+            'pending' => ['processing', 'ready_for_dispatch', 'cancelled'],
+            'processing' => ['ready_for_dispatch', 'packed', 'cancelled'],
+            'ready_for_dispatch' => ['packed', 'shipped', 'cancelled'],
             'packed' => ['shipped', 'cancelled'],
             'shipped' => ['in_transit', 'out_for_delivery', 'delivered', 'cancelled'],
             'in_transit' => ['out_for_delivery', 'delivered', 'cancelled'],

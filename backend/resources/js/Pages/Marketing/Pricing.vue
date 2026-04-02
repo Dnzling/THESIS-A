@@ -1,12 +1,11 @@
-<template>
+﻿<template>
   <div class="pricing-shell">
     <TopNav />
   
     <main>
       <section class="hero">
         <div class="container hero-inner">
-          <span class="eyebrow">Pricing</span>
-          <h1 class="hero-title">Simple plans for modern furniture teams.</h1>
+          <h1 class="hero-title font-bold">Simple plans for modern furniture teams.</h1>
           <p class="hero-sub">
             Start small, scale fast. Every plan includes 3D product tools, DSS insights, and onboarding support.
           </p>
@@ -25,10 +24,10 @@
         <div class="container plan-grid">
           <div class="plan-card">
             <div class="plan-head">
-              <div class="plan-icon">S</div>
+          
               <div>
-                <h2>Simple</h2>
-                <p>For boutique stores and single locations.</p>
+                <h2 class="font-bold text-2xl text-orange-500" >Simple</h2>
+                <p>For single stores and single locations.</p>
               </div>
             </div>
             <div class="plan-price">
@@ -42,15 +41,14 @@
                 <span>{{ feature }}</span>
               </div>
             </div>
-            <button class="btn primary" @click="selectPlan('simple')">Start Free Trial</button>
+            <button class="btn primary " @click="selectPlan('simple')">Start Free Trial</button>
           </div>
   
           <div class="plan-card featured">
             <div class="badge">Most Popular</div>
             <div class="plan-head">
-              <div class="plan-icon">U</div>
               <div>
-                <h2>Unlimited</h2>
+                <h2 class="font-bold text-2xl text-orange-500"  >Unlimited</h2>
                 <p>For multi-store operations and fast growth.</p>
               </div>
             </div>
@@ -129,34 +127,16 @@
       </section>
     </main>
   
-    <footer class="footer">
-      <div class="container footer-grid">
-        <div>
-          <div class="logo">FurniSync</div>
-          <p>Professional furniture management solutions.</p>
-        </div>
-        <div>
-          <div class="footer-title">Explore</div>
-          <a href="/">Home</a>
-          <a href="/about">About</a>
-          <a href="/job-portal">Jobs</a>
-          <a href="/shop">Ecommerce</a>
-        </div>
-        <div>
-          <div class="footer-title">Support</div>
-          <a href="mailto:support@furnisync.app">support@furnisync.app</a>
-          <a href="/customer/login">Customer Login</a>
-        </div>
-      </div>
-      <div class="footer-bottom">� 2026 FurniSync. All rights reserved.</div>
-    </footer>
+    <MarketingFooter />
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { router } from '@inertiajs/vue3'
-import TopNav from '@/Components/TopNav.vue'
+import TopNav from '@/Components/MarketingHeader.vue'
+import MarketingFooter from '@/Components/MarketingFooter.vue'
 
 const isYearly = ref(false)
 
@@ -250,16 +230,21 @@ const scheduleDemo = () => {
 </script>
 
 <style scoped>
-@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=domine:400,700');
+@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=plus-jakarta-sans:600,700,800');
+
+* {
+  font-family: 'Manrope', sans-serif;
+}
 
 .pricing-shell {
-  --ink: #0f172a;
+  --ink: #0b1b2b;
   --muted: #475569;
-  --brand: #0f766e;
-  --accent: #f59e0b;
+  --brand: #f59e6b;
+  --brand-strong: #ea7b3c;
+  --accent: #f7b37c;
   font-family: 'Manrope', sans-serif;
   color: var(--ink);
-  background: #f8fafc;
+  background: #f6f7fb;
 }
 
 .container {
@@ -270,12 +255,15 @@ const scheduleDemo = () => {
 
 .hero {
   padding: 96px 0 64px;
-  background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
+  background:
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 55%),
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.1), transparent 45%),
+    linear-gradient(160deg, #ffffff 0%, #f3f6fb 100%);
   text-align: center;
 }
 
 .hero-title {
-  font-family: 'Domine', serif;
+  font-family: var(--title-font);
   font-size: clamp(2.4rem, 4vw, 3.4rem);
   margin: 14px 0;
 }
@@ -363,6 +351,12 @@ const scheduleDemo = () => {
   border: 1px solid #e2e8f0;
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
   position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.plan-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.12);
 }
 
 .plan-card.featured {
@@ -465,11 +459,11 @@ const scheduleDemo = () => {
   font-weight: 600;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .btn.primary {
-  background: var(--brand);
+  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
   color: #fff;
   width: 100%;
 }
@@ -485,15 +479,6 @@ const scheduleDemo = () => {
   background: #fff;
 }
 
-.section-head {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.section-title {
-  font-family: 'Domine', serif;
-  font-size: clamp(2rem, 3vw, 2.6rem);
-}
 
 .compare-grid {
   border: 1px solid #e2e8f0;
@@ -560,6 +545,7 @@ summary+p {
   padding: 32px;
   display: grid;
   gap: 20px;
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.2);
 }
 
 .cta-actions {
@@ -579,45 +565,4 @@ summary+p {
   color: #fff;
 }
 
-.footer {
-  background: #0b1b2b;
-  color: #d1d5db;
-  padding: 56px 0 32px;
-}
-
-.footer-grid {
-  display: grid;
-  gap: 24px;
-}
-
-@media (min-width: 900px) {
-  .footer-grid {
-    grid-template-columns: 2fr 1fr 1fr;
-  }
-}
-
-.footer a {
-  display: block;
-  color: #d1d5db;
-  text-decoration: none;
-  margin-top: 8px;
-}
-
-.footer-title {
-  font-weight: 600;
-  color: #fff;
-}
-
-.logo {
-  font-family: 'Domine', serif;
-  font-size: 1.4rem;
-  color: #fff;
-}
-
-.footer-bottom {
-  text-align: center;
-  margin-top: 24px;
-  font-size: 0.85rem;
-  color: #94a3b8;
-}
 </style>

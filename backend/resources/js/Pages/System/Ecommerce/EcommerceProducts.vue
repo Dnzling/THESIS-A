@@ -1,8 +1,8 @@
 ﻿<template>
   <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-4 md:py-8">
-
-     <Carousel/>
-
+  
+    <Carousel />
+  
   
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-8">
       <aside class="lg:col-span-3 space-y-5 md:space-y-8">
@@ -10,13 +10,13 @@
           <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Categories</h3>
           <nav class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
             <button @click="setCategory('all')"
-              :class="[selectedCategory === 'all' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100']"
+              :class="[selectedCategory === 'all' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-600 hover:bg-orange-50']"
               class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
               <span>All Collection</span>
-              <Badge :value="products.length" severity="secondary" />
+              <Badge :value="products.length" :severity="selectedCategory === 'all' ? 'info' : 'secondary'" />
             </button>
             <button v-for="category in categoryOptions" :key="category" @click="setCategory(category)"
-              :class="[selectedCategory === category ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100']"
+              :class="[selectedCategory === category ? 'bg-orange-500 text-white shadow-md' : 'text-slate-600 hover:bg-orange-50']"
               class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
               <span class="capitalize">{{ category }}</span>
               <Badge :value="categoryCount(category)" :severity="selectedCategory === category ? 'info' : 'secondary'" />
@@ -28,7 +28,7 @@
           <template #content>
             <div class="space-y-3">
   
-              <p class="text-xs font-bold uppercase tracking-wider text-blue-700">Recommendation</p>
+              <p class="text-xs font-bold uppercase tracking-wider text-orange-700">Recommendation</p>
               <div class="grid grid-cols-2 gap-2">
                 <div>
                   <label for="budget-min" class="block mb-1">Min Price</label>
@@ -50,8 +50,8 @@
                 <InputNumber v-model="dss.heightCm" :min="0" inputClass="text-sm" fluid placeholder="H cm" />
               </div>
               <div class="flex gap-2">
-                <Button label="Reset" size="small" severity="secondary" text fluid @click="resetDss" />
-                <Button label="Recommend" size="small" severity="contrast" :loading="dssLoading" class="w-full"
+                <Button label="Reset" size="small" severity="secondary" fluid @click="resetDss" />
+                <Button label="Recommend" size="small" severity="warn" :loading="dssLoading" class="w-full"
                   @click="runDss" />
               </div>
             </div>
@@ -86,27 +86,23 @@
         </div>
   
         <div v-if="dssResults.length" class="mb-8">
-          <h3 class="mb-3 text-lg font-semibold text-slate-900">DSS Result Recommended For You</h3>
+          <h3 class="mb-3 text-lg font-semibold text-slate-900">Result Recommended For You</h3>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div
-              v-for="item in dssResults"
-              :key="`dss-${item.id}`"
+            <div v-for="item in dssResults" :key="`dss-${item.id}`"
               class="group relative cursor-pointer bg-white rounded-2xl border border-blue-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
-              @click="goProduct(item.id)"
-            >
+              @click="goProduct(item.id)">
               <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
-                <img
-                  :src="item.image || '/F.svg'"
-                  :alt="item.product_name"
-                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                />
-                <div class="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                <img :src="item.image || '/F.svg'" :alt="item.product_name"
+                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                <div
+                  class="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
                   Match {{ Math.round((item.score || 0) * 100) }}%
                 </div>
               </div>
-
+  
               <div class="px-2 pb-2">
-                <div class="mb-1 text-[10px] font-bold uppercase tracking-widest text-sky-600">{{ item.category || 'Home' }}</div>
+                <div class="mb-1 text-[10px] font-bold uppercase tracking-widest text-sky-600">{{ item.category || 'Home'
+                  }}</div>
                 <h3 class="font-semibold text-slate-800 truncate mb-2 group-hover:text-sky-600 transition-colors">
                   {{ item.product_name }}
                 </h3>
@@ -167,6 +163,11 @@ import Select from 'primevue/select'
 import Slider from 'primevue/slider'
 import InputNumber from 'primevue/inputnumber'
 import Carousel from '@/Components/Ecommerce/carousel.vue'
+import EcommerceLayout from '@/Layouts/EcommerceLayout.vue'
+
+defineOptions({
+  layout: EcommerceLayout,
+})
 
 const router = useRouter()
 

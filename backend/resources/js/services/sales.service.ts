@@ -61,6 +61,11 @@ class SalesService {
     return res.data
   }
 
+  async sendPosOrderToLogistics(id: number | string) {
+    const res = await axiosClient.post(`/api/sales/pos/orders/${id}/send-to-logistics`)
+    return res.data
+  }
+
   async syncPosOrderPayment(id: number | string) {
     const res = await axiosClient.post(`/api/sales/pos/orders/${id}/sync-payment`)
     return res.data

@@ -4,14 +4,6 @@
       <div>
         <h1 class="text-xl font-bold text-gray-800">Inventory</h1>
       </div>
-      <Button
-        v-if="canCreateItems"
-        label="Add Item"
-        icon="pi pi-plus"
-        severity="success"
-        size="small"
-        @click="router.push({ name: 'inventory.items.create' })"
-      />
     </div>
 
     <!-- Filters -->
@@ -51,9 +43,28 @@
     <!-- Items Table -->
     <Card>
       <template #content>
+        <div v-if="loading" class="space-y-3">
+          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+          </div>
+          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+          </div>
+        </div>
+
         <DataTable
+          v-else
           :value="items"
-          :loading="loading"
           paginator
           :rows="filters.per_page"
           :totalRecords="totalRecords"
@@ -145,6 +156,14 @@
             <template #body="{ data }">
               <div class="flex gap-1">
                 <Button
+                  icon="pi pi-eye"
+                  size="small"
+                  text
+                  severity="info"
+                  @click="router.push({ name: 'inventory.items.show', params: { id: data.id } })"
+                  v-tooltip="'View item'"
+                />
+                <Button
                   v-if="canUpdateItems"
                   icon="pi pi-pencil"
                   size="small"
@@ -153,33 +172,6 @@
                   @click="router.push({ name: 'inventory.items.edit', params: { id: data.id } })"
                   v-tooltip="'Edit item'"
                 />
-                <Button
-                  v-if="canUpdateItems"
-                  icon="pi pi-sliders-h"
-                  size="small"
-                  text
-                  severity="info"
-                  @click="openReorderRuleForItem(data)"
-                  v-tooltip="'Manage reorder rule'"
-                />
-                <Button
-                  icon="pi pi-plus-circle"
-                  size="small"
-                  text
-                  severity="info"
-                  @click="createPurchaseRequisition(data)"
-                  v-tooltip="'Create Purchase Requisition'"
-                  v-if="['low_stock', 'out_of_stock'].includes(data.stock_status)"
-                />
-                <Button
-                  v-if="canDeleteItems"
-                  icon="pi pi-trash"
-                  size="small"
-                  text
-                  severity="danger"
-                  @click="confirmDelete(data)"
-                  v-tooltip="'Delete item'"
-                />
               </div>
             </template>
           </Column>
@@ -187,14 +179,12 @@
       </template>
     </Card>
 
-    <ConfirmDialog />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import { useConfirm } from 'primevue/useconfirm'
 import { useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
@@ -203,13 +193,11 @@ const loading = ref(false)
 const items = ref<any[]>([])
 const totalRecords = ref(0)
 const toast = useToast()
-const confirm = useConfirm()
 const router = useRouter()
 const authStore = useAuthStore()
 
 const canCreateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
 const canUpdateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
-const canDeleteItems = computed(() => authStore.hasPermission('inventory.branch_inventory.delete'))
 
 const filters = reactive({
   search: '',
@@ -271,43 +259,6 @@ const loadItems = async () => {
   }
 }
 
-const extractRows = (payload: any): any[] => {
-  if (Array.isArray(payload)) return payload
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload?.data?.data)) return payload.data.data
-  return []
-}
-
-const openReorderRuleForItem = async (row: any) => {
-  const productId = Number(row?.product_id || 0)
-  const branchId = Number(row?.branch_id || 0)
-  if (!productId) return
-
-  try {
-    const response = await inventoryService.getReorderRules({
-      product_id: productId,
-      branch_id: branchId || undefined,
-      per_page: 1
-    })
-    const existing = extractRows(response?.data)?.[0]
-
-    if (existing?.id) {
-      router.push({ name: 'inventory.reorder-rules.edit', params: { id: existing.id } })
-      return
-    }
-  } catch {
-    // fallback to create
-  }
-
-  router.push({
-    name: 'inventory.reorder-rules.create',
-    query: {
-      product_id: String(productId),
-      branch_id: branchId ? String(branchId) : undefined
-    }
-  })
-}
-
 const onPage = (event: any) => {
   filters.page = event.page + 1
   filters.per_page = event.rows
@@ -355,64 +306,6 @@ const getStockSeverity = (status: string) => {
     overstock: 'info'
   }
   return severities[status] ?? 'secondary'
-}
-
-const confirmDelete = (item: any) => {
-  confirm.require({
-    message: `Are you sure you want to delete the inventory record for "${item.product?.product_name || 'this item'}"?`,
-    header: 'Confirm Delete',
-    icon: 'pi pi-exclamation-triangle',
-    accept: () => deleteItem(item.id)
-  })
-}
-
-const deleteItem = async (id: number) => {
-  if (!canDeleteItems.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Unauthorized',
-      detail: 'You do not have permission to delete inventory records.',
-      life: 3000
-    })
-    return
-  }
-
-  try {
-    await inventoryService.deleteInventoryItem(id)
-    toast.add({
-      severity: 'success',
-      summary: 'Deleted',
-      detail: 'Inventory record deleted successfully',
-      life: 3000
-    })
-    loadItems()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.message || 'Failed to delete inventory record',
-      life: 3000
-    })
-  }
-}
-
-const createPurchaseRequisition = (item: any) => {
-  const reorderQty = Number(item?.reorder_quantity || 0)
-  const reorderPoint = Number(item?.reorder_point || 0)
-  const available = Number(item?.quantity_available || 0)
-  const suggestedQty = reorderQty > 0 ? reorderQty : Math.max(1, reorderPoint - available)
-
-  router.push({
-    name: 'inventory.requisites.create',
-    query: {
-      branch_inventory_id: item.id,
-      branch_id: item.branch_id,
-      product_id: item.product_id,
-      variation_id: item.variation_id || undefined,
-      requested_quantity: String(suggestedQty),
-      notes: 'Auto-generated from Branch Inventory low stock.',
-    }
-  })
 }
 
 onMounted(() => {

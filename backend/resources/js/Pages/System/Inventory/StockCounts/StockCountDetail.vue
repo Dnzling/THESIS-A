@@ -13,7 +13,7 @@
               v-tooltip.top="'Back to Stock Counts'"
             />
             <div>
-              <h1 class="text-3xl font-bold text-gray-800">{{ stockCount?.reference_number }}</h1>
+              <h1 class="text-3xl font-bold text-gray-800">{{ stockCount?.count_number }}</h1>
               <p class="text-gray-600 mt-1">Stock count details and management</p>
             </div>
           </div>
@@ -78,22 +78,15 @@
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label class="block text-sm font-medium text-gray-700">Reference Number</label>
-                  <p class="text-lg font-semibold text-gray-900">{{ stockCount.reference_number }}</p>
+                  <p class="text-lg font-semibold text-gray-900">{{ stockCount.count_number }}</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700">Count Date</label>
-                  <p class="text-lg font-semibold text-gray-900">{{ formatDate(stockCount.count_date) }}</p>
+                  <p class="text-lg font-semibold text-gray-900">{{ formatDate(stockCount.scheduled_date) }}</p>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700">Warehouse</label>
-                  <p class="text-lg font-semibold text-gray-900">{{ stockCount.warehouse?.name }}</p>
-                  <p class="text-sm text-gray-600">{{ stockCount.warehouse?.code }}</p>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Location</label>
-                  <p class="text-lg font-semibold text-gray-900">
-                    {{ stockCount.location?.name || 'All Locations' }}
-                  </p>
+                  <label class="block text-sm font-medium text-gray-700">Branch</label>
+                  <p class="text-lg font-semibold text-gray-900">{{ stockCount.branch?.name || '-' }}</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700">Status</label>
@@ -108,12 +101,10 @@
                   <p class="text-lg font-semibold text-gray-900 capitalize">{{ stockCount.count_type?.replace('_', ' ') }}</p>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700">Count Method</label>
-                  <p class="text-lg font-semibold text-gray-900 capitalize">{{ stockCount.count_method?.replace('_', ' ') }}</p>
-                </div>
-                <div>
                   <label class="block text-sm font-medium text-gray-700">Counted By</label>
-                  <p class="text-lg font-semibold text-gray-900">{{ stockCount.counted_by_user?.name }}</p>
+                  <p class="text-lg font-semibold text-gray-900">
+                    {{ getEmployeeName(stockCount.assigned_to) }}
+                  </p>
                   <p class="text-sm text-gray-600">{{ formatDateTime(stockCount.created_at) }}</p>
                 </div>
               </div>
@@ -130,7 +121,7 @@
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <i class="pi pi-list"></i>
-                  Count Items ({{ stockCount.items?.length || 0 }})
+                  Count Items ({{ stockCount.count_sheets?.length || 0 }})
                 </div>
                 <div class="text-sm text-gray-600">
                   Discrepancies: <span class="font-medium text-red-600">{{ discrepanciesCount }}</span>
@@ -139,7 +130,7 @@
             </template>
             <template #content>
               <DataTable
-                :value="stockCount.items"
+                :value="stockCount.count_sheets"
                 class="p-datatable-sm"
                 tableStyle="min-width: 50rem"
                 :paginator="true"
@@ -147,17 +138,17 @@
                 paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport"
                 currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
               >
-                <Column field="product.name" header="Product" style="min-width: 200px">
+                <Column field="product.product_name" header="Product" style="min-width: 200px">
                   <template #body="slotProps">
                     <div class="text-sm">
-                      <div class="font-medium">{{ slotProps.data.product?.name }}</div>
-                      <div class="text-gray-500">{{ slotProps.data.product?.code }}</div>
+                      <div class="font-medium">{{ slotProps.data.product?.product_name }}</div>
+                      <div class="text-gray-500">SKU: {{ slotProps.data.product?.sku || '-' }}</div>
                     </div>
                   </template>
                 </Column>
-                <Column field="expected_quantity" header="Expected Qty" style="min-width: 120px">
+                <Column field="system_quantity" header="System Qty" style="min-width: 120px">
                   <template #body="slotProps">
-                    {{ slotProps.data.expected_quantity || 0 }}
+                    {{ slotProps.data.system_quantity || 0 }}
                   </template>
                 </Column>
                 <Column field="counted_quantity" header="Counted Qty" style="min-width: 120px">
@@ -206,7 +197,7 @@
               <div class="space-y-4">
                 <div class="flex justify-between items-center">
                   <span class="text-sm text-gray-600">Total Items</span>
-                  <span class="font-semibold">{{ stockCount.total_items || 0 }}</span>
+                  <span class="font-semibold">{{ stockCount.total_items_expected || 0 }}</span>
                 </div>
                 <div class="flex justify-between items-center">
                   <span class="text-sm text-gray-600">Items Counted</span>
@@ -330,21 +321,21 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const itemsCounted = computed(() => {
-  return stockCount.value?.items?.filter((item: any) => item.counted_quantity !== null).length || 0
+  return stockCount.value?.count_sheets?.filter((item: any) => item.counted_quantity !== null).length || 0
 })
 
 const discrepanciesCount = computed(() => {
-  return stockCount.value?.items?.filter((item: any) => calculateDiscrepancy(item) !== 0).length || 0
+  return stockCount.value?.count_sheets?.filter((item: any) => calculateDiscrepancy(item) !== 0).length || 0
 })
 
 const accuracyRate = computed(() => {
-  if (!stockCount.value?.items?.length) return 0
-  const accurateItems = stockCount.value.items.filter((item: any) => calculateDiscrepancy(item) === 0).length
-  return Math.round((accurateItems / stockCount.value.items.length) * 100)
+  if (!stockCount.value?.count_sheets?.length) return 0
+  const accurateItems = stockCount.value.count_sheets.filter((item: any) => calculateDiscrepancy(item) === 0).length
+  return Math.round((accurateItems / stockCount.value.count_sheets.length) * 100)
 })
 
 const totalVariance = computed(() => {
-  return stockCount.value?.items?.reduce((sum: number, item: any) => sum + calculateDiscrepancy(item), 0) || 0
+  return stockCount.value?.count_sheets?.reduce((sum: number, item: any) => sum + calculateDiscrepancy(item), 0) || 0
 })
 
 const loadStockCount = async () => {
@@ -381,12 +372,12 @@ const loadRecentActivities = async () => {
   recentActivities.value = [
     {
       id: 1,
-      description: `Stock count ${stockCount.value.reference_number} created`,
+      description: `Stock count ${stockCount.value.count_number} created`,
       created_at: stockCount.value.created_at
     },
     ...(stockCount.value.status === 'completed' ? [{
       id: 2,
-      description: `Stock count ${stockCount.value.reference_number} completed`,
+      description: `Stock count ${stockCount.value.count_number} completed`,
       created_at: stockCount.value.updated_at
     }] : [])
   ]
@@ -507,13 +498,19 @@ const exportData = () => {
 
 const calculateDiscrepancy = (item: any) => {
   if (item.counted_quantity === null || item.counted_quantity === undefined) return 0
-  return item.counted_quantity - (item.expected_quantity || 0)
+  return item.counted_quantity - (item.system_quantity || 0)
 }
 
 const calculateVariance = (item: any) => {
-  if (!item.expected_quantity) return 0
+  if (!item.system_quantity) return 0
   const discrepancy = calculateDiscrepancy(item)
-  return Math.round((discrepancy / item.expected_quantity) * 100)
+  return Math.round((discrepancy / item.system_quantity) * 100)
+}
+
+const getEmployeeName = (employee: any) => {
+  if (!employee) return '-'
+  const name = `${employee.fname || ''} ${employee.lname || ''}`.trim()
+  return name || `Employee #${employee.id}`
 }
 
 const formatDate = (date: string) => {

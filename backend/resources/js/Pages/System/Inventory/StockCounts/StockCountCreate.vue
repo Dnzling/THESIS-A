@@ -46,7 +46,7 @@
                     v-model="form.count_date"
                     placeholder="Select count date"
                     class="w-full"
-                    showIcon disabled fluid
+                    showIcon fluid
                     dateFormat="yy-mm-dd"
                     :class="{ 'p-invalid': errors.count_date }"
                     required

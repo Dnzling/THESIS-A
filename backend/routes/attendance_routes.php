@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Hr\LeaveController;
 use App\Http\Controllers\Api\Hr\LeaveBalanceController;
 use App\Http\Controllers\Api\Hr\DashboardController;
 use App\Http\Controllers\Api\Hr\ShiftSwapRequestController;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 // Shifts
 Route::apiResource('shifts', ShiftController::class);
@@ -41,11 +42,13 @@ Route::apiResource('shift-schedules', ShiftScheduleController::class);
 
 // Attendance
 // NOTE: static sub-routes must be before apiResource to avoid being caught by show()
-Route::post('attendances/clock-in', [AttendanceController::class, 'clockIn']);
+Route::post('attendances/clock-in', [AttendanceController::class, 'clockIn'])
+    ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class]);
 Route::get('attendances/report/monthly', [AttendanceController::class, 'getMonthlyReport']);
 Route::get('attendances/summary', [AttendanceController::class, 'getAttendanceSummary']);
 Route::apiResource('attendances', AttendanceController::class);
-Route::put('attendances/{id}/clock-out', [AttendanceController::class, 'clockOut']);
+Route::put('attendances/{id}/clock-out', [AttendanceController::class, 'clockOut'])
+    ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class]);
 Route::post('attendances/{id}/break/start', [AttendanceController::class, 'startBreak']);
 Route::post('attendances/{id}/break/end', [AttendanceController::class, 'endBreak']);
 Route::get('attendance/by-employee-number', [AttendanceController::class, 'getAttendanceByEmployeeNumber']);

@@ -30,6 +30,7 @@ class User extends Authenticatable
         'fname',
         'lname',
         'email',
+        'pending_email',
         'birthday',
         'password',
         'role_id',

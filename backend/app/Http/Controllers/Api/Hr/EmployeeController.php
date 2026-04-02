@@ -269,6 +269,7 @@ class EmployeeController extends Controller
                 'lname' => 'sometimes|string|max:100',
                 'email' => 'sometimes|email|unique:users,email,' . $employee->user_id,
                 'is_active' => 'sometimes|string|max:255',
+                'role_id' => 'sometimes|exists:roles,id',
 
                 // Employee fields
                 'employee_number' => 'sometimes|string|unique:employees,employee_number,' . $id,
@@ -291,12 +292,19 @@ class EmployeeController extends Controller
             if ($request->has('lname')) $user->lname = $validated['lname'];
             if ($request->has('email')) $user->email = $validated['email'];
             if ($request->has('is_active')) $user->is_active = $validated['is_active'];
+            if ($request->has('role_id')) $user->role_id = $validated['role_id'];
             $user->save();
 
             // Update Employee
             $employee->update($validated);
 
             DB::commit();
+
+            // Clear cached employee details for today (with and without year filter)
+            $today = now()->format('Y-m-d');
+            $year = now()->year;
+            Cache::forget("employee_details_{$id}_{$year}_{$today}");
+            Cache::forget("employee_details_{$id}__{$today}");
 
             return response()->json([
                 'success' => true,
@@ -737,6 +745,7 @@ class EmployeeController extends Controller
         $yearsEmployed = $employee->hire_date ? Carbon::parse($employee->hire_date)->diffInYears(now()) : 0;
 
         return [
+            'role_id' => $employee->role_id,
             'branch' => $employee->branch->name ?? 'N/A',
             'role' => $employee->role->name ?? 'N/A',
             'department' => $employee->department,

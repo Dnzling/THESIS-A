@@ -35,6 +35,7 @@ class AuthController extends Controller
                 'lname' => 'required|string|max:255',
                 'email' => 'required|email|unique:users',
                 'password' => 'required|string|min:8|max:255',
+                'role_id' => 'nullable|integer|exists:roles,id',
             ]);
 
             $user = User::create([
@@ -46,7 +47,7 @@ class AuthController extends Controller
                 'is_active' => 1,
             ]);
 
-            if ($user->hasRole('customer') || (int) $user->role_id === 2) {
+            if ($user->hasRole('customer') || (int) $user->role_id === 16) {
                 Customer::firstOrCreate(
                     ['user_id' => $user->id],
                     ['verification_status' => 'unverified']
@@ -423,7 +424,15 @@ class AuthController extends Controller
     {
         try {
             $user = $request->user();
-            $user->currentAccessToken()->delete();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthenticated.'
+                ], 401);
+            }
+            if ($user->currentAccessToken()) {
+                $user->currentAccessToken()->delete();
+            }
             $user->logActivity('logout', 'User logged out');
 
             return response()->json([
@@ -443,7 +452,13 @@ class AuthController extends Controller
      */
     public function logoutWithClockOut(Request $request)
     {
-        $user = Auth::user();
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthenticated.'
+            ], 401);
+        }
         $storeId = $user->store_id;
 
         $validator = Validator::make($request->all(), [
@@ -485,10 +500,16 @@ class AuthController extends Controller
             $attendance->calculateTotalWorked();
         }
 
-        // Perform logout
-        Auth::guard('web')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        // Perform logout (API vs web)
+        if ($request->expectsJson() || $request->is('api/*')) {
+            if ($user->currentAccessToken()) {
+                $user->currentAccessToken()->delete();
+            }
+        } else {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
 
         return response()->json([
             'success' => true,

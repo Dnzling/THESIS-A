@@ -26,58 +26,6 @@
         </div>
 
         <form class="space-y-6" @submit.prevent="submitForm">
-          <!-- Quantities -->
-          <Message severity="info" :closable="false">
-            On-hand stock is read-only here. Use Stock Adjustments, Stock Counts, or Stock Transfers to change quantity.
-          </Message>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Quantity on Hand
-              </label>
-              <InputNumber
-                v-model="form.quantity_on_hand"
-                :min="0"
-                class="w-full"
-                :disabled="true"
-              />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Quantity Damaged</label>
-              <InputNumber v-model="form.quantity_damaged" :min="0" showButtons class="w-full" />
-            </div>
-          </div>
-
-          <!-- Stock Thresholds -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Reorder Point</label>
-              <InputNumber v-model="form.reorder_point" :disabled="true" class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Reorder Quantity</label>
-              <InputNumber v-model="form.reorder_quantity" :disabled="true" class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Safety Stock</label>
-              <InputNumber v-model="form.safety_stock" :disabled="true" class="w-full" />
-            </div>
-          </div>
-          <Message severity="secondary" :closable="false">
-            Reorder settings are managed in <strong>Reorder Rules</strong>.
-          </Message>
-          <div class="flex justify-end">
-            <Button
-              :label="reorderRuleId ? 'Update Reorder Rule' : 'Set Reorder Rule'"
-              icon="pi pi-sliders-h"
-              severity="info"
-              outlined
-              size="small"
-              type="button"
-              @click="goToReorderRule"
-            />
-          </div>
-
           <!-- Warehouse Location -->
           <Divider>
             <span class="text-sm font-semibold text-gray-600">Warehouse Location</span>
@@ -103,16 +51,7 @@
           </div>
 
           <!-- Cost -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Unit Cost</label>
-              <InputNumber v-model="form.unit_cost" :min="0" :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Average Cost</label>
-              <InputNumber v-model="form.average_cost" :min="0" :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
-            </div>
-          </div>
+
 
           <!-- Actions -->
           <div class="flex justify-end gap-3 pt-4">

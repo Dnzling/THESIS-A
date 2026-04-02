@@ -13,13 +13,22 @@ class CheckRole
         $user = $request->user();
         
         if (!$user) {
-            return response()->json(['message' => 'Unauthenticated'], 401);
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+            abort(401, 'Unauthenticated');
         }
         
-        if (!in_array($user->role, $roles)) {
-            return response()->json([
-                'message' => 'Unauthorized. Required roles: ' . implode(', ', $roles)
-            ], 403);
+        $hasRole = method_exists($user, 'hasAnyRole')
+            ? $user->hasAnyRole($roles)
+            : (method_exists($user, 'hasRole') ? $user->hasRole($roles[0] ?? '') : false);
+
+        if (!$hasRole) {
+            $message = 'Unauthorized. Required roles: ' . implode(', ', $roles);
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $message], 403);
+            }
+            abort(403, $message);
         }
         
         return $next($request);

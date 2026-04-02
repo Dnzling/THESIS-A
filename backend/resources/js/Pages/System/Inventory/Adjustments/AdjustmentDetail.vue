@@ -1,5 +1,6 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
+    <ConfirmDialog />
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.adjustments' })" />
@@ -8,7 +9,28 @@
           <p class="text-sm text-gray-500 mt-1">Review and process stock adjustment</p>
         </div>
       </div>
-      <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
+      <div class="flex items-center gap-2">
+        <Button
+          v-if="canApprove"
+          label="Approve"
+          icon="pi pi-check"
+          size="small"
+          severity="success"
+          :loading="processing"
+          @click="confirmApprove"
+        />
+        <Button
+          v-if="canApprove"
+          label="Reject"
+          icon="pi pi-times"
+          size="small"
+          severity="danger"
+          outlined
+          :loading="processing"
+          @click="openRejectDialog"
+        />
+        <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
+      </div>
     </div>
 
     <div v-if="loading" class="space-y-4">
@@ -147,6 +169,29 @@
       <p class="text-gray-600 mt-2">Adjustment not found</p>
       <Button label="Back to List" icon="pi pi-arrow-left" class="mt-4" @click="router.push({ name: 'inventory.adjustments' })" />
     </div>
+
+    <Dialog v-model:visible="showRejectDialog" header="Reject Adjustment" :style="{ width: '520px' }" modal>
+      <div class="space-y-4">
+        <div class="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-800">
+          Please provide a reason for rejection. This will be recorded in the adjustment notes.
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-semibold text-gray-700">Rejection Reason *</label>
+          <Textarea v-model="rejectReason" rows="4" placeholder="e.g., Qty mismatch needs recount" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="showRejectDialog = false" />
+        <Button
+          label="Reject Adjustment"
+          icon="pi pi-times"
+          severity="danger"
+          :loading="processing"
+          :disabled="!rejectReason.trim()"
+          @click="confirmReject"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -155,20 +200,28 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '../../../../stores/auth'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
+const confirm = useConfirm()
 
 const loading = ref(false)
 const processing = ref(false)
 const detail = ref<any>(null)
+const showRejectDialog = ref(false)
+const rejectReason = ref('')
 
 const adjustmentId = computed(() => Number(route.params.id))
 
-// Check if user can approve/reject (pending_approval status)
-const canAction = computed(() => {
-  return detail.value?.status === 'pending_approval'
+// Check if user can approve (pending_approval status + permission)
+const canApprove = computed(() => {
+  return detail.value?.status === 'pending_approval' &&
+    authStore.hasPermission('inventory.adjustments.approve')
 })
 
 // Calculate totals
@@ -267,6 +320,83 @@ const statusSeverity = (status: string) => {
     'cancelled': 'danger'
   }
   return severities[status] || 'secondary'
+}
+
+const approveAdjustment = async () => {
+  if (!detail.value?.id) return
+  processing.value = true
+  try {
+    await inventoryService.approveAdjustment(detail.value.id)
+    toast.add({
+      severity: 'success',
+      summary: 'Approved',
+      detail: 'Stock adjustment approved successfully',
+      life: 2500
+    })
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to approve adjustment',
+      life: 3000
+    })
+  } finally {
+    processing.value = false
+  }
+}
+
+const rejectAdjustment = async () => {
+  if (!detail.value?.id) return
+  processing.value = true
+  try {
+    await inventoryService.rejectAdjustment(detail.value.id, rejectReason.value.trim())
+    toast.add({
+      severity: 'success',
+      summary: 'Rejected',
+      detail: 'Stock adjustment rejected successfully',
+      life: 2500
+    })
+    showRejectDialog.value = false
+    rejectReason.value = ''
+    await loadDetail()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.response?.data?.message || 'Failed to reject adjustment',
+      life: 3000
+    })
+  } finally {
+    processing.value = false
+  }
+}
+
+const confirmApprove = () => {
+  confirm.require({
+    header: 'Approve Adjustment',
+    message: 'This will apply the adjustment to inventory. Continue?',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Approve',
+    rejectLabel: 'Cancel',
+    accept: () => approveAdjustment()
+  })
+}
+
+const openRejectDialog = () => {
+  rejectReason.value = ''
+  showRejectDialog.value = true
+}
+
+const confirmReject = () => {
+  confirm.require({
+    header: 'Reject Adjustment',
+    message: 'Are you sure you want to reject this adjustment?',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Reject',
+    rejectLabel: 'Cancel',
+    accept: () => rejectAdjustment()
+  })
 }
 
 // API calls

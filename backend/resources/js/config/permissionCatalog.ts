@@ -102,6 +102,7 @@ export const PERMISSION_CATALOG: PermissionModule[] = [
         permissions: [
           'sales.pos.view',
           'sales.ecommerce-orders.view',
+          'sales.order.approve',
         ],
       },
       {

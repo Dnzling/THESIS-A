@@ -30,7 +30,7 @@
       <!-- Filters -->
       <Card class="mb-6">
         <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
               <InputText
@@ -50,20 +50,6 @@
                 placeholder="All Statuses"
                 class="w-full"
                 showClear
-                @change="applyFilters"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Warehouse</label>
-              <Select
-                v-model="filters.warehouse_id"
-                :options="warehouses"
-                optionLabel="name"
-                optionValue="id"
-                placeholder="All Warehouses"
-                class="w-full"
-                showClear
-                :loading="warehousesLoading"
                 @change="applyFilters"
               />
             </div>
@@ -89,9 +75,28 @@
       <!-- Stock Counts Table -->
       <Card>
         <template #content>
+          <div v-if="loading" class="space-y-3">
+            <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
+              <Skeleton height="24px" class="col-span-1" />
+              <Skeleton height="24px" class="col-span-1" />
+              <Skeleton height="24px" class="col-span-1" />
+              <Skeleton height="24px" class="col-span-1" />
+              <Skeleton height="24px" class="col-span-1" />
+              <Skeleton height="24px" class="col-span-1" />
+            </div>
+            <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
+              <Skeleton height="20px" class="col-span-1" />
+              <Skeleton height="20px" class="col-span-1" />
+              <Skeleton height="20px" class="col-span-1" />
+              <Skeleton height="20px" class="col-span-1" />
+              <Skeleton height="20px" class="col-span-1" />
+              <Skeleton height="20px" class="col-span-1" />
+            </div>
+          </div>
+
           <DataTable
+            v-else
             :value="stockCounts"
-            :loading="loading"
             class="p-datatable-sm"
             tableStyle="min-width: 50rem"
             :paginator="true"
@@ -236,17 +241,8 @@
         :style="{ width: '500px' }"
       >
         <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Warehouse</label>
-            <Select
-              v-model="scheduleForm.branch_id"
-              :options="warehouses"
-              optionLabel="name"
-              optionValue="id"
-              placeholder="Select warehouse"
-              class="w-full"
-              :loading="warehousesLoading"
-            />
+          <div class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+            Counts will be scheduled for your current branch.
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
@@ -287,13 +283,11 @@ import Calendar from 'primevue/calendar'
 
 const loading = ref(false)
 const deleting = ref(false)
-const warehousesLoading = ref(false)
 const deleteDialog = ref(false)
 const showScheduleDialog = ref(false)
 const scheduling = ref(false)
 const selectedStockCount = ref<any>(null)
 const stockCounts = ref<any[]>([])
-const warehouses = ref<any[]>([])
 const totalRecords = ref(0)
 const perPage = ref(10)
 const toast = useToast()
@@ -309,7 +303,7 @@ const canDeleteStockCounts = authStore.hasPermission('inventory.stock_counts.del
 const filters = reactive({
   search: '',
   status: null as string | null,
-  warehouse_id: null as number | null,
+  branch_id: null as number | null,
   date_range: null as Date[] | null
 })
 
@@ -327,12 +321,6 @@ const statusOptions = [
   { label: 'Cancelled', value: 'cancelled' }
 ]
 
-const extractRows = (payload: any): any[] => {
-  if (Array.isArray(payload)) return payload
-  if (Array.isArray(payload?.data)) return payload.data
-  return []
-}
-
 const loadStockCounts = async (page = 1) => {
   loading.value = true
   try {
@@ -341,7 +329,7 @@ const loadStockCounts = async (page = 1) => {
       per_page: perPage.value,
       search: filters.search || undefined,
       status: filters.status || undefined,
-      warehouse_id: filters.warehouse_id || undefined,
+      branch_id: filters.branch_id || undefined,
       start_date: filters.date_range?.[0]?.toISOString().split('T')[0] || undefined,
       end_date: filters.date_range?.[1]?.toISOString().split('T')[0] || undefined
     }
@@ -371,33 +359,6 @@ const loadStockCounts = async (page = 1) => {
   }
 }
 
-const loadWarehouses = async () => {
-  warehousesLoading.value = true
-  try {
-    const response = await inventoryService.getWarehouses({ per_page: 1000 })
-
-    if (response.success) {
-      warehouses.value = extractRows(response.data)
-      const userBranchId = Number((authStore.user as any)?.branch_id || 0)
-      if (userBranchId) {
-        const hasBranchWarehouse = warehouses.value.some((w: any) => Number(w.id) === userBranchId)
-        if (hasBranchWarehouse) {
-          if (!filters.warehouse_id) filters.warehouse_id = userBranchId
-          if (!scheduleForm.branch_id) scheduleForm.branch_id = userBranchId
-        }
-      }
-    }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load warehouses',
-      life: 3000
-    })
-  } finally {
-    warehousesLoading.value = false
-  }
-}
 
 const debouncedFilter = debounce(() => {
   applyFilters()
@@ -572,7 +533,11 @@ const getStatusSeverity = (status: string) => {
 }
 
 onMounted(() => {
-  loadWarehouses()
+  const userBranchId = Number((authStore.user as any)?.branch_id || 0)
+  if (userBranchId) {
+    filters.branch_id = userBranchId
+    scheduleForm.branch_id = userBranchId
+  }
   loadStockCounts()
 })
 </script>

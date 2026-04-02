@@ -1,195 +1,200 @@
-<template>
-  <div class="marketing-shell">
+﻿<template>
+  <div class="bg-gradient-to-b from-white to-orange-50/30">
     <TopNav />
-  
+
     <main>
-      <section class="hero">
-        <div class="container">
-          <div class="hero-grid">
-            <div class="hero-copy">
-              <div class="pill">AI + 3D for modern furniture teams</div>
-              <h1 class="hero-title">
-                Run every store with
-                <span class="hero-accent">clarity, speed, and visual confidence.</span>
-              </h1>
-              <p class="hero-sub">
-                FurniSync connects inventory, procurement, and delivery in one place, while 3D previews and a decision
-                support engine keep your stock smart and your sales fast.
-              </p>
-              <div class="hero-actions">
-                <Link href="/register?plan=simple&trial=1" class="btn primary" @click="setTrialPlan('simple')">Start Free Trial</Link>
-                <button class="btn ghost" @click="scrollToOverview">See How It Works</button>
-              </div>
-              <div class="hero-meta">
-                <span>14-day trial</span>
-                <span></span>
-                <span>No credit card</span>
-                <span></span>
-                <span>Live onboarding</span>
+      <!-- Hero Section -->
+      <section class="relative overflow-hidden py-20 lg:py-32">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,107,0.12),transparent_55%)]"></div>
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <div class="text-center max-w-5xl mx-auto">
+            <h1 class="text-4xl lg:text-5xl font-bold leading-tight mb-6">
+              A modern platform to run every store,
+              <span class="text-orange-500 block mt-2">sell smarter, and showcase in 3D.</span>
+            </h1>
+            <p class="text-gray-600 text-lg lg:text-xl mb-10 max-w-3xl mx-auto">
+              FurniSync brings integrated management, decision support system into one clean workspace.
+              Built for high-value catalogs, multi-branch teams, and confident customer experiences.
+            </p>
+            <div class="flex flex-wrap gap-4 justify-center mb-12">
+              <Button 
+                as="router-link" 
+                severity="warn"
+                to="/register?plan=simple&trial=1" 
+                raised
+                class="font-semibold"
+                size="medium"
+                @click="setTrialPlan('simple')"
+              >
+            Start Free Trial
+              </Button>
+              <Button 
+                @click="scrollToOverview"
+                severity="secondary"
+                size="medium"
+                class="font-bold"
+                label="Watch Demo"
+              />
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto mt-10">
+              <div v-for="item in proofItems" :key="item.title" class="text-center">
+                <p class="font-bold text-gray-900 mb-1">{{ item.title }}</p>
+                <p class="text-sm text-gray-500">{{ item.sub }}</p>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Section -->
+      <section class="py-16">
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card v-for="stat in stats" :key="stat.title" class="text-center">
+              <template #content>
+                <p class="text-3xl lg:text-4xl font-bold text-orange-500 mb-2">{{ stat.value }}</p>
+                <p class="font-semibold text-gray-900 mb-1">{{ stat.title }}</p>
+                <p class="text-sm text-gray-500">{{ stat.sub }}</p>
+              </template>
+            </Card>
+          </div>
+        </div>
+      </section>
   
-            <div class="hero-frame">
-              <div class="frame-header">
-                <span class="dot red"></span>
-                <span class="dot amber"></span>
-                <span class="dot green"></span>
-                <span class="frame-title">3D Product Studio</span>
-              </div>
-              <div class="frame-body">
-                <div class="chair">
-                  <div class="chair-core"></div>
-                  <div class="chair-surface"></div>
-                  <div class="chair-shadow"></div>
+      <!-- Solutions Section -->
+      <section ref="overviewSection" class="py-20">
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <div class="text-center max-w-3xl mx-auto mb-12">
+            <span class="text-orange-500 text-sm uppercase tracking-wider">Platform Overview</span>
+            <h2 class="text-3xl lg:text-4xl font-bold mt-2 mb-4">Everything you need for modern furniture operations.</h2>
+            <p class="text-gray-500">Run merchandising, supply, and sales execution from one intelligent workspace with shared data and live reporting.</p>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Card v-for="feature in features" :key="feature.title" class="hover:shadow-lg transition-shadow">
+              <template #content>
+                <div class="w-12 h-12 rounded-xl bg-orange-100 text-orange-500 flex items-center justify-center mb-4" v-html="feature.icon"></div>
+                <h3 class="font-bold text-lg mb-2">{{ feature.title }}</h3>
+                <p class="text-gray-500 text-sm">{{ feature.description }}</p>
+              </template>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      <!-- Workflow Section -->
+      <section class="py-20 bg-gradient-to-br from-orange-50/50 to-transparent">
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <div class="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <span class="text-orange-500 text-sm uppercase tracking-wider">Workflow</span>
+              <h2 class="text-3xl lg:text-4xl font-bold mt-2 mb-4">From warehouse to showroom in one flow.</h2>
+              <p class="text-gray-500 mb-8">Connect demand planning, supplier coordination, and showroom experiences without chasing spreadsheets.</p>
+              <div class="space-y-3">
+                <div v-for="step in steps" :key="step.title" class="flex gap-4 p-4 bg-white rounded-xl shadow-sm">
+                  <div class="w-10 h-10 rounded-lg bg-orange-100 text-orange-600 font-bold flex items-center justify-center">{{ step.index }}</div>
+                  <div>
+                    <p class="font-semibold mb-1">{{ step.title }}</p>
+                    <p class="text-sm text-gray-500">{{ step.sub }}</p>
+                  </div>
                 </div>
-                <div class="frame-stats">
+              </div>
+            </div>
+            <div class="bg-gray-900 rounded-2xl p-6 shadow-xl">
+              <p class="text-white font-semibold mb-4">Live Branch View</p>
+              <div v-for="highlight in highlights" :key="highlight.label" class="flex justify-between items-center py-3 border-b border-gray-700">
+                <div>
+                  <p class="text-gray-400 text-sm">{{ highlight.label }}</p>
+                  <p class="text-white font-medium">{{ highlight.value }}</p>
+                </div>
+                <Tag :severity="getTagSeverity(highlight.tone)" :value="highlight.badge" />
+              </div>
+              <p class="text-gray-500 text-xs mt-4">Updated just now</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Showcase Section -->
+      <section class="py-20">
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <div class="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <span class="text-orange-500 text-sm uppercase tracking-wider">3D Experience</span>
+              <h2 class="text-3xl lg:text-4xl font-bold mt-2 mb-4">Sell premium pieces with immersive previews.</h2>
+              <p class="text-gray-500 mb-6">Launch photoreal 3D viewers, configure materials, and give your teams the confidence to close higher-ticket orders.</p>
+              <Button as="router-link" to="/pricing" severity="primary" class="!bg-orange-500 !border-none">See Pricing</Button>
+            </div>
+            <div class="space-y-4">
+              <Card v-for="card in showcaseCards" :key="card.title" :class="['hover:shadow-lg transition-all', card.glow && 'border-orange-200 bg-gradient-to-r from-orange-50/50 to-transparent']">
+                <template #content>
+                  <p class="font-semibold text-lg mb-1">{{ card.title }}</p>
+                  <p class="text-gray-500 text-sm">{{ card.sub }}</p>
+                </template>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Testimonial Section -->
+      <section class="py-20 bg-white">
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <div class="grid lg:grid-cols-2 gap-8 items-center">
+            <Card class="bg-gradient-to-br from-orange-50 to-transparent border-orange-100">
+              <template #content>
+                <p class=" text-xl lg:text-2xl mb-6">“FurniSync replaced six disconnected tools. Our store managers finally share the same data and our 3D catalog closes deals faster.”</p>
+                <div class="flex justify-between items-center">
                   <div>
-                    <div class="stat-title">Stock Health</div>
-                    <div class="stat-value">92%</div>
+                    <p class="font-semibold">Rhea Valdez</p>
+                    <p class="text-sm text-gray-500">VP Operations, Lumina Living</p>
                   </div>
-                  <div>
-                    <div class="stat-title">Forecast Accuracy</div>
-                    <div class="stat-value">95%</div>
-                  </div>
-                  <div>
-                    <div class="stat-title">Reorder Alerts</div>
-                    <div class="stat-value">8</div>
-                  </div>
+                  <Tag value="Multi-branch" severity="info" class="!bg-orange-100 !text-orange-600" />
+                </div>
+              </template>
+            </Card>
+            <div class="grid grid-cols-1 gap-6">
+              <div v-for="metric in metrics" :key="metric.label" class="text-center p-6 bg-orange-50/50 rounded-xl">
+                <p class="text-3xl lg:text-4xl font-bold text-orange-500 mb-1">{{ metric.value }}</p>
+                <p class="text-gray-600">{{ metric.label }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA Section -->
+      <section class="py-20">
+        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
+          <Card class="">
+            <template #content>
+              <div class="lg:flex lg:items-center lg:justify-between gap-8">
+                <div class="mb-6 lg:mb-0">
+                  <h2 class="text-2xl lg:text-3xl font-bold mb-2">Ready to modernize your furniture business?</h2>
+                  <p class="text-orange-500">Start a guided trial and see how fast your teams can switch to a smarter, unified workflow.</p>
+                </div>
+                <div class="flex gap-3">
+                  <Button @click="setTrialPlan('simple')" severity="warn">Start Free Trial</Button>
+                  <Button as="router-link" to="/pricing" severity="secondary" class="">Compare Plans</Button>
                 </div>
               </div>
-              <div class="frame-footer">
-                <button class="chip">Rotate</button>
-                <button class="chip">Zoom</button>
-                <button class="chip">Materials</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-  
-      <section class="trust">
-        <div class="container trust-grid">
-          <div>
-            <h2 class="section-title">Everything your teams need to act faster.</h2>
-            <p class="section-sub">
-              Centralize warehouse visibility, automate reorders, and deliver a showroom-quality shopping experience in
-              every store.
-            </p>
-          </div>
-          <div class="metrics">
-            <div class="metric">
-              <div class="metric-value">45%</div>
-              <div class="metric-label">Fewer stockouts</div>
-            </div>
-            <div class="metric">
-              <div class="metric-value">3.2x</div>
-              <div class="metric-label">Faster PO cycles</div>
-            </div>
-            <div class="metric">
-              <div class="metric-value">28%</div>
-              <div class="metric-label">Higher sell-through</div>
-            </div>
-          </div>
-        </div>
-      </section>
-  
-      <section ref="overviewSection" class="features">
-        <div class="container">
-          <div class="section-head">
-            <span class="eyebrow">Platform Overview</span>
-            <h2 class="section-title">One intelligent system. Six confident teams.</h2>
-            <p class="section-sub">From merchandising to logistics, everyone sees the same truth � updated in real time.
-            </p>
-          </div>
-          <div class="feature-grid">
-            <div v-for="feature in features" :key="feature.title" class="feature-card">
-              <div class="icon-wrap" v-html="feature.icon"></div>
-              <h3>{{ feature.title }}</h3>
-              <p>{{ feature.description }}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-  
-      <section class="dss">
-        <div class="container dss-grid">
-          <div>
-            <span class="eyebrow">Decision Support</span>
-            <h2 class="section-title">Let data make the next move.</h2>
-            <p class="section-sub">
-              The DSS engine blends sales velocity, seasonality, and supplier lead times to recommend the right action at
-              the right time.
-            </p>
-            <div class="dss-list">
-              <div class="dss-item">Predictive demand models trained on your store history.</div>
-              <div class="dss-item">Auto-generated reorder plans with budget checks.</div>
-              <div class="dss-item">Scenario planning for promos and clearance cycles.</div>
-            </div>
-            <Link href="/pricing" class="btn primary">Explore Plans</Link>
-          </div>
-          <div class="dss-panel">
-            <h3>Live Recommendations</h3>
-            <div class="panel-row">
-              <span>ErgoFlex Chair</span>
-              <span class="badge warn">Reorder 120</span>
-            </div>
-            <div class="panel-row">
-              <span>Oakline Table</span>
-              <span class="badge ok">Healthy Stock</span>
-            </div>
-            <div class="panel-row">
-              <span>Studio Sofa</span>
-              <span class="badge warn">Promote Now</span>
-            </div>
-            <div class="panel-foot">
-              Updated 2 minutes ago
-            </div>
-          </div>
-        </div>
-      </section>
-  
-      <section class="cta">
-        <div class="container cta-card">
-          <div>
-            <h2>Ready to see FurniSync in action?</h2>
-            <p>Launch a trial and let our team map your current workflow into a smarter, faster system.</p>
-          </div>
-          <div class="cta-actions">
-            <Link href="/register?plan=simple&trial=1" class="btn primary" @click="setTrialPlan('simple')">Start Free Trial</Link>
-            <Link href="/pricing" class="btn ghost">View Pricing</Link>
-          </div>
+            </template>
+          </Card>
         </div>
       </section>
     </main>
-  
-    <footer class="footer">
-      <div class="container footer-grid">
-        <div>
-          <div class="logo">FurniSync</div>
-          <p>Modern furniture operations powered by AI, 3D, and human-friendly workflows.</p>
-        </div>
-        <div>
-          <div class="footer-title">Platform</div>
-          <a href="/pricing">Pricing</a>
-          <a href="/about">About</a>
-          <a href="/job-portal">Jobs</a>
-          <a href="/shop">Ecommerce</a>
-        </div>
-        <div>
-          <div class="footer-title">Support</div>
-          <a href="mailto:support@furnisync.app">support@furnisync.app</a>
-          <a href="/customer/login">Customer Login</a>
-        </div>
-      </div>
-      <div class="footer-bottom">� 2026 FurniSync. All rights reserved.</div>
-    </footer>
+
+    <MarketingFooter />
   </div>
 </template>
 
 <script setup lang="ts">
-import TopNav from '@/Components/TopNav.vue'
-import { Link } from '@inertiajs/vue3'
+import TopNav from '@/Components/MarketingHeader.vue'
+import MarketingFooter from '@/Components/MarketingFooter.vue'
 import { ref } from 'vue'
+import Button from 'primevue/button'
+import Card from 'primevue/card'
+import Chip from 'primevue/chip'
+import Tag from 'primevue/tag'
 
 const overviewSection = ref<HTMLElement | null>(null)
 
@@ -202,490 +207,93 @@ const setTrialPlan = (plan: 'simple' | 'unlimited') => {
   localStorage.setItem('trial_entry', 'marketing')
 }
 
+const getTagSeverity = (tone: string) => {
+  switch(tone) {
+    case 'tone-ok': return 'success'
+    case 'tone-warn': return 'warning'
+    default: return 'info'
+  }
+}
+
+const proofItems = [
+  { title: '14-day trial', sub: 'No credit card needed' },
+  { title: 'Dedicated onboarding', sub: 'White-glove support' },
+  { title: 'Enterprise ready', sub: 'SOC-friendly stack' }
+]
+
+const stats = [
+  { value: '45%', title: 'Fewer stockouts', sub: 'Live inventory orchestration' },
+  { value: '3.2x', title: 'Faster purchasing', sub: 'Automated procurement flows' },
+  { value: '28%', title: 'Higher sell-through', sub: '3D-driven conversion lifts' }
+]
+
+const logos = ['CasaPro', 'Nordline', 'Haven & Co', 'Oakridge', 'StudioOne', 'UrbanCraft']
+
 const features = [
   {
     title: '3D Catalog Studio',
-    description: 'Spin, zoom, and showcase products with photorealistic material control.',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 11l8 4 8-4"/><path d="M4 19l8 4 8-4"/></svg>'
+    description: 'Spin, zoom, and configure product materials with photoreal control.',
+    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 11l8 4 8-4"/><path d="M4 19l8 4 8-4"/></svg>'
   },
   {
-    title: 'Inventory Clarity',
-    description: 'Live stock levels across branches, warehouses, and storefronts.',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h18"/><path d="M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7"/><path d="M9 11h6"/></svg>'
+    title: 'Inventory Command Center',
+    description: 'Real-time stock, branch availability, and demand insights in one dashboard.',
+    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h18"/><path d="M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7"/><path d="M9 11h6"/></svg>'
   },
   {
     title: 'Smart Procurement',
-    description: 'Automate POs, supplier selection, and lead-time tracking.',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h12l3 6H3l3-6z"/><path d="M4 9v10a2 2 0 002 2h12a2 2 0 002-2V9"/></svg>'
+    description: 'Automate POs, supplier selection, and lead-time tracking with AI guidance.',
+    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h12l3 6H3l3-6z"/><path d="M4 9v10a2 2 0 002 2h12a2 2 0 002-2V9"/></svg>'
   },
   {
     title: 'Sales Enablement',
-    description: 'Give teams instant product knowledge and recommended bundles.',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h18"/><path d="M12 3v18"/></svg>'
+    description: 'Give teams instant product knowledge, bundles, and showroom scripts.',
+    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h18"/><path d="M12 3v18"/></svg>'
   },
   {
     title: 'Logistics Control',
     description: 'Track deliveries, routing, and customer updates in real time.',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h13v10H3z"/><path d="M16 9h5l-2 5h-3z"/><circle cx="7" cy="19" r="2"/><circle cx="17" cy="19" r="2"/></svg>'
+    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h13v10H3z"/><path d="M16 9h5l-2 5h-3z"/><circle cx="7" cy="19" r="2"/><circle cx="17" cy="19" r="2"/></svg>'
   },
   {
     title: 'Decision Support',
     description: 'AI-driven guidance for markdowns, replenishment, and promo timing.',
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg>'
+    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg>'
   }
+]
+
+const steps = [
+  { index: '01', title: 'Connect your catalog', sub: 'Import SKUs, materials, and inventory across branches.' },
+  { index: '02', title: 'Activate 3D experiences', sub: 'Launch immersive viewers and material configurators.' },
+  { index: '03', title: 'Automate procurement', sub: 'AI recommends POs and supplier timing.' },
+  { index: '04', title: 'Deliver confidently', sub: 'Real-time logistics visibility for every order.' }
+]
+
+const highlights = [
+  { label: 'Cebu Showroom', value: '412 active SKUs', badge: 'Healthy', tone: 'tone-ok' },
+  { label: 'Manila Warehouse', value: 'Reorder queue 28', badge: 'Action', tone: 'tone-warn' },
+  { label: 'Davao Outlet', value: 'Sell-through 82%', badge: 'On track', tone: 'tone-ok' }
+]
+
+const showcaseCards = [
+  { title: 'Material Lab', sub: 'Toggle upholstery, wood, and finish in seconds.', glow: false },
+  { title: 'Sales Assist', sub: 'Guided bundles and smart add-ons.', glow: true },
+  { title: 'Executive Reporting', sub: 'Executive views for revenue, demand, and inventory health.', glow: false }
+]
+
+const metrics = [
+  { value: '32%', label: 'Faster approvals' },
+  { value: '2.8x', label: 'Showroom engagement' },
+  { value: '$1.4M', label: 'Recovered margin' }
 ]
 </script>
 
-<style scoped>
-@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=domine:400,700');
+<style>
 
-.marketing-shell {
-  --ink: #0b1b2b;
-  --muted: #4b5b6b;
-  --brand: #0f766e;
-  --accent: #f59e0b;
-  --paper: #f6f5f2;
+@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=plus-jakarta-sans:600,700,800');
+
+* {
   font-family: 'Manrope', sans-serif;
-  color: var(--ink);
-  background: var(--paper);
 }
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-.hero {
-  padding: 96px 0 72px;
-  background: radial-gradient(circle at top right, rgba(15, 118, 110, 0.15), transparent 55%),
-    linear-gradient(180deg, #ffffff 0%, #f7f4ef 100%);
-}
-
-.hero-grid {
-  display: grid;
-  gap: 48px;
-  align-items: center;
-}
-
-@media (min-width: 1024px) {
-  .hero-grid {
-    grid-template-columns: 1.1fr 0.9fr;
-  }
-}
-
-.pill {
-  display: inline-flex;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
-  color: var(--brand);
-  font-weight: 600;
-  font-size: 0.85rem;
-}
-
-.hero-title {
-  font-family: 'Domine', serif;
-  font-size: clamp(2.6rem, 4vw, 3.8rem);
-  margin: 20px 0;
-}
-
-.hero-accent {
-  color: var(--brand);
-}
-
-.hero-sub {
-  font-size: 1.1rem;
-  color: var(--muted);
-  max-width: 540px;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin: 28px 0 16px;
-}
-
-.btn {
-  padding: 14px 26px;
-  border-radius: 14px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.btn.primary {
-  background: var(--brand);
-  color: #fff;
-  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.24);
-}
-
-.btn.primary:hover {
-  transform: translateY(-2px);
-}
-
-.btn.ghost {
-  border-color: rgba(15, 118, 110, 0.4);
-  color: var(--brand);
-  background: #fff;
-}
-
-.hero-meta {
-  display: flex;
-  gap: 10px;
-  color: var(--muted);
-  font-size: 0.9rem;
-  flex-wrap: wrap;
-}
-
-.hero-frame {
-  background: #111827;
-  border-radius: 24px;
-  padding: 24px;
-  color: #f8fafc;
-  box-shadow: 0 32px 60px rgba(15, 23, 42, 0.3);
-}
-
-.frame-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.frame-title {
-  margin-left: 8px;
-  font-size: 0.9rem;
-  color: #cbd5f5;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-}
-
-.dot.red {
-  background: #f87171;
-}
-
-.dot.amber {
-  background: #fbbf24;
-}
-
-.dot.green {
-  background: #34d399;
-}
-
-.frame-body {
-  background: linear-gradient(145deg, #1f2937, #0f172a);
-  border-radius: 18px;
-  padding: 28px;
-}
-
-.chair {
-  position: relative;
-  height: 180px;
-  display: grid;
-  place-items: center;
-}
-
-.chair-core {
-  width: 120px;
-  height: 120px;
-  background: linear-gradient(135deg, #0f766e, #38bdf8);
-  border-radius: 24px;
-  transform: rotate(45deg);
-}
-
-.chair-surface {
-  position: absolute;
-  width: 90px;
-  height: 90px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 18px;
-  transform: rotate(45deg);
-}
-
-.chair-shadow {
-  position: absolute;
-  bottom: 8px;
-  width: 140px;
-  height: 16px;
-  background: rgba(15, 23, 42, 0.6);
-  filter: blur(10px);
-  border-radius: 999px;
-}
-
-.frame-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 18px;
-  text-align: center;
-}
-
-.stat-title {
-  font-size: 0.7rem;
-  color: #94a3b8;
-}
-
-.stat-value {
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.frame-footer {
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.chip {
-  background: #1f2937;
-  color: #e2e8f0;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-}
-
-.trust {
-  padding: 64px 0;
-  background: #fff;
-}
-
-.trust-grid {
-  display: grid;
-  gap: 32px;
-  align-items: center;
-}
-
-@media (min-width: 900px) {
-  .trust-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-.section-title {
-  font-family: 'Domine', serif;
-  font-size: clamp(2rem, 3vw, 2.6rem);
-}
-
-.section-sub {
-  color: var(--muted);
-  margin-top: 12px;
-  font-size: 1rem;
-}
-
-.metrics {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-
-.metric {
-  padding: 18px;
-  border-radius: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-}
-
-.metric-value {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--brand);
-}
-
-.features {
-  padding: 84px 0;
-}
-
-.section-head {
-  text-align: center;
-  max-width: 720px;
-  margin: 0 auto 40px;
-}
-
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  font-size: 0.75rem;
-  color: var(--brand);
-}
-
-.feature-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.feature-card {
-  background: #fff;
-  border-radius: 18px;
-  padding: 24px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
-}
-
-.feature-card h3 {
-  margin-top: 14px;
-  font-weight: 700;
-}
-
-.feature-card p {
-  color: var(--muted);
-  margin-top: 8px;
-}
-
-.icon-wrap {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: rgba(15, 118, 110, 0.12);
-  color: var(--brand);
-  display: grid;
-  place-items: center;
-}
-
-.dss {
-  padding: 86px 0;
-  background: linear-gradient(140deg, rgba(15, 118, 110, 0.08), rgba(245, 158, 11, 0.12));
-}
-
-.dss-grid {
-  display: grid;
-  gap: 36px;
-  align-items: center;
-}
-
-@media (min-width: 900px) {
-  .dss-grid {
-    grid-template-columns: 1.1fr 0.9fr;
-  }
-}
-
-.dss-list {
-  display: grid;
-  gap: 12px;
-  margin: 20px 0 28px;
-}
-
-.dss-item {
-  padding: 14px 18px;
-  border-radius: 14px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-}
-
-.dss-panel {
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 22px;
-  padding: 26px;
-}
-
-.panel-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.panel-foot {
-  margin-top: 16px;
-  font-size: 0.8rem;
-  color: #94a3b8;
-}
-
-.badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.badge.warn {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-}
-
-.badge.ok {
-  background: rgba(34, 197, 94, 0.2);
-  color: #4ade80;
-}
-
-.cta {
-  padding: 80px 0;
-}
-
-.cta-card {
-  background: #fff;
-  border-radius: 24px;
-  padding: 32px;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-  display: grid;
-  gap: 20px;
-  align-items: center;
-}
-
-@media (min-width: 900px) {
-  .cta-card {
-    grid-template-columns: 1.2fr 0.8fr;
-  }
-}
-
-.cta-actions {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
-.footer {
-  background: #0b1b2b;
-  color: #d1d5db;
-  padding: 56px 0 32px;
-}
-
-.footer-grid {
-  display: grid;
-  gap: 28px;
-}
-
-@media (min-width: 900px) {
-  .footer-grid {
-    grid-template-columns: 2fr 1fr 1fr;
-  }
-}
-
-.footer a {
-  display: block;
-  color: #d1d5db;
-  margin-top: 8px;
-  text-decoration: none;
-}
-
-.footer-title {
-  font-weight: 600;
-  color: #fff;
-}
-
-.logo {
-  font-family: 'Domine', serif;
-  font-size: 1.4rem;
-  color: #fff;
-}
-
-.footer-bottom {
-  text-align: center;
-  margin-top: 28px;
-  font-size: 0.85rem;
-  color: #94a3b8;
-}
 </style>

@@ -266,6 +266,7 @@ const submitOnboarding = async () => {
 
   loading.value = true
   try {
+    await axios.get('/sanctum/csrf-cookie')
     await axios.post('/api/auth/trial-onboarding', form.value, {
       headers: {
         Authorization: `Bearer ${registerToken.value}`,

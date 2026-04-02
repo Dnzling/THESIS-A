@@ -1,19 +1,16 @@
 <template>
-  <div class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_38%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_42%,_#ffffff_100%)] px-4 py-10">
-    <div class="mx-auto max-w-xl">
-      <Card class="border border-blue-100 bg-white shadow-xl shadow-blue-100/60">
+  <JobPortalLayout>
+    <div class="py-8 lg:py-12">
+      <div class="mx-auto max-w-xl">
+      <Card class="border border-orange-100 bg-white shadow-xl shadow-orange-100/60">
         <template #content>
           <div class="space-y-6 text-center">
             <div class="space-y-2">
-              <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-200">
-                <i class="pi pi-envelope text-xl" />
-              </div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Email Verification</p>
               <h1 class="text-3xl font-semibold text-slate-900">Enter your OTP</h1>
               <p class="mx-auto max-w-md text-sm leading-6 text-slate-500">Use the 6-digit code sent to your email to unlock your applicant account.</p>
             </div>
 
-            <Message severity="info" :closable="false">
+            <Message severity="warn" :closable="false">
               Once verified, we’ll return you to the job post or application step you were trying to access.
             </Message>
 
@@ -22,18 +19,30 @@
             </div>
 
             <div class="flex flex-col gap-3">
-              <Button label="Verify Email" icon="pi pi-check" severity="info" :loading="submitting" @click="submitOtp" />
-              <Button label="Resend OTP" severity="secondary" outlined :loading="resending" @click="resendOtp" />
+              <Button label="Verify Email" icon="pi pi-check" severity="warn" :loading="submitting" @click="submitOtp" />
+              <Button
+                :label="resendLabel"
+                severity="secondary"
+                outlined
+                :loading="resending"
+                :disabled="resending || countdown > 0"
+                @click="resendOtp"
+              />
+              <p v-if="countdown > 0" class="text-xs text-slate-400">
+                You can resend the code in {{ countdown }}s.
+              </p>
             </div>
           </div>
         </template>
       </Card>
+      </div>
     </div>
-  </div>
+  </JobPortalLayout>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import JobPortalLayout from './JobPortalLayout.vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
@@ -45,6 +54,27 @@ const portalAuth = useJobPortalAuthStore()
 const otp = ref('')
 const submitting = ref(false)
 const resending = ref(false)
+const countdown = ref(60)
+let timer: ReturnType<typeof setInterval> | null = null
+
+const tick = () => {
+  if (countdown.value <= 0) {
+    if (timer) clearInterval(timer)
+    timer = null
+    return
+  }
+  countdown.value -= 1
+}
+
+const startCountdown = () => {
+  if (timer) clearInterval(timer)
+  countdown.value = 60
+  timer = setInterval(tick, 1000)
+}
+
+const resendLabel = computed(() => {
+  return countdown.value > 0 ? `Resend OTP (${countdown.value}s)` : 'Resend OTP'
+})
 
 const submitOtp = async () => {
   submitting.value = true
@@ -62,14 +92,24 @@ const submitOtp = async () => {
 }
 
 const resendOtp = async () => {
+  if (countdown.value > 0) return
   resending.value = true
   try {
     await portalAuth.resendOtp()
-    toast.add({ severity: 'info', summary: 'OTP resent', detail: 'Check your email inbox.', life: 2500 })
+    toast.add({ severity: 'warn', summary: 'OTP resent', detail: 'Check your email inbox.', life: 2500 })
+    startCountdown()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Unable to resend OTP', detail: error.response?.data?.message || 'Please try again.', life: 3000 })
   } finally {
     resending.value = false
   }
 }
+
+onMounted(() => {
+  startCountdown()
+})
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
 </script>

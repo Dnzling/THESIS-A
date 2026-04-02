@@ -28,75 +28,95 @@
     <!-- Transfers Table -->
     <Card>
       <template #content>
-        <DataTable :value="transfers" :loading="loading" paginator :rows="pagination.per_page"
-          :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
-          @page="onPageChange" dataKey="id" class="p-datatable-sm" stripedRows>
-          <template #empty>
-            <div class="text-center py-8">
-              <i class="pi pi-inbox text-4xl text-gray-400"></i>
-              <p class="text-gray-600 mt-2">No transfers found</p>
-            </div>
-          </template>
-  
-          <Column field="reference_no" header="Transfer No." style="width: 15%">
-            <template #body="{ data }">
-              <span class="font-medium">{{ data.reference_no }}</span>
-            </template>
-          </Column>
-  
-          <Column field="from_branch.name" header="From Branch" style="width: 15%">
-            <template #body="{ data }">
-              {{ data.from_branch?.name || 'N/A' }}
-            </template>
-          </Column>
-  
-          <Column field="to_branch.name" header="To Branch" style="width: 15%">
-            <template #body="{ data }">
-              {{ data.to_branch?.name || 'N/A' }}
-            </template>
-          </Column>
-  
-          <Column field="quantity" header="Qty" style="width: 10%" />
-  
-          <Column field="transfer_date" header="Date" style="width: 12%">
-            <template #body="{ data }">
-              {{ formatDate(data.transfer_date) }}
-            </template>
-          </Column>
-  
-          <Column field="status" header="Status" style="width: 15%">
-            <template #body="{ data }">
-              <Tag :value="formatStatusLabel(data.status)" :severity="statusSeverity(data.status)" />
-            </template>
-          </Column>
-  
-          <Column header="Actions" style="width: 12%">
-            <template #body="{ data }">
-              <div class="flex gap-2">
-                <Button v-if="canViewTransfers" icon="pi pi-eye" size="small" text severity="info"
-                  @click="router.push({ name: 'inventory.transfers.detail', params: { id: data.id } })"
-                  v-tooltip="'View details'" />
-                <Button v-if="data.status === 'draft' && canCreateTransfers" icon="pi pi-pencil" size="small" text severity="warning"
-                  @click="router.push({ name: 'inventory.transfers.create', query: { edit: data.id } })"
-                  v-tooltip="'Edit draft'" />
-                <Button v-if="data.status === 'draft' && canCancelTransfers" icon="pi pi-times" size="small" text severity="danger"
-                  @click="confirmCancel(data)" v-tooltip="'Cancel transfer'" />
+        <div v-if="loading" class="space-y-3">
+          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+          </div>
+          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+          </div>
+        </div>
+
+        <div v-else>
+          <DataTable :value="transfers" paginator :rows="pagination.per_page"
+            :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
+            @page="onPageChange" dataKey="id" class="p-datatable-sm" stripedRows>
+            <template #empty>
+              <div class="text-center py-8">
+                <i class="pi pi-inbox text-4xl text-gray-400"></i>
+                <p class="text-gray-600 mt-2">No transfers found</p>
               </div>
             </template>
-          </Column>
-        </DataTable>
-  
-        <!-- Pagination Info -->
-        <div class="flex justify-between items-center mt-4 text-sm text-gray-600">
-          <div>
-            Showing {{ (pagination.current_page - 1) * pagination.per_page + 1 }} to
-            {{ Math.min(pagination.current_page * pagination.per_page, pagination.total) }}
-            of {{ pagination.total }} entries
-          </div>
-          <div class="flex items-center gap-2">
-            <span>Rows per page:</span>
-            <Select v-model="pagination.per_page" :options="[10, 15, 25, 50, 100]" @change="loadTransfers(1)"
-              style="width: 80px" />
+    
+            <Column field="reference_no" header="Transfer No." style="width: 15%">
+              <template #body="{ data }">
+                <span class="font-medium">{{ data.reference_no }}</span>
+              </template>
+            </Column>
+    
+            <Column field="from_branch.name" header="From Branch" style="width: 15%">
+              <template #body="{ data }">
+                {{ data.from_branch?.name || 'N/A' }}
+              </template>
+            </Column>
+    
+            <Column field="to_branch.name" header="To Branch" style="width: 15%">
+              <template #body="{ data }">
+                {{ data.to_branch?.name || 'N/A' }}
+              </template>
+            </Column>
+    
+            <Column field="quantity" header="Qty" style="width: 10%" />
+    
+            <Column field="transfer_date" header="Date" style="width: 12%">
+              <template #body="{ data }">
+                {{ formatDate(data.transfer_date) }}
+              </template>
+            </Column>
+    
+            <Column field="status" header="Status" style="width: 15%">
+              <template #body="{ data }">
+                <Tag :value="formatStatusLabel(data.status)" :severity="statusSeverity(data.status)" />
+              </template>
+            </Column>
+    
+            <Column header="Actions" style="width: 12%">
+              <template #body="{ data }">
+                <div class="flex gap-2">
+                  <Button v-if="canViewTransfers" icon="pi pi-eye" size="small" text severity="info"
+                    @click="router.push({ name: 'inventory.transfers.detail', params: { id: data.id } })"
+                    v-tooltip="'View details'" />
+                  <Button v-if="data.status === 'draft' && canCreateTransfers" icon="pi pi-pencil" size="small" text severity="warning"
+                    @click="router.push({ name: 'inventory.transfers.create', query: { edit: data.id } })"
+                    v-tooltip="'Edit draft'" />
+                  <Button v-if="data.status === 'draft' && canCancelTransfers" icon="pi pi-times" size="small" text severity="danger"
+                    @click="confirmCancel(data)" v-tooltip="'Cancel transfer'" />
+                </div>
+              </template>
+            </Column>
+          </DataTable>
+    
+          <div class="flex justify-between items-center mt-4 text-sm text-gray-600">
+            <div>
+              Showing {{ (pagination.current_page - 1) * pagination.per_page + 1 }} to
+              {{ Math.min(pagination.current_page * pagination.per_page, pagination.total) }}
+              of {{ pagination.total }} entries
+            </div>
+            <div class="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <Select v-model="pagination.per_page" :options="[10, 15, 25, 50, 100]" @change="loadTransfers(1)"
+                style="width: 80px" />
+            </div>
           </div>
         </div>
       </template>

@@ -94,9 +94,28 @@
 
     <Card>
       <template #content>
+        <div v-if="loading" class="space-y-3">
+          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+          </div>
+          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+          </div>
+        </div>
+
         <DataTable
+          v-else
           :value="transactions"
-          :loading="loading"
           paginator
           stripedRows
           class="p-datatable-sm"

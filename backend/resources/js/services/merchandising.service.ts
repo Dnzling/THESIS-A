@@ -330,6 +330,38 @@ class MerchandisingService {
         const response = await axiosClient.post(`${this.baseUrl}/delivery-fee-settings/estimate`, data, { params })
         return response.data
     }
+
+    // ==================== 3D RECONSTRUCTION ====================
+    async get3DReconstructions(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/3d-reconstructions`, { params })
+        return response.data
+    }
+
+    async create3DReconstruction(formData: FormData, config: any = {}) {
+        const response = await axiosClient.post(`${this.baseUrl}/3d-reconstructions`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            },
+            timeout: 0,
+            ...config,
+        })
+        return response.data
+    }
+
+    async get3DReconstruction(id: number) {
+        const response = await axiosClient.get(`${this.baseUrl}/3d-reconstructions/${id}`)
+        return response.data
+    }
+
+    async get3DReconstructionStatus(id: number) {
+        const response = await axiosClient.get(`${this.baseUrl}/3d-reconstructions/${id}/status`)
+        return response.data
+    }
+
+    async cancel3DReconstruction(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/3d-reconstructions/${id}/cancel`)
+        return response.data
+    }
 }
 
 export default new MerchandisingService()

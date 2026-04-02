@@ -346,6 +346,52 @@ class SalesPosController extends Controller
         return response()->json(['success' => true, 'data' => $order]);
     }
 
+    public function sendToLogistics(Request $request, int $id): JsonResponse
+    {
+        $query = SalesOrder::query()->with(['delivery']);
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        if (!$order->delivery_required) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery is not enabled for this order.',
+            ], 422);
+        }
+
+        if (empty($order->delivery_address)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery address is required before sending to logistics.',
+            ], 422);
+        }
+
+        if ((string) $order->payment_status !== 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order must be paid before sending to logistics.',
+            ], 422);
+        }
+
+        if ($order->delivery) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery is already assigned for this order.',
+            ], 422);
+        }
+
+        $notes = trim((string) ($order->notes ?? ''));
+        $line = '[' . now()->format('Y-m-d H:i') . '] Sent to logistics for delivery assignment.';
+        $order->notes = $notes === '' ? $line : $notes . PHP_EOL . $line;
+        $order->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order queued for logistics.',
+            'data' => $order->fresh(['delivery', 'branch']),
+        ]);
+    }
+
     public function dashboard(Request $request): JsonResponse
     {
         $query = SalesOrder::query();

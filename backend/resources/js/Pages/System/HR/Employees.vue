@@ -326,7 +326,7 @@ const statuses = ref<Status[]>([
 const fetchEmployeesAxios = async () => {
   loading.value = true
   try {
-    const response = await hrService.api.get('api/employees', {
+    const response = await hrService.api.get('/api/employees', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }

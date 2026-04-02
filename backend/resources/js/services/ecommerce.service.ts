@@ -1,32 +1,63 @@
-import axiosClient from '../axios'
+import axios from 'axios'
+import { router } from '@inertiajs/vue3'
+
+const ecommerceClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  headers: {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  },
+  withCredentials: false,
+  timeout: 30000,
+})
+
+ecommerceClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token') || localStorage.getItem('access_token')
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+ecommerceClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status
+    if (status === 401 || status === 403) {
+      const redirect = window.location.pathname + window.location.search
+      router.visit('/customer/login', { data: { redirect }, replace: true })
+    }
+    return Promise.reject(error)
+  },
+)
 
 const ecommerceService = {
   getProducts(params?: any) {
-    return axiosClient.get('/api/ecommerce/products', { params })
+    return ecommerceClient.get('/api/ecommerce/products', { params })
   },
 
   getActiveStockProducts(params?: any) {
-    return axiosClient.get('/api/ecommerce/products/active-stock', { params })
+    return ecommerceClient.get('/api/ecommerce/products/active-stock', { params })
   },
 
   getProduct(id: number | string) {
-    return axiosClient.get(`/api/ecommerce/products/${id}`)
+    return ecommerceClient.get(`/api/ecommerce/products/${id}`)
   },
 
   getStores(params?: any) {
-    return axiosClient.get('/api/ecommerce/stores', { params })
+    return ecommerceClient.get('/api/ecommerce/stores', { params })
   },
 
   getStore(storeId: number | string) {
-    return axiosClient.get(`/api/ecommerce/stores/${storeId}`)
+    return ecommerceClient.get(`/api/ecommerce/stores/${storeId}`)
   },
 
   getStoreProducts(storeId: number | string, params?: any) {
-    return axiosClient.get(`/api/ecommerce/stores/${storeId}/products`, { params })
+    return ecommerceClient.get(`/api/ecommerce/stores/${storeId}/products`, { params })
   },
 
   getStoreReviews(storeId: number | string, params?: any) {
-    return axiosClient.get(`/api/ecommerce/stores/${storeId}/reviews`, { params })
+    return ecommerceClient.get(`/api/ecommerce/stores/${storeId}/reviews`, { params })
   },
 
   getDssRecommendations(payload: {
@@ -39,39 +70,39 @@ const ecommerceService = {
     per_page?: number
     page?: number
   }) {
-    return axiosClient.post('/api/ecommerce/dss/recommendations', payload)
+    return ecommerceClient.post('/api/ecommerce/dss/recommendations', payload)
   },
 
   followStore(storeId: number | string) {
-    return axiosClient.post(`/api/ecommerce/stores/${storeId}/follow`)
+    return ecommerceClient.post(`/api/ecommerce/stores/${storeId}/follow`)
   },
 
   unfollowStore(storeId: number | string) {
-    return axiosClient.delete(`/api/ecommerce/stores/${storeId}/follow`)
+    return ecommerceClient.delete(`/api/ecommerce/stores/${storeId}/follow`)
   },
 
   getCart() {
-    return axiosClient.get('/api/ecommerce/cart')
+    return ecommerceClient.get('/api/ecommerce/cart')
   },
 
-  addToCart(payload: { product_id: number; variation_id?: number | null; quantity: number }) {
-    return axiosClient.post('/api/ecommerce/cart/items', payload)
+  addToCart(payload: { product_id: number; variation_id?: number | null; quantity: number; store_id?: number | null }) {
+    return ecommerceClient.post('/api/ecommerce/cart/items', payload)
   },
 
   updateCartItem(itemId: number, payload: { quantity: number }) {
-    return axiosClient.put(`/api/ecommerce/cart/items/${itemId}`, payload)
+    return ecommerceClient.put(`/api/ecommerce/cart/items/${itemId}`, payload)
   },
 
   removeCartItem(itemId: number) {
-    return axiosClient.delete(`/api/ecommerce/cart/items/${itemId}`)
+    return ecommerceClient.delete(`/api/ecommerce/cart/items/${itemId}`)
   },
 
   clearCart() {
-    return axiosClient.post('/api/ecommerce/cart/clear')
+    return ecommerceClient.post('/api/ecommerce/cart/clear')
   },
 
   getAddressTemplates() {
-    return axiosClient.get('/api/ecommerce/address-templates')
+    return ecommerceClient.get('/api/ecommerce/address-templates')
   },
 
   createAddressTemplate(payload: {
@@ -83,7 +114,7 @@ const ecommerceService = {
     address_line: string
     is_default?: boolean
   }) {
-    return axiosClient.post('/api/ecommerce/address-templates', payload)
+    return ecommerceClient.post('/api/ecommerce/address-templates', payload)
   },
 
   updateAddressTemplate(id: number, payload: {
@@ -95,26 +126,26 @@ const ecommerceService = {
     address_line: string
     is_default?: boolean
   }) {
-    return axiosClient.put(`/api/ecommerce/address-templates/${id}`, payload)
+    return ecommerceClient.put(`/api/ecommerce/address-templates/${id}`, payload)
   },
 
   validateVoucher(payload: {
     code: string
     amount?: number
   }) {
-    return axiosClient.post('/api/ecommerce/vouchers/validate', payload)
+    return ecommerceClient.post('/api/ecommerce/vouchers/validate', payload)
   },
 
   getProvinces() {
-    return axiosClient.get('/api/address/provinces')
+    return ecommerceClient.get('/api/address/provinces')
   },
 
   getCities(provinceId: string) {
-    return axiosClient.get(`/api/address/cities/${provinceId}`)
+    return ecommerceClient.get(`/api/address/cities/${provinceId}`)
   },
 
   getBarangays(cityId: string) {
-    return axiosClient.get(`/api/address/barangays/${cityId}`)
+    return ecommerceClient.get(`/api/address/barangays/${cityId}`)
   },
 
   checkout(payload: {
@@ -131,22 +162,22 @@ const ecommerceService = {
     notes?: string
     item_ids?: number[]
   }) {
-    return axiosClient.post('/api/ecommerce/checkout', payload)
+    return ecommerceClient.post('/api/ecommerce/checkout', payload)
   },
 
   getOrders(params?: any) {
-    return axiosClient.get('/api/ecommerce/orders', { params })
+    return ecommerceClient.get('/api/ecommerce/orders', { params })
   },
 
   getOrder(id: number | string) {
-    return axiosClient.get(`/api/ecommerce/orders/${id}`)
+    return ecommerceClient.get(`/api/ecommerce/orders/${id}`)
   },
 
   requestOrderCancellation(orderId: number | string, payload: {
     reason: string
     details?: string
   }) {
-    return axiosClient.post(`/api/ecommerce/orders/${orderId}/cancel-requests`, payload)
+    return ecommerceClient.post(`/api/ecommerce/orders/${orderId}/cancel-requests`, payload)
   },
 
   requestOrderReturn(itemId: number | string, payload: {
@@ -154,26 +185,26 @@ const ecommerceService = {
     details?: string
     requested_quantity?: number
   }) {
-    return axiosClient.post(`/api/ecommerce/order-items/${itemId}/return-requests`, payload)
+    return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/return-requests`, payload)
   },
 
   submitItemReview(itemId: number | string, payload: {
     rating: number
     review_text?: string
   }) {
-    return axiosClient.post(`/api/ecommerce/order-items/${itemId}/reviews`, payload)
+    return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/reviews`, payload)
   },
 
   getChatThreads(params?: any) {
-    return axiosClient.get('/api/ecommerce/chat/threads', { params })
+    return ecommerceClient.get('/api/ecommerce/chat/threads', { params })
   },
 
   getStoreChatMessages(storeId: number | string, params?: any) {
-    return axiosClient.get(`/api/ecommerce/chat/stores/${storeId}/messages`, { params })
+    return ecommerceClient.get(`/api/ecommerce/chat/stores/${storeId}/messages`, { params })
   },
 
   sendStoreChatMessage(storeId: number | string, payload: { message: string; order_id?: number }) {
-    return axiosClient.post(`/api/ecommerce/chat/stores/${storeId}/messages`, payload)
+    return ecommerceClient.post(`/api/ecommerce/chat/stores/${storeId}/messages`, payload)
   },
 }
 

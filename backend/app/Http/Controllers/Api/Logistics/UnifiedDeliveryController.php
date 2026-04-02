@@ -32,7 +32,7 @@ class UnifiedDeliveryController extends Controller
 
     private const ORDER_SOURCES = ['ecommerce', 'sales'];
 
-    private const PENDING_ORDER_STATUSES = ['pending', 'pending_payment', 'confirmed'];
+    private const PENDING_ORDER_STATUSES = ['pending', 'pending_payment', 'confirmed', 'ready_for_dispatch'];
 
     public function orders(Request $request): JsonResponse
     {
@@ -66,7 +66,7 @@ class UnifiedDeliveryController extends Controller
 
         if ($statusFilter !== '') {
             $rows = $rows->filter(function (array $row) use ($statusFilter) {
-                if ($statusFilter === 'pending') {
+                if (in_array($statusFilter, ['pending', 'ready_for_dispatch'], true)) {
                     return (bool) ($row['can_create_delivery'] ?? false);
                 }
 
@@ -235,6 +235,12 @@ class UnifiedDeliveryController extends Controller
             'vehicle_id' => 'required|exists:ecommerce_delivery_vehicles,id',
             'distance_km' => 'nullable|numeric|min:0',
             'per_km_charge' => 'required|numeric|min:0',
+            'base_fee' => 'nullable|numeric|min:0',
+            'per_kg_fee' => 'nullable|numeric|min:0',
+            'weight_kg' => 'nullable|numeric|min:0',
+            'zone_id' => 'nullable|integer|min:1',
+            'zone_rate_id' => 'nullable|integer|min:1',
+            'zone_name' => 'nullable|string|max:120',
             'estimated_delivery_at' => 'nullable|date',
             'notes' => 'nullable|string|max:1000',
         ]);
@@ -261,7 +267,11 @@ class UnifiedDeliveryController extends Controller
 
         $distance = isset($validated['distance_km']) ? (float) $validated['distance_km'] : 0;
         $perKmCharge = (float) $validated['per_km_charge'];
-        $estimatedFee = round($distance * $perKmCharge, 2);
+        $baseFee = isset($validated['base_fee']) ? (float) $validated['base_fee'] : 0.0;
+        $perKgFee = isset($validated['per_kg_fee']) ? (float) $validated['per_kg_fee'] : 0.0;
+        $weightKg = isset($validated['weight_kg']) ? (float) $validated['weight_kg'] : 0.0;
+        $estimatedFee = round($baseFee + ($distance * $perKmCharge) + ($weightKg * $perKgFee), 2);
+        $zoneLabel = trim((string) ($validated['zone_name'] ?? ''));
 
         if ($validated['source_type'] === 'ecommerce') {
             $order = $this->resolveEcommerceOrder($request, (int) $validated['order_id'], withDelivery: true);
@@ -283,7 +293,18 @@ class UnifiedDeliveryController extends Controller
                     'distance_km' => $distance,
                     'per_km_charge' => $perKmCharge,
                     'estimated_fee' => $estimatedFee,
-                    'notes' => $this->composeAssignmentNotes($validated['notes'] ?? null, $distance, $perKmCharge, $estimatedFee, $vehicle),
+                    'notes' => $this->composeAssignmentNotes(
+                        $validated['notes'] ?? null,
+                        $distance,
+                        $perKmCharge,
+                        $estimatedFee,
+                        $vehicle,
+                        $baseFee,
+                        $perKgFee,
+                        $weightKg,
+                        $zoneLabel,
+                        $validated['zone_rate_id'] ?? null
+                    ),
                     'updated_by' => $request->user()->id,
                 ]);
                 $delivery->save();
@@ -301,7 +322,18 @@ class UnifiedDeliveryController extends Controller
                     'distance_km' => $distance,
                     'per_km_charge' => $perKmCharge,
                     'estimated_fee' => $estimatedFee,
-                    'notes' => $this->composeAssignmentNotes($validated['notes'] ?? null, $distance, $perKmCharge, $estimatedFee, $vehicle),
+                    'notes' => $this->composeAssignmentNotes(
+                        $validated['notes'] ?? null,
+                        $distance,
+                        $perKmCharge,
+                        $estimatedFee,
+                        $vehicle,
+                        $baseFee,
+                        $perKgFee,
+                        $weightKg,
+                        $zoneLabel,
+                        $validated['zone_rate_id'] ?? null
+                    ),
                     'created_by' => $request->user()->id,
                     'updated_by' => $request->user()->id,
                 ]);
@@ -358,12 +390,23 @@ class UnifiedDeliveryController extends Controller
                 'courier_contact' => (string) $validated['courier_contact'],
                 'status' => 'assigned',
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
-                'distance_km' => $distance,
-                'per_km_charge' => $perKmCharge,
-                'estimated_fee' => $estimatedFee,
-                'notes' => $this->composeAssignmentNotes($validated['notes'] ?? null, $distance, $perKmCharge, $estimatedFee, $vehicle),
-                'updated_by' => $request->user()->id,
-            ]);
+                    'distance_km' => $distance,
+                    'per_km_charge' => $perKmCharge,
+                    'estimated_fee' => $estimatedFee,
+                    'notes' => $this->composeAssignmentNotes(
+                        $validated['notes'] ?? null,
+                        $distance,
+                        $perKmCharge,
+                        $estimatedFee,
+                        $vehicle,
+                        $baseFee,
+                        $perKgFee,
+                        $weightKg,
+                        $zoneLabel,
+                        $validated['zone_rate_id'] ?? null
+                    ),
+                    'updated_by' => $request->user()->id,
+                ]);
             $delivery->save();
         } else {
             $delivery = SalesOrderDelivery::query()->create([
@@ -379,7 +422,18 @@ class UnifiedDeliveryController extends Controller
                 'distance_km' => $distance,
                 'per_km_charge' => $perKmCharge,
                 'estimated_fee' => $estimatedFee,
-                'notes' => $this->composeAssignmentNotes($validated['notes'] ?? null, $distance, $perKmCharge, $estimatedFee, $vehicle),
+                'notes' => $this->composeAssignmentNotes(
+                    $validated['notes'] ?? null,
+                    $distance,
+                    $perKmCharge,
+                    $estimatedFee,
+                    $vehicle,
+                    $baseFee,
+                    $perKgFee,
+                    $weightKg,
+                    $zoneLabel,
+                    $validated['zone_rate_id'] ?? null
+                ),
                 'created_by' => $request->user()->id,
                 'updated_by' => $request->user()->id,
             ]);
@@ -675,6 +729,8 @@ class UnifiedDeliveryController extends Controller
             ->with([
                 'assignedBranch:id,name,latitude,longitude',
                 'delivery:id,order_id,tracking_number,status,driver_user_id,vehicle_id,created_at,updated_at',
+                'items:id,order_id,product_id,quantity',
+                'items.product:id,weight_kg',
             ])
             ->select([
                 'id',
@@ -716,9 +772,10 @@ class UnifiedDeliveryController extends Controller
                 'branch_name' => $order->assignedBranch?->name,
                 'total_amount' => $order->total_amount,
                 'delivery_id' => $delivery?->id,
-                'delivery_status' => $delivery?->status,
+                'delivery_status' => $canCreate ? 'ready_for_dispatch' : $delivery?->status,
                 'tracking_number' => $delivery?->tracking_number,
                 'can_create_delivery' => $canCreate,
+                'weight_kg' => $this->orderItemsWeight($order->items ?? []),
                 'created_at' => $order->created_at,
             ];
         });
@@ -730,6 +787,8 @@ class UnifiedDeliveryController extends Controller
             ->with([
                 'branch:id,name,latitude,longitude',
                 'delivery:id,sales_order_id,tracking_number,status,driver_user_id,created_at,updated_at',
+                'items:id,order_id,product_id,quantity',
+                'items.product:id,weight_kg',
             ])
             ->select([
                 'id',
@@ -773,9 +832,10 @@ class UnifiedDeliveryController extends Controller
                 'branch_name' => $order->branch?->name,
                 'total_amount' => $order->total_amount,
                 'delivery_id' => $delivery?->id,
-                'delivery_status' => $delivery?->status,
+                'delivery_status' => $canCreate ? 'ready_for_dispatch' : $delivery?->status,
                 'tracking_number' => $delivery?->tracking_number,
                 'can_create_delivery' => $canCreate,
+                'weight_kg' => $this->orderItemsWeight($order->items ?? []),
                 'created_at' => $order->created_at,
             ];
         });
@@ -847,7 +907,8 @@ class UnifiedDeliveryController extends Controller
         if ($withDelivery) {
             $query->with([
                 'assignedBranch:id,name,latitude,longitude',
-                'items:id,order_id,product_name,sku,quantity,unit_price,line_total',
+                'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
+                'items.product:id,product_name,sku,weight_kg',
                 'delivery',
             ]);
         }
@@ -863,7 +924,8 @@ class UnifiedDeliveryController extends Controller
         if ($withDelivery) {
             $query->with([
                 'branch:id,name,latitude,longitude',
-                'items:id,order_id,product_name,sku,quantity,unit_price,line_total',
+                'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
+                'items.product:id,product_name,sku,weight_kg',
                 'delivery',
             ]);
         }
@@ -897,11 +959,31 @@ class UnifiedDeliveryController extends Controller
         return $prefix . str_pad((string) ($maxSequence + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    private function composeAssignmentNotes(?string $notes, float $distance, float $perKmCharge, float $estimatedFee, EcommerceDeliveryVehicle $vehicle): string
+    private function composeAssignmentNotes(
+        ?string $notes,
+        float $distance,
+        float $perKmCharge,
+        float $estimatedFee,
+        EcommerceDeliveryVehicle $vehicle,
+        float $baseFee = 0,
+        float $perKgFee = 0,
+        float $weightKg = 0,
+        string $zoneLabel = '',
+        ?int $zoneRateId = null
+    ): string
     {
         $parts = [];
         if (!empty($notes)) {
             $parts[] = trim($notes);
+        }
+
+        if ($zoneLabel !== '') {
+            $rateLabel = $zoneRateId ? "Rate #{$zoneRateId}" : 'Rate applied';
+            $parts[] = sprintf('Zone: %s (%s)', $zoneLabel, $rateLabel);
+        }
+
+        if ($baseFee > 0 || $perKgFee > 0 || $weightKg > 0) {
+            $parts[] = sprintf('Base Fee: %.2f | Weight: %.2f kg | Per KG: %.2f', $baseFee, $weightKg, $perKgFee);
         }
 
         $parts[] = sprintf(
@@ -930,6 +1012,16 @@ class UnifiedDeliveryController extends Controller
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
 
         return $earthRadius * $c;
+    }
+
+    private function orderItemsWeight($items): float
+    {
+        $total = 0.0;
+        foreach ($items as $item) {
+            $weight = (float) ($item->product?->weight_kg ?? 0);
+            $total += $weight * (int) ($item->quantity ?? 0);
+        }
+        return $total;
     }
 
     private function publicUrl(?string $path): ?string

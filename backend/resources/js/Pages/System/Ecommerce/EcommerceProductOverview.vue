@@ -383,7 +383,8 @@ async function addToCart() {
     await ecommerceService.addToCart({
       product_id: Number(product.value.id),
       variation_id: selectedVariationId.value ? Number(selectedVariationId.value) : null,
-      quantity: Number(quantity.value || 1)
+      quantity: Number(quantity.value || 1),
+      store_id: product.value?.store_id ? Number(product.value.store_id) : null,
     })
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
     toast.add({ severity: 'success', summary: 'Added to cart', detail: `${product.value.product_name}`, life: 1600 })

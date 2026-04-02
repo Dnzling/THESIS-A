@@ -1,6 +1,7 @@
 <!-- views/system/employees/EmployeeInformation.vue -->
 <template>
   <div class="min-h-screen">
+    <ConfirmDialog />
     <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center h-96">
@@ -27,6 +28,7 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
+          <Button label="Change Role" icon="pi pi-id-card" severity="warning" outlined @click="openRoleDialog" />
           <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="editEmployee" />
           <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" />
         </div>
@@ -217,6 +219,32 @@
           <Button label="Print" icon="pi pi-print" severity="info" @click="handlePrintPayslip(selectedPayslip)" />
         </template>
       </Dialog>
+
+      <Dialog v-model:visible="showRoleDialog" header="Change Employee Role" :style="{ width: '520px' }" modal>
+        <div class="space-y-4">
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Changing a role updates access immediately. Make sure this is intentional.
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold text-gray-700">Current Role</label>
+            <InputText :model-value="formatLabel(employeeInfo.employment_details?.role)" disabled class="w-full" />
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold text-gray-700">New Role *</label>
+            <Select v-model="selectedRoleId" :options="roleOptions" optionLabel="label" optionValue="value"
+              placeholder="Select role" filter class="w-full" />
+          </div>
+        </div>
+
+        <template #footer>
+          <Button label="Cancel" text @click="showRoleDialog = false" />
+          <Button label="Update Role" icon="pi pi-check" severity="warning"
+            :loading="savingRole" :disabled="!selectedRoleId"
+            @click="confirmRoleChange" />
+        </template>
+      </Dialog>
     </template>
     </div>
   </div>
@@ -226,8 +254,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import hrService from '../../../services/hr.services'
 import type { EmployeeDetails } from '../../../types/hr'
+import ConfirmDialog from 'primevue/confirmdialog'
 
 // Import tab components
 import EmployeeInfoTab from './components/tabs/EmployeeInfoTab.vue'
@@ -239,6 +269,7 @@ import EmployeeDeductionsTab from './components/tabs/EmployeeDeductionsTab.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const confirm = useConfirm()
 const employeeId = route.params.id as string
 
 // Refs for child components
@@ -251,6 +282,10 @@ const loading = ref(false)
 const error = ref('')
 const showPayslipDialog = ref(false)
 const selectedPayslip = ref<any | null>(null)
+const showRoleDialog = ref(false)
+const savingRole = ref(false)
+const roleOptions = ref<{ label: string; value: number }[]>([])
+const selectedRoleId = ref<number | null>(null)
 
 // State
 const activeTab = ref('info')
@@ -274,6 +309,10 @@ const attendanceRate = computed(() => {
   return employeeInfo.value.quick_stats?.attendance_rate || 0
 })
 
+const currentRoleId = computed(() => {
+  return employeeInfo.value?.employment_details?.role_id || null
+})
+
 // API Functions
 const fetchEmployeeData = async () => {
   loading.value = true
@@ -284,6 +323,7 @@ const fetchEmployeeData = async () => {
 
     if (response.success) {
       employeeInfo.value = response.data
+      selectedRoleId.value = currentRoleId.value
     }
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to fetch employee data'
@@ -295,6 +335,19 @@ const fetchEmployeeData = async () => {
     })
   } finally {
     loading.value = false
+  }
+}
+
+const loadRoles = async () => {
+  try {
+    const response = await hrService.api.get('/api/store/roles/store-specific')
+    const roles = response?.data?.data || response?.data || response || []
+    roleOptions.value = roles.map((role: any) => ({
+      label: role.display_name || role.name || `Role ${role.id}`,
+      value: role.id
+    }))
+  } catch (err) {
+    console.error('Failed to load roles', err)
   }
 }
 
@@ -373,6 +426,53 @@ const editEmployee = () => {
 
 const exportData = () => {
   window.open(`/api/employees/${employeeId}/export`, '_blank')
+}
+
+const openRoleDialog = () => {
+  selectedRoleId.value = currentRoleId.value
+  showRoleDialog.value = true
+}
+
+const confirmRoleChange = () => {
+  if (!selectedRoleId.value || selectedRoleId.value === currentRoleId.value) {
+    showRoleDialog.value = false
+    return
+  }
+
+  confirm.require({
+    header: 'Confirm Role Change',
+    message: 'This will immediately update the employee access. Continue?',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Yes, update',
+    rejectLabel: 'Cancel',
+    accept: () => updateEmployeeRole()
+  })
+}
+
+const updateEmployeeRole = async () => {
+  if (!selectedRoleId.value) return
+
+  savingRole.value = true
+  try {
+    const payload = { role_id: selectedRoleId.value }
+    const response = await hrService.api.put(`/api/employees/${employeeId}`, payload)
+    if (response?.data?.success) {
+      toast.add({ severity: 'success', summary: 'Updated', detail: 'Role updated successfully', life: 2500 })
+      showRoleDialog.value = false
+      await fetchEmployeeData()
+    } else {
+      toast.add({ severity: 'warn', summary: 'Warning', detail: 'Role update returned no changes', life: 2500 })
+    }
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Failed',
+      detail: err.response?.data?.message || 'Failed to update role',
+      life: 3000
+    })
+  } finally {
+    savingRole.value = false
+  }
 }
 
 // Event Handlers
@@ -491,6 +591,7 @@ watch(activeTab, (newTab) => {
 // Lifecycle
 onMounted(() => {
   fetchEmployeeData()
+  loadRoles()
 })
 </script>
 

@@ -1,49 +1,16 @@
 <template>
-  <div class="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_34%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_42%,_#ffffff_100%)] px-4 py-10">
-    <div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_1fr] lg:items-center">
-      <section class="hidden rounded-[2rem] border border-blue-100 bg-white/75 p-10 shadow-sm backdrop-blur lg:block">
-        <div class="space-y-5">
-          <div class="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700">
-            <i class="pi pi-user-plus" />
-            Applicant Registration
-          </div>
-          <h1 class="text-4xl font-semibold tracking-tight text-slate-900">Create your applicant account once, then apply faster every time.</h1>
-          <p class="text-base leading-7 text-slate-600">
-            Verify your email with OTP, keep your applications in one dashboard, and receive interview updates directly from hiring teams.
-          </p>
-          <div class="rounded-3xl bg-blue-600 p-6 text-white">
-            <p class="text-sm font-semibold uppercase tracking-[0.24em] text-blue-100">What happens next</p>
-            <ul class="mt-4 space-y-3 text-sm leading-6 text-blue-50">
-              <li class="flex items-start gap-3">
-                <i class="pi pi-check-circle mt-0.5" />
-                Verify your email through a one-time password.
-              </li>
-              <li class="flex items-start gap-3">
-                <i class="pi pi-check-circle mt-0.5" />
-                Go back to the job post you were viewing.
-              </li>
-              <li class="flex items-start gap-3">
-                <i class="pi pi-check-circle mt-0.5" />
-                Track responses and interview schedules in your applicant dashboard.
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <Card class="border border-blue-100 bg-white shadow-xl shadow-blue-100/60">
-        <template #content>
-          <form class="space-y-5" @submit.prevent="submitRegister">
-            <div class="space-y-2 text-center">
-              <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-200">
-                <i class="pi pi-id-card text-xl" />
-              </div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Job Portal</p>
+  <JobPortalLayout>
+    <div class="flex min-h-[calc(100vh-88px)] items-center justify-center px-4 py-10">
+      <div class="grid w-full max-w-6xl overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-2xl lg:grid-cols-2">
+        <div class="p-8 lg:p-10">
+          <form class="space-y-6" @submit.prevent="submitRegister">
+            <div class="space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-500">Job Portal</p>
               <h1 class="text-3xl font-semibold text-slate-900">Create Applicant Account</h1>
-              <p class="text-sm text-slate-500">We’ll verify your email first before you continue.</p>
+              <p class="text-sm text-slate-500">We'll verify your email first before you continue.</p>
             </div>
 
-            <Message severity="info" :closable="false">
+            <Message severity="warn" :closable="false">
               This account is only for the applicant portal and job applications.
             </Message>
 
@@ -68,22 +35,39 @@
               <Password v-model="form.password" class="w-full" inputClass="w-full" toggleMask />
             </div>
 
-            <Button type="submit" label="Create Account" icon="pi pi-user-plus" severity="info" :loading="submitting" fluid />
+            <Button type="submit" label="Create Account" severity="warn" :loading="submitting" fluid />
 
             <div class="text-center text-sm text-slate-500">
               Already have an applicant account?
-              <button type="button" class="font-semibold text-blue-600 transition hover:text-blue-700" @click="router.push({ name: 'job-portal.login' })">
+              <button type="button" class="font-semibold text-orange-600 transition hover:text-orange-700" @click="router.push({ name: 'job-portal.login' })">
                 Login here
               </button>
             </div>
           </form>
-        </template>
-      </Card>
+        </div>
+        <div class="bg-gradient-to-br from-orange-500 via-orange-500 to-orange-600 p-10 text-white">
+          <div class="space-y-6">
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-orange-100">Applicant Portal</p>
+              <h2 class="mt-4 text-4xl font-semibold leading-tight">Create your profile once, apply faster every time.</h2>
+              <p class="mt-4 text-sm leading-6 text-orange-100">
+                Keep your job history, preferred roles, and interview updates together while applying across stores.
+              </p>
+            </div>
+            <div class="space-y-3 text-sm text-orange-100">
+              <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">Email verification for secure access</div>
+              <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">Saved profile details for re-use</div>
+              <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">Track interview progress easily</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+  </JobPortalLayout>
 </template>
 
 <script setup lang="ts">
+import JobPortalLayout from './JobPortalLayout.vue'
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'

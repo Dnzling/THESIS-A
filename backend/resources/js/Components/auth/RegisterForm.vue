@@ -1,16 +1,22 @@
 <template>
-    <div class="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
-        <Card class="w-full max-w-md shadow-2xl">
-            <template #title>
+    <div class="min-h-screen bg-slate-50">
+        <div class="grid w-full h-screen gap-0 lg:grid-cols-2 bg-white">
+            <Auth3DHero
+                theme="light"
+                title="Build in 3D"
+                subtitle="Create stunning, immersive product showcases with a simple upload."
+                brand="Furnisync"
+                footer="Live 3D previews for your catalog"
+                class="h-full"
+            />
+            <div class="w-full p-8 lg:p-12 flex flex-col justify-center">
                 <div class="flex items-center justify-left mb-2 mt-3">
                     <div>
-                        <h1 class="text-3xl font-bold text-gray-900">Register</h1>
+                        <h1 class="text-3xl font-bold text-orange-500">Register</h1>
                         <p class="text-gray-400 mt-1 text-sm font-medium">Create your account to start</p>
                     </div>
                 </div>
-            </template>
-    
-            <template #content>
+
                 <!-- Error Message -->
                 <Message v-if="errorMessage" severity="error" :closable="true" @close="errorMessage = ''" class="mb-6">
                     {{ errorMessage }}
@@ -123,12 +129,10 @@
     
                     <!-- Submit Button -->
                     <Button type="submit" label="Sign Up"  :loading="props.isSubmitting"
-                        class="w-full" severity="contrast"
+                        class="w-full" severity="warn"
                         :disabled="props.isSubmitting" />
                 </form>
-            </template>
-    
-            <template #footer>
+
                 <div class="text-center pt-6 border-t border-gray-100">
                     <p class="text-sm text-gray-500 mt-4">
                         By signing in, you agree to our
@@ -136,8 +140,8 @@
                         <a href="#" class="text-blue-600 hover:underline">Privacy Policy</a>
                     </p>
                 </div>
-            </template>
-        </Card>
+            </div>
+        </div>
     
         <!-- Loading Overlay -->
         <Dialog v-model:visible="props.isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
@@ -155,13 +159,13 @@
 import { ref, reactive, computed} from 'vue'
 
 import DatePicker from 'primevue/datepicker'
-import Card from 'primevue/card'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
+import Auth3DHero from '@/Components/auth/Auth3DHero.vue'
 
 const props = defineProps<{
   isSubmitting? :boolean
@@ -278,19 +282,6 @@ const handleSubmit = () => {
 
 <style scoped>
 /* Custom styles */
-:deep(.p-card) {
-    border-radius: 1rem;
-}
-
-:deep(.p-card .p-card-title) {
-    font-size: 1.5rem;
-    font-weight: 700;
-}
-
-:deep(.p-card .p-card-content) {
-    padding: 1.5rem 0;
-}
-
 :deep(.p-inputgroup-addon) {
     background: #f3f4f6;
     border-color: #d1d5db;

@@ -89,8 +89,6 @@ createInertiaApp({
                     component.layout = AdminLayout;
                 } else if (name.startsWith('System/Ecommerce/')) {
                     component.layout = EcommerceLayout;
-                } else if (name.startsWith('System/')) {
-                    component.layout = SystemLayout;
                 } else if (
                     name.startsWith('Auth/') ||
                     name.startsWith('Profile/') ||
@@ -98,6 +96,8 @@ createInertiaApp({
                     name.startsWith('System/HR/Applicant/')
                 ) {
                     component.layout = GuestLayout;
+                } else if (name.startsWith('System/')) {
+                    component.layout = SystemLayout;
                 }
             }
             return module;
@@ -263,9 +263,16 @@ createInertiaApp({
         const authStore = useAuthStore(pinia);
         if (authStore.token) {
             axios.defaults.headers.common.Authorization = `Bearer ${authStore.token}`;
-            authStore.initialize().catch((err) => {
-                console.warn('Failed to initialize auth store:', err);
-            });
+            console.log('Auth token initialized:', authStore.token);
+            if (authStore.user) {
+                authStore.initialize().catch((err) => {
+                    console.warn('Failed to initialize auth store:', err);
+                });
+            } else {
+                authStore.fetchCurrentUser().catch((err) => {
+                    console.warn('Failed to hydrate user:', err);
+                });
+            }
         }
 
         return app.mount(el);

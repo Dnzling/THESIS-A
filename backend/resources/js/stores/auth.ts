@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import axios from 'axios'
+import axios from '../axios'
 import { router } from '@inertiajs/vue3'
 
 interface User {
@@ -76,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
             .sort((a, b) => a.display_order - b.display_order)
 
         const firstAvailable = activeNav[0]
-        return firstAvailable?.route_path || '/system/index'
+        return firstAvailable?.route_path || '/store/index'
     }
 
     // Default route: first active navigation item that matches role/permission (fallback to /system/index)
@@ -284,9 +284,6 @@ export const useAuthStore = defineStore('auth', () => {
         error.value = null
 
         try {
-            // Get CSRF cookie
-            await axios.get('/sanctum/csrf-cookie')
-
             // Make login request
             const response = await axios.post('/api/auth/login', {
                 login,
@@ -310,6 +307,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.setItem('user', JSON.stringify(userData))
 
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+            document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
 
             if (customerUser) {
                 permissions.value = []
@@ -351,10 +349,11 @@ export const useAuthStore = defineStore('auth', () => {
                 await axios.post('/api/auth/logout-with-clock-out', {
                     user_id: user.value.id,
                     method: 'web'
+                }, {
+                    headers: { 'X-Suppress-Dialog': '1' }
                 })
             }
-            // Always attempt to destroy the web session (prevents /login redirect back)
-            await axios.post('/logout')
+            // Token-based logout does not require web session logout.
         } catch (err) {
             console.warn('Logout API error:', err)
         } finally {
@@ -372,6 +371,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.removeItem('permissions')
 
             delete axios.defaults.headers.common['Authorization']
+            document.cookie = 'auth_token=; Max-Age=0; path=/; SameSite=Lax'
 
             // Clear all cookies
             document.cookie.split(";").forEach(c => {

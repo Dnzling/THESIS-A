@@ -146,7 +146,36 @@ class LogisticsService {
     const response = await axiosClient.delete(`${this.baseUrl}/zones/${zoneId}/rates/${rateId}`)
     return response.data
   }
+
+  async getTrips(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/trips`, { params })
+    return response.data
+  }
+
+  async getTrip(id: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/trips/${id}`)
+    return response.data
+  }
+
+  async createTrip(payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/trips`, payload)
+    return response.data
+  }
+
+  async updateTripStatus(id: string | number, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/trips/${id}/status`, payload)
+    return response.data
+  }
+
+  async addOrdersToTrip(id: string | number, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/trips/${id}/orders`, payload)
+    return response.data
+  }
+
+  async removeOrdersFromTrip(id: string | number, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/trips/${id}/orders/remove`, payload)
+    return response.data
+  }
 }
 
 export default new LogisticsService()
-

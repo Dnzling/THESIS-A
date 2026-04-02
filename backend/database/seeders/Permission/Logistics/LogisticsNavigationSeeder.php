@@ -22,6 +22,17 @@ class LogisticsNavigationSeeder extends Seeder
                 'meta' => json_encode(['subtitle' => 'Schedule and track deliveries']),
             ],
             [
+                'name' => 'logistics.trips',
+                'display_name' => 'Trips',
+                'module' => 'logistics',
+                'route_name' => 'logistics.trips',
+                'route_path' => '/logistics/trips',
+                'icon' => 'pi pi-sitemap',
+                'parent_id' => null,
+                'display_order' => 2,
+                'meta' => json_encode(['subtitle' => 'Group orders per vehicle']),
+            ],
+            [
                 'name' => 'logistics.vehicles',
                 'display_name' => 'Fleet',
                 'module' => 'logistics',
@@ -29,7 +40,7 @@ class LogisticsNavigationSeeder extends Seeder
                 'route_path' => '/logistics/vehicles',
                 'icon' => 'pi pi-car',
                 'parent_id' => null,
-                'display_order' => 2,
+                'display_order' => 3,
                 'meta' => json_encode(['subtitle' => 'Vehicles and driver assignment']),
             ],
             [
@@ -40,7 +51,7 @@ class LogisticsNavigationSeeder extends Seeder
                 'route_path' => '/logistics/zones',
                 'icon' => 'pi pi-map',
                 'parent_id' => null,
-                'display_order' => 3,
+                'display_order' => 4,
                 'meta' => json_encode(['subtitle' => 'Service areas and pricing']),
             ],
         ];
@@ -63,6 +74,7 @@ class LogisticsNavigationSeeder extends Seeder
     {
         $mappings = [
             'logistics.deliveries' => ['logistics.deliveries.view'],
+            'logistics.trips' => ['logistics.deliveries.view'],
             'logistics.vehicles' => ['logistics.fleet.view'],
             'logistics.zones' => ['logistics.zones.view'],
         ];
@@ -87,4 +99,3 @@ class LogisticsNavigationSeeder extends Seeder
         }
     }
 }
-

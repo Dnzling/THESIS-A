@@ -1,5 +1,8 @@
 <template>
   <Toast />
+  <Head title="Login">
+    <meta name="robots" content="noindex, nofollow" />
+  </Head>
   <LoginForm 
     :is-submitting="isSubmitting" 
     @submit="handleLogin" 
@@ -12,7 +15,7 @@ import LoginForm from '@/Components/auth/LoginForm.vue'
 import { ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
-import { router, usePage } from '@inertiajs/vue3'
+import { Head, router, usePage } from '@inertiajs/vue3'
 import { LoginFormData } from '@/Components/auth/LoginForm.vue'
 import { useAuthStore } from '@/stores/auth'
 

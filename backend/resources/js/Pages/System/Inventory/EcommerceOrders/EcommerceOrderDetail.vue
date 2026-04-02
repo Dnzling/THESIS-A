@@ -10,7 +10,17 @@
               <p class="text-sm text-gray-500">View order and delivery details.</p>
             </div>
           </div>
-          <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" @click="loadOrder" />
+          <div class="flex items-center gap-2">
+            <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" @click="loadOrder" />
+            <Button
+              v-if="canSendToLogistics"
+              severity="success"
+              icon="pi pi-send"
+              label="Send To Logistics"
+              :loading="sendingToLogistics"
+              @click="sendToLogistics"
+            />
+          </div>
         </div>
       </template>
     </Card>
@@ -118,10 +128,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import salesService from '@/services/sales.service'
+import { useAuthStore } from '@/stores/auth'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -135,9 +146,11 @@ import Message from 'primevue/message'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const order = ref<any>(null)
+const sendingToLogistics = ref(false)
 
 const loadOrder = async () => {
   loading.value = true
@@ -164,6 +177,41 @@ const openSalesChat = () => {
       order_id: order.value.id,
     },
   })
+}
+
+const canSendToLogistics = computed(() => {
+  if (!order.value) return false
+  if (!authStore.hasPermission('sales.order.approve')) return false
+  if (order.value.delivery) return false
+  const status = String(order.value.status || '').toLowerCase()
+  return ['pending', 'processing'].includes(status)
+})
+
+const sendToLogistics = async () => {
+  if (!order.value) return
+  sendingToLogistics.value = true
+  try {
+    await salesService.updateEcommerceOrderStatus(String(order.value.id), {
+      status: 'ready_for_dispatch',
+      notes: 'Sent to logistics for delivery assignment.',
+    })
+    toast.add({
+      severity: 'success',
+      summary: 'Queued for Logistics',
+      detail: 'Order is ready for dispatch.',
+      life: 3000,
+    })
+    await loadOrder()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Action Failed',
+      detail: error?.response?.data?.message || 'Failed to send order to logistics.',
+      life: 3000,
+    })
+  } finally {
+    sendingToLogistics.value = false
+  }
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

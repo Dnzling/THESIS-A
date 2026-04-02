@@ -1,25 +1,26 @@
 <template>
   <div class="min-h-screen bg-linear-to-b from-[#e0e7f5] to-[#f6f9fd]">
+    <Toast />
     <header class="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 backdrop-blur-sm">
       <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-3 py-3 sm:px-4 md:px-6">
-        <Button link severity="secondary" @click="router.push({name: 'ecommerce.products'})"
+        <button link severity="secondary" @click="router.push({name: 'ecommerce.products'})"
           class="flex items-center justify-center rounded-lg">
-          <img src="/Furnishop2.png" alt="Furni Shop" class="h-8 w-auto object-contain sm:h-10" />
-        </Button>
+          <span class="portal-brand text-orange-500 text-xl">FURNISYNC SHOP</span>
+        </button>
       
       <div class="flex items-center gap-1 sm:gap-2">
-        <Button label="Stores" icon="pi pi-shop" severity="info" outlined rounded class="!text-xs sm:!text-sm" @click="router.push({ name: 'ecommerce.stores' })" />
-        <Button label="Cart" icon="pi pi-shopping-cart" :badge="cartCount.toString()" severity="info"
+        <Button label="Stores" icon="pi pi-shop" severity="warn" outlined rounded class="!text-xs sm:!text-sm" @click="router.push({ name: 'ecommerce.stores' })" />
+        <Button label="Cart" icon="pi pi-shopping-cart" :badge="cartCount.toString()" severity="warn"
           badgeSeverity="secondary" class="!text-xs sm:text-sm!" rounded @click="goCart" />
-        <Button v-if="!isLoggedIn" label="Login" rounded outlined severity="info" class="!text-xs sm:!text-sm" @click="goLogin" />
-        <Button v-else icon="pi pi-user" rounded severity="info" v-tooltip.bottom="'Profile'"
+        <Button v-if="!isLoggedIn" label="Login" rounded outlined severity="warn" class="!text-xs sm:!text-sm" @click="goLogin" />
+        <Button v-else icon="pi pi-user" rounded severity="warn" v-tooltip.bottom="'Profile'"
           @click="toggleProfilePopover" />
       </div>
       </div>
     </header>
   
     <main class="mx-auto w-full max-w-7xl px-3 pb-6 pt-3 sm:px-4 md:px-6 md:pb-8 md:pt-4">
-      <RouterView />
+      <slot />
     </main>
   
     <ScrollTop />
@@ -37,7 +38,7 @@
             @click="goChatThread(thread.store_id)"
           >
             <span class="truncate">{{ thread.store_name }}</span>
-            <Tag v-if="thread.unread_count" :value="thread.unread_count" severity="info" />
+            <Tag v-if="thread.unread_count" :value="thread.unread_count" severity="warn" />
           </button>
         </div>
         <div class="space-y-1 border-t border-slate-200 pt-2">
@@ -58,6 +59,7 @@ import ecommerceService from '@/services/ecommerce.service'
 import { useAuthStore } from '@/stores/auth'
 import Popover from 'primevue/popover'
 import { useToast } from 'primevue/usetoast'
+import Toast from 'primevue/toast'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,9 +126,9 @@ function goChatThread(storeId: number) {
 
 async function logoutCustomer() {
   profilePopoverRef.value?.hide()
-  await authStore.logout()
+  await authStore.logout({ redirect: false })
   toast.add({ severity: 'success', summary: 'Logged out', detail: 'See you again soon!', life: 1600 })
-  router.push({ name: 'customer.login', query: { redirect: '/shop' } })
+  router.push({ name: 'ecommerce.products' })
 }
 
 function handleCartUpdated() {
@@ -163,3 +165,18 @@ onUnmounted(() => {
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
 })
 </script>
+
+<style scoped>
+
+@font-face {
+  font-family: 'Barabara';
+  src: url('/fonts/BARABARA-final.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.portal-brand {
+  font-family: 'Barabara', sans-serif;
+}
+</style>

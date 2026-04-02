@@ -167,7 +167,7 @@
 
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Link, router, usePage } from '@inertiajs/vue3'
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth'
@@ -181,6 +181,7 @@ const page = usePage()
 const pageTitle = computed(() => String(page.props?.title || ''))
 const pageSubtitle = computed(() => String(page.props?.subtitle || ''))
 const authStore = useAuthStore()
+const isAuthenticated = computed(() => authStore.isAuthenticated)
 
 type User = {
   id: number
@@ -275,9 +276,8 @@ const handleLogout = async () => {
       auth_token: localStorage.getItem('auth_token'),
       user: localStorage.getItem('user')
     })
-    authStore.logout()
+    await authStore.logout()
     delete axios.defaults.headers.common['Authorization']
-    router.replace('/login')
 
   } catch (error) {
     console.error('Logout error:', error)
@@ -298,6 +298,7 @@ const toggleNotifications = (event: MouseEvent) => {
 }
 
 const loadNotifications = async () => {
+  if (!isAuthenticated.value) return
   notificationsLoading.value = true
   try {
     const response = await axiosClient.get('/api/notifications', { params: { per_page: 20 } })
@@ -357,7 +358,18 @@ const formatTimeAgo = (iso: string) => {
 }
 
 onMounted(() => {
+  if (!isAuthenticated.value) {
+    router.visit('/login')
+    return
+  }
   loadNotifications()
+})
+
+watch(isAuthenticated, (value) => {
+  if (value) return
+  notifications.value = []
+  unreadCount.value = 0
+  router.visit('/login')
 })
 </script>
 

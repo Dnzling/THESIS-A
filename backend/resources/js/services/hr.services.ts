@@ -139,6 +139,22 @@ export interface HireApplicantPayload {
   address?: string
 }
 
+export interface ApplicantProfile {
+  id?: number
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+  birthday: string
+  city: string
+  province: string
+  barangay: string
+  address: string
+  current_position?: string | null
+  current_company?: string | null
+  documents?: any[]
+}
+
 export interface RejectApplicantPayload {
   reason: string
   notes?: string
@@ -348,10 +364,48 @@ const hrService = {
     return this.getPortalApplication(id)
   },
 
-  async applyToPortalJob(postingId: number | string, formData: FormData) {
-    const response = await portalClient.post(`/api/job-portal/postings/${postingId}/apply`, formData, {
+  async applyToPortalJob(postingId: number | string, formData: FormData | Record<string, any>) {
+    const isFormData = typeof FormData !== 'undefined' && formData instanceof FormData
+    const response = await portalClient.post(
+      `/api/job-portal/postings/${postingId}/apply`,
+      formData,
+      isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined
+    )
+    return response.data
+  },
+
+  async getApplicantProfile() {
+    const response = await portalGet('/api/job-portal/profile')
+    return response.data
+  },
+
+  async saveApplicantProfile(payload: ApplicantProfile) {
+    const response = await portalClient.put('/api/job-portal/profile', payload)
+    return response.data
+  },
+
+  async uploadApplicantProfileDocument(document: File, documentType?: string) {
+    const formData = new FormData()
+    formData.append('document', document)
+    if (documentType) formData.append('document_type', documentType)
+    const response = await portalClient.post('/api/job-portal/profile/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
+    return response.data
+  },
+
+  async deleteApplicantProfileDocument(documentId: number | string) {
+    const response = await portalClient.delete(`/api/job-portal/profile/documents/${documentId}`)
+    return response.data
+  },
+
+  async requestApplicantEmailChange(email: string) {
+    const response = await portalClient.post('/api/job-portal/profile/email-change', { email })
+    return response.data
+  },
+
+  async verifyApplicantEmailChange(otp: string) {
+    const response = await portalClient.post('/api/job-portal/profile/email-verify', { otp })
     return response.data
   },
 

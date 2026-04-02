@@ -25,7 +25,7 @@
         <template #content>
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-gray-600">Critical</p>
+              <p class="text-sm text-gray-600">Critical (Out of Stock)</p>
               <h3 class="text-3xl font-bold text-gray-900">{{ stats.critical }}</h3>
             </div>
             <div class="bg-red-100 p-3 rounded-full">
@@ -102,12 +102,31 @@
     <!-- Alerts Table -->
     <Card>
       <template #content>
+        <div v-if="loading" class="space-y-3">
+          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+            <Skeleton height="24px" class="col-span-1" />
+          </div>
+          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+            <Skeleton height="20px" class="col-span-1" />
+          </div>
+        </div>
+
         <DataTable
-          :value="alerts"
-          :loading="loading"
+          v-else
+          :value="filteredAlerts"
           paginator
           :rows="10"
-          :totalRecords="alerts.length"
+          :totalRecords="filteredAlerts.length"
           dataKey="id"
           class="p-datatable-sm"
           stripedRows
@@ -119,27 +138,27 @@
             </div>
           </template>
 
-          <Column field="inventory_item.product.sku" header="SKU">
+          <Column field="product.sku" header="SKU">
             <template #body="{ data }">
-              {{ data.inventory_item?.product?.sku || 'N/A' }}
+              {{ data.product?.sku || 'N/A' }}
             </template>
           </Column>
 
-          <Column field="inventory_item.product.product_name" header="Item Name">
+          <Column field="product.product_name" header="Item Name">
             <template #body="{ data }">
-              {{ data.inventory_item?.product?.product_name || 'N/A' }}
+              {{ data.product?.product_name || 'N/A' }}
             </template>
           </Column>
 
-          <Column field="type" header="Alert Type">
+          <Column field="alert_type" header="Alert Type">
             <template #body="{ data }">
-              <Tag :value="data.type" :severity="getTypeSeverity(data.type)" />
+              <Tag :value="formatAlertType(data.alert_type)" :severity="getTypeSeverity(data.alert_type)" />
             </template>
           </Column>
 
           <Column field="severity" header="Severity">
             <template #body="{ data }">
-              <Tag :value="data.severity" :severity="data.severity === 'critical' ? 'danger' : 'warning'" />
+              <Tag :value="getSeverityLabel(data.alert_type)" :severity="getSeverityTag(data.alert_type)" />
             </template>
           </Column>
 
@@ -149,6 +168,24 @@
                 :value="data.status"
                 :severity="data.status === 'active' ? 'info' : data.status === 'acknowledged' ? 'warning' : 'success'"
               />
+            </template>
+          </Column>
+
+          <Column field="current_quantity" header="Qty">
+            <template #body="{ data }">
+              {{ data.current_quantity ?? '—' }}
+            </template>
+          </Column>
+
+          <Column field="reorder_point" header="Reorder Point">
+            <template #body="{ data }">
+              {{ data.reorder_point ?? '—' }}
+            </template>
+          </Column>
+
+          <Column field="recommended_order_quantity" header="Recommended">
+            <template #body="{ data }">
+              {{ data.recommended_order_quantity ?? '—' }}
             </template>
           </Column>
 
@@ -189,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 
@@ -225,7 +262,31 @@ const getTypeSeverity = (type: string) => {
   if (type === 'low_stock') return 'warning'
   if (type === 'out_of_stock') return 'danger'
   if (type === 'overstock') return 'info'
+  if (type === 'reorder_needed') return 'info'
   return 'secondary'
+}
+
+const getSeverityLabel = (type: string) => {
+  if (type === 'out_of_stock') return 'critical'
+  if (type === 'low_stock') return 'warning'
+  if (type === 'overstock') return 'info'
+  if (type === 'reorder_needed') return 'warning'
+  return 'info'
+}
+
+const getSeverityTag = (type: string) => {
+  if (type === 'out_of_stock') return 'danger'
+  if (type === 'low_stock') return 'warning'
+  if (type === 'overstock') return 'info'
+  if (type === 'reorder_needed') return 'warning'
+  return 'secondary'
+}
+
+const formatAlertType = (type?: string) => {
+  if (!type) return 'Unknown'
+  return type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 const formatDate = (date: string) => {
@@ -237,15 +298,19 @@ const loadAlerts = async () => {
   try {
     const params: any = {}
     if (filters.status) params.status = filters.status
-    if (filters.severity) params.severity = filters.severity
-    if (filters.search) params.search = filters.search
+    params.per_page = 100
 
-    const response = await axios.get('/api/inventory/alert-management', { params })
-    alerts.value = response.data?.data || []
+    const response = await axios.get('/api/inventory/alerts', { params })
+    const payload = response.data?.data || {}
+    alerts.value = payload?.data || payload || []
 
     // Load statistics
-    const statsResponse = await axios.get('/api/inventory/alert-management/statistics')
-    Object.assign(stats, statsResponse.data?.data || {})
+    const statsResponse = await axios.get('/api/inventory/alerts/summary')
+    const summary = statsResponse.data?.data || {}
+    stats.active = summary.total_active ?? summary.active ?? 0
+    stats.critical = summary.out_of_stock ?? 0
+    stats.acknowledged = summary.acknowledged ?? 0
+    stats.resolved = summary.resolved ?? 0
   } catch (error) {
     console.error('Failed to load alerts', error)
     toast.add({
@@ -261,7 +326,7 @@ const loadAlerts = async () => {
 
 const acknowledgeAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/acknowledge`)
+    await axios.post(`/api/inventory/alerts/${id}/acknowledge`)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -282,7 +347,7 @@ const acknowledgeAlert = async (id: number) => {
 
 const resolveAlert = async (id: number) => {
   try {
-    await axios.post(`/api/inventory/alert-management/${id}/resolve`)
+    await axios.post(`/api/inventory/alerts/${id}/resolve`)
     toast.add({
       severity: 'success',
       summary: 'Success',
@@ -310,5 +375,27 @@ const resetFilters = () => {
 
 onMounted(() => {
   loadAlerts()
+})
+
+const filteredAlerts = computed(() => {
+  let list = alerts.value
+
+  if (filters.severity) {
+    list = list.filter((alert: any) => {
+      const label = getSeverityLabel(alert.alert_type)
+      return label === filters.severity
+    })
+  }
+
+  if (filters.search) {
+    const search = filters.search.toLowerCase()
+    list = list.filter((alert: any) => {
+      const sku = (alert.product?.sku || '').toLowerCase()
+      const name = (alert.product?.product_name || '').toLowerCase()
+      return sku.includes(search) || name.includes(search)
+    })
+  }
+
+  return list
 })
 </script>

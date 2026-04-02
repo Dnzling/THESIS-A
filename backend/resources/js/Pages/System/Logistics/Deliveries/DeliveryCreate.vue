@@ -79,11 +79,39 @@
             <InputNumber v-model="form.per_km_charge" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
           </div>
 
+          <div>
+            <label class="mb-1 block text-sm text-slate-600">Base Fee</label>
+            <InputNumber v-model="form.base_fee" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm text-slate-600">Per KG Fee</label>
+            <InputNumber v-model="form.per_kg_fee" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm text-slate-600">Estimated Weight (kg)</label>
+            <InputNumber v-model="form.weight_kg" :min="0" :minFractionDigits="2" :maxFractionDigits="2" fluid />
+          </div>
+
+          <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="font-medium text-slate-800">Zone Match</p>
+                <p class="text-xs text-slate-500">{{ selectedZoneLabel || 'No matching zone yet' }}</p>
+              </div>
+              <div class="text-xs text-slate-500">
+                <span v-if="selectedRateLabel">{{ selectedRateLabel }}</span>
+                <span v-else>Adjust distance/weight to match a rate.</span>
+              </div>
+            </div>
+          </div>
+
           <div class="md:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p class="font-medium">Estimated Delivery Fee</p>
-                <p class="text-xs">Distance × Per KM Charge</p>
+                <p class="text-xs">Base + (Distance × Per KM) + (Weight × Per KG)</p>
               </div>
               <p class="text-xl font-semibold">₱ {{ estimatedFee }}</p>
             </div>
@@ -105,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
@@ -135,6 +163,9 @@ const order = ref<any>(null)
 
 const employees = ref<any[]>([])
 const vehicles = ref<any[]>([])
+const zones = ref<any[]>([])
+const selectedZone = ref<any>(null)
+const selectedRate = ref<any>(null)
 
 const form = reactive({
   driver_user_id: null as number | null,
@@ -142,6 +173,12 @@ const form = reactive({
   courier_contact: '',
   distance_km: 0,
   per_km_charge: 0,
+  base_fee: 0,
+  per_kg_fee: 0,
+  weight_kg: 0,
+  zone_id: null as number | null,
+  zone_rate_id: null as number | null,
+  zone_name: '',
   estimated_delivery_at: null as Date | null,
   notes: '',
 })
@@ -156,16 +193,42 @@ const formattedOrderStatus = computed(() => {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 })
 const orderTotal = computed(() => Number(order.value?.total_amount || 0).toFixed(2))
-const estimatedFee = computed(() => (Number(form.distance_km || 0) * Number(form.per_km_charge || 0)).toFixed(2))
+const estimatedFee = computed(() => {
+  const base = Number(form.base_fee || 0)
+  const distance = Number(form.distance_km || 0)
+  const perKm = Number(form.per_km_charge || 0)
+  const weight = Number(form.weight_kg || 0)
+  const perKg = Number(form.per_kg_fee || 0)
+  return (base + distance * perKm + weight * perKg).toFixed(2)
+})
+
+const totalWeightKg = computed(() => {
+  const items = order.value?.items || []
+  return items.reduce((sum: number, item: any) => {
+    const weight = Number(item?.product?.weight_kg ?? item?.weight_kg ?? item?.product_weight_kg ?? 0)
+    return sum + weight * Number(item?.quantity || 0)
+  }, 0)
+})
+
+const selectedZoneLabel = computed(() => selectedZone.value?.name || '')
+const selectedRateLabel = computed(() => {
+  if (!selectedRate.value) return ''
+  const minD = selectedRate.value.min_distance_km ?? 0
+  const maxD = selectedRate.value.max_distance_km ?? '∞'
+  const minW = selectedRate.value.min_weight_kg ?? 0
+  const maxW = selectedRate.value.max_weight_kg ?? '∞'
+  return `Dist ${minD}-${maxD} km • Weight ${minW}-${maxW} kg`
+})
 
 const canSubmit = computed(() => {
   return !!form.driver_user_id && !!form.vehicle_id && !!form.courier_contact && Number(form.per_km_charge) >= 0
 })
 
 const loadOptions = async () => {
-  const [employeeRes, vehicleRes] = await Promise.all([
+  const [employeeRes, vehicleRes, zoneRes] = await Promise.all([
     logisticsService.getLogisticsEmployees(),
     logisticsService.getVehicles({ per_page: 100 }),
+    logisticsService.getZones({ per_page: 200, is_active: true }),
   ])
 
   employees.value = employeeRes?.data || []
@@ -175,6 +238,8 @@ const loadOptions = async () => {
     ...vehicle,
     label: `${vehicle.vehicle_name} (${vehicle.plate_number})`,
   }))
+
+  zones.value = zoneRes?.data?.data || []
 }
 
 const loadOrderDetail = async () => {
@@ -182,6 +247,9 @@ const loadOrderDetail = async () => {
 
   const response = await logisticsService.getDeliveryOrderDetail(source.value as 'ecommerce' | 'sales', orderId.value)
   order.value = response?.data?.order || null
+  if (totalWeightKg.value > 0) {
+    form.weight_kg = Number(totalWeightKg.value.toFixed(2))
+  }
 
   const existingDeliveryStatus = String(response?.data?.delivery?.status || '').toLowerCase()
   if (response?.data?.delivery && existingDeliveryStatus !== 'pending') {
@@ -227,11 +295,62 @@ const calculateDistance = async () => {
     if (payload.per_km_charge !== null && payload.per_km_charge !== undefined) {
       form.per_km_charge = Number(payload.per_km_charge)
     }
+
+    applyZoneRate()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Distance Error', detail: error?.response?.data?.message || 'Distance calculation failed.', life: 3000 })
   } finally {
     estimating.value = false
   }
+}
+
+const applyZoneRate = () => {
+  const distance = Number(form.distance_km || 0)
+  const weight = Number(form.weight_kg || 0)
+  if (!Number.isFinite(distance) || distance <= 0 || zones.value.length === 0) {
+    selectedZone.value = null
+    selectedRate.value = null
+    return
+  }
+
+  const candidates: Array<{ zone: any; rate: any; fee: number }> = []
+
+  zones.value.forEach((zone: any) => {
+    if (zone.is_active === false) return
+    const rates = Array.isArray(zone.rates) ? zone.rates : []
+    rates.forEach((rate: any) => {
+      if (rate.is_active === false) return
+      const minD = Number(rate.min_distance_km || 0)
+      const maxD = rate.max_distance_km === null || rate.max_distance_km === undefined ? null : Number(rate.max_distance_km)
+      const minW = Number(rate.min_weight_kg || 0)
+      const maxW = rate.max_weight_kg === null || rate.max_weight_kg === undefined ? null : Number(rate.max_weight_kg)
+
+      const distanceOk = distance >= minD && (maxD === null || distance <= maxD)
+      const weightOk = weight >= minW && (maxW === null || weight <= maxW)
+      if (!distanceOk || !weightOk) return
+
+      const fee = Number(rate.base_fee || 0) + distance * Number(rate.per_km_fee || 0) + weight * Number(rate.per_kg_fee || 0)
+      candidates.push({ zone, rate, fee })
+    })
+  })
+
+  if (!candidates.length) {
+    selectedZone.value = null
+    selectedRate.value = null
+    return
+  }
+
+  candidates.sort((a, b) => a.fee - b.fee)
+  const best = candidates[0]
+  selectedZone.value = best.zone
+  selectedRate.value = best.rate
+
+  form.zone_id = Number(best.zone.id || 0) || null
+  form.zone_rate_id = Number(best.rate.id || 0) || null
+  form.zone_name = best.zone.name || ''
+  form.base_fee = Number(best.rate.base_fee || 0)
+  form.per_km_charge = Number(best.rate.per_km_fee || 0)
+  form.per_kg_fee = Number(best.rate.per_kg_fee || 0)
 }
 
 const submitAssignment = async () => {
@@ -247,6 +366,12 @@ const submitAssignment = async () => {
       courier_contact: form.courier_contact,
       distance_km: Number(form.distance_km || 0),
       per_km_charge: Number(form.per_km_charge || 0),
+      base_fee: Number(form.base_fee || 0),
+      per_kg_fee: Number(form.per_kg_fee || 0),
+      weight_kg: Number(form.weight_kg || 0),
+      zone_id: form.zone_id,
+      zone_rate_id: form.zone_rate_id,
+      zone_name: form.zone_name || selectedZone.value?.name || null,
       estimated_delivery_at: form.estimated_delivery_at ? new Date(form.estimated_delivery_at).toISOString() : null,
       notes: form.notes || null,
     })
@@ -264,6 +389,13 @@ const submitAssignment = async () => {
 }
 
 const goBack = () => router.push({ name: 'logistics.deliveries' })
+
+watch(
+  () => [form.distance_km, form.weight_kg],
+  () => {
+    applyZoneRate()
+  }
+)
 
 onMounted(async () => {
   if (!orderId.value) {

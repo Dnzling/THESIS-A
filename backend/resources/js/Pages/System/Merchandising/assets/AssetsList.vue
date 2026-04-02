@@ -14,6 +14,13 @@
           outlined
           @click="router.push({ name: 'merchandising.3d-gallery' })"
         />
+        <!-- <Button
+          label="3D Reconstruction"
+          icon="pi pi-camera"
+          severity="success"
+          outlined
+          @click="router.push({ name: 'merchandising.3d-reconstruction' })"
+        /> -->
         <Button 
           v-if="authStore.hasPermission('merchandising.assets.upload')"
           label="Upload Assets" 
@@ -315,6 +322,13 @@
               @click="$router.push({ name: 'merchandising.assets.upload' })"
             />
             <Button 
+              label="3D Reconstruction" 
+              icon="pi pi-camera" 
+              severity="success"
+              outlined
+              @click="$router.push({ name: 'merchandising.3d-reconstruction' })"
+            />
+            <Button 
               label="View 3D Models" 
               icon="pi pi-cube" 
               severity="info"
@@ -360,6 +374,36 @@
             <p class="text-gray-500 text-sm mt-2">PDF Document</p>
           </div>
 
+          <!-- 3D Model Preview -->
+          <div v-else-if="is3DModel(currentAsset)" class="w-full">
+            <div class="relative w-full bg-linear-to-br from-gray-100 to-gray-200 rounded-lg"
+              style="height: 500px;">
+              <div ref="dialogModelContainer" class="w-full h-full"></div>
+
+              <div v-if="!dialogModelState.loaded && !dialogModelState.error"
+                class="absolute inset-0 flex items-center justify-center bg-white/80 rounded-lg">
+                <div class="text-center">
+                  <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" />
+                  <p class="text-sm text-gray-600 mt-2">Loading 3D model...</p>
+                </div>
+              </div>
+
+              <div v-if="dialogModelState.error"
+                class="absolute inset-0 flex items-center justify-center bg-red-50 rounded-lg">
+                <div class="text-center p-4">
+                  <i class="pi pi-exclamation-triangle text-4xl text-red-500 mb-2"></i>
+                  <p class="text-sm text-red-700">Failed to load</p>
+                  <Button label="Retry" size="small" class="mt-2" @click="loadDialogModel()" />
+                </div>
+              </div>
+
+              <div v-if="dialogModelState.loaded" class="absolute top-2 right-2 z-20">
+                <Button :icon="dialogModelState.autoRotate ? 'pi pi-pause' : 'pi pi-play'" rounded size="small"
+                  :severity="dialogModelState.autoRotate ? 'warning' : 'secondary'" @click="toggleDialogAutoRotate" />
+              </div>
+            </div>
+          </div>
+
           <!-- Other file types -->
           <i v-else :class="getAssetIcon(currentAsset.asset_type)" class="text-8xl text-gray-400"></i>
         </div>
@@ -386,16 +430,16 @@
             <p class="text-xs text-gray-600 mb-1">Description</p>
             <p class="text-sm">{{ currentAsset.alt_text }}</p>
           </div>
-          <div class="col-span-2">
+          <!-- <div class="col-span-2">
             <p class="text-xs text-gray-600 mb-1">URL</p>
             <p class="text-xs font-mono text-blue-600 break-all">{{ currentAsset.url }}</p>
-          </div>
+          </div> -->
         </div>
       </div>
 
       <template #footer>
         <Button label="Download" icon="pi pi-download" @click="downloadAsset(currentAsset)" />
-        <Button label="Close" severity="secondary" outlined @click="viewDialogVisible = false" />
+        <Button label="Close" severity="secondary" outlined @click="viewDialogVisible = false; disposeDialogScene()" />
       </template>
     </Dialog>
 
@@ -417,11 +461,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../stores/auth'
 import merchandisingService from '../../../../services/merchandising.service'
 import { useRouter } from 'vue-router'
+import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
+import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+
+import ProgressSpinner from 'primevue/progressspinner'
 
 
 const router = useRouter()
@@ -439,6 +490,9 @@ const currentAsset = ref(null)
 const selectedAssets = ref([])
 const searchQuery = ref('')
 const viewMode = ref('grid')
+const dialogModelContainer = ref<HTMLElement | null>(null)
+const dialogModelState = reactive({ loaded: false, error: false, autoRotate: false })
+const dialogSceneData = ref<any | null>(null)
 
 const filters = reactive({
   asset_type: null,
@@ -596,6 +650,13 @@ const viewAsset = async (asset: any) => {
   }
   
   viewDialogVisible.value = true
+
+  if (is3DModel(currentAsset.value)) {
+    dialogModelState.loaded = false
+    dialogModelState.error = false
+    dialogModelState.autoRotate = false
+    nextTick(() => loadDialogModel())
+  }
 }
 
 const downloadAsset = (asset: any) => {
@@ -634,6 +695,162 @@ const deleteAsset = async () => {
     })
   } finally {
     deleting.value = false
+  }
+}
+
+const getModelFormat = (asset: any) => {
+  if (asset?.model_format) return String(asset.model_format).toLowerCase()
+  const name = (asset?.file_name || '').toLowerCase()
+  if (name.endsWith('.obj')) return 'obj'
+  if (name.endsWith('.ply')) return 'ply'
+  if (name.endsWith('.glb') || name.endsWith('.gltf')) return 'glb'
+  return 'glb'
+}
+
+const is3DModel = (asset: any) => {
+  if (!asset) return false
+  if (asset.asset_type === '3D_Model') return true
+  const format = getModelFormat(asset)
+  return ['obj', 'ply', 'glb', 'gltf'].includes(format)
+}
+
+const disposeDialogScene = () => {
+  if (dialogSceneData.value) {
+    dialogSceneData.value.stop = true
+    dialogSceneData.value.controls?.dispose()
+    dialogSceneData.value.renderer?.dispose()
+    dialogSceneData.value = null
+  }
+  if (dialogModelContainer.value) {
+    while (dialogModelContainer.value.firstChild) {
+      dialogModelContainer.value.removeChild(dialogModelContainer.value.firstChild)
+    }
+  }
+}
+
+const toggleDialogAutoRotate = () => {
+  dialogModelState.autoRotate = !dialogModelState.autoRotate
+}
+
+const loadDialogModel = () => {
+  const asset = currentAsset.value as any
+  if (!asset || !dialogModelContainer.value || !asset.url) return
+
+  dialogModelState.loaded = false
+  dialogModelState.error = false
+  disposeDialogScene()
+
+  const container = dialogModelContainer.value
+  const width = container.clientWidth || 800
+  const height = container.clientHeight || 500
+
+  const scene = new THREE.Scene()
+  scene.background = new THREE.Color(0xf5f5f5)
+
+  const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000)
+  camera.position.set(2, 2, 5)
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+  renderer.setSize(width, height)
+  renderer.setPixelRatio(window.devicePixelRatio)
+  container.appendChild(renderer.domElement)
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+  scene.add(ambientLight)
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+  directionalLight.position.set(5, 10, 7.5)
+  scene.add(directionalLight)
+
+  const controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.05
+  controls.minDistance = 1
+  controls.maxDistance = 20
+
+  const token = authStore.token || localStorage.getItem('auth_token')
+  const format = getModelFormat(asset)
+
+  const sceneData = { renderer, controls, stop: false }
+  dialogSceneData.value = sceneData
+
+  const animate = (object?: THREE.Object3D) => {
+    if (dialogSceneData.value !== sceneData || sceneData.stop) return
+    requestAnimationFrame(() => animate(object))
+    if (dialogModelState.autoRotate && object) {
+      object.rotation.y += 0.005
+    }
+    controls.update()
+    renderer.render(scene, camera)
+  }
+
+  const onObjectReady = (object: THREE.Object3D) => {
+    const box = new THREE.Box3().setFromObject(object)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    const maxDim = Math.max(size.x, size.y, size.z)
+    const scale = 3 / maxDim
+
+    object.scale.multiplyScalar(scale)
+    object.position.sub(center.multiplyScalar(scale))
+    scene.add(object)
+    dialogModelState.loaded = true
+    animate(object)
+  }
+
+  const onError = (error: any) => {
+    console.error('Failed to load 3D model:', error)
+    dialogModelState.error = true
+  }
+
+  if (format === 'obj') {
+    fetch(asset.url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': '*/*' }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.text()
+      })
+      .then(text => {
+        const loader = new OBJLoader()
+        onObjectReady(loader.parse(text))
+      })
+      .catch(onError)
+  } else if (format === 'ply') {
+    fetch(asset.url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/octet-stream, */*' }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.arrayBuffer()
+      })
+      .then(buffer => {
+        const loader = new PLYLoader()
+        const geometry = loader.parse(buffer)
+        geometry.computeVertexNormals()
+        const hasColor = geometry.hasAttribute('color')
+        const material = geometry.index
+          ? new THREE.MeshStandardMaterial({ color: 0x94a3b8, vertexColors: hasColor })
+          : new THREE.PointsMaterial({ size: 0.01, vertexColors: hasColor, color: 0x94a3b8 })
+        const object = geometry.index ? new THREE.Mesh(geometry, material) : new THREE.Points(geometry, material)
+        onObjectReady(object)
+      })
+      .catch(onError)
+  } else {
+    fetch(asset.url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/octet-stream, application/json, */*' }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.arrayBuffer()
+      })
+      .then(buffer => {
+        const loader = new GLTFLoader()
+        loader.parse(buffer, '', (gltf) => {
+          onObjectReady(gltf.scene)
+        }, onError)
+      })
+      .catch(onError)
   }
 }
 
@@ -719,6 +936,10 @@ const formatDate = (date: string) => {
 onMounted(() => {
   loadProducts()
   loadAssets()
+})
+
+onBeforeUnmount(() => {
+  disposeDialogScene()
 })
 </script>
 

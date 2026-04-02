@@ -1,7 +1,7 @@
 <template>
-  <div class="space-y-4">
+  <JobPortalLayout>
+    <div class="space-y-4">
     <section class="rounded-3xl border border-blue-100 bg-white/80 p-6 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Platform Job Portal</p>
       <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Explore opportunities across partner stores
       </h1>
       <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
@@ -18,7 +18,7 @@
               <InputText v-model="search" placeholder="Search by title, department, or keyword" class="w-full"
                 @keyup.enter="fetchPostings" />
             </IconField>
-            <Button label="Search Jobs" icon="pi pi-search" severity="info" @click="fetchPostings" />
+            <Button label="Search Jobs" icon="pi pi-search" severity="warn" @click="fetchPostings" />
           </div>
         </template>
       </Card>
@@ -67,7 +67,7 @@
                     {{ formatCurrency(posting.salary_min) }} - {{ formatCurrency(posting.salary_max) }}
                   </p>
                 </div>
-                <Button label="Preview Job Post" icon="pi pi-arrow-right" severity="info" fluid
+                <Button label="Preview Job Post" icon="pi pi-arrow-right" severity="warn" fluid
                   @click="previewPosting(posting.id)" />
               </div>
             </div>
@@ -85,10 +85,12 @@
         </Card>
       </div>
     </div>
-  </div>
+    </div>
+  </JobPortalLayout>
 </template>
 
 <script setup lang="ts">
+import JobPortalLayout from './JobPortalLayout.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'

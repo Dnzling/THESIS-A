@@ -1,11 +1,22 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">POS Order {{ order?.order_number || '-' }}</h1>
-        <p class="text-sm text-gray-500">Order details and delivery status</p>
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">POS Order {{ order?.order_number || '-' }}</h1>
+          <p class="text-sm text-gray-500">Order details and delivery status</p>
+        </div>
       </div>
+      <Button
+        v-if="canSendToLogistics"
+        icon="pi pi-send"
+        severity="success"
+        label="Send To Logistics"
+        :loading="sendingToLogistics"
+        :disabled="sendDisabled"
+        @click="sendToLogistics"
+      />
     </div>
 
     <Card v-if="order">
@@ -93,9 +104,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
+import { useAuthStore } from '@/stores/auth'
+import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -105,7 +118,10 @@ import Divider from 'primevue/divider'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const toast = useToast()
 const order = ref<any>(null)
+const sendingToLogistics = ref(false)
 
 const loadOrder = async () => {
   const res = await salesService.getPosOrder(Number(route.params.id))
@@ -120,6 +136,44 @@ const statusSeverity = (value: string) => {
   return 'warning'
 }
 const goBack = () => router.push({ name: 'sales.pos' })
+
+const canSendToLogistics = computed(() => {
+  if (!order.value) return false
+  if (!authStore.hasPermission('sales.order.approve')) return false
+  if (!order.value.delivery_required) return false
+  if (order.value.delivery) return false
+  return true
+})
+
+const sendDisabled = computed(() => {
+  if (!order.value) return true
+  if (order.value.payment_status !== 'paid') return true
+  return !order.value.delivery_address
+})
+
+const sendToLogistics = async () => {
+  if (!order.value) return
+  sendingToLogistics.value = true
+  try {
+    await salesService.sendPosOrderToLogistics(order.value.id)
+    toast.add({
+      severity: 'success',
+      summary: 'Queued for Logistics',
+      detail: 'Order is ready for dispatch.',
+      life: 3000,
+    })
+    await loadOrder()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Action Failed',
+      detail: error?.response?.data?.message || 'Failed to send order to logistics.',
+      life: 3000,
+    })
+  } finally {
+    sendingToLogistics.value = false
+  }
+}
 
 onMounted(async () => {
   await loadOrder()

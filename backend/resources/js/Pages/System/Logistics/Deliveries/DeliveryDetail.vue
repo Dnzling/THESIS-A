@@ -9,7 +9,16 @@
             <p class="mt-1 text-sm text-slate-600">{{ sourceLabel }} • {{ order?.order_number || '-' }}</p>
           </div>
         </div>
-        <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadAll" />
+        <div class="flex items-center gap-2">
+          <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadAll" />
+          <Button
+            v-if="canAssignDelivery"
+            icon="pi pi-send"
+            label="Assign Delivery"
+            severity="success"
+            @click="openAssign"
+          />
+        </div>
       </div>
     </div>
 
@@ -28,6 +37,16 @@
             <Tag :value="formatStatus(delivery?.status || 'pending')" :severity="deliverySeverity(delivery?.status || 'pending')" />
           </div>
           <div><span class="text-slate-500">Tracking #:</span> <strong>{{ delivery?.tracking_number || '-' }}</strong></div>
+          <div v-if="delivery?.trip_id">
+            <span class="text-slate-500">Trip:</span>
+            <Button
+              text
+              severity="info"
+              class="p-0"
+              :label="`#${delivery.trip_id}`"
+              @click="openTrip(delivery.trip_id)"
+            />
+          </div>
           <div><span class="text-slate-500">Courier Contact:</span> <strong>{{ delivery?.courier_contact || '-' }}</strong></div>
           <div><span class="text-slate-500">Driver:</span> <strong>{{ driverName }}</strong></div>
           <div><span class="text-slate-500">Delivered At:</span> <strong>{{ delivery?.delivered_at ? formatDateTime(delivery.delivered_at) : '-' }}</strong></div>
@@ -206,6 +225,7 @@ const driverName = computed(() => {
   return d ? `${d.fname || ''} ${d.lname || ''}`.trim() : delivery.value?.courier_name || '-'
 })
 const isDelivered = computed(() => String(delivery.value?.status || '').toLowerCase() === 'delivered')
+const canAssignDelivery = computed(() => canManageDeliveries && !delivery.value && !!order.value)
 
 const loadAll = async () => {
   if (!orderId.value) return
@@ -289,9 +309,20 @@ const openDeliveredDialog = () => {
   deliveredDialogVisible.value = true
 }
 
+const openAssign = () => {
+  router.push({
+    name: 'logistics.deliveries.create',
+    query: { source: source.value, order_id: String(orderId.value) },
+  })
+}
+
 const openMedia = (url: string) => {
   if (!url) return
   window.open(url, '_blank')
+}
+
+const openTrip = (tripId: number) => {
+  router.push({ name: 'logistics.trips.detail', params: { id: String(tripId) } })
 }
 
 const formatStatus = (value: string) => value?.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) || '-'

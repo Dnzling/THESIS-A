@@ -189,6 +189,11 @@ async function updateQty(item: any, quantity: number) {
     items.value = response.data?.data?.items || []
     summary.value = response.data?.data?.summary || {}
   } catch (error: any) {
+    if (error?.response?.status === 404) {
+      toast.add({ severity: 'warn', summary: 'Cart updated', detail: 'Your cart changed. Refreshing items...', life: 2200 })
+      await loadCart()
+      return
+    }
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to update quantity', life: 3000 })
   }
 }

@@ -1,134 +1,121 @@
 <template>
-  <div class="about-shell">
+  <div class="bg-gradient-to-b from-white to-orange-50/30 text-slate-900">
     <TopNav />
 
     <main>
-      <section class="hero">
-        <div class="container hero-grid">
-          <div>
-            <span class="eyebrow">About FurniSync</span>
-            <h1 class="hero-title">We build the operating system for furniture businesses.</h1>
-            <p class="hero-sub">
-              From inventory intelligence to immersive 3D retail, our mission is to help teams ship faster, sell smarter, and serve every customer with confidence.
-            </p>
-            <div class="hero-actions">
-              <Link href="/pricing" class="btn primary">See Pricing</Link>
-            <Link href="/register?plan=simple&trial=1" class="btn ghost" @click="setTrialPlan('simple')">Start Trial</Link>
-            </div>
-          </div>
-          <div class="hero-panel">
-            <div class="panel-card">
-              <h3>Why we exist</h3>
-              <p>
-                Furniture operations are complex, but most tools are built for generic retail. We designed FurniSync specifically for bulky inventory, long lead times, and showroom-first selling.
+      <section class="relative overflow-hidden py-20 lg:py-28">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,107,0.18),transparent_55%)]"></div>
+        <div class="mx-auto max-w-6xl px-4 lg:px-8">
+          <div class="grid gap-10 lg:grid-cols-2 items-center">
+            <div>
+              <h1 class=" text-4xl lg:text-5xl font-bold leading-tight">
+                We build the operating system for furniture businesses.
+              </h1>
+              <p class="mt-5 text-base lg:text-lg text-slate-600 max-w-xl">
+                From inventory intelligence to immersive 3D retail, our mission is to help teams ship faster, sell smarter, and serve every customer with confidence.
               </p>
+              <div class="mt-8 flex flex-wrap gap-3">
+                <Link href="/pricing" class="inline-flex items-center justify-center rounded-full bg-orange-500 px-6 py-3 text-white font-semibold shadow-sm hover:bg-orange-600">See Pricing</Link>
+                <Link href="/register?plan=simple&trial=1" class="inline-flex items-center justify-center rounded-full border border-orange-300 px-6 py-3 text-orange-600 font-semibold bg-white hover:bg-orange-50" @click="setTrialPlan('simple')">Start Trial</Link>
+              </div>
             </div>
-            <div class="panel-card">
-              <h3>What we deliver</h3>
-              <p>
-                A single platform that unifies merchandising, procurement, logistics, and finance while keeping your customer experience premium.
+            <div class="grid gap-4">
+              <div class="rounded-2xl border border-orange-100 bg-white/90 p-5 shadow-lg">
+                <h3 class="font-semibold text-slate-900 mb-2">Why we exist</h3>
+                <p class="text-sm text-slate-600">
+                  Furniture operations are complex, but most tools are built for generic retail. We designed FurniSync specifically for bulky inventory, long lead times, and showroom-first selling.
+                </p>
+              </div>
+              <div class="rounded-2xl border border-orange-100 bg-white/90 p-5 shadow-lg">
+                <h3 class="font-semibold text-slate-900 mb-2">What we deliver</h3>
+                <p class="text-sm text-slate-600">
+                  A single platform that unifies merchandising, procurement, logistics, and finance while keeping your customer experience premium.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="py-20">
+        <div class="mx-auto max-w-6xl px-4 lg:px-8">
+          <div class="grid gap-10 lg:grid-cols-2 items-center">
+            <div>
+              <h2 class="text-3xl lg:text-4xl font-bold mb-4">A smarter backbone for every store.</h2>
+              <p class="text-slate-600 mb-6">
+                We partnered with store managers, warehouse leads, and purchasing teams to map out the real workflows that keep furniture businesses moving. The result is a product that replaces spreadsheets, siloed apps, and guesswork with a unified control center.
               </p>
+              <div class="grid gap-3">
+                <div class="rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-700">Operational clarity with real-time inventory truth.</div>
+                <div class="rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-700">Decision support that balances demand, cash flow, and lead time.</div>
+                <div class="rounded-xl border border-orange-100 bg-white px-4 py-3 text-sm text-slate-700">3D experiences that help shoppers commit faster.</div>
+              </div>
+            </div>
+            <div class="rounded-2xl bg-slate-900 text-white p-6 shadow-xl">
+              <div class="border-b border-slate-700 pb-4 mb-4">
+                <p class="text-2xl font-bold">8+</p>
+                <p class="text-sm text-slate-300">Core modules connected</p>
+              </div>
+              <div class="border-b border-slate-700 pb-4 mb-4">
+                <p class="text-2xl font-bold">120 hrs</p>
+                <p class="text-sm text-slate-300">Monthly ops time saved</p>
+              </div>
+              <div>
+                <p class="text-2xl font-bold">18%</p>
+                <p class="text-sm text-slate-300">Lower holding costs</p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="story">
-        <div class="container story-grid">
-          <div>
-            <h2 class="section-title">A smarter backbone for every store.</h2>
-            <p class="section-sub">
-              We partnered with store managers, warehouse leads, and purchasing teams to map out the real workflows that keep furniture businesses moving. The result is a product that replaces spreadsheets, siloed apps, and guesswork with a unified control center.
-            </p>
-            <div class="value-list">
-              <div class="value-item">Operational clarity with real-time inventory truth.</div>
-              <div class="value-item">Decision support that balances demand, cash flow, and lead time.</div>
-              <div class="value-item">3D experiences that help shoppers commit faster.</div>
-            </div>
+      <section class="py-20 bg-white">
+        <div class="mx-auto max-w-6xl px-4 lg:px-8">
+          <div class="text-center max-w-2xl mx-auto mb-12">
+            <span class="text-orange-500 text-sm uppercase tracking-wider">Our Principles</span>
+            <h2 class="text-3xl lg:text-4xl font-bold mt-3 mb-4">Designed with operators, not just developers.</h2>
+            <p class="text-slate-600">Every feature is tested against a real store workflow before it ships.</p>
           </div>
-          <div class="story-card">
-            <div class="story-metric">
-              <div class="metric-value">8+</div>
-              <div class="metric-label">Core modules connected</div>
+          <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+              <h3 class="font-semibold text-slate-900 mb-2">Showroom-first UX</h3>
+              <p class="text-sm text-slate-600">Retail teams can sell faster because the right data appears exactly when they need it.</p>
             </div>
-            <div class="story-metric">
-              <div class="metric-value">120 hrs</div>
-              <div class="metric-label">Monthly ops time saved</div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+              <h3 class="font-semibold text-slate-900 mb-2">Operational transparency</h3>
+              <p class="text-sm text-slate-600">Procurement, logistics, and finance see the same numbers, reducing delays and disputes.</p>
             </div>
-            <div class="story-metric">
-              <div class="metric-value">18%</div>
-              <div class="metric-label">Lower holding costs</div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+              <h3 class="font-semibold text-slate-900 mb-2">Automation with control</h3>
+              <p class="text-sm text-slate-600">Smart suggestions, human approvals. You decide when the system acts.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="principles">
-        <div class="container">
-          <div class="section-head">
-            <span class="eyebrow">Our Principles</span>
-            <h2 class="section-title">Designed with operators, not just developers.</h2>
-            <p class="section-sub">Every feature is tested against a real store workflow before it ships.</p>
-          </div>
-          <div class="principle-grid">
-            <div class="principle-card">
-              <h3>Showroom-first UX</h3>
-              <p>Retail teams can sell faster because the right data appears exactly when they need it.</p>
+      <section class="py-16">
+        <div class="mx-auto max-w-6xl px-4 lg:px-8">
+          <div class="grid gap-6 rounded-3xl border border-orange-100 bg-white p-8 shadow-xl lg:grid-cols-2 items-center">
+            <div>
+              <h2 class="text-3xl font-bold mb-3">Ready to build the next generation of your business?</h2>
+              <p class="text-slate-600">Let us walk you through a tailored demo of FurniSync in action.</p>
             </div>
-            <div class="principle-card">
-              <h3>Operational transparency</h3>
-              <p>Procurement, logistics, and finance see the same numbers, reducing delays and disputes.</p>
+            <div class="flex flex-wrap gap-3 justify-start lg:justify-end">
+              <Link href="/register" class="inline-flex items-center justify-center rounded-full bg-orange-500 px-6 py-3 text-white font-semibold shadow-sm hover:bg-orange-600">Book a Demo</Link>
+              <Link href="/" class="inline-flex items-center justify-center rounded-full border border-orange-300 px-6 py-3 text-orange-600 font-semibold bg-white hover:bg-orange-50">Back to Home</Link>
             </div>
-            <div class="principle-card">
-              <h3>Automation with control</h3>
-              <p>Smart suggestions, human approvals. You decide when the system acts.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="cta">
-        <div class="container cta-card">
-          <div>
-            <h2>Ready to build the next generation of your business?</h2>
-            <p>Let us walk you through a tailored demo of FurniSync in action.</p>
-          </div>
-          <div class="cta-actions">
-            <Link href="/register" class="btn primary">Book a Demo</Link>
-            <Link href="/" class="btn ghost">Back to Home</Link>
           </div>
         </div>
       </section>
     </main>
 
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-grid">
-          <div>
-            <div class="logo">FurniSync</div>
-            <p>Furniture-first operations, powered by intelligent automation.</p>
-          </div>
-          <div>
-            <div class="footer-title">Explore</div>
-            <a href="/pricing">Pricing</a>
-            <a href="/about">About</a>
-             <a href="/job-portal">Jobs</a>
-            <a href="/shop">Ecommerce</a>
-          </div>
-          <div>
-            <div class="footer-title">Contact</div>
-            <a href="mailto:support@furnisync.app">support@furnisync.app</a>
-            <a href="/customer/login">Customer Login</a>
-          </div>
-        </div>
-        <div class="footer-bottom">� 2026 FurniSync. All rights reserved.</div>
-      </div>
-    </footer>
+    <MarketingFooter />
   </div>
 </template>
 
 <script setup lang="ts">
-import TopNav from '@/Components/TopNav.vue'
+import TopNav from '@/Components/MarketingHeader.vue'
+import MarketingFooter from '@/Components/MarketingFooter.vue'
 import { Link } from '@inertiajs/vue3'
 
 const setTrialPlan = (plan: 'simple' | 'unlimited') => {
@@ -138,260 +125,10 @@ const setTrialPlan = (plan: 'simple' | 'unlimited') => {
 </script>
 
 <style scoped>
-@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=domine:400,700');
+@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=plus-jakarta-sans:600,700,800');
 
-.about-shell {
-  --ink: #111827;
-  --muted: #495665;
-  --brand: #0f766e;
-  --paper: #f8f4ee;
+* {
   font-family: 'Manrope', sans-serif;
-  color: var(--ink);
-  background: var(--paper);
 }
 
-.container {
-  max-width: 1160px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-.hero {
-  padding: 96px 0 72px;
-  background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 100%);
-}
-
-.hero-grid {
-  display: grid;
-  gap: 40px;
-  align-items: center;
-}
-
-@media (min-width: 900px) {
-  .hero-grid {
-    grid-template-columns: 1.1fr 0.9fr;
-  }
-}
-
-.hero-title {
-  font-family: 'Domine', serif;
-  font-size: clamp(2.4rem, 4vw, 3.6rem);
-  margin: 16px 0;
-}
-
-.hero-sub {
-  color: var(--muted);
-  font-size: 1.1rem;
-  max-width: 560px;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-top: 24px;
-}
-
-.hero-panel {
-  display: grid;
-  gap: 18px;
-}
-
-.panel-card {
-  background: #fff;
-  border-radius: 18px;
-  padding: 22px;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
-  border: 1px solid #e2e8f0;
-}
-
-.eyebrow {
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 2px;
-  color: var(--brand);
-}
-
-.section-title {
-  font-family: 'Domine', serif;
-  font-size: clamp(2rem, 3vw, 2.6rem);
-}
-
-.section-sub {
-  margin-top: 12px;
-  color: var(--muted);
-}
-
-.story {
-  padding: 84px 0;
-}
-
-.story-grid {
-  display: grid;
-  gap: 32px;
-}
-
-@media (min-width: 900px) {
-  .story-grid {
-    grid-template-columns: 1.2fr 0.8fr;
-  }
-}
-
-.value-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.value-item {
-  padding: 14px 16px;
-  background: #fff;
-  border-radius: 14px;
-  border: 1px solid #e2e8f0;
-}
-
-.story-card {
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 22px;
-  padding: 24px;
-  display: grid;
-  gap: 20px;
-}
-
-.story-metric {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-  padding-bottom: 16px;
-}
-
-.story-metric:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.metric-value {
-  font-size: 1.8rem;
-  font-weight: 700;
-}
-
-.metric-label {
-  color: #94a3b8;
-  font-size: 0.9rem;
-}
-
-.principles {
-  padding: 84px 0;
-  background: #fff;
-}
-
-.section-head {
-  text-align: center;
-  max-width: 680px;
-  margin: 0 auto 36px;
-}
-
-.principle-grid {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.principle-card {
-  padding: 20px;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
-  background: #f8fafc;
-}
-
-.btn {
-  padding: 12px 24px;
-  border-radius: 14px;
-  font-weight: 600;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
-}
-
-.btn.primary {
-  background: var(--brand);
-  color: #fff;
-  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.22);
-}
-
-.btn.ghost {
-  border-color: rgba(15, 118, 110, 0.4);
-  color: var(--brand);
-  background: #fff;
-}
-
-.cta {
-  padding: 72px 0;
-}
-
-.cta-card {
-  background: #fff;
-  border-radius: 22px;
-  padding: 30px;
-  display: grid;
-  gap: 20px;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
-}
-
-@media (min-width: 900px) {
-  .cta-card {
-    grid-template-columns: 1.2fr 0.8fr;
-    align-items: center;
-  }
-}
-
-.cta-actions {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.footer {
-  padding: 56px 0 32px;
-  background: #0b1b2b;
-  color: #d1d5db;
-}
-
-.footer-grid {
-  display: grid;
-  gap: 24px;
-}
-
-@media (min-width: 900px) {
-  .footer-grid {
-    grid-template-columns: 2fr 1fr 1fr;
-  }
-}
-
-.footer a {
-  display: block;
-  margin-top: 8px;
-  color: #d1d5db;
-  text-decoration: none;
-}
-
-.footer-title {
-  font-weight: 600;
-  color: #fff;
-}
-
-.logo {
-  font-family: 'Domine', serif;
-  font-size: 1.4rem;
-  color: #fff;
-}
-
-.footer-bottom {
-  text-align: center;
-  margin-top: 24px;
-  font-size: 0.85rem;
-  color: #94a3b8;
-}
 </style>
