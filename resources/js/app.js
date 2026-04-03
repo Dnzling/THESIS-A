@@ -74,6 +74,7 @@ import OverlayPanel from 'primevue/overlaypanel';
 import Popover from 'primevue/popover';
 import IftaLabel  from 'primevue/iftalabel';
 import FloatLabel from 'primevue/floatlabel';
+import Slider from 'primevue/slider';
 import { Link, router as inertiaRouter } from '@inertiajs/vue3';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Furnisync';
@@ -123,6 +124,7 @@ createInertiaApp({
         app.use(ConfirmationService);
 
         const components = {
+            Slider,
             IftaLabel,
             FloatLabel,
             Carousel,

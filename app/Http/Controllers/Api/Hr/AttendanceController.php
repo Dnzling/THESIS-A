@@ -9,6 +9,7 @@ use App\Models\Hr\ShiftSchedule;
 use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\Shift;
 use App\Models\Hr\PayPeriod;
+use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -491,6 +492,8 @@ class AttendanceController extends Controller
             'user_id' => 'required|exists:users,id',
             'method' => 'sometimes|in:biometric,mobile,web,manual',
             'location' => 'nullable|string',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
         if ($validator->fails()) {
@@ -510,6 +513,31 @@ class AttendanceController extends Controller
                 'success' => false,
                 'message' => 'Employee not found'
             ], 200);
+        }
+
+        $settings = is_array($user->store?->settings) ? $user->store->settings : [];
+        $geofenceEnabled = !array_key_exists('attendance_geofence_enabled', $settings) || (bool) $settings['attendance_geofence_enabled'];
+
+        if ($geofenceEnabled && !$user->isSuperAdmin() && !$user->isStoreAdmin()) {
+            $geofenceBranch = $this->resolveGeofenceBranch($user, $employee);
+            if ($geofenceBranch && $geofenceBranch->latitude !== null && $geofenceBranch->longitude !== null) {
+                $lat = $request->input('latitude');
+                $lng = $request->input('longitude');
+                if ($lat === null || $lng === null) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Location access is required to clock in.',
+                    ], 403);
+                }
+
+                $radius = (int) ($geofenceBranch->geofence_radius_m ?? 5);
+                if (!$this->isWithinRadius((float) $lat, (float) $lng, (float) $geofenceBranch->latitude, (float) $geofenceBranch->longitude, $radius)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You are outside the allowed attendance radius.',
+                    ], 403);
+                }
+            }
         }
 
         $today = now()->format('Y-m-d');
@@ -583,7 +611,7 @@ class AttendanceController extends Controller
                     'clock_in' => $now,
                     'clock_in_method' => $request->method ?? 'manual',
                     'clock_in_ip' => $request->ip(),
-                    'clock_in_location' => $request->location,
+                    'clock_in_location' => $request->location ?? ($request->filled('latitude') ? ($request->latitude . ',' . $request->longitude) : null),
                     'status' => 'present', // Will be updated by calculateLate
                 ]);
             } else {
@@ -596,7 +624,7 @@ class AttendanceController extends Controller
                     'clock_in' => $now,
                     'clock_in_method' => $request->method ?? 'manual',
                     'clock_in_ip' => $request->ip(),
-                    'clock_in_location' => $request->location,
+                    'clock_in_location' => $request->location ?? ($request->filled('latitude') ? ($request->latitude . ',' . $request->longitude) : null),
                     'status' => 'present', // Will be updated by calculateLate
                 ]);
             }
@@ -736,6 +764,36 @@ class AttendanceController extends Controller
             ], 500);
         }
     }
+
+    private function resolveGeofenceBranch($user, $employee): ?Branch
+    {
+        $branchId = $user?->branch_id ?: $employee?->branch_id;
+        if ($branchId) {
+            return Branch::find($branchId);
+        }
+
+        if ($user?->store_id) {
+            return Branch::query()
+                ->where('store_id', $user->store_id)
+                ->orderByDesc('is_main_branch')
+                ->orderBy('id')
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function isWithinRadius(float $userLat, float $userLng, float $targetLat, float $targetLng, int $radiusMeters): bool
+    {
+        $earthRadius = 6371000;
+        $dLat = deg2rad($targetLat - $userLat);
+        $dLng = deg2rad($targetLng - $userLng);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($userLat)) * cos(deg2rad($targetLat)) * sin($dLng / 2) ** 2;
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        $distance = $earthRadius * $c;
+        return $distance <= $radiusMeters;
+    }
+
 
     public function startBreak($id)
     {
@@ -965,122 +1023,122 @@ class AttendanceController extends Controller
     /**
      * Get attendance list by employee number with date filtering
      */
- /**
- * Get paginated attendance list by employee number with date filtering
- */
-public function getPaginatedAttendanceByEmployeeNumber(Request $request)
-{
-    $user = Auth::user();
-    $storeId = $user->store_id;
+    /**
+     * Get paginated attendance list by employee number with date filtering
+     */
+    public function getPaginatedAttendanceByEmployeeNumber(Request $request)
+    {
+        $user = Auth::user();
+        $storeId = $user->store_id;
 
-    $validator = Validator::make($request->all(), [
-        'employee_id' => 'required|string',
-        'start_date' => 'nullable|date',
-        'end_date' => 'nullable|date|after_or_equal:start_date',
-        'per_page' => 'nullable|integer|min:1|max:100',
-        'page' => 'nullable|integer|min:1',
-    ]);
+        $validator = Validator::make($request->all(), [
+            'employee_id' => 'required|string',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'page' => 'nullable|integer|min:1',
+        ]);
 
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors()
-        ], 422);
-    }
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
-    // Find employee by employee number
-    $employee = Employee::where('employee_id', $request->employee_id)
-        ->where('store_id', $storeId)
-        ->first();
+        // Find employee by employee number
+        $employee = Employee::where('employee_id', $request->employee_id)
+            ->where('store_id', $storeId)
+            ->first();
 
-    if (!$employee) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Employee not found with the provided employee number'
-        ], 404);
-    }
+        if (!$employee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee not found with the provided employee number'
+            ], 404);
+        }
 
-    // Build attendance query
-    $query = Attendance::with(['shift', 'schedule'])
-        ->where('employee_id', $employee->id)
-        ->orderBy('attendance_date', 'desc');
+        // Build attendance query
+        $query = Attendance::with(['shift', 'schedule'])
+            ->where('employee_id', $employee->id)
+            ->orderBy('attendance_date', 'desc');
 
-    // Apply date filters
-    if ($request->has('start_date') && $request->start_date) {
-        $query->whereDate('attendance_date', '>=', $request->start_date);
-    }
+        // Apply date filters
+        if ($request->has('start_date') && $request->start_date) {
+            $query->whereDate('attendance_date', '>=', $request->start_date);
+        }
 
-    if ($request->has('end_date') && $request->end_date) {
-        $query->whereDate('attendance_date', '<=', $request->end_date);
-    }
+        if ($request->has('end_date') && $request->end_date) {
+            $query->whereDate('attendance_date', '<=', $request->end_date);
+        }
 
-    // If no date range provided, default to current month
-    if (!$request->has('start_date') && !$request->has('end_date')) {
-        $query->whereMonth('attendance_date', now()->month)
-            ->whereYear('attendance_date', now()->year);
-    }
+        // If no date range provided, default to current month
+        if (!$request->has('start_date') && !$request->has('end_date')) {
+            $query->whereMonth('attendance_date', now()->month)
+                ->whereYear('attendance_date', now()->year);
+        }
 
-    $perPage = $request->input('per_page', 15);
-    $paginatedAttendances = $query->paginate($perPage);
+        $perPage = $request->input('per_page', 15);
+        $paginatedAttendances = $query->paginate($perPage);
 
-    // Calculate summary for the filtered records (not just paginated)
-    $allFilteredRecords = $query->get();
-    $summary = [
-        'total_days' => $allFilteredRecords->count(),
-        'present' => $allFilteredRecords->whereIn('status', ['present'])->count(),
-        'late' => $allFilteredRecords->where('status', 'late')->count(),
-        'absent' => $allFilteredRecords->where('status', 'absent')->count(),
-        'half_day' => $allFilteredRecords->where('status', 'half_day')->count(),
-        'on_leave' => $allFilteredRecords->where('status', 'on_leave')->count(),
-        'holiday' => $allFilteredRecords->where('status', 'holiday')->count(),
-        'total_worked_minutes' => $allFilteredRecords->sum('total_worked_minutes'),
-        'total_worked_hours' => round($allFilteredRecords->sum('total_worked_minutes') / 60, 2),
-        'total_late_minutes' => $allFilteredRecords->sum('late_minutes'),
-        'total_overtime_minutes' => $allFilteredRecords->sum('overtime_minutes'),
-    ];
-
-    // Format paginated attendance records
-    $formattedAttendances = collect($paginatedAttendances->items())->map(function ($attendance) {
-        return [
-            'id' => $attendance->id,
-            'date' => $attendance->attendance_date->format('Y-m-d'),
-            'date_formatted' => $attendance->attendance_date->format('M d, Y'),
-            'day' => $attendance->attendance_date->format('l'),
-            'clock_in' => $attendance->clock_in ? $attendance->clock_in->format('h:i A') : null,
-            'clock_out' => $attendance->clock_out ? $attendance->clock_out->format('h:i A') : null,
-            'status' => $attendance->status,
-            'status_label' => $attendance->status_label,
-            'shift_name' => $attendance->shift->name ?? 'No Shift',
-            'late_minutes' => $attendance->late_minutes,
-            'total_worked_hours' => $attendance->total_hours_worked,
-            'is_late' => $attendance->isLate(),
-            'has_overtime' => $attendance->hasOvertime(),
+        // Calculate summary for the filtered records (not just paginated)
+        $allFilteredRecords = $query->get();
+        $summary = [
+            'total_days' => $allFilteredRecords->count(),
+            'present' => $allFilteredRecords->whereIn('status', ['present'])->count(),
+            'late' => $allFilteredRecords->where('status', 'late')->count(),
+            'absent' => $allFilteredRecords->where('status', 'absent')->count(),
+            'half_day' => $allFilteredRecords->where('status', 'half_day')->count(),
+            'on_leave' => $allFilteredRecords->where('status', 'on_leave')->count(),
+            'holiday' => $allFilteredRecords->where('status', 'holiday')->count(),
+            'total_worked_minutes' => $allFilteredRecords->sum('total_worked_minutes'),
+            'total_worked_hours' => round($allFilteredRecords->sum('total_worked_minutes') / 60, 2),
+            'total_late_minutes' => $allFilteredRecords->sum('late_minutes'),
+            'total_overtime_minutes' => $allFilteredRecords->sum('overtime_minutes'),
         ];
-    });
 
-    return response()->json([
-        'success' => true,
-        'data' => [
-            'employee' => [
-                'id' => $employee->id,
-                'employee_id' => $employee->employee_id,
-                'name' => $employee->fname . ' ' . $employee->lname,
-            ],
-            'date_range' => [
-                'start_date' => $request->start_date ?? now()->startOfMonth()->toDateString(),
-                'end_date' => $request->end_date ?? now()->endOfMonth()->toDateString(),
-            ],
-            'summary' => $summary,
-            'attendances' => $formattedAttendances,
-            'pagination' => [
-                'current_page' => $paginatedAttendances->currentPage(),
-                'per_page' => $paginatedAttendances->perPage(),
-                'total' => $paginatedAttendances->total(),
-                'last_page' => $paginatedAttendances->lastPage(),
-                'from' => $paginatedAttendances->firstItem(),
-                'to' => $paginatedAttendances->lastItem(),
+        // Format paginated attendance records
+        $formattedAttendances = collect($paginatedAttendances->items())->map(function ($attendance) {
+            return [
+                'id' => $attendance->id,
+                'date' => $attendance->attendance_date->format('Y-m-d'),
+                'date_formatted' => $attendance->attendance_date->format('M d, Y'),
+                'day' => $attendance->attendance_date->format('l'),
+                'clock_in' => $attendance->clock_in ? $attendance->clock_in->format('h:i A') : null,
+                'clock_out' => $attendance->clock_out ? $attendance->clock_out->format('h:i A') : null,
+                'status' => $attendance->status,
+                'status_label' => $attendance->status_label,
+                'shift_name' => $attendance->shift->name ?? 'No Shift',
+                'late_minutes' => $attendance->late_minutes,
+                'total_worked_hours' => $attendance->total_hours_worked,
+                'is_late' => $attendance->isLate(),
+                'has_overtime' => $attendance->hasOvertime(),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'employee' => [
+                    'id' => $employee->id,
+                    'employee_id' => $employee->employee_id,
+                    'name' => $employee->fname . ' ' . $employee->lname,
+                ],
+                'date_range' => [
+                    'start_date' => $request->start_date ?? now()->startOfMonth()->toDateString(),
+                    'end_date' => $request->end_date ?? now()->endOfMonth()->toDateString(),
+                ],
+                'summary' => $summary,
+                'attendances' => $formattedAttendances,
+                'pagination' => [
+                    'current_page' => $paginatedAttendances->currentPage(),
+                    'per_page' => $paginatedAttendances->perPage(),
+                    'total' => $paginatedAttendances->total(),
+                    'last_page' => $paginatedAttendances->lastPage(),
+                    'from' => $paginatedAttendances->firstItem(),
+                    'to' => $paginatedAttendances->lastItem(),
+                ]
             ]
-        ]
-    ]);
-}
+        ]);
+    }
 }

@@ -51,7 +51,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     
     // System (Store Admin)
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
-        $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.dashboard', 'Dashboard');
+        $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
         $inertia('/store/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
         $inertia('/store/settings', 'System/StoreAdmin/Settings', 'store.settings', 'Settings', 'Trial & Configuration');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
@@ -62,6 +62,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/hr/index', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');
     $inertia('/hr/employees/view/{id?}', 'System/HR/EmployeeView', 'hr.employees.view', 'View Employee');
+    Route::get('/hr/profile', fn() => redirect('/profile'));
     $inertia('/hr/shifts', 'System/HR/ShiftIndex', 'hr.shifts', 'Shift Management');
     $inertia('/hr/shifts/employees', 'System/HR/EmployeeShifts', 'hr.shifts.employees', 'Employee Shifts');
     $inertia('/hr/shifts/create', 'System/HR/ShiftCreate', 'hr.shifts.create', 'Create Shift');
@@ -298,7 +299,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/supplier-portal/deliveries', 'System/Supplier/SupplierDriverShipmentsIndex', 'supplier.deliveries', 'Delivery Logs');
     $inertia('/supplier-portal/deliveries/{id}', 'System/Supplier/SupplierDriverShipmentDetail', 'supplier.deliveries.detail', 'Delivery Log Detail');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
-    Route::get('/supplier-portal/profile', fn() => redirect('/supplier-portal/registration'));
+    $inertia('/supplier-portal/profile', 'Profile/SupplierProfile', 'supplier.profile', 'Supplier Profile');
 });
 
 // Job Portal (public portal)

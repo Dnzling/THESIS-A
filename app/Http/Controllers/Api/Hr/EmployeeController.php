@@ -156,6 +156,19 @@ class EmployeeController extends Controller
      */
     public function store(Request $request)
     {
+        return $this->storeInternal($request, false);
+    }
+
+    /**
+     * Store a newly created employee without OTP (manual invite).
+     */
+    public function storeInvite(Request $request)
+    {
+        return $this->storeInternal($request, true);
+    }
+
+    private function storeInternal(Request $request, bool $markEmailVerified)
+    {
         try {
             // Get the authenticated user
             $user = Auth::user();
@@ -212,7 +225,8 @@ class EmployeeController extends Controller
                 'store_id' => $storeId, // Using the authenticated user's store_id
                 'branch_id' => $request->branch_id ?? $user->branch_id,
                 'is_active' => $request->boolean('is_active', true),
-                'registered_by' => $current_user_id // Using the authenticated user's ID
+                'registered_by' => $current_user_id, // Using the authenticated user's ID
+                'email_verified_at' => $markEmailVerified ? now() : null,
             ]);
 
             // Generate Employee ID

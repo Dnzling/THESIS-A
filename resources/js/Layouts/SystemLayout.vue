@@ -270,6 +270,7 @@ let responseDialogUnsub: (() => void) | null = null
 
 // Track expanded/collapsed modules
 const expandedModules = ref<Record<string, boolean>>({
+  admin: true,
   inventory: true,
   procurement: true,
   merchandising: true,
@@ -482,6 +483,7 @@ const supplierFallbackNavigation = [
 const groupedNavigation = computed(() => {
   const isSupplierRole = (authStore.userRole || '').toLowerCase().includes('supplier')
   const isStoreRole = (authStore.userRole || '').toLowerCase().includes('store')
+  const isCustomerRole = (authStore.userRole || '').toLowerCase().includes('customer')
   let baseNavigation = authStore.navigation.length > 0
     ? [...authStore.navigation]
     : []
@@ -491,6 +493,29 @@ const groupedNavigation = computed(() => {
       baseNavigation = [...supplierFallbackNavigation]
     } else if (isStoreRole) {
       // baseNavigation = [...storeFallbackNavigation]
+    }
+  }
+
+  if (!isCustomerRole) {
+    const profileItem = {
+      id: -901,
+      name: 'account.profile',
+      display_name: 'Profile',
+      module: 'account',
+      route_name: isSupplierRole ? 'supplier.profile' : 'profile.edit',
+      route_path: isSupplierRole ? '/supplier-portal/profile' : '/profile',
+      icon: 'pi pi-user',
+      parent_id: null,
+      display_order: 999,
+      section: 'General',
+      meta: null,
+      is_active: true,
+      badge_count: 0,
+    }
+
+    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
+    if (!existingPaths.has(profileItem.route_path)) {
+      baseNavigation = [...baseNavigation, profileItem]
     }
   }
 
@@ -538,7 +563,7 @@ const groupedNavigation = computed(() => {
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['store', 'supplier', 'inventory', 'procurement', 'merchandising', 'human resources']
+  const moduleOrder = ['admin', 'supplier', 'inventory', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'account']
 
   for (const module of moduleOrder) {
     if (itemsByModule[module]) {

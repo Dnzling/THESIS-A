@@ -115,7 +115,12 @@ const accessToken = ref<string | null>(null)
 const fullOtp = computed(() => otpDigits.value.join(''))
 const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
-const otpContextLabel = computed(() => isCustomerOtp.value ? 'Furnisync Shop Customer Verification' : 'Furnisync Verification')
+const isProfileOtp = computed(() => otpContext.value === 'profile_email_change')
+const otpContextLabel = computed(() => {
+  if (isCustomerOtp.value) return 'Furnisync Shop Customer Verification'
+  if (isProfileOtp.value) return 'Profile Email Change'
+  return 'Furnisync Verification'
+})
 
 const focusOtpInput = (index: number) => {
   const input = otpInputs.value[index]
@@ -221,6 +226,11 @@ const verifyOtp = async () => { // Add async here
             email: response.data.user?.email || ''
           })
         }, 1200)
+      } else if (isProfileOtp.value) {
+        setTimeout(() => {
+          localStorage.removeItem('register_token')
+          router.visit('/hr/profile')
+        }, 1200)
       } else {
         setTimeout(() => {
           router.visit('/trial-onboarding')
@@ -302,6 +312,8 @@ onMounted(() => {
   }, 100)
 
   accessToken.value = localStorage.getItem('register_token')
+    || localStorage.getItem('auth_token')
+    || localStorage.getItem('access_token')
 
   // Set axios authorization header
   if (accessToken.value) {

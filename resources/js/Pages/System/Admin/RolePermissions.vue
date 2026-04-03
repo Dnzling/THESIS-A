@@ -317,7 +317,7 @@
       <div class="space-y-4">
         <div class="flex flex-col gap-2">
           <label class="text-sm font-semibold text-gray-700">Permission Name *</label>
-          <InputText v-model="permissionForm.name" placeholder="e.g., merchandising.products.view"
+          <InputText v-model="permissionForm.name" placeholder="e.g., inventory.products.view"
             :class="{ 'p-invalid': permissionErrors.name }" />
           <small class="text-gray-500">Use dot notation: module.resource.action</small>
           <small v-if="permissionErrors.name" class="text-red-500">{{ permissionErrors.name }}</small>
@@ -362,7 +362,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Name *</label>
-            <InputText v-model="navigationForm.name" placeholder="e.g., merchandising.products" />
+            <InputText v-model="navigationForm.name" placeholder="e.g., View Products" />
           </div>
              <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Module *</label>
@@ -398,7 +398,7 @@
           </div>
 <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Route Name *</label>
-            <InputText v-model="navigationForm.route_name" placeholder="e.g., merchandising.products" />
+            <InputText v-model="navigationForm.route_name" placeholder="e.g., inventory.products.view" />
           </div>
 
         </div>

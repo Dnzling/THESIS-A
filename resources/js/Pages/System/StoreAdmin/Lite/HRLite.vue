@@ -98,7 +98,7 @@ import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
-import Select from 'primevue/Select'
+import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 
 const employees = ref<any[]>([])

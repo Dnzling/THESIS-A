@@ -19,26 +19,22 @@ Route::prefix('product-catalog')->group(function () {
 
     // Categories
     Route::apiResource('categories', CategoryController::class)
-        ->middleware([
-            'index' => 'can:merchandising.categories.view',
-            'show' => 'can:merchandising.categories.view',
-            'store' => 'can:merchandising.categories.manage',
-            'update' => 'can:merchandising.categories.manage',
-            'destroy' => 'can:merchandising.categories.manage',
-        ]);
+        ->only(['index', 'show'])
+        ->middleware('can:merchandising.categories.view');
+    Route::apiResource('categories', CategoryController::class)
+        ->except(['index', 'show'])
+        ->middleware('can:merchandising.categories.manage');
     Route::get('categories/tree/all', [CategoryController::class, 'tree'])->middleware('can:merchandising.categories.view');
     Route::post('categories/reorder', [CategoryController::class, 'reorder'])->middleware('can:merchandising.categories.manage');
     Route::post('categories/bulk/delete', [CategoryController::class, 'bulkDelete'])->middleware('can:merchandising.categories.manage');
 
     // Products
     Route::apiResource('products', ProductController::class)
-        ->middleware([
-            'index' => 'can:merchandising.products.view',
-            'show' => 'can:merchandising.products.view',
-            'store' => 'can:merchandising.products.manage',
-            'update' => 'can:merchandising.products.manage',
-            'destroy' => 'can:merchandising.products.manage',
-        ]);
+        ->only(['index', 'show'])
+        ->middleware('can:merchandising.products.view');
+    Route::apiResource('products', ProductController::class)
+        ->except(['index', 'show'])
+        ->middleware('can:merchandising.products.manage');
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData'])->middleware('can:merchandising.products.view');
     Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice'])->middleware('can:merchandising.products.manage');
     Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice'])->middleware('can:merchandising.products.manage');
@@ -47,13 +43,11 @@ Route::prefix('product-catalog')->group(function () {
 
     // Product Variations
     Route::apiResource('variations', ProductVariationController::class)
-        ->middleware([
-            'index' => 'can:merchandising.variations.view',
-            'show' => 'can:merchandising.variations.view',
-            'store' => 'can:merchandising.variations.manage',
-            'update' => 'can:merchandising.variations.manage',
-            'destroy' => 'can:merchandising.variations.manage',
-        ]);
+        ->only(['index', 'show'])
+        ->middleware('can:merchandising.variations.view');
+    Route::apiResource('variations', ProductVariationController::class)
+        ->except(['index', 'show'])
+        ->middleware('can:merchandising.variations.manage');
     Route::get('products/{productId}/variations', [ProductVariationController::class, 'getByProduct'])->middleware('can:merchandising.variations.view');
     Route::post('variations/bulk/stock', [ProductVariationController::class, 'bulkUpdateStock'])->middleware('can:merchandising.variations.manage');
 
@@ -79,23 +73,21 @@ Route::prefix('product-catalog')->group(function () {
     });
 
     // Attributes
-    Route::apiResource('attributes', AttributeController::class)->middleware([
-        'index' => 'can:merchandising.attributes.view',
-        'show' => 'can:merchandising.attributes.view',
-        'store' => 'can:merchandising.attributes.manage',
-        'update' => 'can:merchandising.attributes.manage',
-        'destroy' => 'can:merchandising.attributes.manage',
-    ]);
+    Route::apiResource('attributes', AttributeController::class)
+        ->only(['index', 'show'])
+        ->middleware('can:merchandising.attributes.view');
+    Route::apiResource('attributes', AttributeController::class)
+        ->except(['index', 'show'])
+        ->middleware('can:merchandising.attributes.manage');
     Route::post('attributes/assign-value', [AttributeController::class, 'assignValue']);
 
     // Tags
-    Route::apiResource('tags', TagController::class)->middleware([
-        'index' => 'can:merchandising.tags.view',
-        'show' => 'can:merchandising.tags.view',
-        'store' => 'can:merchandising.tags.manage',
-        'update' => 'can:merchandising.tags.manage',
-        'destroy' => 'can:merchandising.tags.manage',
-    ]);
+    Route::apiResource('tags', TagController::class)
+        ->only(['index', 'show'])
+        ->middleware('can:merchandising.tags.view');
+    Route::apiResource('tags', TagController::class)
+        ->except(['index', 'show'])
+        ->middleware('can:merchandising.tags.manage');
     Route::post('tags/assign-to-product', [TagController::class, 'assignToProduct']);
     Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete']);
 

@@ -94,6 +94,68 @@
     </Card>
 
     <Card>
+      <template #title>Attendance Geolocation</template>
+      <template #content>
+        <p class="text-sm text-slate-600 mb-4">
+          Set the main branch location for attendance login/clock-in. Employees must be within the radius to log in.
+        </p>
+        <div class="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <InputText v-model="searchQuery" class="flex-1 min-w-[220px]" placeholder="Search address..." />
+              <Button label="Search" icon="pi pi-search" severity="secondary" @click="searchAddress" />
+            </div>
+            <div ref="mapEl" class="h-72 w-full rounded-xl border border-slate-200"></div>
+            <p class="mt-2 text-xs text-slate-500">Drag the pin to adjust the exact location.</p>
+          </div>
+          <div class="space-y-3 text-sm text-slate-700">
+            <div>
+              <div class="text-xs uppercase text-slate-400">Address</div>
+              <div class="font-semibold">{{ attendance.address || 'Not set' }}</div>
+            </div>
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+              <div>
+                <div class="text-xs uppercase text-slate-400">Geofence</div>
+                <div class="text-sm font-semibold">{{ attendance.geofence_enabled ? 'Enabled' : 'Disabled' }}</div>
+              </div>
+              <InputSwitch v-model="attendance.geofence_enabled" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <div class="text-xs uppercase text-slate-400">Barangay</div>
+                <div class="font-semibold">{{ attendance.barangay || 'Not set' }}</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase text-slate-400">City</div>
+                <div class="font-semibold">{{ attendance.city || 'Not set' }}</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase text-slate-400">Province</div>
+                <div class="font-semibold">{{ attendance.province || 'Not set' }}</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase text-slate-400">Radius (meters)</div>
+                <div class="mt-2 space-y-2">
+                  <Slider v-model="attendance.geofence_radius_m" :min="0" :max="100" :step="1" class="w-full" />
+                  <div class="text-xs text-slate-500">{{ attendance.geofence_radius_m }} meters</div>
+                </div>
+              </div>
+            </div>
+            <div class="text-xs text-slate-500">
+              Coordinates: {{ attendance.latitude ?? '—' }}, {{ attendance.longitude ?? '—' }}
+            </div>
+            <Button
+              label="Save Attendance Location"
+              icon="pi pi-check"
+              :loading="savingAttendance"
+              @click="saveAttendance"
+            />
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <Card>
       <template #title>Small Store Access Map</template>
       <template #content>
         <p class="text-sm text-slate-600 mb-4">
@@ -132,23 +194,51 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axiosClient from '@/axios'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import MultiSelect from 'primevue/multiselect'
+import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
+import InputSwitch from 'primevue/inputswitch'
+import Slider from 'primevue/slider'
 import Tag from 'primevue/tag'
 import { usePermissions } from '@/composables/usePermissions'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
 const saving = ref(false)
+const savingAttendance = ref(false)
 const loading = ref(true)
+const mapEl = ref<HTMLElement | null>(null)
+const mapReady = ref(false)
+const mapRef = ref<L.Map | null>(null)
+const markerRef = ref<L.Marker | null>(null)
+const circleRef = ref<L.Circle | null>(null)
+const searchQuery = ref('')
 
 const store = reactive({
   name: '',
   contact_person: '',
   email: '',
   phone: '',
+})
+
+const attendance = reactive({
+  branch_id: null as number | null,
+  address: '',
+  barangay: '',
+  city: '',
+  province: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
+  geofence_radius_m: 5,
+  geofence_enabled: true,
 })
 
 const subscription = reactive({
@@ -232,6 +322,16 @@ const fetchSettings = async () => {
     onboarding.plan = data.onboarding?.plan || 'simple'
     onboarding.modules = data.onboarding?.modules || []
     form.modules = [...onboarding.modules]
+
+    attendance.branch_id = data.attendance?.branch_id ?? null
+    attendance.address = data.attendance?.address || ''
+    attendance.barangay = data.attendance?.barangay || ''
+    attendance.city = data.attendance?.city || ''
+    attendance.province = data.attendance?.province || ''
+    attendance.latitude = data.attendance?.latitude ?? null
+    attendance.longitude = data.attendance?.longitude ?? null
+    attendance.geofence_radius_m = data.attendance?.geofence_radius_m ?? 5
+    attendance.geofence_enabled = data.attendance?.geofence_enabled ?? true
   } catch (error) {
     console.error('Failed to load settings', error)
   } finally {
@@ -253,6 +353,162 @@ const saveModules = async () => {
   }
 }
 
+const saveAttendance = async () => {
+  if (attendance.latitude === null || attendance.longitude === null) return
+  savingAttendance.value = true
+  try {
+    const response = await axiosClient.put('/api/store/settings/attendance', {
+      branch_id: attendance.branch_id,
+      address: attendance.address || null,
+      barangay: attendance.barangay || null,
+      city: attendance.city || null,
+      province: attendance.province || null,
+      latitude: attendance.latitude,
+      longitude: attendance.longitude,
+      geofence_radius_m: attendance.geofence_radius_m || 5,
+      geofence_enabled: attendance.geofence_enabled,
+    })
+    const data = response?.data?.data || {}
+    attendance.address = data.address || attendance.address
+    attendance.barangay = data.barangay || attendance.barangay
+    attendance.city = data.city || attendance.city
+    attendance.province = data.province || attendance.province
+    attendance.latitude = data.latitude ?? attendance.latitude
+    attendance.longitude = data.longitude ?? attendance.longitude
+    attendance.geofence_radius_m = data.geofence_radius_m ?? attendance.geofence_radius_m
+  } catch (error) {
+    console.error('Failed to update attendance location', error)
+  } finally {
+    savingAttendance.value = false
+  }
+}
+
+const setupLeafletDefaults = () => {
+  const icon = L.icon({
+    iconRetinaUrl: markerIcon2x,
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  })
+  L.Marker.prototype.options.icon = icon
+}
+
+const reverseGeocode = async (lat: number, lng: number) => {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=en`
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+    })
+    if (!response.ok) return
+    const data = await response.json()
+    const address = data?.address || {}
+    attendance.address = data?.display_name || attendance.address
+    attendance.barangay =
+      address.suburb ||
+      address.neighbourhood ||
+      address.village ||
+      address.quarter ||
+      address.hamlet ||
+      attendance.barangay
+    attendance.city = address.city || address.town || address.municipality || address.county || attendance.city
+    attendance.province = address.state || address.region || attendance.province
+  } catch (error) {
+    console.error('Reverse geocode failed', error)
+  }
+}
+
+const forwardGeocode = async (query: string) => {
+  const trimmed = query.trim()
+  if (!trimmed) return null
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(trimmed)}&limit=1&addressdetails=1`
+  const response = await fetch(url, {
+    headers: { 'Accept': 'application/json' },
+  })
+  if (!response.ok) return null
+  const results = await response.json()
+  if (!Array.isArray(results) || results.length === 0) return null
+  const hit = results[0]
+  return {
+    lat: parseFloat(hit.lat),
+    lng: parseFloat(hit.lon),
+  }
+}
+
+const syncLocation = async (lat: number, lng: number) => {
+  attendance.latitude = lat
+  attendance.longitude = lng
+  await reverseGeocode(lat, lng)
+}
+
+const initMap = async () => {
+  if (!mapEl.value || mapReady.value) return
+  setupLeafletDefaults()
+
+  const defaultCenter: [number, number] = [
+    attendance.latitude ?? 14.5995,
+    attendance.longitude ?? 120.9842,
+  ]
+
+  const map = L.map(mapEl.value).setView(defaultCenter, attendance.latitude ? 16 : 12)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map)
+
+  const marker = L.marker(defaultCenter, { draggable: true }).addTo(map)
+  const circle = L.circle(defaultCenter, {
+    radius: attendance.geofence_radius_m || 5,
+    color: '#16a34a',
+    fillColor: '#22c55e',
+    fillOpacity: 0.15,
+    weight: 1,
+  }).addTo(map)
+
+  marker.on('dragend', async () => {
+    const pos = marker.getLatLng()
+    circle.setLatLng(pos)
+    await syncLocation(pos.lat, pos.lng)
+  })
+
+  map.on('click', async (event: L.LeafletMouseEvent) => {
+    marker.setLatLng(event.latlng)
+    circle.setLatLng(event.latlng)
+    await syncLocation(event.latlng.lat, event.latlng.lng)
+  })
+
+  if (!attendance.address && attendance.latitude && attendance.longitude) {
+    await syncLocation(attendance.latitude, attendance.longitude)
+  }
+
+  mapRef.value = map
+  markerRef.value = marker
+  circleRef.value = circle
+  mapReady.value = true
+
+  const updateRadius = () => {
+    circle.setRadius(attendance.geofence_radius_m || 5)
+  }
+
+  return { updateRadius }
+}
+
+const searchAddress = async () => {
+  const result = await forwardGeocode(searchQuery.value)
+  if (!result) return
+  if (mapRef.value) {
+    mapRef.value.setView([result.lat, result.lng], 16)
+  }
+  if (markerRef.value) {
+    markerRef.value.setLatLng([result.lat, result.lng])
+  }
+  if (circleRef.value) {
+    circleRef.value.setLatLng([result.lat, result.lng])
+  }
+  await syncLocation(result.lat, result.lng)
+}
+
 const goToOnboarding = () => {
   router.visit('/trial-onboarding')
 }
@@ -261,5 +517,18 @@ const goToUpgrade = () => {
   router.visit('/admin/subscription')
 }
 
-onMounted(fetchSettings)
+onMounted(async () => {
+  await fetchSettings()
+  try {
+    const handlers = await initMap()
+    if (handlers?.updateRadius) {
+      watch(
+        () => attendance.geofence_radius_m,
+        () => handlers.updateRadius()
+      )
+    }
+  } catch (error) {
+    console.error('Map init failed', error)
+  }
+})
 </script>

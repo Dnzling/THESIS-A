@@ -39,7 +39,18 @@ class BaseController extends Controller
 
                 // Check if user has store_id (direct or via employee)
                 if (!$resolvedStoreId) {
-                    abort(403, 'User is not associated with any store');
+                    $roleName = $user->role?->name ?? null;
+                    $message = 'User is not associated with any store';
+                    if (config('app.debug')) {
+                        $message .= sprintf(
+                            ' (user_id=%s, role=%s, store_id=%s, branch_id=%s)',
+                            $user->id ?? 'null',
+                            $roleName ?? 'null',
+                            $user->store_id ?? 'null',
+                            $user->branch_id ?? 'null'
+                        );
+                    }
+                    abort(403, $message);
                 }
 
                 $this->storeId = $resolvedStoreId;

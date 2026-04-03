@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
+use App\Models\Store\Branch;
 use App\Models\Store\TrialOnboardingProfile;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -113,6 +114,27 @@ class StoreController extends Controller
                     'store_id' => $store->id,
                 ]);
             }
+
+            // Auto-create main branch for the store
+            $branchCode = Branch::generateBranchCode($store->name, $store->city ?? 'MAIN', 1);
+            if (Branch::query()->where('branch_code', $branchCode)->exists()) {
+                $branchCode = $branchCode . '-' . str_pad((string) random_int(1, 999), 3, '0', STR_PAD_LEFT);
+            }
+
+            Branch::create([
+                'store_id' => $store->id,
+                'name' => $store->name . ' - Main',
+                'address' => $store->address,
+                'city' => $store->city,
+                'province' => $store->province,
+                'latitude' => $store->latitude,
+                'longitude' => $store->longitude,
+                'contact_number' => $store->phone ?? ($validated['contact_number'] ?? '0000000000'),
+                'branch_code' => $branchCode,
+                'is_main_branch' => true,
+                'status' => 'active',
+                'branch_type' => 'main',
+            ]);
 
             return response()->json([
                 'success' => true,

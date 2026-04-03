@@ -166,7 +166,9 @@ class AuthController extends Controller
             $credentials = $request->validate([
                 'login' => 'required|string',
                 'password' => 'required|string|min:6',
-                'device_name' => 'required|string|max:100'
+                'device_name' => 'required|string|max:100',
+                'latitude' => 'nullable|numeric|between:-90,90',
+                'longitude' => 'nullable|numeric|between:-180,180',
             ]);
 
             $identifier = $credentials['login'] ?? $request->input('email');
@@ -218,6 +220,14 @@ class AuthController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Account is inactive.'
+                ], 403);
+            }
+
+            if (!$this->passesGeofence($user, $request->input('latitude'), $request->input('longitude'))) {
+                Auth::logout();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are outside the allowed attendance radius.',
                 ], 403);
             }
 
@@ -280,6 +290,8 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'login' => 'required|string',
             'password' => 'required|string',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
         if ($validator->fails()) {
@@ -321,6 +333,14 @@ class AuthController extends Controller
 
         $user = Auth::user();
         $request->session()->regenerate();
+
+        if (!$this->passesGeofence($user, $request->input('latitude'), $request->input('longitude'))) {
+            Auth::logout();
+            return response()->json([
+                'success' => false,
+                'message' => 'You are outside the allowed attendance radius.',
+            ], 403);
+        }
 
         // Get user data
         $userData = [
@@ -461,6 +481,67 @@ class AuthController extends Controller
                 'attendance' => $clockInData
             ]
         ]);
+    }
+
+    private function passesGeofence(User $user, ?float $latitude, ?float $longitude): bool
+    {
+        if ($user->isSuperAdmin() || $user->isStoreAdmin()) {
+            return true;
+        }
+
+        $settings = is_array($user->store?->settings) ? $user->store->settings : [];
+        if (array_key_exists('attendance_geofence_enabled', $settings) && !$settings['attendance_geofence_enabled']) {
+            return true;
+        }
+
+        $employee = Employee::where('user_id', $user->id)
+            ->where('store_id', $user->store_id)
+            ->first();
+
+        if (!$employee) {
+            return true;
+        }
+
+        $branch = $this->resolveGeofenceBranch($user, $employee);
+        if (!$branch || $branch->latitude === null || $branch->longitude === null) {
+            return true;
+        }
+
+        if ($latitude === null || $longitude === null) {
+            return false;
+        }
+
+        $radius = (int) ($branch->geofence_radius_m ?? 5);
+        return $this->isWithinRadius($latitude, $longitude, (float) $branch->latitude, (float) $branch->longitude, $radius);
+    }
+
+    private function resolveGeofenceBranch(User $user, Employee $employee): ?Branch
+    {
+        $branchId = $user->branch_id ?: $employee->branch_id;
+        if ($branchId) {
+            return Branch::find($branchId);
+        }
+
+        if ($user->store_id) {
+            return Branch::query()
+                ->where('store_id', $user->store_id)
+                ->orderByDesc('is_main_branch')
+                ->orderBy('id')
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function isWithinRadius(float $userLat, float $userLng, float $targetLat, float $targetLng, int $radiusMeters): bool
+    {
+        $earthRadius = 6371000;
+        $dLat = deg2rad($targetLat - $userLat);
+        $dLng = deg2rad($targetLng - $userLng);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($userLat)) * cos(deg2rad($targetLat)) * sin($dLng / 2) ** 2;
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        $distance = $earthRadius * $c;
+        return $distance <= $radiusMeters;
     }
 
     public function logout(Request $request)

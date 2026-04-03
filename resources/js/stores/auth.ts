@@ -308,11 +308,14 @@ export const useAuthStore = defineStore('auth', () => {
         error.value = null
 
         try {
+            const location = await getCurrentLocation()
             // Make login request
             const response = await axios.post('/api/auth/login', {
                 login,
                 password,
                 device_name: 'web_browser',
+                latitude: location?.latitude ?? null,
+                longitude: location?.longitude ?? null,
             })
 
             const payload = response.data || {}
@@ -345,7 +348,9 @@ export const useAuthStore = defineStore('auth', () => {
                 try {
                     await axios.post('/api/attendances/clock-in', {
                         user_id: userData.id,
-                        method: 'web'
+                        method: 'web',
+                        latitude: location?.latitude ?? null,
+                        longitude: location?.longitude ?? null,
                     })
                     console.log('Clock-in successful')
                 } catch (clockInError) {
@@ -362,6 +367,20 @@ export const useAuthStore = defineStore('auth', () => {
         } finally {
             loading.value = false
         }
+    }
+
+    const getCurrentLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(null)
+                return
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+                () => resolve(null),
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+            )
+        })
     }
 
     /**

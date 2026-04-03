@@ -5,42 +5,29 @@
         <h2 class="text-2xl font-bold text-gray-800">Roles & Permissions</h2>
         <p class="text-sm text-gray-500 mt-1">Manage store roles and module access</p>
       </div>
+      <Button
+        label="Add Role"
+        icon="pi pi-plus"
+        size="small"
+        :disabled="!hasStore"
+        @click="openCreateRoleDialog"
+      />
     </div>
-
-    <!-- Enabled Modules -->
-    <Card>
-      <template #title>Enabled Modules</template>
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-          <div class="flex flex-col gap-2">
-            <label class="text-xs font-semibold text-gray-600">Modules</label>
-            <MultiSelect
-              v-model="enabledModules"
-              :options="availableModules"
-              placeholder="Select modules"
-              display="chip"
-              class="w-full"
-              :loading="loadingModules"
-            />
-          </div>
-          <div class="flex justify-end">
-            <Button
-              label="Save Modules"
-              icon="pi pi-check"
-              :loading="savingModules"
-              @click="saveModules"
-            />
-          </div>
-        </div>
-      </template>
-    </Card>
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
       <!-- Roles -->
       <Card class="lg:col-span-4">
         <template #title>Roles</template>
         <template #content>
+          <div v-if="!hasStore" class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            This account is not assigned to a store yet. Please complete store verification to manage roles.
+            <div class="mt-3">
+              <Button label="Go to Verification" size="small" severity="warning" @click="goToVerification" />
+            </div>
+          </div>
+
           <DataTable
+            v-else
             :value="roles"
             class="p-datatable-sm"
             selectionMode="single"
@@ -48,6 +35,9 @@
             v-model:selection="selectedRole"
             :loading="loadingRoles"
           >
+            <template #empty>
+              <div class="py-6 text-center text-sm text-gray-500">No roles found.</div>
+            </template>
             <Column field="display_name" header="Role">
               <template #body="{ data }">
                 <div class="text-sm">
@@ -76,6 +66,10 @@
           </div>
         </template>
         <template #content>
+          <div v-if="!hasStore" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+            Assign a store first to manage permissions.
+          </div>
+          <div v-else>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
             <InputText v-model="permissionSearch" placeholder="Search permissions..." />
             <Select
@@ -155,9 +149,32 @@
               </div>
             </div>
           </div>
+          </div>
         </template>
       </Card>
     </div>
+
+    <!-- Create Role Dialog -->
+    <Dialog v-model:visible="createRoleDialog" header="Create Role" :modal="true" :style="{ width: '480px' }">
+      <div class="space-y-4">
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-semibold text-gray-700">Display Name *</label>
+          <InputText v-model="roleForm.display_name" placeholder="e.g., Merchandising Staff" />
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-semibold text-gray-700">Description</label>
+          <Textarea v-model="roleForm.description" rows="3" placeholder="Optional description..." />
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="roleForm.is_active" inputId="role_active" :binary="true" />
+          <label for="role_active" class="text-sm text-gray-700">Active</label>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="createRoleDialog = false" />
+        <Button label="Create Role" icon="pi pi-check" :loading="savingRole" @click="createRole" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -165,16 +182,39 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
+import { router } from '@inertiajs/vue3'
+import Dialog from 'primevue/dialog'
+import Textarea from 'primevue/textarea'
+import Checkbox from 'primevue/checkbox'
+import Button from 'primevue/button'
+import { useAuthStore } from '@/stores/auth'
 
 const roles = ref<any[]>([])
 const permissions = ref<any[]>([])
 const selectedRole = ref<any | null>(null)
 const selectedRolePermissions = ref<number[]>([])
 const toast = useToast()
+const authStore = useAuthStore()
+const hasStore = computed(() => Boolean(authStore.user?.store_id || authStore.user?.store?.id))
 
 const loadingRoles = ref(false)
 const loadingPermissions = ref(false)
 const savingPermissions = ref(false)
+const createRoleDialog = ref(false)
+const savingRole = ref(false)
+const roleForm = ref({
+  display_name: '',
+  description: '',
+  is_active: true,
+})
+const generatedRoleName = computed(() => {
+  const raw = String(roleForm.value.display_name || '').trim()
+  if (!raw) return ''
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9\s_]/g, '')
+    .replace(/\s+/g, '_')
+})
 
 const loadingModules = ref(false)
 const savingModules = ref(false)
@@ -392,14 +432,6 @@ const savePermissions = async () => {
   }
 }
 
-const saveModules = async () => {
-  savingModules.value = true
-  try {
-    await axios.put('/api/store/modules', { modules: enabledModules.value })
-  } finally {
-    savingModules.value = false
-  }
-}
 
 watch(
   () => selectedRole.value?.id,
@@ -422,6 +454,47 @@ watch(
 )
 
 onMounted(async () => {
+  await authStore.fetchCurrentUser()
+  if (!hasStore.value) return
   await Promise.all([loadModules(), loadPermissions(), loadRoles()])
 })
+
+const openCreateRoleDialog = () => {
+  roleForm.value = {
+    display_name: '',
+    description: '',
+    is_active: true,
+  }
+  createRoleDialog.value = true
+}
+
+const createRole = async () => {
+  if (!hasStore.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Store Required',
+      detail: 'Assign a store before creating roles.',
+      life: 3000
+    })
+    return
+  }
+  savingRole.value = true
+  try {
+    const payload = {
+      name: generatedRoleName.value,
+      display_name: roleForm.value.display_name,
+      description: roleForm.value.description || null,
+      is_active: roleForm.value.is_active,
+    }
+    await axios.post('/api/store/roles', payload)
+    createRoleDialog.value = false
+    await loadRoles()
+  } finally {
+    savingRole.value = false
+  }
+}
+
+const goToVerification = () => {
+  router.visit('/system/store/verification')
+}
 </script>

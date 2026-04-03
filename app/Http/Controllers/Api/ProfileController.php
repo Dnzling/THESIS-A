@@ -46,6 +46,11 @@ class ProfileController extends Controller
             'address' => 'nullable|string|max:255',
             'province' => 'nullable|string|max:100',
             'city' => 'nullable|string|max:100',
+            'barangay' => 'nullable|string|max:150',
+            'gender' => 'nullable|in:male,female,other',
+            'emergency_contact_name' => 'nullable|string|max:120',
+            'emergency_contact_phone' => 'nullable|string|max:30',
+            'emergency_contact_relationship' => 'nullable|string|max:60',
         ]);
 
         $user->fill([
@@ -92,7 +97,12 @@ class ProfileController extends Controller
                 'address' => $validated['address'] ?? $employee->address,
                 'province' => $validated['province'] ?? $employee->province,
                 'city' => $validated['city'] ?? $employee->city,
+                'barangay' => $validated['barangay'] ?? $employee->barangay,
                 'date_of_birth' => $validated['birthday'] ?? $employee->date_of_birth,
+                'gender' => $validated['gender'] ?? $employee->gender,
+                'emergency_contact_name' => $validated['emergency_contact_name'] ?? $employee->emergency_contact_name,
+                'emergency_contact_phone' => $validated['emergency_contact_phone'] ?? $employee->emergency_contact_phone,
+                'emergency_contact_relationship' => $validated['emergency_contact_relationship'] ?? $employee->emergency_contact_relationship,
             ]);
             $employee->save();
         }

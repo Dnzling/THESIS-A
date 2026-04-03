@@ -141,6 +141,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
         Route::get('/settings/hr', [StoreSettingsController::class, 'showHrSettings']);
         Route::put('/settings/hr', [StoreSettingsController::class, 'updateHrSettings']);
+        Route::put('/settings/attendance', [StoreSettingsController::class, 'updateAttendanceSettings']);
         Route::get('/roles/scoped', [StoreScopedRoleController::class, 'index']);
         Route::get('/roles/scoped-by-department', [StoreScopedRoleController::class, 'scopedByDepartment']);
         Route::get('/roles', [StoreRoleController::class, 'index']);
@@ -199,6 +200,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::prefix('users')->group(function () {});
 
     // =========== HR ==============
+    Route::post('/employees/invite', [EmployeeController::class, 'storeInvite']);
     Route::apiResource('employees', EmployeeController::class);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);

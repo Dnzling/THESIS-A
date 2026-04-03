@@ -505,9 +505,9 @@ const saveEmployee = async () => {
       }
     }
   } else {
-    // Persist to backend so both users and employees tables are written.
+    // Persist to backend (manual invite: skip OTP and mark email verified).
     try {
-      await hrService.api.post('/api/employees', {
+      await hrService.api.post('/api/employees/invite', {
         fname: employeeForm.value.firstName,
         lname: employeeForm.value.lastName,
         email: employeeForm.value.email,

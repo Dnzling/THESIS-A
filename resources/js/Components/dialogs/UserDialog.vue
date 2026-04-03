@@ -7,22 +7,22 @@
       <!-- Menu Items -->
       <div class="py-2">
         <!-- Profile -->
-        <button
+        <!-- <button
           @click="goProfile"
           class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-gray-100 transition-colors duration-150 text-left group"
         >
           <i class="pi pi-user text-gray-600 group-hover:text-gray-900 text-sm"></i>
           <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Profile</span>
-        </button>
+        </button> -->
 
         <!-- Settings (Optional) -->
-        <button
+        <!-- <button
           @click="goSettings"
           class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-gray-100 transition-colors duration-150 text-left group"
         >
           <i class="pi pi-cog text-gray-600 group-hover:text-gray-900 text-sm"></i>
           <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Settings</span>
-        </button>
+        </button> -->
       </div>
 
       <div class="border-t border-gray-200"></div>
@@ -55,7 +55,7 @@
 import OverlayPanel from "primevue/overlaypanel";
 import Dialog from "primevue/dialog";
 import ProgressSpinner from "primevue/progressspinner";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useAuthStore } from "../../stores/auth";
 import { router } from "@inertiajs/vue3";
 import axios from "axios";
@@ -78,20 +78,21 @@ const hide = () => {
 };
 
 /* ACTIONS */
+const userRole = computed(() => String(authStore.user?.role || '').toLowerCase());
+const isCustomer = computed(() => userRole.value.includes('customer'));
+const isSupplier = computed(() => userRole.value.includes('supplier'));
+
 const goProfile = () => {
   hide();
-  axios.get('/api/employees/me')
-    .then((response) => {
-      const employeeId = response?.data?.data?.id || response?.data?.id;
-      if (employeeId) {
-        router.visit(`/hr/employees/view/${employeeId}`);
-        return;
-      }
-      router.visit('/hr/employees');
-    })
-    .catch(() => {
-      router.visit('/hr/employees');
-    });
+  if (isCustomer.value) {
+    router.visit('/shop/profile');
+    return;
+  }
+  if (isSupplier.value) {
+    router.visit('/supplier-portal/profile');
+    return;
+  }
+  router.visit('/profile');
 };
 
 const goSettings = () => {
@@ -104,11 +105,11 @@ const handleLogout = async () => {
   isLoggingOut.value = true;
 
   try {
-    console.log('LOGGING OUT.... 1. Current token before logout:', authStore.token);
-    console.log('2. Current localStorage:', {
-      auth_token: localStorage.getItem('auth_token'),
-      user: localStorage.getItem('user')
-    });
+    // console.log('LOGGING OUT.... 1. Current token before logout:', authStore.token);
+    // console.log('2. Current localStorage:', {
+    //   auth_token: localStorage.getItem('auth_token'),
+    //   user: localStorage.getItem('user')
+    // });
     
     // Uncomment when backend is ready
     // await axios.post('/api/auth/logout');

@@ -8,6 +8,7 @@ use App\Models\Core\Permission;
 use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 class UserNavigationController extends Controller
@@ -30,8 +31,8 @@ class UserNavigationController extends Controller
                 ], 401);
             }
 
-            // Load user's role with permissions
-            $user->load(['role']);
+            // Refresh user to ensure store_id comes from users table
+            $user = $user->fresh(['role', 'store', 'trialOnboardingProfile']);
             
             // Get permissions based on role
             $permissionPayload = $this->getUserPermissionsWithMeta($user);
@@ -180,7 +181,7 @@ class UserNavigationController extends Controller
             }
 
             if ($roleName === 'store_admin' && !empty($allowedModules)) {
-                $whitelist = ['store_admin', 'store', 'system'];
+                $whitelist = ['store_admin', 'store', 'system', 'admin'];
                 if (!in_array($navItem->module, $allowedModules, true) && !in_array($navItem->module, $whitelist, true)) {
                     continue;
                 }
@@ -394,7 +395,12 @@ class UserNavigationController extends Controller
         switch ($navItem->name) {
             case 'merchandising.products':
                 // Count inactive products
+                $storeId = (int) ($user?->store_id ?? 0);
+                if ($storeId <= 0) {
+                    return 0;
+                }
                 return DB::table('products')
+                    ->where('store_id', $storeId)
                     ->where('is_active', false)
                     ->count();
                 
@@ -467,8 +473,10 @@ class UserNavigationController extends Controller
         ];
 
         $probeResults = [];
+        $probeGateResults = [];
         foreach ($probe as $permission) {
             $probeResults[$permission] = in_array($permission, $userPermissions, true);
+            $probeGateResults[$permission] = Gate::forUser($user)->allows($permission);
         }
 
         return response()->json([
@@ -484,6 +492,7 @@ class UserNavigationController extends Controller
             'role_permissions' => $rolePermissions,
             'user_permissions' => $userPermissions,
             'probe' => $probeResults,
+            'probe_gate' => $probeGateResults,
         ]);
     }
 }
