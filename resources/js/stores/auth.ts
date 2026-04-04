@@ -325,7 +325,8 @@ export const useAuthStore = defineStore('auth', () => {
                 payload?.user ??
                 payload?.data ??
                 null
-            const customerUser = isCustomerRoleValue(userData?.role)
+            const roleValue = String(userData?.role || '').toLowerCase()
+            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin'].some(r => roleValue === r || roleValue.includes(r))
 
             token.value = accessToken
             user.value = userData
@@ -336,7 +337,8 @@ export const useAuthStore = defineStore('auth', () => {
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
             document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
 
-            if (customerUser) {
+            if (roleExcludedFromGeoloc) {
+                // For customers, suppliers, and admin/store admin accounts we do not run geolocation/clock-in flows here.
                 permissions.value = []
                 navigation.value = []
                 permissionsLoaded.value = true
