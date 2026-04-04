@@ -275,7 +275,6 @@ const expandedModules = ref<Record<string, boolean>>({
   procurement: true,
   merchandising: true,
   hr: false,
-  admin: false,
   supplier: true,
 })
 const expandedSections = ref<Record<string, boolean>>({})

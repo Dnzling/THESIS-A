@@ -269,7 +269,7 @@ createInertiaApp({
         const authStore = useAuthStore(pinia);
         if (authStore.token) {
             axios.defaults.headers.common.Authorization = `Bearer ${authStore.token}`;
-            console.log('Auth token initialized:', authStore.token);
+            // console.log('Auth token initialized:', authStore.token);
             if (authStore.user) {
                 authStore.initialize().catch((err) => {
                     console.warn('Failed to initialize auth store:', err);

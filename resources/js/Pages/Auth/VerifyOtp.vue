@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 
@@ -110,6 +110,7 @@ const isVerified = ref(false)
 const resendCooldown = ref(0)
 const resendCooldownSeconds = 60
 const accessToken = ref<string | null>(null)
+let resendInterval: ReturnType<typeof setInterval> | null = null
 
 // Compute full OTP from digits
 const fullOtp = computed(() => otpDigits.value.join(''))
@@ -266,6 +267,19 @@ const verifyOtp = async () => { // Add async here
   }
 }
 
+const startResendCooldown = (seconds = resendCooldownSeconds) => {
+  resendCooldown.value = seconds
+  if (resendInterval) clearInterval(resendInterval)
+  resendInterval = setInterval(() => {
+    resendCooldown.value--
+    if (resendCooldown.value <= 0) {
+      resendCooldown.value = 0
+      if (resendInterval) clearInterval(resendInterval)
+      resendInterval = null
+    }
+  }, 1000)
+}
+
 // Resend code functionality
 const resendCode = async () => {
   if (resendCooldown.value > 0) return
@@ -279,14 +293,7 @@ const resendCode = async () => {
     })
 
     // Start 60-second cooldown
-    resendCooldown.value = resendCooldownSeconds
-
-    const interval = setInterval(() => {
-      resendCooldown.value--
-      if (resendCooldown.value <= 0) {
-        clearInterval(interval)
-      }
-    }, 1000)
+    startResendCooldown()
 
     // Show success message
     successMessage.value = response.data.message || 'New verification code sent to your email!'
@@ -324,15 +331,13 @@ onMounted(() => {
     console.warn('No register_token found in localStorage')
   }
 
-  // Auto-resend countdown if needed
-  if (resendCooldown.value > 0) {
-    const interval = setInterval(() => {
-      resendCooldown.value--
-      if (resendCooldown.value <= 0) {
-        clearInterval(interval)
-      }
-    }, 1000)
-  }
+  // Start initial 60s countdown on page load
+  startResendCooldown()
+})
+
+onBeforeUnmount(() => {
+  if (resendInterval) clearInterval(resendInterval)
+  resendInterval = null
 })
 </script>
 
