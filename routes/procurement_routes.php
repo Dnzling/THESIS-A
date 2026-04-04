@@ -61,6 +61,9 @@ Route::prefix('procurement')->group(function () {
     // Purchase Requisitions (Procurement module)
     // Inventory has its own "stock-order-requests" endpoints under /api/inventory.
     Route::prefix('requisitions')->middleware('can:procurement.requisitions.view')->group(function () {
+        // Branch-scoped inventory for procurement requisition UI (RBAC: procurement.requisitions.view)
+        Route::get('/branch/{branchId}/inventory', [BranchInventoryController::class, 'index']);
+
         Route::get('/', [PurchaseRequisitionController::class, 'index']);
         Route::get('/{id}', [PurchaseRequisitionController::class, 'show']);
         Route::post('/', [PurchaseRequisitionController::class, 'store'])->middleware('can:procurement.requisitions.manage');

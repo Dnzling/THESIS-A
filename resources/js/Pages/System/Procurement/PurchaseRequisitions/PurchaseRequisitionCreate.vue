@@ -15,8 +15,9 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-gray-700">Branch</label>
-                <InputText :modelValue="branchLabel" disabled />
-                <small class="text-gray-500">Auto-filled from your profile</small>
+                <Select v-model="form.branch_id" :options="branchesOptions" optionLabel="label" optionValue="value" placeholder="Select branch" filter :disabled="branchesOptions.length === 0" />
+                <small v-if="errors.branch" class="p-error block mt-1">{{ errors.branch }}</small>
+                <small v-else class="text-gray-500">Choose the branch for this requisition</small>
               </div>
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-gray-700">Reason / Notes</label>
@@ -118,11 +119,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
+import procurementService from '@/services/procurement.service'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,10 +166,14 @@ const buildEmptyItem = (): InventoryPrItem => ({
   selected_supplier_id: null,
 })
 
+const branches = ref<any[]>([])
+
 const form = reactive<{
+  branch_id: number | null
   notes: string
   items: InventoryPrItem[]
 }>({
+  branch_id: null,
   notes: '',
   items: [buildEmptyItem()],
 })
@@ -184,10 +190,13 @@ const inventoryOptions = computed(() => {
   })
 })
 
+const branchesOptions = computed(() => branches.value.map((b: any) => ({ value: b.id, label: `${b.name}${b.branch_code ? ` (${b.branch_code})` : ''}` })))
+
 const goBack = () => router.push({ name: 'procurement.purchase-requisitions' })
 
-const loadInventory = async () => {
-  if (!currentBranchId.value) return
+const loadInventory = async (branchId?: number | null) => {
+  const bid = branchId || form.branch_id || currentBranchId.value
+  if (!bid) return
   if (!canViewBranchInventory.value) {
     inventoryRows.value = []
     toast.add({
@@ -200,7 +209,8 @@ const loadInventory = async () => {
   }
   loadingInventory.value = true
   try {
-    const response = await inventoryService.getInventoryItems({ branch_id: currentBranchId.value, per_page: 1000 })
+    // Use procurement-scoped inventory endpoint so procurement RBAC can be applied
+    const response = await procurementService.getBranchInventoryForRequisition(bid, { per_page: 1000 })
     if (response?.success) {
       inventoryRows.value = Array.isArray(response.data) ? response.data : (response.data?.data || [])
     } else {
@@ -216,6 +226,23 @@ const loadInventory = async () => {
     })
   } finally {
     loadingInventory.value = false
+  }
+}
+
+// Reload inventory when selected branch changes
+watch(() => form.branch_id, (nv, ov) => {
+  if (nv) loadInventory(nv)
+})
+
+const loadBranches = async () => {
+  try {
+    const response = await procurementService.getBranches().catch(() => ({ data: [] }))
+    branches.value = response.data?.data || response.data || []
+    if (!form.branch_id && currentBranchId.value) {
+      form.branch_id = currentBranchId.value
+    }
+  } catch (e: any) {
+    branches.value = []
   }
 }
 
@@ -278,7 +305,7 @@ const hydrateInventoryById = async (inventoryId: number | null) => {
   if (!inventoryId) return
 
   try {
-    const response = await inventoryService.getInventoryItem(inventoryId)
+    const response = await procurementService.getProcurementInventoryItem(inventoryId)
     const fullRow = response?.data || response?.data?.data || null
     if (!fullRow?.id) return
 
@@ -305,6 +332,10 @@ const onInventoryChange = async (index: number, event: any) => {
 const submit = async () => {
   Object.keys(errors).forEach(k => delete errors[k])
   if (!canManage.value) return
+  if (!form.branch_id) {
+    errors.branch = 'Please select a branch for this requisition.'
+    return
+  }
   if (validItems.value.length === 0) {
     errors.items = 'Please add at least one valid item with quantity.'
     return
@@ -327,6 +358,7 @@ const submit = async () => {
     })
 
     const response = await inventoryService.createPurchaseRequisitionFromInventory({
+      branch_id: form.branch_id,
       reason: form.notes || 'Stock replenishment request.',
       requisition_type: 'regular',
       items: payloadItems,
@@ -367,7 +399,7 @@ onMounted(async () => {
     })
   }
 
-  await loadInventory()
+  await Promise.all([loadInventory(), loadBranches()])
 
   // Auto-fill when coming from Branch Inventory "Create PR"
   const q = route.query || {}
@@ -394,6 +426,9 @@ onMounted(async () => {
     if (typeof notesRaw === 'string' && notesRaw.trim()) {
       form.notes = notesRaw
     }
+    // if branch_id provided in query, override
+    const branchQ = route.query.branch_id ? Number(route.query.branch_id) : null
+    if (branchQ) form.branch_id = branchQ
   }
 })
 </script>

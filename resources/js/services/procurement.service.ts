@@ -257,6 +257,12 @@ class ProcurementService {
     return response.data
   }
 
+  // Procurement-scoped branch inventory for requisition UI
+  async getBranchInventoryForRequisition(branchId: number, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/requisitions/branch/${branchId}/inventory`, { params })
+    return response.data
+  }
+
   async getProcurementInventorySummary() {
     const response = await axiosClient.get(`${this.baseUrl}/inventory/summary`)
     return response.data
