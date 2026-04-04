@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Procurement\PurchaseOrder;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
+use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Procurement\StockOrder\StockOrderRequest;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PurchaseOrderController extends Controller
 {
@@ -125,6 +127,9 @@ class PurchaseOrderController extends Controller
     public function store(Request $request): JsonResponse
     {
         $hasStockRequests = $request->filled('stock_order_request_ids');
+        $isSplitFromRequisition = !$hasStockRequests
+            && $request->filled('purchase_requisition_id')
+            && !$request->filled('supplier_id');
 
         $validated = $request->validate($hasStockRequests ? [
             'stock_order_request_ids' => 'required|array|min:1',
@@ -133,6 +138,13 @@ class PurchaseOrderController extends Controller
             'purchase_requisition_id' => 'nullable|exists:purchase_requisitions,id',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'terms_conditions' => 'nullable|string',
+            'status' => 'nullable|in:draft,pending_finance_approval',
+        ] : ($isSplitFromRequisition ? [
+            'purchase_requisition_id' => 'required|exists:purchase_requisitions,id',
+            'order_date' => 'nullable|date',
+            'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
             'status' => 'nullable|in:draft,pending_finance_approval',
@@ -152,16 +164,25 @@ class PurchaseOrderController extends Controller
             'items.*.quantity_ordered' => 'required|integer|min:1',
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
-        ]);
+        ]));
 
         DB::beginTransaction();
         try {
             $storeId = auth()->user()->store_id;
 
+            if ($isSplitFromRequisition) {
+                $createdOrders = $this->createSplitPurchaseOrdersFromRequisition($validated, (int) $storeId);
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Purchase orders created and grouped by supplier successfully',
+                    'data' => $createdOrders,
+                ], 201);
+            }
+
             // Generate PO number
-            $timestamp = now()->format('YmdHis');
-            $randomSuffix = str_pad(mt_rand(0, 9999), 4, '0', STR_PAD_LEFT);
-            $poNumber = 'PO-' . $timestamp . '-' . $randomSuffix;
+            $poNumber = $this->generatePoNumber();
 
             $subtotal = 0;
             $taxAmount = 0;
@@ -259,14 +280,7 @@ class PurchaseOrderController extends Controller
 
                 // Calculate payment due date
                 $paymentTerms = $validated['payment_terms'] ?? null;
-                $paymentDueDays = match ($paymentTerms) {
-                    'net_7' => 7,
-                    'net_15' => 15,
-                    'net_30' => 30,
-                    'net_60' => 60,
-                    default => 0,
-                };
-                $po->payment_due_date = now()->addDays($paymentDueDays);
+                $po->payment_due_date = $this->calculatePaymentDueDate($paymentTerms);
                 $po->save();
 
                 // Create PO items
@@ -358,14 +372,7 @@ class PurchaseOrderController extends Controller
                 ]);
 
                 $paymentTerms = $validated['payment_terms'] ?? null;
-                $paymentDueDays = match ($paymentTerms) {
-                    'net_7' => 7,
-                    'net_15' => 15,
-                    'net_30' => 30,
-                    'net_60' => 60,
-                    default => 0,
-                };
-                $po->payment_due_date = now()->addDays($paymentDueDays);
+                $po->payment_due_date = $this->calculatePaymentDueDate($paymentTerms);
                 $po->save();
 
                 foreach ($items as $item) {
@@ -400,9 +407,12 @@ class PurchaseOrderController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Purchase order created successfully from stock order requests',
+                'message' => 'Purchase order created successfully',
                 'data' => $po->load(['supplier', 'items.product', 'createdBy']),
             ], 201);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('PO Creation Error', [
@@ -891,6 +901,209 @@ class PurchaseOrderController extends Controller
             'success' => true,
             'message' => 'Purchase order deleted successfully',
         ]);
+    }
+
+    private function createSplitPurchaseOrdersFromRequisition(array $validated, int $storeId): array
+    {
+        $requisition = PurchaseRequisition::with([
+            'items.product',
+        ])
+            ->where('store_id', $storeId)
+            ->findOrFail((int) $validated['purchase_requisition_id']);
+
+        if ($requisition->items->isEmpty()) {
+            throw ValidationException::withMessages([
+                'purchase_requisition_id' => 'Cannot create purchase orders from an empty requisition.',
+            ]);
+        }
+
+        $itemsBySupplier = [];
+        $unassignedItemIds = [];
+
+        foreach ($requisition->items as $requisitionItem) {
+            $supplierId = $this->resolveSupplierIdForRequisitionItem($requisitionItem, $storeId);
+
+            if (!$supplierId) {
+                $unassignedItemIds[] = $requisitionItem->id;
+                continue;
+            }
+
+            if (!$this->supplierCanProvideProduct($supplierId, (int) $requisitionItem->product_id, $storeId)) {
+                throw ValidationException::withMessages([
+                    'items' => "Product {$requisitionItem->product_id} is not mapped to supplier {$supplierId} for this store.",
+                ]);
+            }
+
+            $itemsBySupplier[$supplierId][] = $requisitionItem;
+        }
+
+        if (!empty($unassignedItemIds)) {
+            throw ValidationException::withMessages([
+                'items' => 'Some requisition items have no supplier assignment and cannot be grouped into POs. Item IDs: ' . implode(', ', $unassignedItemIds),
+            ]);
+        }
+
+        if (empty($itemsBySupplier)) {
+            throw ValidationException::withMessages([
+                'items' => 'No supplier-resolved requisition items were found for PO creation.',
+            ]);
+        }
+
+        $createdOrders = [];
+
+        foreach ($itemsBySupplier as $supplierId => $requisitionItems) {
+            $contract = SupplierContract::where('store_id', $storeId)
+                ->where('supplier_id', $supplierId)
+                ->active()
+                ->orderBy('end_date', 'desc')
+                ->first();
+
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+
+            $subtotal = 0;
+            $poItemsPayload = [];
+
+            foreach ($requisitionItems as $requisitionItem) {
+                $unitCost = (float) ($requisitionItem->estimated_unit_cost ?? $requisitionItem->product?->cost_price ?? 0);
+                $quantity = (int) $requisitionItem->quantity_requested;
+                $lineTotal = $unitCost * $quantity;
+
+                $subtotal += $lineTotal;
+
+                $poItemsPayload[] = [
+                    'purchase_requisition_item_id' => $requisitionItem->id,
+                    'product_id' => $requisitionItem->product_id,
+                    'variation_id' => $requisitionItem->variation_id,
+                    'quantity_ordered' => $quantity,
+                    'quantity_received' => 0,
+                    'quantity_cancelled' => 0,
+                    'allocated_quantity' => $quantity,
+                    'unit_cost' => $unitCost,
+                    'discount_percent' => 0,
+                    'line_total' => $lineTotal,
+                    'tax_rate' => $headerTaxRate,
+                ];
+            }
+
+            $shippingCost = 0;
+            $discountAmount = 0;
+            $taxAmount = $subtotal * ($headerTaxRate / 100);
+            $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+
+            $settings = ProcurementSettings::where('store_id', $storeId)->first();
+            $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);
+            $rfqRequired = $settings?->shouldRequireRFQ($totalAmount) ?? false;
+
+            $po = PurchaseOrder::create([
+                'po_number' => $this->generatePoNumber(),
+                'store_id' => $storeId,
+                'branch_id' => $requisition->branch_id,
+                'supplier_id' => $supplierId,
+                'purchase_requisition_id' => $requisition->id,
+                'status' => $validated['status'] ?? 'pending_finance_approval',
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'shipping_cost' => $shippingCost,
+                'discount_amount' => $discountAmount,
+                'total_amount' => $totalAmount,
+                'approval_tier_level' => $approvalTier['level'] ?? null,
+                'required_approvers' => $approvalTier['approvers'] ?? [],
+                'rfq_required' => $rfqRequired,
+                'payment_status' => 'pending',
+                'payment_terms' => $validated['payment_terms'] ?? null,
+                'order_date' => $validated['order_date'] ?? now()->toDateString(),
+                'expected_delivery_date' => null,
+                'created_by' => auth()->user()?->employee?->id,
+                'notes' => $validated['notes'] ?? null,
+                'terms_conditions' => $validated['terms_conditions'] ?? null,
+            ]);
+
+            $po->payment_due_date = $this->calculatePaymentDueDate($validated['payment_terms'] ?? null);
+            $po->save();
+
+            foreach ($poItemsPayload as $poItemPayload) {
+                PurchaseOrderItem::create(array_merge(
+                    ['purchase_order_id' => $po->id],
+                    $poItemPayload
+                ));
+            }
+
+            ActivityLog::record(
+                'po_created',
+                "PO {$po->po_number} created from requisition split by supplier.",
+                [
+                    'po_number' => $po->po_number,
+                    'purchase_requisition_id' => $requisition->id,
+                    'supplier_id' => $supplierId,
+                ],
+                'purchase_order',
+                $po->id
+            );
+
+            $this->notifyRequisitionRequesterPoCreated($po);
+
+            $createdOrders[] = $po->load(['supplier', 'items.product', 'createdBy']);
+        }
+
+        $this->setPurchaseRequisitionStatus($requisition->id, 'po_created');
+
+        return [
+            'purchase_requisition_id' => $requisition->id,
+            'created_count' => count($createdOrders),
+            'purchase_orders' => $createdOrders,
+        ];
+    }
+
+    private function generatePoNumber(): string
+    {
+        $timestamp = now()->format('YmdHis');
+        $randomSuffix = str_pad((string) mt_rand(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        return 'PO-' . $timestamp . '-' . $randomSuffix;
+    }
+
+    private function calculatePaymentDueDate(?string $paymentTerms)
+    {
+        $paymentDueDays = match ($paymentTerms) {
+            'net_7' => 7,
+            'net_15' => 15,
+            'net_30' => 30,
+            'net_60' => 60,
+            default => 0,
+        };
+
+        return now()->addDays($paymentDueDays);
+    }
+
+    private function resolveSupplierIdForRequisitionItem(PurchaseRequisitionItem $item, int $storeId): ?int
+    {
+        if (!empty($item->selected_supplier_id)) {
+            return (int) $item->selected_supplier_id;
+        }
+
+        $supplierIds = DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.product_id', $item->product_id)
+            ->where('suppliers.store_id', $storeId)
+            ->pluck('supplier_products.supplier_id')
+            ->unique()
+            ->values();
+
+        if ($supplierIds->count() === 1) {
+            return (int) $supplierIds->first();
+        }
+
+        return null;
+    }
+
+    private function supplierCanProvideProduct(int $supplierId, int $productId, int $storeId): bool
+    {
+        return DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.supplier_id', $supplierId)
+            ->where('supplier_products.product_id', $productId)
+            ->where('suppliers.store_id', $storeId)
+            ->exists();
     }
 
     private function setPurchaseRequisitionStatus(?int $requisitionId, string $status): void

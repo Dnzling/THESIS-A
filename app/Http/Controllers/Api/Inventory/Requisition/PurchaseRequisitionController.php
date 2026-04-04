@@ -142,12 +142,14 @@ class PurchaseRequisitionController extends Controller
             'items' => 'nullable|array|min:1',
             'items.*.product_id' => 'required_with:items|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
+            'items.*.selected_supplier_id' => 'nullable|exists:suppliers,id',
             'items.*.quantity_requested' => 'required_with:items|integer|min:1',
             'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.specifications' => 'nullable|string',
 
             'branch_inventory_id' => 'required_without:items|nullable|exists:branch_inventory,id',
+            'selected_supplier_id' => 'nullable|exists:suppliers,id',
             'requested_quantity' => 'required_without:items|nullable|integer|min:1',
 
             // Inventory flow default: create+submit in one click
@@ -168,6 +170,7 @@ class PurchaseRequisitionController extends Controller
                 'variation_id' => $inv->variation_id ? (int) $inv->variation_id : null,
                 'quantity_requested' => (int) $validated['requested_quantity'],
                 'estimated_unit_cost' => null,
+                'selected_supplier_id' => isset($validated['selected_supplier_id']) ? (int) $validated['selected_supplier_id'] : null,
                 'tax_rate' => 0,
                 'specifications' => null,
             ]];
@@ -183,6 +186,14 @@ class PurchaseRequisitionController extends Controller
 
             $resolvedItems = [];
             foreach ($items as $item) {
+                $selectedSupplierId = isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
+                if ($selectedSupplierId && !$this->supplierCanProvideProduct($selectedSupplierId, (int) $item['product_id'], $storeId)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Selected supplier {$selectedSupplierId} is not mapped to product {$item['product_id']} for this store.",
+                    ], 422);
+                }
+
                 $item['estimated_unit_cost'] = $this->resolveEstimatedUnitCost(
                     (int) $item['product_id'],
                     $item['estimated_unit_cost'] ?? null
@@ -231,6 +242,7 @@ class PurchaseRequisitionController extends Controller
                     'requisition_id' => $pr->id,
                     'product_id' => (int) $item['product_id'],
                     'variation_id' => $item['variation_id'] ?? null,
+                    'selected_supplier_id' => $item['selected_supplier_id'] ?? null,
                     'quantity_requested' => (int) $item['quantity_requested'],
                     'estimated_unit_cost' => $item['estimated_unit_cost'] ?? null,
                     'tax_rate' => $item['tax_rate'] ?? 0,
@@ -476,5 +488,15 @@ class PurchaseRequisitionController extends Controller
         if ($basePrice > 0) return round($basePrice, 2);
 
         return 0.0;
+    }
+
+    private function supplierCanProvideProduct(int $supplierId, int $productId, int $storeId): bool
+    {
+        return DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.supplier_id', $supplierId)
+            ->where('supplier_products.product_id', $productId)
+            ->where('suppliers.store_id', $storeId)
+            ->exists();
     }
 }

@@ -1,11 +1,11 @@
 <template>
   <div class="min-h-screen p-4">
-    <div class="max-w-4xl mx-auto">
+    <div class="max-w-7xl mx-auto">
       <div class="mb-4 flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
         <div>
           <h1 class="text-xl font-bold text-gray-800">Create Purchase Requisition</h1>
-          <p class="text-xs text-gray-500 mt-0.5">Request replenishment for your branch inventory.</p>
+          <p class="text-xs text-gray-500 mt-0.5">Request replenishment for your branch inventory with multiple items.</p>
         </div>
       </div>
 
@@ -18,78 +18,86 @@
                 <InputText :modelValue="branchLabel" disabled />
                 <small class="text-gray-500">Auto-filled from your profile</small>
               </div>
-
               <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-semibold text-gray-700">
-                  Inventory Item <span class="text-red-500">*</span>
-                </label>
-                <Select
-                  v-model="form.branch_inventory_id"
-                  :options="inventoryOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  filter
-                  :loading="loadingInventory"
-                  placeholder="Select product"
-                  :class="{ 'p-invalid': errors.branch_inventory_id }"
-                />
-                <small v-if="errors.branch_inventory_id" class="p-error">{{ errors.branch_inventory_id }}</small>
+                <label class="text-xs font-semibold text-gray-700">Reason / Notes</label>
+                <Textarea v-model="form.notes" rows="2" class="w-full" placeholder="Why do you need this stock?" />
               </div>
             </div>
 
-            <div v-if="selectedInventory" class="rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs">
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div>
-                  <div class="text-gray-500">SKU</div>
-                  <div class="font-semibold text-gray-800">{{ selectedInventory.product?.sku || '-' }}</div>
-                </div>
-                <div>
-                  <div class="text-gray-500">On Hand</div>
-                  <div class="font-semibold text-gray-800">{{ selectedInventory.quantity_on_hand ?? 0 }}</div>
-                </div>
-                <div>
-                  <div class="text-gray-500">Available</div>
-                  <div class="font-semibold text-gray-800">{{ selectedInventory.quantity_available ?? 0 }}</div>
-                </div>
-                <div>
-                  <div class="text-gray-500">Reorder Point</div>
-                  <div class="font-semibold text-gray-800">{{ selectedInventory.reorder_point ?? 0 }}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-semibold text-gray-700">
-                  Requested Quantity <span class="text-red-500">*</span>
-                </label>
-                <InputNumber
-                  v-model="form.requested_quantity"
-                  :min="1"
-                  :useGrouping="false"
-                  class="w-full"
-                  :class="{ 'p-invalid': errors.requested_quantity }"
-                />
-                <small v-if="errors.requested_quantity" class="p-error">{{ errors.requested_quantity }}</small>
+            <div class="border rounded-lg p-3">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold text-gray-800">Line Items</h3>
+                <Button type="button" label="Add Item" icon="pi pi-plus" size="small" outlined @click="addItem" />
               </div>
 
-              <div class="flex items-end">
-                <Button
-                  type="button"
-                  label="Use Reorder Qty"
-                  icon="pi pi-bolt"
-                  severity="info"
-                  outlined
-                  size="small"
-                  :disabled="!selectedInventory?.reorder_quantity"
-                  @click="applyReorderQty"
-                />
-              </div>
-            </div>
+              <DataTable :value="form.items" responsiveLayout="scroll" class="text-sm">
+                <Column header="Inventory Item" >
+                  <template #body="slotProps">
+                    <Select
+                      v-model="slotProps.data.branch_inventory_id"
+                      :options="inventoryOptions"
+                      optionLabel="label"
+                      optionValue="value"
+                      filter fluid
+                      :loading="loadingInventory"
+                      placeholder="Select product"
+                      @change="onInventoryChange(slotProps.index, $event)"
+                    />
+                  </template>
+                </Column>
 
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Reason / Notes</label>
-              <Textarea v-model="form.notes" rows="3" class="w-full" placeholder="Why do you need this stock?" />
+                <Column header="Available" style="width: 110px">
+                  <template #body="slotProps">
+                    {{ getInventoryById(slotProps.data.branch_inventory_id)?.quantity_available ?? '-' }}
+                  </template>
+                </Column>
+
+                <Column header="Requested Qty" style="width: 150px">
+                  <template #body="slotProps">
+                    <InputNumber v-model="slotProps.data.requested_quantity" :min="1" :useGrouping="false" class="w-full" />
+                  </template>
+                </Column>
+
+                <Column header="Supplier (Optional)" style="min-width: 240px">
+                  <template #body="slotProps">
+                    <Select
+                      v-model="slotProps.data.selected_supplier_id"
+                      :options="getSupplierOptionsForRow(slotProps.data)"
+                      optionLabel="label"
+                      optionValue="value"
+                      filter fluid
+                      showClear
+                      placeholder="Auto-resolve"
+                      :disabled="!slotProps.data.branch_inventory_id"
+                    />
+                  </template>
+                </Column>
+
+                <Column header="Actions" style="width: 160px">
+                  <template #body="slotProps">
+                    <div class="flex gap-2">
+                      <Button
+                        type="button"
+                        icon="pi pi-bolt"
+                        severity="info"
+                        text
+                        :disabled="!getInventoryById(slotProps.data.branch_inventory_id)?.reorder_quantity"
+                        @click="applyReorderQty(slotProps.index)"
+                      />
+                      <Button
+                        type="button"
+                        icon="pi pi-trash"
+                        severity="danger"
+                        text
+                        :disabled="form.items.length === 1"
+                        @click="removeItem(slotProps.index)"
+                      />
+                    </div>
+                  </template>
+                </Column>
+              </DataTable>
+
+              <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
             </div>
 
             <div class="flex justify-end gap-2 pt-3 border-t">
@@ -99,7 +107,7 @@
                 label="Create Request"
                 size="small"
                 :loading="saving"
-                :disabled="!canManage || !form.branch_inventory_id || !form.requested_quantity"
+                :disabled="!canManage || validItems.length === 0"
               />
             </div>
           </form>
@@ -144,20 +152,27 @@ const branchLabel = computed(() => {
   return 'Unassigned Branch'
 })
 
-const form = reactive<{
+type InventoryPrItem = {
   branch_inventory_id: number | null
   requested_quantity: number
-  notes: string
-}>({
+  selected_supplier_id: number | null
+}
+
+const buildEmptyItem = (): InventoryPrItem => ({
   branch_inventory_id: null,
   requested_quantity: 1,
-  notes: '',
+  selected_supplier_id: null,
 })
 
-const selectedInventory = computed(() => {
-  if (!form.branch_inventory_id) return null
-  return inventoryRows.value.find((r: any) => Number(r.id) === Number(form.branch_inventory_id)) || null
+const form = reactive<{
+  notes: string
+  items: InventoryPrItem[]
+}>({
+  notes: '',
+  items: [buildEmptyItem()],
 })
+
+const validItems = computed(() => form.items.filter((item) => item.branch_inventory_id && item.requested_quantity > 0))
 
 const inventoryOptions = computed(() => {
   return inventoryRows.value.map((row: any) => {
@@ -204,29 +219,117 @@ const loadInventory = async () => {
   }
 }
 
-const applyReorderQty = () => {
-  const qty = Number(selectedInventory.value?.reorder_quantity || 0)
-  if (qty > 0) form.requested_quantity = qty
+const getInventoryById = (inventoryId: number | null) => {
+  if (!inventoryId) return null
+  return inventoryRows.value.find((r: any) => Number(r.id) === Number(inventoryId)) || null
+}
+
+const getSupplierOptionsForRow = (item: InventoryPrItem) => {
+  const suppliers = Array.isArray(getInventoryById(item.branch_inventory_id)?.product?.suppliers)
+    ? getInventoryById(item.branch_inventory_id)?.product?.suppliers
+    : []
+
+  return suppliers
+    .slice()
+    .sort((a: any, b: any) => Number(Boolean(b?.pivot?.is_preferred_supplier)) - Number(Boolean(a?.pivot?.is_preferred_supplier)))
+    .map((supplier: any) => ({
+      value: supplier.id,
+      label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+      isPreferred: Boolean(supplier?.pivot?.is_preferred_supplier),
+    }))
+}
+
+const getDefaultSupplierIdForRow = (item: InventoryPrItem): number | null => {
+  const options = getSupplierOptionsForRow(item)
+  if (options.length === 0) {
+    return null
+  }
+
+  const preferred = options.find((option: any) => option.isPreferred)
+  if (preferred) {
+    return Number(preferred.value)
+  }
+
+  if (options.length === 1) {
+    return Number(options[0].value)
+  }
+
+  return null
+}
+
+const addItem = () => {
+  form.items.push(buildEmptyItem())
+}
+
+const removeItem = (index: number) => {
+  if (form.items.length === 1) return
+  form.items.splice(index, 1)
+}
+
+const applyReorderQty = (index: number) => {
+  const row = form.items[index]
+  const qty = Number(getInventoryById(row.branch_inventory_id)?.reorder_quantity || 0)
+  if (qty > 0) {
+    row.requested_quantity = qty
+  }
+}
+
+const hydrateInventoryById = async (inventoryId: number | null) => {
+  if (!inventoryId) return
+
+  try {
+    const response = await inventoryService.getInventoryItem(inventoryId)
+    const fullRow = response?.data || response?.data?.data || null
+    if (!fullRow?.id) return
+
+    const idx = inventoryRows.value.findIndex((r: any) => Number(r.id) === Number(fullRow.id))
+    if (idx >= 0) {
+      inventoryRows.value[idx] = { ...inventoryRows.value[idx], ...fullRow }
+    } else {
+      inventoryRows.value.push(fullRow)
+    }
+  } catch {
+    // Keep current row when details endpoint is unavailable.
+  }
+}
+
+const onInventoryChange = async (index: number, event: any) => {
+  const item = form.items[index]
+  item.branch_inventory_id = Number(event?.value || item.branch_inventory_id || 0) || null
+  item.selected_supplier_id = null
+
+  await hydrateInventoryById(item.branch_inventory_id)
+  item.selected_supplier_id = getDefaultSupplierIdForRow(item)
 }
 
 const submit = async () => {
   Object.keys(errors).forEach(k => delete errors[k])
   if (!canManage.value) return
-  if (!form.branch_inventory_id) {
-    errors.branch_inventory_id = 'Inventory item is required.'
-    return
-  }
-  if (!form.requested_quantity || form.requested_quantity < 1) {
-    errors.requested_quantity = 'Requested quantity must be at least 1.'
+  if (validItems.value.length === 0) {
+    errors.items = 'Please add at least one valid item with quantity.'
     return
   }
 
   saving.value = true
   try {
+    const payloadItems = validItems.value.map((item) => {
+      const inventoryRow = getInventoryById(item.branch_inventory_id)
+
+      return {
+        product_id: Number(inventoryRow?.product_id),
+        variation_id: inventoryRow?.variation_id ?? null,
+        selected_supplier_id: item.selected_supplier_id || null,
+        quantity_requested: Number(item.requested_quantity),
+        estimated_unit_cost: Number(inventoryRow?.product?.cost_price ?? inventoryRow?.product?.base_price ?? 0),
+        tax_rate: Number(inventoryRow?.product?.tax_rate ?? 0),
+        specifications: null,
+      }
+    })
+
     const response = await inventoryService.createPurchaseRequisitionFromInventory({
-      branch_inventory_id: form.branch_inventory_id,
-      requested_quantity: form.requested_quantity,
-      reason: form.notes || null,
+      reason: form.notes || 'Stock replenishment request.',
+      requisition_type: 'regular',
+      items: payloadItems,
       auto_submit: true,
     })
 
@@ -274,14 +377,20 @@ onMounted(async () => {
 
   const biId = biRaw ? Number(biRaw) : 0
   if (biId) {
-    form.branch_inventory_id = biId
+    form.items = [buildEmptyItem()]
+    form.items[0].branch_inventory_id = biId
+    await hydrateInventoryById(biId)
+
     const qty = qtyRaw ? Number(qtyRaw) : 0
     if (qty && qty > 0) {
-      form.requested_quantity = qty
+      form.items[0].requested_quantity = qty
     } else {
       // fallback to reorder qty if available
-      applyReorderQty()
+      applyReorderQty(0)
     }
+
+    form.items[0].selected_supplier_id = getDefaultSupplierIdForRow(form.items[0])
+
     if (typeof notesRaw === 'string' && notesRaw.trim()) {
       form.notes = notesRaw
     }

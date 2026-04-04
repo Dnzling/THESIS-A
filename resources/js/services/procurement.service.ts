@@ -76,7 +76,7 @@ export interface PurchaseRequisition {
   pr_number?: string
   branch_id: number
   requisition_type: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
-  required_date: string
+  required_date?: string
   reason: string
   status?: 'draft'
     | 'pending'
@@ -93,6 +93,7 @@ export interface PurchaseRequisition {
   items?: Array<{
     product_id: number
     variation_id?: number
+    selected_supplier_id?: number | null
     quantity_requested: number
     estimated_unit_cost?: number
     specifications?: string
@@ -476,6 +477,11 @@ class ProcurementService {
     return response.data
   }
 
+  async getPurchaseRequisitionSplitPreview(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/requisitions/${id}/split-preview`)
+    return response.data
+  }
+
   // ==================== RFQS ====================
   async getRFQs(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/rfqs`, { params })
@@ -489,6 +495,21 @@ class ProcurementService {
 
   async createRFQ(data: RequestForQuotation) {
     const response = await axiosClient.post(`${this.baseUrl}/rfqs`, data)
+    return response.data
+  }
+
+  async createRFQsFromRequisitionSplit(data: {
+    purchase_requisition_id: number
+    title?: string
+    description?: string
+    rfq_type?: 'purchase' | 'service' | 'both'
+    currency?: string
+    shipping_terms?: string
+    instructions?: string
+    qualification_requirements?: string
+    issue_date: string
+  }) {
+    const response = await axiosClient.post(`${this.baseUrl}/rfqs/create-from-requisition-split`, data)
     return response.data
   }
 

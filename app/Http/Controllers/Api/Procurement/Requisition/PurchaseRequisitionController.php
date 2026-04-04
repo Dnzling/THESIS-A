@@ -123,6 +123,43 @@ class PurchaseRequisitionController extends Controller
     }
 
     /**
+     * Split preview for a requisition
+     * GET /api/procurement/requisitions/{id}/split-preview
+     */
+    public function splitPreview(int $id): JsonResponse
+    {
+        $requisition = PurchaseRequisition::with(['items.product', 'items.product.suppliers'])->findOrFail($id);
+
+        $groups = [];
+        $rfqItems = [];
+
+        foreach ($requisition->items as $item) {
+            $supId = $item->selected_supplier_id ?? ($item->product->suppliers[0]->id ?? null);
+            if ($supId) {
+                if (!isset($groups[$supId])) $groups[$supId] = [
+                    'supplier_id' => $supId,
+                    'supplier' => $item->product->suppliers->firstWhere('id', $supId) ?? null,
+                    'items' => [],
+                ];
+                $groups[$supId]['items'][] = $item;
+            } else {
+                $rfqItems[] = $item;
+            }
+        }
+
+        $grouped = array_values($groups);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'supplier_groups' => $grouped,
+                'rfq_items' => $rfqItems,
+                'requisition' => $requisition,
+            ],
+        ]);
+    }
+
+    /**
      * Create new purchase requisition
      * POST /api/procurement/requisitions
      */
@@ -136,6 +173,7 @@ class PurchaseRequisitionController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
+            'items.*.selected_supplier_id' => 'nullable|exists:suppliers,id',
             'items.*.quantity_requested' => 'required|integer|min:1',
             'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -211,6 +249,7 @@ class PurchaseRequisitionController extends Controller
                     'requisition_id' => $pr->id,
                     'product_id' => $item['product_id'],
                     'variation_id' => $item['variation_id'] ?? null,
+                    'selected_supplier_id' => $item['selected_supplier_id'] ?? null,
                     'quantity_requested' => $item['quantity_requested'],
                     'estimated_unit_cost' => $item['estimated_unit_cost'] ?? null,
                     'tax_rate' => $item['tax_rate'] ?? 0,
@@ -220,10 +259,20 @@ class PurchaseRequisitionController extends Controller
 
             DB::commit();
 
+            // Load relations for response
+            $pr = $pr->load(['items.product', 'items.product.suppliers']);
+
+            // Compute supplier flags
+            $allHaveSuppliers = collect($pr->items)->every(function ($item) {
+                return isset($item->product) && isset($item->product->suppliers) && count($item->product->suppliers) > 0;
+            });
+            $pr->setAttribute('all_items_have_suppliers', $allHaveSuppliers);
+            $pr->setAttribute('any_item_missing_supplier', !$allHaveSuppliers);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Purchase requisition created successfully',
-                'data' => $pr->load('items.product'),
+                'data' => $pr,
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -282,17 +331,111 @@ class PurchaseRequisitionController extends Controller
         }
 
         $validated = $request->validate([
+            'branch_id' => 'nullable|exists:branches,id',
+            'requisition_type' => 'nullable|in:regular,urgent,new_product,seasonal,emergency',
             'reason' => 'nullable|string',
             'priority' => 'nullable|integer|min:1|max:5',
+            'items' => 'nullable|array|min:1',
+            'items.*.product_id' => 'required_with:items|exists:products,id',
+            'items.*.variation_id' => 'nullable|exists:product_variations,id',
+            'items.*.selected_supplier_id' => 'nullable|exists:suppliers,id',
+            'items.*.quantity_requested' => 'required_with:items|integer|min:1',
+            'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
+            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'items.*.specifications' => 'nullable|string',
         ]);
 
-        $pr->update($validated);
+        DB::beginTransaction();
+        try {
+            $updates = [];
+            if (isset($validated['branch_id'])) {
+                $updates['branch_id'] = $validated['branch_id'];
+            }
+            if (isset($validated['requisition_type'])) {
+                $updates['requisition_type'] = $validated['requisition_type'];
+            }
+            if (isset($validated['reason'])) {
+                $updates['reason'] = $validated['reason'];
+            }
+            if (isset($validated['priority'])) {
+                $updates['priority'] = $validated['priority'];
+            }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Purchase requisition updated successfully',
-            'data' => $pr,
-        ]);
+            if (!empty($validated['items'])) {
+                $resolvedItems = [];
+                foreach ($validated['items'] as $item) {
+                    $item['estimated_unit_cost'] = $this->resolveEstimatedUnitCost(
+                        (int) $item['product_id'],
+                        $item['estimated_unit_cost'] ?? null
+                    );
+                    $resolvedItems[] = $item;
+                }
+
+                $estimatedAmount = 0;
+                foreach ($resolvedItems as $item) {
+                    $estimatedAmount += ($item['quantity_requested'] * ($item['estimated_unit_cost'] ?? 0));
+                }
+
+                $settings = ProcurementSettings::where('store_id', Auth::user()->store_id)->first();
+
+                $procurementRoute = $pr->procurement_route;
+                if ($settings) {
+                    if ($estimatedAmount >= $settings->procurement_threshold) {
+                        $procurementRoute = 'centralized';
+                    }
+
+                    if ($settings->shouldRequireRFQ($estimatedAmount)) {
+                        $procurementRoute = 'rfq_required';
+                    }
+                }
+
+                $requiredApprovals = ['warehouse_manager'];
+                if ($estimatedAmount >= 100000) {
+                    $requiredApprovals[] = 'branch_manager';
+                }
+                if ($estimatedAmount >= 500000) {
+                    $requiredApprovals[] = 'finance_manager';
+                }
+
+                $updates['items'] = $resolvedItems;
+                $updates['estimated_amount'] = $estimatedAmount;
+                $updates['procurement_route'] = $procurementRoute;
+                $updates['required_approvals'] = $requiredApprovals;
+            }
+
+            $pr->update($updates);
+
+            if (!empty($updates['items'])) {
+                PurchaseRequisitionItem::where('requisition_id', $pr->id)->delete();
+                foreach ($updates['items'] as $item) {
+                    PurchaseRequisitionItem::create([
+                        'requisition_id' => $pr->id,
+                        'product_id' => $item['product_id'],
+                        'variation_id' => $item['variation_id'] ?? null,
+                        'selected_supplier_id' => $item['selected_supplier_id'] ?? null,
+                        'quantity_requested' => $item['quantity_requested'],
+                        'estimated_unit_cost' => $item['estimated_unit_cost'] ?? null,
+                        'tax_rate' => $item['tax_rate'] ?? 0,
+                        'specifications' => $item['specifications'] ?? null,
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Purchase requisition updated successfully',
+                'data' => $pr->load('items.product'),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update purchase requisition',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

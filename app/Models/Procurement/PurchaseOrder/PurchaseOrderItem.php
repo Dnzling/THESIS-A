@@ -7,16 +7,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
+use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 
 class PurchaseOrderItem extends Model
 {
     protected $fillable = [
         'purchase_order_id',
+        'purchase_requisition_item_id',
         'product_id',
         'variation_id',
         'quantity_ordered',
         'quantity_received',
         'quantity_rejected',
+        'quantity_cancelled',
+        'allocated_quantity',
         'unit_cost',
         'tax_rate',
         'discount_percent',
@@ -25,9 +29,12 @@ class PurchaseOrderItem extends Model
     ];
 
     protected $casts = [
+        'purchase_requisition_item_id' => 'integer',
         'quantity_ordered' => 'integer',
         'quantity_received' => 'integer',
         'quantity_rejected' => 'integer',
+        'quantity_cancelled' => 'integer',
+        'allocated_quantity' => 'integer',
         'unit_cost' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'discount_percent' => 'decimal:2',
@@ -48,6 +55,11 @@ class PurchaseOrderItem extends Model
     public function variation(): BelongsTo
     {
         return $this->belongsTo(ProductVariation::class);
+    }
+
+    public function purchaseRequisitionItem(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseRequisitionItem::class, 'purchase_requisition_item_id');
     }
 
     // Accessors

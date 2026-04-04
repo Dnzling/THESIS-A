@@ -91,6 +91,7 @@ Route::prefix('procurement')->group(function () {
     Route::prefix('rfqs')->middleware('can:procurement.rfq.view')->group(function () {
         Route::get('/', [RequestForQuotationController::class, 'index']);
         Route::get('/{id}', [RequestForQuotationController::class, 'show']);
+        Route::post('/create-from-requisition-split', [RequestForQuotationController::class, 'createFromRequisitionSplit'])->middleware('can:procurement.rfq.manage');
         Route::post('/', [RequestForQuotationController::class, 'store'])->middleware('can:procurement.rfq.manage');
         Route::put('/{id}', [RequestForQuotationController::class, 'update'])->middleware('can:procurement.rfq.manage');
         Route::delete('/{id}', [RequestForQuotationController::class, 'destroy'])->middleware('can:procurement.rfq.manage');

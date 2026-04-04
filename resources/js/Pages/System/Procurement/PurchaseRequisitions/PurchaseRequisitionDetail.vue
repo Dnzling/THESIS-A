@@ -118,78 +118,85 @@
 
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3 flex-wrap">
-        <button
+        <Button
           v-if="canManageRequisitions && detail.status === 'draft'"
+          size="small"
+          severity="warn"
+          outlined
+          icon="pi pi-pencil"
           @click="editPR"
-          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-amber-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-        >
-          <i class="pi pi-pencil text-sm"></i>
-          <span>Edit</span>
-        </button>
-        <button
+        />
+
+        <Button
           v-if="canManageRequisitions && detail.status === 'draft'"
+          size="small"
+          severity="danger"
+          outlined
+          icon="pi pi-trash"
           @click="deletePR"
-          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-        >
-          <i class="pi pi-trash text-sm"></i>
-          <span>Delete</span>
-        </button>
-        <button
+        />
+
+        <Button
           v-if="canManageRequisitions && detail.status === 'draft'"
+          size="small"
+          severity="info"
+          icon="pi pi-send"
+          :loading="processing"
           @click="submit"
-          :disabled="processing"
-          class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <i class="pi pi-send text-sm"></i>
-          <span>{{ processing ? 'Submitting...' : 'Submit' }}</span>
-        </button>
-        
-        <button
+        :label="processing ? 'Submitting...' : 'Submit'" />
+
+        <Button
           v-if="canApprove"
+          size="small"
+          severity="danger"
+          outlined
+          icon="pi pi-times"
+          :loading="processing"
           @click="showRejectDialog = true"
-          :disabled="processing"
-          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-        >
-          <i class="pi pi-times text-sm"></i>
-          <span>Reject</span>
-        </button>
-        
-        <button
+        />
+
+        <Button
           v-if="canApprove"
+          size="small"
+          severity="success"
+          icon="pi pi-check"
+          :loading="processing"
           @click="approve"
-          :disabled="processing"
-          class="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <i class="pi pi-check text-sm"></i>
-          <span>{{ processing ? 'Approving...' : 'Approve' }}</span>
-        </button>
-        
-        <button
+          :label="processing ? 'Approving...' : 'Approve'"
+        />
+
+        <Button
+          v-if="detail && detail.status === 'procurement_processing' && (canManagePurchaseOrders || canManageRfq)"
+          size="small"
+          severity="info"
+          icon="pi pi-share"
+          @click="createRequest"
+          label="Create Request"
+        />
+
+        <Button
           v-if="canManageReceiving && detail.status === 'delivered' && deliveredPO"
+          size="small"
+          severity="secondary"
+          icon="pi pi-archive"
           @click="createGoodsReceipt(deliveredPO)"
-          class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <i class="pi pi-archive text-sm"></i>
-          <span>Create Goods Receipt</span>
-        </button>
+        />
 
-        <button
+        <Button
           v-if="canManageRfq && canCreateRfqFromDetail"
+          size="small"
+          severity="success"
+          icon="pi pi-send"
           @click="createRfqFromRequisition"
-          class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <i class="pi pi-send text-sm"></i>
-          <span>Create RFQ</span>
-        </button>
+        />
 
-        <button
+        <Button
           v-if="canManagePurchaseOrders && canCreatePoFromDetail"
+          size="small"
+          severity="info"
+          icon="pi pi-shopping-cart"
           @click="createPoFromRequisition"
-          class="px-5 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <i class="pi pi-shopping-cart text-sm"></i>
-          <span>Create PO</span>
-        </button>
+        />
       </div>
 
       <!-- PR Details Card -->
@@ -365,6 +372,33 @@
       </div>
     </div>
 
+    <!-- Confirm Dialog -->
+    <div v-if="confirmVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ confirmTitle }}</h3>
+        <p class="text-sm text-gray-600">{{ confirmMessage }}</p>
+
+        <div class="flex justify-end gap-3 mt-6">
+          <button @click="confirmVisible = false" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm">Cancel</button>
+          <button @click="performConfirmedAction" :disabled="processing" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl text-sm">
+            <span v-if="processing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Response Dialog -->
+    <div v-if="responseVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ responseTitle }}</h3>
+        <p class="text-sm" :class="responseSeverity === 'success' ? 'text-green-600' : responseSeverity === 'error' ? 'text-red-600' : 'text-gray-700'">{{ responseMessage }}</p>
+        <div class="flex justify-end gap-3 mt-6">
+          <button @click="responseVisible = false" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm">Close</button>
+        </div>
+      </div>
+    </div>
+
     <Toast />
   </div>
 </template>
@@ -376,6 +410,7 @@ import { useToast } from 'primevue/usetoast'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
 import Toast from 'primevue/toast'
+import Button from 'primevue/button'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -391,6 +426,14 @@ const authStore = useAuthStore()
 const userRole = computed(() => authStore.userRole || '')
 const showRejectDialog = ref(false)
 const rejectReason = ref('')
+const confirmVisible = ref(false)
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+const confirmAction = ref('')
+const responseVisible = ref(false)
+const responseTitle = ref('')
+const responseMessage = ref('')
+const responseSeverity = ref<'success' | 'error' | 'info'>('info')
 
 const normalize = (value: unknown): string =>
   String(value ?? '')
@@ -418,6 +461,46 @@ const canCreatePoFromDetail = computed(() => {
   if (!detail.value) return false
   return processingReadyStatuses.includes(detail.value.status) && Boolean(detail.value.all_items_have_suppliers)
 })
+
+// Derive supplier binding from items when backend flags are missing
+const supplierGrouping = computed(() => {
+  const items = Array.isArray(detail.value?.items) ? detail.value.items : []
+  const grouped: Record<string, any[]> = {}
+  let boundCount = 0
+  for (const it of items) {
+    const supId = it?.selected_supplier_id ?? (Array.isArray(it?.product?.suppliers) && it.product.suppliers[0]?.id) ?? null
+    const key = supId ? String(supId) : 'NO_SUPPLIER'
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(it)
+    if (supId) boundCount++
+  }
+  return {
+    groups: grouped,
+    total: items.length,
+    boundCount,
+    unboundCount: items.length - boundCount,
+  }
+})
+
+const createRequest = () => {
+  if (!detail.value) return
+  const status = normalize(detail.value.status)
+  if (status !== 'procurement_processing') {
+    // only route when in processing state
+    return
+  }
+
+  const { boundCount, unboundCount } = supplierGrouping.value
+  if (boundCount > 0 && unboundCount > 0) {
+    router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId, split: '1' } })
+    return
+  }
+  if (unboundCount === 0 && boundCount > 0) {
+    router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
+    return
+  }
+  router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
+}
 
 const canApprove = computed(() => {
   if (!detail.value) return false
@@ -536,90 +619,58 @@ const loadDetail = async () => {
 }
 
 const submit = async () => {
-  processing.value = true
-  try {
-    const response = await procurementService.submitPurchaseRequisition(requisitionId)
-    if (response.success) {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'PR submitted for approval', life: 3000 })
-      await loadDetail()
-    }
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to submit', life: 3000 })
-  } finally {
-    processing.value = false
-  }
+  // open confirmation
+  confirmTitle.value = 'Submit Purchase Requisition'
+  confirmMessage.value = 'Are you sure you want to submit this requisition for approval?'
+  confirmAction.value = 'submit'
+  confirmVisible.value = true
 }
 
 const approve = async () => {
-  processing.value = true
-  try {
-    if (!approvalRole.value) {
-      toast.add({ severity: 'warn', summary: 'Missing Role', detail: 'Unable to determine your role.', life: 3000 })
-      return
-    }
-    const response = await procurementService.approvePurchaseRequisition(requisitionId, { role: approvalRole.value, notes: '' })
-    if (response.success) {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'PR approved', life: 3000 })
-      await loadDetail()
-
-      if (detail.value?.status === 'procurement_processing') {
-        const hasSuppliers = Array.isArray(detail.value?.items)
-          ? detail.value.items.every((item: any) => Array.isArray(item?.product?.suppliers) && item.product.suppliers.length > 0)
-          : false
-
-        if (hasSuppliers) {
-          router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
-          return
-        }
-
-        router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
-      }
-    }
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to approve', life: 3000 })
-  } finally {
-    processing.value = false
-  }
+  confirmTitle.value = 'Approve Purchase Requisition'
+  confirmMessage.value = 'Approve this requisition? This action cannot be easily undone.'
+  confirmAction.value = 'approve'
+  confirmVisible.value = true
 }
 
 const submitRejection = async () => {
-  processing.value = true
-  try {
-    if (!rejectReason.value.trim()) {
-      toast.add({ severity: 'warn', summary: 'Required', detail: 'Please provide a rejection reason.', life: 3000 })
-      return
-    }
-    const response = await procurementService.rejectPurchaseRequisition(requisitionId, {
-      role: approvalRole.value || 'procurement',
-      reason: rejectReason.value,
-    })
-    if (response.success) {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'PR rejected', life: 3000 })
-      showRejectDialog.value = false
-      rejectReason.value = ''
-      await loadDetail()
-    }
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to reject', life: 3000 })
-  } finally {
-    processing.value = false
+  // confirm rejection with reason
+  if (!rejectReason.value.trim()) {
+    toast.add({ severity: 'warn', summary: 'Required', detail: 'Please provide a rejection reason.', life: 3000 })
+    return
   }
+  confirmTitle.value = 'Reject Purchase Requisition'
+  confirmMessage.value = `Reject this requisition for reason: "${rejectReason.value.trim()}"?`
+  confirmAction.value = 'reject'
+  confirmVisible.value = true
 }
 
 const editPR = () => {
-  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Edit coming soon', life: 2500 })
+  confirmTitle.value = 'Edit Purchase Requisition'
+  confirmMessage.value = 'Open editor for this requisition?'
+  confirmAction.value = 'edit'
+  confirmVisible.value = true
 }
 
 const deletePR = () => {
-  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Delete coming soon', life: 2500 })
+  confirmTitle.value = 'Delete Purchase Requisition'
+  confirmMessage.value = 'This will permanently delete the requisition. Continue?'
+  confirmAction.value = 'delete'
+  confirmVisible.value = true
 }
 
 const createRfqFromRequisition = () => {
-  router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
+  confirmTitle.value = 'Create RFQ'
+  confirmMessage.value = 'Create an RFQ from this requisition?'
+  confirmAction.value = 'create_rfq'
+  confirmVisible.value = true
 }
 
 const createPoFromRequisition = () => {
-  router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
+  confirmTitle.value = 'Create Purchase Order'
+  confirmMessage.value = 'Create a Purchase Order from this requisition?'
+  confirmAction.value = 'create_po'
+  confirmVisible.value = true
 }
 
 onMounted(() => {
@@ -632,12 +683,88 @@ const deliveredPO = computed(() => {
 })
 
 const createGoodsReceipt = (po: any) => {
-  router.push({
-    name: 'procurement.goods-receipts.create',
-    query: {
-      po_id: po.id
+  confirmTitle.value = 'Create Goods Receipt'
+  confirmMessage.value = `Create goods receipt for PO ${po?.po_number || po?.id}?`
+  // pass a small payload via confirmAction to identify PO
+  confirmAction.value = `create_gr:${po?.id}`
+  confirmVisible.value = true
+}
+
+const performConfirmedAction = async () => {
+  confirmVisible.value = false
+  processing.value = true
+  try {
+    const action = confirmAction.value
+    let res: any = null
+
+    if (action === 'submit') {
+      res = await procurementService.submitPurchaseRequisition(requisitionId)
+    } else if (action === 'approve') {
+      if (!approvalRole.value) {
+        responseTitle.value = 'Missing Role'
+        responseMessage.value = 'Unable to determine your role.'
+        responseSeverity.value = 'error'
+        responseVisible.value = true
+        return
+      }
+      res = await procurementService.approvePurchaseRequisition(requisitionId, { role: approvalRole.value, notes: '' })
+    } else if (action === 'reject') {
+      res = await procurementService.rejectPurchaseRequisition(requisitionId, {
+        role: approvalRole.value || 'procurement',
+        reason: rejectReason.value,
+      })
+      // close reject dialog when confirmed
+      showRejectDialog.value = false
+      rejectReason.value = ''
+    } else if (action === 'edit') {
+      router.push({ name: 'procurement.purchase-requisitions.edit', params: { id: requisitionId } })
+      return
+    } else if (action === 'delete') {
+      res = await procurementService.deletePurchaseRequisition(requisitionId)
+      if (res) router.push({ name: 'procurement.purchase-requisitions' })
+    } else if (action === 'create_rfq') {
+      router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
+      return
+    } else if (action === 'create_po') {
+      router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
+      return
+    } else if (action && action.startsWith('create_gr:')) {
+      const poId = Number(action.split(':')[1])
+      router.push({ name: 'procurement.goods-receipts.create', query: { po_id: poId } })
+      return
     }
-  })
+
+    // Show server response in dialog. Include full body when available (for 500s etc.)
+    if (res) {
+      const payload = res.data ?? res
+      // Build a readable message: prefer explicit message fields, otherwise stringify payload
+      const readable = payload?.message || payload?.error || (typeof payload === 'string' ? payload : null) || null
+      responseTitle.value = (payload?.success || (res.status && res.status >= 200 && res.status < 300)) ? 'Success' : 'Response'
+      responseMessage.value = readable || JSON.stringify(payload, null, 2)
+      responseSeverity.value = (payload?.success || (res.status && res.status >= 200 && res.status < 300)) ? 'success' : 'error'
+      responseVisible.value = true
+      // reload detail when appropriate
+      await loadDetail()
+
+      // If successful, auto-close response after short delay and navigate to list
+      const ok = payload?.success || (res.status && res.status >= 200 && res.status < 300)
+      if (ok) {
+        setTimeout(() => {
+          responseVisible.value = false
+          router.push({ name: 'procurement.purchase-requisitions' })
+        }, 1200)
+      }
+    }
+  } catch (err: any) {
+    console.error('Action failed', err)
+    responseTitle.value = 'Error'
+    responseMessage.value = err.response?.data?.message || err.message || 'Failed to perform action'
+    responseSeverity.value = 'error'
+    responseVisible.value = true
+  } finally {
+    processing.value = false
+    confirmAction.value = ''
+  }
 }
 </script>
 

@@ -62,7 +62,7 @@ class BranchInventoryController extends Controller
                 }
             }
             
-            $query = BranchInventory::with(['product', 'variation', 'branch'])
+            $query = BranchInventory::with(['product.suppliers', 'variation', 'branch'])
                 ->where('store_id', $context['store_id'])
                 ->where('branch_id', $targetBranchId);
 
@@ -177,7 +177,7 @@ class BranchInventoryController extends Controller
             $context = $this->getUserContext();
             
             $inventory = BranchInventory::with([
-                'product',
+                'product.suppliers',
                 'variation',
                 'branch',
                 'store',

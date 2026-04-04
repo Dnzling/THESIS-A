@@ -165,7 +165,7 @@
             <div class="p-6 pt-2 space-y-4">
               <div class="space-y-2">
                 <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <span class="text-red-500 mr-1">*</span> Select Suppliers
+                  <span v-if="!splitRfqMode" class="text-red-500 mr-1">*</span> Select Suppliers
                 </label>
                 <MultiSelect 
                   v-model="selectedSupplierIds" 
@@ -175,9 +175,13 @@
                   placeholder="Select suppliers" 
                   filter 
                   display="chip" 
+                  :disabled="splitRfqMode"
                   class="w-full bg-gray-50 border-gray-200 rounded-xl"
                 />
-                <small class="text-gray-500">Select at least one supplier to send the RFQ</small>
+                <small class="text-gray-500" v-if="!splitRfqMode">Select at least one supplier to send the RFQ</small>
+                <small class="text-blue-600" v-else>
+                  Split mode active: PR has {{ splitRfqSupplierGroups }} supplier groups. System will create one RFQ per supplier automatically.
+                </small>
               </div>
 
               <div class="space-y-2">
@@ -216,6 +220,22 @@
                       <p class="font-medium text-gray-900">{{ suppliers.find(s => s.id === supplierId)?.name }}</p>
                       <p class="text-xs text-gray-600 mt-0.5">{{ suppliers.find(s => s.id === supplierId)?.email }}</p>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="splitRfqMode" class="mt-4 pt-4 border-t border-gray-100">
+                <h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <i class="pi pi-sitemap text-blue-500"></i>
+                  Split Preview ({{ splitRfqSupplierGroups }} groups)
+                </h4>
+                <div class="space-y-2">
+                  <div v-for="group in splitRfqSummary" :key="group.supplier_id" class="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                    <p class="font-medium text-gray-900">{{ group.supplier_name }}</p>
+                    <p class="text-xs text-gray-600 mb-1">{{ group.item_count }} items • Qty {{ group.total_qty }}</p>
+                    <ul class="text-xs text-gray-700 space-y-0.5">
+                      <li v-for="line in group.lines" :key="line.key">{{ line.product_name }} • Qty {{ line.qty }}</li>
+                    </ul>
                   </div>
                 </div>
               </div>
@@ -337,7 +357,7 @@
           iconPos="right" 
           @click="showReview = true" 
           :loading="saving"
-          :disabled="selectedSupplierIds.length === 0"
+          :disabled="!splitRfqMode && selectedSupplierIds.length === 0"
           class="rounded-xl px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white border-none"
         />
       </div>
@@ -486,7 +506,7 @@
             :label="isEditMode ? 'Update & Send RFQ' : 'Create & Send RFQ'" 
             icon="pi pi-send" 
             @click="submitForm"
-            :disabled="!confirmTerms || selectedSupplierIds.length === 0"
+            :disabled="!confirmTerms || (!splitRfqMode && selectedSupplierIds.length === 0)"
             class="rounded-xl px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white border-none"
           />
         </div>
@@ -671,6 +691,8 @@ import procurementService from '../../../../services/procurement.service'
 interface RFQItem {
   product_id: number | null
   variation_id: number | null
+  selected_supplier_id?: number | null
+  selected_supplier_name?: string | null
   product_name?: string
   quantity: number
   unit: string
@@ -685,7 +707,7 @@ interface RFQForm {
   title: string
   description: string
   issue_date: Date
-  rfq_type: string
+  rfq_type: 'purchase' | 'service' | 'both'
   currency: string
   shipping_terms: string
   instructions: string
@@ -730,9 +752,51 @@ const showTermsModal = ref(false)
 const selectedSupplierIds = ref<number[]>([])
 const editingRfqId = ref<number | null>(null)
 const isEditMode = computed(() => editingRfqId.value !== null)
+const splitRfqMode = ref(false)
+const splitRfqSupplierGroups = ref<number>(0)
 const products = ref<Product[]>([])
 const suppliers = ref<Supplier[]>([])
 const errors = reactive<FormErrors>({})
+const splitRfqSummary = computed(() => {
+  const groups = new Map<number, {
+    supplier_id: number
+    supplier_name: string
+    item_count: number
+    total_qty: number
+    lines: Array<{ key: string; product_name: string; qty: number }>
+  }>()
+
+  for (const item of form.items) {
+    const supplierId = Number(item?.selected_supplier_id || 0)
+    if (!supplierId) continue
+
+    const supplierName = item?.selected_supplier_name
+      || suppliers.value.find((s) => Number(s.id) === supplierId)?.name
+      || `Supplier #${supplierId}`
+
+    if (!groups.has(supplierId)) {
+      groups.set(supplierId, {
+        supplier_id: supplierId,
+        supplier_name: supplierName,
+        item_count: 0,
+        total_qty: 0,
+        lines: [],
+      })
+    }
+
+    const group = groups.get(supplierId)!
+    const qty = Number(item?.quantity || 0)
+    group.item_count += 1
+    group.total_qty += qty
+    group.lines.push({
+      key: `${supplierId}-${item?.product_id}-${group.lines.length}`,
+      product_name: item?.product_name || `Product #${item?.product_id}`,
+      qty,
+    })
+  }
+
+  return Array.from(groups.values())
+})
 
 const rfqTypes = [
   { label: 'Purchase', value: 'purchase' },
@@ -915,6 +979,12 @@ const prefillFromRequisition = (requisition: any) => {
     form.items = requisition.items.map((item: any) => ({
       product_id: item.product_id || null,
       variation_id: item.variation_id || null,
+      selected_supplier_id: item.selected_supplier_id || null,
+      selected_supplier_name: item.selected_supplier_id
+        ? (Array.isArray(item.product?.suppliers)
+          ? item.product.suppliers.find((s: any) => Number(s.id) === Number(item.selected_supplier_id))?.supplier_name
+          : null)
+        : null,
       product_name: item.product?.product_name || item.product_name || '',
       quantity: item.quantity_requested || 1,
       unit: 'pcs',
@@ -922,6 +992,25 @@ const prefillFromRequisition = (requisition: any) => {
       specifications: item.specifications || '',
       notes: ''
     }))
+
+    const resolvedSupplierIds = requisition.items
+      .map((item: any) => {
+        if (item?.selected_supplier_id) return Number(item.selected_supplier_id)
+        const productSuppliers = Array.isArray(item?.product?.suppliers) ? item.product.suppliers : []
+        if (productSuppliers.length === 1) return Number(productSuppliers[0].id)
+        return null
+      })
+      .filter((id: any) => Number(id) > 0)
+
+    const uniqueSupplierIds = Array.from(new Set(resolvedSupplierIds)).map((id: any) => Number(id)).filter((id: number) => id > 0)
+    splitRfqSupplierGroups.value = uniqueSupplierIds.length
+    splitRfqMode.value = uniqueSupplierIds.length > 1
+
+    if (!splitRfqMode.value && uniqueSupplierIds.length === 1) {
+      selectedSupplierIds.value = [uniqueSupplierIds[0]]
+    } else if (splitRfqMode.value) {
+      selectedSupplierIds.value = []
+    }
   }
 }
 
@@ -950,7 +1039,7 @@ const saveDraft = async () => {
       return
     }
 
-    if (selectedSupplierIds.value.length === 0) {
+    if (!splitRfqMode.value && selectedSupplierIds.value.length === 0) {
       toast.add({
         severity: 'error',
         summary: 'Validation Error',
@@ -959,6 +1048,36 @@ const saveDraft = async () => {
       })
       saving.value = false
       return
+    }
+
+    if (splitRfqMode.value && form.purchase_requisition_id && !isEditMode.value) {
+      const splitPayload = {
+        purchase_requisition_id: form.purchase_requisition_id,
+        title: form.title,
+        description: form.description,
+        issue_date: form.issue_date instanceof Date
+          ? form.issue_date.toISOString().split('T')[0]
+          : String(form.issue_date || ''),
+        rfq_type: form.rfq_type,
+        currency: form.currency,
+        shipping_terms: form.shipping_terms,
+        instructions: form.instructions,
+        qualification_requirements: form.qualification_requirements,
+      }
+
+      const splitResponse = await procurementService.createRFQsFromRequisitionSplit(splitPayload)
+      if (splitResponse?.success) {
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: `Created ${splitResponse?.data?.created_count || splitRfqSupplierGroups.value || 'multiple'} draft RFQs grouped by supplier`,
+          life: 3000
+        })
+        setTimeout(() => {
+          router.push({ name: 'procurement.rfqs' })
+        }, 1500)
+        return
+      }
     }
 
     const payload = {
@@ -1042,7 +1161,7 @@ const submitForm = async () => {
     return
   }
 
-  if (selectedSupplierIds.value.length === 0) {
+  if (!splitRfqMode.value && selectedSupplierIds.value.length === 0) {
     toast.add({
       severity: 'error',
       summary: 'Validation Error',
@@ -1065,6 +1184,52 @@ const submitForm = async () => {
 
   saving.value = true
   try {
+    if (splitRfqMode.value && form.purchase_requisition_id && !isEditMode.value) {
+      const splitPayload = {
+        purchase_requisition_id: form.purchase_requisition_id,
+        title: form.title,
+        description: form.description,
+        issue_date: form.issue_date instanceof Date
+          ? form.issue_date.toISOString().split('T')[0]
+          : String(form.issue_date || ''),
+        rfq_type: form.rfq_type,
+        currency: form.currency,
+        shipping_terms: form.shipping_terms,
+        instructions: form.instructions,
+        qualification_requirements: form.qualification_requirements,
+      }
+
+      const splitResponse = await procurementService.createRFQsFromRequisitionSplit(splitPayload)
+      if (!splitResponse?.success) {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: splitResponse?.message || 'Failed to create split RFQs',
+          life: 3000
+        })
+        return
+      }
+
+      const rfqs = Array.isArray(splitResponse?.data?.rfqs) ? splitResponse.data.rfqs : []
+      for (const rfq of rfqs) {
+        const rfqId = Number(rfq?.id)
+        if (!rfqId) continue
+        await procurementService.sendRfq(rfqId, { invitation_method: form.invitation_method } as any)
+      }
+
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: `Created and sent ${splitResponse?.data?.created_count || rfqs.length || splitRfqSupplierGroups.value || 'multiple'} supplier-split RFQs successfully`,
+        life: 3000
+      })
+
+      setTimeout(() => {
+        router.push({ name: 'procurement.rfqs' })
+      }, 1500)
+      return
+    }
+
     const payload = {
       purchase_requisition_id: form.purchase_requisition_id,
       title: form.title,

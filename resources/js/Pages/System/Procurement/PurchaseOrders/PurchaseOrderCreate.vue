@@ -62,12 +62,15 @@
               <!-- Supplier Selection -->
               <div class="md:col-span-6">
                 <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Supplier
+                  <span v-if="!splitPoMode" class="text-red-500">*</span> Supplier
                 </label>
                 <Select v-model="form.supplier_id" :options="suppliers" option-label="supplier_name" option-value="id"
                   placeholder="Select supplier" class="w-full" filter @change="onSupplierChange"
-                  :loading="loadingSuppliers" />
-                <p class="text-xs text-gray-500 mt-1">Auto-populates supplier details when selected</p>
+                  :loading="loadingSuppliers" :disabled="splitPoMode" />
+                <p class="text-xs text-gray-500 mt-1" v-if="!splitPoMode">Auto-populates supplier details when selected</p>
+                <p class="text-xs text-blue-600 mt-1" v-else>
+                  Split mode active: PR has {{ splitPoSupplierGroups }} supplier groups. System will create one PO per supplier automatically.
+                </p>
               </div>
   
               <div class="md:col-span-6">
@@ -263,13 +266,45 @@
             <Button label="Cancel" severity="secondary" text type="button"
               @click="router.push({ name: 'procurement.purchase-orders' })" />
             <Button label="Save as Draft" icon="pi pi-download" severity="info" :loading="saving"
-              @click="saveDraft = true; submitForm()" />
+              @click="openSplitPoPreview('draft')" />
             <Button label="Create & Submit" icon="pi pi-check" severity="success" :loading="saving"
-              @click="saveDraft = false; submitForm()" />
+              @click="openSplitPoPreview('submit')" />
           </div>
         </form>
       </template>
     </Card>
+
+    <Dialog v-model:visible="splitPoPreviewVisible" modal header="Confirm Split Purchase Orders" :style="{ width: '42rem' }">
+      <div class="space-y-4">
+        <p class="text-sm text-gray-700">
+          This PR contains multiple supplier groups. The system will create separate purchase orders per supplier.
+        </p>
+
+        <div class="space-y-3 max-h-72 overflow-y-auto">
+          <div v-for="group in splitPoSummary" :key="group.supplier_id" class="border rounded-lg p-3 bg-gray-50">
+            <div class="flex items-center justify-between mb-2">
+              <p class="font-semibold text-gray-900">{{ group.supplier_name }}</p>
+              <p class="text-xs text-gray-600">{{ group.item_count }} items • Qty {{ group.total_qty }}</p>
+            </div>
+            <ul class="text-xs text-gray-700 space-y-1">
+              <li v-for="line in group.lines" :key="line.key">{{ line.product_name }} • Qty {{ line.qty }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <Button label="Cancel" severity="secondary" text @click="splitPoPreviewVisible = false" />
+          <Button
+            :label="splitPoPreviewAction === 'draft' ? 'Confirm Save Draft' : 'Confirm Create & Submit'"
+            icon="pi pi-check"
+            severity="success"
+            @click="confirmSplitPoPreview"
+          />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -321,6 +356,10 @@ const contractTaxRate = ref(0)
 const storeCurrency = ref('PHP')
 const budgetWarnings = ref<Record<number, string>>({})
 const supplierWarning = reactive({ show: false, message: '', severity: 'warning' as string })
+const splitPoMode = ref(false)
+const splitPoSupplierGroups = ref<number>(0)
+const splitPoPreviewVisible = ref(false)
+const splitPoPreviewAction = ref<'draft' | 'submit'>('submit')
 
 const totals = reactive({
   subtotal: 0,
@@ -333,6 +372,46 @@ const supplierTaxRate = computed(() =>
 )
 const supplierTaxRateDisplay = computed(() => `${Number(supplierTaxRate.value || 0).toFixed(2)}%`)
 const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
+const splitPoSummary = computed(() => {
+  const groups = new Map<number, {
+    supplier_id: number
+    supplier_name: string
+    item_count: number
+    total_qty: number
+    lines: Array<{ key: string; product_name: string; qty: number }>
+  }>()
+
+  for (const item of form.items) {
+    const supplierId = Number(item?.selected_supplier_id || 0)
+    if (!supplierId) continue
+
+    const supplierName = item?.selected_supplier_name
+      || suppliers.value.find((s: any) => Number(s.id) === supplierId)?.supplier_name
+      || `Supplier #${supplierId}`
+
+    if (!groups.has(supplierId)) {
+      groups.set(supplierId, {
+        supplier_id: supplierId,
+        supplier_name: supplierName,
+        item_count: 0,
+        total_qty: 0,
+        lines: [],
+      })
+    }
+
+    const group = groups.get(supplierId)!
+    const qty = Number(item?.quantity_ordered || 0)
+    group.item_count += 1
+    group.total_qty += qty
+    group.lines.push({
+      key: `${supplierId}-${item?.product_id}-${group.lines.length}`,
+      product_name: item?.product_name || `Product #${item?.product_id}`,
+      qty,
+    })
+  }
+
+  return Array.from(groups.values())
+})
 
 // Load initial data
 onMounted(async () => {
@@ -347,6 +426,44 @@ onMounted(async () => {
   if (route.query.requisition_id) {
     const requisitionId = parseInt(route.query.requisition_id as string)
     await prefillFromRequisition(requisitionId)
+    // If split mode requested via query, fetch canonical server grouping and show preview
+    if (route.query.split === '1') {
+      try {
+        const splitRes = await procurementService.getPurchaseRequisitionSplitPreview(requisitionId)
+        const payload = splitRes?.data || splitRes
+        if (payload) {
+          // Populate form items with server-provided items (keep existing mapping)
+          if (Array.isArray(payload.requisition?.items)) {
+            form.items = payload.requisition.items.map((item: any) => ({
+              id: `req-${item.id}`,
+              product_id: item.product_id,
+              product_name: item.product?.product_name || item.product_name || '',
+              selected_supplier_id: item.selected_supplier_id || null,
+              selected_supplier_name: item.selected_supplier_id ? (item.selected_supplier_name || null) : null,
+              quantity_ordered: item.quantity_requested || 1,
+              unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+              line_total: 0
+            }))
+
+            form.items.forEach((_, index) => calculateItemTotal(index))
+          }
+
+          // Use server grouping to set split mode and supplier group count
+          if (Array.isArray(payload.supplier_groups)) {
+            splitPoSupplierGroups.value = payload.supplier_groups.length
+            splitPoMode.value = payload.supplier_groups.length > 1
+          }
+
+          // Open preview dialog
+          if (splitPoMode.value) {
+            splitPoPreviewVisible.value = true
+            splitPoPreviewAction.value = 'submit'
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load split preview', err)
+      }
+    }
     return
   }
 
@@ -429,6 +546,12 @@ const prefillFromRequisition = async (requisitionId: number) => {
         id: `req-${item.id}`,
         product_id: item.product_id,
         product_name: item.product?.product_name || item.product_name || '',
+        selected_supplier_id: item.selected_supplier_id || null,
+        selected_supplier_name: item.selected_supplier_id
+          ? (Array.isArray(item.product?.suppliers)
+            ? item.product.suppliers.find((s: any) => Number(s.id) === Number(item.selected_supplier_id))?.supplier_name
+            : null)
+          : null,
         quantity_ordered: item.quantity_requested || 1,
         unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
         line_total: 0
@@ -436,6 +559,19 @@ const prefillFromRequisition = async (requisitionId: number) => {
 
       form.items.forEach((_, index) => calculateItemTotal(index))
     }
+
+    const resolvedSupplierIds = (Array.isArray(requisition.items) ? requisition.items : [])
+      .map((item: any) => {
+        if (item?.selected_supplier_id) return Number(item.selected_supplier_id)
+        const productSuppliers = Array.isArray(item?.product?.suppliers) ? item.product.suppliers : []
+        if (productSuppliers.length === 1) return Number(productSuppliers[0].id)
+        return null
+      })
+      .filter((id: any) => Number(id) > 0)
+
+    const uniqueSupplierIds = Array.from(new Set(resolvedSupplierIds))
+    splitPoSupplierGroups.value = uniqueSupplierIds.length
+    splitPoMode.value = uniqueSupplierIds.length > 1
 
     if (products.value.length === 0 && Array.isArray(requisition.items)) {
       products.value = requisition.items
@@ -451,10 +587,12 @@ const prefillFromRequisition = async (requisitionId: number) => {
 
     syncItemUnitCostsFromProducts()
 
-    const firstSupplierId = requisition.items?.[0]?.product?.suppliers?.[0]?.id
-    if (firstSupplierId) {
-      form.supplier_id = firstSupplierId
+    const firstSupplierId = requisition.items?.[0]?.selected_supplier_id || requisition.items?.[0]?.product?.suppliers?.[0]?.id
+    if (!splitPoMode.value && firstSupplierId) {
+      form.supplier_id = Number(firstSupplierId)
       await onSupplierChange()
+    } else if (splitPoMode.value) {
+      form.supplier_id = null
     }
   } catch (error) {
     console.error('Failed to prefill from requisition', error)
@@ -479,7 +617,7 @@ const prefillFromRFQ = async (rfqId: number) => {
       .map((f: any) => f?.supplier_portal?.supplier_id || f?.supplier_portal?.supplier?.id)
       .filter((id: any) => !!id)
 
-    const uniqueSupplierIds = Array.from(new Set(supplierIds))
+    const uniqueSupplierIds = Array.from(new Set(supplierIds)).map((id: any) => Number(id)).filter((id: number) => id > 0)
     if (rfq.awarded_to_supplier_id) {
       form.supplier_id = rfq.awarded_to_supplier_id
     } else if (uniqueSupplierIds.length === 1) {
@@ -764,6 +902,8 @@ const addLineItem = () => {
   form.items.push({
     id: `item-${Date.now()}`,
     product_id: null,
+    selected_supplier_id: null,
+    selected_supplier_name: null,
     quantity_ordered: 1,
     unit_cost: 0,
     line_total: 0
@@ -809,6 +949,8 @@ const addQuickProduct = (product: any) => {
     id: `item-${Date.now()}`,
     product_id: product.product_id,
     product_name: product.product_name,
+    selected_supplier_id: null,
+    selected_supplier_name: null,
     quantity_ordered: product.quantity_ordered,
     unit_cost: product.cost_price ?? product.unit_cost ?? 0,
     line_total: 0
@@ -824,9 +966,34 @@ const addQuickProduct = (product: any) => {
   })
 }
 
-const submitForm = async () => {
+const openSplitPoPreview = (action: 'draft' | 'submit') => {
+  saveDraft.value = action === 'draft'
+  const shouldUseSplitPoMode = !isEditing.value && splitPoMode.value && Number(form.purchase_requisition_id || 0) > 0
+
+  if (shouldUseSplitPoMode) {
+    splitPoPreviewAction.value = action
+    splitPoPreviewVisible.value = true
+    return
+  }
+
+  submitForm()
+}
+
+const confirmSplitPoPreview = () => {
+  splitPoPreviewVisible.value = false
+  submitForm(true)
+}
+
+const submitForm = async (confirmedSplitMode = false) => {
+  const shouldUseSplitPoMode = !isEditing.value && splitPoMode.value && Number(form.purchase_requisition_id || 0) > 0
+
+  if (shouldUseSplitPoMode && !confirmedSplitMode) {
+    splitPoPreviewVisible.value = true
+    return
+  }
+
   // Validation
-  if (!form.supplier_id) {
+  if (!shouldUseSplitPoMode && !form.supplier_id) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Please select a supplier', life: 3000 })
     return
   }
@@ -848,20 +1015,27 @@ const submitForm = async () => {
       ? form.order_date.toISOString().split('T')[0]
       : form.order_date) || new Date().toISOString().split('T')[0]
 
-    const payload: Record<string, any> = {
-      supplier_id: form.supplier_id,
-      branch_id: form.branch_id,
-      purchase_requisition_id: form.purchase_requisition_id,
-      order_date: orderDate,
-      discount_amount: form.discount_amount,
-      notes: form.notes,
-      items: form.items.map((item) => ({
-        product_id: item.product_id,
-        quantity_ordered: item.quantity_ordered,
-        unit_cost: item.unit_cost
-      })),
-      status: saveDraft.value ? 'draft' : 'pending_finance_approval'
-    }
+    const payload: Record<string, any> = shouldUseSplitPoMode
+      ? {
+        purchase_requisition_id: form.purchase_requisition_id,
+        order_date: orderDate,
+        notes: form.notes,
+        status: saveDraft.value ? 'draft' : 'pending_finance_approval',
+      }
+      : {
+        supplier_id: form.supplier_id,
+        branch_id: form.branch_id,
+        purchase_requisition_id: form.purchase_requisition_id,
+        order_date: orderDate,
+        discount_amount: form.discount_amount,
+        notes: form.notes,
+        items: form.items.map((item) => ({
+          product_id: item.product_id,
+          quantity_ordered: item.quantity_ordered,
+          unit_cost: item.unit_cost
+        })),
+        status: saveDraft.value ? 'draft' : 'pending_finance_approval'
+      }
 
     // Call create or update based on isEditing flag
     if (isEditing.value && route.params.id) {
@@ -873,11 +1047,13 @@ const submitForm = async () => {
         life: 2000
       })
     } else {
-      await procurementService.createPurchaseOrder(payload as any)
+      const result = await procurementService.createPurchaseOrder(payload as any)
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: `Purchase Order ${saveDraft.value ? 'saved as draft' : 'submitted'} successfully`,
+        detail: shouldUseSplitPoMode
+          ? `Created ${result?.data?.created_count || splitPoSupplierGroups.value || 'multiple'} supplier-split purchase orders successfully`
+          : `Purchase Order ${saveDraft.value ? 'saved as draft' : 'submitted'} successfully`,
         life: 2000
       })
     }

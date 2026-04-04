@@ -11,10 +11,12 @@ use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
 use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
+use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class RequestForQuotationController extends Controller
 {
@@ -320,6 +322,133 @@ class RequestForQuotationController extends Controller
                 'cost_price' => $feedback->quoted_price,
                 'tax_rate' => $feedback->tax_rate ?? 0,
             ]);
+        }
+    }
+
+    /**
+     * Create supplier-split RFQs from a single requisition
+     * POST /api/procurement/rfqs/create-from-requisition-split
+     */
+    public function createFromRequisitionSplit(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'purchase_requisition_id' => 'required|exists:purchase_requisitions,id',
+            'title' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'rfq_type' => 'nullable|string|in:purchase,service,both',
+            'currency' => 'nullable|string|max:3',
+            'shipping_terms' => 'nullable|string',
+            'instructions' => 'nullable|string',
+            'qualification_requirements' => 'nullable|string',
+            'issue_date' => 'required|date',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $storeId = (int) (auth()->user()->store_id ?? 0);
+
+            $requisition = PurchaseRequisition::with(['items.product'])
+                ->where('store_id', $storeId)
+                ->findOrFail((int) $validated['purchase_requisition_id']);
+
+            if ($requisition->items->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'purchase_requisition_id' => 'Cannot create RFQs from an empty requisition.',
+                ]);
+            }
+
+            $itemsBySupplier = [];
+            $unassignedItemIds = [];
+
+            foreach ($requisition->items as $requisitionItem) {
+                $supplierId = $this->resolveSupplierIdForRequisitionItem($requisitionItem, $storeId);
+                if (!$supplierId) {
+                    $unassignedItemIds[] = $requisitionItem->id;
+                    continue;
+                }
+
+                if (!$this->supplierCanProvideProduct($supplierId, (int) $requisitionItem->product_id, $storeId)) {
+                    throw ValidationException::withMessages([
+                        'items' => "Product {$requisitionItem->product_id} is not mapped to supplier {$supplierId} for this store.",
+                    ]);
+                }
+
+                $itemsBySupplier[$supplierId][] = $requisitionItem;
+            }
+
+            if (!empty($unassignedItemIds)) {
+                throw ValidationException::withMessages([
+                    'items' => 'Some requisition items have no supplier assignment and cannot be grouped into RFQs. Item IDs: ' . implode(', ', $unassignedItemIds),
+                ]);
+            }
+
+            if (empty($itemsBySupplier)) {
+                throw ValidationException::withMessages([
+                    'items' => 'No supplier-resolved requisition items were found for RFQ creation.',
+                ]);
+            }
+
+            $createdRfqs = [];
+            foreach ($itemsBySupplier as $supplierId => $requisitionItems) {
+                $rfq = RequestForQuotation::create([
+                    'rfq_number' => $this->generateRfqNumber(),
+                    'store_id' => $storeId,
+                    'purchase_requisition_id' => $requisition->id,
+                    'title' => $validated['title'] ?? "RFQ for {$requisition->pr_number} - Supplier {$supplierId}",
+                    'description' => $validated['description'] ?? $requisition->reason,
+                    'rfq_type' => $validated['rfq_type'] ?? 'purchase',
+                    'currency' => $validated['currency'] ?? 'PHP',
+                    'shipping_terms' => $validated['shipping_terms'] ?? null,
+                    'instructions' => $validated['instructions'] ?? null,
+                    'qualification_requirements' => $validated['qualification_requirements'] ?? null,
+                    'issue_date' => $validated['issue_date'],
+                    'status' => 'draft',
+                    'created_by' => auth()->user()?->employee?->id ?? auth()->id(),
+                ]);
+
+                foreach ($requisitionItems as $requisitionItem) {
+                    RFQItem::create([
+                        'rfq_id' => $rfq->id,
+                        'product_id' => $requisitionItem->product_id,
+                        'variation_id' => $requisitionItem->variation_id,
+                        'quantity' => $requisitionItem->quantity_requested,
+                        'specifications' => $requisitionItem->specifications ?? null,
+                        'requirements' => null,
+                    ]);
+                }
+
+                $rfq->inviteSupplier((int) $supplierId);
+
+                $this->notifyRequisitionRequesterRfQCreated($requisition->id, $rfq->id, $rfq->rfq_number);
+                $createdRfqs[] = $rfq->load(['items.product', 'items.variation', 'suppliers.supplier']);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'RFQs created and grouped by supplier successfully',
+                'data' => [
+                    'purchase_requisition_id' => $requisition->id,
+                    'created_count' => count($createdRfqs),
+                    'rfqs' => $createdRfqs,
+                ],
+            ], 201);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('RFQ Split Creation Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create supplier-split RFQs: ' . $e->getMessage(),
+                'error' => config('app.debug') ? $e->getMessage() : 'An error occurred',
+            ], 500);
         }
     }
 
@@ -728,5 +857,41 @@ class RequestForQuotationController extends Controller
             'severity' => 'info',
             'link' => "/system/procurement/rfqs/{$rfqId}",
         ]);
+    }
+
+    private function generateRfqNumber(): string
+    {
+        return 'RFQ-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+    }
+
+    private function resolveSupplierIdForRequisitionItem(PurchaseRequisitionItem $item, int $storeId): ?int
+    {
+        if (!empty($item->selected_supplier_id)) {
+            return (int) $item->selected_supplier_id;
+        }
+
+        $supplierIds = DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.product_id', $item->product_id)
+            ->where('suppliers.store_id', $storeId)
+            ->pluck('supplier_products.supplier_id')
+            ->unique()
+            ->values();
+
+        if ($supplierIds->count() === 1) {
+            return (int) $supplierIds->first();
+        }
+
+        return null;
+    }
+
+    private function supplierCanProvideProduct(int $supplierId, int $productId, int $storeId): bool
+    {
+        return DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.supplier_id', $supplierId)
+            ->where('supplier_products.product_id', $productId)
+            ->where('suppliers.store_id', $storeId)
+            ->exists();
     }
 }

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
+use App\Models\Procurement\Supplier\Supplier;
 
 class PurchaseRequisitionItem extends Model
 {
@@ -14,6 +15,7 @@ class PurchaseRequisitionItem extends Model
         'requisition_id',
         'product_id',
         'variation_id',
+        'selected_supplier_id',
         'quantity_requested',
         'estimated_unit_cost',
         'tax_rate',
@@ -21,6 +23,7 @@ class PurchaseRequisitionItem extends Model
     ];
 
     protected $casts = [
+        'selected_supplier_id' => 'integer',
         'quantity_requested' => 'integer',
         'estimated_unit_cost' => 'decimal:2',
         'tax_rate' => 'decimal:2',
@@ -40,6 +43,11 @@ class PurchaseRequisitionItem extends Model
     public function variation(): BelongsTo
     {
         return $this->belongsTo(ProductVariation::class);
+    }
+
+    public function selectedSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'selected_supplier_id');
     }
 
     // Accessors

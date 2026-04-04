@@ -1,10 +1,15 @@
 <template>
   <div class="max-w-6xl mx-auto pb-6">
-    <div class="flex items-center gap-3 mb-6">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.purchase-requisitions' })" />
-      <div>
-        <h2 class="text-2xl font-bold text-gray-800">Create Purchase Requisition</h2>
-        <p class="text-sm text-gray-500 mt-1">Fill in the details to create a requisition</p>
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.purchase-requisitions' })" />
+        <div>
+          <h2 class="text-2xl font-bold text-gray-800">{{ formTitle }}</h2>
+          <p class="text-sm text-gray-500 mt-1">Fill in the details to create or update a requisition</p>
+        </div>
+      </div>
+      <div v-if="isEditingDraft" class="px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-sm">
+        Editing draft #{{ editingDraftId }}
       </div>
     </div>
 
@@ -63,6 +68,21 @@
                   <span v-else>{{ slotProps.data.product_name }}</span>
                   <Button icon="pi pi-trash" text severity="danger" @click="removeItem(slotProps.index)" />
                 </div>
+              </template>
+            </Column>
+            <Column field="selected_supplier_id" header="Supplier" style="min-width: 220px">
+              <template #body="slotProps">
+                <Select
+                  v-model="slotProps.data.selected_supplier_id"
+                  :options="getSuppliersForItem(slotProps.data)"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Auto-resolve by mapping"
+                  :disabled="!slotProps.data.product_id"
+                  filter
+                  showClear
+                  fluid
+                />
               </template>
             </Column>
             <Column field="quantity_requested" header="Qty" style="width: 100px">
@@ -135,10 +155,14 @@
           <div class="space-y-3">
             <h4 class="font-semibold text-gray-800">📦 Line Items ({{ validItems.length }} items)</h4>
             <div v-for="(item, index) in validItems" :key="index" class="p-4 border rounded-lg bg-orange-50">
-              <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
                 <div>
                   <p class="text-xs text-gray-600 font-semibold">Product</p>
                   <p class="font-semibold text-gray-900">{{ item.product_name }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-600 font-semibold">Supplier</p>
+                  <p class="font-semibold text-gray-900">{{ getSupplierDisplayName(item) }}</p>
                 </div>
                 <div>
                   <p class="text-xs text-gray-600 font-semibold">Quantity</p>
@@ -234,7 +258,7 @@ const form = reactive<any>({
   requisition_type: 'regular',
   reason: '',
   priority: 3,
-  items: [{ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }],
+  items: [{ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }],
 })
 
 const errors = reactive<any>({})
@@ -268,6 +292,27 @@ const requiredApprovals = computed(() => {
   return approvals
 })
 
+const editingDraftId = ref<number | null>(null)
+const isEditingDraft = computed(() => Boolean(editingDraftId.value))
+const formTitle = computed(() => isEditingDraft.value ? 'Edit Purchase Requisition' : 'Create Purchase Requisition')
+const payloadItems = computed(() => validItems.value.map((item: any) => ({
+  product_id: item.product_id,
+  variation_id: item.variation_id,
+  selected_supplier_id: item.selected_supplier_id || null,
+  quantity_requested: item.quantity_requested,
+  estimated_unit_cost: item.estimated_unit_cost,
+  tax_rate: item.tax_rate,
+  specifications: item.specifications,
+})))
+
+const buildPayload = () => ({
+  branch_id: form.branch_id,
+  requisition_type: form.requisition_type,
+  reason: form.reason,
+  priority: form.priority,
+  items: payloadItems.value,
+})
+
 const capitalizeWords = (str: string): string => {
   return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
@@ -284,7 +329,7 @@ const validateForm = (): boolean => {
 }
 
 const addItem = () => {
-  form.items.push({ product_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' })
+  form.items.push({ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' })
 }
 
 const removeItem = (index: number) => {
@@ -294,11 +339,33 @@ const removeItem = (index: number) => {
 const selectProduct = (index: number, event: any) => {
   const product = products.value.find(p => p.id === event.value)
   if (product && form.items[index]) {
+    const suppliers = Array.isArray(product.suppliers) ? product.suppliers : []
+    const preferredSupplier = suppliers.find((s: any) => Boolean(s.pivot?.is_preferred_supplier))
+
     form.items[index].product_id = product.id
     form.items[index].product_name = product.product_name
     form.items[index].estimated_unit_cost = parseFloat(product.cost_price || product.base_price) || 0
     form.items[index].tax_rate = Number(product.tax_rate ?? 0)
+    form.items[index].selected_supplier_id = preferredSupplier?.id ?? (suppliers.length === 1 ? suppliers[0].id : null)
   }
+}
+
+const getSuppliersForItem = (item: any) => {
+  const product = products.value.find((p: any) => p.id === item.product_id)
+  const suppliers = Array.isArray(product?.suppliers) ? product.suppliers : []
+
+  return suppliers.map((supplier: any) => ({
+    value: supplier.id,
+    label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+    isPreferred: Boolean(supplier.pivot?.is_preferred_supplier),
+  }))
+}
+
+const getSupplierDisplayName = (item: any): string => {
+  const options = getSuppliersForItem(item)
+  const selected = options.find((opt: any) => Number(opt.value) === Number(item.selected_supplier_id))
+
+  return selected?.label || 'Auto-resolve by product mapping'
 }
 
 const prefillFromInventoryItem = (item: any) => {
@@ -334,12 +401,60 @@ const prefillFromInventoryItem = (item: any) => {
 
   form.items = [{
     product_id: productId || null,
+    selected_supplier_id: null,
     quantity_requested: requestedQty,
     estimated_unit_cost: basePrice,
     tax_rate: Number(item.product?.tax_rate ?? 0),
     specifications: '',
     product_name: productName
   }]
+}
+
+const mapItemToForm = (item: any) => {
+  const product = item.product || {}
+  ensureProductInList(product)
+  return {
+    product_id: item.product_id,
+    variation_id: item.variation_id ?? null,
+    selected_supplier_id: item.selected_supplier_id ?? null,
+    quantity_requested: item.quantity_requested,
+    estimated_unit_cost: item.estimated_unit_cost ?? 0,
+    tax_rate: Number(item.tax_rate ?? 0),
+    specifications: item.specifications ?? '',
+    product_name: product.product_name || item.product_name || '',
+  }
+}
+
+const ensureProductInList = (product: any) => {
+  if (!product?.id) return
+  const exists = products.value.some(p => p.id === product.id)
+  if (!exists) {
+    products.value.push(product)
+  }
+}
+
+const loadDraft = async (draftId: number) => {
+  try {
+    const response = await procurementService.getPurchaseRequisition(draftId)
+    const draft = response.data || response
+    if (!draft || draft.status !== 'draft') {
+      toast.add({ severity: 'warn', summary: 'Unable to edit', detail: 'Only draft requisitions can be edited', life: 3000 })
+      return
+    }
+    editingDraftId.value = draft.id
+    form.branch_id = draft.branch_id || form.branch_id
+    form.requisition_type = draft.requisition_type || form.requisition_type
+    form.reason = draft.reason || form.reason
+    form.priority = draft.priority ?? form.priority
+    const items = Array.isArray(draft.items) ? draft.items : []
+    form.items = items.length > 0
+      ? items.map(mapItemToForm)
+      : [{ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }]
+    toast.add({ severity: 'info', summary: 'Editing Draft', detail: `You are editing draft #${draft.pr_number || draft.id}`, life: 2500 })
+  } catch (error: any) {
+    console.error('Unable to load draft:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load draft', life: 3000 })
+  }
 }
 
 const saveDraft = async () => {
@@ -351,16 +466,21 @@ const saveDraft = async () => {
       return
     }
 
-    const response = await procurementService.createPurchaseRequisition({
-      branch_id: form.branch_id,
-      requisition_type: form.requisition_type,
-      reason: form.reason,
-      priority: form.priority,
-      items: validItems.value,
-    })
+    const payload = buildPayload()
+    const response = editingDraftId.value
+      ? await procurementService.updatePurchaseRequisition(editingDraftId.value, payload)
+      : await procurementService.createPurchaseRequisition(payload)
 
     if (response.success) {
-      toast.add({ severity: 'success', summary: 'Success', detail: 'PR saved as draft', life: 3000 })
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: editingDraftId.value ? 'Draft updated' : 'PR saved as draft',
+        life: 3000,
+      })
+      if (!editingDraftId.value) {
+        editingDraftId.value = response.data?.id
+      }
       setTimeout(() => router.push({ name: 'procurement.purchase-requisitions' }), 1500)
     }
   } catch (error: any) {
@@ -384,19 +504,17 @@ const submitForm = async () => {
 
   saving.value = true
   try {
-    const response = await procurementService.createPurchaseRequisition({
-      branch_id: form.branch_id,
-      requisition_type: form.requisition_type,
-      reason: form.reason,
-      priority: form.priority,
-      items: validItems.value,
-    })
+    const payload = buildPayload()
+    const response = editingDraftId.value
+      ? await procurementService.updatePurchaseRequisition(editingDraftId.value, payload)
+      : await procurementService.createPurchaseRequisition(payload)
 
-    if (response.success && response.data?.id) {
-      const submitResponse = await procurementService.submitPurchaseRequisition(response.data.id)
+    if (response.success && (response.data?.id || editingDraftId.value)) {
+      const requisitionId = editingDraftId.value || response.data.id
+      const submitResponse = await procurementService.submitPurchaseRequisition(requisitionId)
       if (submitResponse.success) {
         toast.add({ severity: 'success', summary: 'Success', detail: 'PR created and submitted successfully', life: 3000 })
-        setTimeout(() => router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: response.data.id } }), 1500)
+        setTimeout(() => router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: requisitionId } }), 1500)
       }
     }
   } catch (error: any) {
@@ -426,6 +544,12 @@ onMounted(async () => {
       form.branch_id = branches.value[0].id
     }
 
+    const draftId = route.query.draft_id ? parseInt(route.query.draft_id as string, 10) : null
+    if (draftId) {
+      await loadDraft(draftId)
+      return
+    }
+
     if (route.query.branch_inventory_id) {
       const inventoryId = parseInt(route.query.branch_inventory_id as string)
       const inventoryResponse = await inventoryService.getInventoryItem(inventoryId).catch(() => null)
@@ -440,6 +564,7 @@ onMounted(async () => {
         if (product) {
           form.items = [{
             product_id: product.id,
+            selected_supplier_id: null,
             quantity_requested: 1,
             estimated_unit_cost: parseFloat(product.base_price) || 0,
             specifications: '',
@@ -453,4 +578,3 @@ onMounted(async () => {
   }
 })
 </script>
-

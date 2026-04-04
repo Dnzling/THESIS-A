@@ -12,7 +12,7 @@
 
 <script setup lang="ts">
 import LoginForm from '@/Components/auth/LoginForm.vue'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import { Head, router, usePage } from '@inertiajs/vue3'
@@ -23,6 +23,23 @@ const page = usePage()
 const toast = useToast()
 const authStore = useAuthStore()
 const isSubmitting = ref(false)
+
+const getFirstAvailableRoute = (): string => {
+  const items = authStore.navigation
+    .filter((item: any) => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
+    .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
+  if (items.length) {
+    return items[0].route_path
+  }
+  return authStore.defaultRoute || '/store/index'
+}
+
+onMounted(async () => {
+  if (authStore.isAuthenticated) {
+    await authStore.loadPermissions() // ensure navigation is fresh
+    router.visit(getFirstAvailableRoute())
+  }
+})
 
 const getQueryParam = (key: string): string | null => {
   const query = String(page.url || '').split('?')[1] || ''
@@ -54,7 +71,7 @@ const handleLogin = async (formData: LoginFormData) => {
     })
 
     // ✅ Default routing (SystemLayout)
-    let redirectTo = authStore.defaultRoute
+    let redirectTo = getFirstAvailableRoute()
 
     // Override with query redirect if available
     const redirectParam = getQueryParam('redirect')
