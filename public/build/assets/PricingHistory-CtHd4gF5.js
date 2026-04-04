@@ -1,1 +1,0 @@
-import{z as n,o,k as t,d as r}from"./app-DAedBCYh.js";const s={},a={class:"page"};function c(i,e){return o(),t("div",a,[...e[0]||(e[0]=[r("h1",null,"Pricing History",-1),r("p",null,"Placeholder page. Connect pricing history data when ready.",-1)])])}const d=n(s,[["render",c]]);export{d as default};

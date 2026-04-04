@@ -1,1 +1,0 @@
-import{z as t,o as a,k as s,d as n}from"./app-DAedBCYh.js";const c={},o={class:"page"};function r(l,e){return a(),s("div",o,[...e[0]||(e[0]=[n("h1",null,"HR Analytics",-1),n("p",null,"Placeholder page. Wire up analytics content when ready.",-1)])])}const i=t(c,[["render",r]]);export{i as default};

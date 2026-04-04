@@ -120,6 +120,22 @@
       <div class="flex justify-end gap-3 flex-wrap">
         <button
           v-if="canManageRequisitions && detail.status === 'draft'"
+          @click="editPR"
+          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-amber-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
+        >
+          <i class="pi pi-pencil text-sm"></i>
+          <span>Edit</span>
+        </button>
+        <button
+          v-if="canManageRequisitions && detail.status === 'draft'"
+          @click="deletePR"
+          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
+        >
+          <i class="pi pi-trash text-sm"></i>
+          <span>Delete</span>
+        </button>
+        <button
+          v-if="canManageRequisitions && detail.status === 'draft'"
           @click="submit"
           :disabled="processing"
           class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
@@ -155,6 +171,24 @@
         >
           <i class="pi pi-archive text-sm"></i>
           <span>Create Goods Receipt</span>
+        </button>
+
+        <button
+          v-if="canManageRfq && canCreateRfqFromDetail"
+          @click="createRfqFromRequisition"
+          class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-send text-sm"></i>
+          <span>Create RFQ</span>
+        </button>
+
+        <button
+          v-if="canManagePurchaseOrders && canCreatePoFromDetail"
+          @click="createPoFromRequisition"
+          class="px-5 py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-shopping-cart text-sm"></i>
+          <span>Create PO</span>
         </button>
       </div>
 
@@ -372,7 +406,18 @@ const hasApprovalPermission = computed(() => {
   )
 })
 const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
+const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 const canManageReceiving = computed(() => authStore.hasPermission('procurement.receiving.manage'))
+const processingReadyStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
+const canCreateRfqFromDetail = computed(() => {
+  if (!detail.value) return false
+  return processingReadyStatuses.includes(detail.value.status) && Boolean(detail.value.any_item_missing_supplier)
+})
+const canCreatePoFromDetail = computed(() => {
+  if (!detail.value) return false
+  return processingReadyStatuses.includes(detail.value.status) && Boolean(detail.value.all_items_have_suppliers)
+})
 
 const canApprove = computed(() => {
   if (!detail.value) return false
@@ -544,7 +589,10 @@ const submitRejection = async () => {
       toast.add({ severity: 'warn', summary: 'Required', detail: 'Please provide a rejection reason.', life: 3000 })
       return
     }
-    const response = await procurementService.rejectPurchaseRequisition(requisitionId, { reason: rejectReason.value })
+    const response = await procurementService.rejectPurchaseRequisition(requisitionId, {
+      role: approvalRole.value || 'procurement',
+      reason: rejectReason.value,
+    })
     if (response.success) {
       toast.add({ severity: 'success', summary: 'Success', detail: 'PR rejected', life: 3000 })
       showRejectDialog.value = false
@@ -556,6 +604,22 @@ const submitRejection = async () => {
   } finally {
     processing.value = false
   }
+}
+
+const editPR = () => {
+  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Edit coming soon', life: 2500 })
+}
+
+const deletePR = () => {
+  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Delete coming soon', life: 2500 })
+}
+
+const createRfqFromRequisition = () => {
+  router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
+}
+
+const createPoFromRequisition = () => {
+  router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: requisitionId } })
 }
 
 onMounted(() => {

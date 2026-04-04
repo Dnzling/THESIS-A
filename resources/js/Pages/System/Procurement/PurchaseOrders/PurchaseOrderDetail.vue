@@ -14,6 +14,7 @@
         </div>
       </div>
       <div class="flex items-center gap-3">
+        <Button v-if="detail" label="Print" icon="pi pi-print" severity="secondary" outlined @click="printPO" />
         <Button v-if="canManagePurchaseOrders && detail?.status === 'draft'" label="Edit Purchase Order"
           icon="pi pi-pencil" severity="info" @click="editPO" />
         <Button v-if="canManagePurchaseOrders && detail?.status === 'approved'" label="Send to Supplier" icon="pi pi-send"
@@ -393,6 +394,25 @@ const submitEmail = async () => {
     })
   } finally {
     emailSending.value = false
+  }
+}
+
+const printPO = async () => {
+  if (!detail.value) return
+
+  try {
+    const response = await procurementService.generatePOPdf(poId)
+    const blob = new Blob([response.data], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to generate PO PDF.',
+      life: 3000,
+    })
   }
 }
 

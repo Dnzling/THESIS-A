@@ -230,8 +230,8 @@
               <div class="flex items-center gap-2">
                 <Tag :value="group.items.length + ' Items'" severity="info" class="text-xs" />
                 <button
-                  v-if="group.items.some((item: any) => item.status === 'pending')"
-                  @click="bulkApproveGroup(group.items.filter((item: any) => item.status === 'pending').map((item: any) => item.feedback_id))"
+                  v-if="group.items.some((item) => item.status === 'pending')"
+                  @click="bulkApproveGroup(group.items.filter((item) => item.status === 'pending').map((item) => item.feedback_id))"
                   class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
                 >
                   Approve All
@@ -326,6 +326,22 @@
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3">
         <button
+          v-if="canManageRfq && detail.status === 'draft'"
+          @click="editRFQ"
+          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-amber-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
+        >
+          <i class="pi pi-pencil text-sm"></i>
+          <span>Edit RFQ</span>
+        </button>
+        <button
+          v-if="canManageRfq && detail.status === 'draft'"
+          @click="deleteRFQ"
+          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
+        >
+          <i class="pi pi-trash text-sm"></i>
+          <span>Delete RFQ</span>
+        </button>
+        <button
           v-if="detail.status === 'draft'"
           @click="send"
           :disabled="processing"
@@ -342,6 +358,14 @@
         >
           <i class="pi pi-check text-sm"></i>
           <span>{{ processing ? 'Awarding...' : 'Award RFQ' }}</span>
+        </button>
+        <button
+          v-if="canManagePurchaseOrders && detail.status === 'approved'"
+          @click="createPOFromRFQ"
+          class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <i class="pi pi-shopping-cart text-sm"></i>
+          <span>Create PO</span>
         </button>
       </div>
     </template>
@@ -410,6 +434,7 @@ import Skeleton from 'primevue/skeleton'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 interface RFQDetail {
   id: number
@@ -434,7 +459,10 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
+const authStore = useAuthStore()
 const rfqId = Number(route.params.id)
+const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
+const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
 const loading = ref(false)
 const processing = ref(false)
@@ -723,6 +751,46 @@ const award = async () => {
   } finally {
     processing.value = false
   }
+}
+
+const editRFQ = () => {
+  router.push({
+    name: 'procurement.rfqs.create',
+    query: { rfq_id: rfqId },
+  })
+}
+
+const deleteRFQ = async () => {
+  const confirmed = window.confirm('Delete this draft RFQ? This cannot be undone.')
+  if (!confirmed) return
+
+  processing.value = true
+  try {
+    await procurementService.deleteRFQ(rfqId)
+    toast.add({
+      severity: 'success',
+      summary: 'Deleted',
+      detail: 'RFQ deleted successfully',
+      life: 2500,
+    })
+    router.push({ name: 'procurement.rfqs' })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to delete RFQ',
+      life: 3000,
+    })
+  } finally {
+    processing.value = false
+  }
+}
+
+const createPOFromRFQ = () => {
+  router.push({
+    name: 'procurement.purchase-orders.create',
+    query: { rfq_id: rfqId },
+  })
 }
 
 onMounted(() => {

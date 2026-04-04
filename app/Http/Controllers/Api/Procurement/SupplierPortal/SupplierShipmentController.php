@@ -179,6 +179,45 @@ class SupplierShipmentController extends Controller
             $po->id
         );
 
+        $po->loadMissing(['createdBy']);
+        $creatorUserId = $po->createdBy?->user_id;
+        if ($creatorUserId) {
+            $this->notify((int) $creatorUserId, [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'procurement',
+                'entity_type' => 'purchase_order_shipment',
+                'entity_id' => $shipment->id,
+                'action' => 'created',
+                'title' => 'Supplier Shipment Created',
+                'message' => "Supplier created a shipment for PO {$po->po_number}.",
+                'severity' => 'info',
+                'link' => "/system/procurement/purchase-orders/{$po->id}",
+            ]);
+        }
+
+        $this->notifyUsersByPermissions(
+            (int) $po->store_id,
+            [
+                'procurement.receiving.manage',
+                'procurement.purchase_orders.manage',
+                'logistics.shipments.manage',
+            ],
+            [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'procurement',
+                'entity_type' => 'purchase_order_shipment',
+                'entity_id' => $shipment->id,
+                'action' => 'created',
+                'title' => 'New Shipment In Transit',
+                'message' => "Shipment for PO {$po->po_number} is now in transit.",
+                'severity' => 'info',
+                'link' => "/system/procurement/purchase-orders/{$po->id}",
+            ],
+            [(int) $portal->user_id]
+        );
+
         $this->updatePurchaseRequisitionStatus($po->purchase_requisition_id, 'in_transit');
 
         return response()->json([

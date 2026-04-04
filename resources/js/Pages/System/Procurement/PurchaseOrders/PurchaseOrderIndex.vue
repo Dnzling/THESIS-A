@@ -142,12 +142,6 @@
             <template #body="{ data }">
               <div class="flex gap-2 justify-center">
                 <Button icon="pi pi-eye" text rounded @click="viewPO(data)" v-tooltip="'View'" />
-                <Button v-if="canManagePurchaseOrders && data.status === 'draft'" icon="pi pi-pencil" text rounded severity="info"
-                  @click="editPO(data)" v-tooltip="'Edit'" />
-                <Button v-if="canManagePurchaseOrders && data.status === 'approved'" icon="pi pi-send" text rounded
-                  severity="success" @click="sendToSupplier(data)" v-tooltip="'Send to Supplier'" />
-                <Button v-if="data.status !== 'draft'" icon="pi pi-print" text rounded @click="printPO(data)"
-                  v-tooltip="'Print'" />
               </div>
             </template>
           </Column>
@@ -316,43 +310,6 @@ function viewPO(po: any) {
     name: 'procurement.purchase-orders.detail',
     params: { id: po.id },
   })
-}
-
-function editPO(po: any) {
-  router.push({
-    name: 'procurement.purchase-orders.create',
-    params: { id: po.id },
-  })
-}
-
-async function sendToSupplier(po: any) {
-  try {
-    await procurementService.sendPurchaseOrder(po.id)
-    toast.add({
-      severity: 'success',
-      summary: 'Sent',
-      detail: `PO ${po.po_number} sent to supplier.`,
-      life: 3000,
-    })
-    loadOrders()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to send PO to supplier',
-      life: 3000,
-    })
-  }
-}
-
-function printPO(po: any) {
-  toast.add({
-    severity: 'info',
-    summary: 'Print',
-    detail: `Printing PO ${po.po_number}...`,
-    life: 3000,
-  })
-  // TODO: Implement PDF print functionality
 }
 
 onMounted(() => {

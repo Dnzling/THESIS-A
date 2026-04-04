@@ -388,6 +388,14 @@ class RequestForQuotationController extends Controller
                 $rfq->inviteSupplier($supplierId);
             }
 
+            if (!empty($validated['purchase_requisition_id'])) {
+                $this->notifyRequisitionRequesterRfQCreated(
+                    (int) $validated['purchase_requisition_id'],
+                    $rfq->id,
+                    $rfq->rfq_number
+                );
+            }
+
             DB::commit();
 
             return response()->json([
@@ -697,5 +705,28 @@ class RequestForQuotationController extends Controller
         }
 
         $pr->update(['status' => $status]);
+    }
+
+    private function notifyRequisitionRequesterRfQCreated(int $requisitionId, int $rfqId, string $rfqNumber): void
+    {
+        $pr = PurchaseRequisition::with('requestedBy')->find($requisitionId);
+        $requesterUserId = $pr?->requestedBy?->user_id;
+
+        if (!$pr || !$requesterUserId) {
+            return;
+        }
+
+        $this->notify((int) $requesterUserId, [
+            'store_id' => $pr->store_id,
+            'branch_id' => $pr->branch_id,
+            'module' => 'procurement',
+            'entity_type' => 'request_for_quotation',
+            'entity_id' => $rfqId,
+            'action' => 'created',
+            'title' => 'RFQ Created From Your PR',
+            'message' => "{$rfqNumber} was created from PR {$pr->pr_number}.",
+            'severity' => 'info',
+            'link' => "/system/procurement/rfqs/{$rfqId}",
+        ]);
     }
 }

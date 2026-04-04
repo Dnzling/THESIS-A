@@ -144,12 +144,6 @@
                 <Button icon="pi pi-eye" outlined rounded severity="info"
                   @click="router.push({ name: 'procurement.rfqs.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
-                <Button v-if="canManagePurchaseOrders && data.status === 'approved'" icon="pi pi-shopping-cart" outlined
-                  rounded severity="success" @click="createPOFromRFQ(data.id)" v-tooltip="'Create PO'" />
-                <Button v-if="canManageRfq && data.status === 'draft'" icon="pi pi-pencil" outlined rounded
-                  severity="warning" @click="editRFQ(data.id)" v-tooltip="'Edit'" />
-                <Button v-if="canManageRfq && data.status === 'draft'" icon="pi pi-trash" outlined rounded
-                  severity="danger" @click="deleteRFQ(data.id)" v-tooltip="'Delete'" />
               </div>
             </template>
           </Column>
@@ -248,7 +242,6 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
-const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
 const loading = ref(false)
 const rfqs = ref<any[]>([])
@@ -345,43 +338,6 @@ const loadRFQs = async (page: number = 1) => {
 
 const onPageChange = (event: any) => {
   loadRFQs(event.page + 1)
-}
-
-const editRFQ = (id: number) => {
-  router.push({
-    name: 'procurement.rfqs.create',
-    query: { rfq_id: id },
-  })
-}
-
-const deleteRFQ = async (id: number) => {
-  const confirmed = window.confirm('Delete this draft RFQ? This cannot be undone.')
-  if (!confirmed) return
-
-  try {
-    await procurementService.deleteRFQ(id)
-    toast.add({
-      severity: 'success',
-      summary: 'Deleted',
-      detail: 'RFQ deleted successfully',
-      life: 3000,
-    })
-    loadRFQs(currentPage.value)
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to delete RFQ',
-      life: 3000,
-    })
-  }
-}
-
-const createPOFromRFQ = (rfqId: number) => {
-  router.push({
-    name: 'procurement.purchase-orders.create',
-    query: { rfq_id: rfqId },
-  })
 }
 
 onMounted(() => {

@@ -176,6 +176,39 @@ class SupplierRFQFeedbackController extends Controller
                     'responded_at' => now(),
                 ]);
 
+            $rfq = RequestForQuotation::with(['createdBy'])->find($request->rfq_id);
+            if ($rfq) {
+                $payload = [
+                    'store_id' => $rfq->store_id,
+                    'module' => 'procurement',
+                    'entity_type' => 'request_for_quotation',
+                    'entity_id' => $rfq->id,
+                    'action' => 'supplier_quote_submitted',
+                    'title' => 'Supplier Quote Received',
+                    'message' => "A supplier submitted a quote for {$rfq->rfq_number}.",
+                    'severity' => 'info',
+                    'link' => "/system/procurement/rfqs/{$rfq->id}",
+                ];
+
+                $recipientUserIds = [];
+                if ($rfq->createdBy?->user_id) {
+                    $recipientUserIds[] = (int) $rfq->createdBy->user_id;
+                }
+
+                $procurementUserIds = $this->userIdsWithAnyPermission((int) $rfq->store_id, [
+                    'procurement.rfq.manage',
+                    'procurement.requisitions.manage',
+                    'procurement.purchase_orders.manage',
+                ]);
+
+                $recipientUserIds = array_values(array_unique(array_merge($recipientUserIds, $procurementUserIds)));
+                $recipientUserIds = array_values(array_filter($recipientUserIds, fn($id) => (int) $id !== (int) $user->id));
+
+                if (!empty($recipientUserIds)) {
+                    $this->notifyMany($recipientUserIds, $payload);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Quote submitted successfully.',

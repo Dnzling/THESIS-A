@@ -103,7 +103,11 @@
     <div class="flex-1 flex flex-col h-screen overflow-hidden">
       <!-- Top Header -->
       <header
-        class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-end sticky top-0 z-20 shadow-sm">
+        class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between lg:justify-end sticky top-0 z-20 shadow-sm">
+        <div class="flex items-center gap-3 lg:hidden">
+          <Button icon="pi pi-bars" text rounded severity="secondary" @click="sidebarOpen = true" />
+          <div class="text-sm font-semibold text-gray-700">Menu</div>
+        </div>
   
   
         <!-- Header Actions -->
@@ -194,6 +198,13 @@
   
     <!-- User Dialog -->
     <UserDialog ref="userDialogRef" />
+
+    <!-- Mobile Sidebar Overlay -->
+    <div
+      v-if="sidebarOpen"
+      class="fixed inset-0 z-20 bg-black/40 lg:hidden"
+      @click="sidebarOpen = false"
+    ></div>
   
     <!-- Global API Response Dialog -->
     <Dialog v-model:visible="responseDialog.visible" modal :closable="false" :showHeader="false" class="w-full max-w-md"
@@ -253,7 +264,7 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isBooting = ref(true)
 const userDialogRef = ref(null)
 const loadingNavigation = ref(false)
-const sidebarOpen = ref(localStorage.getItem('sidebarOpen') !== 'false')
+const sidebarOpen = ref(false)
 const notificationPanel = ref()
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
@@ -357,6 +368,12 @@ const toggleSection = (sectionId: number) => {
   expandedSections.value[sectionId] = !expandedSections.value[sectionId]
   localStorage.setItem('expandedSections', JSON.stringify(expandedSections.value))
 }
+
+watch(currentPath, () => {
+  if (window.innerWidth < 1024) {
+    sidebarOpen.value = false
+  }
+})
 
 // Keyboard shortcut: Ctrl+B to toggle sidebar
 const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -752,6 +769,23 @@ watch(isAuthenticated, (value) => {
 
 .sidebar {
   transition: all 0.3s ease;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    transform: translateX(-100%);
+    width: 260px;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar.closed {
+    transform: translateX(-100%);
+  }
 }
 
 /* .router-link-active {

@@ -1,1 +1,0 @@
-import{z as s,o as t,k as a,d as o}from"./app-DAedBCYh.js";const r={},n={class:"page"};function c(l,e){return t(),a("div",n,[...e[0]||(e[0]=[o("h1",null,"Sales Reports",-1),o("p",null,"Placeholder page. Connect report data when ready.",-1)])])}const p=s(r,[["render",c]]);export{p as default};

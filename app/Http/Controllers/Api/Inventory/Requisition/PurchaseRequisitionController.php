@@ -241,6 +241,7 @@ class PurchaseRequisitionController extends Controller
             $autoSubmit = array_key_exists('auto_submit', $validated) ? (bool) $validated['auto_submit'] : true;
             if ($autoSubmit) {
                 $pr->submit();
+                $this->notifyProcurementTeamForSubmittedPr($pr);
             }
 
             DB::commit();
@@ -288,12 +289,44 @@ class PurchaseRequisitionController extends Controller
         }
 
         $pr->submit();
+        $this->notifyProcurementTeamForSubmittedPr($pr);
 
         return response()->json([
             'success' => true,
             'message' => 'Purchase requisition submitted successfully',
             'data' => $pr->fresh(),
         ]);
+    }
+
+    private function notifyProcurementTeamForSubmittedPr(PurchaseRequisition $pr): void
+    {
+        $storeId = (int) $pr->store_id;
+        if ($storeId <= 0) {
+            return;
+        }
+
+        $this->notifyUsersByPermissions(
+            $storeId,
+            [
+                'procurement.requisitions.manage',
+                'procurement.requisitions.approve',
+                'procurement.rfq.manage',
+                'procurement.purchase_orders.manage',
+            ],
+            [
+                'store_id' => $pr->store_id,
+                'branch_id' => $pr->branch_id,
+                'module' => 'procurement',
+                'entity_type' => 'purchase_requisition',
+                'entity_id' => $pr->id,
+                'action' => 'submitted',
+                'title' => 'New Purchase Requisition Submitted',
+                'message' => "PR {$pr->pr_number} is ready for procurement processing.",
+                'severity' => 'info',
+                'link' => "/system/procurement/purchase-requisitions/{$pr->id}",
+            ],
+            [Auth::id()]
+        );
     }
 
     /**

@@ -396,6 +396,8 @@ class PurchaseOrderController extends Controller
 
             DB::commit();
 
+            $this->notifyRequisitionRequesterPoCreated($po);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Purchase order created successfully from stock order requests',
@@ -548,7 +550,9 @@ class PurchaseOrderController extends Controller
 
         $user = auth()->user();
         $approvalPermissions = [
+            'finance.purchase-orders.approve',
             'finance.purchase_orders.approve',
+            'procurement.purchase-orders.approve',
             'procurement.purchase_orders.approve',
         ];
 
@@ -561,7 +565,7 @@ class PurchaseOrderController extends Controller
 
         $approvalPermission = null;
         foreach ($approvalPermissions as $permission) {
-            if ($user->hasPermissionTo($permission)) {
+            if ($this->userHasAnyPermission([$permission], $user)) {
                 $approvalPermission = $permission;
                 break;
             }
@@ -630,7 +634,7 @@ class PurchaseOrderController extends Controller
         );
 
         // Finance approval is final in this workflow
-        if ($approvalPermission === 'finance. purchase_orders.approve') {
+        if ($this->normalizePermission($approvalPermission) === 'finance.purchase_orders.approve') {
             $po->update(['status' => 'approved']);
         } else {
             $this->tryAutoFinanceApprovalForDualRole($po, $user, $settings, $isSelfApproval);
@@ -638,6 +642,13 @@ class PurchaseOrderController extends Controller
         }
 
         $this->enforceMinimumApprovers($po, $settings);
+        $po = $po->fresh();
+
+        $autoSent = false;
+        if ($this->shouldAutoSendAfterFinanceApproval($po)) {
+            $autoSent = $this->dispatchApprovedPoToSupplier($po, true);
+            $po = $po->fresh();
+        }
 
         ActivityLog::record(
             'po_approved',
@@ -668,9 +679,35 @@ class PurchaseOrderController extends Controller
             ]);
         }
 
+        if ($this->normalizePermission($approvalPermission) === 'finance.purchase_orders.approve') {
+            $this->notifyUsersByPermissions(
+                (int) $po->store_id,
+                [
+                    'procurement.purchase_orders.manage',
+                    'procurement.requisitions.manage',
+                    'procurement.rfq.manage',
+                ],
+                [
+                    'store_id' => $po->store_id,
+                    'branch_id' => $po->branch_id,
+                    'module' => 'procurement',
+                    'entity_type' => 'purchase_order',
+                    'entity_id' => $po->id,
+                    'action' => 'finance_approved',
+                    'title' => 'PO Approved By Finance',
+                    'message' => "PO {$po->po_number} was approved by finance" . ($autoSent ? ' and sent to supplier.' : '.'),
+                    'severity' => 'success',
+                    'link' => "/system/procurement/purchase-orders/{$po->id}",
+                ],
+                [auth()->id()]
+            );
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Purchase order approved successfully',
+            'message' => $autoSent
+                ? 'Purchase order approved and automatically sent to supplier'
+                : 'Purchase order approved successfully',
             'data' => $po->fresh(),
         ]);
     }
@@ -742,33 +779,7 @@ class PurchaseOrderController extends Controller
 
         DB::beginTransaction();
         try {
-            $po->sendToSupplier();
-
-            // TODO: Send email to supplier
-
-            ActivityLog::record(
-                'po_sent_to_supplier',
-                "PO {$po->po_number} sent to supplier.",
-                ['po_number' => $po->po_number, 'supplier' => $po->supplier?->supplier_name],
-                'purchase_order',
-                $po->id
-            );
-
-            $creatorUserId = $po->createdBy?->user_id;
-            if ($creatorUserId) {
-                $this->notify($creatorUserId, [
-                    'store_id' => $po->store_id,
-                    'branch_id' => $po->branch_id,
-                    'module' => 'procurement',
-                    'entity_type' => 'purchase_order',
-                    'entity_id' => $po->id,
-                    'action' => 'sent_to_supplier',
-                    'title' => 'Purchase Order Sent',
-                    'message' => "PO {$po->po_number} sent to supplier.",
-                    'severity' => 'info',
-                    'link' => "/system/procurement/purchase-orders/{$po->id}",
-                ]);
-            }
+            $this->dispatchApprovedPoToSupplier($po, false);
 
             DB::commit();
 
@@ -925,7 +936,7 @@ class PurchaseOrderController extends Controller
             return;
         }
 
-        if (!$this->userHasAnyPermission(['finance. purchase_orders.approve'], $user)) {
+        if (!$this->userHasAnyPermission(['finance.purchase-orders.approve', 'finance.purchase_orders.approve'], $user)) {
             return;
         }
 
@@ -936,7 +947,7 @@ class PurchaseOrderController extends Controller
 
         if (!$alreadyFinanceApproved) {
             $po->addApproval(
-                'finance. purchase_orders.approve',
+                'finance.purchase_orders.approve',
                 (int) $user->id,
                 (string) $user->full_name,
                 'Auto-approved by dual-role workflow policy.',
@@ -963,5 +974,107 @@ class PurchaseOrderController extends Controller
         if ($distinctApprovers < $minimumRequired) {
             $po->update(['status' => 'pending_finance_approval']);
         }
+    }
+
+    private function normalizePermission(?string $permission): string
+    {
+        $value = strtolower(trim((string) $permission));
+        $value = str_replace(' ', '', $value);
+        return str_replace('-', '_', $value);
+    }
+
+    private function hasFinanceApproval(PurchaseOrder $po): bool
+    {
+        $approvalsReceived = collect($po->approvals_received ?? []);
+
+        return $approvalsReceived
+            ->pluck('approver_permission')
+            ->filter()
+            ->map(fn($permission) => $this->normalizePermission((string) $permission))
+            ->contains('finance.purchase_orders.approve');
+    }
+
+    private function shouldAutoSendAfterFinanceApproval(PurchaseOrder $po): bool
+    {
+        if ($po->status !== 'approved') {
+            return false;
+        }
+
+        if ($this->normalizePermission((string) $po->status) === 'sent_to_supplier') {
+            return false;
+        }
+
+        return $this->hasFinanceApproval($po);
+    }
+
+    private function dispatchApprovedPoToSupplier(PurchaseOrder $po, bool $isAuto): bool
+    {
+        if ($po->status !== 'approved') {
+            return false;
+        }
+
+        $po->loadMissing(['supplier', 'createdBy']);
+        $po->sendToSupplier();
+
+        ActivityLog::record(
+            'po_sent_to_supplier',
+            $isAuto
+                ? "PO {$po->po_number} automatically sent to supplier after finance approval."
+                : "PO {$po->po_number} sent to supplier.",
+            [
+                'po_number' => $po->po_number,
+                'supplier' => $po->supplier?->supplier_name,
+                'auto_sent' => $isAuto,
+            ],
+            'purchase_order',
+            $po->id
+        );
+
+        $creatorUserId = $po->createdBy?->user_id;
+        if ($creatorUserId) {
+            $this->notify($creatorUserId, [
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'module' => 'procurement',
+                'entity_type' => 'purchase_order',
+                'entity_id' => $po->id,
+                'action' => 'sent_to_supplier',
+                'title' => $isAuto ? 'Purchase Order Auto-Sent' : 'Purchase Order Sent',
+                'message' => $isAuto
+                    ? "PO {$po->po_number} was automatically sent to supplier after finance approval."
+                    : "PO {$po->po_number} sent to supplier.",
+                'severity' => 'info',
+                'link' => "/system/procurement/purchase-orders/{$po->id}",
+            ]);
+        }
+
+        return true;
+    }
+
+    private function notifyRequisitionRequesterPoCreated(PurchaseOrder $po): void
+    {
+        if (!$po->purchase_requisition_id) {
+            return;
+        }
+
+        $pr = PurchaseRequisition::with('requestedBy')->find($po->purchase_requisition_id);
+        $requesterUserId = $pr?->requestedBy?->user_id;
+
+        if (!$pr || !$requesterUserId) {
+            return;
+        }
+
+        $this->notify((int) $requesterUserId, [
+            'store_id' => $po->store_id,
+            'branch_id' => $po->branch_id,
+            'module' => 'procurement',
+            'entity_type' => 'purchase_order',
+            'entity_id' => $po->id,
+            'action' => 'created',
+            'title' => 'PO Created From Your PR',
+            'message' => "{$po->po_number} was created from PR {$pr->pr_number}.",
+            'severity' => 'info',
+            'link' => "/system/procurement/purchase-orders/{$po->id}",
+        ]);
     }
 }

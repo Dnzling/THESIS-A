@@ -5,6 +5,7 @@
 /storage/framework/sessions
 /storage/framework/views
 /android
+/public/build
 .htaccess
 /public/.htaccess
 *.zip

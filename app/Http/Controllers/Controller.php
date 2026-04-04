@@ -37,6 +37,84 @@ abstract class Controller
             $this->notify((int) $userId, $payload);
         }
     }
+
+    protected function userIdsWithAnyPermission(int $storeId, array $permissions): array
+    {
+        $permissionNames = collect($permissions)
+            ->filter(fn($value) => is_string($value) && trim($value) !== '')
+            ->map(fn($value) => trim((string) $value))
+            ->unique()
+            ->values();
+
+        if ($permissionNames->isEmpty()) {
+            return [];
+        }
+
+        $permissionIds = DB::table('permissions')
+            ->whereIn('name', $permissionNames->all())
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(fn($id) => (int) $id)
+            ->all();
+
+        if (empty($permissionIds)) {
+            return [];
+        }
+
+        $roleBasedUserIds = DB::table('users')
+            ->join('role_permissions', 'users.role_id', '=', 'role_permissions.role_id')
+            ->where('users.store_id', $storeId)
+            ->whereIn('role_permissions.permission_id', $permissionIds)
+            ->pluck('users.id')
+            ->map(fn($id) => (int) $id)
+            ->all();
+
+        $grantedUserIds = DB::table('user_permissions')
+            ->join('users', 'users.id', '=', 'user_permissions.user_id')
+            ->where('users.store_id', $storeId)
+            ->where('user_permissions.type', 'grant')
+            ->whereIn('user_permissions.permission_id', $permissionIds)
+            ->pluck('users.id')
+            ->map(fn($id) => (int) $id)
+            ->all();
+
+        $revokedUserIds = DB::table('user_permissions')
+            ->join('users', 'users.id', '=', 'user_permissions.user_id')
+            ->where('users.store_id', $storeId)
+            ->where('user_permissions.type', 'revoke')
+            ->whereIn('user_permissions.permission_id', $permissionIds)
+            ->pluck('users.id')
+            ->map(fn($id) => (int) $id)
+            ->all();
+
+        $candidateIds = collect(array_merge($roleBasedUserIds, $grantedUserIds))
+            ->unique()
+            ->reject(fn($id) => in_array((int) $id, $revokedUserIds, true))
+            ->values()
+            ->all();
+
+        return array_map('intval', $candidateIds);
+    }
+
+    protected function notifyUsersByPermissions(
+        int $storeId,
+        array $permissions,
+        array $payload,
+        array $excludeUserIds = []
+    ): array {
+        $exclude = collect($excludeUserIds)->map(fn($id) => (int) $id)->all();
+
+        $userIds = collect($this->userIdsWithAnyPermission($storeId, $permissions))
+            ->reject(fn($id) => in_array((int) $id, $exclude, true))
+            ->values()
+            ->all();
+
+        if (!empty($userIds)) {
+            $this->notifyMany($userIds, $payload);
+        }
+
+        return $userIds;
+    }
     protected function getUserPermissions($user = null): array
     {
         $user = $user ?? auth()->user();

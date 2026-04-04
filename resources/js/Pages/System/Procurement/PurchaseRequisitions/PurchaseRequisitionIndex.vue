@@ -149,19 +149,6 @@
                 <Button icon="pi pi-eye" outlined rounded severity="info"
                   @click="router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
-                <Button v-if="canManageRfq && approvedStatuses.includes(data.status) && data.any_item_missing_supplier"
-                  icon="pi pi-send" outlined rounded severity="success" @click="createRfqFromRequisition(data.id)"
-                  v-tooltip="'Create RFQ'" />
-                <Button
-                  v-if="canManagePurchaseOrders && approvedStatuses.includes(data.status) && data.all_items_have_suppliers"
-                  icon="pi pi-shopping-cart" outlined rounded severity="info" @click="createPoFromRequisition(data.id)"
-                  v-tooltip="'Create PO'" />
-                <Button v-if="canManageRequisitions && data.status === 'draft'" icon="pi pi-pencil" outlined rounded
-                  severity="warning" @click="editPR(data.id)" v-tooltip="'Edit'" />
-                <Button v-if="canManageRequisitions && data.status === 'draft'" icon="pi pi-trash" outlined rounded
-                  severity="danger" @click="deletePR(data.id)" v-tooltip="'Delete'" />
-                <Button v-if="canManageReceiving && data.status === 'delivered'" icon="pi pi-file" outlined rounded
-                  severity="warning" @click="createGoodsReceiptFromPR(data)" v-tooltip="'Create Goods Receipt'" />
               </div>
             </template>
           </Column>
@@ -295,9 +282,6 @@ const requisitionTypeOptions = [
 
 const approvedStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
 const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
-const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
-const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
-const canManageReceiving = computed(() => authStore.hasPermission('procurement.receiving.manage'))
 
 const summary = computed(() => ({
   total: total.value,
@@ -369,58 +353,6 @@ const loadRequisitions = async (page: number = 1) => {
 
 const onPageChange = (event: any) => {
   loadRequisitions(event.page + 1)
-}
-
-const editPR = (id: number) => {
-  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Edit coming soon', life: 3000 })
-}
-
-const deletePR = (id: number) => {
-  toast.add({ severity: 'info', summary: 'Not Implemented', detail: 'Delete coming soon', life: 3000 })
-}
-
-const createRfqFromRequisition = (id: number) => {
-  router.push({ name: 'procurement.rfqs.create', query: { requisition_id: id } })
-}
-
-const createPoFromRequisition = (id: number) => {
-  router.push({ name: 'procurement.purchase-orders.create', query: { requisition_id: id } })
-}
-
-const creatingGoodsReceipt = ref(false)
-
-const createGoodsReceiptFromPR = async (pr: any) => {
-  if (creatingGoodsReceipt.value) return
-  creatingGoodsReceipt.value = true
-  try {
-    const response = await procurementService.getPurchaseRequisition(pr.id)
-    const detail = response.data
-    const po = Array.isArray(detail?.purchase_orders)
-      ? detail.purchase_orders.find((order: any) => order.status === 'delivered')
-      : null
-
-    if (!po) {
-      toast.add({
-        severity: 'warn',
-        summary: 'Unavailable',
-        detail: 'No delivered purchase order found for this requisition.',
-        life: 3000,
-      })
-      return
-    }
-
-    router.push({
-      name: 'procurement.goods-receipts.create',
-      query: {
-        po_id: po.id,
-      },
-    })
-  } catch (error) {
-    console.error('Failed to fetch PR detail before creating GRN', error)
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Unable to determine delivered PO', life: 3000 })
-  } finally {
-    creatingGoodsReceipt.value = false
-  }
 }
 
 onMounted(() => {
