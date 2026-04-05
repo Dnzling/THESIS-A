@@ -666,14 +666,14 @@
             </div>
             <template #footer>
                 <Button
-                    v-if="selectedViewStore?.verificationId"
+                    v-if="selectedViewStore && selectedViewStore.verificationId && selectedViewStore.status && selectedViewStore.status.toLowerCase() === 'pending'"
                     label="Reject"
                     icon="pi pi-times"
                     severity="danger"
                     @click="rejectStore(selectedViewStore)"
                 />
                 <Button
-                    v-if="selectedViewStore?.verificationId"
+                    v-if="selectedViewStore && selectedViewStore.verificationId && selectedViewStore.status && selectedViewStore.status.toLowerCase() === 'pending'"
                     label="Approve"
                     icon="pi pi-check"
                     severity="success"
@@ -1002,7 +1002,13 @@ const mapVerification = (verification: any) => {
   ]
   const documentStatus = requiredFields.every(Boolean) ? 'Complete' : 'Incomplete'
 
-  return {
+    const rawStatus = String(
+        verification.status
+            || (verification.rejection_reason ? 'rejected' : verification.reviewed_at ? 'approved' : 'pending')
+    ).toLowerCase()
+    const normalizedStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)
+
+    return {
     id: verification.id,
     verificationId: verification.id,
     storeId: store.id ? `STORE-${String(store.id).padStart(6, '0')}` : `STORE-${verification.store_id}`,
@@ -1031,7 +1037,7 @@ const mapVerification = (verification: any) => {
     rejectionDate: verification.reviewed_at || null,
     rejectedBy: verification.reviewer ? `${verification.reviewer.fname} ${verification.reviewer.lname}` : '—',
     rejectionReason: verification.rejection_reason || '',
-    status: store.status || (verification.rejection_reason ? 'Rejected' : verification.reviewed_at ? 'Verified' : 'Pending'),
+    status: normalizedStatus,
     productsCount: store.products_count || 0,
     revenue: 0
   }
@@ -1266,8 +1272,12 @@ const approveStore = async (store: any) => {
       action: 'approve'
     })
     toast.add({ severity: 'success', summary: 'Approved', detail: 'Store approved', life: 3000 })
-    showReviewDialog.value = false
+        showReviewDialog.value = false
+        showViewDialog.value = false
+        selectedReviewStore.value = null
+        selectedViewStore.value = null
     await loadStoreVerifications()
+        activeView.value = 'approved'
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to approve store', life: 3000 })
   }
@@ -1297,14 +1307,18 @@ const confirmReject = async () => {
     })
     toast.add({ severity: 'success', summary: 'Rejected', detail: 'Store rejected', life: 3000 })
     await loadStoreVerifications()
+        activeView.value = 'rejected'
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to reject store', life: 3000 })
   } finally {
     showRejectDialog.value = false
         showViewDialog.value = false
+        showReviewDialog.value = false
     rejectionReason.value = null
     rejectionNotes.value = ''
     storeToReject.value = null
+        selectedReviewStore.value = null
+        selectedViewStore.value = null
   }
 }
 

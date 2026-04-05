@@ -69,10 +69,12 @@
       </template>
 
       <template #footer>
-          <div class="flex justify-end space-x-2">
-          <Button label="Back" severity="secondary" size="small" @click="navigateBack" />   
-          <Button label="Reject" severity="danger" size="small" :disabled="!supplier" @click="openRejectDialog" />
-          <Button label="Approve" severity="success" size="small" :disabled="!supplier" @click="openApproveConfirm" />
+        <div class="flex justify-end space-x-2">
+          <Button label="Back" severity="secondary" size="small" @click="navigateBack" />
+          <template v-if="isPending">
+            <Button label="Reject" severity="danger" size="small" :disabled="!supplier" @click="openRejectDialog" />
+            <Button label="Approve" severity="success" size="small" :disabled="!supplier" @click="openApproveConfirm" />
+          </template>
         </div>
       </template>
     </Card>
@@ -126,12 +128,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axiosClient from '@/axios'
 
 const supplier = ref<any | null>(null)
 const documents = ref<any[]>([])
+const isPending = computed(() => {
+  const status = supplier.value?.portal?.status || supplier.value?.status || 'pending'
+  return String(status).toLowerCase() === 'pending'
+})
 // derive id from current URL if Inertia is not available
 const parseIdFromPath = () => {
   try {

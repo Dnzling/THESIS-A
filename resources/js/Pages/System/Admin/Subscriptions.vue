@@ -13,6 +13,39 @@
       </template>
     </Card>
 
+    <Card class="border border-slate-200 shadow-none">
+      <template #content>
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Plans</p>
+            <h2 class="mt-1 text-lg font-semibold text-slate-900">Subscription Plans</h2>
+            <p class="text-sm text-slate-500">Edit pricing and features shown on the marketing pricing page.</p>
+          </div>
+          <Button label="Add Plan" icon="pi pi-plus" severity="info" outlined @click="openCreatePlanDialog" />
+        </div>
+        <DataTable :value="plans" :loading="plansLoading" stripedRows dataKey="id">
+          <Column field="name" header="Plan" />
+          <Column field="plan_key" header="Key" />
+          <Column header="Pricing">
+            <template #body="{ data }">
+              <div class="text-sm">Monthly: ₱{{ Number(data.monthly_price || 0).toFixed(2) }}</div>
+              <div class="text-xs text-slate-500">Yearly: ₱{{ Number(data.yearly_price || 0).toFixed(2) }}</div>
+            </template>
+          </Column>
+          <Column header="Active">
+            <template #body="{ data }">
+              <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+            </template>
+          </Column>
+          <Column header="Actions" style="width: 120px">
+            <template #body="{ data }">
+              <Button icon="pi pi-pencil" severity="info" text rounded @click="openPlanDialog(data)" />
+            </template>
+          </Column>
+        </DataTable>
+      </template>
+    </Card>
+
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
       <Card class="border border-slate-200 shadow-none">
         <template #content>
@@ -172,6 +205,53 @@
         <Button label="Save" icon="pi pi-check" severity="info" :loading="saving" @click="saveSubscription" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="planDialog" :header="creatingPlan ? 'Add Plan' : 'Edit Plan'" :style="{ width: '600px' }" modal>
+      <div class="space-y-4" v-if="activePlan || creatingPlan">
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Plan Name</label>
+            <InputText v-model="planForm.name" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Plan Key</label>
+            <InputText v-model="planForm.plan_key" fluid :disabled="!creatingPlan" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Monthly Price</label>
+            <InputNumber v-model="planForm.monthly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Yearly Price</label>
+            <InputNumber v-model="planForm.yearly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
+          </div>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">Description</label>
+            <InputText v-model="planForm.description" fluid />
+          </div>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">Features (one per line)</label>
+            <Textarea v-model="planForm.features" rows="5" autoResize fluid />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Sort Order</label>
+            <InputNumber v-model="planForm.sort_order" :min="0" :max="999" fluid />
+          </div>
+          <div class="flex items-center gap-2">
+            <Checkbox v-model="planForm.is_featured" binary />
+            <span class="text-sm text-slate-700">Featured</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <Checkbox v-model="planForm.is_active" binary />
+            <span class="text-sm text-slate-700">Active</span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="planDialog = false" />
+        <Button label="Save" icon="pi pi-check" severity="info" :loading="savingPlan" @click="savePlan" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -190,6 +270,9 @@ import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
+import InputNumber from 'primevue/inputnumber'
+import Textarea from 'primevue/textarea'
+import Checkbox from 'primevue/checkbox'
 
 const toast = useToast()
 
@@ -203,6 +286,24 @@ const stats = reactive({
   active_paid: 0,
   expiring_soon: 0,
   expired: 0,
+})
+const plans = ref<any[]>([])
+const plansLoading = ref(false)
+const planDialog = ref(false)
+const creatingPlan = ref(false)
+const savingPlan = ref(false)
+const activePlan = ref<any | null>(null)
+const planForm = reactive({
+  id: 0,
+  plan_key: '',
+  name: '',
+  description: '',
+  monthly_price: 0,
+  yearly_price: 0,
+  features: '',
+  is_featured: false,
+  is_active: true,
+  sort_order: 0,
 })
 
 const filters = reactive({
@@ -308,8 +409,20 @@ const loadStats = async () => {
   }
 }
 
+const loadPlans = async () => {
+  plansLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/admin/subscription-plans')
+    plans.value = response.data?.data || []
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load plans', life: 3000 })
+  } finally {
+    plansLoading.value = false
+  }
+}
+
 const loadAll = async () => {
-  await Promise.all([loadStores(), loadStats()])
+  await Promise.all([loadStores(), loadStats(), loadPlans()])
 }
 
 const openManageDialog = (store: any) => {
@@ -318,6 +431,81 @@ const openManageDialog = (store: any) => {
   editForm.status = store.status || 'active'
   editForm.subscription_ends_at = store.subscription_ends_at ? new Date(store.subscription_ends_at) : null
   manageDialog.value = true
+}
+
+const openPlanDialog = (plan: any) => {
+  creatingPlan.value = false
+  activePlan.value = plan
+  planForm.id = Number(plan.id)
+  planForm.plan_key = String(plan.plan_key || '')
+  planForm.name = String(plan.name || '')
+  planForm.description = String(plan.description || '')
+  planForm.monthly_price = Number(plan.monthly_price || 0)
+  planForm.yearly_price = Number(plan.yearly_price || 0)
+  planForm.features = Array.isArray(plan.features) ? plan.features.join('\n') : ''
+  planForm.is_featured = !!plan.is_featured
+  planForm.is_active = plan.is_active !== false
+  planForm.sort_order = Number(plan.sort_order || 0)
+  planDialog.value = true
+}
+
+const openCreatePlanDialog = () => {
+  creatingPlan.value = true
+  activePlan.value = null
+  planForm.id = 0
+  planForm.plan_key = ''
+  planForm.name = ''
+  planForm.description = ''
+  planForm.monthly_price = 0
+  planForm.yearly_price = 0
+  planForm.features = ''
+  planForm.is_featured = false
+  planForm.is_active = true
+  planForm.sort_order = 0
+  planDialog.value = true
+}
+
+const savePlan = async () => {
+  if (!activePlan.value && !creatingPlan.value) return
+  savingPlan.value = true
+  try {
+    const features = planForm.features
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+    if (creatingPlan.value) {
+      await axiosClient.post('/api/admin/subscription-plans', {
+        plan_key: planForm.plan_key,
+        name: planForm.name,
+        description: planForm.description || null,
+        monthly_price: planForm.monthly_price,
+        yearly_price: planForm.yearly_price,
+        features,
+        is_featured: planForm.is_featured,
+        is_active: planForm.is_active,
+        sort_order: planForm.sort_order,
+      })
+      toast.add({ severity: 'success', summary: 'Saved', detail: 'Plan created successfully', life: 2500 })
+    } else {
+      await axiosClient.put(`/api/admin/subscription-plans/${planForm.id}`, {
+        name: planForm.name,
+        description: planForm.description || null,
+        monthly_price: planForm.monthly_price,
+        yearly_price: planForm.yearly_price,
+        features,
+        is_featured: planForm.is_featured,
+        is_active: planForm.is_active,
+        sort_order: planForm.sort_order,
+      })
+      toast.add({ severity: 'success', summary: 'Saved', detail: 'Plan updated successfully', life: 2500 })
+    }
+    planDialog.value = false
+    await loadPlans()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to update plan', life: 3000 })
+  } finally {
+    savingPlan.value = false
+  }
 }
 
 const saveSubscription = async () => {

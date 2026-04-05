@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\Payments\PaymongoController;
 use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
+use App\Http\Controllers\Api\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Admin\SupplierVerificationController;
 use App\Http\Controllers\Api\Admin\ViolationReportController;
@@ -71,6 +72,7 @@ Route::prefix('ecommerce')->group(function () {
 // Public 3D/image asset serve route (must stay outside auth middleware)
 Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
 Route::post('/payments/paymongo/webhook', [PaymongoController::class, 'webhook']);
+Route::get('/public/subscription-plans', [SubscriptionPlanController::class, 'publicIndex']);
 
 // ========== PROTECTED ROUTES ==========
 
@@ -142,6 +144,13 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/subscriptions/stats', [SubscriptionManagementController::class, 'stats']);
         Route::put('/subscriptions/{store}', [SubscriptionManagementController::class, 'update']);
         Route::post('/subscriptions/{store}/extend', [SubscriptionManagementController::class, 'extend']);
+        Route::get('/subscription-plans', [SubscriptionPlanController::class, 'index']);
+        Route::post('/subscription-plans', [SubscriptionPlanController::class, 'store']);
+        Route::put('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'update']);
+
+        // Super Admin Management
+        Route::get('/super-admins', [\App\Http\Controllers\Api\Admin\SuperAdminManagementController::class, 'index']);
+        Route::post('/super-admins', [\App\Http\Controllers\Api\Admin\SuperAdminManagementController::class, 'store']);
 
         // Store Management
         Route::get('/stores', [StoreManagementController::class, 'index']);
