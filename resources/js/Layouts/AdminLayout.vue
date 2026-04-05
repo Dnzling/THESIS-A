@@ -252,16 +252,6 @@ const adminMenu = [
     icon: "pi pi-shield"
   },
   {
-    to: "/admin/analytics-&-reports",
-    label: "Analytics & Reports",
-    icon: "pi pi-chart-bar text-gray-500 w-5"
-  },
-  {
-    to: "/admin/support-&-maintenance",
-    label: "Support & Maintenance",
-    icon: "pi pi-cog text-gray-500 w-5"
-  },
-  {
     to: "/admin/users",
     label: "Users",
     icon: "pi pi-users text-gray-500 w-5"

@@ -34,6 +34,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
         $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
         $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
+        $inertia('/admin/support-&-maintenance', 'System/Admin/SupportMaintenance', 'admin.support-maintenance', 'Support & Maintenance', 'Super Admin Management');
         $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
         $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
         $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');

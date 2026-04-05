@@ -38,7 +38,6 @@
             <i class="pi pi-store text-blue-600 text-xl"></i>
           </div>
         </div>
-        <canvas ref="sparkStore" class="mt-3 h-12"></canvas>
       </div>
 
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
@@ -52,7 +51,6 @@
             <i class="pi pi-credit-card text-green-600 text-xl"></i>
           </div>
         </div>
-        <canvas ref="sparkSub" class="mt-3 h-12"></canvas>
       </div>
 
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
@@ -66,7 +64,6 @@
             <i class="pi pi-clock text-yellow-600 text-xl"></i>
           </div>
         </div>
-        <canvas ref="sparkPending" class="mt-3 h-12"></canvas>
       </div>
 
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
@@ -80,7 +77,6 @@
             <i class="pi pi-chart-line text-purple-600 text-xl"></i>
           </div>
         </div>
-        <canvas ref="sparkRevenue" class="mt-3 h-12"></canvas>
       </div>
     </div>
 
@@ -233,7 +229,7 @@
             <h3 class="text-lg font-semibold text-gray-800">Recent Payments</h3>
             <p class="text-sm text-gray-500">Latest subscription payments</p>
           </div>
-          <router-link to="/admin/billing" class="text-blue-600 text-sm font-medium hover:text-blue-800">
+          <router-link to="/finance/receivables" class="text-blue-600 text-sm font-medium hover:text-blue-800">
             View All →
           </router-link>
         </div>
@@ -347,10 +343,7 @@ const revenueChartRef = ref<HTMLCanvasElement | null>(null)
 const growthChartRef = ref<HTMLCanvasElement | null>(null)
 let revenueChart: Chart | null = null
 let growthChart: Chart | null = null
-let sparkStore: Chart | null = null
-let sparkSub: Chart | null = null
-let sparkPending: Chart | null = null
-let sparkRevenue: Chart | null = null
+let dateInterval: number | null = null
 
 // State
 const revenueChartView = ref<'monthly' | 'yearly'>('monthly')
@@ -366,10 +359,19 @@ const stats = ref({
   subscriptionGrowth: 0,
   pendingValidations: 0,
   monthlyRevenue: 0,
-  revenueGrowth: 0
+  revenueGrowth: 0,
 })
 
 const totalPlatformRevenue = ref(0)
+const revenueSeries = ref({
+  monthly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[] },
+  yearly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[] },
+})
+const storeGrowthSeries = ref({
+  labels: [] as string[],
+  newStores: [] as number[],
+  activeStores: [] as number[],
+})
 
 // Growth Period Options
 const growthPeriodOptions = ref([
@@ -434,8 +436,8 @@ const initRevenueChart = () => {
   if (!ctx) return
   
   const data = revenueChartView.value === 'monthly' 
-    ? monthlyRevenueData 
-    : yearlyRevenueData
+    ? revenueSeries.value.monthly 
+    : revenueSeries.value.yearly
   
   revenueChart = new Chart(ctx, {
     type: 'line',
@@ -494,21 +496,22 @@ const initGrowthChart = () => {
   const ctx = growthChartRef.value.getContext('2d')
   if (!ctx) return
   
+  const growthData = storeGrowthSeries.value
   growthChart = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      labels: growthData.labels,
       datasets: [
         {
           label: 'New Stores',
-          data: [12, 15, 18, 22, 25, 28],
+          data: growthData.newStores,
           backgroundColor: 'rgba(79, 70, 229, 0.8)',
           borderColor: 'rgb(79, 70, 229)',
           borderWidth: 1
         },
         {
           label: 'Active Stores',
-          data: [120, 125, 130, 140, 148, 156],
+          data: growthData.activeStores,
           backgroundColor: 'rgba(16, 185, 129, 0.8)',
           borderColor: 'rgb(16, 185, 129)',
           borderWidth: 1
@@ -536,18 +539,7 @@ const initGrowthChart = () => {
   })
 }
 
-// Chart Data
-const monthlyRevenueData = {
-  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  platformRevenue: [250000, 280000, 310000, 295000, 325000, 350000, 375000, 400000, 420000, 435000, 450000, 462000],
-  subscriptionRevenue: [150000, 165000, 180000, 175000, 190000, 205000, 220000, 235000, 245000, 255000, 265000, 275000]
-}
-
-const yearlyRevenueData = {
-  labels: ['2020', '2021', '2022', '2023', '2024'],
-  platformRevenue: [1250000, 1850000, 2450000, 3100000, 3850000],
-  subscriptionRevenue: [750000, 1200000, 1800000, 2400000, 3000000]
-}
+// Chart data is populated from the dashboard API
 
 // Action Functions
 const setRevenueChartView = (view: 'monthly' | 'yearly') => {
@@ -560,10 +552,20 @@ const loadDashboard = async () => {
     const res = await axiosClient.get('/api/admin/dashboard')
     if (res?.data?.success) {
       const d = res.data.data || {}
-      stats.value.activeStores = d.stores_count || 0
+      stats.value.activeStores = d.active_stores || d.stores_count || 0
+      stats.value.newStoresThisWeek = d.new_stores_this_week || 0
       stats.value.activeSubscriptions = d.active_subscriptions || 0
+      stats.value.subscriptionGrowth = d.subscription_growth || 0
       stats.value.pendingValidations = d.pending_validations || 0
       stats.value.monthlyRevenue = d.monthly_revenue || 0
+      stats.value.revenueGrowth = d.revenue_growth || 0
+      totalPlatformRevenue.value = d.total_platform_revenue || 0
+
+      revenueSeries.value = d.revenue_series || revenueSeries.value
+      storeGrowthSeries.value = d.store_growth_series || storeGrowthSeries.value
+
+      initRevenueChart()
+      initGrowthChart()
       // recent activities
       if (Array.isArray(d.recent_activities)) {
         recentActivities.value = d.recent_activities.map((r:any, idx:number)=>({
@@ -583,38 +585,6 @@ const loadDashboard = async () => {
   }
 }
 
-const initKPICharts = () => {
-  try {
-    // small sparkline data using monthlyRevenueData as sample
-    const storeCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkStore"]') || null)
-    const subCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkSub"]') || null)
-    const pendingCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkPending"]') || null)
-    const revCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkRevenue"]') || null)
-
-    const baseLabels = monthlyRevenueData.labels.slice(0, 6)
-    const sampleData = monthlyRevenueData.platformRevenue.slice(0, 6)
-
-    const createSpark = (canvasEl:any, color:string) => {
-      if (!canvasEl) return null
-      const ctx = (canvasEl as HTMLCanvasElement).getContext('2d')
-      if (!ctx) return null
-      return new Chart(ctx, {
-        type: 'line',
-        data: { labels: baseLabels, datasets: [{ data: sampleData, borderColor: color, backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 0 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
-      })
-    }
-
-    // locate canvases by refs using document query (works without template refs)
-    const doc = document
-    sparkStore = createSpark(doc.querySelector('canvas[ref="sparkStore"]'), '#2563eb')
-    sparkSub = createSpark(doc.querySelector('canvas[ref="sparkSub"]'), '#10b981')
-    sparkPending = createSpark(doc.querySelector('canvas[ref="sparkPending"]'), '#f59e0b')
-    sparkRevenue = createSpark(doc.querySelector('canvas[ref="sparkRevenue"]'), '#7c3aed')
-  } catch (e) {
-    // ignore chart init errors
-  }
-}
 
 const updateDateTime = () => {
   const now = new Date()
@@ -657,7 +627,7 @@ const goToActivityLog = () => {
 
 const managePlan = (plan: any) => {
   console.log('Manage plan:', plan)
-  router.push(`/admin/subscriptions/plans/${plan.id}`)
+  router.push('/admin/subscription')
 }
 
 const approveStore = (store: any) => {
@@ -673,17 +643,8 @@ const rejectStore = (store: any) => {
 // Lifecycle
 onMounted(() => {
   updateDateTime()
-  setInterval(updateDateTime, 60000) // Update time every minute
+  dateInterval = window.setInterval(updateDateTime, 60000)
   
-  setTimeout(() => {
-    initRevenueChart()
-    initGrowthChart()
-  }, 100)
-
-  setTimeout(() => {
-    initKPICharts()
-  }, 250)
-
   loadDashboard()
 })
 
@@ -693,6 +654,9 @@ onUnmounted(() => {
   }
   if (growthChart) {
     growthChart.destroy()
+  }
+  if (dateInterval) {
+    clearInterval(dateInterval)
   }
 })
 </script>

@@ -22,51 +22,37 @@
   
       <section class="plans">
         <div class="container plan-grid">
-          <div class="plan-card">
+          <div v-if="loadingPlans && !visiblePlans.length" class="plan-card">
             <div class="plan-head">
-          
               <div>
-                <h2 class="font-bold text-2xl text-orange-500" >Simple</h2>
-                <p>For single stores and single locations.</p>
+                <h2 class="font-bold text-2xl text-orange-500">Loading plans</h2>
+                <p>Please wait while we fetch the latest offers.</p>
               </div>
             </div>
-            <div class="plan-price">
-              <span class="price">₱{{ simplePrice }}</span>
-              <span class="period">/ {{ billingPeriod }}</span>
-            </div>
-            <div class="plan-note">Billed {{ isYearly ? 'yearly' : 'monthly' }}</div>
-            <div class="plan-features">
-              <div v-for="feature in simpleFeatures" :key="feature" class="feature-row">
-                <span class="check"></span>
-                <span>{{ feature }}</span>
-              </div>
-            </div>
-            <button class="btn primary " @click="selectPlan('simple')">Start Free Trial</button>
           </div>
-  
-          <div class="plan-card featured">
-            <div class="badge">Most Popular</div>
+          <div v-for="plan in visiblePlans" :key="plan.id" class="plan-card" :class="{ featured: plan.is_featured }">
+            <div v-if="plan.is_featured" class="badge">Most Popular</div>
             <div class="plan-head">
               <div>
-                <h2 class="font-bold text-2xl text-orange-500"  >Unlimited</h2>
-                <p>For multi-store operations and fast growth.</p>
+                <h2 class="font-bold text-2xl text-orange-500">{{ plan.name }}</h2>
+                <p>{{ plan.description || 'Flexible plan for growing furniture teams.' }}</p>
               </div>
             </div>
             <div class="plan-price">
-              <span class="price">₱{{ unlimitedPrice }}</span>
+              <span class="price">₱{{ formatPrice(plan) }}</span>
               <span class="period">/ {{ billingPeriod }}</span>
             </div>
             <div class="plan-note">
               Billed {{ isYearly ? 'yearly' : 'monthly' }}
-              <span v-if="isYearly" class="save-inline">Save ₱{{ unlimitedYearlySavings }}</span>
+              <span v-if="isYearly" class="save-inline">Save ₱{{ yearlySavings(plan) }}</span>
             </div>
             <div class="plan-features">
-              <div v-for="feature in unlimitedFeatures" :key="feature" class="feature-row">
+              <div v-for="feature in plan.features || []" :key="feature" class="feature-row">
                 <span class="check"></span>
                 <span>{{ feature }}</span>
               </div>
             </div>
-            <button class="btn primary" @click="selectPlan('unlimited')">Start Unlimited Trial</button>
+            <button class="btn primary" @click="selectPlan(plan.plan_key)">Start Free Trial</button>
           </div>
         </div>
       </section>
@@ -77,21 +63,16 @@
             <span class="eyebrow">Compare Plans</span>
             <h2 class="section-title">See the difference at a glance.</h2>
           </div>
-          <div class="compare-grid">
+          <div class="compare-grid" v-if="planComparison.length">
             <div class="compare-row header">
               <span>Feature</span>
-              <span>Simple</span>
-              <span>Unlimited</span>
+              <span v-for="plan in visiblePlans" :key="plan.id">{{ plan.name }}</span>
             </div>
-            <div v-for="row in comparisonFeatures" :key="row.feature" class="compare-row">
+            <div v-for="row in planComparison" :key="row.feature" class="compare-row">
               <span>{{ row.feature }}</span>
-              <span class="center">
-                <span v-if="row.simple === true" class="check"></span>
-                <span v-else>{{ row.simple }}</span>
-              </span>
-              <span class="center">
-                <span v-if="row.unlimited === true" class="check"></span>
-                <span v-else>{{ row.unlimited }}</span>
+              <span v-for="plan in visiblePlans" :key="plan.id" class="center">
+                <span v-if="row.values[plan.plan_key] === true" class="check"></span>
+                <span v-else>{{ row.values[plan.plan_key] || '-' }}</span>
               </span>
             </div>
           </div>
@@ -133,57 +114,37 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { router } from '@inertiajs/vue3'
 import TopNav from '@/Components/MarketingHeader.vue'
 import MarketingFooter from '@/Components/MarketingFooter.vue'
+import axiosClient from '@/services/axiosClient'
 
 const isYearly = ref(false)
+const plans = ref<any[]>([])
+const loadingPlans = ref(false)
 
-const simpleMonthlyPrice = 1490
-const simpleYearlyPrice = 14304
-const unlimitedMonthlyPrice = 3500
-const unlimitedYearlyPrice = 33600
-
-const simplePrice = computed(() => (isYearly.value ? simpleYearlyPrice : simpleMonthlyPrice))
-const unlimitedPrice = computed(() => (isYearly.value ? unlimitedYearlyPrice : unlimitedMonthlyPrice))
+const visiblePlans = computed(() => plans.value.filter((plan) => plan.is_active !== false))
 const billingPeriod = computed(() => (isYearly.value ? 'year' : 'month'))
-const unlimitedYearlySavings = computed(() => (unlimitedMonthlyPrice * 12) - unlimitedYearlyPrice)
+const planComparison = computed(() => {
+  const rows: { feature: string; values: Record<string, boolean | string> }[] = []
+  const featureSet = new Set<string>()
+  visiblePlans.value.forEach((plan) => {
+    const features = Array.isArray(plan.features) ? plan.features : []
+    features.forEach((feature: string) => featureSet.add(feature))
+  })
 
-const simpleFeatures = [
-  'Up to 500 furniture items',
-  'Basic inventory tracking',
-  '2 staff accounts',
-  'Email support',
-  'Basic reports',
-  '1 store location'
-]
+  Array.from(featureSet).forEach((feature) => {
+    const values: Record<string, boolean | string> = {}
+    visiblePlans.value.forEach((plan) => {
+      const features = Array.isArray(plan.features) ? plan.features : []
+      values[plan.plan_key] = features.includes(feature)
+    })
+    rows.push({ feature, values })
+  })
 
-const unlimitedFeatures = [
-  'Unlimited furniture items',
-  'Advanced inventory management',
-  'Unlimited staff accounts',
-  'Priority phone and email support',
-  'Advanced analytics and reports',
-  'Multiple store locations',
-  'Custom API access',
-  '3D model integration',
-  'Bulk import and export',
-  'Custom branding'
-]
-
-const comparisonFeatures = ref([
-  { feature: 'Furniture Items', simple: 'Up to 500', unlimited: 'Unlimited' },
-  { feature: 'Staff Accounts', simple: '2', unlimited: 'Unlimited' },
-  { feature: 'Store Locations', simple: '1', unlimited: 'Multiple' },
-  { feature: 'Inventory Tracking', simple: true, unlimited: true },
-  { feature: 'Sales Analytics', simple: 'Basic', unlimited: 'Advanced' },
-  { feature: '3D Model Integration', simple: false, unlimited: true },
-  { feature: 'Custom API Access', simple: false, unlimited: true },
-  { feature: 'Priority Support', simple: false, unlimited: true },
-  { feature: 'Bulk Operations', simple: false, unlimited: true },
-  { feature: 'Custom Branding', simple: false, unlimited: true }
-])
+  return rows
+})
 
 const faqs = [
   {
@@ -208,25 +169,54 @@ const toggleBillingCycle = () => {
   isYearly.value = !isYearly.value
 }
 
-const setTrialPlan = (plan: 'simple' | 'unlimited') => {
+const loadPlans = async () => {
+  loadingPlans.value = true
+  try {
+    const response = await axiosClient.get('/api/public/subscription-plans')
+    plans.value = response.data?.data || []
+  } catch (error) {
+    plans.value = []
+  } finally {
+    loadingPlans.value = false
+  }
+}
+
+const formatPrice = (plan: any) => {
+  const price = isYearly.value ? Number(plan.yearly_price || 0) : Number(plan.monthly_price || 0)
+  return price.toFixed(2)
+}
+
+const yearlySavings = (plan: any) => {
+  const monthly = Number(plan.monthly_price || 0)
+  const yearly = Number(plan.yearly_price || 0)
+  const savings = (monthly * 12) - yearly
+  return savings > 0 ? savings.toFixed(2) : '0.00'
+}
+
+const setTrialPlan = (plan: string) => {
   localStorage.setItem('trial_plan', plan)
   localStorage.setItem('trial_entry', 'pricing')
 }
 
 const selectPlan = (plan: string) => {
-  const normalized = plan === 'unlimited' ? 'unlimited' : 'simple'
+  const normalized = String(plan || 'simple')
   setTrialPlan(normalized)
   router.get('/register', { plan: normalized, trial: '1' }, { preserveState: true })
 }
 
 const startFreeTrial = () => {
-  setTrialPlan('simple')
-  router.get('/register', { plan: 'simple', trial: '1' }, { preserveState: true })
+  const fallback = visiblePlans.value[0]?.plan_key || 'simple'
+  setTrialPlan(fallback)
+  router.get('/register', { plan: fallback, trial: '1' }, { preserveState: true })
 }
 
 const scheduleDemo = () => {
   window.open('https://calendly.com/furnisync/demo', '_blank')
 }
+
+onMounted(() => {
+  loadPlans()
+})
 </script>
 
 <style scoped>
