@@ -14,12 +14,14 @@ use App\Models\Ecommerce\EcommerceOrderReturn;
 use App\Models\Ecommerce\EcommerceProductReview;
 use App\Models\Ecommerce\EcommerceStoreFollow;
 use App\Models\Ecommerce\EcommerceVoucher;
+use App\Models\Admin\ViolationReport;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
+use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Models\Logistics\DeliveryZone;
 use App\Models\Logistics\DeliveryZoneRate;
 use Illuminate\Http\Request;
@@ -952,6 +954,162 @@ class EcommerceController extends Controller
         ]);
     }
 
+    public function estimateShippingFee(Request $request)
+    {
+        $validated = $request->validate([
+            'shipping_address' => ['nullable', 'string'],
+            'item_ids' => ['nullable', 'array'],
+            'item_ids.*' => ['integer', 'exists:ecommerce_cart_items,id'],
+            'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'bulk_trip' => ['nullable', 'boolean'],
+        ]);
+
+        $user = Auth::user();
+        $cart = null;
+        $itemsForCheckout = collect();
+
+        if (!empty($validated['item_ids'])) {
+            $requestedItemIds = collect($validated['item_ids'])->map(fn($id) => (int) $id)->unique()->values();
+            $itemsForCheckout = EcommerceCartItem::query()
+                ->whereIn('id', $requestedItemIds)
+                ->whereHas('cart', fn($q) => $q->where('user_id', $user->id))
+                ->with(['cart', 'product', 'variation'])
+                ->get();
+
+            if ($itemsForCheckout->count() !== $requestedItemIds->count()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Some selected cart items are invalid.',
+                ], 422);
+            }
+
+            $storeIds = $itemsForCheckout->pluck('cart.store_id')->unique()->values();
+            if ($storeIds->count() > 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected items must belong to the same store for checkout.',
+                ], 422);
+            }
+            $cart = $itemsForCheckout->first()?->cart;
+        }
+
+        if (!$cart) {
+            $existingCart = EcommerceCart::query()
+                ->where('user_id', $user->id)
+                ->latest('updated_at')
+                ->first();
+            $cart = $existingCart ?: $this->getOrCreateCart();
+            $cart->load('items.product', 'items.variation');
+            $itemsForCheckout = $cart->items;
+        }
+
+        if ($itemsForCheckout->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cart is empty.',
+            ], 422);
+        }
+
+        $customerLatitude = isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null;
+        $customerLongitude = isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null;
+
+        if ($customerLatitude === null || $customerLongitude === null) {
+            if (!empty($validated['shipping_address'])) {
+                [$resolvedLatitude, $resolvedLongitude] = $this->resolveCoordinatesFromAddress((string) $validated['shipping_address']);
+                $customerLatitude = $customerLatitude ?? $resolvedLatitude;
+                $customerLongitude = $customerLongitude ?? $resolvedLongitude;
+            }
+        }
+
+        $fulfillmentBranch = $this->resolveFulfillmentBranch(
+            (int) $cart->store_id,
+            $itemsForCheckout,
+            $customerLatitude,
+            $customerLongitude
+        );
+
+        if (!$fulfillmentBranch) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No branch can fully fulfill this order right now.',
+            ], 422);
+        }
+
+        $totalWeight = 0.0;
+        foreach ($itemsForCheckout as $item) {
+            $itemWeight = (float) ($item->product?->weight_kg ?? 0);
+            $totalWeight += $itemWeight * (int) $item->quantity;
+        }
+
+        $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
+        $storeTier = Store::query()->where('id', $cart->store_id)->value('subscription_tier');
+        $bulkTrip = $bulkTripRequested && ($storeTier === 'enterprise');
+        $bulkDiscountRate = $bulkTrip ? $this->resolveBulkTripDiscountRate($cart->store_id) : 0.0;
+
+        if ($customerLatitude === null || $customerLongitude === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to determine customer coordinates for delivery rate lookup.',
+            ], 422);
+        }
+
+        $originLatitude = is_numeric($fulfillmentBranch->latitude) ? (float) $fulfillmentBranch->latitude : null;
+        $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
+
+        if ($originLatitude === null || $originLongitude === null) {
+            $store = Store::query()->find($cart->store_id);
+            if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
+                $originLatitude = (float) $store->latitude;
+                $originLongitude = (float) $store->longitude;
+            }
+        }
+
+        if ($originLatitude === null || $originLongitude === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Fulfillment branch does not have valid coordinates for delivery rate lookup.',
+            ], 422);
+        }
+
+        $distanceKm = $this->haversineKm(
+            $originLatitude,
+            $originLongitude,
+            (float) $customerLatitude,
+            (float) $customerLongitude
+        );
+
+        $subtotal = 0.0;
+        foreach ($itemsForCheckout as $item) {
+            $subtotal += (float) $item->unit_price * (int) $item->quantity;
+        }
+        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm);
+        $discountAmount = $bulkTrip ? round(((float) $fallback['shipping_fee']) * $bulkDiscountRate, 2) : 0.0;
+        $finalFee = round(((float) $fallback['shipping_fee']) - $discountAmount, 2);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shipping_fee' => (float) $finalFee,
+                'distance_km' => round($distanceKm, 2),
+                'bulk_trip_allowed' => ($storeTier === 'enterprise'),
+                'fallback_used' => true,
+                'fallback_reason' => 'Using store delivery fee settings.',
+                'breakdown' => [
+                    'base_fee' => (float) ($fallback['base_fee'] ?? 0),
+                    'distance_fee' => (float) ($fallback['distance_fee'] ?? 0),
+                    'weight_fee' => 0.0,
+                    'distance_km' => round($distanceKm, 2),
+                    'weight_kg' => round($totalWeight, 2),
+                    'bulk_trip' => $bulkTrip,
+                    'bulk_discount_rate' => $bulkTrip ? $bulkDiscountRate : 0.0,
+                    'bulk_discount_amount' => $discountAmount,
+                    'minimum_applied' => (bool) ($fallback['minimum_applied'] ?? false),
+                ],
+            ],
+        ]);
+    }
+
     public function checkout(Request $request)
     {
         $validated = $request->validate([
@@ -968,6 +1126,7 @@ class EcommerceController extends Controller
             'voucher_code' => ['nullable', 'string', 'max:40'],
             'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'bulk_trip' => ['nullable', 'boolean'],
         ]);
 
         $user = Auth::user();
@@ -1079,8 +1238,19 @@ class EcommerceController extends Controller
             }
         }
 
+        $originLatitude = is_numeric($fulfillmentBranch->latitude) ? (float) $fulfillmentBranch->latitude : null;
+        $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
+
+        if ($canLookupRates && ($originLatitude === null || $originLongitude === null)) {
+            $store = Store::query()->find($cart->store_id);
+            if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
+                $originLatitude = (float) $store->latitude;
+                $originLongitude = (float) $store->longitude;
+            }
+        }
+
         if ($canLookupRates) {
-            if (!is_numeric($fulfillmentBranch->latitude) || !is_numeric($fulfillmentBranch->longitude)) {
+            if ($originLatitude === null || $originLongitude === null) {
                 if (!is_null($providedShippingFee)) {
                     $shippingFee = $providedShippingFee;
                     $canLookupRates = false;
@@ -1093,71 +1263,28 @@ class EcommerceController extends Controller
             }
         }
 
-        $matchingRates = [];
         if ($canLookupRates) {
             $distanceKm = $this->haversineKm(
-                (float) $fulfillmentBranch->latitude,
-                (float) $fulfillmentBranch->longitude,
+                (float) $originLatitude,
+                (float) $originLongitude,
                 (float) $customerLatitude,
                 (float) $customerLongitude
             );
 
-            $zones = DeliveryZone::query()
-                ->where('store_id', $cart->store_id)
-                ->where('is_active', true)
-                ->where(function ($q) use ($fulfillmentBranch) {
-                    $q->whereNull('branch_id')->orWhere('branch_id', $fulfillmentBranch->id);
-                })
-                ->with(['rates' => fn($q) => $q->where('is_active', true)])
-                ->get();
-
-        foreach ($zones as $zone) {
-            foreach ($zone->rates as $rate) {
-                $minDist = is_null($rate->min_distance_km) ? null : (float) $rate->min_distance_km;
-                $maxDist = is_null($rate->max_distance_km) ? null : (float) $rate->max_distance_km;
-                $minWt = is_null($rate->min_weight_kg) ? null : (float) $rate->min_weight_kg;
-                $maxWt = is_null($rate->max_weight_kg) ? null : (float) $rate->max_weight_kg;
-
-                $distanceMatch = true;
-                if (!is_null($minDist) && $distanceKm < $minDist) {
-                    $distanceMatch = false;
-                }
-                if (!is_null($maxDist) && $distanceKm > $maxDist) {
-                    $distanceMatch = false;
-                }
-
-                $weightMatch = true;
-                if (!is_null($minWt) && $totalWeight < $minWt) {
-                    $weightMatch = false;
-                }
-                if (!is_null($maxWt) && $totalWeight > $maxWt) {
-                    $weightMatch = false;
-                }
-
-                if ($distanceMatch && $weightMatch) {
-                    $base = (float) $rate->base_fee;
-                    $perKm = (float) $rate->per_km_fee;
-                    $perKg = (float) $rate->per_kg_fee;
-                    $computed = $base + ($perKm * $distanceKm) + ($perKg * $totalWeight);
-                    $matchingRates[] = ['rate' => $rate, 'fee' => round($computed, 2)];
-                }
-            }
-        }
-
-        if (empty($matchingRates)) {
             if (!is_null($providedShippingFee)) {
                 $shippingFee = $providedShippingFee;
             } else {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No delivery rate configured for your location and order weight.',
-                ], 422);
+                $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm);
+                $shippingFee = (float) $fallback['shipping_fee'];
             }
-        } else {
-            // Choose the cheapest matching rate
-            usort($matchingRates, fn($a, $b) => $a['fee'] <=> $b['fee']);
-            $shippingFee = (float) $matchingRates[0]['fee'];
         }
+
+        $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
+        $storeTier = Store::query()->where('id', $cart->store_id)->value('subscription_tier');
+        $bulkTrip = $bulkTripRequested && ($storeTier === 'enterprise');
+        if ($bulkTrip) {
+            $bulkDiscountRate = $this->resolveBulkTripDiscountRate($cart->store_id);
+            $shippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);
         }
 
         $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude) {
@@ -1392,6 +1519,8 @@ class EcommerceController extends Controller
             'details' => $validated['details'] ?? null,
             'status' => 'pending_verification',
         ]);
+
+        $order->update(['status' => 'pending_cancellation']);
 
         return response()->json([
             'success' => true,
@@ -1668,7 +1797,7 @@ class EcommerceController extends Controller
     public function chatMessages(Request $request, int $storeId)
     {
         $user = Auth::user();
-        Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
+        $store = Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
 
         $thread = EcommerceChatThread::query()->firstOrCreate([
             'store_id' => $storeId,
@@ -1687,7 +1816,15 @@ class EcommerceController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
-        return response()->json(['success' => true, 'data' => $messages, 'thread_id' => $thread->id]);
+        return response()->json([
+            'success' => true,
+            'data' => $messages,
+            'thread_id' => $thread->id,
+            'store' => [
+                'id' => $store->id,
+                'name' => $store->name,
+            ],
+        ]);
     }
 
     public function sendChatMessage(Request $request, int $storeId)
@@ -1705,17 +1842,69 @@ class EcommerceController extends Controller
             'customer_user_id' => $user->id,
         ]);
 
+        $messageBody = trim((string) $validated['message']);
+        if ($this->containsProfanity($messageBody)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please avoid profanity in chat messages.',
+            ], 422);
+        }
+
         $message = EcommerceChatMessage::query()->create([
             'thread_id' => $thread->id,
             'sender_user_id' => $user->id,
             'sender_role' => 'customer',
-            'message' => trim($validated['message']),
+            'message' => $messageBody,
             'order_id' => $validated['order_id'] ?? null,
         ]);
 
         $thread->update(['last_message_at' => $message->created_at]);
 
         return response()->json(['success' => true, 'data' => $message], 201);
+    }
+
+    public function reportViolation(Request $request): JsonResponse
+    {
+        if (!Schema::hasTable('violation_reports')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Violation reporting is not available right now.',
+            ], 503);
+        }
+
+        $validated = $request->validate([
+            'store_id' => ['required', 'integer', 'exists:stores,id'],
+            'reason' => ['required', 'string', 'max:255'],
+            'details' => ['nullable', 'string', 'max:2000'],
+            'evidence_images' => ['nullable', 'array', 'max:5'],
+            'evidence_images.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+        ]);
+
+        $user = Auth::user();
+
+        $evidenceUrls = [];
+        if ($request->hasFile('evidence_images')) {
+            foreach ($request->file('evidence_images') as $file) {
+                $path = $file->store("violation-reports/{$validated['store_id']}", 'public');
+                $evidenceUrls[] = Storage::disk('public')->url($path);
+            }
+        }
+
+        $report = ViolationReport::query()->create([
+            'store_id' => (int) $validated['store_id'],
+            'reporter_user_id' => $user->id,
+            'reporter_type' => 'customer',
+            'report_reason' => trim((string) $validated['reason']),
+            'report_details' => isset($validated['details']) ? trim((string) $validated['details']) : null,
+            'evidence_urls' => $evidenceUrls,
+            'status' => 'pending',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Violation report submitted. We will review it shortly.',
+            'data' => $report,
+        ], 201);
     }
 
     public function addressTemplates()
@@ -1743,6 +1932,8 @@ class EcommerceController extends Controller
             'city' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
             'address_line' => ['required', 'string', 'max:255'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'is_default' => ['nullable', 'boolean'],
         ]);
 
@@ -1762,6 +1953,8 @@ class EcommerceController extends Controller
             'city' => $validated['city'],
             'barangay' => $validated['barangay'],
             'address_line' => $validated['address_line'],
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
             'is_default' => (bool) ($validated['is_default'] ?? false),
         ]);
 
@@ -1781,6 +1974,8 @@ class EcommerceController extends Controller
             'city' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
             'address_line' => ['required', 'string', 'max:255'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'is_default' => ['nullable', 'boolean'],
         ]);
 
@@ -1802,6 +1997,8 @@ class EcommerceController extends Controller
             'city' => $validated['city'],
             'barangay' => $validated['barangay'],
             'address_line' => $validated['address_line'],
+            'latitude' => $validated['latitude'] ?? $template->latitude,
+            'longitude' => $validated['longitude'] ?? $template->longitude,
             'is_default' => (bool) ($validated['is_default'] ?? $template->is_default),
         ]);
 
@@ -1982,12 +2179,28 @@ class EcommerceController extends Controller
         $latestCancellation = $order->relationLoaded('cancellationRequests')
             ? $order->cancellationRequests->sortByDesc('created_at')->first()
             : null;
+        $latestReturn = null;
+        if ($order->relationLoaded('items')) {
+            $latestReturn = $order->items
+                ->flatMap(function ($item) {
+                    if (!$item->relationLoaded('returnRequests')) {
+                        return collect();
+                    }
+
+                    return $item->returnRequests;
+                })
+                ->sortByDesc('created_at')
+                ->first();
+        }
+
+        $primaryStatus = $this->resolvePrimaryStatus($orderStatus, $latestCancellation, $latestReturn);
 
         return [
             'id' => $order->id,
             'store_id' => $order->store_id,
             'order_number' => $order->order_number,
             'status' => $order->status,
+            'primary_status' => $primaryStatus,
             'can_cancel' => $orderStatus === 'pending' && (!$latestCancellation || $latestCancellation->status === 'rejected'),
             'cancellation_request' => $latestCancellation ? [
                 'id' => $latestCancellation->id,
@@ -2071,6 +2284,44 @@ class EcommerceController extends Controller
                 ];
             })->values(),
         ];
+    }
+
+    private function resolvePrimaryStatus(
+        string $orderStatus,
+        ?EcommerceOrderCancellation $latestCancellation,
+        ?EcommerceOrderReturn $latestReturn
+    ): string {
+        if (in_array($orderStatus, ['cancelled', 'canceled', 'returned', 'refunded'], true)) {
+            return $orderStatus;
+        }
+
+        if ($latestCancellation) {
+            $cancelStatus = strtolower((string) $latestCancellation->status);
+            if ($cancelStatus === 'approved') {
+                return 'cancelled';
+            }
+            if ($cancelStatus === 'pending_verification') {
+                return 'cancellation_pending_verification';
+            }
+        }
+
+        if ($latestReturn) {
+            $returnStatus = strtolower((string) $latestReturn->status);
+            if ($returnStatus === 'refunded') {
+                return 'refunded';
+            }
+            if ($returnStatus === 'received') {
+                return 'return_received';
+            }
+            if ($returnStatus === 'approved') {
+                return 'return_approved';
+            }
+            if ($returnStatus === 'pending_verification') {
+                return 'return_pending_verification';
+            }
+        }
+
+        return $orderStatus;
     }
 
     private function formatOrderTimeline(EcommerceOrder $order): array
@@ -2445,5 +2696,89 @@ class EcommerceController extends Controller
             ],
             'discount_amount' => $discount,
         ];
+    }
+
+    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm): array
+    {
+        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
+        if (!$setting) {
+            $setting = new StoreDeliveryFeeSetting([
+                'store_id' => $storeId,
+                'is_active' => true,
+                'base_fee' => 100,
+                'per_km_fee' => 10,
+                'min_delivery_fee' => 80,
+                'free_shipping_min_order' => null,
+                'bulky_item_surcharge' => 0,
+                'remote_area_surcharge' => 0,
+                'max_delivery_distance_km' => null,
+                'bulk_discount_rate' => 10,
+            ]);
+        }
+
+        if (!(bool) $setting->is_active) {
+            return [
+                'shipping_fee' => 0.0,
+                'free_shipping_applied' => false,
+                'base_fee' => 0.0,
+                'distance_fee' => 0.0,
+                'minimum_applied' => false,
+            ];
+        }
+
+        $freeThreshold = $setting->free_shipping_min_order;
+        if (!is_null($freeThreshold) && $subtotal >= (float) $freeThreshold) {
+            return [
+                'shipping_fee' => 0.0,
+                'free_shipping_applied' => true,
+                'base_fee' => (float) $setting->base_fee,
+                'distance_fee' => round($distanceKm * (float) $setting->per_km_fee, 2),
+                'minimum_applied' => false,
+            ];
+        }
+
+        $base = (float) $setting->base_fee;
+        $distanceFee = $distanceKm * (float) $setting->per_km_fee;
+        $raw = $base + $distanceFee;
+        $min = (float) $setting->min_delivery_fee;
+        $applied = max($raw, $min);
+
+        return [
+            'shipping_fee' => round($applied, 2),
+            'free_shipping_applied' => false,
+            'base_fee' => round($base, 2),
+            'distance_fee' => round($distanceFee, 2),
+            'minimum_applied' => $applied > $raw,
+        ];
+    }
+
+    private function resolveBulkTripDiscountRate(int $storeId): float
+    {
+        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
+        $ratePercent = $setting?->bulk_discount_rate;
+
+        if (!is_numeric($ratePercent)) {
+            $ratePercent = 10;
+        }
+
+        $ratePercent = max(5, min(25, (float) $ratePercent));
+
+        return $ratePercent / 100;
+    }
+
+    private function containsProfanity(string $message): bool
+    {
+        $patterns = [
+            '/\b(fuck|fucking|fucker|shit|bitch|asshole|bastard|dick|pussy|motherfucker|cunt|damn)\b/i',
+            '/\b(putang\s*ina|putangina|tangina|puta|gago|ulol|tanga|bobo|tarantado|kupal)\b/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -30,6 +30,7 @@ class DeliveryFeeSettingController extends Controller
             'bulky_item_surcharge' => 'required|numeric|min:0',
             'remote_area_surcharge' => 'required|numeric|min:0',
             'max_delivery_distance_km' => 'nullable|numeric|min:0',
+            'bulk_discount_rate' => 'nullable|numeric|min:5|max:25',
             'notes' => 'nullable|string|max:2000',
         ]);
 
@@ -103,6 +104,7 @@ class DeliveryFeeSettingController extends Controller
             'bulky_item_surcharge' => 0,
             'remote_area_surcharge' => 0,
             'max_delivery_distance_km' => null,
+            'bulk_discount_rate' => 10,
         ]);
     }
 
@@ -118,6 +120,7 @@ class DeliveryFeeSettingController extends Controller
             'bulky_item_surcharge' => (float) $setting->bulky_item_surcharge,
             'remote_area_surcharge' => (float) $setting->remote_area_surcharge,
             'max_delivery_distance_km' => is_null($setting->max_delivery_distance_km) ? null : (float) $setting->max_delivery_distance_km,
+            'bulk_discount_rate' => is_null($setting->bulk_discount_rate) ? null : (float) $setting->bulk_discount_rate,
             'notes' => $setting->notes,
         ];
     }

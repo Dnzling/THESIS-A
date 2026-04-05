@@ -346,6 +346,38 @@ class SalesPosController extends Controller
         return response()->json(['success' => true, 'data' => $order]);
     }
 
+    public function receiptPdf(Request $request, int $id)
+    {
+        $query = SalesOrder::query()->with([
+            'store:id,name,address,city,province,phone,email',
+            'branch:id,name,address,city,province',
+            'items:id,order_id,product_name,sku,quantity,unit_price,line_total',
+            'receipt',
+            'payment',
+            'creator:id,fname,lname',
+        ]);
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        $data = [
+            'order' => $order,
+            'store' => $order->store,
+            'branch' => $order->branch,
+            'items' => $order->items,
+            'receipt' => $order->receipt,
+            'payment' => $order->payment,
+            'issued_by' => $order->creator,
+        ];
+
+        $pdf = \PDF::loadView('sales.pos-receipt-pdf', $data)->setPaper('a4', 'portrait');
+        $filename = ($order->receipt_number ?: $order->order_number ?: ('POS-' . $order->id)) . '.pdf';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"{$filename}\"",
+        ]);
+    }
+
     public function sendToLogistics(Request $request, int $id): JsonResponse
     {
         $query = SalesOrder::query()->with(['delivery']);

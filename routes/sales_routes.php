@@ -34,6 +34,7 @@ Route::prefix('sales')->group(function () {
         Route::post('/checkout', [SalesPosController::class, 'checkout'])->middleware('can:sales.pos.manage');
         Route::get('/orders', [SalesPosController::class, 'orders'])->middleware('can:sales.pos.view');
         Route::get('/orders/{id}', [SalesPosController::class, 'show'])->middleware('can:sales.pos.view');
+        Route::get('/orders/{id}/receipt', [SalesPosController::class, 'receiptPdf'])->middleware('can:sales.pos.view');
         Route::post('/orders/{id}/sync-payment', [SalesPosController::class, 'syncPayment'])->middleware('can:sales.pos.manage');
         Route::post('/orders/{id}/send-to-logistics', [SalesPosController::class, 'sendToLogistics'])->middleware('can:sales.order.approve');
     });
@@ -52,7 +53,9 @@ Route::prefix('sales')->group(function () {
     Route::prefix('ecommerce-orders')->group(function () {
         Route::get('/', [EcommerceOrderManagementController::class, 'index'])->middleware('can:sales.ecommerce-orders.view');
         Route::get('/{id}', [EcommerceOrderManagementController::class, 'show'])->middleware('can:sales.ecommerce-orders.view');
+        Route::get('/{id}/receipt', [EcommerceOrderManagementController::class, 'receiptPdf'])->middleware('can:sales.ecommerce-orders.view');
         Route::put('/{id}/status', [EcommerceOrderManagementController::class, 'updateStatus'])->middleware('can:sales.ecommerce-orders.manage');
+        Route::put('/{id}/cancellation-requests/{requestId}/review', [EcommerceOrderManagementController::class, 'reviewCancellationRequest'])->middleware('can:sales.ecommerce-orders.manage');
         Route::post('/{id}/assign-delivery', [EcommerceOrderManagementController::class, 'assignDelivery'])->middleware('can:sales.ecommerce-orders.manage');
         Route::put('/{id}/delivery-assignment', [EcommerceOrderManagementController::class, 'updateDeliveryAssignment'])->middleware('can:sales.ecommerce-orders.manage');
         Route::get('/{id}/branch-candidates', [EcommerceOrderManagementController::class, 'branchTransferCandidates'])->middleware('can:sales.ecommerce-orders.view');

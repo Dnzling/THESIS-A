@@ -90,7 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
      * Load user permissions and navigation from backend
      */
     const loadPermissions = async () => {
-        if (isCustomer.value) {
+        if (isCustomer.value || user.value?.role === 'super_admin') {
             permissions.value = []
             navigation.value = []
             permissionsLoaded.value = true
@@ -169,7 +169,7 @@ export const useAuthStore = defineStore('auth', () => {
      * âœ… Fetch navigation (can be called separately to refresh)
      */
     const fetchNavigation = async () => {
-        if (isCustomer.value) {
+        if (isCustomer.value || user.value?.role === 'super_admin') {
             permissions.value = []
             navigation.value = []
             return
@@ -326,6 +326,7 @@ export const useAuthStore = defineStore('auth', () => {
                 payload?.data ??
                 null
             const customerUser = isCustomerRoleValue(userData?.role)
+            const superAdminUser = String(userData?.role || '').toLowerCase() === 'super_admin'
 
             token.value = accessToken
             user.value = userData
@@ -336,7 +337,7 @@ export const useAuthStore = defineStore('auth', () => {
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
             document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
 
-            if (customerUser) {
+            if (customerUser || superAdminUser) {
                 permissions.value = []
                 navigation.value = []
                 permissionsLoaded.value = true
@@ -478,7 +479,9 @@ export const useAuthStore = defineStore('auth', () => {
         if (token.value && user.value && !permissionsLoaded.value && !isLoadingPermissions.value) {
             console.log('Initializing auth store...')
             axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-            await loadPermissions()
+            if (user.value?.role !== 'super_admin') {
+                await loadPermissions()
+            }
         }
     }
 

@@ -20,6 +20,7 @@ class StoreDeliveryFeeSetting extends Model
         'bulky_item_surcharge',
         'remote_area_surcharge',
         'max_delivery_distance_km',
+        'bulk_discount_rate',
         'notes',
         'created_by',
         'updated_by',
@@ -34,6 +35,7 @@ class StoreDeliveryFeeSetting extends Model
         'bulky_item_surcharge' => 'decimal:2',
         'remote_area_surcharge' => 'decimal:2',
         'max_delivery_distance_km' => 'decimal:2',
+        'bulk_discount_rate' => 'decimal:2',
     ];
 
     public function store(): BelongsTo

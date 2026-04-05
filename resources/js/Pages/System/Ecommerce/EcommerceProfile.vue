@@ -226,7 +226,17 @@ defineOptions({
 })
 
 
-type AddressTemplate = { id: number; full_name: string; contact_number: string; province: string; city: string; barangay: string; address_line: string }
+type AddressTemplate = {
+  id: number
+  full_name: string
+  contact_number: string
+  province: string
+  city: string
+  barangay: string
+  address_line: string
+  latitude?: number | null
+  longitude?: number | null
+}
 
 const loading = ref(false)
 const activeSection = ref<'basic' | 'address' | 'payment' | 'returns' | 'cancellations'>('basic')
@@ -252,8 +262,26 @@ const savingNewAddress = ref(false)
 const editForm = reactive<{ fname: string; lname: string; birthday: Date | null }>({ fname: '', lname: '', birthday: null })
 const passwordForm = reactive({ current_password: '', password: '', password_confirmation: '' })
 const contactChangeForm = reactive({ newEmail: '', newMobile: '', otpCode: '' })
-const addressEditForm = reactive({ full_name: '', contact_number: '', province: '', city: '', barangay: '', address_line: '' })
-const addAddressForm = reactive({ full_name: '', contact_number: '', province: '', city: '', barangay: '', address_line: '' })
+const addressEditForm = reactive({
+  full_name: '',
+  contact_number: '',
+  province: '',
+  city: '',
+  barangay: '',
+  address_line: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
+})
+const addAddressForm = reactive({
+  full_name: '',
+  contact_number: '',
+  province: '',
+  city: '',
+  barangay: '',
+  address_line: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
+})
 const addAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 const editAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 
@@ -511,6 +539,8 @@ async function startEditAddress(template: AddressTemplate) {
   addressEditForm.city = template.city
   addressEditForm.barangay = template.barangay
   addressEditForm.address_line = template.address_line
+  addressEditForm.latitude = template.latitude ?? null
+  addressEditForm.longitude = template.longitude ?? null
 
   const province = provinces.value.find((p: any) => String(p.name).toLowerCase() === String(template.province).toLowerCase())
   editAddressSelection.provinceId = province?.province_id || ''
@@ -557,6 +587,8 @@ function openAddAddressDialog() {
   addAddressForm.full_name = ''
   addAddressForm.contact_number = ''
   addAddressForm.address_line = ''
+  addAddressForm.latitude = null
+  addAddressForm.longitude = null
   addAddressSelection.provinceId = ''
   addAddressSelection.cityId = ''
   addAddressSelection.barangayCode = ''
@@ -584,6 +616,8 @@ async function createAddressTemplate() {
       city: cityName,
       barangay: barangayName,
       address_line: addAddressForm.address_line,
+      latitude: addAddressForm.latitude ?? undefined,
+      longitude: addAddressForm.longitude ?? undefined,
       is_default: addressTemplates.value.length === 0,
     })
 

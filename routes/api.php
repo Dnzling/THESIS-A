@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Admin\SupplierVerificationController;
+use App\Http\Controllers\Api\Admin\ViolationReportController;
 use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\Core\SystemNotificationController;
@@ -142,6 +143,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Store Management
         Route::get('/stores', [StoreManagementController::class, 'index']);
         Route::get('/stores/{store}', [StoreManagementController::class, 'show']);
+
+        // Violation Reports
+        Route::middleware('role:super_admin')->group(function () {
+            Route::get('/violation-reports', [ViolationReportController::class, 'index']);
+            Route::get('/violation-reports/{violationReport}', [ViolationReportController::class, 'show']);
+            Route::post('/violation-reports/{violationReport}/suspend', [ViolationReportController::class, 'suspend']);
+            Route::post('/violation-reports/{violationReport}/ban', [ViolationReportController::class, 'ban']);
+        });
 });
 
     // ========== STORE ROLES & PERMISSIONS ==========

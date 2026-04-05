@@ -191,7 +191,7 @@
       </header>
   
       <!-- Main Content Area -->
-      <main class="flex-1 overflow-y-auto p-6 bg-transparent">
+      <main class="flex-1 overflow-y-auto p-6 bg-transparent" :class="{ 'merchandising-hide-delete': isMerchandising }">
         <slot />
       </main>
     </div>
@@ -259,6 +259,7 @@ import { onResponseDialog } from '@/utils/responseDialogBus'
 const page = usePage()
 const currentPath = computed(() => String(page.url || '').split('?')[0] || '/')
 const pageTitle = computed(() => page.props?.title || '')
+const isMerchandising = computed(() => currentPath.value.startsWith('/merchandising'))
 const authStore = useAuthStore()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isBooting = ref(true)

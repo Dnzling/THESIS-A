@@ -9,11 +9,15 @@ use App\Models\Ecommerce\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Models\Ecommerce\EcommerceOrderCancellation;
+use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\Sales\SalesRefund;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class EcommerceOrderManagementController extends Controller
@@ -27,6 +31,7 @@ class EcommerceOrderManagementController extends Controller
         'in_transit',
         'out_for_delivery',
         'delivered',
+        'pending_cancellation',
         'cancelled',
     ];
 
@@ -60,6 +65,12 @@ class EcommerceOrderManagementController extends Controller
         $orders = $query->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 20));
 
+        $orders->getCollection()->transform(function (EcommerceOrder $order) {
+            $payload = $order->toArray();
+            $payload['primary_status'] = $this->resolvePrimaryStatus($order);
+            return $payload;
+        });
+
         return response()->json(['success' => true, 'data' => $orders]);
     }
 
@@ -74,6 +85,8 @@ class EcommerceOrderManagementController extends Controller
                 'items.product:id,product_name,sku',
                 'items.branchInventory:id,branch_id,product_id,variation_id,quantity_available,stock_status',
                 'items.branchInventory.branch:id,name,branch_code,city,province',
+                'items.returnRequests',
+                'cancellationRequests',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type,status',
                 'delivery.driver:id,fname,lname,email',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
@@ -84,9 +97,43 @@ class EcommerceOrderManagementController extends Controller
         $order = $query->findOrFail($id);
 
         $data = $order->toArray();
+        $data['primary_status'] = $this->resolvePrimaryStatus($order);
         $data['timeline'] = $this->formatOrderTimeline($order);
 
         return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    public function receiptPdf(Request $request, int $id)
+    {
+        if (!Schema::hasTable('ecommerce_orders')) {
+            abort(404);
+        }
+
+        $query = EcommerceOrder::query()
+            ->with([
+                'user:id,fname,lname,email',
+                'store:id,name,address,city,province,phone,email',
+                'assignedBranch:id,name,address,city,province',
+                'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
+            ]);
+
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        $data = [
+            'order' => $order,
+            'store' => $order->store,
+            'branch' => $order->assignedBranch,
+            'items' => $order->items,
+        ];
+
+        $pdf = \PDF::loadView('sales.ecommerce-order-receipt-pdf', $data)->setPaper('a4', 'portrait');
+        $filename = ($order->order_number ?: ('WEB-' . $order->id)) . '.pdf';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"{$filename}\"",
+        ]);
     }
 
     public function updateStatus(Request $request, int $id): JsonResponse
@@ -222,6 +269,177 @@ class EcommerceOrderManagementController extends Controller
             'message' => 'Order status updated successfully.',
             'data' => EcommerceOrder::query()->with(['delivery.vehicle'])->find($order->id),
         ]);
+    }
+
+    public function reviewCancellationRequest(Request $request, int $id, int $requestId): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['approved', 'rejected'])],
+            'review_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $query = EcommerceOrder::query()
+            ->with(['delivery', 'cancellationRequests'])
+            ->whereKey($id);
+
+        $this->applyStoreScope($request, $query);
+        $order = $query->firstOrFail();
+
+        $cancellation = $order->cancellationRequests->firstWhere('id', $requestId);
+        if (!$cancellation) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cancellation request not found for this order.',
+            ], 404);
+        }
+
+        if ($cancellation->status !== 'pending_verification') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only pending cancellation requests can be reviewed.',
+            ], 422);
+        }
+
+        $reviewer = $request->user();
+        $reviewerId = (int) $reviewer->id;
+        $newStatus = (string) $validated['status'];
+        $reviewNotes = $validated['review_notes'] ?? null;
+
+        DB::transaction(function () use ($order, $cancellation, $newStatus, $reviewNotes, $reviewerId, $reviewer) {
+            $cancellation->update([
+                'status' => $newStatus,
+                'reviewed_by' => $reviewerId,
+                'reviewed_at' => now(),
+                'review_notes' => $reviewNotes,
+            ]);
+
+            if ($newStatus === 'approved') {
+                $previousOrderStatus = (string) $order->status;
+                $order->status = 'cancelled';
+                $order->save();
+
+                if ($order->payment_status === 'paid') {
+                    $existingRefund = SalesRefund::query()
+                        ->where('order_type', 'ecommerce_order')
+                        ->where('order_id', $order->id)
+                        ->first();
+
+                    if (!$existingRefund) {
+                        SalesRefund::create([
+                            'store_id' => $reviewer?->store_id,
+                            'branch_id' => $reviewer?->branch_id,
+                            'order_type' => 'ecommerce_order',
+                            'order_id' => $order->id,
+                            'order_number' => (string) $order->order_number,
+                            'customer_name' => (string) $order->shipping_name,
+                            'reason' => (string) ($cancellation->reason ?: 'Order cancellation approved'),
+                            'amount' => (float) $order->total_amount,
+                            'status' => 'pending',
+                            'requested_by' => $reviewerId,
+                        ]);
+                    }
+                }
+
+                if ($order->delivery) {
+                    $previousDeliveryStatus = (string) ($order->delivery->status ?: 'assigned');
+                    $order->delivery->status = 'cancelled';
+                    $order->delivery->save();
+
+                    if ($previousDeliveryStatus !== 'cancelled') {
+                        EcommerceDeliveryLog::query()->create([
+                            'delivery_id' => $order->delivery->id,
+                            'order_id' => $order->id,
+                            'store_id' => $order->store_id,
+                            'event_type' => 'status_updated',
+                            'status_from' => $previousDeliveryStatus,
+                            'status_to' => 'cancelled',
+                            'message' => 'Delivery status updated to cancelled after cancellation approval.',
+                            'created_by' => $reviewerId,
+                        ]);
+                    }
+                }
+
+                if ($previousOrderStatus !== 'cancelled' && $order->delivery) {
+                    EcommerceDeliveryLog::query()->create([
+                        'delivery_id' => $order->delivery->id,
+                        'order_id' => $order->id,
+                        'store_id' => $order->store_id,
+                        'event_type' => 'status_updated',
+                        'status_from' => $previousOrderStatus,
+                        'status_to' => 'cancelled',
+                        'message' => 'Order status updated to cancelled after cancellation approval.',
+                        'created_by' => $reviewerId,
+                    ]);
+                }
+            }
+        });
+
+        $fresh = EcommerceOrder::query()
+            ->with(['delivery.vehicle', 'cancellationRequests', 'items.returnRequests'])
+            ->findOrFail($order->id);
+
+        $payload = $fresh->toArray();
+        $payload['primary_status'] = $this->resolvePrimaryStatus($fresh);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cancellation request reviewed successfully.',
+            'data' => $payload,
+        ]);
+    }
+
+    private function resolvePrimaryStatus(EcommerceOrder $order): string
+    {
+        $orderStatus = strtolower((string) $order->status);
+        if (in_array($orderStatus, ['cancelled', 'canceled', 'returned', 'refunded'], true)) {
+            return $orderStatus;
+        }
+
+        $latestCancellation = $order->relationLoaded('cancellationRequests')
+            ? $order->cancellationRequests->sortByDesc('created_at')->first()
+            : null;
+
+        if ($latestCancellation) {
+            $cancelStatus = strtolower((string) $latestCancellation->status);
+            if ($cancelStatus === 'approved') {
+                return 'cancelled';
+            }
+            if ($cancelStatus === 'pending_verification') {
+                return 'cancellation_pending_verification';
+            }
+        }
+
+        $latestReturn = null;
+        if ($order->relationLoaded('items')) {
+            $latestReturn = $order->items
+                ->flatMap(function ($item) {
+                    if (!$item->relationLoaded('returnRequests')) {
+                        return collect();
+                    }
+
+                    return $item->returnRequests;
+                })
+                ->sortByDesc('created_at')
+                ->first();
+        }
+
+        if ($latestReturn) {
+            $returnStatus = strtolower((string) $latestReturn->status);
+            if ($returnStatus === 'refunded') {
+                return 'refunded';
+            }
+            if ($returnStatus === 'received') {
+                return 'return_received';
+            }
+            if ($returnStatus === 'approved') {
+                return 'return_approved';
+            }
+            if ($returnStatus === 'pending_verification') {
+                return 'return_pending_verification';
+            }
+        }
+
+        return $orderStatus;
     }
 
     public function assignDelivery(Request $request, int $id): JsonResponse

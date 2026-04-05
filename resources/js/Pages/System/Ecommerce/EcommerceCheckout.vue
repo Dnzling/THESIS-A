@@ -88,10 +88,10 @@
 
             <div class="rounded-lg border border-slate-200 p-3">
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Voucher</label>
-              <div class="flex flex-col gap-2 sm:flex-row">
+              <!-- <div class="flex flex-col gap-2 sm:flex-row">
                 <InputText v-model="voucherCode" fluid placeholder="Enter voucher code" />
                 <Button label="Apply" size="small" severity="info" class="w-full sm:w-auto" :loading="applyingVoucher" @click="applyVoucher" />
-              </div>
+              </div> -->
               <p v-if="appliedVoucher" class="mt-1 text-xs text-emerald-600">
                 Applied: {{ appliedVoucher.code }} ({{ voucherLabel }})
               </p>
@@ -101,10 +101,45 @@
             <div class="flex justify-between"><span>Items</span><span>{{ itemsCount }}</span></div>
             <div class="flex justify-between"><span>Subtotal</span><span>PHP {{ subtotal.toFixed(2) }}</span></div>
             <div class="flex justify-between"><span>Shipping Fee</span><span>PHP {{ shippingFeeTotal.toFixed(2) }}</span></div>
-            <div class="flex justify-between" v-if="discountAmount > 0">
+            <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
+              <span>Bulk trip discount</span>
+              <InputSwitch v-model="bulkTripEnabled" />
+            </div>
+            <div v-if="shippingDistanceKm !== null" class="flex justify-between text-xs text-slate-500">
+              <span>Distance to Store</span>
+              <span>{{ shippingDistanceKm.toFixed(2) }} km</span>
+            </div>
+            <div v-if="shippingFeeNotice" class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+              {{ shippingFeeNotice }}
+            </div>
+            <div v-if="shippingFeeBreakdown" class="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-700">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Shipping breakdown</span>
+                <Button
+                  :label="showBreakdown ? 'Hide' : 'View'"
+                  size="small"
+                  text
+                  severity="secondary"
+                  @click="showBreakdown = !showBreakdown"
+                />
+              </div>
+              <div v-if="showBreakdown" class="mt-2 space-y-1">
+                <div class="flex justify-between"><span>Base fee</span><span>PHP {{ Number(shippingFeeBreakdown.base_fee || 0).toFixed(2) }}</span></div>
+                <div class="flex justify-between"><span>Distance fee</span><span>PHP {{ Number(shippingFeeBreakdown.distance_fee || 0).toFixed(2) }}</span></div>
+                <div class="flex justify-between"><span>Weight fee</span><span>PHP {{ Number(shippingFeeBreakdown.weight_fee || 0).toFixed(2) }}</span></div>
+                <div class="flex justify-between"><span>Distance</span><span>{{ Number(shippingFeeBreakdown.distance_km || 0).toFixed(2) }} km</span></div>
+                <div class="flex justify-between"><span>Weight</span><span>{{ Number(shippingFeeBreakdown.weight_kg || 0).toFixed(2) }} kg</span></div>
+                <div v-if="shippingFeeBreakdown.minimum_applied" class="text-amber-600">Minimum fee applied.</div>
+                <div v-if="shippingFeeBreakdown.bulk_trip" class="flex justify-between text-emerald-600">
+                  <span>Bulk trip discount</span>
+                  <span>- PHP {{ Number(shippingFeeBreakdown.bulk_discount_amount || 0).toFixed(2) }}</span>
+                </div>
+              </div>
+            </div>
+            <!-- <div class="flex justify-between" v-if="discountAmount > 0">
               <span>Voucher Discount</span>
               <span class="text-emerald-600">- PHP {{ discountAmount.toFixed(2) }}</span>
-            </div>
+            </div> -->
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ totalAmount.toFixed(2) }}</span></div>
             <Button label="Place Order" severity="info" class="mt-2 w-full" :loading="placing || paymongoCreating" @click="placeOrder" />
@@ -115,7 +150,16 @@
 
     <Drawer v-model:visible="addressDrawerVisible" header="Shipping Address Templates" position="right" class="w-full sm:w-[30rem] lg:!w-[30rem]">
       <div class="space-y-3">
-        <Button label="Add New Address" text severity="secondary" @click="showAddAddressForm = !showAddAddressForm" />
+        <div class="flex items-center gap-2">
+          <Button label="Add New Address" text severity="secondary" @click="showAddAddressForm = !showAddAddressForm" />
+          <Button
+            v-if="isEditingAddress"
+            label="Cancel Edit"
+            text
+            severity="danger"
+            @click="resetAddressForm"
+          />
+        </div>
         <div v-for="address in addressTemplates" :key="address.id" class="rounded-lg border border-slate-200 p-3">
           <div class="flex items-start gap-2">
             <RadioButton v-model="selectedAddressId" :inputId="`address-${address.id}`" :value="address.id" />
@@ -123,6 +167,9 @@
               <p class="text-sm font-semibold text-slate-900">{{ address.full_name }} - {{ address.contact_number }}</p>
               <p class="text-xs text-slate-600">{{ address.province }}, {{ address.city }}, {{ address.barangay }}, {{ address.address_line }}</p>
             </label>
+          </div>
+          <div class="mt-2 flex justify-end">
+            <Button label="Edit" size="small" text severity="info" @click="startEditAddress(address)" />
           </div>
         </div>
 
@@ -167,7 +214,11 @@
             :loading="fetchingCoordinates"
             @click="fetchCoordinates"
           />
-          <Button label="Save Address Template" severity="info" @click="saveNewAddress" />
+          <Button
+            :label="isEditingAddress ? 'Update Address Template' : 'Save Address Template'"
+            severity="info"
+            @click="saveNewAddress"
+          />
         </div>
 
         <Button label="Use Selected Address" severity="info" fluid @click="addressDrawerVisible = false" />
@@ -178,9 +229,23 @@
       <div class="space-y-3">
         <div v-for="method in allPaymentMethods" :key="method.value" class="rounded-lg border border-slate-200 p-3">
           <div class="flex items-center gap-2">
-            <RadioButton v-model="selectedPaymentMethod" :inputId="`payment-${method.value}`" :value="method.value" />
-            <label :for="`payment-${method.value}`" class="cursor-pointer text-sm text-slate-800">{{ method.label }}</label>
+            <RadioButton
+              v-model="selectedPaymentMethod"
+              :inputId="`payment-${method.value}`"
+              :value="method.value"
+              :disabled="method.value === 'cod' && codBlocked"
+            />
+            <label
+              :for="`payment-${method.value}`"
+              class="cursor-pointer text-sm"
+              :class="method.value === 'cod' && codBlocked ? 'text-slate-400' : 'text-slate-800'"
+            >
+              {{ method.label }}
+            </label>
           </div>
+          <p v-if="method.value === 'cod' && codBlocked" class="mt-2 text-xs text-amber-600">
+            COD is not available for totals above PHP {{ COD_LIMIT.toLocaleString() }}. Use GCash or Credit Card.
+          </p>
         </div>
         <Button label="Use Payment Method" severity="info" fluid @click="paymentDrawerVisible = false" />
       </div>
@@ -248,7 +313,7 @@
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Drawer from 'primevue/drawer'
 import RadioButton from 'primevue/radiobutton'
@@ -256,6 +321,7 @@ import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
+import InputSwitch from 'primevue/inputswitch'
 import ecommerceService from '@/services/ecommerce.service'
 import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
@@ -274,6 +340,8 @@ type AddressTemplate = {
   city: string
   barangay: string
   address_line: string
+  latitude?: number | null
+  longitude?: number | null
   is_default?: boolean
 }
 
@@ -296,6 +364,8 @@ const selectedItemIds = ref<number[]>([])
 const addressDrawerVisible = ref(false)
 const paymentDrawerVisible = ref(false)
 const showAddAddressForm = ref(false)
+const isEditingAddress = ref(false)
+const editingAddressId = ref<number | null>(null)
 const pendingGcashIntentId = ref<string | null>(null)
 const pendingGcashOrderId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
@@ -315,7 +385,14 @@ const gcashModal = reactive({
   email: '',
 })
 
-const shippingFeePerItem = 120
+const shippingFeeTotal = ref(0)
+const shippingFeeLoading = ref(false)
+const shippingFeeNotice = ref<string | null>(null)
+const shippingDistanceKm = ref<number | null>(null)
+const shippingFeeBreakdown = ref<any | null>(null)
+const showBreakdown = ref(false)
+const bulkTripEnabled = ref(false)
+const bulkTripAllowed = ref(false)
 const estimatedDeliveryDate = computed(() => {
   const date = new Date()
   date.setDate(date.getDate() + 5)
@@ -332,6 +409,8 @@ const newAddress = reactive<AddressTemplate>({
   city: '',
   barangay: '',
   address_line: '',
+  latitude: null,
+  longitude: null,
 })
 const newAddressSelection = reactive({
   provinceId: '',
@@ -339,16 +418,35 @@ const newAddressSelection = reactive({
   barangayCode: '',
 })
 
+const resetAddressForm = () => {
+  newAddress.id = 0
+  newAddress.full_name = ''
+  newAddress.contact_number = ''
+  newAddress.province = ''
+  newAddress.city = ''
+  newAddress.barangay = ''
+  newAddress.address_line = ''
+  newAddress.latitude = null
+  newAddress.longitude = null
+  newAddressSelection.provinceId = ''
+  newAddressSelection.cityId = ''
+  newAddressSelection.barangayCode = ''
+  cities.value = []
+  barangays.value = []
+  isEditingAddress.value = false
+  editingAddressId.value = null
+}
+
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
 const citiesCache = ref<Record<string, any[]>>({})
 
-const selectedPaymentMethod = ref<'cod' | 'gcash' | 'card'>('cod')
+const selectedPaymentMethod = ref<'cod' | 'gcash'>('cod')
+const COD_LIMIT = 20000
 const allPaymentMethods = [
   { label: 'Cash on Delivery (COD)', value: 'cod' as const },
   { label: 'GCash (PayMongo)', value: 'gcash' as const },
-  { label: 'Credit Card', value: 'card' as const },
 ]
 
 const voucherCode = ref('')
@@ -373,19 +471,53 @@ const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label:
 
 const itemsCount = computed(() => checkoutItems.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0))
 const subtotal = computed(() => checkoutItems.value.reduce((sum, item) => sum + Number(item.line_subtotal || 0), 0))
-const shippingFeeTotal = computed(() => checkoutItems.value.length * shippingFeePerItem)
+const shippingFeePerItem = computed(() => {
+  if (!checkoutItems.value.length) return 0
+  return shippingFeeTotal.value / checkoutItems.value.length
+})
 const discountAmount = computed(() => validatedDiscountAmount.value)
 const totalAmount = computed(() => Math.max(0, subtotal.value + shippingFeeTotal.value - discountAmount.value))
+const codBlocked = computed(() => totalAmount.value > COD_LIMIT)
 
-function paymentMethodLabel(method: 'cod' | 'gcash' | 'card') {
+function paymentMethodLabel(method: 'cod' | 'gcash') {
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
 }
+
+watch(codBlocked, (blocked) => {
+  if (blocked && selectedPaymentMethod.value === 'cod') {
+    selectedPaymentMethod.value = 'gcash'
+  }
+})
+
+watch(selectedAddressId, () => {
+  const selected = selectedAddress.value
+  if (selected?.latitude != null && selected?.longitude != null) {
+    customerLatitude.value = Number(selected.latitude)
+    customerLongitude.value = Number(selected.longitude)
+  }
+})
+
+watch(
+  [selectedAddressId, () => checkoutItems.value.length, customerLatitude, customerLongitude],
+  () => {
+    estimateShippingFee()
+  },
+)
+
+watch(bulkTripEnabled, () => {
+  estimateShippingFee()
+})
 
 async function loadAddressTemplates() {
   try {
     const response = await ecommerceService.getAddressTemplates()
     addressTemplates.value = response.data?.data || []
     selectedAddressId.value = addressTemplates.value.find((a) => a.is_default)?.id || addressTemplates.value[0]?.id || null
+    const selected = addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null
+    if (selected?.latitude != null && selected?.longitude != null) {
+      customerLatitude.value = Number(selected.latitude)
+      customerLongitude.value = Number(selected.longitude)
+    }
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to load addresses' })
   }
@@ -409,33 +541,32 @@ async function saveNewAddress() {
     const cityName = cities.value.find((c: any) => c.city_id === newAddressSelection.cityId)?.name || ''
     const barangayName = barangays.value.find((b: any) => b.code === newAddressSelection.barangayCode)?.name || ''
 
-    const response = await ecommerceService.createAddressTemplate({
+    const payload = {
       full_name: newAddress.full_name,
       contact_number: newAddress.contact_number,
       province: provinceName,
       city: cityName,
       barangay: barangayName,
       address_line: newAddress.address_line,
+      latitude: newAddress.latitude ?? customerLatitude.value ?? undefined,
+      longitude: newAddress.longitude ?? customerLongitude.value ?? undefined,
       is_default: addressTemplates.value.length === 0,
-    })
+    }
 
-    addressTemplates.value.push(response.data?.data)
-    selectedAddressId.value = response.data?.data?.id || selectedAddressId.value
+    if (isEditingAddress.value && editingAddressId.value) {
+      await ecommerceService.updateAddressTemplate(editingAddressId.value, payload)
+      await loadAddressTemplates()
+      showAlert({ severity: 'success', summary: 'Address Updated', detail: 'Address template updated.' })
+    } else {
+      const response = await ecommerceService.createAddressTemplate(payload)
+      addressTemplates.value.push(response.data?.data)
+      selectedAddressId.value = response.data?.data?.id || selectedAddressId.value
+      showAlert({ severity: 'success', summary: 'Address Saved', detail: 'New address template has been saved.' })
+    }
 
-    newAddress.id = 0
-    newAddress.full_name = ''
-    newAddress.contact_number = ''
-    newAddress.province = ''
-    newAddress.city = ''
-    newAddress.barangay = ''
-    newAddress.address_line = ''
-    newAddressSelection.provinceId = ''
-    newAddressSelection.cityId = ''
-    newAddressSelection.barangayCode = ''
-    cities.value = []
-    barangays.value = []
     showAddAddressForm.value = false
-    showAlert({ severity: 'success', summary: 'Address Saved', detail: 'New address template has been saved.' })
+    resetAddressForm()
+    estimateShippingFee()
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to save address' })
   }
@@ -493,9 +624,61 @@ async function applyVoucher() {
   }
 }
 
-function toBackendPaymentMethod(method: 'cod' | 'gcash' | 'card') {
+async function estimateShippingFee() {
+  if (!checkoutItems.value.length) return
+
+  const address = selectedAddress.value
+    ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
+    : ''
+  const hasCoords = customerLatitude.value !== null && customerLongitude.value !== null
+  const hasAddress = Boolean(address.trim())
+
+  if (!hasCoords && !hasAddress) {
+    shippingFeeTotal.value = 0
+    return
+  }
+
+  shippingFeeLoading.value = true
+  try {
+    const latitude = customerLatitude.value ?? (selectedAddress.value?.latitude ?? undefined)
+    const longitude = customerLongitude.value ?? (selectedAddress.value?.longitude ?? undefined)
+    const response = await ecommerceService.estimateShippingFee({
+      shipping_address: address || undefined,
+      customer_latitude: latitude,
+      customer_longitude: longitude,
+      item_ids: selectedItemIds.value.length ? selectedItemIds.value : undefined,
+      bulk_trip: bulkTripEnabled.value,
+    })
+    const fee = Number(response?.data?.data?.shipping_fee || 0)
+    const fallbackUsed = Boolean(response?.data?.data?.fallback_used)
+    const fallbackReason = String(response?.data?.data?.fallback_reason || '')
+    const distance = Number(response?.data?.data?.distance_km ?? NaN)
+    const allowed = Boolean(response?.data?.data?.bulk_trip_allowed)
+    const breakdown = response?.data?.data?.breakdown || null
+    shippingFeeTotal.value = Number.isFinite(fee) ? fee : 0
+    shippingDistanceKm.value = Number.isFinite(distance) ? distance : null
+    bulkTripAllowed.value = allowed
+    if (!allowed && bulkTripEnabled.value) {
+      bulkTripEnabled.value = false
+    }
+    shippingFeeBreakdown.value = breakdown
+    shippingFeeNotice.value = fallbackUsed
+      ? (fallbackReason || 'Using default delivery fee settings for this address.')
+      : null
+  } catch (error: any) {
+    shippingFeeTotal.value = 0
+    shippingDistanceKm.value = null
+    shippingFeeNotice.value = null
+    shippingFeeBreakdown.value = null
+    const message = error?.response?.data?.message || 'Unable to calculate shipping fee for your address.'
+    showAlert({ severity: 'warn', summary: 'Shipping Fee', detail: message })
+  } finally {
+    shippingFeeLoading.value = false
+  }
+}
+
+function toBackendPaymentMethod(method: 'cod' | 'gcash') {
   if (method === 'gcash') return 'e_wallet'
-  if (method === 'card') return 'card'
   return 'cod'
 }
 
@@ -554,6 +737,40 @@ async function onCityChange() {
   await fetchBarangays(newAddressSelection.cityId)
 }
 
+async function startEditAddress(address: AddressTemplate) {
+  isEditingAddress.value = true
+  editingAddressId.value = address.id
+  showAddAddressForm.value = true
+
+  newAddress.full_name = address.full_name
+  newAddress.contact_number = address.contact_number
+  newAddress.province = address.province
+  newAddress.city = address.city
+  newAddress.barangay = address.barangay
+  newAddress.address_line = address.address_line
+  newAddress.latitude = address.latitude ?? null
+  newAddress.longitude = address.longitude ?? null
+
+  const province = provinces.value.find((p: any) => String(p.name).toLowerCase() === String(address.province).toLowerCase())
+  newAddressSelection.provinceId = province?.province_id || ''
+  newAddressSelection.cityId = ''
+  newAddressSelection.barangayCode = ''
+  cities.value = []
+  barangays.value = []
+
+  if (newAddressSelection.provinceId) {
+    await fetchCities(newAddressSelection.provinceId)
+    const city = cities.value.find((c: any) => String(c.name).toLowerCase() === String(address.city).toLowerCase())
+    newAddressSelection.cityId = city?.city_id || ''
+  }
+
+  if (newAddressSelection.cityId) {
+    await fetchBarangays(newAddressSelection.cityId)
+    const barangay = barangays.value.find((b: any) => String(b.name).toLowerCase() === String(address.barangay).toLowerCase())
+    newAddressSelection.barangayCode = barangay?.code || ''
+  }
+}
+
 async function fetchCoordinates() {
   if (!navigator.geolocation) {
     coordsDialog.success = false
@@ -567,9 +784,12 @@ async function fetchCoordinates() {
     (position) => {
       customerLatitude.value = position.coords.latitude
       customerLongitude.value = position.coords.longitude
+      newAddress.latitude = position.coords.latitude
+      newAddress.longitude = position.coords.longitude
       coordsDialog.success = true
       coordsDialog.message = 'Coordinates fetched successfully and will be used for delivery.'
       coordsDialog.visible = true
+      estimateShippingFee()
       fetchingCoordinates.value = false
     },
     (error) => {
@@ -588,6 +808,15 @@ async function placeOrder() {
     return
   }
 
+  if (selectedPaymentMethod.value === 'cod' && codBlocked.value) {
+    showAlert({
+      severity: 'warn',
+      summary: 'COD Not Available',
+      detail: `COD is only allowed for totals up to PHP ${COD_LIMIT.toLocaleString()}. Please use GCash or Credit Card.`,
+    })
+    return
+  }
+
   placing.value = true
   try {
     const payload = {
@@ -601,8 +830,9 @@ async function placeOrder() {
       voucher_code: appliedVoucher.value?.code,
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
       item_ids: selectedItemIds.value.length ? selectedItemIds.value : undefined,
-      customer_latitude: customerLatitude.value ?? undefined,
-      customer_longitude: customerLongitude.value ?? undefined,
+      customer_latitude: customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined,
+      customer_longitude: customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined,
+      bulk_trip: bulkTripEnabled.value,
     }
 
     const response = await ecommerceService.checkout(payload)
@@ -733,6 +963,7 @@ onMounted(async () => {
     await fetchProvinces()
     await loadAddressTemplates()
     await loadCheckoutItems()
+    await estimateShippingFee()
   } finally {
     loading.value = false
   }

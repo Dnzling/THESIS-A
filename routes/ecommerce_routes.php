@@ -16,6 +16,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::post('/address-templates', [EcommerceController::class, 'storeAddressTemplate']);
     Route::put('/address-templates/{id}', [EcommerceController::class, 'updateAddressTemplate']);
     Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
+    Route::post('/shipping/estimate', [EcommerceController::class, 'estimateShippingFee']);
 
     Route::post('/checkout', [EcommerceController::class, 'checkout']);
     Route::post('/dss/recommendations', [EcommerceController::class, 'dssRecommendations']);
@@ -24,6 +25,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::post('/orders/{id}/cancel-requests', [EcommerceController::class, 'requestOrderCancellation']);
     Route::post('/order-items/{itemId}/return-requests', [EcommerceController::class, 'requestOrderReturn']);
     Route::post('/order-items/{itemId}/reviews', [EcommerceController::class, 'submitItemReview']);
+    Route::post('/violations/report', [EcommerceController::class, 'reportViolation']);
 
     Route::get('/chat/threads', [EcommerceController::class, 'chatThreads']);
     Route::get('/chat/stores/{storeId}/messages', [EcommerceController::class, 'chatMessages']);

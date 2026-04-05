@@ -5,11 +5,10 @@
         <div class="flex items-center justify-between gap-3">
           <div>
             <h1 class="text-2xl font-semibold text-gray-900">Delivery Zones</h1>
-            <p class="text-sm text-gray-500">Service areas and distance + weight pricing rules per branch.</p>
+            <p class="text-sm text-gray-500">Zones are view-only. Shipping fees use store delivery fee settings.</p>
           </div>
           <div class="flex gap-2">
             <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" @click="loadZones" />
-            <Button v-if="canManageZones" severity="info" icon="pi pi-plus" label="Add Zone" @click="openCreate" />
           </div>
         </div>
       </template>
@@ -33,6 +32,9 @@
 
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
+        <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Shipping fees are now computed from store delivery fee settings only. Delivery zones remain for reference and legacy data.
+        </div>
         <DataTable :value="zones" :loading="loading" dataKey="id" stripedRows>
           <Column field="name" header="Zone" />
           <Column header="Active">
@@ -49,7 +51,6 @@
             <template #body="{ data }">
               <div class="flex gap-2">
                 <Button text severity="info" icon="pi pi-eye" @click="openRates(data)" />
-                <Button v-if="canManageZones" text severity="info" icon="pi pi-pencil" @click="openEdit(data)" />
               </div>
             </template>
           </Column>
@@ -87,7 +88,7 @@
               <Checkbox v-model="zoneForm.is_active" :binary="true" />
               <div>
                 <p class="text-sm font-medium text-gray-700">Active</p>
-                <p class="text-xs text-gray-500">Inactive zones won’t be used in checkout or logistics estimates.</p>
+                <p class="text-xs text-gray-500">Zones are not used in checkout. This setting is for legacy records.</p>
               </div>
             </div>
           </div>
@@ -100,7 +101,7 @@
               <p v-else class="text-slate-400">Add service areas to preview.</p>
             </div>
             <div class="mt-4 rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-700">
-              Tip: After creating a zone, add distance/weight rates so the checkout can show delivery fees.
+              Shipping fees now use store delivery fee settings. Zones remain for reference only.
             </div>
           </div>
         </div>
@@ -117,7 +118,7 @@
           <p class="text-sm text-gray-500">Zone</p>
           <p class="text-lg font-semibold text-gray-900">{{ selectedZone?.name || '-' }}</p>
         </div>
-        <Button v-if="canManageZones" severity="info" icon="pi pi-plus" label="Add Rate" @click="openAddRate" />
+        <Tag value="View only" severity="secondary" />
       </div>
 
       <DataTable :value="zoneRates" :loading="ratesLoading" dataKey="id" stripedRows>
@@ -148,8 +149,7 @@
         <Column header="Actions">
           <template #body="{ data }">
             <div class="flex gap-2">
-              <Button v-if="canManageZones" text severity="info" icon="pi pi-pencil" @click="editRate(data)" />
-              <Button v-if="canManageZones" text severity="danger" icon="pi pi-trash" @click="deleteRate(data)" />
+              <Tag value="Read only" severity="secondary" />
             </div>
           </template>
         </Column>
@@ -223,13 +223,8 @@ import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
 import Toast from 'primevue/toast'
 import logisticsService from '@/services/logistics.service'
-import { useAuthStore } from '@/stores/auth'
 
 const toast = useToast()
-const authStore = useAuthStore()
-
-const canManageZones = authStore.hasPermission('logistics.zones.manage')
-
 const loading = ref(false)
 const savingZone = ref(false)
 const zones = ref<any[]>([])

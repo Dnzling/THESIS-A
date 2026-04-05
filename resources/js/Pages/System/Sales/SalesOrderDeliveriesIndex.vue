@@ -3,7 +3,7 @@
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 class="text-3xl font-bold text-gray-900">Sales Deliveries</h1>
-        <p class="text-gray-600">Track in-store deliveries and driver assignments</p>
+        <p class="text-gray-600">Track in-store and ecommerce deliveries with driver assignments</p>
       </div>
     </div>
 
@@ -17,14 +17,19 @@
 
         <DataTable :value="deliveries" :loading="loading" class="p-datatable-sm" stripedRows responsive-layout="scroll">
           <Column field="tracking_number" header="Tracking #" />
+          <Column field="channel" header="Channel">
+            <template #body="{ data }">
+              <Tag :value="data.channel || 'Online'" :severity="data.channel === 'Online' ? 'info' : 'success'" />
+            </template>
+          </Column>
           <Column header="Order">
             <template #body="{ data }">
-              {{ data.order?.order_number || '-' }}
+              {{ data.order_number || data.order?.order_number || '-' }}
             </template>
           </Column>
           <Column header="Customer">
             <template #body="{ data }">
-              {{ data.order?.customer_name || '-' }}
+              {{ data.customer_name || data.order?.customer_name || '-' }}
             </template>
           </Column>
           <Column header="Status">
@@ -44,7 +49,7 @@
           </Column>
           <Column header="Actions" style="width: 140px">
             <template #body="{ data }">
-              <Button icon="pi pi-eye" severity="info" text rounded size="small" @click="goToDetail(data.id)" />
+              <Button icon="pi pi-eye" severity="info" text rounded size="small" @click="goToDetail(data)" />
             </template>
           </Column>
         </DataTable>
@@ -96,8 +101,13 @@ const loadDeliveries = async () => {
   }
 }
 
-const goToDetail = (id: number) => {
-  router.push({ name: 'sales.deliveries.detail', params: { id } })
+const goToDetail = (delivery: any) => {
+  if (delivery?.source === 'ecommerce') {
+    router.push({ name: 'logistics.deliveries.detail', params: { source: 'ecommerce', orderId: delivery.order_id } })
+    return
+  }
+
+  router.push({ name: 'sales.deliveries.detail', params: { id: delivery.id } })
 }
 
 const formatDateTime = (value: string | null | undefined) => {

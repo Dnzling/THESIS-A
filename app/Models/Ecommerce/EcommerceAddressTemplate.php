@@ -18,11 +18,15 @@ class EcommerceAddressTemplate extends Model
         'city',
         'barangay',
         'address_line',
+        'latitude',
+        'longitude',
         'is_default',
     ];
 
     protected $casts = [
         'is_default' => 'boolean',
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
     ];
 
     public function user(): BelongsTo

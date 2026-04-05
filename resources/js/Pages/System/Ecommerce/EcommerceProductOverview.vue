@@ -140,7 +140,7 @@
         </button>
         <div class="mt-2 justify-between flex gap-3">
           <Button label="Report" icon="pi pi-exclamation-triangle" severity="danger" text size="small"
-            @click="goChatStore" />
+            @click="openReportDialog" />
           <Button label="Chat Store" icon="pi pi-comments" severity="help" text size="small" @click="goChatStore" />
         </div>
       </template>
@@ -227,6 +227,30 @@
     <div v-else class="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">
       Product not found.
     </div>
+
+    <Dialog v-model:visible="reportDialog" modal header="Report Store" class="w-full max-w-xl">
+      <div class="space-y-3">
+        <div>
+          <label class="text-sm text-slate-600">Reason</label>
+          <InputText v-model="reportForm.reason" fluid placeholder="e.g. Fake listing, Scam, Offensive content" />
+        </div>
+        <div>
+          <label class="text-sm text-slate-600">Details (optional)</label>
+          <Textarea v-model="reportForm.details" rows="4" fluid placeholder="Share what happened and any order/product context..." />
+        </div>
+        <div>
+          <label class="text-sm text-slate-600">Evidence images (optional, up to 5)</label>
+          <input type="file" accept="image/*" multiple class="mt-1 block w-full text-sm" @change="onEvidenceChange" />
+          <p v-if="reportForm.evidence_images.length" class="text-xs text-slate-500">
+            {{ reportForm.evidence_images.length }} file(s) selected
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <Button text severity="secondary" label="Cancel" @click="reportDialog = false" />
+        <Button :loading="reporting" severity="danger" label="Submit Report" @click="submitReport" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -241,6 +265,9 @@ import Tag from 'primevue/tag'
 import InputNumber from 'primevue/inputnumber'
 import Skeleton from 'primevue/skeleton'
 import Carousel from 'primevue/carousel'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
+import Textarea from 'primevue/textarea'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import { showAlert, confirmAlert } from '@/utils/swal'
 defineOptions({
@@ -260,6 +287,13 @@ const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_av
 const show3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
 const brokenImages = ref<string[]>([])
+const reportDialog = ref(false)
+const reporting = ref(false)
+const reportForm = ref({
+  reason: '',
+  details: '',
+  evidence_images: [] as File[],
+})
 const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
@@ -480,6 +514,50 @@ function goChatStore() {
       product_name: String(product.value?.product_name || ''),
     },
   })
+}
+
+function openReportDialog() {
+  reportForm.value = { reason: '', details: '', evidence_images: [] }
+  reportDialog.value = true
+}
+
+function onEvidenceChange(event: Event) {
+  const input = event.target as HTMLInputElement | null
+  const files = input?.files ? Array.from(input.files) : []
+  reportForm.value.evidence_images = files.slice(0, 5)
+}
+
+async function submitReport() {
+  const storeId = Number(storeInfo.value?.id || product.value?.store_id || 0)
+  if (!storeId) {
+    showAlert({ severity: 'warn', summary: 'Report', detail: 'Store information is missing.' })
+    return
+  }
+
+  if (!reportForm.value.reason.trim()) {
+    showAlert({ severity: 'warn', summary: 'Report', detail: 'Please provide a reason.' })
+    return
+  }
+
+  reporting.value = true
+  try {
+    await ecommerceService.reportViolation({
+      store_id: storeId,
+      reason: reportForm.value.reason.trim(),
+      details: reportForm.value.details.trim() || undefined,
+      evidence_images: reportForm.value.evidence_images,
+    })
+    reportDialog.value = false
+    showAlert({ severity: 'success', summary: 'Report submitted', detail: 'Thanks for letting us know.' })
+  } catch (error: any) {
+    showAlert({
+      severity: 'error',
+      summary: 'Report failed',
+      detail: error?.response?.data?.message || 'Unable to submit report.'
+    })
+  } finally {
+    reporting.value = false
+  }
 }
 
 onMounted(async () => {

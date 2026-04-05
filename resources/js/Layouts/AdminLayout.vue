@@ -265,6 +265,11 @@ const adminMenu = [
     to: "/admin/users",
     label: "Users",
     icon: "pi pi-users text-gray-500 w-5"
+  },
+  {
+    to: "/admin/violation-reports",
+    label: "Violation Reports",
+    icon: "pi pi-flag text-gray-500 w-5"
   }
 ]
 
