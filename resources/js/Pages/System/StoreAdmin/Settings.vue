@@ -9,7 +9,7 @@
       <Button v-if="!isActiveSubscription" label="Go to Trial Setup" severity="secondary" outlined @click="goToOnboarding" />
     </div>
 
-    <div class="grid gap-6 lg:grid-cols-3">
+    <div :class="isActiveSubscription ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6 lg:grid-cols-3'">
       <Card v-if="!isActiveSubscription" class="lg:col-span-2">
         <template #title>Trial Modules</template>
         <template #content>
@@ -42,7 +42,7 @@
       </Card>
 
       <Card>
-        <template #title>Trial Status</template>
+        <template #title>Plan Status</template>
         <template #content>
           <div class="space-y-3 text-sm text-slate-700">
             <div class="flex items-center justify-between">
@@ -66,6 +66,31 @@
             Upgrade your plan anytime to unlock all modules and remove trial limits.
           </div>
           <Button class="mt-4 w-full" label="Upgrade Plan (GCash)" severity="info" :loading="upgrading" @click="goToUpgrade" />
+        </template>
+      </Card>
+
+      <Card v-if="isActiveSubscription">
+        <template #title>Store Verification</template>
+        <template #content>
+          <div class="space-y-3 text-sm text-slate-700">
+            <div class="flex items-center justify-between">
+              <span>Status</span>
+              <Tag :value="verificationStatusLabel" :severity="verificationSeverity" />
+            </div>
+            <div v-if="verification.submitted_at" class="flex items-center justify-between">
+              <span>Submitted</span>
+              <span class="font-semibold">{{ verification.submitted_at }}</span>
+            </div>
+            <div v-if="verification.reviewed_at" class="flex items-center justify-between">
+              <span>Reviewed</span>
+              <span class="font-semibold">{{ verification.reviewed_at }}</span>
+            </div>
+            <div v-if="verification.rejection_reason" class="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700">
+              <div class="font-semibold mb-1">Feedback</div>
+              <div>{{ verification.rejection_reason }}</div>
+            </div>
+          </div>
+          <Button class="mt-4 w-full" label="Open Verification Page" severity="secondary" outlined @click="goToVerification" />
         </template>
       </Card>
     </div>
@@ -111,7 +136,7 @@
       </template>
     </Dialog>
 
-    <Card>
+    <Card v-if="!isActiveSubscription">
       <template #title>Store Verification</template>
       <template #content>
         <div class="space-y-3 text-sm text-slate-700">
@@ -141,21 +166,76 @@
       <template #content>
         <div class="grid gap-4 md:grid-cols-2 text-sm text-slate-700">
           <div>
-            <div class="text-xs uppercase text-slate-400">Store Name</div>
-            <div class="font-semibold">{{ store.name || 'Not set' }}</div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Store Name</label>
+            <InputText v-model="store.name" class="w-full" placeholder="Store name" />
           </div>
           <div>
-            <div class="text-xs uppercase text-slate-400">Contact</div>
-            <div class="font-semibold">{{ store.contact_person || 'Not set' }}</div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Contact Person</label>
+            <InputText v-model="store.contact_person" class="w-full" placeholder="Contact person" />
           </div>
           <div>
-            <div class="text-xs uppercase text-slate-400">Email</div>
-            <div class="font-semibold">{{ store.email || 'Not set' }}</div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Email</label>
+            <InputText v-model="store.email" class="w-full" placeholder="Store email" />
           </div>
           <div>
-            <div class="text-xs uppercase text-slate-400">Phone</div>
-            <div class="font-semibold">{{ store.phone || 'Not set' }}</div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Phone</label>
+            <InputText v-model="store.phone" class="w-full" placeholder="Store phone" />
           </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Address</label>
+            <InputText v-model="store.address" class="w-full" placeholder="Store address" />
+          </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">City</label>
+            <InputText v-model="store.city" class="w-full" placeholder="City" />
+          </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Province</label>
+            <InputText v-model="store.province" class="w-full" placeholder="Province" />
+          </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Store Type</label>
+            <InputText v-model="store.type" class="w-full" placeholder="Retail, Warehouse, etc." />
+          </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Store Code</label>
+            <InputText v-model="store.store_code" class="w-full" placeholder="Store code" />
+          </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 block mb-1">Status</label>
+            <InputText v-model="store.status" class="w-full" placeholder="active / pending" />
+          </div>
+        </div>
+        <div class="mt-4 flex items-center justify-end gap-2">
+          <Button
+            label="Save Store Profile"
+            icon="pi pi-save"
+            :loading="savingProfile"
+            @click="saveStoreProfile"
+          />
+        </div>
+
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="text-sm font-semibold text-slate-900">Branches</div>
+              <div class="text-xs text-slate-500">Branches linked to this store.</div>
+            </div>
+            <Tag v-if="branches.length" :value="`${branches.length} total`" severity="info" />
+          </div>
+          <DataTable :value="branches" responsiveLayout="scroll" class="text-sm" v-if="branches.length">
+            <Column field="name" header="Branch"></Column>
+            <Column field="city" header="City"></Column>
+            <Column field="province" header="Province"></Column>
+            <Column field="status" header="Status"></Column>
+            <Column field="branch_type" header="Type"></Column>
+            <Column field="is_main_branch" header="Main">
+              <template #body="slotProps">
+                <Tag :value="slotProps.data.is_main_branch ? 'Yes' : 'No'" :severity="slotProps.data.is_main_branch ? 'success' : 'secondary'" />
+              </template>
+            </Column>
+          </DataTable>
+          <div v-else class="text-sm text-slate-500">No branches available yet.</div>
         </div>
       </template>
     </Card>
@@ -222,41 +302,7 @@
       </template>
     </Card>
 
-    <Card>
-      <template #title>Small Store Access Map</template>
-      <template #content>
-        <p class="text-sm text-slate-600 mb-4">
-          This is the frontend permission list for the Small tier (1-5 employees). Use it as the baseline when
-          checking feature visibility on the UI.
-        </p>
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <div
-            v-for="module in smallModules"
-            :key="module.key"
-            class="rounded-lg border border-slate-200 p-4"
-          >
-            <div class="text-sm font-semibold text-slate-900">{{ module.label }}</div>
-            <div class="mt-2 space-y-2">
-              <div
-                v-for="feature in module.features"
-                :key="feature.key"
-                class="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700"
-              >
-                <div class="font-medium">{{ feature.label }}</div>
-                <div class="mt-1 text-[11px] text-slate-500">
-                  {{ feature.permissions.join(', ') }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-          Total small-tier permissions: <span class="font-semibold">{{ smallPermissionList.length }}</span>
-        </div>
-      </template>
-    </Card>
   </div>
 </template>
 
@@ -274,6 +320,8 @@ import InputMask from 'primevue/inputmask'
 import InputSwitch from 'primevue/inputswitch'
 import Slider from 'primevue/slider'
 import Tag from 'primevue/tag'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { usePermissions } from '@/composables/usePermissions'
@@ -286,6 +334,7 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
 const saving = ref(false)
 const savingAttendance = ref(false)
+const savingProfile = ref(false)
 const upgrading = ref(false)
 const planDialogVisible = ref(false)
 const gcashDialogVisible = ref(false)
@@ -330,6 +379,12 @@ const store = reactive({
   contact_person: '',
   email: '',
   phone: '',
+  address: '',
+  city: '',
+  province: '',
+  type: '',
+  store_code: '',
+  status: '',
 })
 
 const attendance = reactive({
@@ -359,6 +414,8 @@ const verification = reactive({
   rejection_reason: '' as string | null,
   documents_submitted: false,
 })
+
+const branches = ref<any[]>([])
 
 const onboarding = reactive({
   plan: 'simple',
@@ -432,7 +489,13 @@ const subscriptionSeverity = computed(() => {
 const subscriptionEndsAtLabel = computed(() => subscription.ends_at || 'Not set')
 const daysRemainingLabel = computed(() => {
   if (subscription.days_remaining === null) return '—'
-  return `${subscription.days_remaining} days`
+  const rawDays = Number(subscription.days_remaining)
+  if (Number.isNaN(rawDays)) return '—'
+  const normalized = Math.max(0, rawDays)
+  const formatted = normalized < 10
+    ? normalized.toFixed(1)
+    : Math.round(normalized).toString()
+  return `${formatted} days`
 })
 
 const verificationStatusLabel = computed(() => {
@@ -460,6 +523,12 @@ const fetchSettings = async () => {
     store.contact_person = data.store?.contact_person || ''
     store.email = data.store?.email || ''
     store.phone = data.store?.phone || ''
+    store.address = data.store?.address || ''
+    store.city = data.store?.city || ''
+    store.province = data.store?.province || ''
+    store.type = data.store?.type || ''
+    store.store_code = data.store?.store_code || ''
+    store.status = data.store?.status || ''
 
     subscription.tier = data.subscription?.tier || 'free'
     subscription.status = data.subscription?.status || 'trial'
@@ -471,6 +540,8 @@ const fetchSettings = async () => {
     verification.reviewed_at = data.verification?.reviewed_at || null
     verification.rejection_reason = data.verification?.rejection_reason || null
     verification.documents_submitted = Boolean(data.verification?.documents_submitted)
+
+    branches.value = Array.isArray(data.branches) ? data.branches : []
 
     onboarding.plan = data.onboarding?.plan || 'simple'
     onboarding.modules = data.onboarding?.modules || []
@@ -533,6 +604,47 @@ const saveAttendance = async () => {
     console.error('Failed to update attendance location', error)
   } finally {
     savingAttendance.value = false
+  }
+}
+
+const saveStoreProfile = async () => {
+  savingProfile.value = true
+  try {
+    const response = await axiosClient.put('/api/store/settings/profile', {
+      name: store.name || null,
+      contact_person: store.contact_person || null,
+      email: store.email || null,
+      phone: store.phone || null,
+      address: store.address || null,
+      city: store.city || null,
+      province: store.province || null,
+      type: store.type || null,
+      store_code: store.store_code || null,
+      status: store.status || null,
+    })
+    const data = response?.data?.data?.store
+    if (data) {
+      store.name = data.name || store.name
+      store.contact_person = data.contact_person || store.contact_person
+      store.email = data.email || store.email
+      store.phone = data.phone || store.phone
+      store.address = data.address || store.address
+      store.city = data.city || store.city
+      store.province = data.province || store.province
+      store.type = data.type || store.type
+      store.store_code = data.store_code || store.store_code
+      store.status = data.status || store.status
+    }
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Store profile updated.', life: 3000 })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Update failed',
+      detail: error?.response?.data?.message || 'Failed to update store profile.',
+      life: 3000,
+    })
+  } finally {
+    savingProfile.value = false
   }
 }
 
@@ -709,15 +821,11 @@ const submitUpgradeCheckout = async () => {
 }
 
 const startUpgradeCheckout = async (gcashName: string, gcashPhone: string) => {
-  if (!subscription.store_id) {
-    toast.add({ severity: 'error', summary: 'Upgrade failed', detail: 'Store not found for this account.', life: 3000 })
-    return
-  }
-
   upgrading.value = true
   try {
+    const effectiveStoreId = subscription.store_id ?? null
     const metadata = {
-      store_id: subscription.store_id,
+      store_id: effectiveStoreId,
       months: selectedPlan.months,
       subscription_tier: selectedPlan.tier,
       plan_key: selectedPlan.key,
@@ -731,9 +839,9 @@ const startUpgradeCheckout = async (gcashName: string, gcashPhone: string) => {
       statement_descriptor: 'Store Upgrade',
       payment_method_allowed: ['gcash'],
       metadata,
-      store_id: subscription.store_id,
+      store_id: effectiveStoreId,
       payable_type: 'subscription_upgrade',
-      payable_id: subscription.store_id,
+      payable_id: effectiveStoreId,
     })
 
     const paymentIntentId = intentResponse?.data?.data?.id

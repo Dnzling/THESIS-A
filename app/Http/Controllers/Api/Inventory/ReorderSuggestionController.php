@@ -12,6 +12,7 @@ use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Core\SystemNotification;
 use Exception;
 
 class ReorderSuggestionController extends Controller
@@ -438,6 +439,10 @@ class ReorderSuggestionController extends Controller
             $branchId = $this->resolveBranchId($request);
             $result = $this->suggestionService->generateSuggestions($branchId);
 
+            if ((int) ($result['total_generated'] ?? 0) > 0) {
+                $this->createGroupedSuggestionNotifications((int) ($result['total_generated'] ?? 0));
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $result,
@@ -450,6 +455,87 @@ class ReorderSuggestionController extends Controller
                 'message' => 'Failed to generate reorder suggestions.',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    private function createGroupedSuggestionNotifications(int $suggestionCount): void
+    {
+        $context = $this->getUserContext();
+        $storeId = (int) ($context['store_id'] ?? 0);
+        if ($storeId <= 0) {
+            return;
+        }
+
+        $permissionName = 'inventory.reorder_suggestions.view';
+        $permissionId = DB::table('permissions')
+            ->where('name', $permissionName)
+            ->where('is_active', true)
+            ->value('id');
+
+        if (empty($permissionId)) {
+            return;
+        }
+
+        $roleBasedUserIds = DB::table('users')
+            ->join('role_permissions', 'users.role_id', '=', 'role_permissions.role_id')
+            ->where('users.store_id', $storeId)
+            ->where('users.is_active', true)
+            ->where('role_permissions.permission_id', (int) $permissionId)
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $grantedUserIds = DB::table('user_permissions')
+            ->join('users', 'users.id', '=', 'user_permissions.user_id')
+            ->where('users.store_id', $storeId)
+            ->where('users.is_active', true)
+            ->where('user_permissions.type', 'grant')
+            ->where('user_permissions.permission_id', (int) $permissionId)
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $revokedUserIds = DB::table('user_permissions')
+            ->join('users', 'users.id', '=', 'user_permissions.user_id')
+            ->where('users.store_id', $storeId)
+            ->where('users.is_active', true)
+            ->where('user_permissions.type', 'revoke')
+            ->where('user_permissions.permission_id', (int) $permissionId)
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $recipientIds = collect(array_merge($roleBasedUserIds, $grantedUserIds))
+            ->unique()
+            ->reject(fn ($id) => in_array((int) $id, $revokedUserIds, true))
+            ->values()
+            ->all();
+
+        if (empty($recipientIds)) {
+            return;
+        }
+
+        $title = "YOU HAVE {$suggestionCount} REORDER SUGGESTIONS";
+        $message = "{$suggestionCount} new reorder suggestion(s) are ready for review.";
+
+        foreach ($recipientIds as $userId) {
+            SystemNotification::create([
+                'store_id' => $storeId,
+                'branch_id' => null,
+                'user_id' => (int) $userId,
+                'module' => 'inventory',
+                'entity_type' => 'reorder_suggestion',
+                'action' => 'manual_generated_grouped',
+                'title' => $title,
+                'message' => $message,
+                'data' => [
+                    'suggestion_count' => $suggestionCount,
+                    'trigger' => 'manual',
+                ],
+                'link' => '/inventory/reorder-suggestions',
+                'severity' => 'warning',
+                'is_read' => false,
+            ]);
         }
     }
 

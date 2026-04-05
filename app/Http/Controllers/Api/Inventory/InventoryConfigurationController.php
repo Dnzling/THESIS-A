@@ -32,6 +32,8 @@ class InventoryConfigurationController extends Controller
                         'enable_transfer_approvals' => true,
                         'enable_finance_approval' => true,
                         'enable_auto_alerts' => true,
+                        'enable_auto_reorder_suggestions' => true,
+                        'auto_reorder_suggestions_time' => '08:00',
                     ]
                 );
 

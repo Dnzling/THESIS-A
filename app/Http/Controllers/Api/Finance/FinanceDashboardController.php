@@ -8,6 +8,7 @@ use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Supplier\SupplierPayment;
 use App\Models\Hr\Payroll;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -51,9 +52,39 @@ class FinanceDashboardController extends Controller
 
         $payrollPending = Schema::hasTable('payrolls')
             ? Payroll::byUserStore()
-                ->whereIn('status', ['pending', 'submitted', 'approved'])
+                ->whereIn('status', ['pending', 'submitted', 'processing'])
                 ->sum('net_salary')
             : 0;
+
+        $hrPayrollForFinanceApprovalCount = Schema::hasTable('payrolls')
+            ? Payroll::byUserStore()
+                ->whereIn('status', ['pending', 'submitted', 'processing'])
+                ->count()
+            : 0;
+
+        $merchPriceForFinanceApprovalCount = Schema::hasTable('products')
+            ? Product::query()
+                ->where('store_id', $storeId)
+                ->where('price_approval_status', 'pending')
+                ->count()
+            : 0;
+
+        $approvalsNeeded = [
+            [
+                'source_module' => 'HR',
+                'workflow' => 'Generate Payroll',
+                'target_approval' => 'Finance Approval',
+                'pending_count' => $hrPayrollForFinanceApprovalCount,
+                'route' => '/system/finance/payroll',
+            ],
+            [
+                'source_module' => 'Merchandising',
+                'workflow' => 'Price',
+                'target_approval' => 'Finance Approval',
+                'pending_count' => $merchPriceForFinanceApprovalCount,
+                'route' => '/system/merchandising/products',
+            ],
+        ];
 
         return response()->json([
             'success' => true,
@@ -63,6 +94,7 @@ class FinanceDashboardController extends Controller
                 'payments_completed' => $paymentsCompleted,
                 'expenses_pending' => $expensesPending,
                 'payroll_pending' => $payrollPending,
+                'approvals_needed' => $approvalsNeeded,
             ],
         ]);
     }

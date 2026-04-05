@@ -8,9 +8,9 @@ class PaymongoService {
     statement_descriptor?: string
     payment_method_allowed: string[]
     metadata?: Record<string, unknown>
-    store_id: number
+    store_id?: number | null
     payable_type: string
-    payable_id: number
+    payable_id?: number | null
   }) {
     const response = await axiosClient.post('/api/payments/paymongo/create', payload)
     return response.data

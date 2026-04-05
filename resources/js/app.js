@@ -135,6 +135,7 @@ createInertiaApp({
             Timeline,
             TabView,
             MeterGroup,
+            Chart: PrimeChart,
             PrimeChart,
             Menu,
             InputMask,

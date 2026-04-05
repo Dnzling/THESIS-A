@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
+use App\Models\Core\User;
+use App\Models\Hr\Employee;
+use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use App\Models\Store\Branch;
 use Carbon\Carbon;
@@ -13,7 +16,7 @@ class StoreSettingsController extends Controller
     public function show(Request $request)
     {
         $user = $request->user();
-        $store = $user?->store;
+        $store = $this->resolveStoreForUser($user);
         $profile = $user?->trialOnboardingProfile;
 
         $endsAt = $store?->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
@@ -34,8 +37,31 @@ class StoreSettingsController extends Controller
                     'name' => $store?->name,
                     'email' => $store?->email,
                     'phone' => $store?->phone,
+                    'address' => $store?->address,
+                    'city' => $store?->city,
+                    'province' => $store?->province,
+                    'type' => $store?->type,
+                    'store_code' => $store?->store_code,
+                    'status' => $store?->status,
                     'contact_person' => is_array($store?->settings) ? ($store->settings['contact_person'] ?? null) : null,
                 ],
+                'branches' => $store?->branches()
+                    ->orderByDesc('is_main_branch')
+                    ->orderBy('name')
+                    ->get([
+                        'id',
+                        'name',
+                        'address',
+                        'city',
+                        'province',
+                        'barangay',
+                        'contact_number',
+                        'email',
+                        'status',
+                        'branch_code',
+                        'is_main_branch',
+                        'branch_type',
+                    ]) ?? [],
                 'attendance' => $this->resolveAttendanceSettings($store?->id),
                 'subscription' => [
                     'tier' => $store?->subscription_tier ?? 'free',
@@ -49,6 +75,60 @@ class StoreSettingsController extends Controller
                     'modules' => $profile?->modules ?? [],
                     'completed_at' => $profile?->completed_at?->toDateTimeString(),
                     'tier' => $this->resolveTier($profile?->employee_range ?? ''),
+                ],
+            ],
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|nullable|email|max:255',
+            'phone' => 'sometimes|nullable|string|max:50',
+            'address' => 'sometimes|nullable|string|max:255',
+            'city' => 'sometimes|nullable|string|max:255',
+            'province' => 'sometimes|nullable|string|max:255',
+            'type' => 'sometimes|nullable|string|max:50',
+            'store_code' => 'sometimes|nullable|string|max:50',
+            'contact_person' => 'sometimes|nullable|string|max:255',
+        ]);
+
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+
+        if (!$store) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Store not found for this user.',
+            ], 404);
+        }
+
+        $store->fill(collect($validated)->except('contact_person')->toArray());
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        if (array_key_exists('contact_person', $validated)) {
+            $settings['contact_person'] = $validated['contact_person'];
+        }
+        $store->settings = $settings;
+        $store->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Store profile updated successfully.',
+            'data' => [
+                'store' => [
+                    'id' => $store->id,
+                    'name' => $store->name,
+                    'email' => $store->email,
+                    'phone' => $store->phone,
+                    'address' => $store->address,
+                    'city' => $store->city,
+                    'province' => $store->province,
+                    'type' => $store->type,
+                    'store_code' => $store->store_code,
+                    'status' => $store->status,
+                    'contact_person' => $settings['contact_person'] ?? null,
                 ],
             ],
         ]);
@@ -156,7 +236,7 @@ class StoreSettingsController extends Controller
         ]);
 
         $user = $request->user();
-        $store = $user?->store;
+        $store = $this->resolveStoreForUser($user);
 
         if (!$store) {
             return response()->json([
@@ -194,7 +274,7 @@ class StoreSettingsController extends Controller
     public function showHrSettings(Request $request)
     {
         $user = $request->user();
-        $store = $user?->store;
+        $store = $this->resolveStoreForUser($user);
 
         if (!$store) {
             return response()->json([
@@ -236,7 +316,7 @@ class StoreSettingsController extends Controller
         ]);
 
         $user = $request->user();
-        $store = $user?->store;
+        $store = $this->resolveStoreForUser($user);
 
         if (!$store) {
             return response()->json([
@@ -281,7 +361,7 @@ class StoreSettingsController extends Controller
         ]);
 
         $user = $request->user();
-        $store = $user?->store;
+        $store = $this->resolveStoreForUser($user);
 
         if (!$store) {
             return response()->json([
@@ -334,5 +414,40 @@ class StoreSettingsController extends Controller
             'message' => 'Attendance location updated.',
             'data' => $this->resolveAttendanceSettings($store->id),
         ]);
+    }
+
+    private function resolveStoreForUser(?User $user): ?Store
+    {
+        if (!$user) {
+            return null;
+        }
+
+        if ($user->relationLoaded('store') && $user->store) {
+            return $user->store;
+        }
+
+        if (!empty($user->store_id)) {
+            return Store::query()->find((int) $user->store_id);
+        }
+
+        $employee = Employee::query()
+            ->where('user_id', $user->id)
+            ->first(['store_id', 'branch_id']);
+
+        if (!empty($employee?->store_id)) {
+            return Store::query()->find((int) $employee->store_id);
+        }
+
+        if (!empty($employee?->branch_id)) {
+            $branchStoreId = Branch::query()
+                ->where('id', (int) $employee->branch_id)
+                ->value('store_id');
+
+            if (!empty($branchStoreId)) {
+                return Store::query()->find((int) $branchStoreId);
+            }
+        }
+
+        return null;
     }
 }

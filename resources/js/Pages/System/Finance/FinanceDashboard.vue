@@ -145,6 +145,39 @@
         </template>
       </Card>
     </div>
+
+    <Card class="rounded-2xl border border-slate-200 shadow-sm">
+      <template #title>
+        <span class="text-base font-semibold text-slate-800">Needed For Approval</span>
+      </template>
+      <template #content>
+        <div class="space-y-3">
+          <div
+            v-for="item in approvalsNeeded"
+            :key="`${item.source_module}-${item.workflow}`"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+          >
+            <div class="text-sm text-slate-700">
+              <span class="font-semibold">{{ item.source_module }}</span>
+              <span class="mx-2 text-slate-400">--></span>
+              <span>{{ item.workflow }}</span>
+              <span class="mx-2 text-slate-400">--></span>
+              <span class="font-medium">{{ item.target_approval }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <Tag :value="`${item.pending_count} pending`" :severity="item.pending_count > 0 ? 'warning' : 'success'" />
+              <Button
+                v-if="item.pending_count > 0"
+                size="small"
+                text
+                label="Open"
+                @click="openApprovalRoute(item.route)"
+              />
+            </div>
+          </div>
+        </div>
+      </template>
+    </Card>
   </div>
 </template>
 
@@ -168,7 +201,16 @@ const stats = ref({
   payments_completed: 0,
   expenses_pending: 0,
   payroll_pending: 0,
+  approvals_needed: [] as Array<{
+    source_module: string
+    workflow: string
+    target_approval: string
+    pending_count: number
+    route: string
+  }>,
 })
+
+const approvalsNeeded = computed(() => stats.value.approvals_needed || [])
 
 const invoices = ref<any[]>([])
 const expenses = ref<any[]>([])
@@ -349,6 +391,10 @@ const barOptions = {
 }
 
 const goTo = (name: string) => router.push({ name })
+const openApprovalRoute = (path: string) => {
+  if (!path) return
+  window.location.href = path
+}
 
 const settle = async <T>(promise: Promise<T>) => {
   try {

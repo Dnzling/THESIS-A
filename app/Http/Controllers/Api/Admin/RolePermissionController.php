@@ -49,7 +49,10 @@ class RolePermissionController extends Controller
     {
         $roles = DB::table('roles')
             ->select('roles.*')
-            ->whereNull('roles.store_id')
+            ->where(function ($query) {
+                $query->whereNull('roles.store_id')
+                    ->orWhere('roles.name', 'store_admin');
+            })
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(
                 SELECT COUNT(*)
@@ -71,8 +74,10 @@ class RolePermissionController extends Controller
     public function deleteRole($id)
     {
         $role = Role::query()->findOrFail($id);
+        $authUser = Auth::user();
+        $isSuperAdmin = (bool) $authUser?->role && (string) $authUser->role->name === 'super_admin';
 
-        $protectedRoles = ['super_admin'];
+        $protectedRoles = ['super_admin', 'unassigned_role'];
         if (in_array((string) $role->name, $protectedRoles, true)) {
             return response()->json([
                 'message' => 'This role is protected and cannot be deleted.',
@@ -80,13 +85,42 @@ class RolePermissionController extends Controller
         }
 
         $usersCount = DB::table('users')->where('role_id', $role->id)->count();
-        if ($usersCount > 0) {
+        $employeesCount = DB::table('employees')->where('role_id', $role->id)->count();
+
+        if (($usersCount > 0 || $employeesCount > 0) && !$isSuperAdmin) {
             return response()->json([
                 'message' => 'Cannot delete role with assigned users. Reassign users first.',
             ], 422);
         }
 
-        DB::transaction(function () use ($role) {
+        DB::transaction(function () use ($role, $usersCount, $employeesCount, $isSuperAdmin) {
+            if ($isSuperAdmin && ($usersCount > 0 || $employeesCount > 0)) {
+                $fallbackRole = Role::query()->firstOrCreate(
+                    ['name' => 'unassigned_role'],
+                    [
+                        'store_id' => null,
+                        'display_name' => 'Unassigned Role',
+                        'code' => 'unassigned_role',
+                        'description' => 'Fallback role used when deleting assigned roles.',
+                        'is_active' => true,
+                    ]
+                );
+
+                DB::table('users')
+                    ->where('role_id', $role->id)
+                    ->update([
+                        'role_id' => $fallbackRole->id,
+                        'updated_at' => now(),
+                    ]);
+
+                DB::table('employees')
+                    ->where('role_id', $role->id)
+                    ->update([
+                        'role_id' => $fallbackRole->id,
+                        'updated_at' => now(),
+                    ]);
+            }
+
             DB::table('role_permissions')->where('role_id', $role->id)->delete();
             $role->delete();
         });

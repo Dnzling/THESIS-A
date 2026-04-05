@@ -288,6 +288,24 @@
               </div>
 
               <div class="flex items-center gap-2">
+                <Checkbox v-model="config.enable_auto_reorder_suggestions" :binary="true" />
+                <label class="text-sm font-medium text-gray-700">Enable Auto Reorder Suggestions</label>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Auto Reorder Trigger Time
+                </label>
+                <input
+                  v-model="config.auto_reorder_suggestions_time"
+                  type="time"
+                  class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  :disabled="!config.enable_auto_reorder_suggestions"
+                />
+                <p class="text-xs text-gray-500 mt-1">Runs daily at the configured time (default 08:00).</p>
+              </div>
+
+              <div class="flex items-center gap-2">
                 <Checkbox v-model="config.enable_email_notifications" :binary="true" />
                 <label class="text-sm font-medium text-gray-700">Enable Email Notifications</label>
               </div>
@@ -437,6 +455,8 @@ const config = reactive({
   notify_transfer_requests: true,
   notify_transfer_approval: true,
   notify_stock_received: true,
+  enable_auto_reorder_suggestions: true,
+  auto_reorder_suggestions_time: '08:00',
   enable_email_notifications: false,
   notification_recipients: '',
 

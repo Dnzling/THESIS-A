@@ -8,6 +8,8 @@ use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
 use App\Models\Sales\SalesPayment;
 use App\Models\Store\Store;
+use App\Models\Hr\Employee;
+use App\Models\Store\Branch;
 use App\Services\Finance\CashflowService;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
@@ -35,10 +37,31 @@ class PaymongoController extends Controller
             'statement_descriptor' => 'nullable|string',
             'payment_method_allowed' => 'required|array',
             'metadata' => 'nullable|array',
-            'store_id' => 'required|integer|exists:stores,id',
+            'store_id' => 'nullable|integer|exists:stores,id',
             'payable_type' => 'required|string',
-            'payable_id' => 'required|integer',
+            'payable_id' => 'nullable|integer',
         ]);
+
+        $resolvedStoreId = (int) ($data['store_id'] ?? 0);
+        if ($resolvedStoreId <= 0) {
+            $resolvedStoreId = $this->resolveStoreIdFromAuthUser();
+        }
+
+        if ($resolvedStoreId <= 0) {
+            return response()->json([
+                'message' => 'Store not found for this account.',
+            ], 422);
+        }
+
+        if (($data['payable_type'] ?? '') === 'subscription_upgrade' && empty($data['payable_id'])) {
+            $data['payable_id'] = $resolvedStoreId;
+        }
+
+        if (empty($data['payable_id'])) {
+            return response()->json([
+                'message' => 'Payable id is required.',
+            ], 422);
+        }
 
         $attributes = [
             'amount' => $data['amount'],
@@ -77,7 +100,7 @@ class PaymongoController extends Controller
 
         $attrs = data_get($intentPayload, 'data.attributes', []);
         $intent = $this->service->logIntent([
-            'store_id' => $data['store_id'],
+            'store_id' => $resolvedStoreId,
             'payment_intent_id' => $intentId,
             'amount' => data_get($attrs, 'amount'),
             'currency' => data_get($attrs, 'currency'),
@@ -432,5 +455,35 @@ class PaymongoController extends Controller
         }
 
         return $normalized;
+    }
+
+    private function resolveStoreIdFromAuthUser(): int
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return 0;
+        }
+
+        if (!empty($user->store_id)) {
+            return (int) $user->store_id;
+        }
+
+        $employee = Employee::query()
+            ->where('user_id', $user->id)
+            ->first(['store_id', 'branch_id']);
+
+        if (!empty($employee?->store_id)) {
+            return (int) $employee->store_id;
+        }
+
+        if (!empty($employee?->branch_id)) {
+            $branchStoreId = Branch::query()
+                ->where('id', (int) $employee->branch_id)
+                ->value('store_id');
+
+            return (int) ($branchStoreId ?? 0);
+        }
+
+        return 0;
     }
 }
