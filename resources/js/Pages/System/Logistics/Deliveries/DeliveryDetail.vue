@@ -145,7 +145,19 @@
         </div>
         <div>
           <label class="mb-1 block text-sm text-slate-600">Signature</label>
-          <input type="file" accept="image/*" class="block w-full text-sm" @change="onSignatureChange" />
+          <div class="rounded-2xl border border-slate-200 bg-white p-2">
+            <canvas
+              ref="signatureCanvas"
+              class="h-40 w-full touch-none rounded-xl border border-slate-200"
+              @pointerdown="startSignature"
+              @pointermove="drawSignature"
+              @pointerup="endSignature"
+              @pointerleave="endSignature"
+            ></canvas>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <Button label="Clear" severity="secondary" outlined size="small" @click="clearSignature" />
+            </div>
+          </div>
         </div>
         <Textarea v-model="deliveredNotes" rows="3" fluid placeholder="Proof notes (optional)" />
       </div>
@@ -156,7 +168,7 @@
           label="Submit and Deliver"
           severity="success"
           :loading="delivering"
-          :disabled="!photoFile || !signatureFile"
+          :disabled="!photoFile"
           @click="markDelivered"
         />
       </template>
@@ -198,7 +210,9 @@ const delivery = ref<any>(null)
 const logs = ref<any[]>([])
 
 const photoFile = ref<File | null>(null)
-const signatureFile = ref<File | null>(null)
+const signatureCanvas = ref<HTMLCanvasElement | null>(null)
+const signatureDrawing = ref(false)
+const signatureHasInk = ref(false)
 const deliveredNotes = ref('')
 
 const statusForm = reactive({
@@ -211,7 +225,6 @@ const statusOptions = [
   { label: 'Packed', value: 'packed' },
   { label: 'In Transit', value: 'in_transit' },
   { label: 'Out For Delivery', value: 'out_for_delivery' },
-  { label: 'Delivered', value: 'delivered' },
   { label: 'Failed Delivery', value: 'failed_delivery' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
@@ -267,13 +280,17 @@ const saveStatus = async () => {
 }
 
 const markDelivered = async () => {
-  if (!photoFile.value || !signatureFile.value) return
+  if (!photoFile.value) return
 
   delivering.value = true
   try {
     const formData = new FormData()
     formData.append('photo', photoFile.value)
-    formData.append('signature', signatureFile.value)
+    const signatureBlob = await signatureToBlob()
+    if (!signatureBlob) {
+      throw new Error('Missing signature')
+    }
+    formData.append('signature', signatureBlob, 'signature.png')
     formData.append('notes', deliveredNotes.value)
 
     await logisticsService.markUnifiedDelivered(source.value as 'ecommerce' | 'sales', orderId.value, formData)
@@ -281,7 +298,7 @@ const markDelivered = async () => {
     toast.add({ severity: 'success', summary: 'Delivered', detail: 'Proof uploaded and marked as delivered.', life: 2500 })
 
     photoFile.value = null
-    signatureFile.value = null
+    clearSignature()
     deliveredNotes.value = ''
     deliveredDialogVisible.value = false
 
@@ -298,9 +315,75 @@ const onPhotoChange = (event: Event) => {
   photoFile.value = target.files?.[0] || null
 }
 
-const onSignatureChange = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  signatureFile.value = target.files?.[0] || null
+const setupSignatureCanvas = () => {
+  if (!signatureCanvas.value) return
+  const canvas = signatureCanvas.value
+  const rect = canvas.getBoundingClientRect()
+  const scale = window.devicePixelRatio || 1
+  canvas.width = Math.max(1, Math.floor(rect.width * scale))
+  canvas.height = Math.max(1, Math.floor(rect.height * scale))
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.scale(scale, scale)
+  ctx.lineWidth = 2
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = '#0f172a'
+}
+
+const getSignaturePoint = (event: PointerEvent) => {
+  const canvas = signatureCanvas.value
+  if (!canvas) return null
+  const rect = canvas.getBoundingClientRect()
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  }
+}
+
+const startSignature = (event: PointerEvent) => {
+  if (!signatureCanvas.value) return
+  signatureDrawing.value = true
+  signatureCanvas.value.setPointerCapture(event.pointerId)
+  const ctx = signatureCanvas.value.getContext('2d')
+  const point = getSignaturePoint(event)
+  if (!ctx || !point) return
+  ctx.beginPath()
+  ctx.moveTo(point.x, point.y)
+}
+
+const drawSignature = (event: PointerEvent) => {
+  if (!signatureDrawing.value || !signatureCanvas.value) return
+  const ctx = signatureCanvas.value.getContext('2d')
+  const point = getSignaturePoint(event)
+  if (!ctx || !point) return
+  ctx.lineTo(point.x, point.y)
+  ctx.stroke()
+  signatureHasInk.value = true
+}
+
+const endSignature = (event: PointerEvent) => {
+  if (!signatureDrawing.value || !signatureCanvas.value) return
+  signatureDrawing.value = false
+  signatureCanvas.value.releasePointerCapture(event.pointerId)
+}
+
+const clearSignature = () => {
+  const canvas = signatureCanvas.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  signatureHasInk.value = false
+}
+
+const signatureToBlob = () => {
+  const canvas = signatureCanvas.value
+  if (!canvas) return Promise.resolve(null)
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/png')
+  })
 }
 
 const goBack = () => router.push({ name: 'logistics.deliveries' })
@@ -316,9 +399,18 @@ const openAssign = () => {
   })
 }
 
+const normalizeMediaUrl = (raw: string) => {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
 const openMedia = (url: string) => {
-  if (!url) return
-  window.open(url, '_blank')
+  const targetUrl = normalizeMediaUrl(url)
+  if (!targetUrl) return
+  window.open(targetUrl, '_blank')
 }
 
 const openTrip = (tripId: number) => {
@@ -337,5 +429,9 @@ const deliverySeverity = (status: string) => {
 
 const formatDateTime = (value: string) => (value ? new Date(value).toLocaleString('en-PH') : '-')
 
-onMounted(loadAll)
+onMounted(() => {
+  loadAll()
+  setupSignatureCanvas()
+  window.addEventListener('resize', setupSignatureCanvas)
+})
 </script>

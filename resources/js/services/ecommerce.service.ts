@@ -112,6 +112,8 @@ const ecommerceService = {
     city: string
     barangay: string
     address_line: string
+    latitude?: number | null
+    longitude?: number | null
     is_default?: boolean
   }) {
     return ecommerceClient.post('/api/ecommerce/address-templates', payload)
@@ -124,6 +126,8 @@ const ecommerceService = {
     city: string
     barangay: string
     address_line: string
+    latitude?: number | null
+    longitude?: number | null
     is_default?: boolean
   }) {
     return ecommerceClient.put(`/api/ecommerce/address-templates/${id}`, payload)
@@ -134,6 +138,16 @@ const ecommerceService = {
     amount?: number
   }) {
     return ecommerceClient.post('/api/ecommerce/vouchers/validate', payload)
+  },
+
+  estimateShippingFee(payload: {
+    shipping_address?: string
+    customer_latitude?: number
+    customer_longitude?: number
+    item_ids?: number[]
+    bulk_trip?: boolean
+  }) {
+    return ecommerceClient.post('/api/ecommerce/shipping/estimate', payload)
   },
 
   getProvinces() {
@@ -155,6 +169,7 @@ const ecommerceService = {
     shipping_address: string
     customer_latitude?: number
     customer_longitude?: number
+    bulk_trip?: boolean
     payment_method: 'cod' | 'bank_transfer' | 'card' | 'e_wallet'
     shipping_fee?: number
     discount_amount?: number
@@ -193,6 +208,29 @@ const ecommerceService = {
     review_text?: string
   }) {
     return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/reviews`, payload)
+  },
+
+  reportViolation(payload: {
+    store_id: number
+    reason: string
+    details?: string
+    evidence_images?: File[]
+  }) {
+    const formData = new FormData()
+    formData.append('store_id', String(payload.store_id))
+    formData.append('reason', payload.reason)
+    if (payload.details) {
+      formData.append('details', payload.details)
+    }
+    if (Array.isArray(payload.evidence_images)) {
+      payload.evidence_images.forEach((file) => {
+        formData.append('evidence_images[]', file)
+      })
+    }
+
+    return ecommerceClient.post('/api/ecommerce/violations/report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
   },
 
   getChatThreads(params?: any) {

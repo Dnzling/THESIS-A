@@ -65,11 +65,12 @@ Route::prefix('supplier-portal')->group(function () {
 // SUPPLIER VERIFICATION ROUTES (Admin Only)
 // ============================================
 
-Route::prefix('supplier-verifications')->middleware('auth:sanctum')->group(function () {
+Route::prefix('supplier-verifications')->middleware(['auth:sanctum', 'role:super_admin'])->group(function () {
     Route::get('/pending', [SupplierVerificationController::class, 'getPending']);
     Route::get('/', [SupplierVerificationController::class, 'index']);
     Route::get('/{id}', [SupplierVerificationController::class, 'show']);
     Route::post('/{id}/approve', [SupplierVerificationController::class, 'approve']);
     Route::post('/{id}/reject', [SupplierVerificationController::class, 'reject']);
     Route::post('/documents/{id}/review', [SupplierVerificationController::class, 'reviewDocument']);
+    Route::get('/documents/{id}/download', [SupplierVerificationController::class, 'downloadDocument']);
 });

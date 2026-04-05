@@ -228,7 +228,8 @@ class ProcurementService {
   }
 
   async getProductSuppliers(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/products/${id}/suppliers`)
+    // Backend exposes alternative supplier lookup under product-inventory
+    const response = await axiosClient.get(`${this.baseUrl}/product-inventory/${id}/alternative-suppliers`)
     return response.data
   }
 
@@ -468,7 +469,8 @@ class ProcurementService {
   }
 
   async approvePurchaseRequisition(id: number, data: { role: string; notes?: string }) {
-    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/approve`, data)
+    // Suppress global response dialog for this action; UI will handle notifications
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/approve`, data, { headers: { 'X-Suppress-Dialog': '1' } })
     return response.data
   }
 

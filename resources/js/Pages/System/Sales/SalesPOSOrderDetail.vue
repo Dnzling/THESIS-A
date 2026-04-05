@@ -17,6 +17,12 @@
         :disabled="sendDisabled"
         @click="sendToLogistics"
       />
+      <Button
+        icon="pi pi-print"
+        severity="secondary"
+        label="Print Receipt"
+        @click="printReceipt"
+      />
     </div>
 
     <Card v-if="order">
@@ -173,6 +179,11 @@ const sendToLogistics = async () => {
   } finally {
     sendingToLogistics.value = false
   }
+}
+
+const printReceipt = () => {
+  if (!order.value) return
+  window.open(`/api/sales/pos/orders/${order.value.id}/receipt`, '_blank')
 }
 
 onMounted(async () => {

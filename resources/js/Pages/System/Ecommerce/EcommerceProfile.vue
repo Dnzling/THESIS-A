@@ -212,7 +212,6 @@
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 import ecommerceService from '@/services/ecommerce.service'
 import InputText from 'primevue/inputtext'
@@ -221,14 +220,24 @@ import Password from 'primevue/password'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
 
 
-type AddressTemplate = { id: number; full_name: string; contact_number: string; province: string; city: string; barangay: string; address_line: string }
+type AddressTemplate = {
+  id: number
+  full_name: string
+  contact_number: string
+  province: string
+  city: string
+  barangay: string
+  address_line: string
+  latitude?: number | null
+  longitude?: number | null
+}
 
-const toast = useToast()
 const loading = ref(false)
 const activeSection = ref<'basic' | 'address' | 'payment' | 'returns' | 'cancellations'>('basic')
 const myOrders = ref<any[]>([])
@@ -253,8 +262,26 @@ const savingNewAddress = ref(false)
 const editForm = reactive<{ fname: string; lname: string; birthday: Date | null }>({ fname: '', lname: '', birthday: null })
 const passwordForm = reactive({ current_password: '', password: '', password_confirmation: '' })
 const contactChangeForm = reactive({ newEmail: '', newMobile: '', otpCode: '' })
-const addressEditForm = reactive({ full_name: '', contact_number: '', province: '', city: '', barangay: '', address_line: '' })
-const addAddressForm = reactive({ full_name: '', contact_number: '', province: '', city: '', barangay: '', address_line: '' })
+const addressEditForm = reactive({
+  full_name: '',
+  contact_number: '',
+  province: '',
+  city: '',
+  barangay: '',
+  address_line: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
+})
+const addAddressForm = reactive({
+  full_name: '',
+  contact_number: '',
+  province: '',
+  city: '',
+  barangay: '',
+  address_line: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
+})
 const addAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 const editAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 
@@ -428,9 +455,9 @@ async function saveBasicInfo() {
     })
     editDialogVisible.value = false
     await loadProfile()
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Basic information updated.', life: 1800 })
+    showAlert({ severity: 'success', summary: 'Saved', detail: 'Basic information updated.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to update basic information.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to update basic information.' })
   } finally {
     savingProfile.value = false
   }
@@ -444,9 +471,9 @@ async function changePassword() {
     passwordForm.current_password = ''
     passwordForm.password = ''
     passwordForm.password_confirmation = ''
-    toast.add({ severity: 'success', summary: 'Success', detail: 'Password changed successfully.', life: 1800 })
+    showAlert({ severity: 'success', summary: 'Success', detail: 'Password changed successfully.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change password.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change password.' })
   } finally {
     changingPassword.value = false
   }
@@ -456,9 +483,9 @@ async function sendOtp() {
   sendingOtp.value = true
   try {
     await axios.post('/api/auth/resend-otp')
-    toast.add({ severity: 'info', summary: 'OTP Sent', detail: 'Verification code sent to your registered email.', life: 2200 })
+    showAlert({ severity: 'info', summary: 'OTP Sent', detail: 'Verification code sent to your registered email.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'OTP Failed', detail: error?.response?.data?.message || 'Unable to send OTP.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'OTP Failed', detail: error?.response?.data?.message || 'Unable to send OTP.' })
   } finally {
     sendingOtp.value = false
   }
@@ -478,9 +505,9 @@ async function verifyAndChangeEmail() {
     contactChangeForm.newEmail = ''
     contactChangeForm.otpCode = ''
     await loadProfile()
-    toast.add({ severity: 'success', summary: 'Email Updated', detail: 'Please verify your new email OTP to fully activate it.', life: 2600 })
+    showAlert({ severity: 'success', summary: 'Email Updated', detail: 'Please verify your new email OTP to fully activate it.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change email.', life: 2600 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change email.' })
   } finally {
     savingContactChange.value = false
   }
@@ -496,9 +523,9 @@ async function verifyAndChangeMobile() {
     contactChangeForm.newMobile = ''
     contactChangeForm.otpCode = ''
     await loadProfile()
-    toast.add({ severity: 'success', summary: 'Mobile Updated', detail: 'Mobile number changed after OTP verification.', life: 2200 })
+    showAlert({ severity: 'success', summary: 'Mobile Updated', detail: 'Mobile number changed after OTP verification.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change mobile number.', life: 2600 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to change mobile number.' })
   } finally {
     savingContactChange.value = false
   }
@@ -512,6 +539,8 @@ async function startEditAddress(template: AddressTemplate) {
   addressEditForm.city = template.city
   addressEditForm.barangay = template.barangay
   addressEditForm.address_line = template.address_line
+  addressEditForm.latitude = template.latitude ?? null
+  addressEditForm.longitude = template.longitude ?? null
 
   const province = provinces.value.find((p: any) => String(p.name).toLowerCase() === String(template.province).toLowerCase())
   editAddressSelection.provinceId = province?.province_id || ''
@@ -546,9 +575,9 @@ async function saveAddressEdit(id: number) {
     await ecommerceService.updateAddressTemplate(id, { ...addressEditForm })
     editingAddressId.value = null
     await loadAddressTemplates()
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Address template updated.', life: 1800 })
+    showAlert({ severity: 'success', summary: 'Saved', detail: 'Address template updated.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to update address.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to update address.' })
   } finally {
     savingAddress.value = false
   }
@@ -558,6 +587,8 @@ function openAddAddressDialog() {
   addAddressForm.full_name = ''
   addAddressForm.contact_number = ''
   addAddressForm.address_line = ''
+  addAddressForm.latitude = null
+  addAddressForm.longitude = null
   addAddressSelection.provinceId = ''
   addAddressSelection.cityId = ''
   addAddressSelection.barangayCode = ''
@@ -568,7 +599,7 @@ function openAddAddressDialog() {
 
 async function createAddressTemplate() {
   if (!addAddressForm.full_name || !addAddressForm.contact_number || !addAddressSelection.provinceId || !addAddressSelection.cityId || !addAddressSelection.barangayCode || !addAddressForm.address_line) {
-    toast.add({ severity: 'warn', summary: 'Missing fields', detail: 'Please complete all address fields.', life: 2200 })
+    showAlert({ severity: 'warn', summary: 'Missing fields', detail: 'Please complete all address fields.' })
     return
   }
 
@@ -585,14 +616,16 @@ async function createAddressTemplate() {
       city: cityName,
       barangay: barangayName,
       address_line: addAddressForm.address_line,
+      latitude: addAddressForm.latitude ?? undefined,
+      longitude: addAddressForm.longitude ?? undefined,
       is_default: addressTemplates.value.length === 0,
     })
 
     addAddressDialogVisible.value = false
     await loadAddressTemplates()
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Address preset added.', life: 1800 })
+    showAlert({ severity: 'success', summary: 'Saved', detail: 'Address preset added.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to add address preset.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to add address preset.' })
   } finally {
     savingNewAddress.value = false
   }

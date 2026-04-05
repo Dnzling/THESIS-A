@@ -38,6 +38,10 @@
           </div>
 
           <div v-else class="space-y-3">
+            <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+              <span class="text-xs uppercase tracking-wide text-slate-500">Chatting with</span>
+              <p class="font-semibold text-slate-900">{{ activeStoreName || 'Store' }}</p>
+            </div>
             <div class="max-h-[58vh] space-y-2 overflow-auto rounded-lg bg-slate-50 p-3">
               <div v-if="messagesLoading" class="space-y-2">
                 <Skeleton v-for="i in 5" :key="`msg-${i}`" height="3rem" />
@@ -69,16 +73,14 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
 
 
 const route = useRoute()
-const toast = useToast()
-
 const threads = ref<any[]>([])
 const messages = ref<any[]>([])
 const threadsLoading = ref(false)
@@ -86,6 +88,7 @@ const messagesLoading = ref(false)
 const sending = ref(false)
 const draftMessage = ref('')
 const activeStoreId = ref<number | null>(null)
+const activeStoreName = ref('')
 const lockedStoreId = computed(() => Number(route.query.store_id || 0))
 const lockedStoreContext = computed(() => lockedStoreId.value > 0)
 const lockedProductName = computed(() => String(route.query.product_name || '').trim())
@@ -113,7 +116,7 @@ async function loadThreads() {
       await openThread(Number(threads.value[0].store_id))
     }
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load chats', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load chats' })
   } finally {
     threadsLoading.value = false
   }
@@ -122,13 +125,15 @@ async function loadThreads() {
 async function openThread(storeId: number) {
   if (!storeId) return
   activeStoreId.value = storeId
+  activeStoreName.value = threads.value.find((t) => Number(t.store_id) === storeId)?.store_name || ''
   messagesLoading.value = true
   try {
     const res = await ecommerceService.getStoreChatMessages(storeId, { per_page: 100 })
     const rows = extractRows(res.data?.data)
     messages.value = [...rows].reverse()
+    activeStoreName.value = String(res.data?.store?.name || activeStoreName.value || '')
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load messages', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load messages' })
   } finally {
     messagesLoading.value = false
   }
@@ -144,7 +149,7 @@ async function sendMessage() {
     await openThread(activeStoreId.value)
     await loadThreads()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Send Failed', detail: error?.response?.data?.message || 'Unable to send message', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Send Failed', detail: error?.response?.data?.message || 'Unable to send message' })
   } finally {
     sending.value = false
   }

@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 
 class Supplier extends Model
 {
@@ -30,7 +32,7 @@ class Supplier extends Model
         'payment_terms',
         'status',
         'tax_id',
-        'bank_details',
+        // removed bank_details from supplier registration
         'rating',
         'quality_score',
         'on_time_percentage',
@@ -81,6 +83,16 @@ class Supplier extends Model
     public function ratings(): HasMany
     {
         return $this->hasMany(SupplierRating::class);
+    }
+
+    /**
+     * Get related supplier portal (if any).
+     *
+     * @return HasOne
+     */
+    public function supplierPortal(): HasOne
+    {
+        return $this->hasOne(SupplierPortal::class, 'supplier_id');
     }
 
     /**

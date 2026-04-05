@@ -108,7 +108,24 @@ async function submitLogin() {
     const redirect = getQueryParam('redirect') || '/shop'
     router.visit(redirect)
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Login failed', detail: error?.response?.data?.message || 'Check your credentials.', life: 3500 })
+    // Prefer validation errors if present
+    const resp = error?.response?.data || null
+    let detail = 'Check your credentials.'
+    if (resp) {
+      if (resp.errors) {
+        // flatten validation errors
+        const parts: string[] = []
+        Object.keys(resp.errors).forEach(k => {
+          const v = resp.errors[k]
+          if (Array.isArray(v)) parts.push(...v)
+          else if (typeof v === 'string') parts.push(v)
+        })
+        if (parts.length) detail = parts.join(' ')
+      } else if (resp.message) {
+        detail = resp.message
+      }
+    }
+    toast.add({ severity: 'error', summary: 'Login failed', detail, life: 6000 })
   } finally {
     isSubmitting.value = false
   }

@@ -70,7 +70,7 @@
           </Column>
           <Column field="status" header="Order Status">
             <template #body="{ data }">
-              <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+              <Tag :value="formatStatus(data.primary_status || data.status)" :severity="statusSeverity(data.primary_status || data.status)" />
             </template>
           </Column>
           <Column header="Delivery">
@@ -128,6 +128,7 @@ const pageState = reactive({
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
+  { label: 'Pending Cancellation', value: 'pending_cancellation' },
   { label: 'Processing', value: 'processing' },
   { label: 'Packed', value: 'packed' },
   { label: 'Shipped', value: 'shipped' },

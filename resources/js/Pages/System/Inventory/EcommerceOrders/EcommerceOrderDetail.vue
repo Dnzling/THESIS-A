@@ -20,6 +20,12 @@
               :loading="sendingToLogistics"
               @click="sendToLogistics"
             />
+            <Button
+              severity="secondary"
+              icon="pi pi-print"
+              label="Print Receipt"
+              @click="printReceipt"
+            />
           </div>
         </div>
       </template>
@@ -39,6 +45,7 @@
             <div class="grid grid-cols-2 gap-3 text-sm">
               <div><span class="text-gray-500">Customer:</span> <span class="font-medium text-gray-900">{{ order?.shipping_name || '-' }}</span></div>
               <div><span class="text-gray-500">Contact:</span> <span class="font-medium text-gray-900">{{ order?.shipping_phone || '-' }}</span></div>
+              <div><span class="text-gray-500">Status:</span> <Tag :value="formatStatus(order?.primary_status || order?.status || 'pending')" :severity="statusSeverity(order?.primary_status || order?.status || 'pending')" /></div>
               <div><span class="text-gray-500">Payment:</span> <span class="font-medium text-gray-900">{{ order?.payment_method }}</span></div>
               <div><span class="text-gray-500">Payment Status:</span> <span class="font-medium text-gray-900">{{ order?.payment_status }}</span></div>
               <div class="col-span-2"><span class="text-gray-500">Address:</span> <span class="font-medium text-gray-900">{{ order?.shipping_address || '-' }}</span></div>
@@ -57,6 +64,39 @@
               <div><span class="text-gray-500">Courier Contact:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.courier_contact || '-' }}</span></div>
               <div><span class="text-gray-500">Vehicle:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.vehicle ? `${order.delivery.vehicle.vehicle_name} (${order.delivery.vehicle.plate_number})` : '-' }}</span></div>
               <div><span class="text-gray-500">ETA:</span> <span class="font-medium text-gray-900">{{ order?.delivery?.estimated_delivery_at ? formatDateTime(order.delivery.estimated_delivery_at) : '-' }}</span></div>
+            </div>
+          </template>
+        </Card>
+
+        <Card v-if="latestCancellation" class="rounded-2xl border border-gray-100 shadow-sm">
+          <template #title>Cancellation Request</template>
+          <template #content>
+            <div class="space-y-3 text-sm">
+              <div><span class="text-gray-500">Status:</span> <Tag :value="formatStatus(latestCancellation.status)" severity="warning" /></div>
+              <div><span class="text-gray-500">Reason:</span> <span class="font-medium text-gray-900">{{ latestCancellation.reason || '-' }}</span></div>
+              <div><span class="text-gray-500">Details:</span> <span class="font-medium text-gray-900">{{ latestCancellation.details || '-' }}</span></div>
+              <div v-if="latestCancellation.review_notes"><span class="text-gray-500">Review Notes:</span> <span class="font-medium text-gray-900">{{ latestCancellation.review_notes }}</span></div>
+
+              <div v-if="latestCancellation.status === 'pending_verification'" class="space-y-2">
+                <label class="text-xs font-semibold text-gray-600">Review Notes (optional)</label>
+                <Textarea v-model="reviewNotes" rows="3" autoResize class="w-full" placeholder="Add notes for this decision" />
+              </div>
+
+              <div class="flex flex-wrap gap-2" v-if="latestCancellation.status === 'pending_verification'">
+                <Button
+                  label="Approve Cancellation"
+                  severity="danger"
+                  :loading="reviewingCancellation"
+                  @click="reviewCancellation('approved')"
+                />
+                <Button
+                  label="Reject"
+                  severity="secondary"
+                  outlined
+                  :loading="reviewingCancellation"
+                  @click="reviewCancellation('rejected')"
+                />
+              </div>
             </div>
           </template>
         </Card>
@@ -142,6 +182,7 @@ import Skeleton from 'primevue/skeleton'
 import Timeline from 'primevue/timeline'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
+import Textarea from 'primevue/textarea'
 
 const route = useRoute()
 const router = useRouter()
@@ -151,6 +192,14 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const order = ref<any>(null)
 const sendingToLogistics = ref(false)
+const reviewingCancellation = ref(false)
+const reviewNotes = ref('')
+
+const latestCancellation = computed(() => {
+  const requests = order.value?.cancellation_requests || order.value?.cancellationRequests || []
+  if (!Array.isArray(requests) || requests.length === 0) return null
+  return [...requests].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+})
 
 const loadOrder = async () => {
   loading.value = true
@@ -183,7 +232,7 @@ const canSendToLogistics = computed(() => {
   if (!order.value) return false
   if (!authStore.hasPermission('sales.order.approve')) return false
   if (order.value.delivery) return false
-  const status = String(order.value.status || '').toLowerCase()
+  const status = String(order.value.primary_status || order.value.status || '').toLowerCase()
   return ['pending', 'processing'].includes(status)
 })
 
@@ -214,6 +263,42 @@ const sendToLogistics = async () => {
   }
 }
 
+const printReceipt = () => {
+  if (!order.value) return
+  window.open(`/api/sales/ecommerce-orders/${order.value.id}/receipt`, '_blank')
+}
+
+const reviewCancellation = async (status: 'approved' | 'rejected') => {
+  if (!order.value || !latestCancellation.value) return
+  if (!window.confirm(`Are you sure you want to ${status} this cancellation request?`)) return
+
+  reviewingCancellation.value = true
+  try {
+    const response = await salesService.reviewEcommerceOrderCancellation(
+      String(order.value.id),
+      String(latestCancellation.value.id),
+      { status, review_notes: reviewNotes.value.trim() || undefined }
+    )
+    order.value = response?.data || order.value
+    reviewNotes.value = ''
+    toast.add({
+      severity: 'success',
+      summary: 'Updated',
+      detail: `Cancellation request ${status}.`,
+      life: 3000,
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Failed',
+      detail: error?.response?.data?.message || 'Unable to review cancellation request.',
+      life: 3000,
+    })
+  } finally {
+    reviewingCancellation.value = false
+  }
+}
+
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const formatDateTime = (value: string) => {
@@ -230,6 +315,13 @@ const deliverySeverity = (status: string) => {
   if (status === 'delivered') return 'success'
   if (status === 'failed_delivery' || status === 'cancelled') return 'danger'
   if (status === 'out_for_delivery') return 'warning'
+  return 'info'
+}
+
+const statusSeverity = (status: string) => {
+  if (status === 'delivered') return 'success'
+  if (status === 'cancelled') return 'danger'
+  if (status === 'pending' || status === 'pending_cancellation') return 'warning'
   return 'info'
 }
 

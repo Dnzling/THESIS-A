@@ -25,6 +25,9 @@ const authStore = useAuthStore()
 const isSubmitting = ref(false)
 
 const getFirstAvailableRoute = (): string => {
+  if (authStore.user?.role === 'super_admin') {
+    return '/admin/dashboard'
+  }
   const items = authStore.navigation
     .filter((item: any) => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
     .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
@@ -36,7 +39,9 @@ const getFirstAvailableRoute = (): string => {
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
-    await authStore.loadPermissions() // ensure navigation is fresh
+    if (authStore.user?.role !== 'super_admin') {
+      await authStore.loadPermissions() // ensure navigation is fresh
+    }
     router.visit(getFirstAvailableRoute())
   }
 })

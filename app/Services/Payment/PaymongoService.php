@@ -13,10 +13,38 @@ class PaymongoService
 
     public function __construct()
     {
+        $verify = true;
+        $certDir = storage_path('certs');
+        $certPath = $certDir . DIRECTORY_SEPARATOR . 'cacert.pem';
+
+        // Ensure cert directory exists
+        if (!is_dir($certDir)) {
+            @mkdir($certDir, 0755, true);
+        }
+
+        // If cert missing, attempt to download the CA bundle (best-effort)
+        if (!file_exists($certPath)) {
+            try {
+                $remote = 'https://curl.se/ca/cacert.pem';
+                $contents = @file_get_contents($remote);
+                if ($contents && strlen($contents) > 1000) {
+                    @file_put_contents($certPath, $contents);
+                }
+            } catch (\Throwable $e) {
+                // ignore download failures; fallback to system CA verification
+                Log::warning('PaymongoService: failed to auto-download cacert.pem: ' . $e->getMessage());
+            }
+        }
+
+        if (file_exists($certPath)) {
+            $verify = $certPath;
+        }
+
         $this->client = new Client([
             'base_uri' => config('paymongo.endpoint'),
             'auth' => [config('paymongo.secret'), ''],
             'http_errors' => false,
+            'verify' => $verify,
         ]);
     }
 

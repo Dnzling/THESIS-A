@@ -24,8 +24,11 @@
               :class="selectedThreadId === thread.id ? 'border-blue-300 bg-blue-50' : 'border-gray-100 bg-white hover:bg-gray-50'"
               @click="selectThread(thread.id)"
             >
-              <div class="flex items-center justify-between gap-2">
-                <p class="text-sm font-medium text-gray-900 truncate">{{ thread.customer_name }}</p>
+                <div class="flex items-center justify-between gap-2">
+                <div class="flex flex-col">
+                  <p class="text-sm font-medium text-gray-900 truncate">{{ thread.customer_name }}</p>
+                  <p v-if="thread.store_name" class="text-xs text-gray-500 truncate">{{ thread.store_name }}</p>
+                </div>
                 <Tag v-if="thread.unread_count" severity="danger" :value="String(thread.unread_count)" />
               </div>
               <p class="text-xs text-gray-500 truncate mt-1">{{ thread.last_message || 'No messages yet' }}</p>
@@ -52,8 +55,15 @@
               <p v-if="!messages.length" class="text-sm text-gray-500">No messages yet.</p>
             </div>
 
-            <Textarea v-model="draft" rows="3" fluid :readonly="!canManageChats" placeholder="Type your reply..." />
-            <Button severity="info" icon="pi pi-send" :disabled="!canManageChats || !draft.trim()" :loading="sending" label="Send Reply" @click="sendMessage" />
+            <Textarea v-model="draft" rows="3" fluid  placeholder="Type your reply..." />
+            <Button
+              severity="info"
+              icon="pi pi-send"
+              :loading="sending"
+              :disabled="sending || !draft.trim() || !canManageChats"
+              label="Send Reply"
+              @click="sendMessage"
+            />
           </div>
         </template>
       </Card>
@@ -62,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
@@ -77,7 +87,7 @@ const route = useRoute()
 const toast = useToast()
 const authStore = useAuthStore()
 
-const canManageChats = authStore.hasPermission('sales.chats.manage')
+const canManageChats = computed(() => authStore.hasPermission('sales.chats.manage'))
 const search = ref('')
 const threads = ref<any[]>([])
 const selectedThreadId = ref<number | null>(null)
@@ -137,7 +147,18 @@ const selectThread = (threadId: number) => {
 }
 
 const sendMessage = async () => {
-  if (!selectedThreadId.value || !draft.value.trim() || !canManageChats) return
+  if (!selectedThreadId.value) {
+    toast.add({ severity: 'warn', summary: 'Chat', detail: 'Select a thread before replying.', life: 2400 })
+    return
+  }
+  if (!draft.value.trim()) {
+    toast.add({ severity: 'warn', summary: 'Chat', detail: 'Type a reply before sending.', life: 2400 })
+    return
+  }
+  if (!canManageChats.value) {
+    toast.add({ severity: 'error', summary: 'Chat', detail: 'You do not have permission to send replies.', life: 2800 })
+    return
+  }
   sending.value = true
   try {
     await salesService.sendChatMessage(selectedThreadId.value, {

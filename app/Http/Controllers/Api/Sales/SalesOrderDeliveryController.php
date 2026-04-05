@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Sales;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
+use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
@@ -27,21 +28,23 @@ class SalesOrderDeliveryController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = SalesOrderDelivery::query()
+        $status = $request->filled('status') ? (string) $request->input('status') : null;
+        $search = trim((string) $request->input('search', ''));
+
+        $salesQuery = SalesOrderDelivery::query()
             ->with([
                 'order:id,branch_id,order_number,status,total_amount,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email',
                 'driver:id,fname,lname,email',
             ]);
 
-        $this->applyTenantScope($request, $query);
+        $this->applyTenantScope($request, $salesQuery);
 
-        if ($request->filled('status')) {
-            $query->where('status', (string) $request->input('status'));
+        if ($status) {
+            $salesQuery->where('status', $status);
         }
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->input('search'));
-            $query->where(function ($q) use ($search) {
+        if ($search !== '') {
+            $salesQuery->where(function ($q) use ($search) {
                 $q->where('tracking_number', 'like', "%{$search}%")
                     ->orWhere('courier_name', 'like', "%{$search}%")
                     ->orWhereHas('order', function ($orderQuery) use ($search) {
@@ -51,8 +54,69 @@ class SalesOrderDeliveryController extends Controller
             });
         }
 
-        $deliveries = $query->orderByDesc('created_at')
-            ->paginate((int) $request->input('per_page', 20));
+        $ecomQuery = EcommerceOrderDelivery::query()
+            ->with([
+                'order:id,order_number,shipping_name,shipping_phone,shipping_address',
+                'driver:id,fname,lname,email',
+            ]);
+
+        $user = $request->user();
+        if (!$user->hasRole('super_admin')) {
+            $ecomQuery->where('store_id', (int) $user->store_id);
+        } elseif ($request->filled('store_id')) {
+            $ecomQuery->where('store_id', (int) $request->input('store_id'));
+        }
+
+        if ($status) {
+            $ecomQuery->where('status', $status);
+        }
+
+        if ($search !== '') {
+            $ecomQuery->where(function ($q) use ($search) {
+                $q->where('tracking_number', 'like', "%{$search}%")
+                    ->orWhere('courier_name', 'like', "%{$search}%")
+                    ->orWhereHas('order', function ($orderQuery) use ($search) {
+                        $orderQuery->where('order_number', 'like', "%{$search}%")
+                            ->orWhere('shipping_name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $salesRows = $salesQuery->orderByDesc('created_at')->get()->map(function (SalesOrderDelivery $delivery) {
+            return [
+                'id' => $delivery->id,
+                'source' => 'sales',
+                'channel' => 'In-Store',
+                'tracking_number' => $delivery->tracking_number,
+                'status' => $delivery->status,
+                'scheduled_delivery_at' => $delivery->scheduled_delivery_at,
+                'created_at' => $delivery->created_at,
+                'driver' => $delivery->driver,
+                'order_id' => $delivery->sales_order_id,
+                'order_number' => $delivery->order?->order_number,
+                'customer_name' => $delivery->order?->customer_name,
+            ];
+        });
+
+        $ecomRows = $ecomQuery->orderByDesc('created_at')->get()->map(function (EcommerceOrderDelivery $delivery) {
+            return [
+                'id' => $delivery->id,
+                'source' => 'ecommerce',
+                'channel' => 'Online',
+                'tracking_number' => $delivery->tracking_number,
+                'status' => $delivery->status,
+                'scheduled_delivery_at' => $delivery->estimated_delivery_at,
+                'created_at' => $delivery->created_at,
+                'driver' => $delivery->driver,
+                'order_id' => $delivery->order_id,
+                'order_number' => $delivery->order?->order_number,
+                'customer_name' => $delivery->order?->shipping_name,
+            ];
+        });
+
+        $deliveries = $salesRows->merge($ecomRows)
+            ->sortByDesc('created_at')
+            ->values();
 
         return response()->json(['success' => true, 'data' => $deliveries]);
     }

@@ -281,6 +281,9 @@ class UnifiedDeliveryController extends Controller
                 return response()->json(['success' => false, 'message' => 'Delivery already assigned for this order.'], 422);
             }
 
+            $overrideFee = $order->shipping_fee !== null ? (float) $order->shipping_fee : null;
+            $finalEstimatedFee = is_null($overrideFee) ? $estimatedFee : round($overrideFee, 2);
+
             if ($delivery) {
                 $delivery->fill([
                     'vehicle_id' => $vehicle->id,
@@ -292,12 +295,12 @@ class UnifiedDeliveryController extends Controller
                     'estimated_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
                     'per_km_charge' => $perKmCharge,
-                    'estimated_fee' => $estimatedFee,
+                    'estimated_fee' => $finalEstimatedFee,
                     'notes' => $this->composeAssignmentNotes(
                         $validated['notes'] ?? null,
                         $distance,
                         $perKmCharge,
-                        $estimatedFee,
+                        $finalEstimatedFee,
                         $vehicle,
                         $baseFee,
                         $perKgFee,
@@ -321,12 +324,12 @@ class UnifiedDeliveryController extends Controller
                     'estimated_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
                     'per_km_charge' => $perKmCharge,
-                    'estimated_fee' => $estimatedFee,
+                    'estimated_fee' => $finalEstimatedFee,
                     'notes' => $this->composeAssignmentNotes(
                         $validated['notes'] ?? null,
                         $distance,
                         $perKmCharge,
-                        $estimatedFee,
+                        $finalEstimatedFee,
                         $vehicle,
                         $baseFee,
                         $perKgFee,
@@ -360,7 +363,7 @@ class UnifiedDeliveryController extends Controller
             ]);
 
             if (in_array((string) $order->status, self::PENDING_ORDER_STATUSES, true)) {
-                $order->status = 'assigned';
+                $order->status = 'ready_for_dispatch';
                 $order->save();
             }
 
@@ -421,7 +424,7 @@ class UnifiedDeliveryController extends Controller
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                 'distance_km' => $distance,
                 'per_km_charge' => $perKmCharge,
-                'estimated_fee' => $estimatedFee,
+                'estimated_fee' => $finalEstimatedFee,
                 'notes' => $this->composeAssignmentNotes(
                     $validated['notes'] ?? null,
                     $distance,
@@ -449,7 +452,7 @@ class UnifiedDeliveryController extends Controller
             'meta' => [
                 'distance_km' => $distance,
                 'per_km_charge' => $perKmCharge,
-                'estimated_fee' => $estimatedFee,
+                'estimated_fee' => $finalEstimatedFee,
                 'vehicle' => [
                     'id' => $vehicle->id,
                     'name' => $vehicle->vehicle_name,

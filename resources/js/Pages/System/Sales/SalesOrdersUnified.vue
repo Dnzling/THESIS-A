@@ -75,6 +75,14 @@
             <template #body="{ data }">
               <div class="flex items-center gap-1">
                 <Button severity="info" text icon="pi pi-eye" @click="openDetail(data)" />
+                <Button severity="secondary" text icon="pi pi-print" @click="printReceipt(data)" />
+                <Button
+                  v-if="canSendToLogistics(data)"
+                  severity="success"
+                  text
+                  icon="pi pi-send"
+                  @click="sendToLogistics(data)"
+                />
               </div>
             </template>
           </Column>
@@ -113,6 +121,8 @@ type UnifiedOrder = {
   created_at: string
   channel: 'In-Store' | 'Online'
   route_name: string
+  delivery_required?: boolean
+  delivery?: any
 }
 
 const router = useRouter()
@@ -180,11 +190,13 @@ const loadOrders = async () => {
       customer_contact: order.customer_phone || order.customer?.phone || '',
       payment_method: order.payment_method || order.payment?.method || '',
       payment_status: order.payment_status || order.payment?.status || '',
-      status: order.payment_status || 'completed',
+      status: order.status || order.payment_status || 'completed',
       total_amount: Number(order.total_amount || 0),
       created_at: order.created_at || order.placed_at,
       channel: 'In-Store',
       route_name: 'sales.pos.order-detail',
+      delivery_required: !!order.delivery_required,
+      delivery: order.delivery || null,
     })) as UnifiedOrder[]
 
     const unifiedEcommerce = ecommerceOrders.map((order: any) => ({
@@ -200,6 +212,8 @@ const loadOrders = async () => {
       created_at: order.placed_at || order.created_at,
       channel: 'Online',
       route_name: 'sales.ecommerce-orders.detail',
+      delivery_required: true,
+      delivery: order.delivery || null,
     })) as UnifiedOrder[]
 
     orders.value = [...unifiedPos, ...unifiedEcommerce].sort((a, b) => {
@@ -237,6 +251,41 @@ const filteredOrders = computed(() => {
 
 const openDetail = (order: UnifiedOrder) => {
   router.push({ name: order.route_name, params: { id: order.id } })
+}
+
+const canSendToLogistics = (order: UnifiedOrder) => {
+  if (!authStore.hasPermission('sales.order.approve')) return false
+  if (!order.delivery_required) return false
+  if (order.delivery) return false
+  const status = String(order.status || '').toLowerCase()
+  if (order.channel === 'Online') {
+    return ['pending', 'processing'].includes(status)
+  }
+  return order.payment_status === 'paid'
+}
+
+const sendToLogistics = async (order: UnifiedOrder) => {
+  try {
+    if (order.channel === 'Online') {
+      await salesService.updateEcommerceOrderStatus(String(order.id), {
+        status: 'ready_for_dispatch',
+        notes: 'Sent to logistics for delivery assignment.',
+      })
+    } else {
+      await salesService.sendPosOrderToLogistics(order.id)
+    }
+    toast.add({ severity: 'success', summary: 'Queued', detail: 'Order sent to logistics.', life: 2500 })
+    await loadOrders()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Action Failed', detail: error?.response?.data?.message || 'Unable to send to logistics.', life: 3000 })
+  }
+}
+
+const printReceipt = (order: UnifiedOrder) => {
+  const url = order.channel === 'Online'
+    ? `/api/sales/ecommerce-orders/${order.id}/receipt`
+    : `/api/sales/pos/orders/${order.id}/receipt`
+  window.open(url, '_blank')
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

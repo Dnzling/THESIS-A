@@ -5,8 +5,7 @@
         <h1 class="text-2xl font-bold text-gray-900">Order Details</h1>
       </div>
       <div class="flex items-center gap-2">
-        <Button v-if="order?.store_id" label="Chat Store" severity="help" outlined @click="goChatStore" />
-        <Button v-if="order?.can_cancel" label="Request Cancel" severity="danger" outlined @click="goCancelPage" />
+        <Button v-if="order?.can_cancel" label="Cancel" severity="danger" outlined @click="goCancelPage" />
         <Button label="Back" severity="secondary" outlined @click="goBack" />
       </div>
     </div>
@@ -34,8 +33,8 @@
           <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
             <div><span class="text-slate-500">Order #:</span> <span class="font-semibold">{{ order.order_number }}</span></div>
             <div><span class="text-slate-500">Date:</span> <span class="font-semibold">{{ formatDate(order.created_at) }}</span></div>
-            <div><span class="text-slate-500">Status:</span> <Tag :value="order.status" /></div>
-            <div><span class="text-slate-500">Payment:</span> <Tag :value="order.payment_status" severity="secondary" /></div>
+            <div><span class="text-slate-500">Status:</span> <Tag :value="formatStatus(order.status)" /></div>
+            <div><span class="text-slate-500">Payment:</span> <Tag :value="formatStatus(order.payment_status)" severity="secondary" /></div>
             <div class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
             <div><span class="text-slate-500">Tracking Number:</span> <span class="font-semibold">{{ order.delivery?.tracking_number || '-' }}</span></div>
             <div><span class="text-slate-500">Courier:</span> <span class="font-semibold">{{ order.delivery?.courier_name || '-' }}</span></div>
@@ -43,7 +42,7 @@
             <div><span class="text-slate-500">Delivery Status:</span> <Tag :value="formatStatus(order.delivery?.status || 'pending')" severity="info" /></div>
             <div v-if="order.cancellation_request" class="md:col-span-2">
               <span class="text-slate-500">Cancellation Request:</span>
-              <Tag :value="order.cancellation_request.status" severity="warning" class="ml-2" />
+              <Tag :value="formatStatus(order.cancellation_request.status)" severity="warning" class="ml-2" />
             </div>
           </div>
         </template>
@@ -54,7 +53,7 @@
           <div class="space-y-3">
             <div class="flex items-center justify-between border-b border-slate-100 pb-2">
               <p class="text-sm font-semibold text-slate-800">Store: {{ order.store_name || 'Store' }}</p>
-              <Button v-if="order.store_id" label="Chat" size="small" severity="help" text @click="goChatStore" />
+              <Button v-if="order.store_id" label="Chat" icon="pi pi-comments" size="small" severity="help" text @click="goChatStore" />
             </div>
 
             <div
@@ -63,15 +62,16 @@
               class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3"
             >
               <div class="flex min-w-0 items-center gap-3">
-                <img :src="item.image || '/F.svg'" alt="Product" class="h-14 w-14 rounded-xl border border-slate-200 object-cover" />
+                <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
+                  class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
                 <div class="min-w-0">
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
                 </div>
               </div>
 
-              <div class="flex items-center gap-5">
-                <Tag :value="order.status" severity="secondary" />
+                <div class="flex items-center gap-5">
+                <Tag :value="formatStatus(order.status)" severity="secondary" />
                 <p class="text-sm text-slate-600">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
                 <p class="text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
                 <p class="text-base font-semibold text-slate-900">PHP {{ Number(item.line_total || 0).toFixed(2) }}</p>
@@ -156,11 +156,11 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
 import paymongoService from '@/services/paymongo.service'
 import Timeline from 'primevue/timeline'
 import Dialog from 'primevue/dialog'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -168,8 +168,6 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
-
 const loading = ref(false)
 const order = ref<any>(null)
 const mediaPreview = reactive({
@@ -185,7 +183,7 @@ async function loadOrderDetail() {
     order.value = response.data?.data || null
     await syncPaymongoPaymentStatus()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order details', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order details' })
     router.push({ name: 'ecommerce.orders' })
   } finally {
     loading.value = false
@@ -214,7 +212,7 @@ async function syncPaymongoPaymentStatus() {
     order.value = refreshedOrder
 
     if (beforeStatus !== 'paid' && afterStatus === 'paid') {
-      toast.add({ severity: 'success', summary: 'Payment Confirmed', detail: 'Your GCash payment was confirmed.', life: 2800 })
+      showAlert({ severity: 'success', summary: 'Payment Confirmed', detail: 'Your GCash payment was confirmed.' })
     }
   } catch {
     // Keep order page usable even if PayMongo status refresh fails.
@@ -240,6 +238,19 @@ function formatDateTime(value: string) {
 function formatStatus(value: string) {
   if (!value) return '-'
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+}
+
+function normalizeImageUrl(raw: string) {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function onImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (target) target.src = '/F.svg'
 }
 
 function previewMedia(url: string, title: string) {

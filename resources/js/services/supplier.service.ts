@@ -14,7 +14,6 @@ export interface Supplier {
   country: string
   payment_terms: string
   tax_id?: string
-  bank_details?: string
   category: 'raw_materials' | 'furniture' | 'accessories' | 'services'
   status?: 'active' | 'inactive' | 'blacklisted'
   rating?: number

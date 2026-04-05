@@ -44,8 +44,13 @@ class SupplierPortalController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
+        // Accept legacy `company_name` from older frontends by mapping it to `supplier_name`
+        if (!$request->has('supplier_name') && $request->has('company_name')) {
+            $request->merge(['supplier_name' => $request->company_name]);
+        }
+
         $validator = Validator::make($request->all(), [
-            'company_name' => 'required|string|max:255',
+            'supplier_name' => 'required|string|max:255',
             'contact_person' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'address' => 'required|string',
@@ -121,8 +126,8 @@ class SupplierPortalController extends Controller
                 $supplier = Supplier::create([
                     'store_id' => $storeId,
                     'supplier_code' => $supplierCode,
-                    'supplier_name' => $request->company_name,
-                    'company_name' => $request->company_name,
+                    'supplier_name' => $request->supplier_name,
+                    'company_name' => $request->supplier_name,
                     'contact_person' => $request->contact_person,
                     'email' => $user->email,
                     'phone' => $request->phone,
@@ -138,8 +143,8 @@ class SupplierPortalController extends Controller
                 ]);
             } else {
                 $supplier->update([
-                    'supplier_name' => $request->company_name,
-                    'company_name' => $request->company_name,
+                    'supplier_name' => $request->supplier_name,
+                    'company_name' => $request->supplier_name,
                     'contact_person' => $request->contact_person,
                     'email' => $user->email,
                     'phone' => $request->phone,
@@ -155,6 +160,7 @@ class SupplierPortalController extends Controller
             }
 
             $portal->supplier_id = $supplier->id;
+            // Persist submission metadata on portal but keep contact details on `suppliers` table
             $portal->status = 'pending';
             $portal->rejection_reason = null;
             $portal->last_submission_at = now();
@@ -271,6 +277,11 @@ class SupplierPortalController extends Controller
                 'success' => true,
                 'data' => $documents,
             ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No supplier portal found for current user.',
+            ], 404);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

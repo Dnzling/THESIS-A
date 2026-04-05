@@ -389,15 +389,7 @@
     </div>
 
     <!-- Response Dialog -->
-    <div v-if="responseVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">{{ responseTitle }}</h3>
-        <p class="text-sm" :class="responseSeverity === 'success' ? 'text-green-600' : responseSeverity === 'error' ? 'text-red-600' : 'text-gray-700'">{{ responseMessage }}</p>
-        <div class="flex justify-end gap-3 mt-6">
-          <button @click="responseVisible = false" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-sm">Close</button>
-        </div>
-      </div>
-    </div>
+    <!-- response dialog removed: success now shows toast and navigates; errors still use toast -->
 
     <Toast />
   </div>
@@ -610,6 +602,28 @@ const loadDetail = async () => {
   try {
     const response = await procurementService.getPurchaseRequisition(requisitionId)
     detail.value = response.data || null
+
+    // Ensure each product in line items has suppliers populated so downstream flows can auto-resolve
+    try {
+      const items = Array.isArray(detail.value?.items) ? detail.value.items : []
+      await Promise.all(items.map(async (it: any) => {
+        const pid = Number(it?.product?.id || it?.product_id)
+        if (!pid) return
+        const hasSuppliers = Array.isArray(it?.product?.suppliers) && it.product.suppliers.length > 0
+        if (!hasSuppliers) {
+          try {
+            const supRes = await procurementService.getProductSuppliers(pid)
+            const suppliers = supRes?.data || supRes || []
+            it.product = it.product || {}
+            it.product.suppliers = Array.isArray(suppliers) ? suppliers : (suppliers.data || [])
+          } catch (e) {
+            // ignore supplier fetch errors
+          }
+        }
+      }))
+    } catch (e) {
+      // ignore
+    }
   } catch (error) {
     console.error('Failed to load PR detail:', error)
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load PR', life: 3000 })
@@ -627,10 +641,42 @@ const submit = async () => {
 }
 
 const approve = async () => {
-  confirmTitle.value = 'Approve Purchase Requisition'
-  confirmMessage.value = 'Approve this requisition? This action cannot be easily undone.'
-  confirmAction.value = 'approve'
-  confirmVisible.value = true
+  const roleRaw = (authStore.user?.role && authStore.user.role.name) ? authStore.user.role.name : (authStore.user?.role || '')
+  if (!roleRaw) {
+    toast.add({ severity: 'error', summary: 'Missing Role', detail: 'Unable to determine your role', life: 3000 })
+    return
+  }
+
+  processing.value = true
+  try {
+    const res = await procurementService.approvePurchaseRequisition(requisitionId, { role: roleRaw, notes: '' })
+    // Log response for debugging
+    console.debug('[PR Detail] approve response', res)
+    const payload = res.data ?? res
+    // The service returns response.data (payload). Treat either payload.success===true
+    // or HTTP 2xx as success.
+    const httpOk = (payload && payload.success === true) ||
+      (res && res.status && res.status >= 200 && res.status < 300) ||
+      // some service wrappers return the data object directly (updated requisition)
+      (payload && (payload.id || payload.pr_number || payload.status))
+    if (httpOk) {
+      try { toast.clear() } catch (e) {}
+      toast.add({ severity: 'success', summary: 'Approved', detail: payload?.message || 'Purchase requisition approved successfully', life: 1200 })
+        // suppress global response error dialogs for a short window to avoid
+        // race conditions where a background request triggers an error after success
+        try { (window as any).__suppressResponseErrors = true } catch (e) {}
+        setTimeout(() => { try { (window as any).__suppressResponseErrors = false } catch (e) {} }, 2000)
+      setTimeout(() => router.push({ name: 'procurement.purchase-requisitions' }), 1200)
+    } else {
+      console.error('[PR Detail] approve indicates non-success payload', payload)
+      toast.add({ severity: 'error', summary: 'Error', detail: payload?.message || 'Failed to approve', life: 4000 })
+    }
+  } catch (err: any) {
+    console.error('Approve failed', err)
+    toast.add({ severity: 'error', summary: 'Error', detail: err.response?.data?.message || err.message || 'Failed to approve', life: 4000 })
+  } finally {
+    processing.value = false
+  }
 }
 
 const submitRejection = async () => {
@@ -734,25 +780,22 @@ const performConfirmedAction = async () => {
       return
     }
 
-    // Show server response in dialog. Include full body when available (for 500s etc.)
+    // On successful action show a brief success toast and navigate back to list
     if (res) {
       const payload = res.data ?? res
-      // Build a readable message: prefer explicit message fields, otherwise stringify payload
-      const readable = payload?.message || payload?.error || (typeof payload === 'string' ? payload : null) || null
-      responseTitle.value = (payload?.success || (res.status && res.status >= 200 && res.status < 300)) ? 'Success' : 'Response'
-      responseMessage.value = readable || JSON.stringify(payload, null, 2)
-      responseSeverity.value = (payload?.success || (res.status && res.status >= 200 && res.status < 300)) ? 'success' : 'error'
-      responseVisible.value = true
-      // reload detail when appropriate
+      const ok = payload?.success || (res && res.status && res.status >= 200 && res.status < 300) ||
+        // treat returned requisition object as success
+        Boolean(payload && (payload.id || payload.pr_number || payload.status))
       await loadDetail()
-
-      // If successful, auto-close response after short delay and navigate to list
-      const ok = payload?.success || (res.status && res.status >= 200 && res.status < 300)
       if (ok) {
-        setTimeout(() => {
-          responseVisible.value = false
-          router.push({ name: 'procurement.purchase-requisitions' })
-        }, 1200)
+        toast.add({ severity: 'success', summary: 'Success', detail: payload?.message || 'Action completed successfully', life: 1200 })
+        setTimeout(() => router.push({ name: 'procurement.purchase-requisitions' }), 1200)
+      } else {
+        // Fallback: show error dialog when server indicates failure
+        responseTitle.value = 'Response'
+        responseMessage.value = payload?.message || JSON.stringify(payload, null, 2)
+        responseSeverity.value = 'error'
+        responseVisible.value = true
       }
     }
   } catch (err: any) {

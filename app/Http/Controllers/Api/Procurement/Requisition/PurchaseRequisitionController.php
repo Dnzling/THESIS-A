@@ -178,6 +178,7 @@ class PurchaseRequisitionController extends Controller
             'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.specifications' => 'nullable|string',
+            'auto_submit' => 'nullable|boolean',
         ]);
 
         DB::beginTransaction();
@@ -189,6 +190,14 @@ class PurchaseRequisitionController extends Controller
             // request value -> best supplier linked price -> product cost_price -> product base_price
             $resolvedItems = [];
             foreach ($validated['items'] as $item) {
+                $selectedSupplierId = isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
+                if ($selectedSupplierId && !$this->supplierCanProvideProduct($selectedSupplierId, (int) $item['product_id'], Auth::user()->store_id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Selected supplier {$selectedSupplierId} is not mapped to product {$item['product_id']} for this store.",
+                    ], 422);
+                }
+
                 $item['estimated_unit_cost'] = $this->resolveEstimatedUnitCost(
                     (int) $item['product_id'],
                     $item['estimated_unit_cost'] ?? null
@@ -255,6 +264,12 @@ class PurchaseRequisitionController extends Controller
                     'tax_rate' => $item['tax_rate'] ?? 0,
                     'specifications' => $item['specifications'] ?? null,
                 ]);
+            }
+
+            // Auto-submit if requested (default true for consistency with inventory flow)
+            $autoSubmit = array_key_exists('auto_submit', $validated) ? (bool) $validated['auto_submit'] : true;
+            if ($autoSubmit) {
+                $pr->submit();
             }
 
             DB::commit();
@@ -364,6 +379,14 @@ class PurchaseRequisitionController extends Controller
             if (!empty($validated['items'])) {
                 $resolvedItems = [];
                 foreach ($validated['items'] as $item) {
+                    $selectedSupplierId = isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
+                    if ($selectedSupplierId && !$this->supplierCanProvideProduct($selectedSupplierId, (int) $item['product_id'], Auth::user()->store_id)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Selected supplier {$selectedSupplierId} is not mapped to product {$item['product_id']} for this store.",
+                        ], 422);
+                    }
+
                     $item['estimated_unit_cost'] = $this->resolveEstimatedUnitCost(
                         (int) $item['product_id'],
                         $item['estimated_unit_cost'] ?? null
@@ -476,66 +499,88 @@ class PurchaseRequisitionController extends Controller
     public function approve(Request $request, int $id): JsonResponse
     {
         $pr = PurchaseRequisition::findOrFail($id);
+            // Debug logging: record incoming approve requests
+            try {
+                \Log::info('[Approve] incoming', [
+                    'id' => $id,
+                    'user_id' => Auth::id(),
+                    'user_role' => Auth::user()?->role?->name ?? Auth::user()?->role ?? null,
+                    'payload' => $request->all(),
+                ]);
+            } catch (\Throwable $e) {
+                // ignore logging errors
+            }
 
-        $validated = $request->validate([
+            $validated = $request->validate([
             'role' => 'required|string',
             'notes' => 'nullable|string',
         ]);
+            try {
+                // Check if user has this role (normalize for consistency)
+                $normalizeRole = function (?string $role): string {
+                    $role = trim((string) $role);
+                    $role = preg_replace('/[\s-]+/', '_', $role);
+                    return strtolower($role);
+                };
 
-        // Check if user has this role (normalize for consistency)
-        $normalizeRole = function (?string $role): string {
-            $role = trim((string) $role);
-            $role = preg_replace('/[\s-]+/', '_', $role);
-            return strtolower($role);
-        };
+                $userRoleRaw = Auth::user()->role->name ?? Auth::user()->role ?? '';
+                $userRole = $normalizeRole($userRoleRaw);
+                $requestedRole = $normalizeRole($validated['role']);
+                if ($userRole !== $requestedRole) {
+                    \Log::warning('[Approve] role mismatch', ['userRole' => $userRole, 'requestedRole' => $requestedRole]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You do not have permission to approve as this role',
+                    ], 403);
+                }
 
-        $userRoleRaw = Auth::user()->role->name ?? Auth::user()->role ?? '';
-        $userRole = $normalizeRole($userRoleRaw);
-        $requestedRole = $normalizeRole($validated['role']);
-        if ($userRole !== $requestedRole) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You do not have permission to approve as this role',
-            ], 403);
-        }
+                // Add approval
+                $pr->addApproval(
+                    $userRole,
+                    Auth::id(),
+                    Auth::user()->full_name,
+                    $validated['notes'] ?? null
+                );
 
-        // Add approval
-        $pr->addApproval(
-            $userRole,
-            Auth::id(),
-            Auth::user()->full_name,
-            $validated['notes'] ?? null
-        );
+                // Update status
+                $requiredApprovals = $pr->required_approvals ?? [];
+                $receivedApprovals = collect($pr->approval_chain ?? [])->pluck('role')->toArray();
 
-        // Update status
-        $requiredApprovals = $pr->required_approvals ?? [];
-        $receivedApprovals = collect($pr->approval_chain ?? [])->pluck('role')->toArray();
+                $roleStatusMap = [
+                    'warehouse_manager' => 'warehouse_approved',
+                    'branch_manager' => 'branch_manager_approved',
+                    'finance_manager' => 'pending_central_review',
+                ];
 
-        $roleStatusMap = [
-            'warehouse_manager' => 'warehouse_approved',
-            'branch_manager' => 'branch_manager_approved',
-            'finance_manager' => 'pending_central_review',
-        ];
+                $allApproved = true;
+                foreach ($requiredApprovals as $requiredRole) {
+                    if (!in_array($requiredRole, $receivedApprovals)) {
+                        $allApproved = false;
+                        break;
+                    }
+                }
 
-        $allApproved = true;
-        foreach ($requiredApprovals as $requiredRole) {
-            if (!in_array($requiredRole, $receivedApprovals)) {
-                $allApproved = false;
-                break;
+                if ($allApproved) {
+                    $pr->update(['status' => 'procurement_processing']);
+                } elseif (isset($roleStatusMap[$userRole])) {
+                    $pr->update(['status' => $roleStatusMap[$userRole]]);
+                }
+
+                \Log::info('[Approve] success', ['id' => $id, 'pr_status' => $pr->status]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Purchase requisition approved successfully',
+                    'data' => $pr->fresh(),
+                ]);
+            } catch (\Throwable $e) {
+                \Log::error('[Approve] exception', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to approve due to server error',
+                    'error' => $e->getMessage(),
+                ], 500);
             }
-        }
-
-        if ($allApproved) {
-            $pr->update(['status' => 'procurement_processing']);
-        } elseif (isset($roleStatusMap[$userRole])) {
-            $pr->update(['status' => $roleStatusMap[$userRole]]);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Purchase requisition approved successfully',
-            'data' => $pr->fresh(),
-        ]);
     }
 
     /**
@@ -621,5 +666,18 @@ class PurchaseRequisitionController extends Controller
             'success' => true,
             'message' => 'Purchase requisition deleted successfully',
         ]);
+    }
+
+    /**
+     * Check if a supplier can provide a specific product for the store
+     */
+    private function supplierCanProvideProduct(int $supplierId, int $productId, int $storeId): bool
+    {
+        return DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.supplier_id', $supplierId)
+            ->where('supplier_products.product_id', $productId)
+            ->where('suppliers.store_id', $storeId)
+            ->exists();
     }
 }

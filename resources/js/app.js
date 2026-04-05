@@ -71,11 +71,11 @@ import Timeline from 'primevue/timeline';
 import ColorPicker from 'primevue/colorpicker';
 import SelectButton from 'primevue/selectbutton';
 import Carousel from 'primevue/carousel';
-import OverlayPanel from 'primevue/overlaypanel';
 import Popover from 'primevue/popover';
 import IftaLabel  from 'primevue/iftalabel';
 import FloatLabel from 'primevue/floatlabel';
 import Slider from 'primevue/slider';
+import Rating from 'primevue/rating';
 import { Link, router as inertiaRouter } from '@inertiajs/vue3';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Furnisync';
@@ -125,6 +125,7 @@ createInertiaApp({
         app.use(ConfirmationService);
 
         const components = {
+            Rating,
             Slider,
             IftaLabel,
             FloatLabel,
@@ -178,7 +179,6 @@ createInertiaApp({
             Accordion,
             AccordionTab,
             InputSwitch,
-            OverlayPanel,
             Popover,
         };
 
@@ -195,6 +195,15 @@ createInertiaApp({
             'inventory.stock-counts': 'inventory.stock-counts.index',
             'inventory.warehouses': 'inventory.warehouses.index',
             'supplier-detail': 'admin.suppliers.detail',
+            // fallback aliases for procurement purchase requisitions when Ziggy route names
+            // are not available in the client bundle (prevents 404 on navigation)
+            'procurement.purchase-requisitions': '/procurement/purchase-requisitions',
+            'procurement.purchase-requisitions.create': '/procurement/purchase-requisitions/create',
+            'procurement.purchase-requisitions.detail': (params) => `/procurement/purchase-requisitions/${params.id}`,
+            // fallback aliases for inventory requisitions (some links use 'requisitions' mistakenly)
+            'inventory.requisitions.index': '/inventory/requisites',
+            'inventory.requisitions.create': '/inventory/requisites/create',
+            'inventory.requisitions.view': (params) => `/inventory/requisites/${params.id}`,
         };
 
         const resolveToUrl = (to) => {

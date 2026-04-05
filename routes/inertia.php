@@ -7,13 +7,7 @@ $render = function (string $page, array $props = []) {
     return Inertia::render($page, array_filter($props, fn($value) => $value !== null));
 };
 
-$inertia = function (
-    string $uri,
-    string $page,
-    ?string $name = null,
-    ?string $title = null,
-    ?string $subtitle = null
-) use ($render) {
+$inertia = function (string $uri, string $page, ?string $name = null, ?string $title = null, ?string $subtitle = null) use ($render) {
     $route = Route::get($uri, function () use ($render, $page, $title, $subtitle) {
         return $render($page, [
             'title' => $title,
@@ -39,17 +33,22 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
         $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
+        $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
+        $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
         $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
         $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');
         $inertia('/admin/stores/{id}', 'System/Admin/StoreDetail', 'admin.stores.detail', 'Store Detail');
         $inertia('/admin/users', 'System/Admin/UsersIndex', 'admin.users', 'Users');
+        $inertia('/admin/violation-reports', 'System/Admin/ViolationReportsIndex', 'admin.violation-reports', 'Violation Reports');
+        $inertia('/admin/violation-reports/{id}', 'System/Admin/ViolationReportShow', 'admin.violation-reports.show', 'Violation Report');
         Route::redirect('/admin/suppliers', '/admin/suppliers/list')->name('admin.suppliers');
         $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
         $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
         $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
+
     });
-    
-    // System (Store Admin)
+
+    // System (Store Admin)u
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
         $inertia('/store/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
@@ -92,6 +91,10 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
 
     // Inventory
     Route::redirect('/inventory', '/inventory/dashboard')->name('inventory');
+    // Redirect legacy/mistyped requisitions paths to the correct 'requisites' routes
+    Route::redirect('/inventory/requisitions', '/inventory/requisites')->name('inventory.requisitions');
+    Route::redirect('/inventory/requisitions/create', '/inventory/requisites/create')->name('inventory.requisitions.create');
+    Route::get('/inventory/requisitions/{id}', fn($id) => redirect("/inventory/requisitions/{$id}"));
     $inertia('/inventory/dashboard', 'System/Inventory/InventoryDashboard', 'inventory.dashboard', 'Inventory Dashboard');
     Route::redirect('/inventory/ecommerce-orders', '/sales/ecommerce-orders')->name('inventory.ecommerce-orders');
     Route::get('/inventory/ecommerce-orders/{id}', fn($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');
@@ -233,7 +236,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');
-    $inertia('/logistics/zones', 'System/Logistics/Zones/DeliveryZonesIndex', 'logistics.zones', 'Delivery Zones');
+    $inertia('/logistics/delivery-fees', 'System/Merchandising/DeliveryFeeSettings', 'logistics.delivery-fees', 'Delivery Fee Settings', 'Configure store delivery fees');
+    Route::get('/logistics/zones', fn() => redirect('/logistics/delivery-fees'));
 
     // Sales
     Route::redirect('/sales', '/sales/dashboard')->name('sales');
@@ -241,6 +245,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/sales/crm', 'System/Sales/SalesCRM', 'sales.crm', 'CRM Leads');
     $inertia('/sales/chats', 'System/Sales/SalesChats', 'sales.chats', 'Customer Chats');
     $inertia('/sales/orders', 'System/Sales/SalesOrdersUnified', 'sales.orders', 'Orders');
+    $inertia('/sales/orders-unified', 'System/Sales/SalesOrdersUnified', 'sales.orders-unified', 'Unified Orders');
     $inertia('/sales/pos/overview', 'System/Sales/SalesPOSOverview', 'sales.pos.overview', 'POS Overview');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
@@ -256,6 +261,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
 
     // Merchandising
     Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');
+    Route::get('/merchandising/delivery-fees', fn() => redirect('/logistics/delivery-fees'));
     $inertia('/merchandising/dashboard', 'System/Merchandising/Dashboard', 'merchandising.dashboard', 'Product Catalog Dashboard', 'Overview of your product catalog and inventory');
     $inertia('/merchandising/products', 'System/Merchandising/products/ProductsList', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
     $inertia('/merchandising/products/logs', 'System/Merchandising/products/ProductLogs', 'merchandising.products.logs', 'Product Logs', 'View product module activity logs');
@@ -278,7 +284,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/merchandising/attributes/new', 'System/Merchandising/attributes/AttributeForm', 'merchandising.attributes.create', 'Add Attribute', 'Create a new product attribute');
     $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Tags & Collections', 'Manage product tags and collections');
     $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Pricing Rules', 'Set discounts and pricing strategies');
-    $inertia('/merchandising/delivery-fees', 'System/Merchandising/DeliveryFeeSettings', 'merchandising.delivery-fees', 'Delivery Fee Settings', 'Configure fixed, distance, or hybrid delivery charges');
     $inertia('/merchandising/pricing/bulk-update', 'System/Merchandising/pricing/BulkPricing', 'merchandising.pricing.bulk', 'Bulk Price Update', 'Update multiple product prices at once');
     $inertia('/merchandising/reports', 'System/Merchandising/reports/SalesReports', 'merchandising.reports', 'Sales Reports', 'Analyze product performance');
     $inertia('/merchandising/pricing-history', 'System/Merchandising/reports/PricingHistory', 'merchandising.pricing-history', 'Pricing History', 'Track price changes over time');

@@ -61,6 +61,10 @@ class SalesService {
     return res.data
   }
 
+  async getPosOrderReceiptUrl(id: number | string) {
+    return `/api/sales/pos/orders/${id}/receipt`
+  }
+
   async sendPosOrderToLogistics(id: number | string) {
     const res = await axiosClient.post(`/api/sales/pos/orders/${id}/send-to-logistics`)
     return res.data
@@ -123,8 +127,17 @@ class SalesService {
     return res.data
   }
 
+  async getEcommerceOrderReceiptUrl(id: number | string) {
+    return `/api/sales/ecommerce-orders/${id}/receipt`
+  }
+
   async updateEcommerceOrderStatus(id: number | string, payload: any) {
     const res = await axiosClient.put(`/api/sales/ecommerce-orders/${id}/status`, payload)
+    return res.data
+  }
+
+  async reviewEcommerceOrderCancellation(orderId: number | string, requestId: number | string, payload: { status: 'approved' | 'rejected'; review_notes?: string }) {
+    const res = await axiosClient.put(`/api/sales/ecommerce-orders/${orderId}/cancellation-requests/${requestId}/review`, payload)
     return res.data
   }
 

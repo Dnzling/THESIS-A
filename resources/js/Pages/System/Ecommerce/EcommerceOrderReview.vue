@@ -37,10 +37,10 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
 import Textarea from 'primevue/textarea'
 import Rating from 'primevue/rating'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -48,8 +48,6 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
-
 const loading = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
@@ -69,11 +67,11 @@ async function loadOrder() {
     const response = await ecommerceService.getOrder(route.params.id as string)
     order.value = response.data?.data || null
     if (!selectedItem.value || !selectedItem.value.can_review) {
-      toast.add({ severity: 'warn', summary: 'Not Allowed', detail: 'Review is not available for this item.', life: 2200 })
+      showAlert({ severity: 'warn', summary: 'Not Allowed', detail: 'Review is not available for this item.' })
       goBack()
     }
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order item.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order item.' })
     goBack()
   } finally {
     loading.value = false
@@ -83,7 +81,7 @@ async function loadOrder() {
 async function submitReview() {
   if (!selectedItem.value) return
   if (!form.rating || form.rating < 1) {
-    toast.add({ severity: 'warn', summary: 'Required', detail: 'Please provide at least 1 star.', life: 1800 })
+    showAlert({ severity: 'warn', summary: 'Required', detail: 'Please provide at least 1 star.' })
     return
   }
 
@@ -93,10 +91,10 @@ async function submitReview() {
       rating: Number(form.rating),
       review_text: form.review_text.trim() || undefined,
     })
-    toast.add({ severity: 'success', summary: 'Submitted', detail: 'Thank you for your review!', life: 2200 })
+    showAlert({ severity: 'success', summary: 'Submitted', detail: 'Thank you for your review!' })
     goBack()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to submit review.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to submit review.' })
   } finally {
     submitting.value = false
   }

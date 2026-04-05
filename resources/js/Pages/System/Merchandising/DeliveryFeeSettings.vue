@@ -48,6 +48,10 @@
             <label class="text-sm text-gray-600">Max Delivery Distance KM (optional)</label>
             <InputNumber v-model="form.max_delivery_distance_km" fluid :min="0" :maxFractionDigits="2" />
           </div>
+          <div>
+            <label class="text-sm text-gray-600">Bulk Trip Discount Rate (enterprise only)</label>
+            <InputNumber v-model="form.bulk_discount_rate" fluid suffix="%" :min="5" :max="25" :maxFractionDigits="2" />
+          </div>
           <div class="md:col-span-2">
             <label class="text-sm text-gray-600">Notes</label>
             <Textarea v-model="form.notes" rows="3" fluid placeholder="Policy notes for operations team..." />
@@ -115,6 +119,7 @@ const form = reactive<any>({
   bulky_item_surcharge: 0,
   remote_area_surcharge: 0,
   max_delivery_distance_km: null,
+  bulk_discount_rate: 10,
   notes: '',
 })
 

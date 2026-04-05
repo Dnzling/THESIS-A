@@ -74,7 +74,6 @@ class SupplierController extends Controller
             'payment_terms' => 'required|string',
             'tax_id' => 'nullable|string',
             'category' => 'required|in:raw_materials,furniture,accessories,services',
-            'bank_details' => 'nullable|string',
         ]);
 
         try {
@@ -99,7 +98,10 @@ class SupplierController extends Controller
             $supplier = Supplier::with([
                 'performanceMetrics' => function ($q) {
                     $q->orderBy('metric_date', 'desc')->limit(12);
-                }
+                },
+                // include supplier portal and its verification documents for admin show
+                'supplierPortal.verificationDocuments',
+                'supplierPortal',
             ])->findOrFail($id);
 
             return response()->json($supplier);
@@ -127,7 +129,6 @@ class SupplierController extends Controller
             'payment_terms' => 'sometimes|string',
             'tax_id' => 'nullable|string',
             'category' => 'sometimes|in:raw_materials,furniture,accessories,services',
-            'bank_details' => 'nullable|string',
             'status' => 'sometimes|in:active,inactive,blacklisted',
         ]);
 

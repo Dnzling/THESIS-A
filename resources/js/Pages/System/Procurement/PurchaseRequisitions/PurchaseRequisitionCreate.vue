@@ -2,26 +2,37 @@
   <div class="min-h-screen p-4">
     <div class="max-w-7xl mx-auto">
       <div class="mb-4 flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
+        <Button icon="pi pi-arrow-left" severity="secondary" text @click="router.push({ name: 'procurement.purchase-requisitions' })" />
         <div>
-          <h1 class="text-xl font-bold text-gray-800">Create Purchase Requisition</h1>
-          <p class="text-xs text-gray-500 mt-0.5">Request replenishment for your branch inventory with multiple items.</p>
+          <h1 class="text-xl font-bold text-gray-800">{{ formTitle }}</h1>
+          <p class="text-xs text-gray-500 mt-0.5">Request procurement items for your branch with multiple products.</p>
         </div>
       </div>
 
       <Card>
         <template #content>
-          <form class="space-y-4" @submit.prevent="submit">
+          <form class="space-y-4" @submit.prevent="submitForm">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-gray-700">Branch</label>
-                <Select v-model="form.branch_id" :options="branchesOptions" optionLabel="label" optionValue="value" placeholder="Select branch" filter :disabled="branchesOptions.length === 0" />
-                <small v-if="errors.branch" class="p-error block mt-1">{{ errors.branch }}</small>
-                <small v-else class="text-gray-500">Choose the branch for this requisition</small>
+                <Select v-model="form.branch_id" :options="branches" optionLabel="name" optionValue="id"
+                  placeholder="Select branch" filter :invalid="errors.branch_id !== undefined" fluid />
+                <small class="text-red-500" v-if="errors.branch_id">{{ errors.branch_id }}</small>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">Request Type</label>
+                <Select v-model="form.requisition_type" :options="requisitionTypes" optionLabel="label" optionValue="value"
+                  placeholder="Select type" :invalid="errors.requisition_type !== undefined" fluid />
+                <small class="text-red-500" v-if="errors.requisition_type">{{ errors.requisition_type }}</small>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">Priority</label>
+                <Select v-model="form.priority" :options="priorityOptions" optionLabel="label" optionValue="value" fluid />
               </div>
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-gray-700">Reason / Notes</label>
-                <Textarea v-model="form.notes" rows="2" class="w-full" placeholder="Why do you need this stock?" />
+                <Textarea v-model="form.reason" rows="2" class="w-full" placeholder="Why do you need this procurement?" />
+                <small class="text-red-500" v-if="errors.reason">{{ errors.reason }}</small>
               </div>
             </div>
 
@@ -32,64 +43,66 @@
               </div>
 
               <DataTable :value="form.items" responsiveLayout="scroll" class="text-sm">
-                <Column header="Inventory Item" >
+                <Column header="Product" >
                   <template #body="slotProps">
-                    <Select
-                      v-model="slotProps.data.branch_inventory_id"
-                      :options="inventoryOptions"
-                      optionLabel="label"
-                      optionValue="value"
-                      filter fluid
-                      :loading="loadingInventory"
-                      placeholder="Select product"
-                      @change="onInventoryChange(slotProps.index, $event)"
-                    />
+                    <div class="flex items-center gap-2">
+                      <Select
+                        v-if="!slotProps.data.product_id"
+                        :options="products"
+                        optionLabel="product_name"
+                        optionValue="id"
+                        filter fluid
+                        placeholder="Select product"
+                        @change="selectProduct(slotProps.index, $event)"
+                        class="flex-1"
+                      />
+                      <span v-else class="flex-1">{{ slotProps.data.product_name }}</span>
+                      <Button
+                        type="button"
+                        icon="pi pi-refresh"
+                        severity="secondary"
+                        text
+                        size="small"
+                        @click="clearProduct(slotProps.index)"
+                        v-if="slotProps.data.product_id"
+                      />
+                    </div>
                   </template>
                 </Column>
 
-                <Column header="Available" style="width: 110px">
-                  <template #body="slotProps">
-                    {{ getInventoryById(slotProps.data.branch_inventory_id)?.quantity_available ?? '-' }}
-                  </template>
-                </Column>
-
-                <Column header="Requested Qty" style="width: 150px">
-                  <template #body="slotProps">
-                    <InputNumber v-model="slotProps.data.requested_quantity" :min="1" :useGrouping="false" class="w-full" />
-                  </template>
-                </Column>
-
-                <Column header="Supplier (Optional)" style="min-width: 240px">
+                <Column header="Supplier" style="min-width: 240px">
                   <template #body="slotProps">
                     <Select
                       v-model="slotProps.data.selected_supplier_id"
-                      :options="getSupplierOptionsForRow(slotProps.data)"
+                      :options="getSuppliersForItem(slotProps.data)"
                       optionLabel="label"
                       optionValue="value"
                       filter fluid
                       showClear
                       placeholder="Auto-resolve"
-                      :disabled="!slotProps.data.branch_inventory_id"
+                      :disabled="!slotProps.data.product_id"
+                      :key="`supplier-${slotProps.data.product_id}`"
                     />
                   </template>
                 </Column>
 
-                <Column header="Actions" style="width: 160px">
+                <Column header="Quantity" style="width: 120px">
+                  <template #body="slotProps">
+                    <InputNumber v-model="slotProps.data.quantity_requested" :min="1" :useGrouping="false" class="w-full" />
+                  </template>
+                </Column>
+
+                <!-- Unit cost and tax moved to backend; UI no longer shows editable fields -->
+
+                <Column header="Actions" style="width: 120px">
                   <template #body="slotProps">
                     <div class="flex gap-2">
-                      <Button
-                        type="button"
-                        icon="pi pi-bolt"
-                        severity="info"
-                        text
-                        :disabled="!getInventoryById(slotProps.data.branch_inventory_id)?.reorder_quantity"
-                        @click="applyReorderQty(slotProps.index)"
-                      />
                       <Button
                         type="button"
                         icon="pi pi-trash"
                         severity="danger"
                         text
+                        size="small"
                         :disabled="form.items.length === 1"
                         @click="removeItem(slotProps.index)"
                       />
@@ -102,13 +115,14 @@
             </div>
 
             <div class="flex justify-end gap-2 pt-3 border-t">
-              <Button type="button" label="Cancel" severity="secondary" size="small" @click="goBack" />
+              <Button type="button" label="Cancel" severity="secondary" size="small" @click="router.push({ name: 'procurement.purchase-requisitions' })" />
+              <Button type="button" label="Save Draft" icon="pi pi-save" severity="warning" size="small" @click="saveDraft" :loading="saving" />
               <Button
                 type="submit"
                 label="Create Request"
                 size="small"
                 :loading="saving"
-                :disabled="!canManage || validItems.length === 0"
+                :disabled="validItems.length === 0"
               />
             </div>
           </form>
@@ -119,142 +133,119 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { reactive, ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import { useAuthStore } from '@/stores/auth'
-import inventoryService from '@/services/inventory.service'
-import procurementService from '@/services/procurement.service'
+import procurementService from '../../../../services/procurement.service'
+import inventoryService from '../../../../services/inventory.service'
 
-const route = useRoute()
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
-const authStore = useAuthStore()
-
 const saving = ref(false)
-const loadingInventory = ref(false)
-const inventoryRows = ref<any[]>([])
-const errors = reactive<Record<string, string>>({})
 
-const canManage = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
-const canViewBranchInventory = computed(() => authStore.hasPermission('inventory.branch_inventory.view'))
+const requisitionTypes = [
+  { label: 'Regular', value: 'regular' },
+  { label: 'Urgent', value: 'urgent' },
+  { label: 'New Product', value: 'new_product' },
+  { label: 'Seasonal', value: 'seasonal' },
+  { label: 'Emergency', value: 'emergency' },
+]
 
-const currentBranchId = computed(() => {
-  const user = authStore.user as any
-  return Number(user?.branch?.id || user?.employee?.branch_id || user?.branch_id || 0)
-})
+const priorityOptions = [
+  { label: 'Low (5)', value: 5 },
+  { label: 'Medium (3)', value: 3 },
+  { label: 'High (2)', value: 2 },
+  { label: 'Critical (1)', value: 1 },
+]
 
-const branchLabel = computed(() => {
-  const user = authStore.user as any
-  const name = user?.branch?.name || user?.branch_name || user?.employee?.branch?.name
-  const code = user?.branch?.code || user?.branch?.branch_code || user?.branch_code
-  if (name && code) return `${name} (${code})`
-  if (name) return name
-  if (currentBranchId.value) return `Branch #${currentBranchId.value}`
-  return 'Unassigned Branch'
-})
-
-type InventoryPrItem = {
-  branch_inventory_id: number | null
-  requested_quantity: number
-  selected_supplier_id: number | null
-}
-
-const buildEmptyItem = (): InventoryPrItem => ({
-  branch_inventory_id: null,
-  requested_quantity: 1,
-  selected_supplier_id: null,
-})
-
-const branches = ref<any[]>([])
-
-const form = reactive<{
-  branch_id: number | null
-  notes: string
-  items: InventoryPrItem[]
-}>({
+const form = reactive<any>({
   branch_id: null,
-  notes: '',
-  items: [buildEmptyItem()],
+  requisition_type: 'regular',
+  reason: '',
+  priority: 3,
+  items: [{ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }],
 })
 
-const validItems = computed(() => form.items.filter((item) => item.branch_inventory_id && item.requested_quantity > 0))
+const errors = reactive<any>({})
+const branches = ref<any[]>([])
+const products = ref<any[]>([])
+const productDetailsMap = ref<Record<number, any>>({})
 
-const inventoryOptions = computed(() => {
-  return inventoryRows.value.map((row: any) => {
-    const productName = row?.product?.product_name || row?.product_name || 'Unknown'
-    const sku = row?.product?.sku || row?.sku || ''
-    const variant = row?.variation?.variation_name || row?.variant_name || ''
-    const label = `${productName}${variant ? ` - ${variant}` : ''}${sku ? ` (${sku})` : ''}`
-    return { value: row.id, label }
-  })
+const validItems = computed(() => form.items.filter((i: any) => i.product_id))
+
+const editingDraftId = ref<number | null>(null)
+const isEditingDraft = computed(() => Boolean(editingDraftId.value))
+const formTitle = computed(() => isEditingDraft.value ? 'Edit Purchase Requisition' : 'Create Purchase Requisition')
+const payloadItems = computed(() => validItems.value.map((item: any) => ({
+  product_id: item.product_id,
+  variation_id: item.variation_id,
+  selected_supplier_id: item.selected_supplier_id || null,
+  quantity_requested: item.quantity_requested,
+  specifications: item.specifications,
+})))
+
+const buildPayload = (autoSubmit = false) => ({
+  branch_id: form.branch_id,
+  requisition_type: form.requisition_type,
+  reason: form.reason,
+  priority: form.priority,
+  items: payloadItems.value,
+  auto_submit: autoSubmit,
 })
 
-const branchesOptions = computed(() => branches.value.map((b: any) => ({ value: b.id, label: `${b.name}${b.branch_code ? ` (${b.branch_code})` : ''}` })))
+const validateForm = (): boolean => {
+  Object.keys(errors).forEach(key => delete errors[key])
 
-const goBack = () => router.push({ name: 'procurement.purchase-requisitions' })
+  if (!form.branch_id) { errors.branch_id = 'Branch is required' }
+  if (!form.requisition_type) { errors.requisition_type = 'Type is required' }
+  if (!form.reason || form.reason.trim() === '') { errors.reason = 'Reason is required' }
+  if (validItems.value.length === 0) { errors.items = 'At least one item is required' }
 
-const loadInventory = async (branchId?: number | null) => {
-  const bid = branchId || form.branch_id || currentBranchId.value
-  if (!bid) return
-  if (!canViewBranchInventory.value) {
-    inventoryRows.value = []
-    toast.add({
-      severity: 'warn',
-      summary: 'Permission Required',
-      detail: 'You do not have permission to view branch inventory items.',
-      life: 3500,
-    })
-    return
-  }
-  loadingInventory.value = true
-  try {
-    // Use procurement-scoped inventory endpoint so procurement RBAC can be applied
-    const response = await procurementService.getBranchInventoryForRequisition(bid, { per_page: 1000 })
-    if (response?.success) {
-      inventoryRows.value = Array.isArray(response.data) ? response.data : (response.data?.data || [])
-    } else {
-      inventoryRows.value = []
-    }
-  } catch (e: any) {
-    inventoryRows.value = []
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: e?.response?.data?.message || 'Failed to load branch inventory',
-      life: 3000,
-    })
-  } finally {
-    loadingInventory.value = false
-  }
+  return Object.keys(errors).length === 0
 }
 
-// Reload inventory when selected branch changes
-watch(() => form.branch_id, (nv, ov) => {
-  if (nv) loadInventory(nv)
-})
+const addItem = () => {
+  form.items.push({ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' })
+}
 
-const loadBranches = async () => {
-  try {
-    const response = await procurementService.getBranches().catch(() => ({ data: [] }))
-    branches.value = response.data?.data || response.data || []
-    if (!form.branch_id && currentBranchId.value) {
-      form.branch_id = currentBranchId.value
-    }
-  } catch (e: any) {
-    branches.value = []
+const removeItem = (index: number) => {
+  form.items.splice(index, 1)
+}
+
+const clearProduct = (index: number) => {
+  if (form.items[index]) {
+    form.items[index].product_id = null
+    form.items[index].product_name = ''
+    form.items[index].selected_supplier_id = null
+    form.items[index].estimated_unit_cost = 0
+    form.items[index].tax_rate = 0
   }
 }
 
-const getInventoryById = (inventoryId: number | null) => {
-  if (!inventoryId) return null
-  return inventoryRows.value.find((r: any) => Number(r.id) === Number(inventoryId)) || null
+const selectProduct = async (index: number, eventOrValue: any) => {
+  const productId = Number(eventOrValue && typeof eventOrValue === 'object' ? eventOrValue.value ?? eventOrValue : eventOrValue)
+  const product = products.value.find(p => Number(p.id) === productId)
+  if (product && form.items[index]) {
+    console.debug('[PR Create] selectProduct -> productId', productId, 'product', product)
+    form.items[index].product_id = product.id
+    form.items[index].product_name = product.product_name
+    form.items[index].estimated_unit_cost = parseFloat(product.cost_price || product.base_price) || 0
+    form.items[index].tax_rate = Number(product.tax_rate ?? 0)
+    form.items[index].selected_supplier_id = null
+
+    // Fetch full product details with suppliers and auto-select default
+    await hydrateProductById(productId)
+    console.debug('[PR Create] after hydrate, productDetailsMap', productDetailsMap.value[productId])
+    form.items[index].selected_supplier_id = getDefaultSupplierIdForItem(form.items[index])
+    console.debug('[PR Create] selected_supplier_id set to', form.items[index].selected_supplier_id)
+  }
 }
 
-const getSupplierOptionsForRow = (item: InventoryPrItem) => {
-  const suppliers = Array.isArray(getInventoryById(item.branch_inventory_id)?.product?.suppliers)
-    ? getInventoryById(item.branch_inventory_id)?.product?.suppliers
-    : []
+const getSuppliersForItem = (item: any) => {
+  const pid = Number(item.product_id)
+  const product = productDetailsMap.value[pid] || products.value.find((p: any) => Number(p.id) === pid)
+  const suppliers = Array.isArray(product?.suppliers) ? product.suppliers : []
 
   return suppliers
     .slice()
@@ -262,12 +253,12 @@ const getSupplierOptionsForRow = (item: InventoryPrItem) => {
     .map((supplier: any) => ({
       value: supplier.id,
       label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
-      isPreferred: Boolean(supplier?.pivot?.is_preferred_supplier),
+      isPreferred: Boolean(supplier.pivot?.is_preferred_supplier),
     }))
 }
 
-const getDefaultSupplierIdForRow = (item: InventoryPrItem): number | null => {
-  const options = getSupplierOptionsForRow(item)
+const getDefaultSupplierIdForItem = (item: any): number | null => {
+  const options = getSuppliersForItem(item)
   if (options.length === 0) {
     return null
   }
@@ -284,102 +275,197 @@ const getDefaultSupplierIdForRow = (item: InventoryPrItem): number | null => {
   return null
 }
 
-const addItem = () => {
-  form.items.push(buildEmptyItem())
-}
-
-const removeItem = (index: number) => {
-  if (form.items.length === 1) return
-  form.items.splice(index, 1)
-}
-
-const applyReorderQty = (index: number) => {
-  const row = form.items[index]
-  const qty = Number(getInventoryById(row.branch_inventory_id)?.reorder_quantity || 0)
-  if (qty > 0) {
-    row.requested_quantity = qty
-  }
-}
-
-const hydrateInventoryById = async (inventoryId: number | null) => {
-  if (!inventoryId) return
+const hydrateProductById = async (productId: number | null) => {
+  if (!productId) return
+  const pid = Number(productId)
+  if (productDetailsMap.value[pid]) return
 
   try {
-    const response = await procurementService.getProcurementInventoryItem(inventoryId)
-    const fullRow = response?.data || response?.data?.data || null
-    if (!fullRow?.id) return
-
-    const idx = inventoryRows.value.findIndex((r: any) => Number(r.id) === Number(fullRow.id))
-    if (idx >= 0) {
-      inventoryRows.value[idx] = { ...inventoryRows.value[idx], ...fullRow }
-    } else {
-      inventoryRows.value.push(fullRow)
+    const response = await procurementService.getProcurementProduct(productId, { with_suppliers: true })
+    const fullProduct = response?.data || response
+    if (fullProduct?.id) {
+      // Ensure suppliers array is present; if backend didn't include suppliers, fetch explicitly
+      if (!Array.isArray(fullProduct.suppliers) || fullProduct.suppliers.length === 0) {
+        try {
+          const suppliersRes = await procurementService.getProductSuppliers(fullProduct.id)
+          const suppliers = suppliersRes?.data || suppliersRes || []
+          fullProduct.suppliers = Array.isArray(suppliers) ? suppliers : suppliers.data || []
+        } catch {
+          fullProduct.suppliers = fullProduct.suppliers || []
+        }
+      }
+      productDetailsMap.value[Number(fullProduct.id)] = fullProduct
     }
   } catch {
-    // Keep current row when details endpoint is unavailable.
+    // Keep using basic product from list when detail endpoint fails
   }
 }
 
-const onInventoryChange = async (index: number, event: any) => {
-  const item = form.items[index]
-  item.branch_inventory_id = Number(event?.value || item.branch_inventory_id || 0) || null
-  item.selected_supplier_id = null
+const prefillFromInventoryItem = async (item: any) => {
+  if (!item) return
 
-  await hydrateInventoryById(item.branch_inventory_id)
-  item.selected_supplier_id = getDefaultSupplierIdForRow(item)
+  form.branch_id = item.branch_id ?? form.branch_id
+
+  const stockStatus = item.stock_status || ''
+  if (stockStatus === 'out_of_stock') {
+    form.requisition_type = 'emergency'
+    form.priority = 1
+  } else if (stockStatus === 'low_stock') {
+    form.requisition_type = 'regular'
+    form.priority = 3
+  }
+
+  if (!form.reason || form.reason.trim() === '') {
+    const statusLabel = stockStatus ? stockStatus.replace(/_/g, ' ') : 'low stock'
+    form.reason = `Auto-created from ${statusLabel} inventory alert.`
+  }
+
+  const requestedQty = item.reorder_quantity || Math.max((item.reorder_point || 0) - (item.quantity_available || 0), 1)
+  const productId = item.product_id || item.product?.id
+  const productName = item.product?.product_name || ''
+  const basePrice = parseFloat(item.product?.base_price || '0') || 0
+
+  if (productId) {
+    const existingProduct = products.value.find(p => p.id === productId)
+    if (!existingProduct && item.product) {
+      products.value.push(item.product)
+    }
+  }
+
+  const newItem = {
+    product_id: productId || null,
+    selected_supplier_id: null,
+    quantity_requested: requestedQty,
+    estimated_unit_cost: basePrice,
+    tax_rate: Number(item.product?.tax_rate ?? 0),
+    specifications: '',
+    product_name: productName
+  }
+
+  form.items = [newItem]
+
+  // Hydrate product details and auto-select supplier
+  if (productId) {
+    await hydrateProductById(productId)
+    newItem.selected_supplier_id = getDefaultSupplierIdForItem(newItem)
+  }
 }
 
-const submit = async () => {
-  Object.keys(errors).forEach(k => delete errors[k])
-  if (!canManage.value) return
-  if (!form.branch_id) {
-    errors.branch = 'Please select a branch for this requisition.'
-    return
+const mapItemToForm = (item: any) => {
+  const product = item.product || {}
+  ensureProductInList(product)
+  return {
+    product_id: item.product_id,
+    variation_id: item.variation_id ?? null,
+    selected_supplier_id: item.selected_supplier_id ?? null,
+    quantity_requested: item.quantity_requested,
+    estimated_unit_cost: item.estimated_unit_cost ?? 0,
+    tax_rate: Number(item.tax_rate ?? 0),
+    specifications: item.specifications ?? '',
+    product_name: product.product_name || item.product_name || '',
   }
-  if (validItems.value.length === 0) {
-    errors.items = 'Please add at least one valid item with quantity.'
+}
+
+const ensureProductInList = (product: any) => {
+  if (!product?.id) return
+  const exists = products.value.some(p => p.id === product.id)
+  if (!exists) {
+    products.value.push(product)
+  }
+}
+
+const loadDraft = async (draftId: number) => {
+  try {
+    const response = await procurementService.getPurchaseRequisition(draftId)
+    const draft = response.data || response
+    if (!draft || draft.status !== 'draft') {
+      toast.add({ severity: 'warn', summary: 'Unable to edit', detail: 'Only draft requisitions can be edited', life: 3000 })
+      return
+    }
+    editingDraftId.value = draft.id
+    form.branch_id = draft.branch_id || form.branch_id
+    form.requisition_type = draft.requisition_type || form.requisition_type
+    form.reason = draft.reason || form.reason
+    form.priority = draft.priority ?? form.priority
+    const items = Array.isArray(draft.items) ? draft.items : []
+    form.items = items.length > 0
+      ? items.map(mapItemToForm)
+      : [{ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }]
+
+    // Hydrate product details for all items to populate supplier dropdowns
+    const productIds = form.items.map((item: any) => item.product_id).filter(Boolean)
+    await Promise.all(productIds.map((id: number) => hydrateProductById(id)))
+
+    toast.add({ severity: 'info', summary: 'Editing Draft', detail: `You are editing draft #${draft.pr_number || draft.id}`, life: 2500 })
+  } catch (error: any) {
+    console.error('Unable to load draft:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load draft', life: 3000 })
+  }
+}
+
+const saveDraft = async () => {
+  saving.value = true
+  try {
+    if (!validateForm()) {
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Please complete required fields', life: 3000 })
+      saving.value = false
+      return
+    }
+
+    const payload = buildPayload(false) // Don't auto-submit drafts
+    const response = editingDraftId.value
+      ? await procurementService.updatePurchaseRequisition(editingDraftId.value, payload)
+      : await procurementService.createPurchaseRequisition(payload)
+
+    if (response.success) {
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: editingDraftId.value ? 'Draft updated' : 'PR saved as draft',
+        life: 3000,
+      })
+      if (!editingDraftId.value) {
+        editingDraftId.value = response.data?.id
+      }
+      setTimeout(() => router.push({ name: 'procurement.purchase-requisitions' }), 1500)
+    }
+  } catch (error: any) {
+    console.error('Save error:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to save', life: 3000 })
+  } finally {
+    saving.value = false
+  }
+}
+
+const submitForm = async () => {
+  if (!validateForm()) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Please complete required fields', life: 3000 })
     return
   }
 
   saving.value = true
   try {
-    const payloadItems = validItems.value.map((item) => {
-      const inventoryRow = getInventoryById(item.branch_inventory_id)
+    const payload = buildPayload(true) // Auto-submit on create
+    const response = editingDraftId.value
+      ? await procurementService.updatePurchaseRequisition(editingDraftId.value, { ...payload, auto_submit: false }) // Don't auto-submit on update
+      : await procurementService.createPurchaseRequisition(payload)
 
-      return {
-        product_id: Number(inventoryRow?.product_id),
-        variation_id: inventoryRow?.variation_id ?? null,
-        selected_supplier_id: item.selected_supplier_id || null,
-        quantity_requested: Number(item.requested_quantity),
-        estimated_unit_cost: Number(inventoryRow?.product?.cost_price ?? inventoryRow?.product?.base_price ?? 0),
-        tax_rate: Number(inventoryRow?.product?.tax_rate ?? 0),
-        specifications: null,
+    if (response.success) {
+      const requisitionId = editingDraftId.value || response.data?.id
+      if (editingDraftId.value) {
+        // Submit the updated draft
+        const submitResponse = await procurementService.submitPurchaseRequisition(requisitionId)
+        if (submitResponse.success) {
+          toast.add({ severity: 'success', summary: 'Success', detail: 'PR updated and submitted successfully', life: 3000 })
+        }
+      } else {
+        toast.add({ severity: 'success', summary: 'Success', detail: 'PR created and submitted successfully', life: 3000 })
       }
-    })
-
-    const response = await inventoryService.createPurchaseRequisitionFromInventory({
-      branch_id: form.branch_id,
-      reason: form.notes || 'Stock replenishment request.',
-      requisition_type: 'regular',
-      items: payloadItems,
-      auto_submit: true,
-    })
-
-    if (response?.success) {
-      toast.add({ severity: 'success', summary: 'Created', detail: 'Purchase requisition created.', life: 2500 })
-      router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: response.data?.id } })
-    } else {
-      toast.add({ severity: 'error', summary: 'Error', detail: response?.message || 'Failed to create request', life: 3000 })
+      setTimeout(() => router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: requisitionId } }), 1500)
     }
-  } catch (e: any) {
-    const apiErrors = e?.response?.data?.errors
-    if (apiErrors && typeof apiErrors === 'object') {
-      Object.entries(apiErrors).forEach(([k, v]: any) => {
-        errors[k] = Array.isArray(v) ? v[0] : String(v)
-      })
-    } else {
-      toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.message || 'Failed to create request', life: 3000 })
-    }
+  } catch (error: any) {
+    console.error('Submit error:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to create PR', life: 3000 })
   } finally {
     saving.value = false
   }
@@ -387,48 +473,59 @@ const submit = async () => {
 
 onMounted(async () => {
   try {
-    if (!authStore.user) await authStore.fetchCurrentUser()
-  } catch {}
+    const [branchesRes, productsRes] = await Promise.all([
+      procurementService.getBranches({ per_page: 1000 }).catch(() => ({ data: [] })),
+      procurementService.getProcurementProducts({ per_page: 1000 }).catch(() => ({ data: [] })),
+    ])
 
-  if (!currentBranchId.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Branch Required',
-      detail: 'No branch is assigned to your user profile.',
-      life: 4000,
-    })
-  }
-
-  await Promise.all([loadInventory(), loadBranches()])
-
-  // Auto-fill when coming from Branch Inventory "Create PR"
-  const q = route.query || {}
-  const biRaw = Array.isArray(q.branch_inventory_id) ? q.branch_inventory_id[0] : q.branch_inventory_id
-  const qtyRaw = Array.isArray(q.requested_quantity) ? q.requested_quantity[0] : q.requested_quantity
-  const notesRaw = Array.isArray(q.notes) ? q.notes[0] : q.notes
-
-  const biId = biRaw ? Number(biRaw) : 0
-  if (biId) {
-    form.items = [buildEmptyItem()]
-    form.items[0].branch_inventory_id = biId
-    await hydrateInventoryById(biId)
-
-    const qty = qtyRaw ? Number(qtyRaw) : 0
-    if (qty && qty > 0) {
-      form.items[0].requested_quantity = qty
-    } else {
-      // fallback to reorder qty if available
-      applyReorderQty(0)
+    branches.value = branchesRes.data?.data || branchesRes.data || []
+    
+    if (Array.isArray(productsRes.data)) {
+      products.value = productsRes.data
+    } else if (productsRes.data?.data) {
+      products.value = productsRes.data.data
     }
 
-    form.items[0].selected_supplier_id = getDefaultSupplierIdForRow(form.items[0])
-
-    if (typeof notesRaw === 'string' && notesRaw.trim()) {
-      form.notes = notesRaw
+    if (branches.value.length > 0 && !form.branch_id) {
+      form.branch_id = branches.value[0].id
     }
-    // if branch_id provided in query, override
-    const branchQ = route.query.branch_id ? Number(route.query.branch_id) : null
-    if (branchQ) form.branch_id = branchQ
+
+    const draftId = route.query.draft_id ? parseInt(route.query.draft_id as string, 10) : null
+    if (draftId) {
+      await loadDraft(draftId)
+      return
+    }
+
+    if (route.query.branch_inventory_id) {
+      const inventoryId = parseInt(route.query.branch_inventory_id as string)
+      const inventoryResponse = await inventoryService.getInventoryItem(inventoryId).catch(() => null)
+      const inventoryItem = inventoryResponse?.data || inventoryResponse?.data?.data || inventoryResponse
+      await prefillFromInventoryItem(inventoryItem)
+    } else if (route.query.product_id || route.query.branch_id) {
+      const productId = route.query.product_id ? parseInt(route.query.product_id as string) : null
+      const branchId = route.query.branch_id ? parseInt(route.query.branch_id as string) : null
+      if (branchId) form.branch_id = branchId
+      if (productId) {
+        const product = products.value.find(p => p.id === productId)
+        if (product) {
+          const newItem = {
+            product_id: product.id,
+            selected_supplier_id: null,
+            quantity_requested: 1,
+            estimated_unit_cost: parseFloat(product.base_price) || 0,
+            tax_rate: Number(product.tax_rate ?? 0),
+            specifications: '',
+            product_name: product.product_name
+          }
+          form.items = [newItem]
+          // Hydrate product details and auto-select supplier
+          await hydrateProductById(productId)
+          newItem.selected_supplier_id = getDefaultSupplierIdForItem(newItem)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load data:', error)
   }
 })
 </script>
