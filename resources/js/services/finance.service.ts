@@ -143,6 +143,17 @@ const financeService = {
     return response.data
   },
 
+  async adjustCashflow(payload: {
+    direction: 'in' | 'out'
+    amount: number
+    payment_method?: string
+    description?: string
+    notes?: string
+  }) {
+    const response = await axiosClient.post(`${baseUrl}/cashflow/adjust`, payload)
+    return response.data
+  },
+
   async topUpCashflow(payload: {
     amount: number
     payment_method?: string

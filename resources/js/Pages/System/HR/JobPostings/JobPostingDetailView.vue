@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-full">
     <div class="mx-auto max-w-7xl px-6">
-      <Button label="Back to Job Postings" icon="pi pi-arrow-left" severity="secondary" text @click="router.push({ name: 'hr.job-postings' })" />
+      <Button label="Back to Job Postings" icon="pi pi-arrow-left" severity="secondary" text @click="router.push({ name: 'hr.recuitment' })" />
 
       <div v-if="loading" class="mt-4 space-y-3">
         <Skeleton height="10rem" />

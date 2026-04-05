@@ -92,12 +92,11 @@
 <script setup lang="ts">
 import JobPortalLayout from './JobPortalLayout.vue'
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import hrService, { type JobPosting } from '../../../../services/hr.services'
 import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
 
-const router = useRouter()
 const toast = useToast()
 const portalAuth = useJobPortalAuthStore()
 
@@ -130,11 +129,15 @@ const fetchPostings = async () => {
 
 const previewPosting = (id?: number) => {
   if (!id) return
-  const target = { name: 'job-portal.detail', params: { id } }
+  const targetPath = `/job-portal/postings/${id}`
+
   if (!portalAuth.isAuthenticated) {
-    portalAuth.setPendingRedirect(router.resolve(target).fullPath)
+    portalAuth.setPendingRedirect(targetPath)
+    router.visit('/job-portal/login')
+    return
   }
-  router.push(target)
+
+  router.visit(targetPath)
 }
 
 const formatCurrency = (value: number | string) =>

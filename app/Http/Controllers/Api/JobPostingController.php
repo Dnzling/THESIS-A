@@ -9,14 +9,11 @@ use App\Models\Core\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 
 class JobPostingController extends Controller
 {
     public function index(): JsonResponse
     {
-        Gate::authorize('view-job-postings');
-
         $postings = JobPosting::with(['store', 'role', 'screeningStages', 'applications'])
             ->where('store_id', Auth::user()->store_id)
             ->orderBy('created_at', 'desc')
@@ -27,8 +24,6 @@ class JobPostingController extends Controller
 
     public function show(JobPosting $posting): JsonResponse
     {
-        Gate::authorize('view-job-postings');
-
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
         $posting->load(['store', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
@@ -38,8 +33,6 @@ class JobPostingController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        Gate::authorize('create-job-postings');
-
         abort_unless(Auth::user()?->store_id, 422, 'Authenticated user does not have a store assigned.');
 
         $validated = $request->validate([
@@ -98,8 +91,6 @@ class JobPostingController extends Controller
 
     public function update(Request $request, JobPosting $posting): JsonResponse
     {
-        Gate::authorize('edit-job-postings');
-
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
         $validated = $request->validate([
@@ -133,8 +124,6 @@ class JobPostingController extends Controller
 
     public function destroy(JobPosting $posting): JsonResponse
     {
-        Gate::authorize('delete-job-postings');
-
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
         $posting->delete();
@@ -144,8 +133,6 @@ class JobPostingController extends Controller
 
     public function updateScreeningStages(Request $request, JobPosting $posting): JsonResponse
     {
-        Gate::authorize('edit-job-postings');
-
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
         $validated = $request->validate([

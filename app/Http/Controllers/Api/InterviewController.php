@@ -7,14 +7,11 @@ use App\Models\Interview;
 use App\Models\JobApplication;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 
 class InterviewController extends Controller
 {
     public function indexByApplication(JobApplication $application): JsonResponse
     {
-        Gate::authorize('view-interviews');
-
         $interviews = $application->interviews()
             ->with('interviewer')
             ->orderBy('interview_date', 'desc')
@@ -25,8 +22,6 @@ class InterviewController extends Controller
 
     public function show(Interview $interview): JsonResponse
     {
-        Gate::authorize('view-interviews');
-
         $interview->load(['application', 'interviewer']);
 
         return response()->json($interview);
@@ -34,8 +29,6 @@ class InterviewController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        Gate::authorize('schedule-interviews');
-
         $validated = $request->validate([
             'application_id' => 'required|exists:job_applications,id',
             'interviewer_id' => 'required|exists:users,id',
@@ -77,8 +70,6 @@ class InterviewController extends Controller
 
     public function update(Request $request, Interview $interview): JsonResponse
     {
-        Gate::authorize('update-interviews');
-
         $validated = $request->validate([
             'feedback' => 'nullable|string',
             'score' => 'nullable|numeric|min:0|max:10',
@@ -94,8 +85,6 @@ class InterviewController extends Controller
 
     public function destroy(Interview $interview): JsonResponse
     {
-        Gate::authorize('delete-interviews');
-
         $interview->delete();
 
         return response()->json(['message' => 'Interview deleted successfully']);
@@ -103,8 +92,6 @@ class InterviewController extends Controller
 
     public function bulkUpdate(Request $request, JobApplication $application): JsonResponse
     {
-        Gate::authorize('update-interviews');
-
         $validated = $request->validate([
             'interviews' => 'required|array',
             'interviews.*.id' => 'required|exists:interviews,id',

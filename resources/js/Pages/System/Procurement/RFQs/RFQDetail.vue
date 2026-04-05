@@ -342,15 +342,6 @@
           <span>Delete RFQ</span>
         </button>
         <button
-          v-if="detail.status === 'draft'"
-          @click="send"
-          :disabled="processing"
-          class="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <i class="pi pi-send text-sm"></i>
-          <span>{{ processing ? 'Sending...' : 'Send to Suppliers' }}</span>
-        </button>
-        <button
           v-if="detail.status === 'quotes_received'"
           @click="award"
           :disabled="processing"

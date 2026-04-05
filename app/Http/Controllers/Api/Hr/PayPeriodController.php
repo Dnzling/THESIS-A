@@ -14,6 +14,11 @@ use App\Http\Controllers\Controller;
 
 class PayPeriodController extends Controller
 {
+    private function generatePeriodName(string $startDate, string $endDate): string
+    {
+        return sprintf('Pay Period %s to %s', $startDate, $endDate);
+    }
+
     public function index(Request $request)
     {
         try {
@@ -130,12 +135,25 @@ class PayPeriodController extends Controller
             }
 
             $validated = $request->validate([
-                'name' => 'required|string|max:100',
+                'name' => 'nullable|string|max:100',
                 'start_date' => 'required|date',
                 'end_date' => 'required|date|after:start_date',
                 'cutoff_date' => 'required|date|after_or_equal:start_date|before_or_equal:end_date',
                 'notes' => 'nullable|string',
             ]);
+
+            $generatedName = $this->generatePeriodName($validated['start_date'], $validated['end_date']);
+            if (!empty($validated['name']) && trim((string) $validated['name']) !== $generatedName) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pay period name must match the selected date range.',
+                    'errors' => [
+                        'name' => [
+                            'Use the auto-generated pay period name based on start and end dates.',
+                        ],
+                    ],
+                ], 422);
+            }
 
             // Check for overlapping periods (only for this store)
             $overlapping = PayPeriod::where('store_id', $user->store_id)
@@ -157,7 +175,7 @@ class PayPeriodController extends Controller
             }
 
             $period = PayPeriod::create([
-                'name' => $validated['name'],
+                'name' => $generatedName,
                 'start_date' => $validated['start_date'],
                 'end_date' => $validated['end_date'],
                 'cutoff_date' => $validated['cutoff_date'],

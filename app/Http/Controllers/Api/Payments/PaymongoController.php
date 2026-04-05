@@ -4,12 +4,17 @@ namespace App\Http\Controllers\Api\Payments;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
 use App\Models\Sales\SalesPayment;
+use App\Models\Store\Store;
+use App\Services\Finance\CashflowService;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class PaymongoController extends Controller
@@ -45,8 +50,9 @@ class PaymongoController extends Controller
         ];
 
         // PayMongo rejects blank metadata, so only send it when it has values.
-        if (!empty($data['metadata']) && is_array($data['metadata'])) {
-            $attributes['metadata'] = $data['metadata'];
+        $normalizedMetadata = $this->normalizeMetadata($data['metadata'] ?? null);
+        if (!empty($normalizedMetadata)) {
+            $attributes['metadata'] = $normalizedMetadata;
         }
 
         $payload = [
@@ -80,7 +86,7 @@ class PaymongoController extends Controller
             'description' => data_get($attrs, 'description'),
             'statement_descriptor' => data_get($attrs, 'statement_descriptor'),
             'payment_method_allowed' => implode(',', $data['payment_method_allowed']),
-            'metadata' => data_get($attrs, 'metadata', $data['metadata'] ?? []),
+            'metadata' => data_get($attrs, 'metadata', $normalizedMetadata),
             'payable_type' => $data['payable_type'],
             'payable_id' => $data['payable_id'],
         ]);
@@ -108,6 +114,7 @@ class PaymongoController extends Controller
             $freshIntent = $intent->fresh();
             $this->syncSalesPaymentFromIntent($freshIntent, $status);
             $this->syncEcommerceOrderFromIntent($freshIntent, $status);
+            $this->syncSubscriptionFromIntent($freshIntent, $status);
         }
 
         return response()->json(['data' => $payload]);
@@ -214,6 +221,7 @@ class PaymongoController extends Controller
         if ($intent) {
             $this->syncSalesPaymentFromIntent($intent, (string) $intent->status);
             $this->syncEcommerceOrderFromIntent($intent, (string) $intent->status);
+            $this->syncSubscriptionFromIntent($intent, (string) $intent->status);
             return response()->json(['message' => 'Event processed']);
         }
 
@@ -293,10 +301,136 @@ class PaymongoController extends Controller
             default => 'unpaid',
         };
 
+        $previousStatus = (string) $order->payment_status;
         if ($order->payment_status !== $nextOrderPaymentStatus) {
             $order->update([
                 'payment_status' => $nextOrderPaymentStatus,
             ]);
         }
+
+        if ($previousStatus !== 'paid' && $nextOrderPaymentStatus === 'paid') {
+            try {
+                $cashflow = new CashflowService();
+                $cashflow->credit(
+                    (int) $order->store_id,
+                    (float) $order->total_amount,
+                    'ecommerce_order',
+                    (int) $order->id,
+                    Auth::id(),
+                    'Ecommerce payment ' . ($order->order_number ?? ('#' . $order->id)),
+                    'paymongo_gcash',
+                    [
+                        'payment_intent_id' => $intent->payment_intent_id,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::error('Failed to record ecommerce cashflow after payment success.', [
+                    'order_id' => $order->id,
+                    'intent' => $intent->payment_intent_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private function syncSubscriptionFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
+    {
+        if ($intent->payable_type !== 'subscription_upgrade') {
+            return;
+        }
+
+        if (strtolower(trim($paymongoStatus)) !== 'succeeded') {
+            return;
+        }
+
+        $metadata = is_array($intent->metadata) ? $intent->metadata : [];
+        $storeId = (int) ($intent->store_id ?: ($metadata['store_id'] ?? $intent->payable_id));
+        if ($storeId <= 0) {
+            return;
+        }
+
+        $store = Store::find($storeId);
+        if (!$store) {
+            return;
+        }
+
+        $months = max(1, (int) ($metadata['months'] ?? 1));
+        $targetTier = (string) ($metadata['subscription_tier'] ?? 'premium');
+
+        $baseDate = $store->subscription_ends_at
+            ? Carbon::parse($store->subscription_ends_at)
+            : now();
+        if ($baseDate->lt(now())) {
+            $baseDate = now();
+        }
+        $newEndsAt = $baseDate->copy()->addMonths($months);
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $settings['trial'] = false;
+
+        $store->update([
+            'subscription_tier' => $targetTier,
+            'subscription_ends_at' => $newEndsAt,
+            'settings' => $settings,
+        ]);
+
+        try {
+            PlatformRevenue::firstOrCreate(
+                ['reference' => $intent->payment_intent_id],
+                [
+                    'store_id' => $store->id,
+                    'source' => 'subscription_upgrade',
+                    'amount' => ((float) $intent->amount) / 100,
+                    'currency' => $intent->currency ?: 'PHP',
+                    'metadata' => array_merge($metadata, [
+                        'paymongo_status' => $paymongoStatus,
+                        'payable_type' => $intent->payable_type,
+                    ]),
+                    'paid_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            // Revenue recording must not block payment status synchronization.
+            Log::error('Failed to record platform revenue for subscription upgrade.', [
+                'intent_id' => $intent->payment_intent_id,
+                'store_id' => $store->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function normalizeMetadata(?array $metadata): array
+    {
+        if (!$metadata) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($metadata as $key => $value) {
+            $metaKey = trim((string) $key);
+            if ($metaKey === '') {
+                continue;
+            }
+
+            if (is_array($value) || is_object($value)) {
+                $encoded = json_encode($value);
+                if ($encoded === false) {
+                    continue;
+                }
+                $normalized[$metaKey] = $encoded;
+                continue;
+            }
+
+            if (is_bool($value)) {
+                $normalized[$metaKey] = $value ? 'true' : 'false';
+                continue;
+            }
+
+            if (is_scalar($value)) {
+                $normalized[$metaKey] = (string) $value;
+            }
+        }
+
+        return $normalized;
     }
 }

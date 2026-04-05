@@ -16,6 +16,15 @@ use Illuminate\Validation\Rule;
 
 class ApplicantPortalController extends Controller
 {
+    private const ALLOWED_DOCUMENT_TYPES = [
+        'Resume',
+        'CoverLetter',
+        'ID',
+        'Certificate',
+        'Portfolio',
+        'Other',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $applications = JobApplication::query()
@@ -112,6 +121,8 @@ class ApplicantPortalController extends Controller
                 'current_company' => 'nullable|string|max:255',
                 'documents' => 'nullable|array',
                 'documents.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png',
+                'document_types' => 'nullable|array',
+                'document_types.*' => ['nullable', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
             ]);
         }
 

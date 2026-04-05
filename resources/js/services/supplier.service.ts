@@ -295,7 +295,6 @@ class SupplierService {
     rfq_item_id: number
     quoted_price: number
     description?: string
-    tax_rate?: number
   }) {
     const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, data)
     return response.data

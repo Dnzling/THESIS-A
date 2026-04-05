@@ -74,6 +74,56 @@ class CashflowService
         });
     }
 
+    public function credit(
+        int $storeId,
+        float $amount,
+        string $referenceType,
+        int|string $referenceId,
+        ?int $userId = null,
+        ?string $description = null,
+        ?string $paymentMethod = null,
+        array $meta = []
+    ): FinanceCashflowTransaction {
+        if ($amount <= 0) {
+            throw new \RuntimeException('Credit amount must be greater than zero.');
+        }
+
+        return DB::transaction(function () use ($storeId, $amount, $referenceType, $referenceId, $userId, $description, $paymentMethod, $meta) {
+            $account = FinanceAccount::where('store_id', $storeId)
+                ->where('type', 'operating')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$account) {
+                $account = $this->getOrCreateOperatingAccount($storeId, $userId);
+                $account = FinanceAccount::whereKey($account->id)->lockForUpdate()->first();
+            }
+
+            if (!(bool) $account->is_active) {
+                throw new \RuntimeException('Finance operating account is inactive.');
+            }
+
+            $before = (float) $account->current_balance;
+            $after = $before + $amount;
+            $account->update(['current_balance' => $after]);
+
+            return FinanceCashflowTransaction::create([
+                'finance_account_id' => $account->id,
+                'store_id' => $storeId,
+                'direction' => 'in',
+                'amount' => $amount,
+                'balance_before' => $before,
+                'balance_after' => $after,
+                'reference_type' => $referenceType,
+                'reference_id' => (int) $referenceId,
+                'payment_method' => $paymentMethod,
+                'description' => $description,
+                'meta' => $meta,
+                'created_by' => $userId,
+            ]);
+        });
+    }
+
     public function debit(
         int $storeId,
         float $amount,

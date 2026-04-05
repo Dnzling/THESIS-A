@@ -95,6 +95,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     Route::prefix('admin')->group(function () {
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
+        Route::get('/roles/primary', [RolePermissionController::class, 'primaryRolesAdmin']);
+        Route::delete('/roles/{id}', [RolePermissionController::class, 'deleteRole']);
         Route::get('/roles/{id}/permissions', [RolePermissionController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [RolePermissionController::class, 'updateRolePermissions']);
         Route::get('/roles/export', [RolePermissionController::class, 'exportRoles']);
@@ -266,6 +268,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/payrolls/{id}/payslip/print', [PayrollController::class, 'printPayslip']);
 
     Route::prefix('hr/dashboard')->controller(\App\Http\Controllers\Api\Hr\DashboardController::class)->group(function () {
+        Route::get('/analytics-overview', 'getAnalyticsOverview');
         Route::get('/today-stats', 'getTodayStats');
         Route::get('/weekly-attendance', 'getWeeklyAttendance');
         Route::get('/monthly-summary', 'getMonthlySummary');

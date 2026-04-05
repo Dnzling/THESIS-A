@@ -472,7 +472,7 @@ watch(
 const loadProducts = async () => {
   loadingProducts.value = true
   try {
-    const response = await merchandisingService.getProducts({ per_page: 1000 })
+    const response = await merchandisingService.getProducts({ per_page: 1000, product_type: 'finished_good' })
     const payload = response.data || {}
     products.value = Array.isArray(payload?.data) ? payload.data : (payload?.data?.data || [])
   } catch (error) {

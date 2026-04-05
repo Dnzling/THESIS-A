@@ -280,6 +280,7 @@ import axiosClient from '@/axios'
 const page = usePage()
 const authStore = useAuthStore()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isSupplierUser = computed(() => String(authStore.user?.role || '').toLowerCase().includes('supplier'))
 const userDialogRef = ref(null)
 const loadingNavigation = ref(true)
 const sidebarOpen = ref(false)
@@ -531,8 +532,42 @@ const openNotification = async (notif: any) => {
             console.error('Failed to mark notification as read', error)
         }
     }
-    if (notif.link) {
-        router.visit(notif.link)
+
+    if (!notif.link) return
+
+    // Normalize link: strip absolute origin, handle /system/procurement rewrites
+    const stripOrigin = (l: string) => l.replace(/^https?:\/\/[^/]+/i, '')
+    let target = String(notif.link || '')
+    try {
+        target = stripOrigin(target)
+
+        // Ensure leading slash
+        if (!target.startsWith('/')) target = `/${target}`
+
+        if (isSupplierUser.value) {
+            // Supplier-facing routes
+            target = target.replace(/\/system\/procurement\/rfqs\/(\d+)/i, '/supplier-portal/rfqs/$1')
+            target = target.replace(/\/system\/procurement\/purchase-orders\/(\d+)/i, '/supplier-portal/pos/$1/view')
+            target = target.replace(/^\/system\/procurement/i, '/supplier-portal')
+        } else {
+            // Non-supplier users: map system procurement to procurement
+            target = target.replace(/^\/system\/procurement/i, '/procurement')
+        }
+
+        // Navigate with Inertia, fallback to full location assign
+        try {
+            router.visit(target)
+        } catch (err) {
+            window.location.href = target
+        }
+    } catch (err) {
+        // Fallback: navigate raw link
+        try {
+            router.visit(notif.link)
+        } catch (err2) {
+            window.location.href = notif.link
+        }
+    } finally {
         if (notificationPanel.value) notificationPanel.value.hide()
     }
 }

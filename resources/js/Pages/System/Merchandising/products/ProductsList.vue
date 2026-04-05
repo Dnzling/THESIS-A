@@ -8,31 +8,10 @@
       <div class="flex items-center gap-2">
         <Button @click="$router.push({ name: 'merchandising.products.logs' })" icon="pi pi-history" label="Logs"
           severity="info" outlined />
-        <Button @click="$router.push({ name: 'merchandising.products.raw.create' })" icon="pi pi-box" label="Add Raw Material"
-          severity="contrast" outlined />
         <Button @click="$router.push({ name: 'merchandising.products.create' })" icon="pi pi-plus" label="Add Product"
           severity="success" />
       </div>
     </div>
-
-    <Card class="mb-3">
-      <template #content>
-        <div class="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p class="text-sm font-semibold text-gray-700">View Mode</p>
-            <p class="text-xs text-gray-500">Toggle between finished goods and raw materials</p>
-          </div>
-          <SelectButton
-            v-model="filters.product_type"
-            :options="productTypeOptions"
-            optionLabel="label"
-            optionValue="value"
-            @change="onFilterChange"
-            :allowEmpty="false"
-          />
-        </div>
-      </template>
-    </Card>
   
     <!-- Filters Card -->
     <Card class="mb-6">
@@ -231,10 +210,6 @@ const filters = reactive({
 const activeStatuses = [
   { label: 'Active', value: true },
   { label: 'Inactive', value: false }
-]
-const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' }
 ]
 
 // Methods

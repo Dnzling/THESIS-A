@@ -506,7 +506,7 @@ const loadVariations = async () => {
 
 const loadProducts = async () => {
   try {
-    const response = await merchandisingService.getProducts({ per_page: 1000 })
+    const response = await merchandisingService.getProducts({ per_page: 1000, product_type: 'finished_good' })
     products.value = response.data.data
   } catch (error) {
     console.error('Failed to load products:', error)

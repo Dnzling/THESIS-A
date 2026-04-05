@@ -43,6 +43,7 @@ class StoreSettingsController extends Controller
                     'days_remaining' => $daysRemaining,
                     'status' => $status,
                 ],
+                'verification' => $this->resolveVerificationStatus($store),
                 'onboarding' => [
                     'plan' => $profile?->plan ?? 'simple',
                     'modules' => $profile?->modules ?? [],
@@ -51,6 +52,49 @@ class StoreSettingsController extends Controller
                 ],
             ],
         ]);
+    }
+
+    private function resolveVerificationStatus($store): array
+    {
+        if (!$store) {
+            return [
+                'store_status' => 'pending',
+                'is_verified' => false,
+                'is_under_review' => false,
+                'is_pending' => true,
+                'is_rejected' => false,
+                'submitted_at' => null,
+                'reviewed_at' => null,
+                'rejection_reason' => null,
+                'documents_submitted' => false,
+            ];
+        }
+
+        $store->loadMissing('verification');
+        $verification = $store->verification;
+
+        $workflowStatus = 'pending';
+        if ($verification) {
+            if (!is_null($verification->reviewed_at) && !is_null($verification->rejection_reason)) {
+                $workflowStatus = 'rejected';
+            } elseif (!is_null($verification->reviewed_at)) {
+                $workflowStatus = 'approved';
+            } else {
+                $workflowStatus = 'reviewing';
+            }
+        }
+
+        return [
+            'store_status' => $workflowStatus,
+            'is_verified' => $workflowStatus === 'approved',
+            'is_under_review' => $workflowStatus === 'reviewing',
+            'is_pending' => $workflowStatus === 'pending',
+            'is_rejected' => $workflowStatus === 'rejected',
+            'submitted_at' => $verification->submitted_at ?? null,
+            'reviewed_at' => $verification->reviewed_at ?? null,
+            'rejection_reason' => $verification->rejection_reason ?? null,
+            'documents_submitted' => (bool) $verification,
+        ];
     }
 
     private function resolveAttendanceSettings(?int $storeId): array

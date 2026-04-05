@@ -1252,7 +1252,7 @@ const submitForm = async () => {
       supplier_ids: selectedSupplierIds.value
     }
 
-    console.log('RFQ Payload:', JSON.stringify(payload, null, 2))
+    // Debug log removed: do not print RFQ payload in console
 
     const rfqResponse = isEditMode.value && editingRfqId.value
       ? await procurementService.updateRFQ(editingRfqId.value, payload as any)

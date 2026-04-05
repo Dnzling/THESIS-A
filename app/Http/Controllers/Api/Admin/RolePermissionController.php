@@ -43,6 +43,60 @@ class RolePermissionController extends Controller
     }
 
     /**
+     * Get primary admin roles (global roles with no store scope).
+     */
+    public function primaryRolesAdmin()
+    {
+        $roles = DB::table('roles')
+            ->select('roles.*')
+            ->whereNull('roles.store_id')
+            ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
+            ->selectRaw('(
+                SELECT COUNT(*)
+                FROM role_permissions rp
+                INNER JOIN permissions p ON p.id = rp.permission_id
+                WHERE rp.role_id = roles.id
+                  AND p.is_active = 1
+                  AND p.deleted_at IS NULL
+            ) as permissions_active_count')
+            ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id) as users_count')
+            ->get();
+
+        return response()->json($roles);
+    }
+
+    /**
+     * Delete role and detach its permissions.
+     */
+    public function deleteRole($id)
+    {
+        $role = Role::query()->findOrFail($id);
+
+        $protectedRoles = ['super_admin'];
+        if (in_array((string) $role->name, $protectedRoles, true)) {
+            return response()->json([
+                'message' => 'This role is protected and cannot be deleted.',
+            ], 422);
+        }
+
+        $usersCount = DB::table('users')->where('role_id', $role->id)->count();
+        if ($usersCount > 0) {
+            return response()->json([
+                'message' => 'Cannot delete role with assigned users. Reassign users first.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($role) {
+            DB::table('role_permissions')->where('role_id', $role->id)->delete();
+            $role->delete();
+        });
+
+        return response()->json([
+            'message' => 'Role deleted successfully',
+        ]);
+    }
+
+    /**
      * Get all permissions
      */
     public function getPermissions()

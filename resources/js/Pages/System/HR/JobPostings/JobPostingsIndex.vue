@@ -8,7 +8,7 @@
         <h1 class="text-2xl font-semibold tracking-tight">Job Postings</h1>
       </div>
   
-      <Button v-if="hasPermission('create-job-postings')" severity="info" label="New Job Posting" icon="pi pi-plus" class="p-button-sm"
+      <Button v-if="hasPermission('hr.recuitment.manage')" severity="info" label="New Job Posting" icon="pi pi-plus" class="p-button-sm"
         @click="openCreateModal" />
     </div>
   
@@ -71,7 +71,7 @@
     <div v-else-if="filteredPostings.length" class="space-y-3">
       <Card v-for="posting in filteredPostings" :key="posting.id"
         class="cursor-pointer border border-slate-200 transition-all duration-200 hover:border-blue-200 hover:shadow-md"
-        @click="router.push({ name: 'hr.job-postings.detail', params: { postingId: posting.id } })">
+        @click="router.push({ name: 'hr.recuitment.detail', params: { postingId: posting.id } })">
         <template #content>
           <div class="space-y-3">
             <div class="flex items-start justify-between gap-4">
@@ -85,7 +85,7 @@
                 <p class="text-sm font-medium text-surface-600">{{ posting.department }}</p>
               </div>
   
-              <div v-if="hasPermission('edit-job-postings')" class="flex items-center gap-2">
+              <div v-if="hasPermission('edit-recuitment')" class="flex items-center gap-2">
                 <Button icon="pi pi-pencil" severity="secondary" text rounded @click.stop="editPosting(posting)" />
                 <Button icon="pi pi-trash" severity="danger" text rounded @click.stop="deletePosting(posting.id)" />
               </div>

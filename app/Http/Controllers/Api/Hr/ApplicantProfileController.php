@@ -14,6 +14,15 @@ use Illuminate\Validation\Rule;
 
 class ApplicantProfileController extends Controller
 {
+    private const ALLOWED_DOCUMENT_TYPES = [
+        'Resume',
+        'CoverLetter',
+        'ID',
+        'Certificate',
+        'Portfolio',
+        'Other',
+    ];
+
     public function show(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -86,7 +95,7 @@ class ApplicantProfileController extends Controller
 
         $validated = $request->validate([
             'document' => 'required|file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png',
-            'document_type' => 'nullable|string|max:100',
+            'document_type' => ['nullable', Rule::in(self::ALLOWED_DOCUMENT_TYPES)],
         ]);
 
         $file = $request->file('document');
@@ -94,7 +103,7 @@ class ApplicantProfileController extends Controller
 
         $document = ApplicantProfileDocument::create([
             'applicant_profile_id' => $profile->id,
-            'document_type' => $validated['document_type'] ?: 'Other',
+            'document_type' => $validated['document_type'] ?? 'Other',
             'file_name' => $file->getClientOriginalName(),
             'file_path' => $path,
             'file_size' => $file->getSize(),

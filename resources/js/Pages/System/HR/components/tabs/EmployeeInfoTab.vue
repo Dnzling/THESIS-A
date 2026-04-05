@@ -84,6 +84,18 @@
               <span class="text-xs text-slate-500">Hire Date</span>
               <span class="text-sm text-slate-700">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</span>
             </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Current Shift</span>
+              <div class="text-right">
+                <div class="text-sm text-slate-700">{{ employeeInfo.current_shift?.shift_name || '-' }}</div>
+                <div v-if="employeeInfo.current_shift?.time_range" class="text-xs text-slate-500">
+                  {{ employeeInfo.current_shift.time_range }}
+                </div>
+                <div v-if="employeeInfo.current_shift?.covers_days_label" class="text-xs text-slate-500">
+                  Covers: {{ employeeInfo.current_shift.covers_days_label }}
+                </div>
+              </div>
+            </div>
           </div>
         </template>
       </Card>
@@ -125,6 +137,34 @@
           </div>
         </template>
       </Card>
+
+      <Card class="rounded-2xl border border-slate-200 bg-white/90 shadow-sm">
+        <template #title>Payroll Card</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Card Type</span>
+              <span class="text-sm text-slate-700">{{ formatLabel(employeeInfo.credit_card?.card_type) }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Card Number</span>
+              <span class="text-sm font-mono text-slate-700">{{ employeeInfo.credit_card?.masked_card_number || '-' }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Status</span>
+              <Tag
+                :value="formatLabel(employeeInfo.credit_card?.status)"
+                :severity="getCardStatusSeverity(employeeInfo.credit_card?.status)"
+                rounded
+              />
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Assigned</span>
+              <span class="text-sm text-slate-700">{{ formatDate(employeeInfo.credit_card?.assigned_at) }}</span>
+            </div>
+          </div>
+        </template>
+      </Card>
     </div>
   </div>
 </template>
@@ -163,5 +203,14 @@ const getEmploymentTypeSeverity = (type: string) => {
     intern: 'secondary'
   }
   return map[type?.toLowerCase()] || 'info'
+}
+
+const getCardStatusSeverity = (status: string) => {
+  const map: Record<string, string> = {
+    active: 'success',
+    pending: 'warning',
+    inactive: 'secondary'
+  }
+  return map[status?.toLowerCase()] || 'secondary'
 }
 </script>

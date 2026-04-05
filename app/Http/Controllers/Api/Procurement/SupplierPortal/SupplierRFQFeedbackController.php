@@ -33,7 +33,7 @@ class SupplierRFQFeedbackController extends Controller
 
             // Get all active RFQs (exclude drafts/cancelled)
             $query = RequestForQuotation::whereNotIn('status', ['draft', 'cancelled'])
-                ->with(['items.product', 'attachments'])
+                ->with(['items.product', 'attachments', 'store'])
                 ->orderBy('created_at', 'desc');
 
             // Filter by search
@@ -43,6 +43,20 @@ class SupplierRFQFeedbackController extends Controller
             }
 
             $rfqs = $query->paginate($request->get('per_page', 10));
+
+            // Hide payment_terms and attachment_path from supplier-facing responses
+            $rfqs->getCollection()->transform(function ($rfq) {
+                $arr = $rfq->toArray();
+                if (isset($arr['payment_terms'])) {
+                    unset($arr['payment_terms']);
+                }
+                if (!empty($arr['attachments']) && is_array($arr['attachments'])) {
+                    foreach ($arr['attachments'] as &$att) {
+                        if (isset($att['attachment_path'])) unset($att['attachment_path']);
+                    }
+                }
+                return $arr;
+            });
 
             return response()->json([
                 'success' => true,
@@ -73,7 +87,7 @@ class SupplierRFQFeedbackController extends Controller
                 ], 403);
             }
 
-            $rfq = RequestForQuotation::with(['items.product', 'attachments'])
+            $rfq = RequestForQuotation::with(['items.product', 'attachments', 'store'])
                 ->findOrFail($id);
 
             // Mark RFQ as viewed for this supplier
@@ -91,10 +105,21 @@ class SupplierRFQFeedbackController extends Controller
                 ->with(['negotiations'])
                 ->get();
 
+            // Hide payment_terms and attachment_path from supplier-facing detail
+            $rfqArr = $rfq->toArray();
+            if (isset($rfqArr['payment_terms'])) {
+                unset($rfqArr['payment_terms']);
+            }
+            if (!empty($rfqArr['attachments']) && is_array($rfqArr['attachments'])) {
+                foreach ($rfqArr['attachments'] as &$att) {
+                    if (isset($att['attachment_path'])) unset($att['attachment_path']);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'rfq' => $rfq,
+                    'rfq' => $rfqArr,
                     'supplier_feedback' => $feedback,
                 ],
             ]);
@@ -116,7 +141,6 @@ class SupplierRFQFeedbackController extends Controller
             'rfq_id' => 'required|exists:request_for_quotations,id',
             'rfq_item_id' => 'required|exists:rfq_items,id',
             'quoted_price' => 'required|numeric|min:0.01',
-            'tax_rate' => 'nullable|numeric|min:0|max:100',
             'description' => 'nullable|string|max:1000',
         ]);
 
@@ -140,7 +164,7 @@ class SupplierRFQFeedbackController extends Controller
             }
 
             $rfq = RequestForQuotation::findOrFail($request->rfq_id);
-            
+
             if ($rfq->status === 'closed') {
                 return response()->json([
                     'success' => false,
@@ -148,7 +172,30 @@ class SupplierRFQFeedbackController extends Controller
                 ], 422);
             }
 
-            // Create or update feedback
+            // Prevent submission if this RFQ item already has an approved feedback
+            $alreadyApproved = \App\Models\Procurement\SupplierPortal\SupplierRFQFeedback::where('rfq_item_id', $request->rfq_item_id)
+                ->where('status', 'approved')
+                ->exists();
+
+            if ($alreadyApproved) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This item has already been approved and cannot accept new quotes.',
+                ], 422);
+            }
+
+            // Determine supplier contract tax rate (server authoritative)
+            $rfq = RequestForQuotation::findOrFail($request->rfq_id);
+            $contract = \App\Models\Procurement\Supplier\SupplierContract::where('supplier_id', $portal->supplier_id)
+                ->where('store_id', $rfq->store_id)
+                ->where('status', 'active')
+                ->whereDate('start_date', '<=', now())
+                ->whereDate('end_date', '>=', now())
+                ->first();
+
+            $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+
+            // Create or update feedback (use contract tax rate)
             $feedback = SupplierRFQFeedback::updateOrCreate(
                 [
                     'supplier_portal_id' => $portal->id,
@@ -157,7 +204,7 @@ class SupplierRFQFeedbackController extends Controller
                 [
                     'rfq_id' => $request->rfq_id,
                     'quoted_price' => $request->quoted_price,
-                    'tax_rate' => $request->get('tax_rate', 0),
+                    'tax_rate' => $contractTaxRate,
                     'description' => $request->description,
                     'status' => 'pending',
                     'reviewed_by' => null,
@@ -166,6 +213,59 @@ class SupplierRFQFeedbackController extends Controller
                     'submitted_at' => now(),
                 ]
             );
+
+            // Also record submitted prices into supplier_quotation_items and update quotation subtotal/total
+            try {
+                if (\Schema::hasTable('supplier_quotations')) {
+                    $quotation = \App\Models\Procurement\RFQ\SupplierQuotation::where('rfq_id', $rfq->id)
+                        ->where('supplier_id', $portal->supplier_id)
+                        ->first();
+
+                    if ($quotation) {
+                        if (\Schema::hasTable('supplier_quotation_items')) {
+                            $rfqItem = RFQItem::find($request->rfq_item_id);
+                            $lineQty = $rfqItem?->quantity ?? 1;
+                            $lineTotal = bcmul((string)$request->quoted_price, (string)$lineQty, 2);
+
+                            \App\Models\Procurement\RFQ\SupplierQuotationItem::updateOrCreate([
+                                'quotation_id' => $quotation->id,
+                                'rfq_item_id' => $request->rfq_item_id,
+                            ], [
+                                'unit_price' => $request->quoted_price,
+                                'quantity' => $lineQty,
+                                'discount_percent' => 0,
+                                'line_total' => $lineTotal,
+                                'notes' => $request->description ?? null,
+                            ]);
+
+                            // Recompute subtotal and totals for the master quotation
+                            $subtotal = \App\Models\Procurement\RFQ\SupplierQuotationItem::where('quotation_id', $quotation->id)
+                                ->sum('line_total');
+
+                            $taxAmount = 0;
+                            if (!empty($contractTaxRate)) {
+                                $taxAmount = bcmul((string)$subtotal, bcdiv((string)$contractTaxRate, '100', 4), 2);
+                            }
+
+                            $total = bcadd($subtotal, $taxAmount, 2);
+
+                            // Update columns if they exist
+                            $updateData = [];
+                            $cols = array_map(fn($c) => is_object($c) ? $c->Field : $c['Field'], DB::select("SHOW COLUMNS FROM supplier_quotations"));
+                            if (in_array('subtotal', $cols, true)) $updateData['subtotal'] = $subtotal;
+                            if (in_array('tax_amount', $cols, true)) $updateData['tax_amount'] = $taxAmount;
+                            if (in_array('total_amount', $cols, true)) $updateData['total_amount'] = $total;
+
+                            if (!empty($updateData)) {
+                                $quotation->update($updateData);
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // non-fatal: if quotation tables absent or insert fails, continue
+                \Log::warning('Failed to persist supplier quotation line: ' . $e->getMessage());
+            }
 
             // Update RFQ supplier status for this supplier
             \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $request->rfq_id)

@@ -22,21 +22,6 @@ use App\Services\Finance\CashflowService;
 
 class PayrollController extends Controller
 {
-    private function currentRoleName(): string
-    {
-        return strtolower((string) (auth()->user()?->role?->name ?? ''));
-    }
-
-    private function isHrActor(): bool
-    {
-        return in_array($this->currentRoleName(), ['hr_manager', 'store_admin', 'super_admin'], true);
-    }
-
-    private function isFinanceActor(): bool
-    {
-        return in_array($this->currentRoleName(), ['accountant', 'store_admin', 'super_admin'], true);
-    }
-
     public function index(Request $request)
     {
         try {
@@ -312,13 +297,6 @@ class PayrollController extends Controller
     public function submit(Request $request, $id)
     {
         try {
-            if (!$this->isHrActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only HR can submit payroll for finance review',
-                ], 403);
-            }
-
             $payroll = Payroll::findOrFail($id);
 
             if (!in_array($payroll->status, ['draft', 'calculated'])) {
@@ -351,13 +329,6 @@ class PayrollController extends Controller
     public function approve(Request $request, $id)
     {
         try {
-            if (!$this->isFinanceActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only Finance can approve payroll budget',
-                ], 403);
-            }
-
             $payroll = Payroll::findOrFail($id);
 
             if ($payroll->status !== 'processing') {
@@ -410,19 +381,12 @@ class PayrollController extends Controller
     public function markPaid(Request $request, $id)
     {
         try {
-            if (!$this->isHrActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only HR can distribute released payroll as paid',
-                ], 403);
-            }
-
             $payroll = Payroll::findOrFail($id);
 
-            if ($payroll->status !== 'released') {
+            if (!in_array($payroll->status, ['approved', 'released'], true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only released payrolls can be marked as paid'
+                    'message' => 'Only finance-approved payrolls can be marked as paid'
                 ], 400);
             }
 
@@ -501,13 +465,6 @@ class PayrollController extends Controller
     public function release(Request $request, $id)
     {
         try {
-            if (!$this->isHrActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only HR can release payroll after finance approval',
-                ], 403);
-            }
-
             $payroll = Payroll::findOrFail($id);
 
             if ($payroll->status !== 'approved') {
@@ -1375,13 +1332,6 @@ class PayrollController extends Controller
     public function bulkSubmitForApproval(Request $request)
     {
         try {
-            if (!$this->isHrActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only HR can submit payrolls for finance review',
-                ], 403);
-            }
-
             $validated = $request->validate([
                 'payroll_ids' => 'required|array|min:1',
                 'payroll_ids.*' => 'exists:payrolls,id',
@@ -1431,13 +1381,6 @@ class PayrollController extends Controller
     public function bulkApprove(Request $request)
     {
         try {
-            if (!$this->isFinanceActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only Finance can bulk approve payroll budget',
-                ], 403);
-            }
-
             $validated = $request->validate([
                 'payroll_ids' => 'required|array|min:1',
                 'payroll_ids.*' => 'exists:payrolls,id',
@@ -1494,18 +1437,11 @@ class PayrollController extends Controller
     }
 
     /**
-     * Bulk mark paid: released -> paid
+     * Bulk mark paid: approved -> paid
      */
     public function bulkMarkPaid(Request $request)
     {
         try {
-            if (!$this->isHrActor()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only HR can bulk distribute payroll as paid',
-                ], 403);
-            }
-
             $validated = $request->validate([
                 'payroll_ids' => 'required|array|min:1',
                 'payroll_ids.*' => 'exists:payrolls,id',
@@ -1517,13 +1453,13 @@ class PayrollController extends Controller
 
             $payrolls = Payroll::with('employee:id,store_id')
                 ->whereIn('id', $validated['payroll_ids'])
-                ->where('status', 'released')
+                ->whereIn('status', ['approved', 'released'])
                 ->get();
 
             if ($payrolls->isEmpty()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No eligible payrolls found to mark as paid (must be released)',
+                    'message' => 'No eligible payrolls found to mark as paid (must be finance-approved)',
                 ], 400);
             }
 

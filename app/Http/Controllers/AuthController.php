@@ -235,11 +235,16 @@ class AuthController extends Controller
             if (!$user->email_verified_at) {
                 $user->generateOtp();
 
+                // Issue a temporary token for OTP verification flow.
+                $tempToken = $user->createToken('otp_verification')->plainTextToken;
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Email verification required.',
                     'requires_verification' => true,
-                    'user_id' => $user->id
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'access_token' => $tempToken,
                 ], 403);
             }
 

@@ -15,6 +15,7 @@ import Aura from '@primeuix/themes/aura';
 import 'primeicons/primeicons.css';
 import ToastService from 'primevue/toastservice';
 import ConfirmationService from 'primevue/confirmationservice';
+import { Ziggy } from './ziggy';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { useAuthStore } from '@/stores/auth';
 import axios from 'axios';
@@ -110,7 +111,7 @@ createInertiaApp({
         const pinia = createPinia();
 
         app.use(plugin);
-        app.use(ZiggyVue);
+        app.use(ZiggyVue, Ziggy);
         app.use(pinia);
         app.use(PrimeVue, {
             theme: {
@@ -269,7 +270,7 @@ createInertiaApp({
         const authStore = useAuthStore(pinia);
         if (authStore.token) {
             axios.defaults.headers.common.Authorization = `Bearer ${authStore.token}`;
-            // console.log('Auth token initialized:', authStore.token);
+            console.log('Auth token initialized:', authStore.token);
             if (authStore.user) {
                 authStore.initialize().catch((err) => {
                     console.warn('Failed to initialize auth store:', err);

@@ -162,6 +162,16 @@ class EcommerceController extends Controller
         $hasOrderItemsTable = Schema::hasTable('ecommerce_order_items');
         $hasReviewsTable = Schema::hasTable('ecommerce_product_reviews');
 
+        // Do not expose products from stores on free trial in ecommerce.
+        Store::query()
+            ->where('id', $storeId)
+            ->whereIn('status', ['active', 'verified'])
+            ->where(function ($query) {
+                $query->whereNull('subscription_tier')
+                    ->orWhere('subscription_tier', '!=', 'free');
+            })
+            ->firstOrFail();
+
         $query = Product::query()
             ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
             ->where('store_id', $storeId)
@@ -372,7 +382,13 @@ class EcommerceController extends Controller
             ])
             ->where('products.store_id', $storeId)
             ->where('products.is_active', true)
-            ->whereNull('products.deleted_at');
+            ->whereNull('products.deleted_at')
+            ->whereHas('store', function ($storeQuery) {
+                $storeQuery->where(function ($query) {
+                    $query->whereNull('subscription_tier')
+                        ->orWhere('subscription_tier', '!=', 'free');
+                });
+            });
 
         // Optimized inventory filter using EXISTS instead of WHERE HAS (faster)
         $query->whereExists(function ($subQuery) use ($storeId) {
@@ -565,6 +581,12 @@ class EcommerceController extends Controller
             ->where('id', $id)
             ->where('is_active', true)
             ->whereNull('deleted_at')
+            ->whereHas('store', function ($storeQuery) {
+                $storeQuery->where(function ($query) {
+                    $query->whereNull('subscription_tier')
+                        ->orWhere('subscription_tier', '!=', 'free');
+                });
+            })
             ->when($request->filled('store_id'), function ($query) use ($request) {
                 $query->where('store_id', (int) $request->input('store_id'));
             })
@@ -741,6 +763,21 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->findOrFail($validated['product_id']);
         $storeId = (int) $product->store_id;
+
+        $isStoreVisibleInEcommerce = Store::query()
+            ->where('id', $storeId)
+            ->where(function ($query) {
+                $query->whereNull('subscription_tier')
+                    ->orWhere('subscription_tier', '!=', 'free');
+            })
+            ->exists();
+
+        if (!$isStoreVisibleInEcommerce) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This product is not available in ecommerce.',
+            ], 404);
+        }
         if (!empty($validated['store_id']) && (int) $validated['store_id'] !== $storeId) {
             return response()->json([
                 'success' => false,

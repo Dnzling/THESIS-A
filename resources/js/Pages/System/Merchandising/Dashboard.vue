@@ -572,6 +572,7 @@ const loadDashboardStats = async () => {
     // Load recent products
     const productsResponse = await merchandisingService.getProducts({
       per_page: 5,
+      product_type: 'finished_good',
       sort_by: 'created_at',
       sort_order: 'desc'
     })
@@ -580,6 +581,7 @@ const loadDashboardStats = async () => {
     // Load low stock products
     const lowStockResponse = await merchandisingService.getProducts({
       stock_status: 'Low Stock',
+      product_type: 'finished_good',
       per_page: 6
     })
     lowStockProducts.value = lowStockResponse.data.data || []

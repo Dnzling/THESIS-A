@@ -81,14 +81,14 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/hr/payroll/create', 'System/HR/PayrollCreate', 'hr.payroll.create', 'Generate Payroll');
     $inertia('/hr/payroll/view/{id}', 'System/HR/PayrollView', 'hr.payroll.view', 'View Payroll');
     $inertia('/hr/payroll/edit/{id}', 'System/HR/PayrollEdit', 'hr.payroll.edit', 'Edit Payroll');
-    $inertia('/hr/job-hiring', 'System/HR/JobPostings/JobPostingsIndex', 'hr.job-postings', 'Job Postings');
-    $inertia('/hr/job-hiring/postings/{postingId}', 'System/HR/JobPostings/JobPostingDetailView', 'hr.job-postings.detail', 'Job Posting Overview');
-    $inertia('/hr/job-hiring/postings/{postingId}/applicants', 'System/HR/JobPostings/JobPostingApplicantsList', 'hr.job-postings.applicants', 'Applicants');
-    $inertia('/hr/job-hiring/postings/{postingId}/screening', 'System/HR/JobPostings/JobPostingsScreening', 'hr.screening-pipeline', 'Screening Pipeline');
-    $inertia('/hr/job-hiring/postings/{postingId}/apply', 'System/HR/JobPostings/JobPostingsApply', 'hr.apply-job', 'Apply for Job');
-    $inertia('/hr/job-hiring/applications/{applicationId}/review', 'System/HR/JobPostings/ApplicantReviewDetail', 'hr.job-applications.review', 'Applicant Review');
-    $inertia('/hr/job-hiring/applications/{applicationId}/decision', 'System/HR/JobPostings/ApplicantDecision', 'hr.job-applications.decision', 'Applicant Decision');
-    $inertia('/hr/job-hiring/applications/{applicationId}/onboarding', 'System/HR/JobPostings/EmployeeOnboardingCreate', 'hr.job-applications.onboarding', 'Employee Onboarding');
+    $inertia('/hr/recuitment', 'System/HR/JobPostings/JobPostingsIndex', 'hr.recuitment', 'Job Postings');
+    $inertia('/hr/recuitment/postings/{postingId}', 'System/HR/JobPostings/JobPostingDetailView', 'hr.recuitment.detail', 'Job Posting Overview');
+    $inertia('/hr/recuitment/postings/{postingId}/applicants', 'System/HR/JobPostings/JobPostingApplicantsList', 'hr.recuitment.applicants', 'Applicants');
+    $inertia('/hr/recuitment/postings/{postingId}/screening', 'System/HR/JobPostings/JobPostingsScreening', 'hr.screening-pipeline', 'Screening Pipeline');
+    $inertia('/hr/recuitment/postings/{postingId}/apply', 'System/HR/JobPostings/JobPostingsApply', 'hr.apply-job', 'Apply for Job');
+    $inertia('/hr/recuitment/applications/{applicationId}/review', 'System/HR/JobPostings/ApplicantReviewDetail', 'hr.job-applications.review', 'Applicant Review');
+    $inertia('/hr/recuitment/applications/{applicationId}/decision', 'System/HR/JobPostings/ApplicantDecision', 'hr.job-applications.decision', 'Applicant Decision');
+    $inertia('/hr/recuitment/applications/{applicationId}/onboarding', 'System/HR/JobPostings/EmployeeOnboardingCreate', 'hr.job-applications.onboarding', 'Employee Onboarding');
 
     // Inventory
     Route::redirect('/inventory', '/inventory/dashboard')->name('inventory');
@@ -260,7 +260,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/merchandising/products', 'System/Merchandising/products/ProductsList', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
     $inertia('/merchandising/products/logs', 'System/Merchandising/products/ProductLogs', 'merchandising.products.logs', 'Product Logs', 'View product module activity logs');
     $inertia('/merchandising/products/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.create', 'Add New Product', 'Create a new furniture product');
-    $inertia('/merchandising/products/raw/new', 'System/Merchandising/products/RawMaterialForm', 'merchandising.products.raw.create', 'Add Raw Material', 'Create a new raw material');
+    Route::redirect('/merchandising/products/raw/new', '/merchandising/products/new')->name('merchandising.products.raw.create');
     $inertia('/merchandising/products/{id}/edit', 'System/Merchandising/products/ProductForm', 'merchandising.products.edit', 'Edit Product', 'Update product information');
     $inertia('/merchandising/products/{id}', 'System/Merchandising/products/ProductView', 'merchandising.products.view', 'Product Details', 'View detailed product information and 3D model');
     $inertia('/merchandising/variations', 'System/Merchandising/variations/VariationsList', 'merchandising.variations', 'Product Variations', 'Manage colors, sizes, and materials');

@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers\Api\Hr;
 
+use App\Mail\EmployeeShiftChangedMail;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\EmployeeDeduction;
 use App\Models\Hr\Employee;
+use App\Models\Hr\EmployeeCreditCard;
 use App\Models\Hr\Leave;
 use App\Models\Hr\LeaveBalance;
 use App\Models\Hr\Payroll;
+use App\Models\Hr\Shift;
+use App\Models\Hr\ShiftAssignment;
+use App\Models\Hr\ShiftSchedule;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -289,7 +294,14 @@ class EmployeeController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            $authUser = Auth::user();
             $employee = Employee::findOrFail($id);
+            if ($authUser?->store_id && (int) $employee->store_id !== (int) $authUser->store_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee not found for your store'
+                ], 404);
+            }
 
             $validated = $request->validate([
                 // User fields
@@ -301,6 +313,11 @@ class EmployeeController extends Controller
 
                 // Employee fields
                 'employee_number' => 'sometimes|string|unique:employees,employee_number,' . $id,
+                'phone' => 'sometimes|nullable|string|max:50',
+                'address' => 'sometimes|nullable|string|max:255',
+                'province' => 'sometimes|nullable|string|max:255',
+                'city' => 'sometimes|nullable|string|max:255',
+                'barangay' => 'sometimes|nullable|string|max:255',
                 'date_of_birth' => 'sometimes|date',
                 'gender' => 'sometimes|in:male,female,other',
                 'hire_date' => 'sometimes|date',
@@ -310,6 +327,9 @@ class EmployeeController extends Controller
                 'status' => 'sometimes|in:active,on_leave,suspended,terminated',
                 'termination_date' => 'nullable|date',
                 'termination_reason' => 'nullable|string',
+                'shift_id' => 'sometimes|nullable|exists:shifts,id',
+                'shift_effective_date' => 'sometimes|date',
+                'shift_change_reason' => 'required_with:shift_id|string|max:1000',
             ]);
 
             DB::beginTransaction();
@@ -324,7 +344,94 @@ class EmployeeController extends Controller
             $user->save();
 
             // Update Employee
-            $employee->update($validated);
+            $employeeData = collect($validated)->except([
+                'shift_id',
+                'shift_effective_date',
+                'shift_change_reason',
+            ])->toArray();
+            if (!empty($employeeData)) {
+                $employee->update($employeeData);
+            }
+
+            $shiftChanged = false;
+            if (array_key_exists('shift_id', $validated) && !empty($validated['shift_id'])) {
+                $targetShift = Shift::where('id', $validated['shift_id'])
+                    ->where('store_id', $employee->store_id)
+                    ->first();
+
+                if (!$targetShift) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Shift does not belong to employee store'
+                    ], 422);
+                }
+
+                $effectiveDate = isset($validated['shift_effective_date'])
+                    ? Carbon::parse($validated['shift_effective_date'])->startOfDay()
+                    : now()->startOfDay();
+
+                $currentAssignment = ShiftAssignment::query()
+                    ->where('employee_id', $employee->id)
+                    ->where('start_date', '<=', $effectiveDate->toDateString())
+                    ->where(function ($query) use ($effectiveDate) {
+                        $query->whereNull('end_date')
+                            ->orWhere('end_date', '>=', $effectiveDate->toDateString());
+                    })
+                    ->orderByDesc('start_date')
+                    ->first();
+
+                $currentShiftId = (int) ($currentAssignment?->shift_id ?? 0);
+                if ($currentShiftId !== (int) $targetShift->id) {
+                    $shiftChanged = true;
+                    if ($currentAssignment) {
+                        $newEnd = $effectiveDate->copy()->subDay()->toDateString();
+                        if (!$currentAssignment->end_date || $currentAssignment->end_date->toDateString() >= $effectiveDate->toDateString()) {
+                            $currentAssignment->update([
+                                'end_date' => $newEnd,
+                                'updated_by' => $authUser?->id,
+                                'notes' => trim(($currentAssignment->notes ? $currentAssignment->notes . "\n" : '') . 'Closed due to shift change'),
+                            ]);
+                        }
+                    }
+
+                    $newAssignment = ShiftAssignment::create([
+                        'employee_id' => $employee->id,
+                        'shift_id' => $targetShift->id,
+                        'template_id' => null,
+                        'start_date' => $effectiveDate->toDateString(),
+                        'end_date' => null,
+                        'assignment_type' => 'permanent',
+                        'notes' => 'Shift changed: ' . $validated['shift_change_reason'],
+                        'created_by' => $authUser?->id,
+                        'updated_by' => $authUser?->id,
+                    ]);
+
+                    ShiftSchedule::where('employee_id', $employee->id)
+                        ->where('schedule_date', '>=', $effectiveDate->toDateString())
+                        ->update([
+                            'shift_id' => $targetShift->id,
+                            'assignment_id' => $newAssignment->id,
+                        ]);
+
+                    try {
+                        if ($user?->email) {
+                            Mail::to($user->email)->send(new EmployeeShiftChangedMail(
+                                $employee->fresh(['user']),
+                                $targetShift,
+                                $validated['shift_change_reason'],
+                                $effectiveDate->toDateString()
+                            ));
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::warning('Failed to send shift change email', [
+                            'employee_id' => $employee->id,
+                            'email' => $user?->email,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
 
             DB::commit();
 
@@ -336,7 +443,7 @@ class EmployeeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Employee updated successfully',
+                'message' => $shiftChanged ? 'Employee and shift updated successfully' : 'Employee updated successfully',
                 'data' => $employee->load('user')
             ]);
         } catch (ValidationException $e) {
@@ -444,8 +551,9 @@ class EmployeeController extends Controller
                 return $this->errorResponse('User is not associated with any store', 403);
             }
 
-            // Cache key based on employee and year
-            $cacheKey = "employee_details_{$id}_{$request->year}_" . now()->format('Y-m-d');
+            $year = $request->year ?? Carbon::now()->year;
+            // Cache key based on employee and resolved year
+            $cacheKey = "employee_details_{$id}_{$year}_" . now()->format('Y-m-d');
 
             // Try to get from cache first (5 minutes TTL)
             $data = Cache::remember($cacheKey, 300, function () use ($id, $request, $user) {
@@ -522,7 +630,9 @@ class EmployeeController extends Controller
             'recentAttendance' => $this->getRecentAttendanceOptimized($employee->id),
             'payrollSummary' => $this->getPayrollSummaryOptimized($employee->id, $currentYear),
             'recentPayslips' => $this->getRecentPayslipsOptimized($employee->id),
-            'deductions' => $this->getDeductionsOptimized($employee->id)
+            'deductions' => $this->getDeductionsOptimized($employee->id),
+            'creditCard' => $this->getLatestCreditCardOptimized($employee->id),
+            'currentShift' => $this->getCurrentShiftAssignmentOptimized($employee->id),
         ];
 
         // 3. Combine results
@@ -544,9 +654,127 @@ class EmployeeController extends Controller
                 'yearly_summary' => $queries['payrollSummary'],
                 'recent_payslips' => $queries['recentPayslips']
             ],
+            'credit_card' => $queries['creditCard'],
+            'current_shift' => $queries['currentShift'],
             'deductions' => $queries['deductions'],
             'quick_stats' => $this->calculateQuickStats($employee, $queries)
         ];
+    }
+
+    private function getCurrentShiftAssignmentOptimized($employeeId)
+    {
+        $today = now()->toDateString();
+        $assignment = ShiftAssignment::query()
+            ->with(['shift:id,name,start_time,end_time,week_days', 'template:id,name'])
+            ->where('employee_id', $employeeId)
+            ->where('start_date', '<=', $today)
+            ->where(function ($query) use ($today) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', $today);
+            })
+            ->orderByDesc('start_date')
+            ->first();
+
+        if (!$assignment || !$assignment->shift) {
+            return null;
+        }
+
+        $coversDays = $this->normalizeShiftWeekDays($assignment->shift->week_days);
+        $startTime = $this->formatShiftTimeValue($assignment->shift->start_time);
+        $endTime = $this->formatShiftTimeValue($assignment->shift->end_time);
+
+        return [
+            'assignment_id' => $assignment->id,
+            'shift_id' => $assignment->shift_id,
+            'shift_name' => $assignment->shift->name,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'time_range' => $startTime && $endTime ? "{$startTime} - {$endTime}" : null,
+            'covers_days' => $coversDays,
+            'covers_days_label' => $coversDays ? implode(', ', $coversDays) : null,
+            'assignment_type' => $assignment->assignment_type,
+            'start_date' => optional($assignment->start_date)->toDateString(),
+            'end_date' => optional($assignment->end_date)->toDateString(),
+            'template_name' => $assignment->template?->name,
+        ];
+    }
+
+    private function normalizeShiftWeekDays($weekDays): array
+    {
+        if (is_string($weekDays)) {
+            $decoded = json_decode($weekDays, true);
+            $weekDays = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($weekDays)) {
+            return [];
+        }
+
+        $labels = [
+            'monday' => 'Monday',
+            'tuesday' => 'Tuesday',
+            'wednesday' => 'Wednesday',
+            'thursday' => 'Thursday',
+            'friday' => 'Friday',
+            'saturday' => 'Saturday',
+            'sunday' => 'Sunday',
+        ];
+
+        return collect($weekDays)
+            ->map(fn($day) => strtolower((string) $day))
+            ->filter()
+            ->map(fn($day) => $labels[$day] ?? ucfirst($day))
+            ->values()
+            ->all();
+    }
+
+    private function formatShiftTimeValue($value): ?string
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        if ($value instanceof Carbon) {
+            return $value->format('h:i A');
+        }
+
+        try {
+            return Carbon::parse((string) $value)->format('h:i A');
+        } catch (\Throwable $e) {
+            return (string) $value;
+        }
+    }
+
+    private function getLatestCreditCardOptimized($employeeId)
+    {
+        $card = EmployeeCreditCard::select('card_number', 'card_type', 'status', 'assigned_at')
+            ->where('employee_id', $employeeId)
+            ->latest('assigned_at')
+            ->latest('id')
+            ->first();
+
+        if (!$card) {
+            return null;
+        }
+
+        return [
+            'card_number' => $card->card_number,
+            'masked_card_number' => $this->maskCardNumber($card->card_number),
+            'card_type' => $card->card_type,
+            'status' => $card->status,
+            'assigned_at' => optional($card->assigned_at)->toISOString(),
+        ];
+    }
+
+    private function maskCardNumber(?string $value): string
+    {
+        $raw = preg_replace('/\s+/', '', (string) $value);
+        if (!$raw) {
+            return '-';
+        }
+
+        $tail = substr($raw, -4);
+        return str_repeat('*', max(strlen($raw) - 4, 0)) . $tail;
     }
 
     /**

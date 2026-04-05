@@ -678,6 +678,10 @@ const toggleNotifications = (event: MouseEvent) => {
   }
 }
 
+const isSupplierUser = computed(() => {
+  return (authStore.userRole || '').toString().toLowerCase().includes('supplier')
+})
+
 const loadNotifications = async () => {
   if (!isAuthenticated.value) return
   notificationsLoading.value = true
@@ -717,7 +721,47 @@ const openNotification = async (notif: any) => {
     }
   }
   if (notif.link) {
-    router.visit(notif.link)
+    let target = notif.link
+
+    // Normalize possible absolute URLs (server may store full URL)
+    if (typeof target === 'string') {
+      // If the recipient is a supplier, prefer supplier-portal routes
+      if (isSupplierUser.value) {
+        // RFQ links (handles absolute or relative)
+        const rfqMatch = target.match(/\/system\/procurement\/rfqs\/(\d+)/)
+        if (rfqMatch) {
+          target = `/supplier-portal/rfqs/${rfqMatch[1]}`
+        }
+
+        // PO links
+        const poMatch = target.match(/\/system\/procurement\/purchase-orders\/(\d+)/)
+        if (poMatch) {
+          target = `/supplier-portal/pos/${poMatch[1]}/view`
+        }
+      } else {
+        // For non-supplier users, strip the `/system` prefix so links go to `/procurement/...`
+        const rfqMatch = target.match(/\/system\/procurement\/rfqs\/(\d+)/)
+        if (rfqMatch) {
+          target = `/procurement/rfqs/${rfqMatch[1]}`
+        }
+
+        const poMatch = target.match(/\/system\/procurement\/purchase-orders\/(\d+)/)
+        if (poMatch) {
+          target = `/procurement/purchase-orders/${poMatch[1]}`
+        }
+
+        // General fallback: replace leading /system/procurement with /procurement
+        target = String(target).replace(/^https?:\/\/[^/]+/i, '').replace(/^\/system\/procurement/i, '/procurement')
+      }
+    }
+
+    try {
+      router.visit(target)
+    } catch (e) {
+      // fallback: direct window navigation if Inertia visit fails
+      if (typeof target === 'string') window.location.href = target
+    }
+
     if (notificationPanel.value) notificationPanel.value.hide()
   }
 }

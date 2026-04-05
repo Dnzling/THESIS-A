@@ -52,7 +52,14 @@
 
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-slate-700">Document Type</label>
-                  <InputText v-model="documentType" fluid placeholder="Resume, ID, Portfolio" />
+                  <Select
+                    v-model="documentType"
+                    :options="documentTypeOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select document type"
+                    class="w-full"
+                  />
                 </div>
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-slate-700">Attach File</label>
@@ -186,6 +193,14 @@ const emailSubmitting = ref(false)
 const emailStep = ref<'input' | 'otp'>('input')
 const selectedFile = ref<File | null>(null)
 const documentType = ref('Resume')
+const documentTypeOptions = [
+  { label: 'Resume', value: 'Resume' },
+  { label: 'Cover Letter', value: 'CoverLetter' },
+  { label: 'ID', value: 'ID' },
+  { label: 'Certificate', value: 'Certificate' },
+  { label: 'Portfolio', value: 'Portfolio' },
+  { label: 'Other', value: 'Other' },
+]
 const documents = ref<any[]>([])
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])

@@ -9,15 +9,12 @@ use App\Models\ApplicationTimeline;
 use App\Models\ApplicationDocument;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class JobApplicationController extends Controller
 {
     public function index(JobPosting $posting): JsonResponse
     {
-        Gate::authorize('view-job-applications');
-
         $applications = $posting->applications()
             ->with(['employee', 'timeline.stage', 'documents', 'interviews', 'offer'])
             ->orderBy('created_at', 'desc')
@@ -28,8 +25,6 @@ class JobApplicationController extends Controller
 
     public function show(JobApplication $application): JsonResponse
     {
-        Gate::authorize('view-job-applications');
-
         $application->load([
             'jobPosting.store',
             'jobPosting.role',
@@ -103,8 +98,6 @@ class JobApplicationController extends Controller
 
     public function updateStatus(Request $request, JobApplication $application): JsonResponse
     {
-        Gate::authorize('update-application-status');
-
         $validated = $request->validate([
             'status' => 'required|in:Applied,Screening,Interview,Offer,Accepted,Hired,Rejected',
             'stage_id' => 'nullable|exists:job_posting_screening_stages,id',
@@ -128,8 +121,6 @@ class JobApplicationController extends Controller
 
     public function downloadDocument(JobApplication $application, ApplicationDocument $document)
     {
-        Gate::authorize('view-job-applications');
-
         abort_unless($document->application_id === $application->id, 404);
 
         if (Storage::disk('public')->exists($document->file_path)) {
@@ -141,8 +132,6 @@ class JobApplicationController extends Controller
 
     public function destroy(JobApplication $application): JsonResponse
     {
-        Gate::authorize('delete-job-applications');
-
         // Delete associated documents from storage
         $application->documents()->each(function ($doc) {
             Storage::disk('public')->delete($doc->file_path);

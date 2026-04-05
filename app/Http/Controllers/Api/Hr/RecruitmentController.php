@@ -10,13 +10,14 @@ use App\Models\Core\User;
 use App\Models\Hr\DeductionType;
 use App\Models\Hr\Department;
 use App\Models\Hr\Employee;
+use App\Models\Hr\LeaveBalance;
 use App\Models\Hr\EmployeeDeduction;
 use App\Models\JobApplication;
 use App\Models\Interview;
+use App\Models\Store\Store;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -25,8 +26,6 @@ class RecruitmentController extends Controller
 {
     public function scheduleInterview(Request $request, JobApplication $application): JsonResponse
     {
-        Gate::authorize('schedule-interviews');
-
         $interviewTypeMap = [
             'Screening' => 'Screening',
             'Technical/Skills Test' => 'Technical/Skills Test',
@@ -110,8 +109,6 @@ class RecruitmentController extends Controller
 
     public function hireApplicant(Request $request, JobApplication $application): JsonResponse
     {
-        Gate::authorize('update-application-status');
-
         $hrUser = $request->user();
         $storeId = $hrUser->store_id;
 
@@ -151,6 +148,7 @@ class RecruitmentController extends Controller
                     'branch_id' => $validated['branch_id'],
                     'password' => Hash::make($temporaryPassword),
                     'is_active' => true,
+                    'email_verified_at' => now(),
                 ]);
                 $user = $portalUser;
             } else {
@@ -163,6 +161,7 @@ class RecruitmentController extends Controller
                     'store_id' => $storeId,
                     'branch_id' => $validated['branch_id'],
                     'is_active' => true,
+                    'email_verified_at' => now(),
                 ]);
             }
 
@@ -184,6 +183,7 @@ class RecruitmentController extends Controller
             ]);
 
             $this->applyStoreDeductions($employee, $storeId, $hrUser->id);
+            $this->applyDefaultLeaveBalances($employee, $storeId, $hrUser->id, (int) date('Y', strtotime($validated['hire_date'])));
 
             $application->update([
                 'status' => 'Hired',
@@ -219,8 +219,6 @@ class RecruitmentController extends Controller
 
     public function rejectApplicant(Request $request, JobApplication $application): JsonResponse
     {
-        Gate::authorize('update-application-status');
-
         $validated = $request->validate([
             'reason' => 'required|string|max:100',
             'notes' => 'nullable|string|max:1000',
@@ -269,6 +267,44 @@ class RecruitmentController extends Controller
                     'effective_date' => now()->toDateString(),
                     'is_active' => true,
                     'created_by' => $createdBy,
+                ]
+            );
+        }
+    }
+
+    private function applyDefaultLeaveBalances(Employee $employee, int $storeId, int $createdBy, int $year): void
+    {
+        $store = Store::find($storeId);
+        $settings = is_array($store?->settings) ? $store->settings : [];
+        $defaultLeaveSettings = [
+            'vacation' => 15,
+            'sick' => 10,
+            'personal' => 5,
+            'maternity' => 0,
+            'paternity' => 0,
+            'bereavement' => 0,
+            'others' => 0,
+        ];
+        $leaveDefaults = array_merge($defaultLeaveSettings, $settings['hr_leave_defaults'] ?? []);
+
+        foreach ($leaveDefaults as $leaveType => $quotaValue) {
+            $quota = (float) ($quotaValue ?? 0);
+            LeaveBalance::firstOrCreate(
+                [
+                    'employee_id' => $employee->id,
+                    'leave_type' => $leaveType,
+                    'year' => $year,
+                ],
+                [
+                    'store_id' => $storeId,
+                    'created_by' => $createdBy,
+                    'yearly_quota' => $quota,
+                    'used_days' => 0,
+                    'pending_days' => 0,
+                    'remaining_days' => $quota,
+                    'carried_over' => 0,
+                    'expired_days' => 0,
+                    'status' => 'active',
                 ]
             );
         }

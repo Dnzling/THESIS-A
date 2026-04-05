@@ -25,10 +25,10 @@
           </button>
           <div>
             <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">
-              {{ isEditMode ? 'Edit Product' : (isRawMaterialForm ? 'Create Raw Material' : 'Create Product') }}
+              {{ isEditMode ? 'Edit Product' : 'Create Product' }}
             </h1>
             <p class="text-sm text-gray-500 mt-1">
-              {{ isEditMode ? 'Update product information' : (isRawMaterialForm ? 'Add a new raw material to your catalog' : 'Add a new product to your catalog') }}
+              {{ isEditMode ? 'Update product information' : 'Add a new product to your catalog' }}
             </p>
           </div>
         </div>
@@ -125,7 +125,6 @@
                   Product Type <span class="text-red-500">*</span>
                 </label>
                 <Select
-                  v-if="!isRawMaterialForm"
                   v-model="form.product_type"
                   :options="productTypeOptions"
                   optionLabel="label"
@@ -133,13 +132,6 @@
                   placeholder="Select product type"
                   class="w-full bg-gray-50 border-gray-200 rounded-xl"
                 />
-                <InputText
-                  v-else
-                  model-value="Raw Material"
-                  class="w-full bg-gray-100 border-gray-200 rounded-xl"
-                  readonly
-                />
-                <small v-if="isRawMaterialForm" class="text-gray-500 text-xs">This form is locked to raw material.</small>
               </div>
   
               <!-- Brand & Collection -->
@@ -500,7 +492,6 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 const isEditMode = computed(() => !!route.params.id)
-const isRawMaterialForm = computed(() => route.name === 'merchandising.products.raw.create')
 const isRawMaterialType = computed(() => form.value.product_type === 'raw_material')
 const submitting = ref(false)
 const loadingData = ref(false)
@@ -566,8 +557,7 @@ const form = ref({
 const errors = ref<Record<string, string>>({})
 const categories = ref([])
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' }
+  { label: 'Finished Good', value: 'finished_good' }
 ]
 const subcategories = computed(() => {
   if (!form.value.category_id) return []
@@ -631,6 +621,17 @@ const loadProduct = async () => {
       default_camera_angle_y: form.value.default_camera_angle_y,
       default_zoom_level: form.value.default_zoom_level
     })
+
+    if (product.product_type === 'raw_material') {
+      toast.add({
+        severity: 'warn',
+        summary: 'Not Available',
+        detail: 'Raw materials are hidden in merchandising.',
+        life: 3000
+      })
+      router.push({ name: 'merchandising.products' })
+      return
+    }
 
     originalBasePrice.value = product.base_price
 
@@ -723,7 +724,7 @@ const generateSKU = async () => {
 
   // Check for uniqueness and get next sequence
   try {
-    const response = await merchandisingService.getProducts({ search: baseSKU })
+    const response = await merchandisingService.getProducts({ search: baseSKU, product_type: 'finished_good' })
     const existingProducts = response.data?.data || response.data?.data?.data || []
 
     // Find highest sequence number
@@ -1007,7 +1008,7 @@ const handleSubmit = async () => {
       sku: form.value.sku,
       category_id: form.value.category_id,
       subcategory_id: form.value.subcategory_id,
-      product_type: isRawMaterialForm.value ? 'raw_material' : form.value.product_type,
+      product_type: 'finished_good',
       brand: form.value.brand,
       collection_name: form.value.collection_name,
       stock_status: form.value.stock_status,
@@ -1190,9 +1191,7 @@ const menuItems = computed(() => {
     { key: 'pricing', label: 'Pricing', icon: 'pi pi-dollar' },
     { key: 'assets', label: 'Assets', icon: 'pi pi-box' },
   ]
-  if (!isRawMaterialForm.value) {
-    base.push({ key: 'seo', label: 'SEO', icon: 'pi pi-search' })
-  }
+  base.push({ key: 'seo', label: 'SEO', icon: 'pi pi-search' })
   return base
 })
 
@@ -1207,13 +1206,17 @@ const currentSection = computed(() => {
 })
 
 onMounted(() => {
-  if (!isEditMode.value && isRawMaterialForm.value) {
-    form.value.product_type = 'raw_material'
-    form.value.discounted_price = null
-    form.value.is_featured = false
-    form.value.is_new_arrival = false
-    form.value.is_bestseller = false
+  if (route.name === 'merchandising.products.raw.create') {
+    toast.add({
+      severity: 'info',
+      summary: 'Updated Flow',
+      detail: 'Raw materials are hidden in merchandising.',
+      life: 2600
+    })
+    router.replace({ name: 'merchandising.products.create' })
+    return
   }
+  form.value.product_type = 'finished_good'
   loadCategories()
   loadProduct()
 })

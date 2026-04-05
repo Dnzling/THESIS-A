@@ -13,6 +13,27 @@ abstract class Controller
         $storeId = $payload['store_id'] ?? $user?->store_id;
         $branchId = $payload['branch_id'] ?? $user?->branch_id;
 
+        $link = $payload['link'] ?? null;
+
+        if (empty($link) && !empty($payload['entity_type']) && !empty($payload['entity_id'])) {
+            switch ($payload['entity_type']) {
+                case 'request_for_quotation':
+                case 'rfq':
+                    $link = "/system/procurement/rfqs/{$payload['entity_id']}";
+                    break;
+                case 'purchase_order':
+                case 'po':
+                    $link = "/system/procurement/purchase-orders/{$payload['entity_id']}";
+                    break;
+                case 'purchase_requisition':
+                case 'pr':
+                    $link = "/system/procurement/purchase-requisitions/{$payload['entity_id']}";
+                    break;
+                default:
+                    $link = null;
+            }
+        }
+
         return SystemNotification::create([
             'store_id' => $storeId,
             'branch_id' => $branchId,
@@ -24,7 +45,7 @@ abstract class Controller
             'title' => $payload['title'] ?? 'Notification',
             'message' => $payload['message'] ?? null,
             'data' => $payload['data'] ?? null,
-            'link' => $payload['link'] ?? null,
+            'link' => $link,
             'severity' => $payload['severity'] ?? 'info',
             'is_read' => (bool) ($payload['is_read'] ?? false),
             'read_at' => $payload['read_at'] ?? null,

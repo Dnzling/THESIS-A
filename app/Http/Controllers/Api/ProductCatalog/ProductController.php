@@ -206,7 +206,7 @@ class ProductController extends BaseController
                             'issue_date' => now()->toDateString(),
                             'deadline_date' => now()->addDays(7)->toDateString(),
                             'status' => 'draft',
-                            'created_by' => $this->getUserId(),
+                            'created_by' => auth()->user()?->employee?->id ?? $this->getUserId(),
                         ]);
 
                         RFQItem::create([

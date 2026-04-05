@@ -7,6 +7,7 @@ use App\Models\Inventory\InventoryTransaction;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesPayment;
 use App\Models\Sales\SalesReceipt;
+use App\Services\Finance\CashflowService;
 use Illuminate\Support\Facades\DB;
 
 class SalesOrderSettlementService
@@ -107,6 +108,22 @@ class SalesOrderSettlementService
                     'provider_reference' => $paymentReference ?: $payment->provider_reference,
                 ]);
             }
+
+            // Record incoming sales cashflow once order is settled as paid.
+            $cashflow = new CashflowService();
+            $cashflow->credit(
+                (int) $lockedOrder->store_id,
+                (float) $lockedOrder->total_amount,
+                'sales_order',
+                (int) $lockedOrder->id,
+                (int) ($lockedOrder->created_by ?? 0) ?: null,
+                'Sales receipt ' . ($receipt->receipt_number ?? $lockedOrder->order_number),
+                $paymentMethod,
+                [
+                    'order_number' => $lockedOrder->order_number,
+                    'payment_reference' => $paymentReference,
+                ]
+            );
 
             return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);
         });

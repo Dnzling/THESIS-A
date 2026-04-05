@@ -11,6 +11,14 @@ use Illuminate\Support\Facades\DB;
 
 class TrialOnboardingController extends Controller
 {
+    private const FIXED_TRIAL_MODULES = [
+        'inventory',
+        'sales',
+        'procurement',
+        'finance',
+        'hr',
+    ];
+
     public function show(Request $request)
     {
         $profile = TrialOnboardingProfile::where('user_id', $request->user()->id)->first();
@@ -25,24 +33,27 @@ class TrialOnboardingController extends Controller
     {
         $validated = $request->validate([
             'plan' => 'required|string|in:simple,unlimited',
-            'employee_range' => 'required|string|max:30',
+            'employee_range' => 'nullable|string|max:30',
             'branch_range' => 'nullable|string|max:30',
-            'modules' => 'required|array|min:1',
+            'modules' => 'nullable|array',
             'modules.*' => 'required|string|max:50',
             'primary_goal' => 'required|string|max:100',
             'first_team' => 'required|string|max:100',
         ]);
 
+        $fixedModules = self::FIXED_TRIAL_MODULES;
+        $employeeRange = $validated['employee_range'] ?? '1-5';
+
         $profile = null;
 
-        DB::transaction(function () use ($request, $validated, &$profile): void {
+        DB::transaction(function () use ($request, $validated, $employeeRange, $fixedModules, &$profile): void {
             $profile = TrialOnboardingProfile::updateOrCreate(
                 ['user_id' => $request->user()->id],
                 [
                     'plan' => $validated['plan'],
-                    'employee_range' => $validated['employee_range'],
+                    'employee_range' => $employeeRange,
                     'branch_range' => $validated['branch_range'] ?? '1',
-                    'modules' => array_values(array_unique($validated['modules'])),
+                    'modules' => $fixedModules,
                     'primary_goal' => $validated['primary_goal'],
                     'first_team' => $validated['first_team'],
                     'completed_at' => now(),
@@ -63,7 +74,7 @@ class TrialOnboardingController extends Controller
                     'subscription_tier' => 'free',
                     'settings' => [
                         'trial' => true,
-                        'enabled_modules' => $profile->modules,
+                        'enabled_modules' => $fixedModules,
                     ],
                 ]);
 
@@ -86,7 +97,7 @@ class TrialOnboardingController extends Controller
                 if ($store) {
                     $settings = is_array($store->settings) ? $store->settings : [];
                     $settings['trial'] = true;
-                    $settings['enabled_modules'] = $profile->modules;
+                    $settings['enabled_modules'] = $fixedModules;
                     $store->settings = $settings;
                     $store->save();
                 }

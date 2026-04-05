@@ -261,6 +261,11 @@ const hrService = {
     return response.data
   },
 
+  async getHrAnalyticsOverview(params?: { start_date?: string; end_date?: string; branch_id?: number | string | null }) {
+    const response = await axiosClient.get('/api/hr/dashboard/analytics-overview', { params })
+    return response.data
+  },
+
   async getInterviewSettings() {
     const response = await axiosClient.get('/api/store/settings/hr')
     return response.data
@@ -344,6 +349,38 @@ const hrService = {
 
   async createShiftScheduleBulk(payload: any) {
     const response = await axiosClient.post('/api/shift-schedules/bulk', payload)
+    return response.data
+  },
+
+  async getScheduleTemplates(params?: any) {
+    const response = await axiosClient.get('/api/schedule-templates', { params })
+    return response.data
+  },
+
+  async getShiftManagementTemplates(params?: any) {
+    const response = await axiosClient.get('/api/shift-management/templates', { params })
+    return response.data
+  },
+
+  async assignShift(payload: {
+    employee_id: number | string
+    shift_id: number | string
+    template_id?: number | string
+    start_date: string
+    end_date?: string | null
+    assignment_type?: 'permanent' | 'temporary' | 'cover'
+  }) {
+    const response = await axiosClient.post('/api/shift-assignments', payload)
+    return response.data
+  },
+
+  async generateScheduleFromTemplate(templateId: number | string, payload: { employee_ids: (number | string)[]; start_date: string; end_date: string }) {
+    const response = await axiosClient.post(`/api/schedule-templates/${templateId}/generate`, payload)
+    return response.data
+  },
+
+  async assignCreditCard(employeeId: number | string, payload?: { card_number?: string; card_type?: string; status?: string; metadata?: any }) {
+    const response = await axiosClient.post(`/api/employees/${employeeId}/credit-card`, payload)
     return response.data
   },
 

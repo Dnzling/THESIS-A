@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Hr\LeaveController;
 use App\Http\Controllers\Api\Hr\LeaveBalanceController;
 use App\Http\Controllers\Api\Hr\DashboardController;
 use App\Http\Controllers\Api\Hr\ShiftSwapRequestController;
+use App\Http\Controllers\Api\Hr\EmployeeCreditCardController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 // Shifts
@@ -33,6 +34,7 @@ Route::post('schedule-templates/{id}/generate', [ScheduleTemplateController::cla
 // NOTE: bulk route must be before apiResource to avoid being caught by show()
 Route::post('shift-assignments/bulk', [ShiftAssignmentController::class, 'bulkAssign']);
 Route::apiResource('shift-assignments', ShiftAssignmentController::class);
+Route::post('employees/{employee}/credit-card', [EmployeeCreditCardController::class, 'store']);
 
 // Shift Schedules
 // NOTE: bulk route must be before apiResource to avoid being caught by show()

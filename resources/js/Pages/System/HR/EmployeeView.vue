@@ -29,7 +29,7 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <Button label="Change Role" icon="pi pi-id-card" severity="warning" outlined @click="openRoleDialog" />
-          <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="editEmployee" />
+          <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" />
           <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" />
         </div>
       </div>
@@ -57,7 +57,7 @@
               <span>{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
             </div>
 
-            <div class="mt-5 grid gap-3 md:grid-cols-4">
+            <div class="mt-5 grid gap-3 md:grid-cols-5">
               <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
                 <div class="text-xs text-slate-500">Join Date</div>
                 <div class="mt-1 text-sm font-semibold text-slate-900">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</div>
@@ -73,6 +73,16 @@
               <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
                 <div class="text-xs text-slate-500">Attendance Rate</div>
                 <div class="mt-1 text-sm font-semibold text-slate-900">{{ attendanceRate }}%</div>
+              </div>
+              <div class="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                <div class="text-xs text-slate-500">Current Shift</div>
+                <div class="mt-1 text-sm font-semibold text-slate-900">{{ employeeInfo.current_shift?.shift_name || '-' }}</div>
+                <div v-if="employeeInfo.current_shift?.time_range" class="text-xs text-slate-500">
+                  {{ employeeInfo.current_shift.time_range }}
+                </div>
+                <div v-if="employeeInfo.current_shift?.covers_days_label" class="text-xs text-slate-500">
+                  {{ employeeInfo.current_shift.covers_days_label }}
+                </div>
               </div>
             </div>
           </div>
@@ -91,6 +101,11 @@
             <Tab value="attendance">
               <div class="flex items-center gap-2">
                 <span>Attendance History</span>
+              </div>
+            </Tab>
+            <Tab value="overtime">
+              <div class="flex items-center gap-2">
+                <span>Overtime History</span>
               </div>
             </Tab>
             <Tab value="leave">
@@ -125,6 +140,10 @@
                 @export="handleAttendanceExport"
                 ref="attendanceTabRef"
               />
+            </TabPanel>
+
+            <TabPanel value="overtime">
+              <EmployeeOvertimeTab :employee-id="employeeId" ref="overtimeTabRef" />
             </TabPanel>
   
             <!-- LEAVE HISTORY TAB -->
@@ -245,6 +264,73 @@
             @click="confirmRoleChange" />
         </template>
       </Dialog>
+
+      <Dialog v-model:visible="showEditDialog" header="Edit Employee Profile" :style="{ width: '760px' }" modal>
+        <div class="space-y-5">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Personal Details</p>
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">First Name</label>
+                <InputText v-model="editForm.fname" class="w-full" />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">Last Name</label>
+                <InputText v-model="editForm.lname" class="w-full" />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">Phone</label>
+                <InputText v-model="editForm.phone" class="w-full" />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">Address</label>
+                <InputText v-model="editForm.address" class="w-full" />
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-200 pt-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Shift Change</p>
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">Current Shift</label>
+                <InputText :model-value="employeeInfo.current_shift?.shift_name || '-'" disabled class="w-full" />
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">New Shift</label>
+                <Select
+                  v-model="editForm.shift_id"
+                  :options="shiftOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Select shift"
+                  class="w-full"
+                  showClear
+                />
+                <small v-if="selectedShiftOption?.daysLabel" class="text-slate-500">
+                  Covers {{ selectedShiftOption.daysLabel }}
+                </small>
+              </div>
+              <div class="space-y-2">
+                <label class="text-sm font-semibold text-slate-700">Effective Date</label>
+                <DatePicker v-model="editForm.shift_effective_date" class="w-full" />
+              </div>
+            </div>
+            <div class="space-y-2 mt-3" v-if="isShiftChangePending">
+              <label class="text-sm font-semibold text-slate-700">Reason for Shift Change</label>
+              <Textarea v-model="editForm.shift_change_reason" rows="3" class="w-full" />
+            </div>
+            <Message v-if="isShiftChangePending" severity="info" :closable="false" class="mt-3">
+              Employee will receive an email notification for this shift change.
+            </Message>
+          </div>
+        </div>
+
+        <template #footer>
+          <Button label="Cancel" text @click="showEditDialog = false" />
+          <Button label="Save Changes" icon="pi pi-save" severity="info" :loading="savingEdit" @click="submitEditEmployee" />
+        </template>
+      </Dialog>
     </template>
     </div>
   </div>
@@ -265,6 +351,7 @@ import EmployeeAttendanceTab from './components/tabs/EmployeeAttendanceTab.vue'
 import EmployeeLeaveTab from './components/tabs/EmployeeLeaveTab.vue'
 import PayslipHistory from './components/tabs/EmployeePayrollTab.vue'
 import EmployeeDeductionsTab from './components/tabs/EmployeeDeductionsTab.vue'
+import EmployeeOvertimeTab from './components/tabs/EmployeeOvertimeTab.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -274,6 +361,7 @@ const employeeId = route.params.id as string
 
 // Refs for child components
 const attendanceTabRef = ref<InstanceType<typeof EmployeeAttendanceTab> | null>(null)
+const overtimeTabRef = ref<InstanceType<typeof EmployeeOvertimeTab> | null>(null)
 const leaveTabRef = ref<InstanceType<typeof EmployeeLeaveTab> | null>(null)
 const payslipHistoryRef = ref<InstanceType<typeof PayslipHistory> | null>(null)
 
@@ -286,6 +374,9 @@ const showRoleDialog = ref(false)
 const savingRole = ref(false)
 const roleOptions = ref<{ label: string; value: number }[]>([])
 const selectedRoleId = ref<number | null>(null)
+const showEditDialog = ref(false)
+const savingEdit = ref(false)
+const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
 
 // State
 const activeTab = ref('info')
@@ -300,6 +391,16 @@ const employeeInfo = ref<EmployeeDetails | any>({
   quick_stats: {}
 })
 
+const editForm = ref({
+  fname: '',
+  lname: '',
+  phone: '',
+  address: '',
+  shift_id: null as number | null,
+  shift_effective_date: new Date(),
+  shift_change_reason: '',
+})
+
 // Computed Properties
 const leaveBalance = computed(() => {
   return employeeInfo.value.leave_info?.summary?.total_remaining || 0
@@ -311,6 +412,18 @@ const attendanceRate = computed(() => {
 
 const currentRoleId = computed(() => {
   return employeeInfo.value?.employment_details?.role_id || null
+})
+
+const currentShiftId = computed(() => {
+  return employeeInfo.value?.current_shift?.shift_id || null
+})
+
+const isShiftChangePending = computed(() => {
+  return !!editForm.value.shift_id && Number(editForm.value.shift_id) !== Number(currentShiftId.value || 0)
+})
+
+const selectedShiftOption = computed(() => {
+  return shiftOptions.value.find((option) => Number(option.value) === Number(editForm.value.shift_id || 0)) || null
 })
 
 // API Functions
@@ -351,6 +464,20 @@ const loadRoles = async () => {
   }
 }
 
+const loadShifts = async () => {
+  try {
+    const response = await hrService.getShifts({ per_page: 200 })
+    const payload = response?.data?.data || response?.data || response || []
+    shiftOptions.value = payload.map((shift: any) => ({
+      label: `${shift.name} (${formatShiftTime(shift.start_time)} - ${formatShiftTime(shift.end_time)})`,
+      value: Number(shift.id),
+      daysLabel: formatShiftDays(shift.week_days),
+    }))
+  } catch (err) {
+    console.error('Failed to load shifts', err)
+  }
+}
+
 // Helper functions
 const getInitials = (name: string) => {
   if (!name) return ''
@@ -382,6 +509,45 @@ const formatCurrency = (value: number | string | null | undefined) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0)
+}
+
+const formatShiftTime = (value: string | null | undefined) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (!Number.isNaN(date.getTime())) {
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  }
+
+  if (/^\d{2}:\d{2}/.test(value)) {
+    const [hoursRaw, minutes] = value.split(':')
+    const hours = Number(hoursRaw)
+    if (!Number.isNaN(hours)) {
+      const period = hours >= 12 ? 'PM' : 'AM'
+      const normalized = ((hours + 11) % 12) + 1
+      return `${String(normalized).padStart(2, '0')}:${minutes} ${period}`
+    }
+  }
+
+  return value
+}
+
+const formatShiftDays = (days: string[] | string | null | undefined) => {
+  let dayList: string[] = []
+  if (Array.isArray(days)) {
+    dayList = days
+  } else if (typeof days === 'string' && days.trim()) {
+    try {
+      const parsed = JSON.parse(days)
+      dayList = Array.isArray(parsed) ? parsed : []
+    } catch {
+      dayList = []
+    }
+  }
+
+  if (!dayList.length) return 'No days set'
+  return dayList
+    .map((day) => day.charAt(0).toUpperCase() + day.slice(1))
+    .join(', ')
 }
 
 const calculateGrossPay = (payslip: any) => {
@@ -420,8 +586,68 @@ const goBack = () => {
   router.push('/hr/employees')
 }
 
-const editEmployee = () => {
-  router.push(`/hr/employees/${employeeId}/edit`)
+const openEditDialog = () => {
+  editForm.value = {
+    fname: employeeInfo.value?.basic_info?.first_name || '',
+    lname: employeeInfo.value?.basic_info?.last_name || '',
+    phone: employeeInfo.value?.contact_info?.phone || '',
+    address: employeeInfo.value?.contact_info?.address || '',
+    shift_id: employeeInfo.value?.current_shift?.shift_id || null,
+    shift_effective_date: new Date(),
+    shift_change_reason: '',
+  }
+  showEditDialog.value = true
+}
+
+const submitEditEmployee = async () => {
+  if (isShiftChangePending.value && !editForm.value.shift_change_reason.trim()) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Reason Required',
+      detail: 'Please provide a reason for changing the shift.',
+      life: 2800,
+    })
+    return
+  }
+
+  savingEdit.value = true
+  try {
+    const payload: any = {
+      fname: editForm.value.fname,
+      lname: editForm.value.lname,
+      phone: editForm.value.phone || null,
+      address: editForm.value.address || null,
+    }
+
+    if (isShiftChangePending.value) {
+      payload.shift_id = editForm.value.shift_id
+      payload.shift_effective_date = new Date(editForm.value.shift_effective_date).toISOString().slice(0, 10)
+      payload.shift_change_reason = editForm.value.shift_change_reason.trim()
+    }
+
+    const response = await hrService.api.put(`/api/employees/${employeeId}`, payload)
+    if (response?.data?.success) {
+      toast.add({
+        severity: 'success',
+        summary: 'Saved',
+        detail: isShiftChangePending.value
+          ? 'Employee details and shift updated. Email notification sent.'
+          : 'Employee details updated successfully.',
+        life: 2800,
+      })
+      showEditDialog.value = false
+      await fetchEmployeeData()
+    }
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Failed',
+      detail: err?.response?.data?.message || 'Unable to save employee changes.',
+      life: 3000,
+    })
+  } finally {
+    savingEdit.value = false
+  }
 }
 
 const exportData = () => {
@@ -581,6 +807,8 @@ watch(activeTab, (newTab) => {
   // Refresh data when switching to specific tabs
   if (newTab === 'attendance' && attendanceTabRef.value) {
     attendanceTabRef.value.refresh()
+  } else if (newTab === 'overtime' && overtimeTabRef.value) {
+    overtimeTabRef.value.refresh()
   } else if (newTab === 'leave' && leaveTabRef.value) {
     leaveTabRef.value.refresh()
   } else if (newTab === 'payslip' && payslipHistoryRef.value) {
@@ -592,6 +820,6 @@ watch(activeTab, (newTab) => {
 onMounted(() => {
   fetchEmployeeData()
   loadRoles()
+  loadShifts()
 })
 </script>
-

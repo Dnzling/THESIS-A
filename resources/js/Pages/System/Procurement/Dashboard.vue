@@ -227,7 +227,9 @@ const loadDashboard = async () => {
   loading.value = true
   try {
     const response = await procurementService.getDashboardStats()
-    stats.value = response.data || {}
+    // procurementService returns axios response.data which contains { success, data }
+    // normalize to the inner data object expected by the UI
+    stats.value = (response && response.data) ? response.data : (response || {})
   } catch (error) {
     console.error('Failed to load procurement dashboard', error)
     stats.value = {}

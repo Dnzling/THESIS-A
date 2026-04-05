@@ -9,15 +9,12 @@ use App\Models\ApplicationTimeline;
 use App\Services\EmployeeIdGenerationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
 
 class JobOfferController extends Controller
 {
     public function show(JobOffer $offer): JsonResponse
     {
-        Gate::authorize('view-job-offers');
-
         $offer->load(['application', 'employee']);
 
         return response()->json($offer);
@@ -25,8 +22,6 @@ class JobOfferController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        Gate::authorize('create-job-offers');
-
         $validated = $request->validate([
             'application_id' => 'required|exists:job_applications,id|unique:job_offers,application_id',
             'salary' => 'required|numeric|min:0',
@@ -66,8 +61,6 @@ class JobOfferController extends Controller
 
     public function update(Request $request, JobOffer $offer): JsonResponse
     {
-        Gate::authorize('edit-job-offers');
-
         $validated = $request->validate([
             'salary' => 'sometimes|required|numeric|min:0',
             'position' => 'sometimes|required|string|max:100',
@@ -89,8 +82,6 @@ class JobOfferController extends Controller
 
     public function accept(Request $request, JobOffer $offer): JsonResponse
     {
-        Gate::authorize('accept-offers');
-
         if ($offer->status === 'Accepted') {
             return response()->json(['message' => 'Offer already accepted'], 422);
         }
@@ -150,8 +141,6 @@ class JobOfferController extends Controller
 
     public function decline(Request $request, JobOffer $offer): JsonResponse
     {
-        Gate::authorize('decline-offers');
-
         if ($offer->status !== 'Pending') {
             return response()->json(['message' => 'Only pending offers can be declined'], 422);
         }
@@ -175,8 +164,6 @@ class JobOfferController extends Controller
 
     public function destroy(JobOffer $offer): JsonResponse
     {
-        Gate::authorize('delete-job-offers');
-
         if ($offer->status === 'Accepted') {
             return response()->json(['message' => 'Cannot delete accepted offers'], 422);
         }

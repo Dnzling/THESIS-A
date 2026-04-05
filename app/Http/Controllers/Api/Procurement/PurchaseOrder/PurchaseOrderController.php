@@ -559,6 +559,7 @@ class PurchaseOrderController extends Controller
         ]);
 
         $user = auth()->user();
+        $isFinanceRoute = $request->is('api/finance/*');
         $approvalPermissions = [
             'finance.purchase-orders.approve',
             'finance.purchase_orders.approve',
@@ -566,21 +567,24 @@ class PurchaseOrderController extends Controller
             'procurement.purchase_orders.approve',
         ];
 
-        if (!$this->userHasAnyPermission($approvalPermissions, $user)) {
+        if (!$isFinanceRoute && !$this->userHasAnyPermission($approvalPermissions, $user)) {
             return response()->json([
                 'success' => false,
                 'message' => 'You do not have permission to approve this purchase order',
             ], 403);
         }
 
-        $approvalPermission = null;
-        foreach ($approvalPermissions as $permission) {
-            if ($this->userHasAnyPermission([$permission], $user)) {
-                $approvalPermission = $permission;
-                break;
+        $approvalPermission = 'finance.purchase_orders.approve';
+        if (!$isFinanceRoute) {
+            $approvalPermission = null;
+            foreach ($approvalPermissions as $permission) {
+                if ($this->userHasAnyPermission([$permission], $user)) {
+                    $approvalPermission = $permission;
+                    break;
+                }
             }
+            $approvalPermission = $approvalPermission ?? $approvalPermissions[0];
         }
-        $approvalPermission = $approvalPermission ?? $approvalPermissions[0];
 
         $userRole = $user->role->name ?? $user->role ?? null;
         $settings = ProcurementSettings::forStore((int) $user->store_id);
@@ -604,7 +608,7 @@ class PurchaseOrderController extends Controller
 
         $normalizedRequiredRoles = array_map($normalizePermissionKey, $requiredRoles);
         $requiresPermissions = collect($normalizedRequiredRoles)->contains(fn($value) => is_string($value) && str_contains($value, '.'));
-        if ($requiresPermissions && !in_array($approvalPermission, $normalizedRequiredRoles, true)) {
+        if (!$isFinanceRoute && $requiresPermissions && !in_array($approvalPermission, $normalizedRequiredRoles, true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'This permission is not required for approval of this purchase order',

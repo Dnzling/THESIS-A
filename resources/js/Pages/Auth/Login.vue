@@ -87,6 +87,29 @@ const handleLogin = async (formData: LoginFormData) => {
   } catch (error: any) {
     console.error('❌ Login error:', error)
 
+    const requiresVerification = Boolean(error?.response?.data?.requires_verification)
+    if (requiresVerification) {
+      const verificationToken = error?.response?.data?.access_token
+      const verificationEmail = error?.response?.data?.email || formData.login
+
+      if (verificationToken) {
+        localStorage.setItem('register_token', verificationToken)
+      }
+      localStorage.setItem('otp_context', 'saas')
+
+      toast.add({
+        severity: 'info',
+        summary: 'Email Verification Required',
+        detail: `Enter the OTP sent to ${verificationEmail}.`,
+        life: 3500
+      })
+
+      setTimeout(() => {
+        router.visit('/verify-otp')
+      }, 500)
+      return
+    }
+
     // Handle validation errors
     if (error.response?.status === 422) {
       const errors = error.response.data?.errors

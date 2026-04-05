@@ -31,11 +31,11 @@
               <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <div class="text-gray-500">Created</div>
-                  <div class="font-medium text-gray-900">{{ formatDate(rfq.created_at) }}</div>
+                  <div class="font-medium text-gray-900">{{ formatDateWithTime(rfq.created_at) }}</div>
                 </div>
                 <div>
-                  <div class="text-gray-500">Deadline</div>
-                  <div class="font-medium text-gray-900">{{ formatDate(rfq.deadline_date) }}</div>
+                  <div class="text-gray-500">Store</div>
+                  <div class="font-medium text-gray-900">{{ rfq.store?.store_name || rfq.store?.name || '—' }}</div>
                 </div>
               </div>
             </div>
@@ -144,7 +144,7 @@
               </div>
             </div>
   
-          <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium mb-2">Quoted Price *</label>
               <InputNumber v-model="quoteData[item.id].quoted_price" mode="currency" :currency="rfq?.currency || 'PHP'"
@@ -154,17 +154,6 @@
               <label class="block text-sm font-medium mb-2">Description</label>
               <InputText v-model="quoteData[item.id].description" placeholder="Additional notes" class="w-full" />
             </div>
-            <div>
-              <label class="block text-sm font-medium mb-2">Tax %</label>
-              <InputNumber
-                  v-model="quoteData[item.id].tax_rate"
-                  mode="decimal"
-                  min="0"
-                  max="100"
-                  suffix="%"
-                  class="w-full"
-                />
-              </div>
             </div>
           </div>
         </div>
@@ -231,7 +220,20 @@ const feedbackSeverity = (status: string) => {
 }
 
 const formatDate = (date: string) => {
+  if (!date) return '—'
   return new Date(date).toLocaleDateString()
+}
+
+const formatDateWithTime = (date: string) => {
+  if (!date) return '—'
+  return new Date(date).toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric'
+  })
 }
 
 const loadRFQDetail = async () => {
@@ -243,13 +245,12 @@ const loadRFQDetail = async () => {
     rfq.value = res.data.rfq
     const feedback = res.data.supplier_feedback || []
 
-    // Initialize quote data
+    // Initialize quote data (exclude tax_rate; server contract tax_rate is authoritative)
     rfq.value.items?.forEach((item: any) => {
       if (!quoteData.value[item.id]) {
         quoteData.value[item.id] = {
           quoted_price: null,
           description: '',
-          tax_rate: Number(item.product?.tax_rate ?? 0),
         }
       }
     })
@@ -261,7 +262,6 @@ const loadRFQDetail = async () => {
       quoteData.value[f.rfq_item_id] = {
         quoted_price: f.quoted_price,
         description: f.description || '',
-        tax_rate: f.tax_rate ?? Number(item?.product?.tax_rate ?? 0),
       }
     })
 
@@ -312,15 +312,7 @@ const submitQuote = async () => {
       return
     }
 
-    if (quote.tax_rate == null || quote.tax_rate < 0 || quote.tax_rate > 100) {
-      toast.add({
-        severity: 'error',
-        summary: 'Invalid Tax',
-        detail: `Please provide a valid tax percentage (0-100) for item ${item?.product?.product_name || item?.id}`,
-        life: 3000,
-      })
-      return
-    }
+    // Server will apply supplier contract tax rate; do not validate tax on client
 
     try {
       submitting.value = true
@@ -329,7 +321,6 @@ const submitQuote = async () => {
         rfq_item_id: parseInt(itemId),
         quoted_price: quote.quoted_price,
         description: quote.description,
-      tax_rate: quote.tax_rate,
       })
     } catch (error: any) {
       toast.add({

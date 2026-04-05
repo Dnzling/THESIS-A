@@ -7,7 +7,7 @@
         </div>
         <div>
           <h1 class="text-2xl font-semibold text-slate-900">Setup Required</h1>
-          <p class="text-sm text-slate-600">Complete trial setup to access this module.</p>
+          <p class="text-sm text-slate-600">This module is not included in your fixed free-trial package.</p>
         </div>
       </div>
 
@@ -18,12 +18,12 @@
 
       <div class="mt-6 grid gap-3 md:grid-cols-2">
         <Button
-          label="Finish Trial Setup"
+          label="Review Trial Setup"
           icon="pi pi-arrow-right"
           @click="goToOnboarding"
         />
         <Button
-          label="Manage Modules"
+          label="Upgrade Plan"
           severity="secondary"
           outlined
           @click="goToSettings"

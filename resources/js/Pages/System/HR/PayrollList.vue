@@ -11,7 +11,7 @@
       <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear
         @change="fetchPayPeriods" />
       <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" :manualInput="false"
-        placeholder="Date Range" fluid @update:modelValue="fetchPayPeriods" />
+        :maxDate="new Date()" placeholder="Date Range" fluid @update:modelValue="fetchPayPeriods" />
       <Button label="Generate Payroll" @click="showGenerateModal = true" severity="info" class="ml-auto" />
     </div>
   
@@ -259,6 +259,7 @@ const filters = ref<Filters>({
 
 // Options
 const statusOptions = ref(['draft', 'processing', 'locked', 'completed'])
+const today = new Date()
 
 // ==================== COMPUTED ====================
 const filteredBatches = computed(() => {
@@ -301,9 +302,23 @@ const fetchPayPeriods = async () => {
       params.status = filters.value.status
     }
 
-    if (filters.value.dateRange && filters.value.dateRange[0]) {
-      params.year = filters.value.dateRange[0].getFullYear()
-      params.month = filters.value.dateRange[0].getMonth() + 1
+    if (filters.value.dateRange && filters.value.dateRange[0] && filters.value.dateRange[1]) {
+      const start = new Date(filters.value.dateRange[0])
+      const end = new Date(filters.value.dateRange[1])
+      const now = new Date()
+
+      if (start > now || end > now) {
+        toast.add({
+          severity: 'warn',
+          summary: 'Invalid date range',
+          detail: 'Future dates are not allowed.',
+          life: 2500
+        })
+        return
+      }
+
+      params.start_date = start.toISOString().slice(0, 10)
+      params.end_date = end.toISOString().slice(0, 10)
     }
 
     const response = await hrService.api.get('/api/payroll/pay-periods', { params })

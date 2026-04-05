@@ -6,7 +6,7 @@
       :closable="false"
       :draggable="false"
       :style="{ width: '500px', maxWidth: '96vw' }"
-      header="Set up your free trial"
+      header="Set up your simple free trial"
     >
       <div class="space-y-5">
         <div class="flex items-center gap-2 text-xs text-slate-500">
@@ -20,28 +20,17 @@
           </span>
         </div>
 
-        <div v-if="currentStep === 1" class="space-y-1">
-          <p class="text-sm text-slate-600">Select your employee count so we can assign the right preset.</p>
-          <div class="grid gap-4">
-            <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">How many employees do you have?</label>
-              <Select
-                v-model="form.employee_range"
-                :options="employeeRangeOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select employee count"
-                class="w-full"
-              />
-            </div>
-          </div>
-          <div class="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-            Preset tier: <span class="font-semibold text-slate-800">{{ storeSizeLabel }}</span>
+        <div v-if="currentStep === 1" class="space-y-3">
+          <p class="text-sm text-slate-600">
+            This free trial is intentionally simple and includes selected modules so you can quickly evaluate if the system fits your business.
+          </p>
+          <div class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
+            During trial, module customization is disabled. Full module selection is available in paid plans.
           </div>
         </div>
 
         <div v-if="currentStep === 2" class="space-y-4">
-          <p class="text-sm text-slate-600">Modules are pre-selected for the {{ storeSizeLabel }} preset.</p>
+          <p class="text-sm text-slate-600">Included free-trial modules (fixed set):</p>
           <div class="rounded-lg border border-slate-200 bg-white p-4">
             <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Included Modules</div>
             <div class="flex flex-wrap gap-2">
@@ -132,25 +121,17 @@ const registerToken = ref(localStorage.getItem('register_token') || '')
 
 const form = ref({
   plan: trialPlan.value === 'unlimited' ? 'unlimited' : 'simple',
-  employee_range: '',
+  employee_range: '1-5',
   branch_range: '',
-  modules: [] as string[],
+  modules: ['inventory', 'sales', 'procurement', 'finance', 'hr'] as string[],
   primary_goal: '',
   first_team: '',
 })
 
 const steps = [
-  { id: 1, label: 'Company Size' },
+  { id: 1, label: 'About Trial' },
   { id: 2, label: 'Modules' },
   { id: 3, label: 'Goals' },
-]
-
-const employeeRangeOptions = [
-  { label: '1-5 employees', value: '1-5' },
-  { label: '6-20 employees', value: '6-20' },
-  { label: '21-50 employees', value: '21-50' },
-  { label: '51-100 employees', value: '51-100' },
-  { label: '100+ employees', value: '100+' },
 ]
 
 const moduleOptions = [
@@ -184,7 +165,7 @@ const trialPlanLabel = computed(() => (form.value.plan === 'unlimited' ? 'Unlimi
 
 const canProceedCurrentStep = computed(() => {
   if (currentStep.value === 1) {
-    return Boolean(form.value.employee_range)
+    return true
   }
   if (currentStep.value === 2) {
     return form.value.modules.length > 0
@@ -194,7 +175,6 @@ const canProceedCurrentStep = computed(() => {
 
 const canFinish = computed(() => {
   return Boolean(
-    form.value.employee_range &&
     form.value.modules.length > 0 &&
     form.value.primary_goal &&
     form.value.first_team &&
@@ -202,25 +182,10 @@ const canFinish = computed(() => {
   )
 })
 
-const getPresetModules = (employeeRange: string): string[] => {
-  if (!employeeRange) {
-    return []
-  }
-  const isSmallTeam = employeeRange === '1-5'
-  if (isSmallTeam) {
-    return ['inventory', 'sales', 'procurement', 'finance', 'hr']
-  }
-
-  const isMidTeam = ['6-20', '21-50'].includes(employeeRange)
-  if (isMidTeam) {
-    return ['inventory', 'sales', 'procurement', 'logistics', 'finance', 'hr']
-  }
-
-  return ['inventory', 'sales', 'procurement', 'logistics', 'finance', 'hr', 'merchandising', 'supplier', 'ecommerce']
-}
+const FIXED_TRIAL_MODULES = ['inventory', 'sales', 'procurement', 'finance', 'hr']
 
 const selectedModules = computed(() => {
-  return getPresetModules(form.value.employee_range)
+  return FIXED_TRIAL_MODULES
 })
 
 const selectedModuleLabels = computed(() => {
@@ -230,14 +195,7 @@ const selectedModuleLabels = computed(() => {
 
 watch(selectedModules, (modules) => {
   form.value.modules = modules
-})
-
-const storeSizeLabel = computed(() => {
-  if (form.value.employee_range === '1-5') return 'Small'
-  if (['6-20', '21-50'].includes(form.value.employee_range)) return 'Mid'
-  if (['51-100', '100+'].includes(form.value.employee_range)) return 'Enterprise'
-  return 'Small'
-})
+}, { immediate: true })
 
 const nextStep = () => {
   if (currentStep.value < 3 && canProceedCurrentStep.value) currentStep.value += 1

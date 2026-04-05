@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\RFQ\SupplierQuotation;
+use App\Models\Procurement\RFQ\SupplierQuotationItem;
+use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
 use App\Models\ProductCatalog\Product;
@@ -16,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class RequestForQuotationController extends Controller
@@ -124,6 +128,28 @@ class RequestForQuotationController extends Controller
                         'responded_at' => now(),
                         'decline_reason' => 'Another supplier was approved for this RFQ.',
                     ]);
+            }
+
+            // Update supplier_quotations: mark winner quotation accepted and others rejected
+            try {
+                if (\Schema::hasTable('supplier_quotations')) {
+                    $winnerQuotation = \App\Models\Procurement\RFQ\SupplierQuotation::where('rfq_id', $rfq->id)
+                        ->where('supplier_id', $approvedSupplierId)
+                        ->first();
+
+                    if ($winnerQuotation) {
+                        $winnerQuotation->update([
+                            'status' => 'accepted',
+                            'updated_at' => now(),
+                        ]);
+                    }
+
+                    \App\Models\Procurement\RFQ\SupplierQuotation::where('rfq_id', $rfq->id)
+                        ->where('supplier_id', '!=', $approvedSupplierId)
+                        ->update(['status' => 'rejected', 'updated_at' => now()]);
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Failed to update supplier_quotations statuses after approval: ' . $e->getMessage());
             }
 
             $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'supplier_selected');
@@ -656,16 +682,129 @@ class RequestForQuotationController extends Controller
             ], 422);
         }
 
-        $rfq->update(['status' => 'pending']);
-        $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'rfq_sent');
+        DB::beginTransaction();
+        try {
+            $rfq->update(['status' => 'pending']);
+            $this->updatePurchaseRequisitionStatus($rfq->purchase_requisition_id, 'rfq_sent');
 
-        // TODO: Send email notifications to suppliers
+            // Create supplier quotation placeholders per item for each invited supplier
+            $rfq->load(['items']);
+            foreach ($rfq->suppliers as $rfqSupplier) {
+                $supplierId = $rfqSupplier->supplier_id;
 
-        return response()->json([
-            'success' => true,
-            'message' => 'RFQ sent to suppliers successfully',
-            'data' => $rfq->fresh(),
-        ]);
+                // try to find active contract tax rate for this supplier+store
+                $contract = SupplierContract::where('supplier_id', $supplierId)
+                    ->where('store_id', $rfq->store_id)
+                    ->where('status', 'active')
+                    ->whereDate('start_date', '<=', now())
+                    ->whereDate('end_date', '>=', now())
+                    ->first();
+
+                $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+
+                // Create or find a master quotation record for this RFQ + supplier
+                // Create minimal master quotation record (avoid writing migration-specific columns)
+                // Ensure we include required non-null columns present in the actual table
+                $quotationNumber = 'Q-' . $rfq->id . '-' . $supplierId . '-' . time();
+
+                // Build creation attributes defensively based on actual table columns
+                $columnRows = DB::select("SHOW COLUMNS FROM supplier_quotations");
+                $createAttrs = [
+                    'rfq_id' => $rfq->id,
+                    'supplier_id' => $supplierId,
+                    'quotation_number' => $quotationNumber,
+                ];
+
+                foreach ($columnRows as $col) {
+                    $field = is_object($col) ? ($col->Field ?? null) : ($col['Field'] ?? null);
+                    if (!$field) {
+                        continue;
+                    }
+
+                    switch ($field) {
+                        case 'quotation_date':
+                            $createAttrs['quotation_date'] = now();
+                            break;
+                        case 'valid_until':
+                            $createAttrs['valid_until'] = now()->addDays(30);
+                            break;
+                        case 'subtotal':
+                        case 'tax_amount':
+                        case 'shipping_cost':
+                            $createAttrs[$field] = 0;
+                            break;
+                        case 'total_amount':
+                        case 'total_price':
+                            $createAttrs[$field] = 0;
+                            break;
+                        case 'payment_terms':
+                            $createAttrs['payment_terms'] = 'net_30';
+                            break;
+                        case 'delivery_days':
+                            $createAttrs['delivery_days'] = 0;
+                            break;
+                        default:
+                            // leave other columns alone
+                            break;
+                    }
+                }
+
+                // Use query builder for master record to ensure we can set any DB column
+                $existing = DB::table('supplier_quotations')
+                    ->where('rfq_id', $rfq->id)
+                    ->where('supplier_id', $supplierId)
+                    ->first();
+
+                if ($existing) {
+                    $quotationId = $existing->id;
+                    $quotation = SupplierQuotation::find($quotationId);
+                } else {
+                    $now = now();
+                    $toInsert = $createAttrs;
+                    if (!isset($toInsert['created_at'])) {
+                        $toInsert['created_at'] = $now;
+                    }
+                    if (!isset($toInsert['updated_at'])) {
+                        $toInsert['updated_at'] = $now;
+                    }
+                    $quotationId = DB::table('supplier_quotations')->insertGetId($toInsert);
+                    $quotation = SupplierQuotation::find($quotationId);
+                }
+
+                // Create per-item quotation rows under the master quotation if table exists
+                if (Schema::hasTable('supplier_quotation_items')) {
+                    foreach ($rfq->items as $item) {
+                        SupplierQuotationItem::firstOrCreate([
+                            'quotation_id' => $quotation->id,
+                            'rfq_item_id' => $item->id,
+                        ], [
+                            'unit_price' => 0,
+                            'quantity' => $item->quantity ?? 1,
+                            'discount_percent' => 0,
+                            'line_total' => 0,
+                            'notes' => null,
+                        ]);
+                    }
+                }
+            }
+
+            // TODO: Send email notifications to suppliers
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'RFQ sent to suppliers successfully',
+                'data' => $rfq->fresh()->load(['items', 'suppliers', 'quotations']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('RFQ Send Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to send RFQ: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

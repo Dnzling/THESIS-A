@@ -4,6 +4,7 @@ namespace App\Models\Hr;
 
 use App\Models\Core\Role;
 use App\Models\Core\User;
+use App\Models\Hr\EmployeeCreditCard;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -112,6 +113,16 @@ class Employee extends Model
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id');
+    }
+
+    public function creditCards()
+    {
+        return $this->hasMany(EmployeeCreditCard::class, 'employee_id');
+    }
+
+    public function latestCreditCard()
+    {
+        return $this->hasOne(EmployeeCreditCard::class, 'employee_id')->latestOfMany();
     }
 
     public function payrolls()

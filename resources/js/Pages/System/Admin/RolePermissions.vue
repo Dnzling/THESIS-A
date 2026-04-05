@@ -1,17 +1,14 @@
 <template>
   <div class="space-y-6">
+    <ConfirmDialog />
+
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Roles & Permissions</h2>
         <p class="text-sm text-gray-500 mt-1">Manage user roles and access control</p>
       </div>
-      <div class="flex items-center gap-2">
-        <Button label="Export Roles" icon="pi pi-download" severity="secondary" @click="exportRolesCsv" />
-        <FileUpload mode="basic" name="file" accept=".csv" chooseLabel="Import Roles" :customUpload="true"
-          @uploader="importRolesCsv" />
-        <Button label="Create Role" icon="pi pi-plus" @click="openCreateRoleDialog" />
-      </div>
+    
     </div>
   
     <!-- Tabs -->
@@ -107,8 +104,8 @@
                     @click="openImportPermissionsDialog" />
                   <Button label="Bulk Edit" icon="pi pi-pencil" size="small" severity="warning" outlined
                     :disabled="selectedPermissionsForBulk.length === 0" @click="openBulkPermissionDialog" />
-                  <Button label="Bulk Delete" icon="pi pi-trash" size="small" severity="danger" outlined
-                    :disabled="selectedPermissionsForBulk.length === 0" @click="openBulkDeletePermissionsDialog" />
+                  <!-- <Button label="Bulk Delete" icon="pi pi-trash" size="small" severity="danger" outlined
+                    :disabled="selectedPermissionsForBulk.length === 0" @click="openBulkDeletePermissionsDialog" /> -->
                   <Button label="Add Permission" icon="pi pi-plus" size="small" @click="openCreatePermissionDialog" />
                 </div>
               </div>
@@ -556,8 +553,11 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 
 const toast = useToast()
+const confirm = useConfirm()
 
 // State
 const roles = ref([])
@@ -573,6 +573,7 @@ const selectedRole = ref(null)
 const selectedRolePermissions = ref<number[]>([])
 const permissionAssignSearch = ref('')
 const selectedAssignModule = ref<string | null>(null)
+const expandedModules = ref<string[]>([])
 
 // Dialogs
 const permissionsDialog = ref(false)
@@ -746,7 +747,7 @@ const roleMenuItems = ref([
     label: 'Delete',
     icon: 'pi pi-trash',
     class: 'text-red-500',
-    command: () => console.log('Delete role')
+    command: () => confirmDeleteRole(selectedRole.value)
   }
 ])
 
@@ -797,7 +798,7 @@ const filteredPermissions = computed(() => {
 })
 
 const permissionsByModule = computed(() => {
-  const grouped = allPermissions.value.reduce((acc, permission) => {
+  const grouped: Record<string, any> = allPermissions.value.reduce((acc: Record<string, any>, permission: any) => {
     if (!acc[permission.module]) {
       acc[permission.module] = {
         name: permission.module,
@@ -815,7 +816,7 @@ const permissionsByModule = computed(() => {
     return acc
   }, {})
 
-  return Object.values(grouped)
+  return Object.values(grouped) as any[]
 })
 
 const groupedPermissionTree = computed(() => {
@@ -939,7 +940,7 @@ const derivedNavigationRoutePath = computed(() => buildRoutePathFromName(navigat
 // Methods
 const loadRoles = async () => {
   try {
-    const response = await axios.get('/api/admin/roles')
+    const response = await axios.get('/api/admin/roles/primary')
     roles.value = response.data.data || response.data
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load roles', life: 3000 })
@@ -1439,6 +1440,44 @@ const clearAssignFilters = () => {
 const clearPermissionFilters = () => {
   permissionSearch.value = ''
   selectedModule.value = null
+}
+
+const confirmDeleteRole = (role: any) => {
+  if (!role?.id) return
+
+  confirm.require({
+    header: 'Delete Role',
+    message: `Are you sure you want to permanently delete "${role.display_name || role.name}"?`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: {
+      label: 'Cancel',
+      severity: 'secondary',
+      outlined: true,
+    },
+    acceptProps: {
+      label: 'Delete',
+      severity: 'danger',
+    },
+    accept: async () => {
+      try {
+        await axios.delete(`/api/admin/roles/${role.id}`)
+        toast.add({
+          severity: 'success',
+          summary: 'Deleted',
+          detail: 'Role deleted successfully',
+          life: 3000,
+        })
+        await loadRoles()
+      } catch (error: any) {
+        toast.add({
+          severity: 'error',
+          summary: 'Delete Failed',
+          detail: error.response?.data?.message || 'Failed to delete role',
+          life: 3500,
+        })
+      }
+    },
+  })
 }
 
 const openCreateRoleDialog = () => {

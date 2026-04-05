@@ -308,14 +308,13 @@ export const useAuthStore = defineStore('auth', () => {
         error.value = null
 
         try {
-            const location = await getCurrentLocation()
             // Make login request
             const response = await axios.post('/api/auth/login', {
                 login,
                 password,
                 device_name: 'web_browser',
-                latitude: location?.latitude ?? null,
-                longitude: location?.longitude ?? null,
+                latitude: null,
+                longitude: null,
             })
 
             const payload = response.data || {}
@@ -325,8 +324,10 @@ export const useAuthStore = defineStore('auth', () => {
                 payload?.user ??
                 payload?.data ??
                 null
-            const roleValue = String(userData?.role || '').toLowerCase()
-            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin'].some(r => roleValue === r || roleValue.includes(r))
+            const normalizedRole = String(userData?.role || '')
+                .toLowerCase()
+                .replace(/[\s-]+/g, '_')
+            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin'].includes(normalizedRole)
 
             token.value = accessToken
             user.value = userData
@@ -343,6 +344,8 @@ export const useAuthStore = defineStore('auth', () => {
                 navigation.value = []
                 permissionsLoaded.value = true
             } else {
+                const location = await getCurrentLocation()
+
                 // Load permissions ONCE
                 await loadPermissions()
 

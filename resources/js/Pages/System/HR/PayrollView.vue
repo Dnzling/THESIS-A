@@ -34,7 +34,7 @@
       <Button v-if="hasDraftPayrolls" label="Bulk Submit" icon="pi pi-send" severity="info" size="small" outlined
         :disabled="selectedItems.length === 0 || loading" :loading="bulkSubmitting" @click="bulkSubmitForApproval" />
       <Button label="Bulk Paid" icon="pi pi-money-bill" severity="success" size="small" outlined
-        :disabled="selectedReleasedItems.length === 0 || loading" :loading="bulkMarkingPaid" @click="bulkMarkPaid" />
+        :disabled="selectedApprovedItems.length === 0 || loading" :loading="bulkMarkingPaid" @click="bulkMarkPaid" />
       <Button label="Export" icon="pi pi-file-excel" severity="success" outlined size="small" @click="exportPayroll"
         :disabled="loading || payrollItems.length === 0" />
     </div>
@@ -154,9 +154,7 @@
           <div class="flex gap-2">
             <Button v-if="data.status === 'draft' || data.status === 'calculated'" icon="pi pi-send" severity="info" text
               @click="submitForApproval(data)" v-tooltip="'Submit for approval'" :loading="data.submitting" />
-            <Button v-if="data.status === 'approved'" icon="pi pi-wallet" severity="help" text
-              @click="releasePayroll(data)" v-tooltip="'Release payroll for distribution'" :loading="data.releasing" />
-            <Button v-if="data.status === 'released'" icon="pi pi-money-bill" severity="success" text
+            <Button v-if="data.status === 'approved'" icon="pi pi-money-bill" severity="success" text
               @click="markPayrollPaid(data)" v-tooltip="'Mark payroll as paid'" :loading="data.paying" />
             <Button v-if="data.status === 'paid'" icon="pi pi-receipt" severity="contrast" text
               @click="openPayslipDetails(data)" v-tooltip="'View payslip details'" />
@@ -269,7 +267,7 @@ interface PayrollItem {
   grossPay: number
   totalDeductions: number
   netPay: number
-  status: 'draft' | 'calculated' | 'processing' | 'approved' | 'released' | 'paid' | 'cancelled'
+  status: 'draft' | 'calculated' | 'processing' | 'approved' | 'paid' | 'cancelled'
   remarks?: string
   payroll_id?: number
   paymentDate?: string | null
@@ -344,15 +342,15 @@ const filters = ref<Filters>({
 // Options for filters
 const branches = ref<string[]>([])
 const departments = ref<string[]>([])
-const statusOptions = ref(['draft', 'calculated', 'processing', 'approved', 'released', 'paid', 'cancelled'])
+const statusOptions = ref(['draft', 'calculated', 'processing', 'approved', 'paid', 'cancelled'])
 
 // ==================== COMPUTED ====================
 const hasDraftPayrolls = computed(() =>
   payrollItems.value.some(i => i.status === 'draft' || i.status === 'calculated')
 )
 
-const selectedReleasedItems = computed(() =>
-  selectedItems.value.filter(i => i.status === 'released' && !!i.payroll_id)
+const selectedApprovedItems = computed(() =>
+  selectedItems.value.filter(i => i.status === 'approved' && !!i.payroll_id)
 )
 
 const filteredPayrollItems = computed(() => {
@@ -554,7 +552,6 @@ const getStatusSeverity = (status: string): 'info' | 'success' | 'warn' | 'secon
     'calculated': 'secondary',
     'processing': 'warn',
     'approved': 'success',
-    'released': 'info',
     'paid': 'success',
     'cancelled': 'danger',
     // pay period statuses
@@ -605,31 +602,6 @@ const submitForApproval = async (item: PayrollItem) => {
     })
   } finally {
     ; (item as any).submitting = false
-  }
-}
-
-const releasePayroll = async (item: PayrollItem) => {
-  ;(item as any).releasing = true
-  try {
-    await hrService.api.post(`/api/payroll/${item.payroll_id}/release`, {})
-    item.status = 'released'
-    calculateStatistics(payrollItems.value)
-    await fetchBatchInfo()
-    toast.add({
-      severity: 'success',
-      summary: 'Released',
-      detail: `${item.employeeName}'s payroll has been released.`,
-      life: 3000,
-    })
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Release Failed',
-      detail: error?.response?.data?.message || 'Failed to release payroll.',
-      life: 3000,
-    })
-  } finally {
-    ;(item as any).releasing = false
   }
 }
 
@@ -714,13 +686,13 @@ const bulkSubmitForApproval = async () => {
 }
 
 const bulkMarkPaid = async () => {
-  const releasedItems = selectedReleasedItems.value
+  const approvedItems = selectedApprovedItems.value
 
-  if (!releasedItems.length) {
+  if (!approvedItems.length) {
     toast.add({
       severity: 'warn',
       summary: 'No Eligible Items',
-      detail: 'Select payroll rows with Released status to mark them as paid.',
+      detail: 'Select payroll rows with Approved status to mark them as paid.',
       life: 3000
     })
     return
@@ -728,13 +700,13 @@ const bulkMarkPaid = async () => {
 
   bulkMarkingPaid.value = true
   try {
-    const ids = releasedItems.map(i => Number(i.payroll_id)).filter(id => id > 0)
+    const ids = approvedItems.map(i => Number(i.payroll_id)).filter(id => id > 0)
     const response = await financeService.bulkMarkPayrollPaid(ids, {
       payment_date: new Date().toISOString().slice(0, 10),
       payment_method: 'bank_transfer'
     })
 
-    releasedItems.forEach(item => {
+    approvedItems.forEach(item => {
       item.status = 'paid'
     })
     calculateStatistics(payrollItems.value)
@@ -744,7 +716,7 @@ const bulkMarkPaid = async () => {
     toast.add({
       severity: 'success',
       summary: 'Bulk Paid Complete',
-      detail: response?.message || `${releasedItems.length} payroll(s) marked as paid.`,
+      detail: response?.message || `${approvedItems.length} payroll(s) marked as paid.`,
       life: 3000
     })
   } catch (error: any) {

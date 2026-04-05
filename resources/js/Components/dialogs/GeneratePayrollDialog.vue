@@ -11,17 +11,19 @@
       <!-- Step 1: Period Selection -->
       <div class="mb-4">
         <label class="font-bold block mb-2">Pay Period <span class="text-red-500">*</span></label>
-        <Select
-          v-model="formData.periodId"
-          :options="availablePayPeriods"
-          optionLabel="period"
-          optionValue="id"
-          placeholder="Select Pay Period"
+        <DatePicker
+          v-model="formData.periodRange"
+          selectionMode="range"
+          dateFormat="yy-mm-dd"
+          :maxDate="today"
+          :manualInput="false"
+          placeholder="Select pay period range"
           class="w-full"
-          :class="{ 'p-invalid': !formData.periodId && submitted }"
+          :class="{ 'p-invalid': !isRangeValid && submitted }"
           @change="handlePeriodChange"
         />
-        <small v-if="!formData.periodId && submitted" class="text-red-500">Pay period is required</small>
+        <small v-if="!isRangeValid && submitted" class="text-red-500">Pay period range is required</small>
+        <small v-else-if="hasFutureDate" class="text-red-500">Future dates are not allowed</small>
         <small v-if="availablePayPeriods.length === 0" class="text-amber-500">
           No pay periods found. Please create a pay period first.
         </small>
@@ -179,19 +181,6 @@
             </div>
           </div>
 
-          <div class="flex items-center">
-            <Checkbox v-model="options.recalculate" inputId="recalculate" binary />
-            <label for="recalculate" class="ml-2 text-sm">
-              Recalculate existing payrolls for this period
-            </label>
-          </div>
-
-          <div class="flex items-center">
-            <Checkbox v-model="options.sendNotification" inputId="sendNotification" binary />
-            <label for="sendNotification" class="ml-2 text-sm">
-              Notify employees when payroll is approved
-            </label>
-          </div>
         </div>
       </div>
 
@@ -239,6 +228,7 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Tag from 'primevue/tag'
+import DatePicker from 'primevue/datepicker'
 
 // ==================== INTERFACES ====================
 interface ApiEmployee {
@@ -272,8 +262,6 @@ interface Filters {
 
 interface GenerationOptions {
   saveAsDraft: boolean
-  recalculate: boolean
-  sendNotification: boolean
 }
 
 // ==================== PROPS & EMITS ====================
@@ -298,9 +286,11 @@ const generating = ref(false)
 const generationMethod = ref<'all' | 'specific'>('all')
 const selectedEmployeeIds = ref<number[]>([])
 const generationErrors = ref<{ employee: string; error: string }[]>([])
+const today = new Date()
 
 const formData = ref({
-  periodId: props.initialPeriodId ?? null as number | null
+  periodId: props.initialPeriodId ?? null as number | null,
+  periodRange: null as Date[] | null,
 })
 
 const filters = ref<Filters>({
@@ -311,8 +301,6 @@ const filters = ref<Filters>({
 
 const options = ref<GenerationOptions>({
   saveAsDraft: true,
-  recalculate: false,
-  sendNotification: false
 })
 
 // Data from API
@@ -365,11 +353,25 @@ const employeeCount = computed(() => {
 })
 
 const showSummary = computed(() =>
-  !!formData.value.periodId && employeeCount.value > 0
+  isRangeValid.value && employeeCount.value > 0
 )
 
+const isRangeValid = computed(() => {
+  if (!formData.value.periodRange || formData.value.periodRange.length < 2) return false
+  return !!formData.value.periodRange[0] && !!formData.value.periodRange[1]
+})
+
+const hasFutureDate = computed(() => {
+  if (!isRangeValid.value) return false
+  const start = new Date(formData.value.periodRange![0])
+  const end = new Date(formData.value.periodRange![1])
+  const now = new Date()
+  return start > now || end > now
+})
+
 const isValid = computed(() => {
-  if (!formData.value.periodId) return false
+  if (!isRangeValid.value) return false
+  if (hasFutureDate.value) return false
   if (generationMethod.value === 'specific' && selectedEmployeeIds.value.length === 0) return false
   return true
 })
@@ -446,6 +448,69 @@ const fetchEmployees = async () => {
 const handlePeriodChange = () => {
   // Reset errors when period changes
   generationErrors.value = []
+  if (hasFutureDate.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Invalid date range',
+      detail: 'Future dates are not allowed.',
+      life: 2500,
+    })
+  }
+}
+
+const toDateKey = (date: Date): string => {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const resolveOrCreatePayPeriodId = async (): Promise<number> => {
+  if (!isRangeValid.value) {
+    throw new Error('Please select a pay period range.')
+  }
+  if (hasFutureDate.value) {
+    throw new Error('Future dates are not allowed.')
+  }
+
+  const start = formData.value.periodRange![0]
+  const end = formData.value.periodRange![1]
+  const startKey = toDateKey(start)
+  const endKey = toDateKey(end)
+
+  const existing = availablePayPeriods.value.find((period) => {
+    const periodStart = String(period.cutoffStart || '').slice(0, 10)
+    const periodEnd = String(period.cutoffEnd || '').slice(0, 10)
+    return periodStart === startKey && periodEnd === endKey
+  })
+
+  if (existing?.id) {
+    return existing.id
+  }
+
+  const createResponse = await axios.post('/api/payroll/periods', {
+    start_date: startKey,
+    end_date: endKey,
+    cutoff_date: endKey,
+    name: `Pay Period ${startKey} to ${endKey}`,
+  })
+
+  if (!createResponse.data?.success || !createResponse.data?.data?.id) {
+    throw new Error(createResponse.data?.message || 'Unable to create pay period for selected range.')
+  }
+
+  const created = createResponse.data.data
+  availablePayPeriods.value.unshift({
+    id: created.id,
+    period: created.name,
+    cutoffStart: created.start_date,
+    cutoffEnd: created.end_date,
+    payDate: created.cutoff_date,
+    status: created.status,
+    notes: created.notes ?? null,
+  })
+
+  return created.id
 }
 
 const applyFilters = () => {
@@ -486,9 +551,11 @@ const generatePayroll = async () => {
   generating.value = true
 
   try {
+    const periodId = await resolveOrCreatePayPeriodId()
+    formData.value.periodId = periodId
+
     const payload: Record<string, any> = {
-      pay_period_id:  formData.value.periodId,
-      recalculate:    options.value.recalculate,
+      pay_period_id:  periodId,
       initial_status: options.value.saveAsDraft ? 'draft' : 'processing',
     }
 

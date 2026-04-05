@@ -4,7 +4,7 @@
     <div class="flex justify-between items-center">
       <h1 class="text-2xl font-bold">Payroll Overview</h1>
       <div class="flex gap-2">
-        <Button severity="info" label="Payroll List" size="small"></Button>
+        <Button severity="info" label="Payroll List" @click="$router.push({ name: 'hr.payroll.list' })" size="small"></Button>
         <Button label="Export Report" icon="pi pi-download" size="small" outlined />
       </div>
     </div>

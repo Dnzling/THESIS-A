@@ -46,7 +46,7 @@
             <div class="text-center text-sm text-slate-500">
               No applicant account yet?
               <button type="button" class="font-semibold text-orange-600 transition hover:text-orange-700"
-                @click="router.push({ name: 'job-portal.register' })">
+                @click="router.visit('/job-portal/register')">
                 Create one here
               </button>
             </div>
@@ -60,11 +60,10 @@
 <script setup lang="ts">
 import JobPortalLayout from './JobPortalLayout.vue'
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
 
-const router = useRouter()
 const toast = useToast()
 const portalAuth = useJobPortalAuthStore()
 const submitting = ref(false)
@@ -81,12 +80,12 @@ const submitLogin = async () => {
     const redirectTo = portalAuth.consumePendingRedirect() || '/job-portal/applications'
 
     if (response.requires_verification) {
-      router.push({ name: 'job-portal.verify-otp' })
+      router.visit('/job-portal/verify-otp')
       return
     }
 
     toast.add({ severity: 'success', summary: 'Login successful', detail: 'Welcome back to the job portal.', life: 2200 })
-    router.push(redirectTo)
+    router.visit(redirectTo)
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Login failed', detail: error.response?.data?.message || 'Unable to login.', life: 3200 })
   } finally {

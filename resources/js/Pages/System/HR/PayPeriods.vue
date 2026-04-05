@@ -78,6 +78,12 @@
             <DatePicker v-model="periodForm.endDate" showIcon showClear fluid iconDisplay="input" />
           </div>
         </div>
+
+        <div>
+          <label class="block text-sm mb-1">Auto Period Name</label>
+          <InputText :modelValue="periodForm.name" class="w-full" readonly />
+          <small class="text-gray-500">Generated from selected start and end dates.</small>
+        </div>
   
         <div class="flex flex-wrap gap-4">
           <label for="">Type:</label>
@@ -241,29 +247,41 @@ const fetchPayPeriods = async () => {
   }
 }
 
-// Watch for changes in startDate to auto-update endDate and payDate
-watch(() => periodForm.value.startDate, (newStartDate) => {
-  if (newStartDate) {
-    const start = new Date(newStartDate)
+const toYmd = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
-    // Auto-calculate end date (+14 days)
-    const newEndDate = new Date(start)
-    newEndDate.setDate(start.getDate() + 14)
-    periodForm.value.endDate = newEndDate
+const generatePeriodName = (start: Date | null, end: Date | null) => {
+  if (!start || !end) return ''
+  return `Pay Period ${toYmd(start)} to ${toYmd(end)}`
+}
 
-    // Auto-calculate pay date (+15 days)
-    const newPayDate = new Date(start)
-    newPayDate.setDate(start.getDate() + 14)
-    periodForm.value.payDate = newPayDate
+// Keep generated name and related defaults in sync with selected date range.
+watch([() => periodForm.value.startDate, () => periodForm.value.endDate], ([newStartDate, newEndDate]) => {
+  if (!newStartDate) {
+    periodForm.value.name = ''
+    return
+  }
 
-    // Auto-update half type based on start date
-    const day = start.getDate()
-    periodForm.value.halfType = day <= 15 ? '1st Half' : '2nd Half'
+  const start = new Date(newStartDate)
 
-    // Auto-update name
-    const monthName = start.toLocaleString('default', { month: 'long' })
-    const year = start.getFullYear()
-    periodForm.value.name = `${monthName} ${year} (${periodForm.value.halfType})`
+  if (!newEndDate) {
+    const defaultEndDate = new Date(start)
+    defaultEndDate.setDate(start.getDate() + 14)
+    periodForm.value.endDate = defaultEndDate
+    return
+  }
+
+  const end = new Date(newEndDate)
+  periodForm.value.halfType = start.getDate() <= 15 ? '1st Half' : '2nd Half'
+  periodForm.value.name = generatePeriodName(start, end)
+
+  // Default pay date to period end unless user has chosen one.
+  if (!periodForm.value.payDate) {
+    periodForm.value.payDate = new Date(end)
   }
 })
 
@@ -311,30 +329,58 @@ const createPeriod = () => {
 }
 const savePeriod = async () => {
   try {
+    const startDate = periodForm.value.startDate
+    const endDate = periodForm.value.endDate
+    const payDate = periodForm.value.payDate
 
-
-    console.log(periodForm.value.name)
-    // Format dates to YYYY-MM-DD
-    const formatDate = (date: Date | null) => {
-      if (!date) return null
-      const d = new Date(date)
-      const year = d.getFullYear()
-      const month = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      return `${year}-${month}-${day}`
+    if (!startDate || !endDate || !payDate) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Validation',
+        detail: 'Start date, end date, and pay date are required.',
+        life: 3000
+      })
+      return
     }
+
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const pay = new Date(payDate)
+
+    if (end < start) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Validation',
+        detail: 'End date must be after start date.',
+        life: 3000
+      })
+      return
+    }
+
+    if (pay < start || pay > end) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Validation',
+        detail: 'Pay date must be within the selected period range.',
+        life: 3000
+      })
+      return
+    }
+
+    const generatedName = generatePeriodName(start, end)
+    periodForm.value.name = generatedName
 
     const response = await hrService.api.post('/api/payroll/periods',
       {
-        name: periodForm.value.name,
-        start_date: formatDate(periodForm.value.startDate),
-        end_date: formatDate(periodForm.value.endDate),
-        cutoff_date: formatDate(periodForm.value.payDate),
+        name: generatedName,
+        start_date: toYmd(start),
+        end_date: toYmd(end),
+        cutoff_date: toYmd(pay),
         notes: '' // Add notes if needed
       },
       {
         headers: {
-          'Authorization': `Bearer 14|Lcuhac078HH2u8ryNGLIgirhwYUVyyDvnu7SgxqD069d74a9`
+          'Authorization': `Bearer ${authStore.token}`
         }
       }
     )

@@ -154,10 +154,18 @@ const latestInterviewDate = computed(() => {
 })
 const decisionLocked = computed(() => {
   if (!latestInterviewDate.value) return false
+  
   const interviewDate = new Date(latestInterviewDate.value)
   const today = new Date()
+  
   const format = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-  return format(interviewDate) !== format(today)
+  
+  const interviewDateStr = format(interviewDate)
+  const todayStr = format(today)
+  
+  // Locked only when interview date is in the future
+  // Open (not locked) when interview date is today or overdue (past)
+  return interviewDateStr > todayStr
 })
 const nextInterviewDateLabel = computed(() => latestInterviewDate.value ? new Date(latestInterviewDate.value).toLocaleDateString('en-PH', {
   month: 'short',
