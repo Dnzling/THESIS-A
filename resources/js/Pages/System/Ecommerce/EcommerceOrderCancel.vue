@@ -37,9 +37,9 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
 import Textarea from 'primevue/textarea'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -47,8 +47,6 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
-
 const loading = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
@@ -60,11 +58,11 @@ async function loadOrder() {
     const response = await ecommerceService.getOrder(route.params.id as string)
     order.value = response.data?.data || null
     if (!order.value?.can_cancel) {
-      toast.add({ severity: 'warn', summary: 'Not Allowed', detail: 'This order can no longer be cancelled.', life: 2200 })
+      showAlert({ severity: 'warn', summary: 'Not Allowed', detail: 'This order can no longer be cancelled.' })
       goBack()
     }
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order.' })
     goBack()
   } finally {
     loading.value = false
@@ -73,7 +71,7 @@ async function loadOrder() {
 
 async function submitCancellation() {
   if (!form.reason.trim()) {
-    toast.add({ severity: 'warn', summary: 'Required', detail: 'Please provide a reason.', life: 1800 })
+    showAlert({ severity: 'warn', summary: 'Required', detail: 'Please provide a reason.' })
     return
   }
 
@@ -83,10 +81,10 @@ async function submitCancellation() {
       reason: form.reason.trim(),
       details: form.details.trim() || undefined,
     })
-    toast.add({ severity: 'success', summary: 'Submitted', detail: 'Cancellation request sent for store verification.', life: 2200 })
+    showAlert({ severity: 'success', summary: 'Submitted', detail: 'Cancellation request sent for store verification.' })
     router.push({ name: 'ecommerce.order-detail', params: { id: route.params.id } })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to submit cancellation.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to submit cancellation.' })
   } finally {
     submitting.value = false
   }

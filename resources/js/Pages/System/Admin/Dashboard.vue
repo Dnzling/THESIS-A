@@ -2,7 +2,7 @@
 <template>
   <div class="space-y-6">
     <!-- Welcome Header -->
-    <div class="bg-linear-to-r from-blue-600 to-purple-600 text-white shadow-xl rounded-2xl p-8">
+    <div class=" shadow-xl rounded-2xl p-8">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-3xl font-bold">FurnitureSync Admin Dashboard</h1>
@@ -25,82 +25,62 @@
       </div>
     </div>
 
-    <!-- Quick Stats -->
+    <!-- Improved KPI Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <!-- Active Stores -->
-      <div class="bg-white shadow rounded-xl p-6">
-        <div class="flex items-center justify-between">
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
           <div>
-            <h6 class="text-sm font-semibold text-gray-500">Active Stores</h6>
-            <p class="text-2xl font-bold text-gray-800 mt-2">{{ stats.activeStores }}</p>
-            <p class="text-xs text-green-500 mt-1">+{{ stats.newStoresThisWeek }} this week</p>
+            <div class="text-xs text-gray-400">Active Stores</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ stats.activeStores }}</div>
+            <div class="text-sm text-green-500 mt-1">+{{ stats.newStoresThisWeek }} this week</div>
           </div>
-          <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+          <div class="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-store text-blue-600 text-xl"></i>
           </div>
         </div>
-        <div class="mt-4">
-          <router-link to="/admin/stores" class="text-blue-600 text-sm font-medium hover:text-blue-800">
-            View All Stores →
-          </router-link>
-        </div>
+        <canvas ref="sparkStore" class="mt-3 h-12"></canvas>
       </div>
 
-      <!-- Active Subscriptions -->
-      <div class="bg-white shadow rounded-xl p-6">
-        <div class="flex items-center justify-between">
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
           <div>
-            <h6 class="text-sm font-semibold text-gray-500">Active Subscriptions</h6>
-            <p class="text-2xl font-bold text-gray-800 mt-2">{{ stats.activeSubscriptions }}</p>
-            <p class="text-xs text-green-500 mt-1">{{ stats.subscriptionGrowth }}% growth</p>
+            <div class="text-xs text-gray-400">Active Subscriptions</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ stats.activeSubscriptions }}</div>
+            <div class="text-sm text-green-500 mt-1">{{ stats.subscriptionGrowth }}% growth</div>
           </div>
-          <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+          <div class="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-credit-card text-green-600 text-xl"></i>
           </div>
         </div>
-        <div class="mt-4">
-          <router-link to="/admin/subscriptions/active" class="text-blue-600 text-sm font-medium hover:text-blue-800">
-            Manage Subscriptions →
-          </router-link>
-        </div>
+        <canvas ref="sparkSub" class="mt-3 h-12"></canvas>
       </div>
 
-      <!-- Pending Validations -->
-      <div class="bg-white shadow rounded-xl p-6">
-        <div class="flex items-center justify-between">
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
           <div>
-            <h6 class="text-sm font-semibold text-gray-500">Pending Validations</h6>
-            <p class="text-2xl font-bold text-gray-800 mt-2">{{ stats.pendingValidations }}</p>
-            <p class="text-xs text-yellow-500 mt-1">Requires attention</p>
+            <div class="text-xs text-gray-400">Pending Validations</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ stats.pendingValidations }}</div>
+            <div class="text-sm text-yellow-500 mt-1">Requires attention</div>
           </div>
-          <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+          <div class="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-clock text-yellow-600 text-xl"></i>
           </div>
         </div>
-        <div class="mt-4">
-          <router-link to="/admin/store-validation" class="text-blue-600 text-sm font-medium hover:text-blue-800">
-            Review Now →
-          </router-link>
-        </div>
+        <canvas ref="sparkPending" class="mt-3 h-12"></canvas>
       </div>
 
-      <!-- Monthly Revenue -->
-      <div class="bg-white shadow rounded-xl p-6">
-        <div class="flex items-center justify-between">
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
           <div>
-            <h6 class="text-sm font-semibold text-gray-500">Monthly Revenue</h6>
-            <p class="text-2xl font-bold text-gray-800 mt-2">{{ formatCurrency(stats.monthlyRevenue) }}</p>
-            <p class="text-xs text-green-500 mt-1">+{{ stats.revenueGrowth }}% vs last month</p>
+            <div class="text-xs text-gray-400">Monthly Revenue</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.monthlyRevenue) }}</div>
+            <div class="text-sm text-green-500 mt-1">+{{ stats.revenueGrowth }}% vs last month</div>
           </div>
-          <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+          <div class="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-chart-line text-purple-600 text-xl"></i>
           </div>
         </div>
-        <div class="mt-4">
-          <router-link to="/admin/analytics" class="text-blue-600 text-sm font-medium hover:text-blue-800">
-            View Analytics →
-          </router-link>
-        </div>
+        <canvas ref="sparkRevenue" class="mt-3 h-12"></canvas>
       </div>
     </div>
 
@@ -348,6 +328,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import axiosClient from '@/axios'
 import { useRouter } from 'vue-router'
 import { Chart, registerables } from 'chart.js'
 import DataTable from 'primevue/datatable'
@@ -366,6 +347,10 @@ const revenueChartRef = ref<HTMLCanvasElement | null>(null)
 const growthChartRef = ref<HTMLCanvasElement | null>(null)
 let revenueChart: Chart | null = null
 let growthChart: Chart | null = null
+let sparkStore: Chart | null = null
+let sparkSub: Chart | null = null
+let sparkPending: Chart | null = null
+let sparkRevenue: Chart | null = null
 
 // State
 const revenueChartView = ref<'monthly' | 'yearly'>('monthly')
@@ -373,18 +358,18 @@ const growthPeriod = ref({ name: 'Last 6 months', value: '6months' })
 const currentDate = ref('')
 const currentTime = ref('')
 
-// Stats Data
+// Stats Data (will be populated from API)
 const stats = ref({
-  activeStores: 156,
-  newStoresThisWeek: 12,
-  activeSubscriptions: 142,
-  subscriptionGrowth: 8.5,
-  pendingValidations: 23,
-  monthlyRevenue: 452500,
-  revenueGrowth: 15.2
+  activeStores: 0,
+  newStoresThisWeek: 0,
+  activeSubscriptions: 0,
+  subscriptionGrowth: 0,
+  pendingValidations: 0,
+  monthlyRevenue: 0,
+  revenueGrowth: 0
 })
 
-const totalPlatformRevenue = computed(() => 3250000)
+const totalPlatformRevenue = ref(0)
 
 // Growth Period Options
 const growthPeriodOptions = ref([
@@ -394,180 +379,14 @@ const growthPeriodOptions = ref([
   { name: 'Year to Date', value: 'ytd' }
 ])
 
-// Recent Activities
-const recentActivities = ref([
-  {
-    id: 1,
-    time: '10:30 AM',
-    action: 'Store Approved',
-    description: 'Modern Furniture Hub approved',
-    status: 'Completed',
-    icon: 'pi pi-check-circle',
-    iconColor: 'text-green-600',
-    iconBg: 'bg-green-100'
-  },
-  {
-    id: 2,
-    time: '9:45 AM',
-    action: 'Payment Received',
-    description: 'Premium subscription payment from Classic Furniture',
-    status: 'Success',
-    icon: 'pi pi-credit-card',
-    iconColor: 'text-blue-600',
-    iconBg: 'bg-blue-100'
-  },
-  {
-    id: 3,
-    time: '9:15 AM',
-    action: 'Store Registration',
-    description: 'New store registration submitted',
-    status: 'Pending',
-    icon: 'pi pi-clock',
-    iconColor: 'text-yellow-600',
-    iconBg: 'bg-yellow-100'
-  },
-  {
-    id: 4,
-    time: 'Yesterday',
-    action: 'Subscription Renewal',
-    description: 'Office Solutions Inc renewed premium plan',
-    status: 'Completed',
-    icon: 'pi pi-sync',
-    iconColor: 'text-green-600',
-    iconBg: 'bg-green-100'
-  },
-  {
-    id: 5,
-    time: 'Yesterday',
-    action: 'Account Suspended',
-    description: 'Wood Crafts Studio suspended for violation',
-    status: 'Warning',
-    icon: 'pi pi-exclamation-triangle',
-    iconColor: 'text-red-600',
-    iconBg: 'bg-red-100'
-  }
-])
+// Recent Activities (populated from API)
+const recentActivities = ref([])
 
-// Subscription Plans
-const subscriptionPlans = ref([
-  {
-    id: 1,
-    name: 'Basic',
-    price: 2999,
-    period: 'month',
-    status: 'Active',
-    subscribers: 78,
-    features: {
-      stores: 1,
-      products: 100,
-      users: 2
-    }
-  },
-  {
-    id: 2,
-    name: 'Premium',
-    price: 7999,
-    period: 'month',
-    status: 'Popular',
-    subscribers: 52,
-    features: {
-      stores: 3,
-      products: 500,
-      users: 5
-    }
-  },
-  {
-    id: 3,
-    name: 'Enterprise',
-    price: 19999,
-    period: 'month',
-    status: 'Active',
-    subscribers: 12,
-    features: {
-      stores: 10,
-      products: 'Unlimited',
-      users: 20
-    }
-  }
-])
+const subscriptionPlans = ref([])
 
-// Pending Stores
-const pendingStores = ref([
-  {
-    id: 1,
-    name: 'Modern Furniture Hub',
-    owner: 'Juan Dela Cruz',
-    waitingTime: '2 days',
-    registrationDate: '2024-01-15'
-  },
-  {
-    id: 2,
-    name: 'Wood Crafts Studio',
-    owner: 'Maria Santos',
-    waitingTime: '1 day',
-    registrationDate: '2024-01-16'
-  },
-  {
-    id: 3,
-    name: 'Luxury Home Decor',
-    owner: 'Robert Lim',
-    waitingTime: '3 days',
-    registrationDate: '2024-01-14'
-  },
-  {
-    id: 4,
-    name: 'Office Solutions Inc',
-    owner: 'Sarah Chen',
-    waitingTime: 'Just now',
-    registrationDate: '2024-01-17'
-  },
-  {
-    id: 5,
-    name: 'Eco Furniture Co',
-    owner: 'David Green',
-    waitingTime: '4 days',
-    registrationDate: '2024-01-13'
-  }
-])
+const pendingStores = ref([])
 
-// Recent Payments
-const recentPayments = ref([
-  {
-    id: 1,
-    store: 'Classic Furniture Gallery',
-    amount: 7999,
-    date: 'Today',
-    status: 'Paid'
-  },
-  {
-    id: 2,
-    store: 'Modern Living Spaces',
-    amount: 7999,
-    date: 'Today',
-    status: 'Paid'
-  },
-  {
-    id: 3,
-    store: 'Kids Furniture World',
-    amount: 2999,
-    date: 'Yesterday',
-    status: 'Paid'
-  },
-  {
-    id: 4,
-    store: 'Outdoor Living Co',
-    amount: 19999,
-    date: 'Jan 15, 2024',
-    status: 'Paid'
-  },
-  {
-    id: 5,
-    store: 'Smart Furniture Tech',
-    amount: 7999,
-    date: 'Jan 14, 2024',
-    status: 'Pending'
-  }
-])
+const recentPayments = ref([])
 
 // Helper Functions
 const formatCurrency = (amount: number) => {
@@ -736,6 +555,67 @@ const setRevenueChartView = (view: 'monthly' | 'yearly') => {
   initRevenueChart()
 }
 
+const loadDashboard = async () => {
+  try {
+    const res = await axiosClient.get('/api/admin/dashboard')
+    if (res?.data?.success) {
+      const d = res.data.data || {}
+      stats.value.activeStores = d.stores_count || 0
+      stats.value.activeSubscriptions = d.active_subscriptions || 0
+      stats.value.pendingValidations = d.pending_validations || 0
+      stats.value.monthlyRevenue = d.monthly_revenue || 0
+      // recent activities
+      if (Array.isArray(d.recent_activities)) {
+        recentActivities.value = d.recent_activities.map((r:any, idx:number)=>({
+          id: idx+1,
+          time: r.time,
+          action: r.action,
+          description: r.description,
+          status: r.status,
+          icon: 'pi pi-info-circle',
+          iconColor: 'text-blue-600',
+          iconBg: 'bg-blue-100'
+        }))
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load dashboard data', e)
+  }
+}
+
+const initKPICharts = () => {
+  try {
+    // small sparkline data using monthlyRevenueData as sample
+    const storeCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkStore"]') || null)
+    const subCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkSub"]') || null)
+    const pendingCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkPending"]') || null)
+    const revCtx = (revenueChartRef.value?.ownerDocument?.querySelector('canvas[ref="sparkRevenue"]') || null)
+
+    const baseLabels = monthlyRevenueData.labels.slice(0, 6)
+    const sampleData = monthlyRevenueData.platformRevenue.slice(0, 6)
+
+    const createSpark = (canvasEl:any, color:string) => {
+      if (!canvasEl) return null
+      const ctx = (canvasEl as HTMLCanvasElement).getContext('2d')
+      if (!ctx) return null
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: baseLabels, datasets: [{ data: sampleData, borderColor: color, backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
+      })
+    }
+
+    // locate canvases by refs using document query (works without template refs)
+    const doc = document
+    sparkStore = createSpark(doc.querySelector('canvas[ref="sparkStore"]'), '#2563eb')
+    sparkSub = createSpark(doc.querySelector('canvas[ref="sparkSub"]'), '#10b981')
+    sparkPending = createSpark(doc.querySelector('canvas[ref="sparkPending"]'), '#f59e0b')
+    sparkRevenue = createSpark(doc.querySelector('canvas[ref="sparkRevenue"]'), '#7c3aed')
+  } catch (e) {
+    // ignore chart init errors
+  }
+}
+
 const updateDateTime = () => {
   const now = new Date()
   currentDate.value = now.toLocaleDateString('en-US', { 
@@ -799,6 +679,12 @@ onMounted(() => {
     initRevenueChart()
     initGrowthChart()
   }, 100)
+
+  setTimeout(() => {
+    initKPICharts()
+  }, 250)
+
+  loadDashboard()
 })
 
 onUnmounted(() => {

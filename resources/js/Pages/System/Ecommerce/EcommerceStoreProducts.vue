@@ -98,7 +98,8 @@
           >
             <template #content>
               <div class="space-y-2">
-                <img :src="product.image || '/F.svg'" :alt="product.product_name" class="h-44 w-full rounded-lg border border-slate-100 object-cover" />
+                <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
+                  class="h-44 w-full rounded-lg border border-slate-100 object-cover" @error="onImageError" />
                 <p class="line-clamp-2 text-base font-semibold text-slate-900">{{ product.product_name }}</p>
                 <p class="text-sm font-bold text-slate-800">PHP {{ Number(product.price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</p>
                 <div class="flex items-center justify-between text-xs text-slate-500">
@@ -171,6 +172,19 @@ const sortOptions = [
   { label: 'Price Low-High', value: 'price_asc' },
   { label: 'Price High-Low', value: 'price_desc' },
 ]
+
+function normalizeImageUrl(raw: string) {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function onImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (target) target.src = '/F.svg'
+}
 
 async function loadStoreSummary() {
   const response = await ecommerceService.getStore(route.params.storeId as string)

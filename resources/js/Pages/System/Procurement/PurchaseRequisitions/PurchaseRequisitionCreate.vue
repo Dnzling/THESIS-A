@@ -1,226 +1,133 @@
 <template>
-  <div class="max-w-6xl mx-auto pb-6">
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-6">
-      <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.purchase-requisitions' })" />
+  <div class="min-h-screen p-4">
+    <div class="max-w-7xl mx-auto">
+      <div class="mb-4 flex items-center gap-3">
+        <Button icon="pi pi-arrow-left" severity="secondary" text @click="router.push({ name: 'procurement.purchase-requisitions' })" />
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">{{ formTitle }}</h2>
-          <p class="text-sm text-gray-500 mt-1">Fill in the details to create or update a requisition</p>
+          <h1 class="text-xl font-bold text-gray-800">{{ formTitle }}</h1>
+          <p class="text-xs text-gray-500 mt-0.5">Request procurement items for your branch with multiple products.</p>
         </div>
       </div>
-      <div v-if="isEditingDraft" class="px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-sm">
-        Editing draft #{{ editingDraftId }}
-      </div>
-    </div>
 
-    <Card class="mb-6">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h3 class="text-lg font-semibold text-gray-800">Basic Information</h3>
-          <p class="text-sm text-gray-500 mt-1">Enter requisition header details</p>
-        </div>
-      </template>
-      <template #content>
-        <form class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Branch</label>
-            <Select v-model="form.branch_id" :options="branches" optionLabel="name" optionValue="id"
-                placeholder="Select branch" filter :invalid="errors.branch_id !== undefined" fluid />
-              <small class="text-red-500" v-if="errors.branch_id">{{ errors.branch_id }}</small>
+      <Card>
+        <template #content>
+          <form class="space-y-4" @submit.prevent="submitForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">Branch</label>
+                <Select v-model="form.branch_id" :options="branches" optionLabel="name" optionValue="id"
+                  placeholder="Select branch" filter :invalid="errors.branch_id !== undefined" fluid />
+                <small class="text-red-500" v-if="errors.branch_id">{{ errors.branch_id }}</small>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">Request Type</label>
+                <Select v-model="form.requisition_type" :options="requisitionTypes" optionLabel="label" optionValue="value"
+                  placeholder="Select type" :invalid="errors.requisition_type !== undefined" fluid />
+                <small class="text-red-500" v-if="errors.requisition_type">{{ errors.requisition_type }}</small>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">Priority</label>
+                <Select v-model="form.priority" :options="priorityOptions" optionLabel="label" optionValue="value" fluid />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">Reason / Notes</label>
+                <Textarea v-model="form.reason" rows="2" class="w-full" placeholder="Why do you need this procurement?" />
+                <small class="text-red-500" v-if="errors.reason">{{ errors.reason }}</small>
+              </div>
             </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Request Type</label>
-              <Select v-model="form.requisition_type" :options="requisitionTypes" optionLabel="label" optionValue="value"
-                placeholder="Select type" :invalid="errors.requisition_type !== undefined" fluid />
-              <small class="text-red-500" v-if="errors.requisition_type">{{ errors.requisition_type }}</small>
-            </div>
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Priority</label>
-              <Select v-model="form.priority" :options="priorityOptions" optionLabel="label" optionValue="value" fluid />
-            </div>
-          </div>
-          <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold text-gray-700"><span class="text-red-500">*</span> Reason</label>
-            <Textarea v-model="form.reason" placeholder="Describe the reason for this requisition" rows="3" :invalid="errors.reason !== undefined" />
-            <small class="text-red-500" v-if="errors.reason">{{ errors.reason }}</small>
-          </div>
-        </form>
-      </template>
-    </Card>
 
-    <Card class="mb-6">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h3 class="text-lg font-semibold text-gray-800">Line Items</h3>
-          <p class="text-sm text-gray-500 mt-1">Add products/services you need</p>
-        </div>
-      </template>
-      <template #content>
-        <div class="space-y-4">
-          <DataTable :value="form.items" stripedRows responsiveLayout="scroll" class="mb-4">
-            <Column field="product_name" header="Product">
-              <template #body="slotProps">
-                <div class="flex justify-between items-center" v-if="slotProps.index < form.items.length">
-                  <Select v-if="!slotProps.data.product_id" :options="products" optionLabel="product_name"
-                    optionValue="id" placeholder="Select product" filter fluid
-                    @change="selectProduct(slotProps.index, $event)" class="w-full" />
-                  <span v-else>{{ slotProps.data.product_name }}</span>
-                  <Button icon="pi pi-trash" text severity="danger" @click="removeItem(slotProps.index)" />
-                </div>
-              </template>
-            </Column>
-            <Column field="selected_supplier_id" header="Supplier" style="min-width: 220px">
-              <template #body="slotProps">
-                <Select
-                  v-model="slotProps.data.selected_supplier_id"
-                  :options="getSuppliersForItem(slotProps.data)"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Auto-resolve by mapping"
-                  :disabled="!slotProps.data.product_id"
-                  filter
-                  showClear
-                  fluid
-                />
-              </template>
-            </Column>
-            <Column field="quantity_requested" header="Qty" style="width: 100px">
-              <template #body="slotProps">
-                <InputNumber v-model="slotProps.data.quantity_requested" :useGrouping="false" :min="1" />
-              </template>
-            </Column>
-            <Column field="estimated_unit_cost" header="Est. Unit Cost" style="width: 130px">
-              <template #body="slotProps">
-                <InputNumber v-model="slotProps.data.estimated_unit_cost" :useGrouping="false" :minFractionDigits="2" :maxFractionDigits="2" fluid />
-              </template>
-            </Column>
-            <Column field="tax_rate" header="Tax Rate" style="width: 130px">
-              <template #body="slotProps">
-                <InputNumber
-                  v-model="slotProps.data.tax_rate"
-                  :min="0"
-                  :max="100"
-                  :showButtons="false"
-                  :useGrouping="false"
-                  :minFractionDigits="2"
-                  :maxFractionDigits="2"
-                  suffix="%"
-                  fluid
-                />
-              </template>
-            </Column>
-            <Column field="specifications" header="Specifications">
-              <template #body="slotProps">
-                <InputText v-model="slotProps.data.specifications" placeholder="Special requirements" />
-              </template>
-            </Column>
-          </DataTable>
-          <Button label="Add Line Item" icon="pi pi-plus" @click="addItem" severity="secondary" text />
-          <div class="text-red-500 text-sm" v-if="errors.items">{{ errors.items }}</div>
-        </div>
-      </template>
-    </Card>
+            <div class="border rounded-lg p-3">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold text-gray-800">Line Items</h3>
+                <Button type="button" label="Add Item" icon="pi pi-plus" size="small" outlined @click="addItem" />
+              </div>
 
-    <Card class="mb-6">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h3 class="text-lg font-semibold text-gray-800">Review & Submit</h3>
-          <p class="text-sm text-gray-500 mt-1">Review details before submission</p>
-        </div>
-      </template>
-      <template #content>
-        <div class="space-y-6">
-          <div class="border rounded-lg p-4 bg-blue-50">
-            <h4 class="font-semibold mb-3 text-blue-900">📋 PR Details</h4>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div>
-                <p class="text-gray-600 font-medium">Branch</p>
-                <p class="text-gray-900">{{ branches.find(b => b.id === form.branch_id)?.name || 'N/A' }}</p>
-              </div>
-              <div>
-                <p class="text-gray-600 font-medium">Type</p>
-                <p class="text-gray-900">{{ capitalizeWords(form.requisition_type) }}</p>
-              </div>
-              <div>
-                <p class="text-gray-600 font-medium">Priority</p>
-                <p class="text-gray-900">{{ priorityOptions.find(p => p.value === form.priority)?.label }}</p>
-              </div>
-            </div>
-            <div class="mt-3 p-3 bg-white rounded border border-blue-200">
-              <p class="text-gray-600 font-medium mb-1">Reason</p>
-              <p class="text-gray-900">{{ form.reason || 'None' }}</p>
-            </div>
-          </div>
-          <div class="space-y-3">
-            <h4 class="font-semibold text-gray-800">📦 Line Items ({{ validItems.length }} items)</h4>
-            <div v-for="(item, index) in validItems" :key="index" class="p-4 border rounded-lg bg-orange-50">
-              <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
-                <div>
-                  <p class="text-xs text-gray-600 font-semibold">Product</p>
-                  <p class="font-semibold text-gray-900">{{ item.product_name }}</p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-600 font-semibold">Supplier</p>
-                  <p class="font-semibold text-gray-900">{{ getSupplierDisplayName(item) }}</p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-600 font-semibold">Quantity</p>
-                  <p class="text-2xl font-bold text-orange-600">{{ item.quantity_requested }}</p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-600 font-semibold">Est. Unit Cost</p>
-                  <p class="font-semibold text-gray-900">{{ item.estimated_unit_cost?.toFixed(2) || '0.00' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-600 font-semibold">Tax Rate</p>
-                  <p class="font-semibold text-gray-900">{{ (Number(item.tax_rate ?? 0)).toFixed(2) }}%</p>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-600 font-semibold">Total</p>
-                  <p class="text-lg font-bold text-orange-700">{{ ((item.quantity_requested || 0) * (item.estimated_unit_cost || 0)).toFixed(2) }}</p>
-                </div>
-              </div>
-            </div>
-            <div class="p-4 bg-gradient-to-r from-orange-100 to-yellow-100 rounded-lg border border-orange-300">
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p class="text-sm text-gray-600">Estimated Total</p>
-                  <p class="text-2xl font-bold text-orange-700">{{ estimatedTotal.toFixed(2) }}</p>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-600">Estimated Tax</p>
-                  <p class="text-xl font-bold text-emerald-600">{{ estimatedTax.toFixed(2) }}</p>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-600">Procurement Route</p>
-                  <p class="font-semibold text-gray-900 capitalize">{{ procurementRoute }}</p>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-600">Required Approvals</p>
-                  <p class="font-semibold text-gray-900">{{ requiredApprovals.length }} levels</p>
-                </div>
-                <div v-if="requiredApprovals.length > 0">
-                  <p class="text-sm text-gray-600">Approval Chain</p>
-                  <div class="text-xs space-y-1">
-                    <p v-for="approval in requiredApprovals" :key="approval" class="text-gray-900">• {{ capitalizeWords(approval) }}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <Checkbox v-model="confirmDetails" :binary="true" />
-            <label class="text-sm">I confirm all details are correct</label>
-          </div>
-        </div>
-      </template>
-    </Card>
+              <DataTable :value="form.items" responsiveLayout="scroll" class="text-sm">
+                <Column header="Product" >
+                  <template #body="slotProps">
+                    <div class="flex items-center gap-2">
+                      <Select
+                        v-if="!slotProps.data.product_id"
+                        :options="products"
+                        optionLabel="product_name"
+                        optionValue="id"
+                        filter fluid
+                        placeholder="Select product"
+                        @change="selectProduct(slotProps.index, $event)"
+                        class="flex-1"
+                      />
+                      <span v-else class="flex-1">{{ slotProps.data.product_name }}</span>
+                      <Button
+                        type="button"
+                        icon="pi pi-refresh"
+                        severity="secondary"
+                        text
+                        size="small"
+                        @click="clearProduct(slotProps.index)"
+                        v-if="slotProps.data.product_id"
+                      />
+                    </div>
+                  </template>
+                </Column>
 
-    <div class="flex justify-end gap-2">
-      <Button label="Cancel" severity="secondary" text @click="router.push({ name: 'procurement.purchase-requisitions' })" />
-      <Button label="Save as Draft" icon="pi pi-save" severity="warning" @click="saveDraft" :loading="saving" />
-      <Button label="Create & Submit" icon="pi pi-send" iconPos="right" @click="submitForm" :loading="saving" :disabled="!confirmDetails || validItems.length === 0" />
+                <Column header="Supplier" style="min-width: 240px">
+                  <template #body="slotProps">
+                    <Select
+                      v-model="slotProps.data.selected_supplier_id"
+                      :options="getSuppliersForItem(slotProps.data)"
+                      optionLabel="label"
+                      optionValue="value"
+                      filter fluid
+                      showClear
+                      placeholder="Auto-resolve"
+                      :disabled="!slotProps.data.product_id"
+                      :key="`supplier-${slotProps.data.product_id}`"
+                    />
+                  </template>
+                </Column>
+
+                <Column header="Quantity" style="width: 120px">
+                  <template #body="slotProps">
+                    <InputNumber v-model="slotProps.data.quantity_requested" :min="1" :useGrouping="false" class="w-full" />
+                  </template>
+                </Column>
+
+                <!-- Unit cost and tax moved to backend; UI no longer shows editable fields -->
+
+                <Column header="Actions" style="width: 120px">
+                  <template #body="slotProps">
+                    <div class="flex gap-2">
+                      <Button
+                        type="button"
+                        icon="pi pi-trash"
+                        severity="danger"
+                        text
+                        size="small"
+                        :disabled="form.items.length === 1"
+                        @click="removeItem(slotProps.index)"
+                      />
+                    </div>
+                  </template>
+                </Column>
+              </DataTable>
+
+              <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-3 border-t">
+              <Button type="button" label="Cancel" severity="secondary" size="small" @click="router.push({ name: 'procurement.purchase-requisitions' })" />
+              <Button type="button" label="Save Draft" icon="pi pi-save" severity="warning" size="small" @click="saveDraft" :loading="saving" />
+              <Button
+                type="submit"
+                label="Create Request"
+                size="small"
+                :loading="saving"
+                :disabled="validItems.length === 0"
+              />
+            </div>
+          </form>
+        </template>
+      </Card>
     </div>
   </div>
 </template>
@@ -236,7 +143,6 @@ const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 const saving = ref(false)
-const confirmDetails = ref(false)
 
 const requisitionTypes = [
   { label: 'Regular', value: 'regular' },
@@ -264,33 +170,9 @@ const form = reactive<any>({
 const errors = reactive<any>({})
 const branches = ref<any[]>([])
 const products = ref<any[]>([])
+const productDetailsMap = ref<Record<number, any>>({})
 
 const validItems = computed(() => form.items.filter((i: any) => i.product_id))
-const estimatedTotal = computed(() => {
-  return form.items.reduce((sum: number, item: any) => {
-    return sum + ((item.quantity_requested || 0) * (item.estimated_unit_cost || 0))
-  }, 0)
-})
-const estimatedTax = computed(() => {
-  return form.items.reduce((sum: number, item: any) => {
-    const rate = Number(item.tax_rate ?? 0)
-    const amount = (item.quantity_requested || 0) * (item.estimated_unit_cost || 0)
-    return sum + amount * (rate / 100)
-  }, 0)
-})
-
-const procurementRoute = computed(() => {
-  if (estimatedTotal.value >= 500000) return 'RFQ Required'
-  if (estimatedTotal.value >= 100000) return 'Centralized'
-  return 'Branch Direct'
-})
-
-const requiredApprovals = computed(() => {
-  const approvals: string[] = ['warehouse_manager']
-  if (estimatedTotal.value >= 100000) approvals.push('branch_manager')
-  if (estimatedTotal.value >= 500000) approvals.push('finance_manager')
-  return approvals
-})
 
 const editingDraftId = ref<number | null>(null)
 const isEditingDraft = computed(() => Boolean(editingDraftId.value))
@@ -300,22 +182,17 @@ const payloadItems = computed(() => validItems.value.map((item: any) => ({
   variation_id: item.variation_id,
   selected_supplier_id: item.selected_supplier_id || null,
   quantity_requested: item.quantity_requested,
-  estimated_unit_cost: item.estimated_unit_cost,
-  tax_rate: item.tax_rate,
   specifications: item.specifications,
 })))
 
-const buildPayload = () => ({
+const buildPayload = (autoSubmit = false) => ({
   branch_id: form.branch_id,
   requisition_type: form.requisition_type,
   reason: form.reason,
   priority: form.priority,
   items: payloadItems.value,
+  auto_submit: autoSubmit,
 })
-
-const capitalizeWords = (str: string): string => {
-  return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
 
 const validateForm = (): boolean => {
   Object.keys(errors).forEach(key => delete errors[key])
@@ -336,39 +213,95 @@ const removeItem = (index: number) => {
   form.items.splice(index, 1)
 }
 
-const selectProduct = (index: number, event: any) => {
-  const product = products.value.find(p => p.id === event.value)
-  if (product && form.items[index]) {
-    const suppliers = Array.isArray(product.suppliers) ? product.suppliers : []
-    const preferredSupplier = suppliers.find((s: any) => Boolean(s.pivot?.is_preferred_supplier))
+const clearProduct = (index: number) => {
+  if (form.items[index]) {
+    form.items[index].product_id = null
+    form.items[index].product_name = ''
+    form.items[index].selected_supplier_id = null
+    form.items[index].estimated_unit_cost = 0
+    form.items[index].tax_rate = 0
+  }
+}
 
+const selectProduct = async (index: number, eventOrValue: any) => {
+  const productId = Number(eventOrValue && typeof eventOrValue === 'object' ? eventOrValue.value ?? eventOrValue : eventOrValue)
+  const product = products.value.find(p => Number(p.id) === productId)
+  if (product && form.items[index]) {
+    console.debug('[PR Create] selectProduct -> productId', productId, 'product', product)
     form.items[index].product_id = product.id
     form.items[index].product_name = product.product_name
     form.items[index].estimated_unit_cost = parseFloat(product.cost_price || product.base_price) || 0
     form.items[index].tax_rate = Number(product.tax_rate ?? 0)
-    form.items[index].selected_supplier_id = preferredSupplier?.id ?? (suppliers.length === 1 ? suppliers[0].id : null)
+    form.items[index].selected_supplier_id = null
+
+    // Fetch full product details with suppliers and auto-select default
+    await hydrateProductById(productId)
+    console.debug('[PR Create] after hydrate, productDetailsMap', productDetailsMap.value[productId])
+    form.items[index].selected_supplier_id = getDefaultSupplierIdForItem(form.items[index])
+    console.debug('[PR Create] selected_supplier_id set to', form.items[index].selected_supplier_id)
   }
 }
 
 const getSuppliersForItem = (item: any) => {
-  const product = products.value.find((p: any) => p.id === item.product_id)
+  const pid = Number(item.product_id)
+  const product = productDetailsMap.value[pid] || products.value.find((p: any) => Number(p.id) === pid)
   const suppliers = Array.isArray(product?.suppliers) ? product.suppliers : []
 
-  return suppliers.map((supplier: any) => ({
-    value: supplier.id,
-    label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
-    isPreferred: Boolean(supplier.pivot?.is_preferred_supplier),
-  }))
+  return suppliers
+    .slice()
+    .sort((a: any, b: any) => Number(Boolean(b?.pivot?.is_preferred_supplier)) - Number(Boolean(a?.pivot?.is_preferred_supplier)))
+    .map((supplier: any) => ({
+      value: supplier.id,
+      label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+      isPreferred: Boolean(supplier.pivot?.is_preferred_supplier),
+    }))
 }
 
-const getSupplierDisplayName = (item: any): string => {
+const getDefaultSupplierIdForItem = (item: any): number | null => {
   const options = getSuppliersForItem(item)
-  const selected = options.find((opt: any) => Number(opt.value) === Number(item.selected_supplier_id))
+  if (options.length === 0) {
+    return null
+  }
 
-  return selected?.label || 'Auto-resolve by product mapping'
+  const preferred = options.find((option: any) => option.isPreferred)
+  if (preferred) {
+    return Number(preferred.value)
+  }
+
+  if (options.length === 1) {
+    return Number(options[0].value)
+  }
+
+  return null
 }
 
-const prefillFromInventoryItem = (item: any) => {
+const hydrateProductById = async (productId: number | null) => {
+  if (!productId) return
+  const pid = Number(productId)
+  if (productDetailsMap.value[pid]) return
+
+  try {
+    const response = await procurementService.getProcurementProduct(productId, { with_suppliers: true })
+    const fullProduct = response?.data || response
+    if (fullProduct?.id) {
+      // Ensure suppliers array is present; if backend didn't include suppliers, fetch explicitly
+      if (!Array.isArray(fullProduct.suppliers) || fullProduct.suppliers.length === 0) {
+        try {
+          const suppliersRes = await procurementService.getProductSuppliers(fullProduct.id)
+          const suppliers = suppliersRes?.data || suppliersRes || []
+          fullProduct.suppliers = Array.isArray(suppliers) ? suppliers : suppliers.data || []
+        } catch {
+          fullProduct.suppliers = fullProduct.suppliers || []
+        }
+      }
+      productDetailsMap.value[Number(fullProduct.id)] = fullProduct
+    }
+  } catch {
+    // Keep using basic product from list when detail endpoint fails
+  }
+}
+
+const prefillFromInventoryItem = async (item: any) => {
   if (!item) return
 
   form.branch_id = item.branch_id ?? form.branch_id
@@ -399,7 +332,7 @@ const prefillFromInventoryItem = (item: any) => {
     }
   }
 
-  form.items = [{
+  const newItem = {
     product_id: productId || null,
     selected_supplier_id: null,
     quantity_requested: requestedQty,
@@ -407,7 +340,15 @@ const prefillFromInventoryItem = (item: any) => {
     tax_rate: Number(item.product?.tax_rate ?? 0),
     specifications: '',
     product_name: productName
-  }]
+  }
+
+  form.items = [newItem]
+
+  // Hydrate product details and auto-select supplier
+  if (productId) {
+    await hydrateProductById(productId)
+    newItem.selected_supplier_id = getDefaultSupplierIdForItem(newItem)
+  }
 }
 
 const mapItemToForm = (item: any) => {
@@ -450,6 +391,11 @@ const loadDraft = async (draftId: number) => {
     form.items = items.length > 0
       ? items.map(mapItemToForm)
       : [{ product_id: null, variation_id: null, selected_supplier_id: null, quantity_requested: 1, estimated_unit_cost: 0, tax_rate: 0, specifications: '', product_name: '' }]
+
+    // Hydrate product details for all items to populate supplier dropdowns
+    const productIds = form.items.map((item: any) => item.product_id).filter(Boolean)
+    await Promise.all(productIds.map((id: number) => hydrateProductById(id)))
+
     toast.add({ severity: 'info', summary: 'Editing Draft', detail: `You are editing draft #${draft.pr_number || draft.id}`, life: 2500 })
   } catch (error: any) {
     console.error('Unable to load draft:', error)
@@ -466,7 +412,7 @@ const saveDraft = async () => {
       return
     }
 
-    const payload = buildPayload()
+    const payload = buildPayload(false) // Don't auto-submit drafts
     const response = editingDraftId.value
       ? await procurementService.updatePurchaseRequisition(editingDraftId.value, payload)
       : await procurementService.createPurchaseRequisition(payload)
@@ -497,25 +443,25 @@ const submitForm = async () => {
     return
   }
 
-  if (!confirmDetails.value) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Confirm all details before submitting', life: 3000 })
-    return
-  }
-
   saving.value = true
   try {
-    const payload = buildPayload()
+    const payload = buildPayload(true) // Auto-submit on create
     const response = editingDraftId.value
-      ? await procurementService.updatePurchaseRequisition(editingDraftId.value, payload)
+      ? await procurementService.updatePurchaseRequisition(editingDraftId.value, { ...payload, auto_submit: false }) // Don't auto-submit on update
       : await procurementService.createPurchaseRequisition(payload)
 
-    if (response.success && (response.data?.id || editingDraftId.value)) {
-      const requisitionId = editingDraftId.value || response.data.id
-      const submitResponse = await procurementService.submitPurchaseRequisition(requisitionId)
-      if (submitResponse.success) {
+    if (response.success) {
+      const requisitionId = editingDraftId.value || response.data?.id
+      if (editingDraftId.value) {
+        // Submit the updated draft
+        const submitResponse = await procurementService.submitPurchaseRequisition(requisitionId)
+        if (submitResponse.success) {
+          toast.add({ severity: 'success', summary: 'Success', detail: 'PR updated and submitted successfully', life: 3000 })
+        }
+      } else {
         toast.add({ severity: 'success', summary: 'Success', detail: 'PR created and submitted successfully', life: 3000 })
-        setTimeout(() => router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: requisitionId } }), 1500)
       }
+      setTimeout(() => router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: requisitionId } }), 1500)
     }
   } catch (error: any) {
     console.error('Submit error:', error)
@@ -554,7 +500,7 @@ onMounted(async () => {
       const inventoryId = parseInt(route.query.branch_inventory_id as string)
       const inventoryResponse = await inventoryService.getInventoryItem(inventoryId).catch(() => null)
       const inventoryItem = inventoryResponse?.data || inventoryResponse?.data?.data || inventoryResponse
-      prefillFromInventoryItem(inventoryItem)
+      await prefillFromInventoryItem(inventoryItem)
     } else if (route.query.product_id || route.query.branch_id) {
       const productId = route.query.product_id ? parseInt(route.query.product_id as string) : null
       const branchId = route.query.branch_id ? parseInt(route.query.branch_id as string) : null
@@ -562,14 +508,19 @@ onMounted(async () => {
       if (productId) {
         const product = products.value.find(p => p.id === productId)
         if (product) {
-          form.items = [{
+          const newItem = {
             product_id: product.id,
             selected_supplier_id: null,
             quantity_requested: 1,
             estimated_unit_cost: parseFloat(product.base_price) || 0,
+            tax_rate: Number(product.tax_rate ?? 0),
             specifications: '',
             product_name: product.product_name
-          }]
+          }
+          form.items = [newItem]
+          // Hydrate product details and auto-select supplier
+          await hydrateProductById(productId)
+          newItem.selected_supplier_id = getDefaultSupplierIdForItem(newItem)
         }
       }
     }

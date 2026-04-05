@@ -56,9 +56,10 @@
             >
               <div class="flex min-w-0 items-start gap-3">
                 <img
-                  :src="item.image || '/F.svg'"
+                  :src="normalizeImageUrl(item.image) || '/F.svg'"
                   :alt="item.product_name"
                   class="h-14 w-14 rounded-lg border border-slate-200 object-cover"
+                  @error="onImageError"
                 />
                 <div class="min-w-0">
                   <p class="text-xs font-medium text-slate-500">Furni Shop</p>
@@ -159,6 +160,13 @@
             :disabled="!newAddressSelection.cityId"
           />
           <Textarea v-model="newAddress.address_line" rows="2" fluid placeholder="Address line" />
+          <Button
+            label="Get Coordinates"
+            icon="pi pi-map-marker"
+            severity="secondary"
+            :loading="fetchingCoordinates"
+            @click="fetchCoordinates"
+          />
           <Button label="Save Address Template" severity="info" @click="saveNewAddress" />
         </div>
 
@@ -222,6 +230,19 @@
         />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="coordsDialog.visible" modal :draggable="false" :closable="true" class="w-full max-w-sm">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <i :class="coordsDialog.success ? 'pi pi-check-circle text-emerald-600' : 'pi pi-exclamation-triangle text-amber-600'"></i>
+          <span class="text-sm font-semibold">Coordinates</span>
+        </div>
+      </template>
+      <p class="text-sm text-slate-700">{{ coordsDialog.message }}</p>
+      <template #footer>
+        <Button label="OK" severity="info" @click="coordsDialog.visible = false" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -229,7 +250,6 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import Drawer from 'primevue/drawer'
 import RadioButton from 'primevue/radiobutton'
 import InputText from 'primevue/inputtext'
@@ -240,6 +260,7 @@ import ecommerceService from '@/services/ecommerce.service'
 import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 import InputMask from 'primevue/inputmask'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -264,7 +285,6 @@ type AppliedVoucher = {
 
 const router = useRouter()
 const route = useRoute()
-const toast = useToast()
 const authStore = useAuthStore()
 
 const placing = ref(false)
@@ -280,6 +300,13 @@ const pendingGcashIntentId = ref<string | null>(null)
 const pendingGcashOrderId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
+const fetchingCoordinates = ref(false)
+
+const coordsDialog = reactive({
+  visible: false,
+  success: false,
+  message: '',
+})
 
 const gcashModal = reactive({
   visible: false,
@@ -360,7 +387,7 @@ async function loadAddressTemplates() {
     addressTemplates.value = response.data?.data || []
     selectedAddressId.value = addressTemplates.value.find((a) => a.is_default)?.id || addressTemplates.value[0]?.id || null
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to load addresses', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to load addresses' })
   }
 }
 
@@ -373,7 +400,7 @@ async function saveNewAddress() {
     !newAddressSelection.barangayCode ||
     !newAddress.address_line
   ) {
-    toast.add({ severity: 'warn', summary: 'Incomplete', detail: 'Please complete all address fields.', life: 2200 })
+    showAlert({ severity: 'warn', summary: 'Incomplete', detail: 'Please complete all address fields.' })
     return
   }
 
@@ -408,9 +435,9 @@ async function saveNewAddress() {
     cities.value = []
     barangays.value = []
     showAddAddressForm.value = false
-    toast.add({ severity: 'success', summary: 'Address Saved', detail: 'New address template has been saved.', life: 1800 })
+    showAlert({ severity: 'success', summary: 'Address Saved', detail: 'New address template has been saved.' })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to save address', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to save address' })
   }
 }
 
@@ -429,14 +456,14 @@ async function loadCheckoutItems() {
     : allItems
 
   if (!checkoutItems.value.length) {
-    toast.add({ severity: 'warn', summary: 'Cart Empty', detail: 'Please select cart items first.', life: 2500 })
+    showAlert({ severity: 'warn', summary: 'Cart Empty', detail: 'Please select cart items first.' })
     router.push({ name: 'ecommerce.cart' })
   }
 }
 
 async function applyVoucher() {
   if (!voucherCode.value.trim()) {
-    toast.add({ severity: 'warn', summary: 'Voucher', detail: 'Enter voucher code first.', life: 1800 })
+    showAlert({ severity: 'warn', summary: 'Voucher', detail: 'Enter voucher code first.' })
     return
   }
 
@@ -456,11 +483,11 @@ async function applyVoucher() {
       discount_value: Number(voucher?.discount_value || 0),
     }
     validatedDiscountAmount.value = discount
-    toast.add({ severity: 'success', summary: 'Voucher Applied', detail: 'Voucher has been applied.', life: 1800 })
+    showAlert({ severity: 'success', summary: 'Voucher Applied', detail: 'Voucher has been applied.' })
   } catch (error: any) {
     appliedVoucher.value = null
     validatedDiscountAmount.value = 0
-    toast.add({ severity: 'error', summary: 'Invalid Voucher', detail: error?.response?.data?.message || 'Voucher does not exist.', life: 2200 })
+    showAlert({ severity: 'error', summary: 'Invalid Voucher', detail: error?.response?.data?.message || 'Voucher does not exist.' })
   } finally {
     applyingVoucher.value = false
   }
@@ -527,9 +554,37 @@ async function onCityChange() {
   await fetchBarangays(newAddressSelection.cityId)
 }
 
+async function fetchCoordinates() {
+  if (!navigator.geolocation) {
+    coordsDialog.success = false
+    coordsDialog.message = 'Geolocation is not supported by this device or browser.'
+    coordsDialog.visible = true
+    return
+  }
+
+  fetchingCoordinates.value = true
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      customerLatitude.value = position.coords.latitude
+      customerLongitude.value = position.coords.longitude
+      coordsDialog.success = true
+      coordsDialog.message = 'Coordinates fetched successfully and will be used for delivery.'
+      coordsDialog.visible = true
+      fetchingCoordinates.value = false
+    },
+    (error) => {
+      coordsDialog.success = false
+      coordsDialog.message = error?.message || 'Unable to fetch coordinates.'
+      coordsDialog.visible = true
+      fetchingCoordinates.value = false
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+  )
+}
+
 async function placeOrder() {
   if (!selectedAddress.value) {
-    toast.add({ severity: 'warn', summary: 'Address Required', detail: 'Please select a shipping address.', life: 2500 })
+    showAlert({ severity: 'warn', summary: 'Address Required', detail: 'Please select a shipping address.' })
     return
   }
 
@@ -577,14 +632,14 @@ async function placeOrder() {
       gcashModal.phone = cleanPhoneNumber(selectedAddress.value.contact_number || '')
       gcashModal.email = authStore.user?.email || payload.shipping_email || ''
       gcashModal.visible = true
-      toast.add({ severity: 'success', summary: 'Order Placed', detail: 'Enter GCash details to continue payment.', life: 2500 })
+      showAlert({ severity: 'success', summary: 'Order Placed', detail: 'Enter GCash details to continue payment.' })
       return
     }
 
-    toast.add({ severity: 'success', summary: 'Order Placed', detail: 'Your order was created successfully.', life: 2500 })
+    showAlert({ severity: 'success', summary: 'Order Placed', detail: 'Your order was created successfully.' })
     router.push({ name: 'ecommerce.orders', query: { placed: orderId } })
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.' })
   } finally {
     placing.value = false
     paymongoCreating.value = false
@@ -603,19 +658,32 @@ function cleanPhoneNumber(raw: string) {
   return digits
 }
 
+function normalizeImageUrl(raw: string) {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function onImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (target) target.src = '/F.svg'
+}
+
 async function proceedGcashCheckout() {
   if (!pendingGcashIntentId.value || !pendingGcashOrderId.value) {
-    toast.add({ severity: 'warn', summary: 'Missing Payment Context', detail: 'Please place the order again.', life: 2500 })
+    showAlert({ severity: 'warn', summary: 'Missing Payment Context', detail: 'Please place the order again.' })
     return
   }
 
   const phone = cleanPhoneNumber(gcashModal.phone)
   if (!/^09\d{9}$/.test(phone)) {
-    toast.add({ severity: 'warn', summary: 'Invalid Number', detail: 'Use an 11-digit GCash number (09XXXXXXXXX).', life: 2500 })
+    showAlert({ severity: 'warn', summary: 'Invalid Number', detail: 'Use an 11-digit GCash number (09XXXXXXXXX).' })
     return
   }
   if (!gcashModal.email.trim()) {
-    toast.add({ severity: 'warn', summary: 'Email Required', detail: 'Please provide receipt email.', life: 2500 })
+    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please provide receipt email.' })
     return
   }
 
@@ -634,7 +702,7 @@ async function proceedGcashCheckout() {
     }
     window.location.href = redirectUrl
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Unable to start GCash checkout.', life: 3200 })
+    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Unable to start GCash checkout.' })
   } finally {
     gcashModal.processing = false
     paymongoCreating.value = false

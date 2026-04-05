@@ -69,16 +69,14 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
 
 
 const route = useRoute()
-const toast = useToast()
-
 const threads = ref<any[]>([])
 const messages = ref<any[]>([])
 const threadsLoading = ref(false)
@@ -113,7 +111,7 @@ async function loadThreads() {
       await openThread(Number(threads.value[0].store_id))
     }
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load chats', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load chats' })
   } finally {
     threadsLoading.value = false
   }
@@ -128,7 +126,7 @@ async function openThread(storeId: number) {
     const rows = extractRows(res.data?.data)
     messages.value = [...rows].reverse()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load messages', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to load messages' })
   } finally {
     messagesLoading.value = false
   }
@@ -144,7 +142,7 @@ async function sendMessage() {
     await openThread(activeStoreId.value)
     await loadThreads()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Send Failed', detail: error?.response?.data?.message || 'Unable to send message', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Send Failed', detail: error?.response?.data?.message || 'Unable to send message' })
   } finally {
     sending.value = false
   }

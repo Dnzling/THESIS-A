@@ -20,6 +20,8 @@ use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
+use App\Models\Logistics\DeliveryZone;
+use App\Models\Logistics\DeliveryZoneRate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -998,7 +1000,11 @@ class EcommerceController extends Controller
         }
 
         if (!$cart) {
-            $cart = $this->getOrCreateCart();
+            $existingCart = EcommerceCart::query()
+                ->where('user_id', $user->id)
+                ->latest('updated_at')
+                ->first();
+            $cart = $existingCart ?: $this->getOrCreateCart();
             $cart->load('items.product', 'items.variation');
             $itemsForCheckout = $cart->items;
         }
@@ -1048,6 +1054,110 @@ class EcommerceController extends Controller
                 'success' => false,
                 'message' => 'No branch can fully fulfill this order right now.',
             ], 422);
+        }
+
+        // Compute shipping fee from delivery zones/rates based on branch->customer distance and order weight.
+        $totalWeight = 0.0;
+        foreach ($itemsForCheckout as $item) {
+            $itemWeight = (float) ($item->product?->weight_kg ?? 0);
+            $totalWeight += $itemWeight * (int) $item->quantity;
+        }
+
+        // Allow fallback to a provided shipping_fee if coordinates or branch coords are missing.
+        $providedShippingFee = array_key_exists('shipping_fee', $validated) ? (float) $validated['shipping_fee'] : null;
+        $canLookupRates = true;
+
+        if ($customerLatitude === null || $customerLongitude === null) {
+            if (!is_null($providedShippingFee)) {
+                $shippingFee = $providedShippingFee;
+                $canLookupRates = false;
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to determine customer coordinates for delivery rate lookup.',
+                ], 422);
+            }
+        }
+
+        if ($canLookupRates) {
+            if (!is_numeric($fulfillmentBranch->latitude) || !is_numeric($fulfillmentBranch->longitude)) {
+                if (!is_null($providedShippingFee)) {
+                    $shippingFee = $providedShippingFee;
+                    $canLookupRates = false;
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Fulfillment branch does not have valid coordinates for delivery rate lookup.',
+                    ], 422);
+                }
+            }
+        }
+
+        $matchingRates = [];
+        if ($canLookupRates) {
+            $distanceKm = $this->haversineKm(
+                (float) $fulfillmentBranch->latitude,
+                (float) $fulfillmentBranch->longitude,
+                (float) $customerLatitude,
+                (float) $customerLongitude
+            );
+
+            $zones = DeliveryZone::query()
+                ->where('store_id', $cart->store_id)
+                ->where('is_active', true)
+                ->where(function ($q) use ($fulfillmentBranch) {
+                    $q->whereNull('branch_id')->orWhere('branch_id', $fulfillmentBranch->id);
+                })
+                ->with(['rates' => fn($q) => $q->where('is_active', true)])
+                ->get();
+
+        foreach ($zones as $zone) {
+            foreach ($zone->rates as $rate) {
+                $minDist = is_null($rate->min_distance_km) ? null : (float) $rate->min_distance_km;
+                $maxDist = is_null($rate->max_distance_km) ? null : (float) $rate->max_distance_km;
+                $minWt = is_null($rate->min_weight_kg) ? null : (float) $rate->min_weight_kg;
+                $maxWt = is_null($rate->max_weight_kg) ? null : (float) $rate->max_weight_kg;
+
+                $distanceMatch = true;
+                if (!is_null($minDist) && $distanceKm < $minDist) {
+                    $distanceMatch = false;
+                }
+                if (!is_null($maxDist) && $distanceKm > $maxDist) {
+                    $distanceMatch = false;
+                }
+
+                $weightMatch = true;
+                if (!is_null($minWt) && $totalWeight < $minWt) {
+                    $weightMatch = false;
+                }
+                if (!is_null($maxWt) && $totalWeight > $maxWt) {
+                    $weightMatch = false;
+                }
+
+                if ($distanceMatch && $weightMatch) {
+                    $base = (float) $rate->base_fee;
+                    $perKm = (float) $rate->per_km_fee;
+                    $perKg = (float) $rate->per_kg_fee;
+                    $computed = $base + ($perKm * $distanceKm) + ($perKg * $totalWeight);
+                    $matchingRates[] = ['rate' => $rate, 'fee' => round($computed, 2)];
+                }
+            }
+        }
+
+        if (empty($matchingRates)) {
+            if (!is_null($providedShippingFee)) {
+                $shippingFee = $providedShippingFee;
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No delivery rate configured for your location and order weight.',
+                ], 422);
+            }
+        } else {
+            // Choose the cheapest matching rate
+            usort($matchingRates, fn($a, $b) => $a['fee'] <=> $b['fee']);
+            $shippingFee = (float) $matchingRates[0]['fee'];
+        }
         }
 
         $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude) {

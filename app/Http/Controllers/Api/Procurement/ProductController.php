@@ -161,12 +161,20 @@ class ProductController extends Controller
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
 
             $includeCost = $request->boolean('include_cost', false);
+            $withSuppliers = $request->boolean('with_suppliers', false);
+
             $product = Product::where('store_id', $storeId)
                 ->with([
                     'category:id,category_name',
-                    'suppliers' => function($q) {
-                        $q->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating')
-                          ->active();
+                    'suppliers' => function($q) use ($withSuppliers) {
+                        if ($withSuppliers) {
+                            $q->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating', 'suppliers.company_name')
+                              ->withPivot('supplier_sku', 'supplier_price', 'minimum_order_quantity', 'lead_time_days', 'is_preferred_supplier')
+                              ->active();
+                        } else {
+                            $q->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating')
+                              ->active();
+                        }
                     },
                     'suppliers.priceHistory' => function($q) {
                         $q->orderBy('effective_date', 'desc')

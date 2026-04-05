@@ -126,7 +126,7 @@
                         badgeSeverity="danger"
                         @click="toggleNotifications"
                     />
-                    <OverlayPanel ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
+                    <Popover ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
                         <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
                             <div class="font-semibold text-gray-900">Notifications</div>
                             <Button 
@@ -197,7 +197,7 @@
                                 </div>
                             </button>
                         </div>
-                    </OverlayPanel>
+                    </Popover>
     
                     <!-- User Profile -->
                     <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
@@ -274,7 +274,7 @@ import UserDialog from '@/Components/dialogs/UserDialog.vue'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Skeleton from 'primevue/skeleton'
-import OverlayPanel from 'primevue/overlaypanel'
+import Popover from 'primevue/popover'
 import axiosClient from '@/axios'
 
 const page = usePage()

@@ -148,16 +148,14 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
+import { confirmAlert, showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
 
 
 const router = useRouter()
-const toast = useToast()
-
 const items = ref<any[]>([])
 const summary = ref<any>({})
 const loading = ref(false)
@@ -181,7 +179,7 @@ async function loadCart() {
       selectedItemIds.value = items.value.map((item) => item.id)
     }
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load cart', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load cart' })
   } finally {
     loading.value = false
   }
@@ -195,11 +193,11 @@ async function updateQty(item: any, quantity: number) {
     summary.value = response.data?.data?.summary || {}
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      toast.add({ severity: 'warn', summary: 'Cart updated', detail: 'Your cart changed. Refreshing items...', life: 2200 })
+      showAlert({ severity: 'warn', summary: 'Cart updated', detail: 'Your cart changed. Refreshing items...' })
       await loadCart()
       return
     }
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to update quantity', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to update quantity' })
   }
 }
 
@@ -222,11 +220,10 @@ function toggleAll(checked: boolean) {
 }
 
 function toggleFavorite(item: any) {
-  toast.add({
+  showAlert({
     severity: 'info',
     summary: 'Favorites',
     detail: `${item.product_name} will be supported for favorites next.`,
-    life: 1800,
   })
 }
 
@@ -236,27 +233,32 @@ async function removeItem(itemId: number) {
     selectedItemIds.value = selectedItemIds.value.filter((id) => id !== itemId)
     await loadCart()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to remove item', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to remove item' })
   }
 }
 
 async function deleteSelected() {
   if (!selectedItemIds.value.length) return
-  if (!window.confirm(`Delete ${selectedItemIds.value.length} selected item(s) from cart?`)) return
+  const confirmed = await confirmAlert({
+    title: 'Delete selected items?',
+    text: `Delete ${selectedItemIds.value.length} selected item(s) from cart?`,
+    confirmText: 'Delete',
+  })
+  if (!confirmed) return
 
   try {
     await Promise.all(selectedItemIds.value.map((itemId) => ecommerceService.removeCartItem(itemId)))
     selectedItemIds.value = []
-    toast.add({ severity: 'success', summary: 'Deleted', detail: 'Selected items removed from cart.', life: 2200 })
+    showAlert({ severity: 'success', summary: 'Deleted', detail: 'Selected items removed from cart.' })
     await loadCart()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to delete selected items', life: 3000 })
+    showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to delete selected items' })
   }
 }
 
 function goCheckout() {
   if (!selectedItemIds.value.length) {
-    toast.add({ severity: 'warn', summary: 'No items selected', detail: 'Please select at least one item to checkout.', life: 2500 })
+    showAlert({ severity: 'warn', summary: 'No items selected', detail: 'Please select at least one item to checkout.' })
     return
   }
   router.push({ name: 'ecommerce.checkout', query: { item_ids: selectedItemIds.value.join(',') } })

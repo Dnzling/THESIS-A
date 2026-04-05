@@ -46,8 +46,8 @@
             <i class="pi pi-shopping-cart text-lg" />
             <span>Cart</span>
             <Badge
-              v-if="isLoggedIn && cartCount"
-              :value="cartCount"
+              v-if="cartCount"
+              :value="String(cartCount)"
               severity="danger"
               class="!absolute !-top-1 !right-3"
             />

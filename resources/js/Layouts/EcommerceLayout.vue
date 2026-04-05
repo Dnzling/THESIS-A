@@ -9,7 +9,7 @@
           <span class="portal-brand text-orange-500 text-base sm:text-lg">FURNISYNC SHOP</span>
         </button>
       
-      <div class="flex items-center gap-1">
+      <div class="hidden md:flex items-center gap-1">
         <Button label="Stores" icon="pi pi-shop" severity="warn" outlined rounded class="compact-button !text-xs !px-2 !py-1.5" @click="router.push({ name: 'ecommerce.stores' })" />
         <Button label="Cart" icon="pi pi-shopping-cart" :badge="cartCount.toString()" severity="warn"
           badgeSeverity="secondary" class="compact-button !text-xs !px-2 !py-1.5" rounded @click="goCart" />

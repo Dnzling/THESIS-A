@@ -185,15 +185,7 @@
             <small v-if="errors.payment_terms" class="text-red-500">{{ errors.payment_terms }}</small>
           </div>
 
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Bank Details</label>
-            <Textarea
-              v-model="form.bank_details"
-              placeholder="Enter bank account details..."
-              :rows="3"
-              class="w-full"
-            />
-          </div>
+          <!-- Bank details removed from registration -->
         </div>
       </div>
 
@@ -269,7 +261,6 @@ const form = ref({
   country: '',
   payment_terms: '',
   tax_id: '',
-  bank_details: '',
   category: '',
   status: 'active'
 })

@@ -46,7 +46,7 @@
             </div>
   
             <img v-else-if="primaryImage" :src="primaryImage" :alt="product.product_name"
-              class="h-full w-full object-cover" />
+              class="h-full w-full object-cover" @error="handleImageError" />
             <div v-else class="flex min-h-90 items-center justify-center text-slate-400">
               <i class="pi pi-image text-5xl opacity-30" />
             </div>
@@ -57,7 +57,7 @@
                   <button type="button" class="h-18 w-18 overflow-hidden rounded-lg border transition"
                     :class="data === primaryImage ? 'border-blue-500' : 'border-slate-200 hover:border-slate-300'"
                     @click="selectedImage = data">
-                    <img :src="data" alt="Product image" class="h-full w-full object-cover" />
+                    <img :src="data" alt="Product image" class="h-full w-full object-cover" @error="handleImageError" />
                   </button>
                 </template>
               </Carousel>
@@ -104,8 +104,12 @@
             <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-3">
               <InputNumber v-model="quantity" :min="1" :max="Math.max(1, Number(product.quantity_available || 1))"
                 showButtons class="w-full sm:w-auto" />
-              <Button label="Add to Cart" severity="info" class="w-full sm:w-auto"
-                :disabled="Number(product.quantity_available || 0) <= 0" @click="addToCart" />
+              <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                <Button label="Add to Cart" severity="info" class="w-full"
+                  :disabled="Number(product.quantity_available || 0) <= 0" @click="addToCart" />
+                <Button label="Buy Now" severity="success" class="w-full"
+                  :disabled="Number(product.quantity_available || 0) <= 0" @click="buyNow" />
+              </div>
             </div>
           </div>
         </div>
@@ -206,7 +210,8 @@
             class="rounded-xl border border-slate-200 p-2 text-left transition hover:border-slate-300"
             @click="goToRecommended(item.id)">
             <div class="h-28 overflow-hidden rounded-lg bg-slate-100">
-              <img v-if="item.image" :src="item.image" :alt="item.product_name" class="h-full w-full object-cover" />
+              <img v-if="item.image" :src="normalizeImageUrl(item.image)" :alt="item.product_name"
+                class="h-full w-full object-cover" @error="onImageError" />
               <div v-else class="flex h-full items-center justify-center text-slate-400">
                 <i class="pi pi-image" />
               </div>
@@ -229,7 +234,6 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
@@ -238,6 +242,7 @@ import InputNumber from 'primevue/inputnumber'
 import Skeleton from 'primevue/skeleton'
 import Carousel from 'primevue/carousel'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
+import { showAlert, confirmAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -245,8 +250,6 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
-
 const loading = ref(false)
 const quantity = ref(1)
 const product = ref<any>(null)
@@ -256,16 +259,17 @@ const recommendedProducts = ref<any[]>([])
 const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_avg: number; rating_count: number } | null>(null)
 const show3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
+const brokenImages = ref<string[]>([])
 const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
 const selectedModel3D = computed(() => selectedVariation.value?.model_3d || product.value?.model_3d || null)
 const galleryImages = computed<string[]>(() => {
   const images = product.value?.images
-  if (!Array.isArray(images)) return product.value?.image ? [product.value.image] : []
-  return images
-    .map((img: any) => (typeof img === 'string' ? img : (img?.url || img?.image_url || img?.src || '')))
-    .filter(Boolean)
+  const rawImages = Array.isArray(images) ? images : (product.value?.image ? [product.value.image] : [])
+  return rawImages
+    .map((img: any) => normalizeImageUrl(typeof img === 'string' ? img : (img?.url || img?.image_url || img?.src || '')))
+    .filter((url): url is string => Boolean(url) && !brokenImages.value.includes(url))
 })
 const primaryImage = computed(() => {
   return selectedImage.value || galleryImages.value[0] || product.value?.image || null
@@ -321,6 +325,31 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function normalizeImageUrl(raw: string) {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function handleImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (!target?.src) return
+  const url = target.currentSrc || target.src
+  if (!brokenImages.value.includes(url)) {
+    brokenImages.value = [...brokenImages.value, url]
+  }
+  if (selectedImage.value === url) {
+    selectedImage.value = null
+  }
+}
+
+function onImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (target) target.src = '/F.svg'
+}
+
 function variationLabel(variation: any) {
   const parts = [variation.color, variation.size, variation.material].filter(Boolean)
   return parts.length ? parts.join(' / ') : variation.variation_name
@@ -339,7 +368,7 @@ async function loadProduct() {
     selectedVariationId.value = null
   } catch {
     product.value = null
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Unable to load product.', life: 2500 })
+    showAlert({ severity: 'error', summary: 'Error', detail: 'Unable to load product.' })
   } finally {
     loading.value = false
   }
@@ -392,9 +421,37 @@ async function addToCart() {
       store_id: product.value?.store_id ? Number(product.value.store_id) : null,
     })
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
-    toast.add({ severity: 'success', summary: 'Added to cart', detail: `${product.value.product_name}`, life: 1600 })
+    showAlert({ severity: 'success', summary: 'Added to cart', detail: `${product.value.product_name}` })
   } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not add to cart.', life: 2200 })
+    showAlert({ severity: 'error', summary: 'Error', detail: 'Could not add to cart.' })
+  }
+}
+
+async function buyNow() {
+  if (!product.value?.id) return
+  try {
+    const confirmed = await confirmAlert({
+      title: 'Proceed to checkout?',
+      text: 'Are you sure you want to buy this item now? This will add it to your cart and take you to checkout.',
+      cancelText: 'No, go back to shop',
+      confirmText: 'Yes, buy now',
+    })
+
+    if (!confirmed) {
+      goStorePage()
+      return
+    }
+
+    await ecommerceService.addToCart({
+      product_id: Number(product.value.id),
+      variation_id: selectedVariationId.value ? Number(selectedVariationId.value) : null,
+      quantity: Number(quantity.value || 1),
+      store_id: product.value?.store_id ? Number(product.value.store_id) : null,
+    })
+    window.dispatchEvent(new Event('ecommerce-cart-updated'))
+    router.push({ name: 'ecommerce.checkout' })
+  } catch {
+    showAlert({ severity: 'error', summary: 'Error', detail: 'Could not process Buy Now.' })
   }
 }
 

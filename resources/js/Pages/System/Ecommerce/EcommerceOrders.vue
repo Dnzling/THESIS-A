@@ -42,7 +42,8 @@
                 class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3"
               >
                 <div class="flex min-w-0 items-center gap-3">
-                  <img :src="item.image || '/F.svg'" alt="Product" class="h-14 w-14 rounded-xl border border-slate-200 object-cover" />
+                  <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
+                    class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
                   <div class="min-w-0">
                     <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                     <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
@@ -199,6 +200,19 @@ function goOrderDetail(orderId: number) {
 function formatDate(value: string) {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function normalizeImageUrl(raw: string) {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function onImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (target) target.src = '/F.svg'
 }
 
 onMounted(loadOrders)

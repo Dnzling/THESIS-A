@@ -7,13 +7,7 @@ $render = function (string $page, array $props = []) {
     return Inertia::render($page, array_filter($props, fn($value) => $value !== null));
 };
 
-$inertia = function (
-    string $uri,
-    string $page,
-    ?string $name = null,
-    ?string $title = null,
-    ?string $subtitle = null
-) use ($render) {
+$inertia = function (string $uri, string $page, ?string $name = null, ?string $title = null, ?string $subtitle = null) use ($render) {
     $route = Route::get($uri, function () use ($render, $page, $title, $subtitle) {
         return $render($page, [
             'title' => $title,
@@ -39,6 +33,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
         $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
+        $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
+        $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
         $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
         $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');
         $inertia('/admin/stores/{id}', 'System/Admin/StoreDetail', 'admin.stores.detail', 'Store Detail');
@@ -47,9 +43,10 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
         $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
         $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
+
     });
-    
-    // System (Store Admin)
+
+    // System (Store Admin)u
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
         $inertia('/store/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
@@ -92,6 +89,10 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
 
     // Inventory
     Route::redirect('/inventory', '/inventory/dashboard')->name('inventory');
+    // Redirect legacy/mistyped requisitions paths to the correct 'requisites' routes
+    Route::redirect('/inventory/requisitions', '/inventory/requisites')->name('inventory.requisitions');
+    Route::redirect('/inventory/requisitions/create', '/inventory/requisites/create')->name('inventory.requisitions.create');
+    Route::get('/inventory/requisitions/{id}', fn($id) => redirect("/inventory/requisitions/{$id}"));
     $inertia('/inventory/dashboard', 'System/Inventory/InventoryDashboard', 'inventory.dashboard', 'Inventory Dashboard');
     Route::redirect('/inventory/ecommerce-orders', '/sales/ecommerce-orders')->name('inventory.ecommerce-orders');
     Route::get('/inventory/ecommerce-orders/{id}', fn($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');

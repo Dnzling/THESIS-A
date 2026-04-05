@@ -29,11 +29,15 @@
         <div class="px-4 space-y-1 pb-4">
           <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-3 mb-3">Menu</div>
   
-          <Link v-for="item in adminMenu" :key="item.to" :href="item.to"
-            class="text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-500 hover:bg-blue-50 transition-colors">
-            <i :class="item.icon"></i>
-            <span>{{ item.label }}</span>
-          </Link>
+          <template v-for="item in adminMenu" :key="item.to">
+            <a
+              href="#"
+              @click.prevent="navigate(item)"
+              class="text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-500 hover:bg-blue-50 transition-colors">
+              <i :class="item.icon"></i>
+              <span>{{ item.label }}</span>
+            </a>
+          </template>
         </div>
       </nav>
   
@@ -72,7 +76,7 @@
             badgeSeverity="danger"
             @click="toggleNotifications"
           />
-          <OverlayPanel ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
+          <Popover ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
             <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div class="font-semibold text-gray-900">Notifications</div>
               <Button 
@@ -143,7 +147,7 @@
                 </div>
               </button>
             </div>
-          </OverlayPanel>
+          </Popover>
           <div class="border-l border-gray-200 pl-4">
             <div class="flex items-center space-x-3">
               <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
@@ -175,7 +179,7 @@ import { useAuthStore } from '@/stores/auth'
 import { startCase, toLower } from 'lodash'
 import Button from 'primevue/button'
 import Skeleton from 'primevue/skeleton'
-import OverlayPanel from 'primevue/overlaypanel'
+import Popover from 'primevue/popover'
 import axiosClient from '@/axios'
 
 const page = usePage()
@@ -211,6 +215,7 @@ const activeNotifTab = ref<'inbox' | 'general' | 'archived'>('inbox')
 const adminMenu = [
   {
     to: "/admin/dashboard",
+    name: 'AdminDashboard',
     label: "Dashboard",
     icon: "pi pi-home text-gray-500 w-5"
   },
@@ -221,12 +226,19 @@ const adminMenu = [
   },
   {
     to: "/admin/store-validation",
-    label: "Store Validation",
+    name: 'AdminStoreValidation',
+    label: "Store Verification",
     icon: "pi pi-verified text-gray-500 w-5"
   },
   {
+    to: "/admin/verification/suppliers",
+    name: 'admin.supplier-verification',
+    label: "Supplier Verification",
+    icon: "pi pi-building-columns text-gray-500 w-5"
+  },
+  {
     to: "/admin/customer-validation",
-    label: "Customer Validation",
+    label: "Customer Verification",
     icon: "pi pi-user text-gray-500 w-5"
   },
   {
@@ -345,6 +357,24 @@ const getNotifInitials = (notif: any) => {
   const parts = text.trim().split(' ')
   if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'N'
   return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'N'
+}
+
+const navigate = (item: any) => {
+  try {
+    // router.visit expects a URL string; avoid passing objects which stringify to [object Object]
+    if (item.to && typeof item.to === 'string') {
+      router.visit(item.to)
+      return
+    }
+    // fallback to named route via path if available
+    if (item.name && item.to && typeof item.to === 'string') {
+      router.visit(item.to)
+      return
+    }
+  } catch (e) {
+    // fallback
+    window.location.href = item.to || '/'
+  }
 }
 
 const formatTimeAgo = (iso: string) => {

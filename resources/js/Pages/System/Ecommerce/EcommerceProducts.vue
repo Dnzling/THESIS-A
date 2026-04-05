@@ -65,7 +65,9 @@
             <h2 class="text-xl md:text-2xl font-bold text-slate-900">Featured Products</h2>
             <p class="text-slate-500 text-sm">Showing {{ filteredProducts.length }} items</p>
           </div>
-  
+        </div>
+
+        <div class="mt-3 mb-4 rounded-2xl border border-slate-200 bg-white/95 backdrop-blur p-3 shadow-sm">
           <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
             <IconField iconPosition="left">
               <InputIcon class="pi pi-search" />
@@ -77,7 +79,7 @@
           </div>
         </div>
   
-        <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-6">
           <div v-for="idx in 6" :key="idx" class="bg-white p-4 rounded-2xl border border-slate-100">
             <Skeleton height="200px" border-radius="1rem" class="mb-4" />
             <Skeleton width="60%" height="1.5rem" class="mb-2" />
@@ -88,12 +90,13 @@
         <div v-if="dssResults.length" class="mb-8">
           <h3 class="mb-3 text-lg font-semibold text-slate-900">Result Recommended For You</h3>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div v-for="item in dssResults" :key="`dss-${item.id}`"
-              class="group relative cursor-pointer bg-white rounded-2xl border border-blue-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
+              <div v-for="item in dssResults" :key="`dss-${item.id}`"
+                class="group relative cursor-pointer bg-white rounded-2xl border border-blue-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
               @click="goProduct(item.id)">
               <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
-                <img :src="item.image || '/F.svg'" :alt="item.product_name"
-                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name"
+                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  @error="onImageError" />
                 <div
                   class="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
                   Match {{ Math.round((item.score || 0) * 100) }}%
@@ -114,13 +117,14 @@
           </div>
         </div>
   
-        <div v-else-if="filteredProducts.length" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+        <div v-else-if="filteredProducts.length" class="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           <div v-for="product in filteredProducts" :key="product.id"
             class="group relative cursor-pointer bg-white rounded-2xl border border-slate-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
             @click="goProduct(product.id)">
             <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
-              <img :src="product.image || '/F.svg'" :alt="product.product_name"
-                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+              <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
+                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                @error="onImageError" />
   
             </div>
   
@@ -149,6 +153,7 @@
           <p class="text-slate-500 font-medium">We couldn't find any matches for your search.</p>
           <Button label="Clear Filters" link @click="search = ''; selectedCategory = 'all'" />
         </div>
+
       </main>
     </div>
   </div>
@@ -194,6 +199,19 @@ const sortOptions = [
   { label: 'Price: Low to High', value: 'price_asc' },
   { label: 'Price: High to Low', value: 'price_desc' },
 ]
+
+function normalizeImageUrl(raw: string) {
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/storage/')) return raw
+  if (raw.startsWith('storage/')) return `/${raw}`
+  return `/storage/${raw.replace(/^\//, '')}`
+}
+
+function onImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (target) target.src = '/F.svg'
+}
 
 const categoryOptions = computed(() => {
   const set = new Set<string>()

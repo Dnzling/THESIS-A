@@ -95,16 +95,6 @@
         <template #content>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Minimum Order Value <span class="text-red-500">*</span></label>
-              <div class="flex items-center gap-2">
-                <span class="text-gray-600">₱</span>
-                <InputNumber v-model="form.minimum_order_value" :min="0" placeholder="0.00" 
-                  :use-grouping="true" :locale="'en-PH'" class="w-full" />
-              </div>
-              <small v-if="errors.minimum_order_value" class="text-red-600">{{ errors.minimum_order_value }}</small>
-            </div>
-
-            <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Discount Percentage <span class="text-red-500">*</span></label>
               <InputNumber v-model="form.discount_percentage" :min="0" :max="100" placeholder="0" 
                 suffix="%" class="w-full" />
@@ -112,17 +102,9 @@
             </div>
 
             <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Payment Terms (Days) <span class="text-red-500">*</span></label>
-              <div class="p-3 bg-gray-100 rounded border border-gray-300">
-                <p class="text-lg font-semibold text-gray-900">
-                  {{ form.payment_terms_days ? `Net ${form.payment_terms_days} Days` : 'Select a supplier first' }}
-                </p>
-                <p class="text-xs text-gray-600 mt-1">Auto-filled from supplier's payment terms</p>
-              </div>
-              <small v-if="errors.payment_terms_days" class="text-red-600">{{ errors.payment_terms_days }}</small>
-              <small class="text-gray-600 mt-2" v-if="form.payment_terms_days">
-                <i class="pi pi-calendar mr-1"></i>Due by {{ paymentDueDate }}
-              </small>
+              <label class="text-sm font-semibold text-gray-700">Tax Rate (%)</label>
+              <InputNumber v-model="form.tax_rate" :min="0" :max="100" placeholder="0" suffix="%" class="w-full" />
+              <small v-if="errors.tax_rate" class="text-red-600">{{ errors.tax_rate }}</small>
             </div>
           </div>
 
@@ -131,7 +113,7 @@
           <div class="p-4 bg-blue-50 border border-blue-200 rounded">
             <p class="text-sm text-blue-900">
               <i class="pi pi-info-circle mr-2"></i>
-              <strong>Summary:</strong> Minimum order ₱{{ formatCurrency(form.minimum_order_value) }} with {{ form.discount_percentage }}% discount, payment due in {{ form.payment_terms_days }} days
+              <strong>Summary:</strong> {{ form.discount_percentage }}% discount, tax {{ form.tax_rate }}%
             </p>
           </div>
         </template>
@@ -222,9 +204,9 @@ const form = reactive({
   contract_type: 'volume_discount',
   start_date: null,
   end_date: null,
-  minimum_order_value: 0,
   discount_percentage: 0,
   payment_terms_days: 30,
+  tax_rate: 0,
   terms_conditions: '',
   contract_file_path: null,
 })
@@ -245,16 +227,15 @@ const contractTypeDescription = computed(() => {
 
 const formProgress = computed(() => {
   let filled = 0
-  let total = 9
+  let total = 8
   
   if (form.supplier_id) filled++
   if (form.contract_title) filled++
   if (form.contract_type) filled++
   if (form.start_date) filled++
   if (form.end_date) filled++
-  if (form.minimum_order_value > 0) filled++
   if (form.discount_percentage) filled++
-  if (form.payment_terms_days) filled++
+  if (form.tax_rate !== null) filled++
   if (form.terms_conditions) filled++
   
   return Math.round((filled / total) * 100)
@@ -331,11 +312,12 @@ const validateForm = (): boolean => {
   if (form.start_date && form.end_date && form.end_date <= form.start_date) {
     errors.end_date = 'End date must be after start date'
   }
-  if (form.minimum_order_value < 0) errors.minimum_order_value = 'Minimum order value cannot be negative'
   if (form.discount_percentage < 0 || form.discount_percentage > 100) {
     errors.discount_percentage = 'Discount must be between 0 and 100'
   }
-  if (!form.payment_terms_days) errors.payment_terms_days = 'Please enter payment terms'
+  if (form.tax_rate < 0 || form.tax_rate > 100) {
+    errors.tax_rate = 'Tax rate must be between 0 and 100'
+  }
 
   return Object.keys(errors).length === 0
 }
@@ -463,15 +445,14 @@ onMounted(async () => {
         detail: 'Supplier selected. Fill in the contract details below.',
         life: 3000
       })
-    } else {
-      // No supplier_id provided, show error
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: 'Please create a supplier first',
-        life: 3000
-      })
-      setTimeout(() => router.push({ name: 'procurement.suppliers' }), 2000)
+    } 
+    // Always load suppliers for the selector so user can pick one when creating a contract
+    try {
+      const resp = await procurementService.getSuppliers({ per_page: 200 })
+      suppliers.value = resp.data?.data || []
+    } catch (err) {
+      console.error('Failed to load suppliers', err)
+      toast.add({ severity: 'warn', summary: 'Warning', detail: 'Could not load suppliers list', life: 3000 })
     }
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load supplier', life: 3000 })

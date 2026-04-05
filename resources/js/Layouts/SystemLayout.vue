@@ -116,7 +116,7 @@
           <Button icon="pi pi-bell" severity="secondary" text rounded
             :badge="unreadCount > 0 ? unreadCount.toString() : undefined" badgeSeverity="danger"
             @click="toggleNotifications" />
-          <OverlayPanel ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
+          <Popover ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
             <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div class="font-semibold text-gray-900">Notifications</div>
               <Button label="Mark all as read" size="small" text class="text-xs"
@@ -174,7 +174,7 @@
                 </div>
               </button>
             </div>
-          </OverlayPanel>
+          </Popover>
           <!-- User Profile -->
           <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
             <div class="flex items-center space-x-3 hover:bg-gray-50 px-2 py-1 rounded-lg transition">
@@ -250,7 +250,7 @@ import { startCase, toLower, groupBy } from 'lodash'
 import Skeleton from 'primevue/skeleton'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
-import OverlayPanel from 'primevue/overlaypanel'
+import Popover from 'primevue/popover'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
 import UserDialog from '@/Components/dialogs/UserDialog.vue'
@@ -337,6 +337,11 @@ onMounted(async () => {
     }, 45000)
   }
   responseDialogUnsub = onResponseDialog((payload) => {
+    // Allow pages to temporarily suppress global error dialogs by setting
+    // window.__suppressResponseErrors for a short period.
+    if (payload.severity === 'error' && (window as any).__suppressResponseErrors) {
+      return
+    }
     responseDialog.value = {
       visible: true,
       severity: payload.severity,

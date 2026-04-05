@@ -74,8 +74,8 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import ecommerceService from '@/services/ecommerce.service'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -83,8 +83,6 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
-
 const loading = ref(false)
 const followLoading = ref(false)
 const store = ref<any>(null)
@@ -95,7 +93,7 @@ async function loadStore() {
     const response = await ecommerceService.getStore(route.params.storeId as string)
     store.value = response.data?.data || null
   } catch {
-    toast.add({ severity: 'error', summary: 'Store', detail: 'Failed to load store profile.', life: 2200 })
+    showAlert({ severity: 'error', summary: 'Store', detail: 'Failed to load store profile.' })
     goStores()
   } finally {
     loading.value = false
@@ -117,7 +115,7 @@ async function toggleFollow() {
     }
   } catch (error: any) {
     const detail = error?.response?.status === 401 ? 'Please login first to follow stores.' : 'Unable to update follow status.'
-    toast.add({ severity: 'warn', summary: 'Follow', detail, life: 2200 })
+    showAlert({ severity: 'warn', summary: 'Follow', detail })
   } finally {
     followLoading.value = false
   }

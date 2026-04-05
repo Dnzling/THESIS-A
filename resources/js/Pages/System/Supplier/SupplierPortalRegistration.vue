@@ -206,7 +206,6 @@ const requiredDocuments = [
   { label: 'Business License', value: 'business_license' },
   { label: 'Tax ID', value: 'tax_id' },
   { label: 'Company Registration', value: 'company_registration' },
-  { label: 'Bank Details', value: 'bank_details' },
 ]
 
 const supplierTypes = [
@@ -254,7 +253,7 @@ const getDocumentIcon = (docType: string) => {
     business_license: 'text-blue-500',
     tax_id: 'text-green-500',
     company_registration: 'text-purple-500',
-    bank_details: 'text-orange-500',
+    // bank_details removed
   }
   return icons[docType] || ''
 }

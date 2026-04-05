@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
+use App\Http\Controllers\Api\Admin\SupplierVerificationController;
 use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\Core\SystemNotificationController;
@@ -83,6 +84,12 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
     Route::post('/customer-verification/trigger', [CustomerVerificationTriggerController::class, 'trigger']);
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    // Add admin supplier verification endpoints
+    Route::get('/admin/suppliers/pending', [SupplierVerificationController::class, 'index']);
+    Route::post('/admin/suppliers/{id}/approve', [SupplierVerificationController::class, 'approve']);
+    Route::post('/admin/suppliers/{id}/reject', [SupplierVerificationController::class, 'reject']);
+    Route::get('/admin/suppliers/{id}', [SupplierVerificationController::class, 'show']);
+    Route::post('/admin/suppliers/{id}/request-resubmission', [SupplierVerificationController::class, 'requestResubmission']);
     Route::prefix('notifications')->group(function () {
         Route::get('/', [SystemNotificationController::class, 'index']);
         Route::get('/unread', [SystemNotificationController::class, 'getUnread']);
@@ -98,6 +105,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/roles/{id}/permissions', [RolePermissionController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [RolePermissionController::class, 'updateRolePermissions']);
         Route::get('/roles/export', [RolePermissionController::class, 'exportRoles']);
+        // Admin dashboard data
+        Route::get('/dashboard', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'index']);
         Route::post('/roles/import', [RolePermissionController::class, 'importRoles']);
 
         // Permissions
@@ -325,6 +334,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     require __DIR__ . '/procurement_routes.php';
     require __DIR__ . '/supplier_routes.php';
     require __DIR__ . '/supplier_portal_routes.php';
+    // expose supplier_portals for admin UI merging (optional)
+    Route::get('/supplier-portals', [\App\Http\Controllers\Api\SupplierPortalsController::class, 'index']);
+    Route::get('/supplier-portals/{id}', [\App\Http\Controllers\Api\SupplierPortalsController::class, 'show']);
     require __DIR__ . '/inventory_routes.php';
     require __DIR__ . '/logistics_routes.php';
     require __DIR__ . '/ecommerce_routes.php';

@@ -5,6 +5,12 @@ namespace App\Http\Controllers\Api\Procurement\Supplier;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\User;
+use App\Models\Core\Role;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\SupplierInvite;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -33,9 +39,9 @@ class SupplierController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('supplier_name', 'LIKE', "%{$search}%")
-                  ->orWhere('supplier_code', 'LIKE', "%{$search}%")
-                  ->orWhere('company_name', 'LIKE', "%{$search}%")
-                  ->orWhere('email', 'LIKE', "%{$search}%");
+                    ->orWhere('supplier_code', 'LIKE', "%{$search}%")
+                    ->orWhere('company_name', 'LIKE', "%{$search}%")
+                    ->orWhere('email', 'LIKE', "%{$search}%");
             });
         }
 
@@ -84,42 +90,182 @@ class SupplierController extends Controller
     {
         $validated = $request->validate([
             'supplier_name' => 'required|string|max:255',
-            'company_name' => 'nullable|string|max:255',
-            'contact_person' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'required|string|max:50',
-            'mobile' => 'nullable|string|max:50',
-            'fax' => 'nullable|string|max:50',
-            'website' => 'nullable|url|max:255',
-            'address' => 'nullable|string',
-            'city' => 'nullable|string|max:100',
-            'province' => 'nullable|string|max:100',
-            'postal_code' => 'nullable|string|max:20',
-            'country' => 'nullable|string|max:100',
-            'tin' => 'nullable|string|max:50',
-            'business_registration' => 'nullable|string|max:100',
-            'supplier_type' => 'required|in:manufacturer,wholesaler,distributor,importer,local_artisan',
-            'payment_terms' => 'required|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
-            'credit_limit' => 'nullable|numeric|min:0',
-            'notes' => 'nullable|string',
+            'contact_person' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
         ]);
 
-        // Generate supplier code using datetime for uniqueness
-        $supplierCode = 'SUP-' . date('YmdHis') . '-' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
+        \Log::info('[Supplier] Starting supplier creation', ['email' => $validated['email']]);
 
-        $validated['store_id'] = Auth::user()->store_id;
-        $validated['supplier_code'] = $supplierCode;
-        $validated['status'] = 'active';
-        $validated['rating'] = 5.00;
-        $validated['country'] = $validated['country'] ?? 'Philippines';
+        // Generate supplier code like SUP-2026-005 (incrementing per year)
+        $year = date('Y');
+        $lastCode = Supplier::where('supplier_code', 'LIKE', "SUP-{$year}-%")
+            ->orderBy('supplier_code', 'desc')
+            ->value('supplier_code');
 
-        $supplier = Supplier::create($validated);
+        if ($lastCode) {
+            $parts = explode('-', $lastCode);
+            $lastNumber = (int) ($parts[2] ?? 0);
+            $nextNumber = $lastNumber + 1;
+        } else {
+            $nextNumber = 1;
+        }
 
-        return response()->json([
+        $supplierCode = sprintf('SUP-%s-%03d', $year, $nextNumber);
+
+        // Split supplier_name into first/last for supplier record
+        $supplierNameParts = preg_split('/\s+/', trim($validated['supplier_name']), 2);
+        $supplierFirstName = $supplierNameParts[0] ?? $validated['supplier_name'];
+        $supplierLastName = $supplierNameParts[1] ?? '';
+
+        // Split contact_person into first/last for user account
+        $contactNameParts = preg_split('/\s+/', trim($validated['contact_person']), 2);
+        $contactFirstName = $contactNameParts[0] ?? $validated['contact_person'];
+        $contactLastName = $contactNameParts[1] ?? '';
+
+        $data = [
+            'supplier_name' => $validated['supplier_name'],
+            'first_name' => $supplierFirstName,
+            'last_name' => $supplierLastName,
+            'contact_person' => $validated['contact_person'],
+            'email' => $validated['email'],
+            'store_id' => Auth::user()->store_id,
+            'supplier_code' => $supplierCode,
+            'status' => 'active',
+            'rating' => 5.00,
+            'country' => 'Philippines',
+            'phone' => $validated['phone'] ?? '',
+        ];
+
+        \Log::info('[Supplier] Creating supplier record', ['supplier_code' => $supplierCode]);
+        $supplier = Supplier::create($data);
+        \Log::info('[Supplier] Supplier created successfully', ['supplier_id' => $supplier->id, 'supplier_code' => $supplierCode]);
+
+        // Create a corresponding user account for the supplier's contact person
+        $user = null;
+        $mailError = null;
+
+        try {
+            // Determine role id for 'supplier'
+            $roleId = Role::where('name', 'supplier')->value('id');
+
+            if (!$roleId) {
+                \Log::error('[Supplier] Role "supplier" not found in database');
+                throw new \Exception('Supplier role not found');
+            }
+
+            \Log::info('[Supplier] Found supplier role', ['role_id' => $roleId]);
+
+            // Use supplier code as the user's user_id
+
+
+            // Generate a random password for email
+            $plainPassword = Str::random(10);
+
+            \Log::info('[Supplier] Attempting to create user account for contact person', [
+                'email' => $validated['email'],
+                'user_id' => $supplierCode,
+                'fname' => $contactFirstName,
+                'lname' => $contactLastName
+            ]);
+
+            $user = User::create([
+                'fname' => $contactFirstName,  // Using contact person's first name
+                'lname' => $contactLastName,   // Using contact person's last name
+                'email' => $validated['email'],
+                'password' => Hash::make($plainPassword),
+                'role_id' => $roleId,
+                'is_active' => true,
+                'user_id' => $supplierCode,
+                'store_id' => Auth::user()->store_id,
+                'registered_by' => Auth::id(),
+                'created_at' => now(),
+                'email_verified_at' => now(),
+            ]);
+
+            if ($user && $user->id) {
+                \Log::info('[Supplier] User account created successfully', [
+                    'user_id' => $user->user_id,
+                    'email' => $user->email,
+                    'role_id' => $user->role_id,
+                    'fname' => $user->fname,
+                    'lname' => $user->lname
+                ]);
+            } else {
+                \Log::error('[Supplier] User creation failed - user object is empty or missing ID');
+                throw new \Exception('User creation returned invalid object');
+            }
+
+            // Send invite email with credentials
+            if ($user && filter_var($user->email, FILTER_VALIDATE_EMAIL)) {
+                $storeName = Auth::user()->store->store_name ?? null;
+                $systemName = config('app.name');
+
+                \Log::info('[Supplier] Attempting to send invite email', ['email' => $user->email]);
+
+                try {
+                    Mail::to($user->email)->send(new SupplierInvite($user, $plainPassword, $storeName, $systemName));
+                    \Log::info('[Supplier] Invite email sent successfully', ['email' => $user->email]);
+                } catch (\Throwable $mailEx) {
+                    $mailError = $mailEx->getMessage();
+                    \Log::error('[Supplier] Mail send failed', [
+                        'email' => $user->email,
+                        'error' => $mailError
+                    ]);
+                }
+            } else {
+                \Log::warning('[Supplier] Cannot send email - invalid email or user object', [
+                    'email' => $validated['email'],
+                    'has_user' => !is_null($user)
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            // Log the full error details
+            \Log::error('[Supplier] FAILED to create user account', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'supplier_code' => $supplierCode,
+                'email' => $validated['email']
+            ]);
+
+            // Delete the supplier if user creation failed
+            if ($supplier && $supplier->id) {
+                \Log::warning('[Supplier] Rolling back supplier creation due to user creation failure', [
+                    'supplier_id' => $supplier->id
+                ]);
+                $supplier->delete();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to create user account for supplier: ' . $e->getMessage()
+                ], 500);
+            }
+        }
+
+        $response = [
             'success' => true,
             'message' => 'Supplier created successfully',
             'data' => $supplier,
-        ], 201);
+        ];
+
+        if ($user && $user->id) {
+            $response['user_created'] = true;
+            $response['user_id'] = $user->id;
+        } else {
+            $response['user_created'] = false;
+            $response['user_error'] = 'User account was not created';
+        }
+
+        if (!empty($mailError)) {
+            $response['mail_error'] = $mailError;
+        }
+
+        \Log::info('[Supplier] Store method completed', [
+            'supplier_id' => $supplier->id,
+            'user_created' => !is_null($user),
+            'mail_sent' => empty($mailError)
+        ]);
+
+        return response()->json($response, 201);
     }
 
     /**
@@ -239,7 +385,7 @@ class SupplierController extends Controller
         $productsQuery = $supplier->products()
             ->with([
                 'category:id,category_name',
-                'inventory' => function($q) use ($branchId) {
+                'inventory' => function ($q) use ($branchId) {
                     if ($branchId) {
                         $q->where('branch_id', $branchId);
                     }
@@ -247,7 +393,7 @@ class SupplierController extends Controller
             ])
             ->select('products.id', 'products.product_name', 'products.sku', 'products.category_id', 'products.cost_price');
 
-        $products = $productsQuery->get()->map(function($product) use ($branchId) {
+        $products = $productsQuery->get()->map(function ($product) use ($branchId) {
             $inv = $branchId ? $product->inventory->first() : null;
             return [
                 'id' => $product->id,
@@ -413,7 +559,7 @@ class SupplierController extends Controller
     public function getPricingHistory(Request $request, int $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
-        
+
         $query = $supplier->priceHistory();
 
         if ($request->has('product_id')) {

@@ -18,6 +18,7 @@ class SalesChatController extends Controller
 
         $query = EcommerceChatThread::query()
             ->with([
+                'store:id,name',
                 'customer:id,fname,lname,email',
                 'messages' => fn ($q) => $q->latest('created_at')->limit(1),
             ]);
@@ -53,6 +54,7 @@ class SalesChatController extends Controller
             return [
                 'id' => $thread->id,
                 'store_id' => $thread->store_id,
+                'store_name' => $thread->store?->name,
                 'customer_user_id' => $thread->customer_user_id,
                 'customer_name' => trim((string) (($thread->customer?->fname ?? '') . ' ' . ($thread->customer?->lname ?? ''))) ?: 'Customer',
                 'customer_email' => $thread->customer?->email,
