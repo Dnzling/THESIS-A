@@ -18,8 +18,10 @@
             <InputIcon class="pi pi-search" />
             <InputText v-model="filters.search" placeholder="Search reference no..." fluid @keyup.enter="loadAdjustments(1)" />
           </IconField>
-          <DatePicker v-model="filters.start_date" dateFormat="yy-mm-dd" placeholder="From Date" fluid
-            @date-select="() => loadAdjustments(1)" />
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
+            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
+          </div>
           <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters" />
         </div>
       </template>
@@ -49,7 +51,8 @@
 
         <DataTable v-else :value="adjustments" paginator :rows="pagination.per_page"
           :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
-          @page="onPageChange" dataKey="id" class="p-datatable-sm" stripedRows>
+          @page="onPageChange" dataKey="id" class="p-datatable-sm p-datatable-fluid" stripedRows
+          @row-click="onRowClick" :rowClass="rowClass" @sort="onSort" :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1">
           <template #empty>
             <div class="text-center py-8">
               <i class="pi pi-inbox text-4xl text-gray-400"></i>
@@ -57,12 +60,21 @@
             </div>
           </template>
   
+          <Column field="adjustment_date" header="Date" sortable style="width: 150px">
+            <template #body="{ data }">
+              <div class="text-xs">
+                <div>{{ formatDate(data.adjustment_date) }}</div>
+                <div class="text-gray-500 text-xs">{{ formatTime(data.adjustment_date) }}</div>
+              </div>
+            </template>
+          </Column>
+
           <Column field="reference_no" header="Reference No." style="width: 15%">
             <template #body="{ data }">
               <span class="font-medium">{{ data.adjustment_number }}</span>
             </template>
           </Column>
-  
+
           <Column field="reason" header="Reason" style="width: 20%">
             <template #body="{ data }">
               {{ capitalizeFirstLetter(data.reason || 'N/A') }}
@@ -102,7 +114,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive } from 'vue'
+import { onMounted, ref, reactive, watch } from 'vue'
+import Calendar from 'primevue/calendar'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
@@ -134,6 +147,21 @@ const pagination = reactive<Pagination>({
   total: 0
 })
 
+const dateRange = ref<[Date | null, Date | null] | null>(null)
+
+const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
+
+const onRowClick = (event: any) => {
+  const id = event?.data?.id
+  if (id) router.push({ name: 'inventory.adjustments.detail', params: { id } })
+}
+
+const onSort = (event: any) => {
+  filters.sort_field = event.sortField || 'adjustment_date'
+  filters.sort_direction = event.sortOrder === 1 ? 'asc' : 'desc'
+  loadAdjustments()
+}
+
 const filters = reactive({
   status: null as string | null,
   search: '',
@@ -163,6 +191,17 @@ const formatDate = (date: string) => {
     day: 'numeric',
     year: 'numeric'
   })
+}
+
+const formatTime = (date: string) => {
+  try {
+    return new Date(date).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch (e) {
+    return ''
+  }
 }
 
 const capitalizeFirstLetter = (value?: string | null) => {
@@ -269,5 +308,15 @@ const resetFilters = () => {
 
 onMounted(() => {
   loadAdjustments()
+})
+
+watch(dateRange, (val) => {
+  if (!val || !Array.isArray(val)) {
+    filters.start_date = null
+    return
+  }
+  const [from] = val
+  filters.start_date = from
+  loadAdjustments(1)
 })
 </script>

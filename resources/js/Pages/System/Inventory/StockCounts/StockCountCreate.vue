@@ -1,5 +1,6 @@
 <template>
   <div class="min-h-screen p-3 md:p-4">
+    <ConfirmDialog />
     <div class="max-w-5xl mx-auto">
       <div class="mb-4">
         <div class="flex items-center gap-4">
@@ -36,22 +37,6 @@
                   />
                   <small class="text-gray-500">Auto-generated from current date and time.</small>
                   <small v-if="errors.reference_number" class="p-error">{{ errors.reference_number[0] }}</small>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
-                    Count Date <span class="text-red-500">*</span>
-                  </label>
-                  <DatePicker
-                    v-model="form.count_date"
-                    placeholder="Select count date"
-                    class="w-full"
-                    showIcon fluid
-                    dateFormat="yy-mm-dd"
-                    :class="{ 'p-invalid': errors.count_date }"
-                    required
-                  />
-                  <small v-if="errors.count_date" class="p-error">{{ errors.count_date[0] }}</small>
                 </div>
 
                 <div>
@@ -272,6 +257,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { confirmDialog } from 'primevue/confirmationservice'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -547,7 +534,7 @@ const goBack = () => {
   router.push({ name: 'inventory.stock-counts.index' })
 }
 
-const submitForm = async () => {
+const doCreateStockCount = async () => {
   saving.value = true
   errors.value = {}
 
@@ -555,11 +542,30 @@ const submitForm = async () => {
     form.reference_number = generateReferenceNumber()
   }
 
+  // Ensure every item has a counted quantity
+  const missingCount = form.items.find(
+    (item: any) =>
+      item.counted_quantity === null ||
+      item.counted_quantity === undefined ||
+      item.counted_quantity === ''
+  )
+  if (missingCount) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Count required',
+      detail: 'Enter counted quantity for all items before submitting.',
+      life: 3000
+    })
+    saving.value = false
+    return
+  }
+
   // Prepare form data
   const submitData = {
     ...form,
     branch_id: currentBranchId.value || undefined,
-    count_date: form.count_date ? form.count_date.toISOString().split('T')[0] : null,
+    // Auto-assign today's date in background
+    count_date: new Date().toISOString().split('T')[0],
     items: form.items.map(item => ({
       product_id: item.product_id,
       variation_id: item.variation_id,
@@ -606,6 +612,22 @@ const submitForm = async () => {
   } finally {
     saving.value = false
   }
+}
+
+const submitForm = async () => {
+  if (!form.items || form.items.length === 0) {
+    toast.add({ severity: 'warn', summary: 'No Items', detail: 'Please add at least one product to count', life: 3000 })
+    return
+  }
+
+  confirmDialog({
+    message: 'Create this stock count? You can edit later if needed.',
+    header: 'Confirm Create',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      await doCreateStockCount()
+    }
+  })
 }
 
 onMounted(() => {

@@ -1,5 +1,6 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
+    <ConfirmDialog />
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.transfers' })" />
       <div>
@@ -268,6 +269,8 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted, watch } from 'vue'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { confirmDialog } from 'primevue/confirmationservice'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
@@ -518,17 +521,7 @@ const validateForm = (): boolean => {
   return isValid
 }
 
-const submitTransfer = async () => {
-  if (!validateForm()) {
-    toast.add({ 
-      severity: 'warn', 
-      summary: 'Validation Error', 
-      detail: 'Please fix validation errors',
-      life: 3000
-    })
-    return
-  }
-
+const doCreateTransfer = async () => {
   saving.value = true
   try {
     const payload = {
@@ -593,6 +586,27 @@ const submitTransfer = async () => {
   } finally {
     saving.value = false
   }
+}
+
+const submitTransfer = async () => {
+  if (!validateForm()) {
+    toast.add({ 
+      severity: 'warn', 
+      summary: 'Validation Error', 
+      detail: 'Please fix validation errors',
+      life: 3000
+    })
+    return
+  }
+
+  confirmDialog({
+    message: 'Submit this transfer now? You can still cancel before manager approval.',
+    header: 'Confirm Submit',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      await doCreateTransfer()
+    }
+  })
 }
 
 const cancel = () => {

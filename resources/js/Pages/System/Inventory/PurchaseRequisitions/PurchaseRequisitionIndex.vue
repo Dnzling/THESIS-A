@@ -78,7 +78,7 @@
           <DataTable
             v-else
             :value="rows"
-            class="p-datatable-sm text-xs"
+            class="p-datatable-sm text-xs p-datatable-fluid"
             responsiveLayout="scroll"
             paginator
             :rows="perPage"
@@ -88,10 +88,15 @@
             :sortField="sortField"
             :sortOrder="sortOrder"
             @sort="onSort"
+            @row-click="onRowClick"
+            :rowClass="rowClass"
           >
             <Column field="created_at" header="Date" sortable style="width: 130px">
               <template #body="{ data }">
-                <span class="text-gray-700">{{ formatDate(data.created_at) }}</span>
+                <div class="text-xs">
+                  <div>{{ formatDate(data.created_at) }}</div>
+                  <div class="text-gray-500 text-xs">{{ formatTime(data.created_at) }}</div>
+                </div>
               </template>
             </Column>
 
@@ -190,6 +195,19 @@ const formatDate = (value: any) => {
   if (!value) return '-'
   const d = new Date(value)
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })
+}
+
+const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
+
+const onRowClick = (event: any) => {
+  const id = event?.data?.id
+  if (id) router.push({ name: 'inventory.requisites.detail', params: { id } })
+}
+
+const formatTime = (value: any) => {
+  if (!value) return '-'
+  const d = new Date(value)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 const load = async () => {

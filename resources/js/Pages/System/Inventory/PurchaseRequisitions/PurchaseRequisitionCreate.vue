@@ -1,5 +1,6 @@
 <template>
   <div class="min-h-screen p-4">
+    <ConfirmDialog />
     <div class="max-w-7xl mx-auto">
       <div class="mb-4 flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
@@ -119,6 +120,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { confirmDialog } from 'primevue/confirmationservice'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
@@ -302,14 +305,8 @@ const onInventoryChange = async (index: number, event: any) => {
   item.selected_supplier_id = getDefaultSupplierIdForRow(item)
 }
 
-const submit = async () => {
+const doCreate = async () => {
   Object.keys(errors).forEach(k => delete errors[k])
-  if (!canManage.value) return
-  if (validItems.value.length === 0) {
-    errors.items = 'Please add at least one valid item with quantity.'
-    return
-  }
-
   saving.value = true
   try {
     const payloadItems = validItems.value.map((item) => {
@@ -351,6 +348,24 @@ const submit = async () => {
   } finally {
     saving.value = false
   }
+}
+
+const submit = async () => {
+  Object.keys(errors).forEach(k => delete errors[k])
+  if (!canManage.value) return
+  if (validItems.value.length === 0) {
+    errors.items = 'Please add at least one valid item with quantity.'
+    return
+  }
+
+  confirmDialog({
+    message: 'Are you sure you want to create this purchase requisition?',
+    header: 'Confirm Create',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      await doCreate()
+    },
+  })
 }
 
 onMounted(async () => {

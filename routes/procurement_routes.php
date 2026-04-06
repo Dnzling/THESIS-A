@@ -24,11 +24,28 @@ use App\Http\Controllers\Api\Procurement\DashboardController as ProcurementDashb
 use App\Http\Controllers\Api\Procurement\Inventory\ProcurementInventoryController;
 use App\Http\Controllers\Api\Procurement\StockOrder\StockOrderRequestController;
 use App\Http\Controllers\Api\ProductCatalog\ProductController;
+use App\Http\Controllers\Api\Procurement\AnalyticsController;
+use App\Http\Controllers\Api\Procurement\BudgetController;
 
 // ============================================
 // PROCUREMENT MANAGEMENT ROUTES
 // ============================================
 Route::prefix('procurement')->group(function () {
+    // Analytics
+    Route::prefix('analytics')->group(function () {
+        Route::get('/dashboard', [AnalyticsController::class, 'getDashboard']);
+        Route::get('/reorder-suggestions', [AnalyticsController::class, 'getReorderSuggestions']);
+        Route::get('/spend', [AnalyticsController::class, 'getSpendAnalytics']);
+        Route::get('/supplier-performance', [AnalyticsController::class, 'getSupplierPerformance']);
+        Route::get('/receiving-accuracy', [AnalyticsController::class, 'getReceivingAccuracy']);
+        Route::get('/budget', [AnalyticsController::class, 'getBudgetTracking']);
+        Route::get('/lead-time', [AnalyticsController::class, 'getLeadTimeAnalysis']);
+    });
+
+    // Dedicated Budget endpoints
+    Route::prefix('budgets')->group(function () {
+        Route::get('/summary', [BudgetController::class, 'summary']);
+    });
 
     // Suppliers
     Route::prefix('suppliers')->middleware('can:procurement.suppliers.view')->group(function () {

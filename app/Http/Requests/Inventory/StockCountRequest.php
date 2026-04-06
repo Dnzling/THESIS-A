@@ -22,7 +22,8 @@ class StockCountRequest extends FormRequest
         return [
             'branch_id' => 'nullable|integer|exists:branches,id',
             'count_type' => 'required|in:full_inventory,partial_count,cycle_count,spot_check',
-            'scheduled_date' => 'required|date|after_or_equal:today',
+            // Allow any date (past or future); UI may still default to today.
+            'scheduled_date' => 'required|date',
             'assigned_to' => 'nullable|integer|exists:employees,id',
             'supervised_by' => 'nullable|integer|exists:employees,id|different:assigned_to',
             'warehouse_section' => 'nullable|string|max:100',
@@ -48,7 +49,7 @@ class StockCountRequest extends FormRequest
             'count_type.required' => 'Count type is required',
             'count_type.in' => 'Invalid count type selected',
             'scheduled_date.required' => 'Scheduled date is required',
-            'scheduled_date.after_or_equal' => 'Scheduled date must be today or in the future',
+            // No future-date restriction
             'assigned_to.required' => 'Employee to assign count to is required',
             'supervised_by.different' => 'Supervisor cannot be the same as the assigned employee',
             'category_ids.*.exists' => 'Selected category does not exist',

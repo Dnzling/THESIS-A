@@ -90,6 +90,92 @@
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
+                <span>Stock Inventory</span>
+              </div>
+              <Button label="View All" text size="small" @click="router.push({ name: 'inventory.items' })" />
+            </div>
+          </template>
+          <template #content>
+            <DataTable
+              :value="inventoryItems"
+              class="p-datatable-sm"
+              responsiveLayout="scroll"
+              :loading="inventoryItemsLoading"
+              rowHover
+              stripedRows
+              size="small"
+            >
+              <template #empty>
+                <div class="text-center py-8">
+                  <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
+                  <p class="text-gray-500">No inventory records found</p>
+                </div>
+              </template>
+
+              <Column field="created_at" header="Date" style="width: 12%">
+                <template #body="{ data }">
+                  {{ formatDate(data.created_at) }}
+                </template>
+              </Column>
+
+              <Column field="product.sku" header="SKU" style="width: 12%">
+                <template #body="{ data }">
+                  {{ data.variation?.variation_sku || data.product?.sku || 'N/A' }}
+                </template>
+              </Column>
+
+              <Column field="product.product_name" header="Item Name" style="width: 22%">
+                <template #body="{ data }">
+                  <div class="text-sm">
+                    <div class="font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
+                    <div class="text-xs text-gray-500">
+                      {{ data.variation?.variation_name || (data.variation_id ? 'Variant' : 'Standard') }}
+                    </div>
+                  </div>
+                </template>
+              </Column>
+
+              <Column header="Variant" style="width: 16%">
+                <template #body="{ data }">
+                  <div v-if="data.variation_id" class="text-xs text-gray-700">
+                    <div>{{ data.variation?.color || '-' }} / {{ data.variation?.size || '-' }}</div>
+                    <div class="text-gray-500">{{ data.variation?.material || '-' }}</div>
+                  </div>
+                  <span v-else class="text-xs text-gray-500">Standard</span>
+                </template>
+              </Column>
+
+              <Column field="quantity_on_hand" header="On Hand" style="width: 10%">
+                <template #body="{ data }">
+                  <span class="font-medium">{{ data.quantity_on_hand }}</span>
+                </template>
+              </Column>
+
+              <Column field="quantity_available" header="Available" style="width: 10%">
+                <template #body="{ data }">
+                  {{ data.quantity_available }}
+                </template>
+              </Column>
+
+              <Column field="reorder_point" header="Reorder Point" style="width: 10%">
+                <template #body="{ data }">
+                  {{ data.reorder_point }}
+                </template>
+              </Column>
+
+              <Column field="stock_status" header="Status" style="width: 12%">
+                <template #body="{ data }">
+                  <Tag :value="getStockLabel(data.stock_status)" :severity="getStockSeverity(data.stock_status)" />
+                </template>
+              </Column>
+            </DataTable>
+          </template>
+        </Card>
+
+        <Card class="lg:col-span-3 hover:shadow-lg transition-shadow cursor-pointer">
+          <template #title>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
                 <span>Recent Transactions</span>
               </div>
               <Button label="View All" text size="small" @click="router.push({ name: 'inventory.transactions' })" />
@@ -203,10 +289,13 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
+import inventoryService from '@/services/inventory.service'
 
 const router = useRouter()
 const toast = useToast()
 const loading = ref(true)
+const inventoryItems = ref<any[]>([])
+const inventoryItemsLoading = ref(false)
 
 const dashboardData = ref({
   inventory: {
@@ -236,11 +325,13 @@ const dashboardData = ref({
 
 const loadDashboard = async () => {
   loading.value = true
+  inventoryItemsLoading.value = true
   try {
     // Load main dashboard data + recent logs
-    const [statsResponse, logsResponse] = await Promise.all([
+    const [statsResponse, logsResponse, inventoryResponse] = await Promise.all([
       axios.get('/api/inventory/dashboard/stats'),
-      axios.get('/api/inventory/activity-logs', { params: { per_page: 5 } })
+      axios.get('/api/inventory/activity-logs', { params: { per_page: 5 } }),
+      inventoryService.getInventoryItems({ page: 1, per_page: 8, sort_by: 'created_at', sort_order: 'desc' })
     ])
 
     if (statsResponse.data?.data) {
@@ -255,6 +346,9 @@ const loadDashboard = async () => {
       dashboardData.value.recent_activity_logs = rows
       dashboardData.value.activity_logs_count = Number(logsResponse.data?.data?.total || rows.length)
     }
+
+    const inventoryRows = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : []
+    inventoryItems.value = inventoryRows
   } catch (error: any) {
     console.error('Failed to load inventory dashboard', error)
     toast.add({
@@ -263,8 +357,10 @@ const loadDashboard = async () => {
       detail: error.response?.data?.message || 'Failed to load dashboard data',
       life: 3000
     })
+    inventoryItems.value = []
   } finally {
     loading.value = false
+    inventoryItemsLoading.value = false
   }
 }
 
@@ -308,6 +404,26 @@ const formatDate = (dateString: string) => {
     month: 'short',
     day: 'numeric'
   })
+}
+
+const getStockLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    in_stock: 'In Stock',
+    low_stock: 'Low Stock',
+    out_of_stock: 'Out of Stock',
+    overstock: 'Overstock'
+  }
+  return labels[status] ?? status
+}
+
+const getStockSeverity = (status: string) => {
+  const severities: Record<string, string> = {
+    in_stock: 'success',
+    low_stock: 'warning',
+    out_of_stock: 'danger',
+    overstock: 'info'
+  }
+  return severities[status] ?? 'secondary'
 }
 
 const formatAction = (action: string) => {

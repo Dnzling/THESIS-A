@@ -18,8 +18,10 @@
           </IconField>
           <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
             placeholder="All Statuses" showClear @change="loadTransfers(1)" fluid  size="small" />
-          <DatePicker v-model="filters.start_date" dateFormat="yy-mm-dd" placeholder="Date Range" selectionMode="range"
-            @date-select="loadTransfers(1)" fluid size="small" showClear showIcon :maxDate="new Date()"  />
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
+            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
+          </div>
           <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters"  size="small" />
         </div>
       </template>
@@ -50,7 +52,8 @@
         <div v-else>
           <DataTable :value="transfers" paginator :rows="pagination.per_page"
             :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
-            @page="onPageChange" dataKey="id" class="p-datatable-sm" stripedRows>
+            @page="onPageChange" dataKey="id" class="p-datatable-sm p-datatable-fluid" stripedRows
+            @row-click="onRowClick" :rowClass="rowClass" @sort="onSort" :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1">
             <template #empty>
               <div class="text-center py-8">
                 <i class="pi pi-inbox text-4xl text-gray-400"></i>
@@ -58,6 +61,15 @@
               </div>
             </template>
     
+            <Column field="transfer_date" header="Date" sortable style="width: 140px">
+              <template #body="{ data }">
+                <div class="text-xs">
+                  <div>{{ formatDate(data.transfer_date) }}</div>
+                  <div class="text-gray-500 text-xs">{{ formatTime(data.transfer_date) }}</div>
+                </div>
+              </template>
+            </Column>
+
             <Column field="reference_no" header="Transfer No." style="width: 15%">
               <template #body="{ data }">
                 <span class="font-medium">{{ data.reference_no }}</span>
@@ -78,11 +90,7 @@
     
             <Column field="quantity" header="Qty" style="width: 10%" />
     
-            <Column field="transfer_date" header="Date" style="width: 12%">
-              <template #body="{ data }">
-                {{ formatDate(data.transfer_date) }}
-              </template>
-            </Column>
+            
     
             <Column field="status" header="Status" style="width: 15%">
               <template #body="{ data }">
@@ -175,7 +183,34 @@ const pagination = reactive<PaginationMeta>({
 const filters = reactive({
   status: null as string | null,
   search: '',
-  start_date: null as Date | null
+  start_date: null as Date | null,
+  sort_field: 'transfer_date',
+  sort_direction: 'desc' as 'asc' | 'desc',
+})
+
+const dateRange = ref<[Date | null, Date | null] | null>(null)
+
+const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
+
+const onRowClick = (event: any) => {
+  const id = event?.data?.id
+  if (id) router.push({ name: 'inventory.transfers.detail', params: { id } })
+}
+
+const onSort = (event: any) => {
+  filters.sort_field = event.sortField || 'transfer_date'
+  filters.sort_direction = event.sortOrder === 1 ? 'asc' : 'desc'
+  loadTransfers()
+}
+
+watch(dateRange, (val) => {
+  if (!val || !Array.isArray(val)) {
+    filters.start_date = null
+    return
+  }
+  const [from] = val
+  filters.start_date = from
+  loadTransfers(1)
 })
 
 const statusOptions = [

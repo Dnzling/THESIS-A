@@ -95,7 +95,7 @@
       <template #title>Monthly Spend vs Budget Forecast</template>
       <template #content>
         <Chart
-          type="bar"
+          type="line"
           :data="monthlyBudgetChartData"
           :options="monthlyBudgetChartOptions"
           class="w-full"
@@ -131,41 +131,6 @@
             </div>
           </div>
         </div>
-      </template>
-    </Card>
-
-    <!-- Budget Summary Table -->
-    <Card>
-      <template #title>Forecast vs Actual</template>
-      <template #content>
-        <DataTable :value="monthlyDataComparison" class="p-datatable-sm">
-          <Column field="month" header="Month" style="width: 15%"></Column>
-          <Column header="Budgeted" style="width: 20%">
-            <template #body="{ data }">
-              ₱ {{ formatNumber(data.budgeted) }}
-            </template>
-          </Column>
-          <Column header="Actual Spend" style="width: 20%">
-            <template #body="{ data }">
-              ₱ {{ formatNumber(data.actual) }}
-            </template>
-          </Column>
-          <Column header="Variance" style="width: 20%">
-            <template #body="{ data }">
-              <span :class="data.variance < 0 ? 'text-green-600' : 'text-red-600'">
-                {{ data.variance < 0 ? '-' : '+' }}₱ {{ formatNumber(Math.abs(data.variance)) }}
-              </span>
-            </template>
-          </Column>
-          <Column header="Status" style="width: 15%">
-            <template #body="{ data }">
-              <Badge
-                :value="data.variance < 0 ? 'Under' : 'Over'"
-                :severity="data.variance < 0 ? 'success' : 'danger'"
-              />
-            </template>
-          </Column>
-        </DataTable>
       </template>
     </Card>
 
@@ -235,23 +200,39 @@ const budgetAlerts = computed(() => {
 })
 
 // Chart Data
-const monthlyBudgetChartData = computed(() => ({
-  labels: monthlyDataComparison.value.map(m => m.month),
-  datasets: [
-    {
-      label: 'Budgeted',
-      data: monthlyDataComparison.value.map(m => m.budgeted),
-      backgroundColor: '#93c5fd',
-      borderColor: '#3b82f6',
-    },
-    {
-      label: 'Actual Spend',
-      data: monthlyDataComparison.value.map(m => m.actual),
-      backgroundColor: '#86efac',
-      borderColor: '#10b981',
-    },
-  ],
-}))
+const monthlyBudgetChartData = computed(() => {
+  const now = new Date()
+  const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const filtered = monthlyDataComparison.value.filter(m => {
+    if (!m?.month) return false
+    const [y, mm] = m.month.split('-').map(Number)
+    const asDate = new Date(y || now.getFullYear(), (mm || 1) - 1, 1)
+    return asDate <= startOfCurrentMonth
+  })
+
+  return {
+    labels: filtered.map(m => m.month),
+    datasets: [
+      {
+        label: 'Budgeted',
+        data: filtered.map(m => m.budgeted),
+        backgroundColor: '#93c5fd33',
+        borderColor: '#3b82f6',
+        fill: true,
+        tension: 0.25,
+      },
+      {
+        label: 'Actual Spend',
+        data: filtered.map(m => m.actual),
+        backgroundColor: '#86efac66',
+        borderColor: '#10b981',
+        fill: true,
+        tension: 0.25,
+      },
+    ],
+  }
+})
 
 const monthlyBudgetChartOptions = {
   maintainAspectRatio: false,
@@ -259,16 +240,27 @@ const monthlyBudgetChartOptions = {
   plugins: {
     legend: { display: true, position: 'bottom' },
   },
+  scales: {
+    y: {
+      beginAtZero: true,
+      ticks: { callback: value => `₱ ${formatNumber(Number(value))}` },
+    },
+    x: {
+      ticks: { autoSkip: false },
+    },
+  },
 }
 
 // Methods
 async function loadBudgetData() {
   loading.value = true
   try {
-    const response = await procurementService.getBudgetTracking()
-    
-    categoryBudgets.value = response.data?.categories || []
-    monthlyDataComparison.value = response.data?.monthly || []
+    const response = await procurementService.getBudgetTracking({ year: new Date().getFullYear() })
+    const payload = response?.data || {}
+    const data = payload.data || payload
+
+    categoryBudgets.value = Array.isArray(data?.categories) ? data.categories : []
+    monthlyDataComparison.value = Array.isArray(data?.monthly) ? data.monthly : []
 
     // Calculate percentages
     categoryBudgets.value = categoryBudgets.value.map(c => ({

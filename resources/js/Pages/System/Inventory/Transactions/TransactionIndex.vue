@@ -77,14 +77,10 @@
               class="w-full"
             />
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">From</label>
-            <DatePicker v-model="filters.from_date" dateFormat="yy-mm-dd" class="w-full" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">To</label>
-            <DatePicker v-model="filters.to_date" dateFormat="yy-mm-dd" class="w-full" />
-          </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
+              <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon :showButtonBar="false" />
+            </div>
         </div>
         <div class="mt-3 flex justify-end">
           <Button size="small" icon="pi pi-filter-slash" label="Reset" severity="secondary" outlined @click="resetFilters" />
@@ -118,7 +114,7 @@
           :value="transactions"
           paginator
           stripedRows
-          class="p-datatable-sm"
+          class="p-datatable-sm p-datatable-fluid"
           :rows="filters.per_page"
           :totalRecords="totalRecords"
           :lazy="true"
@@ -127,6 +123,8 @@
           @sort="onSort"
           :sortField="filters.sort_field"
           :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
+          @row-click="onRowClick"
+          :rowClass="rowClass"
         >
           <Column field="transaction_date" header="Date" sortable style="width: 130px">
             <template #body="{ data }">
@@ -193,7 +191,11 @@
           </Column>
 
           <template #empty>
-            <div class="text-center py-8 text-gray-500">No transactions found.</div>
+            <div class="text-center py-10 text-gray-500">
+              <i class="pi pi-inbox text-3xl block mb-3"></i>
+              <div class="font-semibold">No transactions found</div>
+              <div class="text-sm">Try adjusting filters or date range to view records.</div>
+            </div>
           </template>
         </DataTable>
       </template>
@@ -279,6 +281,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
+import Calendar from 'primevue/calendar'
 
 const router = useRouter()
 const toast = useToast()
@@ -310,6 +313,8 @@ const filters = reactive({
   sort_direction: 'desc' as 'asc' | 'desc',
 })
 
+const dateRange = ref<[Date | null, Date | null] | null>(null)
+
 const transactionTypes = [
   { label: 'Purchase', value: 'purchase' },
   { label: 'Sale', value: 'sale' },
@@ -321,6 +326,12 @@ const transactionTypes = [
 ]
 
 const formatDateParam = (date: Date) => date.toISOString().split('T')[0]
+
+const rowClass = (data: any) => {
+  return {
+    'cursor-pointer hover:bg-gray-50': true,
+  }
+}
 
 const loadTransactions = async () => {
   loading.value = true
@@ -395,6 +406,11 @@ const onSort = (event: any) => {
   filters.sort_field = event.sortField || 'transaction_date'
   filters.sort_direction = event.sortOrder === 1 ? 'asc' : 'desc'
   loadTransactions()
+}
+
+const onRowClick = (event: any) => {
+  const row = event.data
+  if (row?.id) openDetailPage(row.id)
 }
 
 const resetFilters = () => {
@@ -487,6 +503,17 @@ watch(
     }, 250)
   },
 )
+
+watch(dateRange, (val) => {
+  if (!val || !Array.isArray(val)) {
+    filters.from_date = null
+    filters.to_date = null
+    return
+  }
+  const [from, to] = val
+  filters.from_date = from
+  filters.to_date = to
+})
 
 onMounted(() => {
   loadTransactions()

@@ -106,10 +106,23 @@ class AnalyticsController extends Controller
     {
         try {
             $storeId = auth()->user()->store_id;
-            $dateFrom = $request->get('date_from', now()->subYear()->toDateString());
-            $dateTo = $request->get('date_to', now()->toDateString());
+            $year = (int) $request->get('year', now()->year);
+            $dateFrom = now()->setDate($year, 1, 1)->startOfDay();
+            $dateTo = now()->setDate($year, 12, 31)->endOfDay();
 
-            $bySupplier = DB::table('purchase_orders')
+            // Monthly spend + PO count
+            $monthly = DB::table('purchase_orders')
+                ->where('store_id', $storeId)
+                ->whereBetween('created_at', [$dateFrom, $dateTo])
+                ->groupByRaw('DATE_FORMAT(created_at, "%Y-%m")')
+                ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month')
+                ->selectRaw('SUM(total_amount) as amount')
+                ->selectRaw('COUNT(id) as po_count')
+                ->orderBy('month')
+                ->get();
+
+            // Top suppliers by spend
+            $suppliers = DB::table('purchase_orders')
                 ->join('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
                 ->where('purchase_orders.store_id', $storeId)
                 ->whereBetween('purchase_orders.created_at', [$dateFrom, $dateTo])
@@ -117,30 +130,37 @@ class AnalyticsController extends Controller
                 ->select(
                     'suppliers.id',
                     'suppliers.supplier_name',
-                    DB::raw('SUM(purchase_orders.total_amount) as total_spend'),
-                    DB::raw('COUNT(purchase_orders.id) as order_count')
+                    DB::raw('SUM(purchase_orders.total_amount) as amount'),
+                    DB::raw('COUNT(purchase_orders.id) as po_count')
                 )
-                ->orderByDesc('total_spend')
+                ->orderByDesc('amount')
                 ->limit(10)
                 ->get();
 
-            $byMonth = DB::table('purchase_orders')
-                ->where('store_id', $storeId)
-                ->whereBetween('created_at', [$dateFrom, $dateTo])
-                ->groupByRaw('MONTH(created_at)')
+            // Spend by category (using PO items)
+            $categories = DB::table('purchase_order_items')
+                ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+                ->leftJoin('products', 'products.id', '=', 'purchase_order_items.product_id')
+                ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
+                ->where('purchase_orders.store_id', $storeId)
+                ->whereBetween('purchase_orders.created_at', [$dateFrom, $dateTo])
+                ->groupBy('categories.id', 'categories.category_name')
                 ->select(
-                    DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
-                    DB::raw('SUM(total_amount) as total_spend')
+                    DB::raw('COALESCE(categories.category_name, "Uncategorized") as category_name'),
+                    DB::raw('SUM(purchase_order_items.line_total) as spend')
                 )
-                ->orderBy('month', 'asc')
+                ->orderByDesc('spend')
                 ->get();
+
+            $totalSpend = (float) $monthly->sum('amount');
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'by_supplier' => $bySupplier,
-                    'by_month' => $byMonth,
-                    'total_spend' => $bySupplier->sum('total_spend'),
+                    'monthly' => $monthly,
+                    'suppliers' => $suppliers,
+                    'categories' => $categories,
+                    'total_spend' => $totalSpend,
                 ],
             ]);
 
@@ -259,26 +279,81 @@ class AnalyticsController extends Controller
         try {
             $storeId = auth()->user()->store_id;
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
+            $year = (int) $request->get('year', now()->year);
+            $dateFrom = now()->setDate($year, 1, 1)->startOfDay();
+            $dateTo = now()->setDate($year, 12, 31)->endOfDay();
 
-            // This would need a budget table in your system
-            // For now, returning a template structure
-            $budgetTracking = [
-                'annual_budget' => 0, // Get from settings or branch settings
-                'ytd_spend' => PurchaseOrder::where('store_id', $storeId)
-                    ->where('branch_id', $branchId)
-                    ->whereBetween('created_at', [now()->startOfYear(), now()])
-                    ->sum('total_amount'),
-                'monthly_budget' => 0,
-                'current_month_spend' => PurchaseOrder::where('store_id', $storeId)
-                    ->where('branch_id', $branchId)
-                    ->whereBetween('created_at', [now()->startOfMonth(), now()])
-                    ->sum('total_amount'),
-                'budget_status' => 'On Track', // Calculate based on thresholds
+            // Placeholder budgets; replace with real budget tables if available
+            $annualBudget = 0;
+            $monthlyBudget = 0;
+
+            $ytdSpend = PurchaseOrder::where('store_id', $storeId)
+                ->where('branch_id', $branchId)
+                ->whereBetween('created_at', [$dateFrom, $dateTo])
+                ->sum('total_amount');
+
+            $currentMonthSpend = PurchaseOrder::where('store_id', $storeId)
+                ->where('branch_id', $branchId)
+                ->whereBetween('created_at', [now()->startOfMonth(), now()])
+                ->sum('total_amount');
+
+            // Monthly comparison (budget vs actual)
+            $monthly = DB::table('purchase_orders')
+                ->where('store_id', $storeId)
+                ->where('branch_id', $branchId)
+                ->whereBetween('created_at', [$dateFrom, $dateTo])
+                ->groupByRaw('DATE_FORMAT(created_at, "%Y-%m")')
+                ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month')
+                ->selectRaw('SUM(total_amount) as actual')
+                ->orderBy('month')
+                ->get()
+                ->map(function ($row) use ($monthlyBudget) {
+                    return [
+                        'month' => $row->month,
+                        'budgeted' => $monthlyBudget,
+                        'actual' => (float) $row->actual,
+                        'variance' => (float) $row->actual - $monthlyBudget,
+                    ];
+                });
+
+            // Category-level budgets (placeholder)
+            $categories = DB::table('purchase_order_items')
+                ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+                ->leftJoin('products', 'products.id', '=', 'purchase_order_items.product_id')
+                ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
+                ->where('purchase_orders.store_id', $storeId)
+                ->where('purchase_orders.branch_id', $branchId)
+                ->whereBetween('purchase_orders.created_at', [$dateFrom, $dateTo])
+                ->groupBy('categories.id', 'categories.category_name')
+                ->select(
+                    DB::raw('COALESCE(categories.id, 0) as category_id'),
+                    DB::raw('COALESCE(categories.category_name, "Uncategorized") as category_name'),
+                    DB::raw('SUM(purchase_order_items.line_total) as spent')
+                )
+                ->orderByDesc('spent')
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'category_id' => (int) $row->category_id,
+                        'category_name' => $row->category_name,
+                        'budget' => 0, // placeholder until real budgets exist
+                        'spent' => (float) $row->spent,
+                    ];
+                });
+
+            $data = [
+                'annual_budget' => $annualBudget,
+                'monthly_budget' => $monthlyBudget,
+                'ytd_spend' => $ytdSpend,
+                'current_month_spend' => $currentMonthSpend,
+                'budget_status' => 'On Track', // placeholder
+                'categories' => $categories,
+                'monthly' => $monthly,
             ];
 
             return response()->json([
                 'success' => true,
-                'data' => $budgetTracking,
+                'data' => $data,
             ]);
 
         } catch (\Exception $e) {

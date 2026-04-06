@@ -187,7 +187,7 @@ class ProcurementService {
   }
 
   async getBudgetTracking(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/analytics/budget`, { params })
+    const response = await axiosClient.get(`${this.baseUrl}/budgets/summary`, { params })
     return response.data
   }
 

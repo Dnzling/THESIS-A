@@ -9,7 +9,7 @@
           </div>
           <div class="flex items-center gap-2">
             <Button
-              v-if="canCreateStockCounts"
+
               label="Auto Schedule Cycle Counts"
               icon="pi pi-calendar-plus"
               severity="warning" size="small"
@@ -17,7 +17,7 @@
               @click="showScheduleDialog = true"
             />
             <Button
-              v-if="canCreateStockCounts"
+
               label="New Stock Count"
               icon="pi pi-plus" size="small"
               @click="createStockCount"
@@ -97,7 +97,7 @@
           <DataTable
             v-else
             :value="stockCounts"
-            class="p-datatable-sm"
+            class="p-datatable-sm p-datatable-fluid"
             tableStyle="min-width: 50rem"
             :paginator="true"
             :rows="perPage"
@@ -111,31 +111,29 @@
             selectionMode="single"
             dataKey="id"
           >
-            <Column field="reference_number" header="Reference" sortable style="min-width: 150px">
+            <Column field="count_date" header="Date" sortable style="min-width: 180px">
               <template #body="slotProps">
-                <div class="font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
-                     @click="viewStockCount(slotProps.data)">
-                  {{ slotProps.data.reference_number }}
+                <div class="text-sm">
+                  <div class="font-medium">{{ formatDateTime(slotProps.data.count_date) }}</div>
+                  <div class="text-gray-500 text-xs">{{ slotProps.data.reference_number || slotProps.data.count_number || '-' }}</div>
                 </div>
               </template>
             </Column>
-            <Column field="count_date" header="Count Date" sortable style="min-width: 120px">
-              <template #body="slotProps">
-                {{ formatDate(slotProps.data.count_date) }}
-              </template>
-            </Column>
-            <Column field="warehouse.name" header="Warehouse" style="min-width: 150px">
+            <Column field="branch.name" header="Branch" style="min-width: 150px">
               <template #body="slotProps">
                 <div class="text-sm">
-                  <div class="font-medium">{{ slotProps.data.warehouse?.name }}</div>
-                  <div class="text-gray-500">{{ slotProps.data.warehouse?.code }}</div>
+                  <div class="font-medium">{{ slotProps.data.branch?.name || slotProps.data.store_name || '-' }}</div>
+                  <div class="text-gray-500">{{ slotProps.data.branch?.code || slotProps.data.store_code || '' }}</div>
                 </div>
               </template>
             </Column>
             <Column field="status" header="Status" style="min-width: 120px">
               <template #body="slotProps">
                 <Tag
-                  :value="slotProps.data.status"
+                  :value="(slotProps.data.status || '').replace(/_/g, ' ')
+                    .split(' ')
+                    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+                    .join(' ')"
                   :severity="getStatusSeverity(slotProps.data.status)"
                   class="capitalize"
                 />
@@ -161,7 +159,7 @@
                 </div>
               </template>
             </Column>
-            <Column header="Actions" style="min-width: 200px">
+            <Column header="Actions" style="min-width: 120px">
               <template #body="slotProps">
                 <div class="flex gap-2">
                   <Button
@@ -171,33 +169,6 @@
                     outlined
                     v-tooltip.top="'View Details'"
                     @click="viewStockCount(slotProps.data)"
-                  />
-                  <Button
-                    v-if="canUpdateStockCounts"
-                    icon="pi pi-pencil"
-                    severity="warning"
-                    outlined
-                    v-tooltip.top="'Edit'"
-                    @click="editStockCount(slotProps.data)"
-                    :disabled="slotProps.data.status === 'completed'"
-                  />
-                  <Button
-                    v-if="canCompleteStockCounts"
-                    icon="pi pi-check"
-                    severity="success"
-                    outlined
-                    v-tooltip.top="'Complete Count'"
-                    @click="completeStockCount(slotProps.data)"
-                    :disabled="slotProps.data.status === 'completed'"
-                  />
-                  <Button
-                    v-if="canDeleteStockCounts"
-                    icon="pi pi-trash"
-                    severity="danger"
-                    outlined
-                    v-tooltip.top="'Delete'"
-                    @click="confirmDelete(slotProps.data)"
-                    :disabled="slotProps.data.status === 'completed'"
                   />
                 </div>
               </template>
@@ -517,10 +488,26 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString()
 }
 
-const formatDateTime = (dateTime: string) => {
-  if (!dateTime) return '-'
-  return new Date(dateTime).toLocaleString()
+const formatTime = (date?: string) => {
+  if (!date) return ''
+  try {
+    const d = new Date(date)
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
 }
+
+const formatDateTime = (date?: string) => {
+  if (!date) return '-'
+  try {
+    const d = new Date(date)
+    return d.toLocaleString()
+  } catch {
+    return String(date)
+  }
+}
+
 
 const getStatusSeverity = (status: string) => {
   switch (status) {

@@ -1642,11 +1642,11 @@ class PayrollController extends Controller
 
     private function shouldAutoApprovePayrollSubmission(): bool
     {
-        // Auto-approve payroll submission when the same user can both run HR payroll
-        // and execute finance-side payroll approval.
+        // Auto-approve payroll submission when the user has both
+        // HR payroll approval and finance payroll approval permissions.
         return $this->userHasAllPermissionSets([
-            ['hr.payroll.create', 'hr.payroll.edit', 'hr.payroll.manage', 'hr.payroll.approve'],
-            ['finance.payroll.approve', 'hr.payroll.approve'],
+            ['hr.payroll.approve'],
+            ['finance.payroll.approve']
         ]);
     }
 

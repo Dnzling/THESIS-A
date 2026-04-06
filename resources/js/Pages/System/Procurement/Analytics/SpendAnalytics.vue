@@ -168,7 +168,8 @@ const totalPOs = computed(() => {
 
 const topSupplier = computed(() => {
   if (suppliersData.value.length === 0) return { name: '', amount: 0 }
-  return suppliersData.value[0]
+  const s = suppliersData.value[0]
+  return { name: s.supplier_name || s.name || '', amount: s.amount || 0 }
 })
 
 const categoryBreakdown = computed(() => {
@@ -251,10 +252,25 @@ async function loadSpendAnalytics() {
   loading.value = true
   try {
     const response = await procurementService.getSpendAnalytics({ year: selectedYear.value })
-    
-    monthlyData.value = response.data?.monthly || []
-    suppliersData.value = response.data?.suppliers || []
-    categoryData.value = response.data?.categories || []
+    const payload = response?.data || {}
+    const data = payload.data || payload
+
+    const monthlyRaw = Array.isArray(data?.monthly) ? data.monthly : []
+    monthlyData.value = buildMonthlySeries(monthlyRaw, selectedYear.value)
+
+    const suppliersRaw = Array.isArray(data?.suppliers) ? data.suppliers : []
+    suppliersData.value = suppliersRaw.map(s => ({
+      ...s,
+      supplier_name: s.supplier_name || s.name || 'Unknown',
+      amount: Number(s.amount || 0),
+    }))
+
+    const categoriesRaw = Array.isArray(data?.categories) ? data.categories : []
+    categoryData.value = categoriesRaw.map(c => ({
+      ...c,
+      category_name: c.category_name || 'Uncategorized',
+      spend: Number(c.spend || 0),
+    }))
 
     // Generate available years (current year and 2 years back)
     const currentYear = new Date().getFullYear()
@@ -273,6 +289,25 @@ async function loadSpendAnalytics() {
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-PH').format(Math.round(value))
+}
+
+function buildMonthlySeries(raw: any[], year: number) {
+  const map = new Map(raw.map(item => [item.month, {
+    month: item.month,
+    amount: Number(item.amount || 0),
+    po_count: Number(item.po_count || 0),
+  }]))
+
+  const series: { month: string; amount: number; po_count: number }[] = []
+  for (let m = 1; m <= 12; m++) {
+    const label = `${year}-${String(m).padStart(2, '0')}`
+    if (map.has(label)) {
+      series.push(map.get(label)!)
+    } else {
+      series.push({ month: label, amount: 0, po_count: 0 })
+    }
+  }
+  return series
 }
 
 onMounted(() => {
