@@ -201,4 +201,52 @@ abstract class Controller
 
         return false;
     }
+
+    protected function userHasAnyPermissionSet(array $permissionSet, $user = null): bool
+    {
+        if (empty($permissionSet)) {
+            return false;
+        }
+
+        $normalizedUserPermissions = collect($this->getUserPermissions($user))
+            ->map(fn($permission) => $this->normalizePermissionName((string) $permission))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        foreach ($permissionSet as $permission) {
+            $normalizedPermission = $this->normalizePermissionName((string) $permission);
+            if ($normalizedPermission !== '' && in_array($normalizedPermission, $normalizedUserPermissions, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function userHasAllPermissionSets(array $permissionSets, $user = null): bool
+    {
+        if (empty($permissionSets)) {
+            return true;
+        }
+
+        foreach ($permissionSets as $set) {
+            if (!$this->userHasAnyPermissionSet((array) $set, $user)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected function normalizePermissionName(string $permission): string
+    {
+        $normalized = strtolower(trim($permission));
+        if ($normalized === '') {
+            return '';
+        }
+
+        return str_replace('-', '_', $normalized);
+    }
 }

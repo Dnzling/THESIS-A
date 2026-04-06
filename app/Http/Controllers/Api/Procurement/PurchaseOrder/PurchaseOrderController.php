@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 
 class PurchaseOrderController extends Controller
 {
@@ -25,7 +26,7 @@ class PurchaseOrderController extends Controller
      * List all purchase orders
      * GET /api/procurement/ purchase_orders
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request)
     {
         $user = Auth::user();
         $userStoreId = $user ? $user->store_id : null;
@@ -70,16 +71,27 @@ class PurchaseOrderController extends Controller
             'current_page_count' => count($orders->items()),
         ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $orders,
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'data' => $orders,
+            ]);
+        }
+
+        return Inertia::render('System/Procurement/PurchaseOrders/PurchaseOrderIndex', [
+            'orders' => $orders,
+            'filters' => $request->only([
+                'branch_id',
+                'supplier_id',
+                'status',
+                'payment_status',
+                'start_date',
+                'end_date',
+                'per_page',
+            ]),
         ]);
     }
 
-    /**
-     * Show single purchase order
-     * GET /api/procurement/ purchase_orders/{id}
-     */
     public function show(int $id): JsonResponse
     {
         $po = PurchaseOrder::with([
@@ -291,7 +303,7 @@ class PurchaseOrderController extends Controller
                         'variation_id' => $item['variation_id'],
                         'quantity_ordered' => $item['quantity_ordered'],
                         'quantity_received' => 0,
-                        'quantity_cancelled' => 0,
+                        'quantity_rejected' => 0,
                         'unit_cost' => $item['unit_cost'],
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $item['unit_cost'] * $item['quantity_ordered'],
@@ -382,7 +394,7 @@ class PurchaseOrderController extends Controller
                         'variation_id' => $item['variation_id'],
                         'quantity_ordered' => $item['quantity_ordered'],
                         'quantity_received' => 0,
-                        'quantity_cancelled' => 0,
+                        'quantity_rejected' => 0,
                         'unit_cost' => $item['unit_cost'],
                         'discount_percent' => $item['discount_percent'] ?? 0,
                         'line_total' => $item['line_total'],
@@ -980,7 +992,7 @@ class PurchaseOrderController extends Controller
                     'variation_id' => $requisitionItem->variation_id,
                     'quantity_ordered' => $quantity,
                     'quantity_received' => 0,
-                    'quantity_cancelled' => 0,
+                    'quantity_rejected' => 0,
                     'allocated_quantity' => $quantity,
                     'unit_cost' => $unitCost,
                     'discount_percent' => 0,

@@ -297,6 +297,7 @@ const reportForm = ref({
 const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
+const productHasVariations = computed(() => Array.isArray(product.value?.variations) && product.value.variations.length > 0)
 const selectedModel3D = computed(() => selectedVariation.value?.model_3d || product.value?.model_3d || null)
 const galleryImages = computed<string[]>(() => {
   const images = product.value?.images
@@ -447,6 +448,10 @@ async function loadStoreInfo() {
 
 async function addToCart() {
   if (!product.value?.id) return
+  if (productHasVariations.value && !selectedVariationId.value) {
+    showAlert({ severity: 'warn', summary: 'Variation required', detail: 'Please select a variation first.' })
+    return
+  }
   try {
     await ecommerceService.addToCart({
       product_id: Number(product.value.id),
@@ -463,6 +468,10 @@ async function addToCart() {
 
 async function buyNow() {
   if (!product.value?.id) return
+  if (productHasVariations.value && !selectedVariationId.value) {
+    showAlert({ severity: 'warn', summary: 'Variation required', detail: 'Please select a variation first.' })
+    return
+  }
   try {
     const confirmed = await confirmAlert({
       title: 'Proceed to checkout?',

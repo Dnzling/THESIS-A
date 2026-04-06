@@ -737,6 +737,48 @@ async function onCityChange() {
   await fetchBarangays(newAddressSelection.cityId)
 }
 
+const buildAddressForGeocoding = (): string => {
+  const parts = [
+    newAddress.address_line,
+    newAddress.barangay,
+    newAddress.city,
+    newAddress.province,
+    'Philippines',
+  ]
+
+  return parts
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(', ')
+}
+
+const geocodeAddressText = async (addressText: string): Promise<{ latitude: number; longitude: number } | null> => {
+  const query = String(addressText || '').trim()
+  if (!query) return null
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`,
+      {
+        headers: { Accept: 'application/json' },
+      },
+    )
+
+    if (!response.ok) return null
+    const results = await response.json()
+    if (!Array.isArray(results) || results.length === 0) return null
+
+    const first = results[0]
+    const latitude = Number(first?.lat)
+    const longitude = Number(first?.lon)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+    return { latitude, longitude }
+  } catch {
+    return null
+  }
+}
+
 async function startEditAddress(address: AddressTemplate) {
   isEditingAddress.value = true
   editingAddressId.value = address.id
@@ -772,9 +814,24 @@ async function startEditAddress(address: AddressTemplate) {
 }
 
 async function fetchCoordinates() {
+  const fallbackAddress = buildAddressForGeocoding()
+
   if (!navigator.geolocation) {
+    const geocoded = await geocodeAddressText(fallbackAddress)
+    if (geocoded) {
+      customerLatitude.value = geocoded.latitude
+      customerLongitude.value = geocoded.longitude
+      newAddress.latitude = geocoded.latitude
+      newAddress.longitude = geocoded.longitude
+      coordsDialog.success = true
+      coordsDialog.message = 'Coordinates were resolved from your shipping address.'
+      coordsDialog.visible = true
+      estimateShippingFee()
+      return
+    }
+
     coordsDialog.success = false
-    coordsDialog.message = 'Geolocation is not supported by this device or browser.'
+    coordsDialog.message = 'Geolocation is not supported by this device or browser, and address geocoding failed. Complete your address and try again.'
     coordsDialog.visible = true
     return
   }
@@ -792,9 +849,26 @@ async function fetchCoordinates() {
       estimateShippingFee()
       fetchingCoordinates.value = false
     },
-    (error) => {
+    async (error) => {
+      const geocoded = await geocodeAddressText(fallbackAddress)
+      if (geocoded) {
+        customerLatitude.value = geocoded.latitude
+        customerLongitude.value = geocoded.longitude
+        newAddress.latitude = geocoded.latitude
+        newAddress.longitude = geocoded.longitude
+        coordsDialog.success = true
+        coordsDialog.message = 'Coordinates fetched successfully from your shipping address.'
+        coordsDialog.visible = true
+        estimateShippingFee()
+        fetchingCoordinates.value = false
+        return
+      }
+
+      const denied = error?.code === 1
       coordsDialog.success = false
-      coordsDialog.message = error?.message || 'Unable to fetch coordinates.'
+      coordsDialog.message = denied
+        ? 'Location permission denied. Enable location access in your browser site settings, or complete your full address and try again.'
+        : (error?.message || 'Unable to fetch coordinates.')
       coordsDialog.visible = true
       fetchingCoordinates.value = false
     },
@@ -819,6 +893,19 @@ async function placeOrder() {
 
   placing.value = true
   try {
+    if (
+      customerLatitude.value == null &&
+      customerLongitude.value == null &&
+      selectedAddress.value
+    ) {
+      const selectedAddressText = `${selectedAddress.value.address_line}, ${selectedAddress.value.barangay}, ${selectedAddress.value.city}, ${selectedAddress.value.province}, Philippines`
+      const geocoded = await geocodeAddressText(selectedAddressText)
+      if (geocoded) {
+        customerLatitude.value = geocoded.latitude
+        customerLongitude.value = geocoded.longitude
+      }
+    }
+
     const payload = {
       shipping_name: selectedAddress.value.full_name,
       shipping_phone: selectedAddress.value.contact_number,

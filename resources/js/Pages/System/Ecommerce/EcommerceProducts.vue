@@ -65,6 +65,13 @@
             <h2 class="text-xl md:text-2xl font-bold text-slate-900">Featured Products</h2>
             <p class="text-slate-500 text-sm">Showing {{ filteredProducts.length }} items</p>
           </div>
+          <Button
+            label="View Trending"
+            icon="pi pi-chart-line"
+            severity="warning"
+            outlined
+            @click="goTrending"
+          />
         </div>
 
         <div class="mt-3 mb-4 rounded-2xl border border-slate-200 bg-white/95 backdrop-blur p-3 shadow-sm">
@@ -322,6 +329,10 @@ function applyFilters() {
 
 function goProduct(productId: number) {
   router.push({ name: 'ecommerce.product', params: { id: productId } })
+}
+
+function goTrending() {
+  router.push({ name: 'ecommerce.trending.view' })
 }
 
 async function loadProducts() {

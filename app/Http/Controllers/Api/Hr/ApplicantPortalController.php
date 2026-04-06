@@ -152,6 +152,60 @@ class ApplicantPortalController extends Controller
             'notes' => 'Application submitted via job portal',
         ]);
 
+        $recipientIds = [];
+        $storeId = (int) ($posting->store_id ?? 0);
+
+        if ($storeId > 0) {
+            $recipientIds = $this->notifyUsersByPermissions(
+                $storeId,
+                [
+                    'hr.recuitment',
+                    'hr.recuitment.detail',
+                    'hr.recuitment.applicants',
+                    'hr.screening-pipeline',
+                    'hr.job-applications.review',
+                ],
+                [
+                    'store_id' => $storeId,
+                    'module' => 'hr',
+                    'entity_type' => 'job_application',
+                    'entity_id' => $application->id,
+                    'action' => 'created',
+                    'title' => 'New job applicant received',
+                    'message' => "{$application->first_name} {$application->last_name} applied for {$posting->title}.",
+                    'severity' => 'info',
+                    'link' => "/hr/recuitment/postings/{$posting->id}/applicants",
+                    'data' => [
+                        'application_id' => $application->id,
+                        'job_posting_id' => $posting->id,
+                        'job_title' => $posting->title,
+                        'applicant_name' => trim("{$application->first_name} {$application->last_name}"),
+                    ],
+                ],
+                [$user->id]
+            );
+        }
+
+        if (empty($recipientIds) && (int) ($posting->created_by ?? 0) > 0 && (int) $posting->created_by !== (int) $user->id) {
+            $this->notify((int) $posting->created_by, [
+                'store_id' => $posting->store_id,
+                'module' => 'hr',
+                'entity_type' => 'job_application',
+                'entity_id' => $application->id,
+                'action' => 'created',
+                'title' => 'New job applicant received',
+                'message' => "{$application->first_name} {$application->last_name} applied for {$posting->title}.",
+                'severity' => 'info',
+                'link' => "/hr/recuitment/postings/{$posting->id}/applicants",
+                'data' => [
+                    'application_id' => $application->id,
+                    'job_posting_id' => $posting->id,
+                    'job_title' => $posting->title,
+                    'applicant_name' => trim("{$application->first_name} {$application->last_name}"),
+                ],
+            ]);
+        }
+
         if ($useProfile && $profile) {
             foreach ($profile->documents as $document) {
                 $newPath = 'job-applications/' . $application->id . '/' . basename($document->file_path);

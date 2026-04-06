@@ -9,3 +9,5 @@
 .htaccess
 /public/.htaccess
 *.zip
+.gradle
+capacitor.config.json

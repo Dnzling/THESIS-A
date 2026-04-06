@@ -132,24 +132,24 @@ Route::prefix('inventory')->group(function () {
 
     // Purchase Requisitions (Branch-scoped for Inventory) - replaces legacy stock-order-requests
     Route::prefix('requisitions')->group(function () {
-        Route::get('/', [InventoryPurchaseRequisitionController::class, 'index'])->middleware('can:inventory.requisites.view');
-        Route::post('/', [InventoryPurchaseRequisitionController::class, 'store'])->middleware('can:inventory.requisites.manage');
-        Route::get('/{id}', [InventoryPurchaseRequisitionController::class, 'show'])->middleware('can:inventory.requisites.view');
-        Route::post('/{id}/submit', [InventoryPurchaseRequisitionController::class, 'submit'])->middleware('can:inventory.requisites.manage');
-        Route::post('/{id}/approve', [InventoryPurchaseRequisitionController::class, 'approve'])->middleware('can:inventory.requisites.approve');
-        Route::post('/{id}/reject', [InventoryPurchaseRequisitionController::class, 'reject'])->middleware('can:inventory.requisites.approve');
-        Route::post('/{id}/cancel', [InventoryPurchaseRequisitionController::class, 'cancel'])->middleware('can:inventory.requisites.manage');
+        Route::get('/', [InventoryPurchaseRequisitionController::class, 'index']);
+        Route::post('/', [InventoryPurchaseRequisitionController::class, 'store']);
+        Route::get('/{id}', [InventoryPurchaseRequisitionController::class, 'show']);
+        Route::post('/{id}/submit', [InventoryPurchaseRequisitionController::class, 'submit']);
+        Route::post('/{id}/approve', [InventoryPurchaseRequisitionController::class, 'approve']);
+        Route::post('/{id}/reject', [InventoryPurchaseRequisitionController::class, 'reject']);
+        Route::post('/{id}/cancel', [InventoryPurchaseRequisitionController::class, 'cancel']);
     });
 
     // Backward-compatible alias (deprecated): /stock-order-requests -> /requisitions
     Route::prefix('stock-order-requests')->group(function () {
-        Route::get('/', [InventoryPurchaseRequisitionController::class, 'index'])->middleware('can:inventory.requisites.view');
-        Route::post('/', [InventoryPurchaseRequisitionController::class, 'store'])->middleware('can:inventory.requisites.manage');
-        Route::get('/{id}', [InventoryPurchaseRequisitionController::class, 'show'])->middleware('can:inventory.requisites.view');
-        Route::post('/{id}/submit', [InventoryPurchaseRequisitionController::class, 'submit'])->middleware('can:inventory.requisites.manage');
-        Route::post('/{id}/approve', [InventoryPurchaseRequisitionController::class, 'approve'])->middleware('can:inventory.requisites.approve');
-        Route::post('/{id}/reject', [InventoryPurchaseRequisitionController::class, 'reject'])->middleware('can:inventory.requisites.approve');
-        Route::post('/{id}/cancel', [InventoryPurchaseRequisitionController::class, 'cancel'])->middleware('can:inventory.requisites.manage');
+        Route::get('/', [InventoryPurchaseRequisitionController::class, 'index']);
+        Route::post('/', [InventoryPurchaseRequisitionController::class, 'store']);
+        Route::get('/{id}', [InventoryPurchaseRequisitionController::class, 'show']);
+        Route::post('/{id}/submit', [InventoryPurchaseRequisitionController::class, 'submit']);
+        Route::post('/{id}/approve', [InventoryPurchaseRequisitionController::class, 'approve']);
+        Route::post('/{id}/reject', [InventoryPurchaseRequisitionController::class, 'reject']);
+        Route::post('/{id}/cancel', [InventoryPurchaseRequisitionController::class, 'cancel']);
     });
 
     // Stock Transfers

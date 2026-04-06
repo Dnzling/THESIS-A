@@ -789,6 +789,18 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $requiresVariationSelection = ProductVariation::query()
+            ->where('product_id', $product->id)
+            ->where('is_active', true)
+            ->exists();
+
+        if ($requiresVariationSelection && empty($validated['variation_id'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please select a variation before adding this product to cart.',
+            ], 422);
+        }
+
         $variation = null;
         if (!empty($validated['variation_id'])) {
             $variation = ProductVariation::query()
@@ -1209,6 +1221,24 @@ class EcommerceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Cart is empty.',
+            ], 422);
+        }
+
+        $invalidVariationItem = $itemsForCheckout->first(function ($item) {
+            if (!is_null($item->variation_id)) {
+                return false;
+            }
+
+            return ProductVariation::query()
+                ->where('product_id', (int) $item->product_id)
+                ->where('is_active', true)
+                ->exists();
+        });
+
+        if ($invalidVariationItem) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please select a variation for all products that have variations before checkout.',
             ], 422);
         }
 
@@ -1780,6 +1810,120 @@ class EcommerceController extends Controller
                 ],
             ];
         })->sortByDesc('score')->values();
+
+        $perPage = (int) ($validated['per_page'] ?? 12);
+        $page = max((int) $request->input('page', 1), 1);
+        $offset = ($page - 1) * $perPage;
+        $paginated = $scored->slice($offset, $perPage)->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $scored->count(),
+                'last_page' => (int) ceil(max($scored->count(), 1) / $perPage),
+                'data' => $paginated,
+            ],
+        ]);
+    }
+
+    public function dssTrendingByMovement(Request $request)
+    {
+        $storeId = $this->resolveStoreId($request);
+
+        $validated = $request->validate([
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'search' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $query = Product::query()
+            ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
+            ->where('store_id', $storeId)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                $inventoryQuery->where('store_id', $storeId)
+                    ->where('quantity_available', '>', 0)
+                    ->where('stock_status', '!=', 'out_of_stock');
+            });
+
+        if (!empty($validated['category_id'])) {
+            $query->where('category_id', (int) $validated['category_id']);
+        }
+
+        if (!empty($validated['search'])) {
+            $search = trim((string) $validated['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('product_name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%");
+            });
+        }
+
+        if (Schema::hasTable('ecommerce_order_items')) {
+            $query
+                ->withSum(['items as sold_all_time' => function ($itemQuery) use ($storeId) {
+                    $itemQuery->whereHas('order', function ($orderQuery) use ($storeId) {
+                        $orderQuery->where('store_id', $storeId)
+                            ->whereNotIn('status', ['cancelled', 'canceled']);
+                    });
+                }], 'quantity')
+                ->withSum(['items as sold_last_30_days' => function ($itemQuery) use ($storeId) {
+                    $itemQuery->whereHas('order', function ($orderQuery) use ($storeId) {
+                        $orderQuery->where('store_id', $storeId)
+                            ->whereNotIn('status', ['cancelled', 'canceled'])
+                            ->where('created_at', '>=', now()->subDays(30));
+                    });
+                }], 'quantity')
+                ->withSum(['items as sold_last_7_days' => function ($itemQuery) use ($storeId) {
+                    $itemQuery->whereHas('order', function ($orderQuery) use ($storeId) {
+                        $orderQuery->where('store_id', $storeId)
+                            ->whereNotIn('status', ['cancelled', 'canceled'])
+                            ->where('created_at', '>=', now()->subDays(7));
+                    });
+                }], 'quantity');
+        }
+
+        $products = $query->get();
+
+        $scored = $products->map(function (Product $product) use ($storeId) {
+            $inventory = BranchInventory::query()
+                ->where('store_id', $storeId)
+                ->where('product_id', $product->id)
+                ->orderByDesc('quantity_available')
+                ->first();
+
+            $soldAllTime = (int) ($product->sold_all_time ?? 0);
+            $soldLast30 = (int) ($product->sold_last_30_days ?? 0);
+            $soldLast7 = (int) ($product->sold_last_7_days ?? 0);
+            $soldOlderThan30 = max(0, $soldAllTime - $soldLast30);
+            $soldFrom8To30 = max(0, $soldLast30 - $soldLast7);
+
+            // Weighted movement score, favoring recent product movement.
+            $movementScore = round(
+                ($soldLast7 * 3.0) +
+                ($soldFrom8To30 * 1.5) +
+                ($soldOlderThan30 * 0.3),
+                2
+            );
+
+            return [
+                'id' => $product->id,
+                'sku' => $product->sku,
+                'product_name' => $product->product_name,
+                'category' => $product->category?->category_name,
+                'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
+                'image' => $this->toAssetUrl($this->selectBestProductImage($product)?->file_path),
+                'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
+                'movement_score' => $movementScore,
+                'movement' => [
+                    'sold_last_7_days' => $soldLast7,
+                    'sold_last_30_days' => $soldLast30,
+                    'sold_all_time' => $soldAllTime,
+                ],
+            ];
+        })->sortByDesc('movement_score')->values();
 
         $perPage = (int) ($validated['per_page'] ?? 12);
         $page = max((int) $request->input('page', 1), 1);

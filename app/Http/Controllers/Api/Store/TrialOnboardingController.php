@@ -19,6 +19,17 @@ class TrialOnboardingController extends Controller
         'hr',
     ];
 
+    private const ALL_STORE_MODULES = [
+        'inventory',
+        'procurement',
+        'sales',
+        'hr',
+        'logistics',
+        'finance',
+        'supplier',
+        'ecommerce',
+    ];
+
     public function show(Request $request)
     {
         $profile = TrialOnboardingProfile::where('user_id', $request->user()->id)->first();
@@ -41,7 +52,10 @@ class TrialOnboardingController extends Controller
             'first_team' => 'required|string|max:100',
         ]);
 
-        $fixedModules = self::FIXED_TRIAL_MODULES;
+        $selectedPlan = strtolower((string) ($validated['plan'] ?? 'simple'));
+        $fixedModules = $selectedPlan === 'unlimited'
+            ? self::ALL_STORE_MODULES
+            : self::FIXED_TRIAL_MODULES;
         $employeeRange = $validated['employee_range'] ?? '1-5';
 
         $profile = null;

@@ -4,6 +4,7 @@
 namespace App\Http\Controllers\Api\Procurement\Supplier;
 
 use App\Http\Controllers\Controller;
+use App\Models\Hr\Employee;
 use App\Models\Procurement\Supplier\SupplierContract;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -71,6 +72,18 @@ class SupplierContractController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        $employeeId = Employee::query()
+            ->where('user_id', (int) auth()->id())
+            ->value('id');
+
+        if (!$employeeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to create contract: your user account is not linked to an employee profile.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
             'contract_title' => 'required|string|max:255',
@@ -90,10 +103,22 @@ class SupplierContractController extends Controller
         // Generate contract number using datetime for uniqueness
         $contractNumber = 'CON-' . date('YmdHis') . '-' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
 
+        $supplierBelongsToStore = \App\Models\Procurement\Supplier\Supplier::query()
+            ->where('id', (int) $validated['supplier_id'])
+            ->where('store_id', $storeId)
+            ->exists();
+
+        if (!$supplierBelongsToStore) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Selected supplier does not belong to your store.',
+            ], 422);
+        }
+
         $validated['contract_number'] = $contractNumber;
-        $validated['store_id'] = auth()->user()->store_id;
+        $validated['store_id'] = $storeId;
         $validated['status'] = 'draft';
-        $validated['created_by'] = auth()->id();
+        $validated['created_by'] = (int) $employeeId;
 
         $contract = SupplierContract::create($validated);
 

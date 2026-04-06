@@ -20,6 +20,7 @@ use App\Models\Customer\Customer;
 use App\Models\Hr\ShiftSchedule;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
+use App\Models\Core\Role;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -85,6 +86,32 @@ class AuthController extends Controller
                         'store_id' => $store->id,
                         'branch_id' => $branch->id,
                     ]);
+                }
+
+                if ($user->role?->name === 'store_admin') {
+                    $user->refresh();
+                    $storeId = (int) ($user->store_id ?? 0);
+                    $branchId = (int) ($user->branch_id ?? 0);
+
+                    if ($storeId > 0 && $branchId > 0) {
+                        $storeAdminRoleId = (int) (Role::query()->where('name', 'store_admin')->value('id') ?? $user->role_id);
+
+                        Employee::query()->firstOrCreate(
+                            ['user_id' => $user->id],
+                            [
+                                'store_id' => $storeId,
+                                'branch_id' => $branchId,
+                                'role_id' => $storeAdminRoleId,
+                                'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                                'fname' => (string) $user->fname,
+                                'lname' => (string) $user->lname,
+                                'hire_date' => now()->toDateString(),
+                                'department' => 'Management',
+                                'employment_type' => 'full_time',
+                                'status' => 'active',
+                            ]
+                        );
+                    }
                 }
 
                 return $user;

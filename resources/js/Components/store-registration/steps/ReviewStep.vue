@@ -13,10 +13,6 @@
           <InfoItem label="Email" :value="formData.email" class="md:col-span-2" />
           <!-- Address part -->
           <InfoItem label="Business Address" :value="formattedAddress" class="md:col-span-2" />
-  
-          <!-- Coordinates (if you want them separate) -->
-          <InfoItem v-if="formData.businessAddress?.latitude || formData.businessAddress?.longitude" label="Coordinates"
-            :value="formattedCoordinates" class="md:col-span-2" />
         </div>
       </ReviewSection>  
       <!-- Business Documents Review -->
@@ -145,16 +141,6 @@ const formattedAddress = computed(() => {
   return parts.join(', ') || 'Not provided'
 })
 
-const formattedCoordinates = computed(() => {
-  const addr = localForm.value.businessAddress
-  if (!addr) return 'Not set'
-
-  if (addr.latitude && addr.longitude) {
-    return `${addr.latitude}, ${addr.longitude}`
-  }
-  return 'Not set'
-})
-
 const parseNullableNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') {
     return null
@@ -238,7 +224,7 @@ const submitRegistration = async () => {
       contact_person: getContactPersonName()
     }
 
-    const storeResponse = await axios.post('api/stores/register', payload, {
+    const storeResponse = await axios.post('/api/stores/register', payload, {
       headers: {
         'Authorization': `Bearer ${authStore.token}`,
         'Content-Type': 'application/json'
@@ -254,7 +240,7 @@ const submitRegistration = async () => {
 
     // Make API call
     const verifyResponse = await axios.post(
-      `api/stores/${storeId.value}/verification/submit`,
+      `/api/stores/${storeId.value}/verification/submit`,
       formData,
       {
         headers: {
@@ -325,7 +311,6 @@ const submitRegistration = async () => {
   }
 }
 </script>
-
 
 
 

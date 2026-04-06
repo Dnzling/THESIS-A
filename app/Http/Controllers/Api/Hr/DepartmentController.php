@@ -87,10 +87,15 @@ class DepartmentController extends Controller
             ], 422);
         }
 
+        $departmentCode = $request->code;
+        if (empty($departmentCode)) {
+            $departmentCode = $this->generateDepartmentCode((string) $request->name, (int) $storeId);
+        }
+
         $department = Department::create([
             'store_id' => $storeId,
             'name' => $request->name,
-            'code' => $request->code,
+            'code' => $departmentCode,
             'location' => $request->location,
             'description' => $request->description,
             'created_by' => $user->id,
@@ -342,5 +347,45 @@ class DepartmentController extends Controller
             return 'inactive';
         }
         return strtolower($status);
+    }
+
+    private function generateDepartmentCode(string $name, int $storeId): string
+    {
+        $prefix = $this->departmentCodePrefixFromName($name);
+        $code = $prefix;
+        $counter = 1;
+
+        while (
+            Department::where('store_id', $storeId)
+                ->where('code', $code)
+                ->exists()
+        ) {
+            $code = "{$prefix}-{$counter}";
+            $counter++;
+        }
+
+        return substr($code, 0, 50);
+    }
+
+    private function departmentCodePrefixFromName(string $name): string
+    {
+        $clean = preg_replace('/[^A-Za-z0-9 ]/', ' ', strtoupper(trim($name))) ?? '';
+        $words = array_values(array_filter(preg_split('/\s+/', $clean) ?: []));
+
+        if (empty($words)) {
+            return 'DEPT';
+        }
+
+        $initials = '';
+        foreach ($words as $word) {
+            $initials .= substr($word, 0, 1);
+        }
+
+        if (strlen($initials) < 3) {
+            $joined = implode('', $words);
+            $initials = substr($joined, 0, 6);
+        }
+
+        return substr($initials, 0, 8);
     }
 }

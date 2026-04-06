@@ -67,6 +67,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::get('/stores/{storeId}/products', [EcommerceController::class, 'storeProducts']);
     Route::get('/stores/{storeId}/reviews', [EcommerceController::class, 'storeReviews']);
     Route::post('/dss/recommendations', [EcommerceController::class, 'dssRecommendations']);
+    Route::get('/dss/trending-movement', [EcommerceController::class, 'dssTrendingByMovement']);
 });
 
 // Public 3D/image asset serve route (must stay outside auth middleware)
@@ -320,6 +321,10 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('pending-verification', [StoreVerificationController::class, 'getPendingVerifications']);
     Route::get('store-verifications', [StoreVerificationController::class, 'index']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
+    Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
+    Route::get('store-verification/{verification}/documents/{document}/download', [StoreVerificationController::class, 'downloadDocument']);
+    Route::post('store-verification/{verification}/documents/{document}/auto-validate', [StoreVerificationController::class, 'autoValidateDocument']);
+    Route::post('store-verification/{verification}/documents/auto-validate-all', [StoreVerificationController::class, 'autoValidateAllDocuments']);
     Route::prefix('stores')->controller(StoreController::class)->group(function () {
         Route::get('hasStore', 'hasStore');
         Route::post('register', 'store'); // Store registration

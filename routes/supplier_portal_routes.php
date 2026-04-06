@@ -73,4 +73,6 @@ Route::prefix('supplier-verifications')->middleware(['auth:sanctum', 'role:super
     Route::post('/{id}/reject', [SupplierVerificationController::class, 'reject']);
     Route::post('/documents/{id}/review', [SupplierVerificationController::class, 'reviewDocument']);
     Route::get('/documents/{id}/download', [SupplierVerificationController::class, 'downloadDocument']);
+    Route::post('/documents/{id}/auto-validate', [SupplierVerificationController::class, 'autoValidateDocument']);
+    Route::post('/{id}/auto-validate-all', [SupplierVerificationController::class, 'autoValidateAllDocuments']);
 });

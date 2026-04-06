@@ -91,7 +91,7 @@
             <!-- Icon -->
             <div class="flex flex-col gap-2">
               <label for="icon_path" class="text-sm font-semibold text-gray-700">
-                Icon (PrimeIcons class)
+                Icon (PrimeIconssadasdsdad class)
               </label>
               <div class="flex gap-2">
                 <InputText 

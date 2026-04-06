@@ -111,6 +111,14 @@ class SupplierPaymentController extends Controller
             'account_number' => $validated['account_number'] ?? null,
             'notes' => $validated['notes'] ?? null,
         ]);
+        $autoApprove = $this->userHasAllPermissionSets([
+            ['procurement.payments.manage'],
+            ['procurement.payments.approve'],
+        ]);
+
+        if ($autoApprove && $payment->status === 'pending_approval') {
+            $payment->approve(auth()->id());
+        }
 
         $financeService = new FinanceExpenseService();
         $requiresFinance = $financeService->requiresFinanceApproval($po->store_id, (float) $validated['payment_amount']);
@@ -133,7 +141,9 @@ class SupplierPaymentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Payment created successfully',
+            'message' => $autoApprove
+                ? 'Payment created and auto-approved'
+                : 'Payment created successfully',
             'data' => $payment->load('supplier'),
         ], 201);
     }

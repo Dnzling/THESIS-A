@@ -54,18 +54,11 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Barangay *</label>
-          <div class="flex gap-2">
-            <Select v-model="localForm.businessAddress.barangayCode" :options="barangayOptions" optionLabel="label"
-              optionValue="value" placeholder="Select barangay" fluid :loading="isBarangaysLoading"
-              :disabled="!localForm.businessAddress.cityId || isBarangaysLoading" />
-            <Button type="button" class="h-11" icon="pi pi-map-marker" severity="contrast" :loading="isLocating"
-              :disabled="isLocating" @click="useCurrentLocation" />
-          </div>
+          <Select v-model="localForm.businessAddress.barangayCode" :options="barangayOptions" optionLabel="label"
+            optionValue="value" placeholder="Select barangay" fluid :loading="isBarangaysLoading"
+            :disabled="!localForm.businessAddress.cityId || isBarangaysLoading" />
         </div>
-  
-  
-        <small v-if="locationError" class="text-red-500 block -mt-3">{{ locationError }}</small>
-  
+
         <!-- Business Address -->
         <div class="md:col-span-2">
           <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -113,8 +106,6 @@ const emit = defineEmits<Emits>()
 
 // Local form data - only update from parent on component creation
 const localForm = ref({ ...props.formData })
-const isLocating = ref(false)
-const locationError = ref('')
 const provinceId = ref('')
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
@@ -210,43 +201,6 @@ const fetchBarangays = async (cityId: string) => {
   } finally {
     isBarangaysLoading.value = false
   }
-}
-
-const useCurrentLocation = () => {
-  locationError.value = ''
-
-  if (!navigator.geolocation) {
-    locationError.value = 'Geolocation is not supported by this browser.'
-    return
-  }
-
-  isLocating.value = true
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      if (!localForm.value.businessAddress) {
-        localForm.value.businessAddress = {}
-      }
-
-      localForm.value.businessAddress.latitude = Number(position.coords.latitude.toFixed(6))
-      localForm.value.businessAddress.longitude = Number(position.coords.longitude.toFixed(6))
-      isLocating.value = false
-    },
-    (error) => {
-      isLocating.value = false
-      if (error.code === error.PERMISSION_DENIED) {
-        locationError.value = 'Location access denied. Please allow location permission.'
-      } else if (error.code === error.TIMEOUT) {
-        locationError.value = 'Location request timed out. Please try again.'
-      } else {
-        locationError.value = 'Unable to fetch location right now.'
-      }
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0,
-    }
-  )
 }
 
 watch(provinceId, async (newProvince) => {

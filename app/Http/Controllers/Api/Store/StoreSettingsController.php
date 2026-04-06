@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Employee;
+use App\Models\Admin\SubscriptionPlan;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use App\Models\Store\Branch;
@@ -18,6 +19,32 @@ class StoreSettingsController extends Controller
         $user = $request->user();
         $store = $this->resolveStoreForUser($user);
         $profile = $user?->trialOnboardingProfile;
+        $availablePlans = SubscriptionPlan::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get([
+                'plan_key',
+                'name',
+                'description',
+                'monthly_price',
+                'yearly_price',
+                'features',
+                'is_featured',
+            ])
+            ->map(function (SubscriptionPlan $plan) {
+                return [
+                    'key' => $plan->plan_key,
+                    'label' => $plan->name,
+                    'description' => $plan->description,
+                    'amount_php' => (float) $plan->monthly_price,
+                    'months' => 1,
+                    'tier' => $plan->plan_key,
+                    'features' => is_array($plan->features) ? $plan->features : [],
+                    'is_featured' => (bool) $plan->is_featured,
+                ];
+            })
+            ->values();
 
         $endsAt = $store?->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
         $daysRemaining = $endsAt ? $endsAt->diffInDays(Carbon::now(), false) * -1 : null;
@@ -56,7 +83,6 @@ class StoreSettingsController extends Controller
                         'province',
                         'barangay',
                         'contact_number',
-                        'email',
                         'status',
                         'branch_code',
                         'is_main_branch',
@@ -69,6 +95,7 @@ class StoreSettingsController extends Controller
                     'days_remaining' => $daysRemaining,
                     'status' => $status,
                 ],
+                'available_plans' => $availablePlans,
                 'verification' => $this->resolveVerificationStatus($store),
                 'onboarding' => [
                     'plan' => $profile?->plan ?? 'simple',

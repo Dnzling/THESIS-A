@@ -1,5 +1,5 @@
 <template>
-    <!-- Unified Carousel with New Arrival, Trending, and Most Viewed -->
+    <!-- Unified Carousel with New Arrival and Trending -->
     <div class="carousel-section">
         <Carousel :value="carouselItems" :numVisible="1" :numScroll="1" :responsiveOptions="responsiveOptions"
             class="custom-carousel">
@@ -59,7 +59,7 @@ const responsiveOptions = ref([
   }
 ])
 
-// Carousel items combining New Arrival, Trending, and Most Viewed
+// Carousel items combining New Arrival and Trending
 const carouselItems = ref([
   {
     id: 1,
@@ -82,17 +82,6 @@ const carouselItems = ref([
     buttonText: 'View Trending',
     buttonClass: 'bg-orange-500 hover:bg-orange-600',
     route: 'ecommerce.trending.view'
-  },
-  {
-    id: 3,
-    image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1900&q=80',
-    title: 'Most Viewed',
-    badge: 'Customer Favorites',
-    badgeClass: 'bg-purple-500/20 text-purple-300',
-    description: 'The most popular furniture pieces our customers can\'t stop looking at.',
-    buttonText: 'Explore Most Viewed',
-    buttonClass: 'bg-purple-500 hover:bg-purple-600',
-    route: 'ecommerce.most-viewed.view'
   }
 ])
 
@@ -165,7 +154,4 @@ const navigateTo = (route) => {
     background-color: #f97316;
 }
 
-:deep(.p-carousel .p-carousel-indicator:nth-child(3).p-highlight button) {
-    background-color: #a855f7;
-}
 </style>

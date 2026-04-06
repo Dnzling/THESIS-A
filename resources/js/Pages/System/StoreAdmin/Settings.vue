@@ -79,18 +79,25 @@
             </div>
             <div v-if="verification.submitted_at" class="flex items-center justify-between">
               <span>Submitted</span>
-              <span class="font-semibold">{{ verification.submitted_at }}</span>
+              <span class="font-semibold">{{ formatDateTime(verification.submitted_at) }}</span>
             </div>
             <div v-if="verification.reviewed_at" class="flex items-center justify-between">
               <span>Reviewed</span>
-              <span class="font-semibold">{{ verification.reviewed_at }}</span>
+              <span class="font-semibold">{{ formatDateTime(verification.reviewed_at) }}</span>
             </div>
             <div v-if="verification.rejection_reason" class="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700">
               <div class="font-semibold mb-1">Feedback</div>
               <div>{{ verification.rejection_reason }}</div>
             </div>
           </div>
-          <Button class="mt-4 w-full" label="Open Verification Page" severity="secondary" outlined @click="goToVerification" />
+          <Button
+            class="mt-4 w-full"
+            :label="verificationActionLabel"
+            severity="secondary"
+            outlined
+            :loading="loadingVerificationDocuments"
+            @click="handleVerificationAction"
+          />
         </template>
       </Card>
     </div>
@@ -146,18 +153,100 @@
           </div>
           <div v-if="verification.submitted_at" class="flex items-center justify-between">
             <span>Submitted</span>
-            <span class="font-semibold">{{ verification.submitted_at }}</span>
+            <span class="font-semibold">{{ formatDateTime(verification.submitted_at) }}</span>
           </div>
           <div v-if="verification.reviewed_at" class="flex items-center justify-between">
             <span>Reviewed</span>
-            <span class="font-semibold">{{ verification.reviewed_at }}</span>
+            <span class="font-semibold">{{ formatDateTime(verification.reviewed_at) }}</span>
           </div>
           <div v-if="verification.rejection_reason" class="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700">
             <div class="font-semibold mb-1">Feedback</div>
             <div>{{ verification.rejection_reason }}</div>
           </div>
         </div>
-        <Button class="mt-4 w-full" label="Open Verification Page" severity="secondary" outlined @click="goToVerification" />
+        <Button
+          class="mt-4 w-full"
+          :label="verificationActionLabel"
+          severity="secondary"
+          outlined
+          :loading="loadingVerificationDocuments"
+          @click="handleVerificationAction"
+        />
+      </template>
+    </Card>
+
+    <Dialog v-model:visible="verificationDocumentsDialogVisible" modal header="Submitted Verification Documents" :style="{ width: '48rem' }">
+      <div class="space-y-3">
+        <div class="text-xs text-slate-500">
+          Review submitted attachments while your verification is under review.
+        </div>
+
+        <DataTable :value="verificationDocuments" responsiveLayout="scroll" class="text-sm" stripedRows>
+          <Column field="label" header="Document"></Column>
+          <Column header="Status">
+            <template #body="slotProps">
+              <Tag
+                :value="slotProps.data.submitted ? (slotProps.data.is_valid ? 'Submitted' : 'Needs Review') : 'Missing'"
+                :severity="slotProps.data.submitted ? (slotProps.data.is_valid ? 'success' : 'warn') : 'secondary'"
+              />
+            </template>
+          </Column>
+          <Column field="size_kb" header="Size (KB)">
+            <template #body="slotProps">
+              <span>{{ slotProps.data.size_kb ?? '—' }}</span>
+            </template>
+          </Column>
+          <Column header="Action">
+            <template #body="slotProps">
+              <Button
+                v-if="slotProps.data.download_url"
+                label="View"
+                icon="pi pi-external-link"
+                size="small"
+                outlined
+                @click="openDocument(slotProps.data.download_url)"
+              />
+              <span v-else class="text-slate-400">—</span>
+            </template>
+          </Column>
+        </DataTable>
+
+        <div v-if="verificationDocuments.length === 0" class="text-sm text-slate-500">
+          No verification attachments found.
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined @click="verificationDocumentsDialogVisible = false" />
+      </template>
+    </Dialog>
+
+    <Card>
+      <template #title>Cross-Module Approval Tracker</template>
+      <template #content>
+        <p class="text-sm text-slate-600 mb-4">
+          This shows which actions in one module require approval from another module.
+        </p>
+        <div class="grid gap-3 md:grid-cols-3 mb-4">
+          <div class="rounded-lg border border-slate-200 p-3">
+            <div class="text-xs uppercase text-slate-400">Approval Actions</div>
+            <div class="text-lg font-semibold text-slate-900">{{ approvalMatrixRows.length }}</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 p-3">
+            <div class="text-xs uppercase text-slate-400">Source Modules</div>
+            <div class="text-lg font-semibold text-slate-900">{{ approvalSourceCount }}</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 p-3">
+            <div class="text-xs uppercase text-slate-400">Approver Modules</div>
+            <div class="text-lg font-semibold text-slate-900">{{ approvalApproverCount }}</div>
+          </div>
+        </div>
+        <DataTable :value="approvalMatrixRows" responsiveLayout="scroll" class="text-sm" stripedRows>
+          <Column field="source_module" header="Source Module"></Column>
+          <Column field="action" header="Action"></Column>
+          <Column field="approver_module" header="Approval Module"></Column>
+          <Column field="approver_action" header="Approver Action"></Column>
+          <Column field="notes" header="Notes"></Column>
+        </DataTable>
       </template>
     </Card>
 
@@ -332,6 +421,16 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
+type UpgradePlan = {
+  key: string
+  label: string
+  amountPhp: number
+  months: number
+  tier: string
+  description: string
+  isFeatured?: boolean
+}
+
 const saving = ref(false)
 const savingAttendance = ref(false)
 const savingProfile = ref(false)
@@ -347,32 +446,27 @@ const circleRef = ref<any>(null)
 const searchQuery = ref('')
 const toast = useToast()
 
-const availablePlans = [
+const fallbackPlans: UpgradePlan[] = [
   {
-    key: 'basic_monthly',
-    label: 'Basic Monthly',
-    amountPhp: 999,
+    key: 'simple',
+    label: 'Simple',
+    amountPhp: 1490,
     months: 1,
-    tier: 'basic',
-    description: 'Good for small teams getting started.',
+    tier: 'simple',
+    description: 'For single stores and single locations.',
   },
   {
-    key: 'premium_monthly',
-    label: 'Premium Monthly',
-    amountPhp: 1499,
+    key: 'unlimited',
+    label: 'Unlimited',
+    amountPhp: 3500,
     months: 1,
-    tier: 'premium',
-    description: 'Unlocks full module access and premium tools.',
-  },
-  {
-    key: 'premium_annual',
-    label: 'Premium Annual',
-    amountPhp: 14990,
-    months: 12,
-    tier: 'premium',
-    description: 'Best value for long-term usage.',
+    tier: 'unlimited',
+    description: 'For multi-store operations and fast growth.',
+    isFeatured: true,
   },
 ]
+
+const availablePlans = ref<UpgradePlan[]>([...fallbackPlans])
 
 const store = reactive({
   name: '',
@@ -415,6 +509,10 @@ const verification = reactive({
   documents_submitted: false,
 })
 
+const verificationDocumentsDialogVisible = ref(false)
+const verificationDocuments = ref<any[]>([])
+const loadingVerificationDocuments = ref(false)
+
 const branches = ref<any[]>([])
 
 const onboarding = reactive({
@@ -428,11 +526,11 @@ const gcashForm = reactive({
 })
 
 const selectedPlan = reactive({
-  key: availablePlans[1].key,
-  amountPhp: availablePlans[1].amountPhp,
-  months: availablePlans[1].months,
-  tier: availablePlans[1].tier,
-  label: availablePlans[1].label,
+  key: fallbackPlans[0].key,
+  amountPhp: fallbackPlans[0].amountPhp,
+  months: fallbackPlans[0].months,
+  tier: fallbackPlans[0].tier,
+  label: fallbackPlans[0].label,
 })
 
 const form = reactive({
@@ -498,6 +596,47 @@ const daysRemainingLabel = computed(() => {
   return `${formatted} days`
 })
 
+const approvalMatrixRows = [
+  {
+    source_module: 'Procurement',
+    action: 'Purchase Order approval flow',
+    approver_module: 'Finance',
+    approver_action: 'Approve PO (final approval)',
+    notes: 'PO can move to approved/sent only after finance approval step.',
+  },
+  {
+    source_module: 'HR Payroll',
+    action: 'Payroll processing and release',
+    approver_module: 'Finance',
+    approver_action: 'Finance approve / mark paid',
+    notes: 'Payroll must be finance-approved before payment/release.',
+  },
+  {
+    source_module: 'Merchandising',
+    action: 'Price change request',
+    approver_module: 'Finance',
+    approver_action: 'Approve/reject pending price',
+    notes: 'Live price stays unchanged until finance decision.',
+  },
+  {
+    source_module: 'Procurement',
+    action: 'Supplier payment above threshold',
+    approver_module: 'Finance',
+    approver_action: 'Expense approval workflow',
+    notes: 'High-value payments trigger finance expense approval.',
+  },
+  {
+    source_module: 'Inventory',
+    action: 'High-impact stock adjustment',
+    approver_module: 'Finance',
+    approver_action: 'Adjustment approval',
+    notes: 'Certain adjustments require finance-level approval.',
+  },
+]
+
+const approvalSourceCount = computed(() => new Set(approvalMatrixRows.map(row => row.source_module)).size)
+const approvalApproverCount = computed(() => new Set(approvalMatrixRows.map(row => row.approver_module)).size)
+
 const verificationStatusLabel = computed(() => {
   if (verification.store_status === 'approved') return 'Approved'
   if (verification.store_status === 'reviewing') return 'Under Review'
@@ -512,11 +651,54 @@ const verificationSeverity = computed(() => {
   return 'warn'
 })
 
+const shouldShowVerificationAttachments = computed(() =>
+  verification.store_status === 'reviewing' || verification.store_status === 'approved'
+)
+
+const verificationActionLabel = computed(() =>
+  shouldShowVerificationAttachments.value ? 'View Submitted Attachments' : 'Open Verification Page'
+)
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 const fetchSettings = async () => {
   loading.value = true
   try {
     const response = await axiosClient.get('/api/store/settings')
     const data = response?.data?.data || {}
+    const plansFromApi = Array.isArray(data.available_plans) ? data.available_plans : []
+    const normalizedPlans: UpgradePlan[] = plansFromApi
+      .map((plan: any) => ({
+        key: String(plan?.key || ''),
+        label: String(plan?.label || ''),
+        amountPhp: Number(plan?.amount_php ?? 0),
+        months: Number(plan?.months ?? 1),
+        tier: String(plan?.tier || plan?.key || ''),
+        description: String(plan?.description || ''),
+        isFeatured: Boolean(plan?.is_featured),
+      }))
+      .filter((plan: UpgradePlan) => plan.key && plan.label && plan.amountPhp > 0)
+
+    availablePlans.value = normalizedPlans.length > 0 ? normalizedPlans : [...fallbackPlans]
+    if (!availablePlans.value.some(plan => plan.key === selectedPlan.key)) {
+      const defaultPlan = availablePlans.value[0]
+      selectedPlan.key = defaultPlan.key
+      selectedPlan.amountPhp = defaultPlan.amountPhp
+      selectedPlan.months = defaultPlan.months
+      selectedPlan.tier = defaultPlan.tier
+      selectedPlan.label = defaultPlan.label
+    }
 
     store.name = data.store?.name || ''
     subscription.store_id = data.store?.id ?? null
@@ -783,7 +965,7 @@ const goToUpgrade = () => {
 }
 
 const selectPlan = (key: string) => {
-  const plan = availablePlans.find(item => item.key === key)
+  const plan = availablePlans.value.find(item => item.key === key)
   if (!plan) return
   selectedPlan.key = plan.key
   selectedPlan.amountPhp = plan.amountPhp
@@ -794,13 +976,52 @@ const selectPlan = (key: string) => {
 
 const openGcashDialogForSelectedPlan = () => {
   planDialogVisible.value = false
-  gcashForm.name = (store.contact_person || store.name || '').trim()
-  gcashForm.phone = (store.phone || '').trim()
+  gcashForm.name = ''
+  gcashForm.phone = ''
   gcashDialogVisible.value = true
 }
 
 const goToVerification = () => {
-  router.visit('/verify-store')
+  router.visit('/system/store/verification')
+}
+
+const openDocument = (url: string) => {
+  if (!url) return
+  window.open(url, '_blank', 'noopener')
+}
+
+const loadVerificationDocuments = async () => {
+  if (!subscription.store_id) {
+    verificationDocuments.value = []
+    return
+  }
+
+  loadingVerificationDocuments.value = true
+  try {
+    const response = await axiosClient.get(`/api/stores/${subscription.store_id}/verification/documents`)
+    const payload = response?.data?.data || {}
+    verificationDocuments.value = Array.isArray(payload.documents) ? payload.documents : []
+  } catch (error: any) {
+    verificationDocuments.value = []
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to load documents',
+      detail: error?.response?.data?.message || 'Failed to load verification attachments.',
+      life: 3000,
+    })
+  } finally {
+    loadingVerificationDocuments.value = false
+  }
+}
+
+const handleVerificationAction = async () => {
+  if (!shouldShowVerificationAttachments.value) {
+    goToVerification()
+    return
+  }
+
+  await loadVerificationDocuments()
+  verificationDocumentsDialogVisible.value = true
 }
 
 const toPlainPhone = (value: string): string => value.replace(/\D/g, '')
@@ -912,9 +1133,28 @@ const handleUpgradeReturn = async () => {
   }
 }
 
+const handleUpgradePrompt = () => {
+  const params = new URLSearchParams(window.location.search)
+  const shouldOpen = params.get('open_upgrade') === '1'
+  const targetPlan = params.get('plan')
+  if (!shouldOpen) return
+
+  if (targetPlan) {
+    selectPlan(targetPlan)
+  }
+  planDialogVisible.value = true
+
+  params.delete('open_upgrade')
+  params.delete('plan')
+  const query = params.toString()
+  const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ''}`
+  window.history.replaceState({}, '', cleanUrl)
+}
+
 onMounted(async () => {
   await fetchSettings()
   await handleUpgradeReturn()
+  handleUpgradePrompt()
   try {
     const handlers = await initMap()
     if (handlers?.updateRadius) {

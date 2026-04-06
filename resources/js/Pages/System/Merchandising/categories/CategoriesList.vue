@@ -8,7 +8,7 @@
                     outlined @click="viewMode = 'tree'" />
                 <Button label="List View" icon="pi pi-list" :severity="viewMode === 'list' ? 'primary' : 'secondary'"
                     outlined @click="viewMode = 'list'" />
-                <Button v-if="authStore.hasPermission('merchandising.categories.create')" label="Add Category"
+                <Button  label="Add Category"
                     icon="pi pi-plus" @click="openCreateDialog" class="ml-auto" />
             </div>
         </div>
@@ -197,7 +197,7 @@
                 </div>
     
                 <!-- Icon -->
-                <div class="flex flex-col gap-2">
+                <!-- <div class="flex flex-col gap-2">
                     <label for="icon_path" class="text-sm font-semibold text-gray-700">
                         Icon (PrimeIcons class)
                     </label>
@@ -229,7 +229,7 @@
                     <label for="is_active" class="text-sm font-semibold text-gray-700 cursor-pointer">Active</label>
                 </div>
             </div>
-    
+     -->
             <template #footer>
                 <Button label="Cancel" severity="secondary" outlined @click="dialogVisible = false" />
                 <Button :label="editMode ? 'Update' : 'Create'" icon="pi pi-check" @click="saveCategory"

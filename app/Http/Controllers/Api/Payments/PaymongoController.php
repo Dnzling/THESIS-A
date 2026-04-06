@@ -21,6 +21,17 @@ use Illuminate\Support\Facades\Log;
 
 class PaymongoController extends Controller
 {
+    private const ALL_STORE_MODULES = [
+        'inventory',
+        'procurement',
+        'sales',
+        'hr',
+        'logistics',
+        'finance',
+        'supplier',
+        'ecommerce',
+    ];
+
     public function __construct(
         private PaymongoService $service,
         private SalesOrderSettlementService $salesSettlementService
@@ -390,6 +401,9 @@ class PaymongoController extends Controller
 
         $settings = is_array($store->settings) ? $store->settings : [];
         $settings['trial'] = false;
+        if (strtolower($targetTier) === 'unlimited') {
+            $settings['enabled_modules'] = self::ALL_STORE_MODULES;
+        }
 
         $store->update([
             'subscription_tier' => $targetTier,

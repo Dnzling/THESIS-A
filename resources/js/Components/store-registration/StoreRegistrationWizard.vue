@@ -90,6 +90,7 @@
 <script setup lang="ts">
 import { ref, computed, defineAsyncComponent, nextTick } from 'vue'
 import { useToast } from 'primevue/usetoast'
+import { router } from '@inertiajs/vue3'
 
 const toast = useToast()
 
@@ -188,5 +189,6 @@ const handleFormUpdate = (data: any) => {
 
 const handleSubmitSuccess = () => {
   emit('submitted', true)
+  router.visit('/store/settings')
 }
 </script>

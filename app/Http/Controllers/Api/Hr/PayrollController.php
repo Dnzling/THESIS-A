@@ -298,6 +298,7 @@ class PayrollController extends Controller
     {
         try {
             $payroll = Payroll::findOrFail($id);
+            $autoApprove = $this->shouldAutoApprovePayrollSubmission();
 
             if (!in_array($payroll->status, ['draft', 'calculated'])) {
                 return response()->json([
@@ -306,14 +307,32 @@ class PayrollController extends Controller
                 ], 400);
             }
 
-            $payroll->update(['status' => 'processing']);
+            if ($autoApprove) {
+                $budgetError = $this->validateFinanceBudgetForApproval(collect([$payroll]));
+                if ($budgetError !== null) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $budgetError,
+                    ], 422);
+                }
+
+                $payroll->update([
+                    'status' => 'approved',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                ]);
+            } else {
+                $payroll->update(['status' => 'processing']);
+            }
 
             // Sync the pay period status
             $this->syncPeriodStatus($payroll->pay_period_id);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payroll submitted for approval',
+                'message' => $autoApprove
+                    ? 'Payroll auto-approved (HR + Finance approval permissions detected)'
+                    : 'Payroll submitted for approval',
                 'data' => $payroll,
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -1336,6 +1355,7 @@ class PayrollController extends Controller
                 'payroll_ids' => 'required|array|min:1',
                 'payroll_ids.*' => 'exists:payrolls,id',
             ]);
+            $autoApprove = $this->shouldAutoApprovePayrollSubmission();
 
             $payrolls = Payroll::whereIn('id', $validated['payroll_ids'])
                 ->whereIn('status', ['draft', 'calculated'])
@@ -1348,10 +1368,28 @@ class PayrollController extends Controller
                 ], 400);
             }
 
+            if ($autoApprove) {
+                $budgetError = $this->validateFinanceBudgetForApproval($payrolls);
+                if ($budgetError !== null) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $budgetError,
+                    ], 422);
+                }
+            }
+
             DB::beginTransaction();
             $payPeriodIds = [];
             foreach ($payrolls as $payroll) {
-                $payroll->update(['status' => 'processing']);
+                $payroll->update(
+                    $autoApprove
+                        ? [
+                            'status' => 'approved',
+                            'approved_by' => auth()->id(),
+                            'approved_at' => now(),
+                        ]
+                        : ['status' => 'processing']
+                );
                 $payPeriodIds[] = $payroll->pay_period_id;
             }
             DB::commit();
@@ -1363,8 +1401,11 @@ class PayrollController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => $payrolls->count() . ' payroll(s) submitted for approval',
+                'message' => $autoApprove
+                    ? $payrolls->count() . ' payroll(s) auto-approved (HR + Finance approval permissions detected)'
+                    : $payrolls->count() . ' payroll(s) submitted for approval',
                 'submitted_count' => $payrolls->count(),
+                'approved_count' => $autoApprove ? $payrolls->count() : 0,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1597,6 +1638,16 @@ class PayrollController extends Controller
         }
 
         return null;
+    }
+
+    private function shouldAutoApprovePayrollSubmission(): bool
+    {
+        // Auto-approve payroll submission when the same user can both run HR payroll
+        // and execute finance-side payroll approval.
+        return $this->userHasAllPermissionSets([
+            ['hr.payroll.create', 'hr.payroll.edit', 'hr.payroll.manage', 'hr.payroll.approve'],
+            ['finance.payroll.approve', 'hr.payroll.approve'],
+        ]);
     }
 
     public function update(Request $request, $id)

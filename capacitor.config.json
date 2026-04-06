@@ -1,7 +1,7 @@
-{
+﻿{
   "appId": "com.furnisync.shop",
   "appName": "FurniSync Shop",
-  "webDir": "public",
+  "webDir": "public/capacitor",
   "server": {
     "url": "https://furnisync.shop/shop"
   }

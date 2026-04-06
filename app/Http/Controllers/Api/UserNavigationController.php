@@ -13,6 +13,17 @@ use Illuminate\Support\Facades\Log;
 
 class UserNavigationController extends Controller
 {
+    private const ALL_STORE_MODULES = [
+        'inventory',
+        'procurement',
+        'sales',
+        'hr',
+        'logistics',
+        'finance',
+        'supplier',
+        'ecommerce',
+    ];
+
     public function __construct(protected PermissionService $permissionService)
     {
     }
@@ -252,6 +263,12 @@ class UserNavigationController extends Controller
     {
         if (!$user || strtolower($user->role?->name ?? '') !== 'store_admin') {
             return [];
+        }
+
+        $subscriptionTier = strtolower((string) ($user->store?->subscription_tier ?? ''));
+        $onboardingPlan = strtolower((string) ($user->trialOnboardingProfile?->plan ?? ''));
+        if ($subscriptionTier === 'unlimited' || $onboardingPlan === 'unlimited') {
+            return self::ALL_STORE_MODULES;
         }
 
         $storeModules = [];

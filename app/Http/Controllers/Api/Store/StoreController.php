@@ -133,7 +133,7 @@ class StoreController extends Controller
                 'branch_code' => $branchCode,
                 'is_main_branch' => true,
                 'status' => 'active',
-                'branch_type' => 'main',
+                'branch_type' => 'storefront',
             ]);
 
             return response()->json([

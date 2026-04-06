@@ -52,7 +52,9 @@
                 <span>{{ feature }}</span>
               </div>
             </div>
-            <button class="btn primary" @click="selectPlan(plan.plan_key)">Start Free Trial</button>
+            <button class="btn primary" @click="selectPlan(plan.plan_key, isUnlimitedPlan(plan))">
+              {{ isUnlimitedPlan(plan) ? 'Proceed to Payment' : 'Start Free Trial' }}
+            </button>
           </div>
         </div>
       </section>
@@ -118,7 +120,7 @@ import { ref, computed, onMounted } from 'vue'
 import { router } from '@inertiajs/vue3'
 import TopNav from '@/Components/MarketingHeader.vue'
 import MarketingFooter from '@/Components/MarketingFooter.vue'
-import axiosClient from '@/services/axiosClient'
+import axiosClient from '@/axios'
 
 const isYearly = ref(false)
 const plans = ref<any[]>([])
@@ -153,7 +155,7 @@ const faqs = [
   },
   {
     q: 'Is there a free trial?',
-    a: 'Absolutely. Both plans include a 14-day free trial with full access.'
+    a: 'The Simple plan includes a 14-day free trial. The Unlimited plan is direct payment and activates full modules immediately.'
   },
   {
     q: 'What payment methods do you accept?',
@@ -193,21 +195,34 @@ const yearlySavings = (plan: any) => {
   return savings > 0 ? savings.toFixed(2) : '0.00'
 }
 
-const setTrialPlan = (plan: string) => {
+const setTrialPlan = (plan: string, directPayment = false) => {
   localStorage.setItem('trial_plan', plan)
   localStorage.setItem('trial_entry', 'pricing')
+  if (directPayment) {
+    localStorage.setItem('direct_payment', '1')
+  } else {
+    localStorage.removeItem('direct_payment')
+  }
 }
 
-const selectPlan = (plan: string) => {
+const selectPlan = (plan: string, directPayment = false) => {
   const normalized = String(plan || 'simple')
-  setTrialPlan(normalized)
-  router.get('/register', { plan: normalized, trial: '1' }, { preserveState: true })
+  setTrialPlan(normalized, directPayment)
+  router.get(
+    '/register',
+    { plan: normalized, trial: directPayment ? '0' : '1', direct_payment: directPayment ? '1' : '0' },
+    { preserveState: true }
+  )
 }
 
 const startFreeTrial = () => {
   const fallback = visiblePlans.value[0]?.plan_key || 'simple'
-  setTrialPlan(fallback)
+  setTrialPlan(fallback, false)
   router.get('/register', { plan: fallback, trial: '1' }, { preserveState: true })
+}
+
+const isUnlimitedPlan = (plan: any) => {
+  return String(plan?.plan_key || '').toLowerCase() === 'unlimited'
 }
 
 const scheduleDemo = () => {

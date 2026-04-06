@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Inventory-scoped Purchase Requisitions (branch-only).
@@ -35,6 +36,8 @@ class PurchaseRequisitionController extends Controller
     {
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
+        $hasEmployeesTable = Schema::hasTable('employees');
+        $hasEmployeeNumber = $hasEmployeesTable && Schema::hasColumn('employees', 'employee_number');
 
         if (!$branchId) {
             return response()->json([
@@ -43,7 +46,12 @@ class PurchaseRequisitionController extends Controller
             ], 422);
         }
 
-        $query = PurchaseRequisition::with(['branch', 'requestedBy', 'items.product', 'items.variation'])
+        $with = ['branch', 'items.product', 'items.variation'];
+        if ($hasEmployeesTable) {
+            $with[] = 'requestedBy';
+        }
+
+        $query = PurchaseRequisition::with($with)
             ->where('store_id', $storeId)
             ->where('branch_id', $branchId);
 
@@ -61,14 +69,20 @@ class PurchaseRequisitionController extends Controller
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
-            $query->where(function ($q) use ($search) {
+            $query->where(function ($q) use ($search, $hasEmployeesTable, $hasEmployeeNumber) {
                 $q->where('pr_number', 'like', "%{$search}%")
-                    ->orWhere('reason', 'like', "%{$search}%")
-                    ->orWhereHas('requestedBy', function ($rq) use ($search) {
+                    ->orWhere('reason', 'like', "%{$search}%");
+
+                if ($hasEmployeesTable) {
+                    $q->orWhereHas('requestedBy', function ($rq) use ($search, $hasEmployeeNumber) {
                         $rq->where('fname', 'like', "%{$search}%")
-                            ->orWhere('lname', 'like', "%{$search}%")
-                            ->orWhere('employee_number', 'like', "%{$search}%");
+                            ->orWhere('lname', 'like', "%{$search}%");
+
+                        if ($hasEmployeeNumber) {
+                            $rq->orWhere('employee_number', 'like', "%{$search}%");
+                        }
                     });
+                }
             });
         }
 
@@ -95,15 +109,20 @@ class PurchaseRequisitionController extends Controller
     {
         $storeId = (int) Auth::user()->store_id;
         $branchId = $this->resolveBranchId();
+        $hasEmployeesTable = Schema::hasTable('employees');
 
-        $pr = PurchaseRequisition::with([
+        $with = [
             'branch',
-            'requestedBy',
             'items.product.suppliers',
             'items.variation',
             'purchaseOrders.supplier',
             'rfqs.awardedToSupplier',
-        ])
+        ];
+        if ($hasEmployeesTable) {
+            $with[] = 'requestedBy';
+        }
+
+        $pr = PurchaseRequisition::with($with)
             ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->findOrFail($id);

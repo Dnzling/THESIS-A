@@ -68,6 +68,11 @@ class FinanceExpenseController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $autoApprove = $this->userHasAllPermissionSets([
+            ['finance.expenses.manage'],
+            ['finance.expenses.approve'],
+        ]);
+
         $expense = FinanceExpense::create([
             'store_id' => auth()->user()->store_id,
             'department' => $validated['department'] ?? null,
@@ -80,9 +85,19 @@ class FinanceExpenseController extends Controller
             'requested_by' => auth()->id(),
         ]);
 
+        if ($autoApprove && $expense->status === 'pending_approval') {
+            $expense->update([
+                'status' => 'approved',
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+            ]);
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Expense created successfully',
+            'message' => $autoApprove
+                ? 'Expense created and auto-approved'
+                : 'Expense created successfully',
             'data' => $expense->fresh(),
         ], 201);
     }

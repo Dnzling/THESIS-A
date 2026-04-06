@@ -73,6 +73,15 @@ const ecommerceService = {
     return ecommerceClient.post('/api/ecommerce/dss/recommendations', payload)
   },
 
+  getDssTrendingMovement(params?: {
+    per_page?: number
+    page?: number
+    category_id?: number
+    search?: string
+  }) {
+    return ecommerceClient.get('/api/ecommerce/dss/trending-movement', { params })
+  },
+
   followStore(storeId: number | string) {
     return ecommerceClient.post(`/api/ecommerce/stores/${storeId}/follow`)
   },

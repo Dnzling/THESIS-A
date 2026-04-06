@@ -82,12 +82,7 @@ Route::prefix('product-catalog')->group(function () {
     Route::post('attributes/assign-value', [AttributeController::class, 'assignValue']);
 
     // Tags
-    Route::apiResource('tags', TagController::class)
-        ->only(['index', 'show'])
-        ->middleware('can:merchandising.tags.view');
-    Route::apiResource('tags', TagController::class)
-        ->except(['index', 'show'])
-        ->middleware('can:merchandising.tags.manage');
+    Route::apiResource('tags', TagController::class);
     Route::post('tags/assign-to-product', [TagController::class, 'assignToProduct']);
     Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete']);
 

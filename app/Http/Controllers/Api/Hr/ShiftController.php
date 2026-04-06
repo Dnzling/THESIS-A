@@ -43,7 +43,7 @@ class ShiftController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'code' => 'required|string|max:50|unique:shifts',
+            'code' => 'nullable|string|max:50|unique:shifts',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
             'break_start' => 'nullable|date_format:H:i',
@@ -67,8 +67,13 @@ class ShiftController extends Controller
             ], 422);
         }
 
+        $payload = $request->all();
+        if (empty($payload['code'])) {
+            $payload['code'] = $this->generateShiftCode((string) $payload['name'], (int) $storeId);
+        }
+
         $shift = Shift::create(array_merge(
-            $request->all(),
+            $payload,
             ['store_id' => $storeId]
         ));
 
@@ -206,5 +211,42 @@ class ShiftController extends Controller
             'success' => true,
             'data' => $stats
         ]);
+    }
+
+    private function generateShiftCode(string $name, int $storeId): string
+    {
+        $prefix = $this->codePrefixFromName($name, 'SHIFT');
+        $base = "SHF{$storeId}-{$prefix}";
+        $code = $base;
+        $suffix = 1;
+
+        while (Shift::where('code', $code)->exists()) {
+            $code = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return substr($code, 0, 50);
+    }
+
+    private function codePrefixFromName(string $name, string $fallback): string
+    {
+        $clean = preg_replace('/[^A-Za-z0-9 ]/', ' ', strtoupper(trim($name))) ?? '';
+        $words = array_values(array_filter(preg_split('/\s+/', $clean) ?: []));
+
+        if (empty($words)) {
+            return $fallback;
+        }
+
+        $initials = '';
+        foreach ($words as $word) {
+            $initials .= substr($word, 0, 1);
+        }
+
+        if (strlen($initials) < 3) {
+            $joined = implode('', $words);
+            $initials = substr($joined, 0, 6);
+        }
+
+        return substr($initials, 0, 6);
     }
 }

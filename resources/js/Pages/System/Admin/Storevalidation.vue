@@ -591,10 +591,6 @@
                           <p class="text-sm text-gray-500">City / Province</p>
                           <p class="font-medium">{{ selectedViewStore.city || 'N/A' }} / {{ selectedViewStore.province || 'N/A' }}</p>
                         </div>
-                        <div>
-                          <p class="text-sm text-gray-500">Coordinates</p>
-                          <p class="font-medium">{{ selectedViewStore.coordinates || 'N/A' }}</p>
-                        </div>
                     </div>
                 </div>
 
@@ -633,14 +629,6 @@
                             <div>
                               <p class="text-sm text-gray-500">Business Registration Date</p>
                               <p class="font-medium">{{ selectedViewStore.businessRegistrationDate ? formatDate(selectedViewStore.businessRegistrationDate) : 'N/A' }}</p>
-                            </div>
-                            <div>
-                              <p class="text-sm text-gray-500">Government ID Type</p>
-                              <p class="font-medium">{{ selectedViewStore.govIdType || 'N/A' }}</p>
-                            </div>
-                            <div>
-                              <p class="text-sm text-gray-500">Government ID Number</p>
-                              <p class="font-medium">{{ selectedViewStore.govIdNumber || 'N/A' }}</p>
                             </div>
                           </div>
                         </div>
@@ -968,12 +956,9 @@ const buildFileUrl = (path: string | null) => {
 const mapVerification = (verification: any) => {
   const store = verification.store || {}
   const docs = [
-    { name: 'Business Registration', path: verification.business_registration_file },
+        { name: "Mayor's Permit", path: verification.business_registration_file },
     { name: 'Business Permit', path: verification.business_permit_file },
     { name: 'Tax Certificate', path: verification.tax_certificate_file },
-    { name: 'Gov ID Front', path: verification.gov_id_front_file },
-    { name: 'Gov ID Back', path: verification.gov_id_back_file },
-    { name: 'Selfie with ID', path: verification.selfie_with_id_file },
   ].filter(d => d.path).map(d => ({
     name: d.name,
     status: 'Submitted',
@@ -996,9 +981,8 @@ const mapVerification = (verification: any) => {
 
   const requiredFields = [
     verification.business_registration_file,
-    verification.gov_id_front_file,
-    verification.gov_id_back_file,
-    verification.selfie_with_id_file
+        verification.business_permit_file,
+        verification.tax_certificate_file
   ]
   const documentStatus = requiredFields.every(Boolean) ? 'Complete' : 'Incomplete'
 
@@ -1021,14 +1005,11 @@ const mapVerification = (verification: any) => {
     address: store.address || 'N/A',
     city: store.city || '',
     province: store.province || '',
-    coordinates: store.latitude && store.longitude ? `${store.latitude}, ${store.longitude}` : '',
     contactNumber: store.phone || store.contact_number || 'N/A',
     registrationDate: verification.submitted_at || store.created_at,
     waitingTime: verification.submitted_at ? `${Math.max(0, Math.floor((Date.now() - new Date(verification.submitted_at).getTime()) / 86400000))} days` : 'N/A',
     businessRegistrationNumber: verification.business_registration_number || '',
     businessRegistrationDate: verification.business_registration_date || '',
-    govIdType: verification.gov_id_type || '',
-    govIdNumber: verification.gov_id_number || '',
     documentStatus,
     priority: 'Medium',
     documents: docs,

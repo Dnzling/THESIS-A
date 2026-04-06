@@ -6,7 +6,7 @@
       :closable="false"
       :draggable="false"
       :style="{ width: '500px', maxWidth: '96vw' }"
-      header="Set up your simple free trial"
+      :header="dialogTitle"
     >
       <div class="space-y-5">
         <div class="flex items-center gap-2 text-xs text-slate-500">
@@ -22,15 +22,15 @@
 
         <div v-if="currentStep === 1" class="space-y-3">
           <p class="text-sm text-slate-600">
-            This free trial is intentionally simple and includes selected modules so you can quickly evaluate if the system fits your business.
+            {{ introCopy }}
           </p>
           <div class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
-            During trial, module customization is disabled. Full module selection is available in paid plans.
+            {{ introNote }}
           </div>
         </div>
 
         <div v-if="currentStep === 2" class="space-y-4">
-          <p class="text-sm text-slate-600">Included free-trial modules (fixed set):</p>
+          <p class="text-sm text-slate-600">{{ moduleHeadline }}</p>
           <div class="rounded-lg border border-slate-200 bg-white p-4">
             <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Included Modules</div>
             <div class="flex flex-wrap gap-2">
@@ -43,7 +43,7 @@
               </span>
             </div>
             <p class="text-xs text-slate-500 mt-3">
-              You can manage modules later in Settings.
+              {{ moduleNote }}
             </p>
           </div>
         </div>
@@ -117,6 +117,7 @@ const showDialog = ref(true)
 const loading = ref(false)
 const currentStep = ref(1)
 const trialPlan = ref(localStorage.getItem('trial_plan') || 'simple')
+const directPayment = ref(localStorage.getItem('direct_payment') === '1')
 const registerToken = ref(localStorage.getItem('register_token') || '')
 
 const form = ref({
@@ -161,7 +162,47 @@ const teamOptions = [
   { label: 'Finance Team', value: 'finance' },
 ]
 
-const trialPlanLabel = computed(() => (form.value.plan === 'unlimited' ? 'Unlimited Trial' : 'Simple Trial'))
+const dialogTitle = computed(() => {
+  if (trialPlan.value === 'unlimited') {
+    return directPayment.value ? 'Set up your Unlimited plan' : 'Set up your Unlimited trial'
+  }
+  return 'Set up your Simple free trial'
+})
+
+const introCopy = computed(() => {
+  if (trialPlan.value === 'unlimited') {
+    return 'You selected the Unlimited plan. We will activate the full suite of modules once your payment is confirmed.'
+  }
+  return 'This free trial is intentionally simple and includes selected modules so you can quickly evaluate if the system fits your business.'
+})
+
+const introNote = computed(() => {
+  if (trialPlan.value === 'unlimited') {
+    return 'Unlimited is a direct-payment plan. You can proceed to payment after this quick setup.'
+  }
+  return 'During trial, module customization is disabled. Full module selection is available in paid plans.'
+})
+
+const moduleHeadline = computed(() => {
+  if (trialPlan.value === 'unlimited') {
+    return 'Full module suite included:'
+  }
+  return 'Included free-trial modules (fixed set):'
+})
+
+const moduleNote = computed(() => {
+  if (trialPlan.value === 'unlimited') {
+    return 'All modules will be enabled for your store.'
+  }
+  return 'You can manage modules later in Settings.'
+})
+
+const trialPlanLabel = computed(() => {
+  if (form.value.plan === 'unlimited') {
+    return directPayment.value ? 'Unlimited (Paid Plan)' : 'Unlimited Trial'
+  }
+  return 'Simple Trial'
+})
 
 const canProceedCurrentStep = computed(() => {
   if (currentStep.value === 1) {
@@ -183,8 +224,12 @@ const canFinish = computed(() => {
 })
 
 const FIXED_TRIAL_MODULES = ['inventory', 'sales', 'procurement', 'finance', 'hr']
+const ALL_STORE_MODULES = ['inventory', 'procurement', 'sales', 'hr', 'logistics', 'finance', 'supplier', 'ecommerce']
 
 const selectedModules = computed(() => {
+  if (trialPlan.value === 'unlimited') {
+    return ALL_STORE_MODULES
+  }
   return FIXED_TRIAL_MODULES
 })
 
@@ -209,13 +254,18 @@ const cleanupTempAuth = () => {
   localStorage.removeItem('register_token')
   localStorage.removeItem('otp_context')
   localStorage.removeItem('trial_plan')
+  localStorage.removeItem('direct_payment')
   delete axios.defaults.headers.common['Authorization']
 }
 
 const goLogin = (onboarded: boolean) => {
+  const redirect = (trialPlan.value === 'unlimited' && directPayment.value)
+    ? '/store/settings?open_upgrade=1&plan=unlimited'
+    : ''
   router.get('/login', {
     registered: 'true',
     onboarded: onboarded ? 'true' : 'false',
+    ...(redirect ? { redirect } : {}),
   })
 }
 

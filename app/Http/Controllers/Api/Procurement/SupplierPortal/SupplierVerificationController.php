@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierVerificationDocument;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Services\Store\DocumentAutoValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,11 @@ use Illuminate\Support\Facades\Validator;
 
 class SupplierVerificationController extends Controller
 {
+    public function __construct(
+        private readonly DocumentAutoValidationService $documentAutoValidationService
+    ) {
+    }
+
     /**
      * Get all pending supplier verification requests
      * GET /api/supplier-verifications/pending
@@ -342,6 +348,76 @@ class SupplierVerificationController extends Controller
             return \Illuminate\Support\Facades\Storage::disk('private')->download($document->file_path, $document->original_filename);
         } catch (\Exception $e) {
             abort(404);
+        }
+    }
+
+    /**
+     * Auto-validate one supplier verification document.
+     * POST /api/supplier-verifications/documents/{id}/auto-validate
+     */
+    public function autoValidateDocument($id): JsonResponse
+    {
+        try {
+            $document = SupplierVerificationDocument::findOrFail($id);
+            $validation = $this->documentAutoValidationService->validateDocument(
+                (string) $document->file_path,
+                (string) $document->document_type,
+                null,
+                'private'
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'document_id' => $document->id,
+                    'document_type' => $document->document_type,
+                    'original_filename' => $document->original_filename,
+                    'auto_validation' => $validation,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error validating document: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Auto-validate all documents of a supplier portal.
+     * POST /api/supplier-verifications/{id}/auto-validate-all
+     */
+    public function autoValidateAllDocuments($id): JsonResponse
+    {
+        try {
+            $portal = SupplierPortal::with('verificationDocuments')->findOrFail($id);
+
+            $results = $portal->verificationDocuments->map(function (SupplierVerificationDocument $document) {
+                return [
+                    'document_id' => $document->id,
+                    'document_type' => $document->document_type,
+                    'original_filename' => $document->original_filename,
+                    'auto_validation' => $this->documentAutoValidationService->validateDocument(
+                        (string) $document->file_path,
+                        (string) $document->document_type,
+                        null,
+                        'private'
+                    ),
+                ];
+            })->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'portal_id' => $portal->id,
+                    'results' => $results,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error validating supplier documents: ' . $e->getMessage(),
+            ], 500);
         }
     }
 }
