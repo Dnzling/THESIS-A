@@ -25,7 +25,7 @@ class DashboardController extends Controller
             $data['active_stores'] = $data['stores_count'];
             if (Schema::hasTable('stores') && Schema::hasColumn('stores', 'status')) {
                 $data['active_stores'] = DB::table('stores')->where('status', 'active')->count();
-            }
+            } 
 
             // New stores this week
             $data['new_stores_this_week'] = Schema::hasTable('stores')
