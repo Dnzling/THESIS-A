@@ -32,27 +32,14 @@ class RoleController extends Controller
             return [];
         }
 
-        $store = Store::find($storeId);
-        $settings = is_array($store?->settings) ? $store->settings : [];
-        $enabledModules = $settings['enabled_modules'] ?? [];
-
-        if (!is_array($enabledModules)) {
-            return [];
-        }
-
-        return array_values(array_unique(array_filter(array_map('strval', $enabledModules))));
+        /** @var \App\Services\Modules\ModuleAccessService $modules */
+        $modules = app(\App\Services\Modules\ModuleAccessService::class);
+        return $modules->enabledModuleKeysForStore($storeId);
     }
 
     private function getEffectiveEnabledModules(int $storeId): array
     {
-        $enabledModules = $this->getEnabledModulesForStore($storeId);
-
-        $onboarding = TrialOnboardingProfile::where('user_id', Auth::id())->first();
-        if ($onboarding && is_array($onboarding->modules) && !empty($onboarding->modules)) {
-            $enabledModules = array_values(array_unique(array_filter(array_map('strval', $onboarding->modules))));
-        }
-
-        return $enabledModules;
+        return $this->getEnabledModulesForStore($storeId);
     }
 
     public function getModules(Request $request): JsonResponse
@@ -106,16 +93,21 @@ class RoleController extends Controller
             $availableModules
         ));
 
-        $store = Store::findOrFail($storeId);
-        $settings = is_array($store->settings) ? $store->settings : [];
-        $settings['enabled_modules'] = $validModules;
-        $store->settings = $settings;
-        $store->save();
-
-        $onboarding = TrialOnboardingProfile::where('user_id', $userId)->first();
-        if ($onboarding) {
-            $onboarding->modules = $validModules;
-            $onboarding->save();
+        // Persist to store_modules as manual source
+        foreach ($validModules as $moduleKey) {
+            $moduleId = DB::table('modules')->where('key', $moduleKey)->value('id');
+            if (!$moduleId) {
+                continue;
+            }
+            DB::table('store_modules')->updateOrInsert(
+                ['store_id' => $storeId, 'module_id' => $moduleId],
+                [
+                    'status' => 'enabled',
+                    'source' => 'manual',
+                    'enabled_at' => now(),
+                    'enabled_by' => $userId,
+                ]
+            );
         }
 
         return response()->json([

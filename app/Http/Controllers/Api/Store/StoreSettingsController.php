@@ -281,19 +281,32 @@ class StoreSettingsController extends Controller
             ], 422);
         }
 
-        $settings = is_array($store->settings) ? $store->settings : [];
-        $settings['enabled_modules'] = array_values(array_unique($validated['modules']));
-        $store->settings = $settings;
-        $store->save();
+        $modules = array_values(array_unique($validated['modules']));
 
-        $profile->modules = $settings['enabled_modules'];
+        foreach ($modules as $moduleKey) {
+            $moduleId = \DB::table('modules')->where('key', $moduleKey)->value('id');
+            if (!$moduleId) {
+                continue;
+            }
+            \DB::table('store_modules')->updateOrInsert(
+                ['store_id' => $store->id, 'module_id' => $moduleId],
+                [
+                    'status' => 'enabled',
+                    'source' => 'manual',
+                    'enabled_at' => now(),
+                    'enabled_by' => $user->id,
+                ]
+            );
+        }
+
+        $profile->modules = $modules;
         $profile->save();
 
         return response()->json([
             'success' => true,
             'message' => 'Modules updated successfully.',
             'data' => [
-                'modules' => $settings['enabled_modules'],
+                'modules' => $modules,
             ],
         ]);
     }

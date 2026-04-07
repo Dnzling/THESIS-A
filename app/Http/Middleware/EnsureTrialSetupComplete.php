@@ -29,7 +29,7 @@ class EnsureTrialSetupComplete
             return redirect('/trial-onboarding');
         }
 
-        $allowedModules = $this->getAllowedModules($user, $profile);
+        $allowedModules = $this->getAllowedModules($user);
         $moduleFromPath = $this->resolveModuleFromPath($path);
         $tier = $this->resolveTier($profile);
 
@@ -70,19 +70,15 @@ class EnsureTrialSetupComplete
         return false;
     }
 
-    private function getAllowedModules($user, ?TrialOnboardingProfile $profile): array
+    private function getAllowedModules($user): array
     {
-        $storeModules = [];
-
-        if ($user->store && is_array($user->store->settings ?? null)) {
-            $storeModules = $user->store->settings['enabled_modules'] ?? [];
+        if (!$user?->store_id) {
+            return [];
         }
 
-        $profileModules = $profile?->modules ?? [];
-
-        $modules = array_values(array_unique(array_filter(array_merge($storeModules, $profileModules))));
-
-        return $modules;
+        /** @var \App\Services\Modules\ModuleAccessService $modules */
+        $modules = app(\App\Services\Modules\ModuleAccessService::class);
+        return $modules->enabledModuleKeysForStore((int) $user->store_id);
     }
 
     private function resolveModuleFromPath(string $path): ?string

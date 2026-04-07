@@ -28,6 +28,7 @@ use Database\Seeders\Permission\Sales\SalesPermissionsSeeder;
 use Database\Seeders\Permission\Sales\SalesNavigationSeeder;
 use Database\Seeders\Permission\Sales\SalesRolePermissionsSeeder;
 use Database\Seeders\InventoryInitialSeeder;
+use Database\Seeders\ModulesFromPermissionsSeeder;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -71,6 +72,7 @@ class DatabaseSeeder extends Seeder
             SalesPermissionsSeeder::class,
             SalesNavigationSeeder::class,
             SalesRolePermissionsSeeder::class,
+            ModulesFromPermissionsSeeder::class,
         ]);
     }
 }

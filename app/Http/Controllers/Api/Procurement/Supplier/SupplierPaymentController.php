@@ -19,12 +19,7 @@ class SupplierPaymentController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $storeId = (int) ($request->user()?->store_id ?? 0);
         $query = SupplierPayment::with(['purchaseOrder', 'supplier', 'approvedBy', 'processedBy']);
-
-        if ($storeId > 0) {
-            $query->where('store_id', $storeId);
-        }
 
         // Filters
         if ($request->has('supplier_id')) {
@@ -325,10 +320,8 @@ class SupplierPaymentController extends Controller
     public function pending(Request $request): JsonResponse
     {
         $days = $request->get('days', 7);
-        $storeId = (int) ($request->user()?->store_id ?? 0);
 
         $pendingPayments = PurchaseOrder::with(['supplier', 'branch'])
-            ->when($storeId > 0, fn($q) => $q->where('store_id', $storeId))
             ->where('payment_status', 'pending')
             ->whereBetween('payment_due_date', [now(), now()->addDays($days)])
             ->orderBy('payment_due_date', 'asc')
@@ -356,12 +349,7 @@ class SupplierPaymentController extends Controller
      */
     public function summary(Request $request): JsonResponse
     {
-        $storeId = (int) ($request->user()?->store_id ?? 0);
         $query = SupplierPayment::query();
-
-        if ($storeId > 0) {
-            $query->where('store_id', $storeId);
-        }
 
         if ($request->has('start_date') && $request->has('end_date')) {
             $query->whereBetween('payment_date', [$request->start_date, $request->end_date]);

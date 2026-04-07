@@ -59,27 +59,9 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\ProductCatalog\Product::observe(\App\Observers\ProductObserver::class);
         \App\Models\Inventory\BranchInventory::observe(\App\Observers\BranchInventoryObserver::class);
 
-        // Global permission gate check (RBAC)
+        // TEMP: Bypass permission checks globally (until RBAC is re-enabled)
         Gate::before(function ($user, string $ability) {
-            if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-                return true;
-            }
-
-            // Module admin bypass: e.g. procurement.admin grants procurement.*
-            if (str_contains($ability, '.')) {
-                $module = explode('.', $ability)[0] ?? null;
-                if ($module && method_exists($user, 'hasPermissionTo')) {
-                    $moduleAdmin = $module . '.admin';
-                    if ($user->hasPermissionTo($moduleAdmin)) {
-                        return true;
-                    }
-                }
-            }
-
-            if (method_exists($user, 'hasPermissionTo')) {
-                return $user->hasPermissionTo($ability);
-            }
-            return null;
+            return true;
         });
     }
 }

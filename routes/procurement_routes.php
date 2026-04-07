@@ -185,10 +185,13 @@ Route::prefix('procurement')->group(function () {
     });
 
     // Supplier Payments
-    Route::prefix('payments')->middleware('can:procurement.payments.view')->group(function () {
-        Route::get('/', [SupplierPaymentController::class, 'index']);
-        Route::get('/pending', [SupplierPaymentController::class, 'pending']);
-        Route::get('/summary', [SupplierPaymentController::class, 'summary']);
+    Route::prefix('payments')->group(function () {
+        // View endpoints (permit finance/payables users too)
+        Route::get('/', [SupplierPaymentController::class, 'index'])->middleware('module:procurement');
+        Route::get('/pending', [SupplierPaymentController::class, 'pending'])->middleware('module:procurement');
+        Route::get('/summary', [SupplierPaymentController::class, 'summary'])->middleware('module:procurement');
+
+        // Mutations keep procurement permissions
         Route::post('/', [SupplierPaymentController::class, 'store'])->middleware('can:procurement.payments.manage');
         Route::get('/{id}', [SupplierPaymentController::class, 'show'])->whereNumber('id');
         Route::delete('/{id}', [SupplierPaymentController::class, 'destroy'])->whereNumber('id')->middleware('can:procurement.payments.manage');

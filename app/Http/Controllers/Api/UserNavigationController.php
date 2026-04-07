@@ -271,14 +271,13 @@ class UserNavigationController extends Controller
             return self::ALL_STORE_MODULES;
         }
 
-        $storeModules = [];
-        if ($user->store && is_array($user->store->settings ?? null)) {
-            $storeModules = $user->store->settings['enabled_modules'] ?? [];
+        if (!$user->store_id) {
+            return [];
         }
 
-        $profileModules = $user->trialOnboardingProfile?->modules ?? [];
-
-        return array_values(array_unique(array_filter(array_merge($storeModules, $profileModules))));
+        /** @var \App\Services\Modules\ModuleAccessService $modules */
+        $modules = app(\App\Services\Modules\ModuleAccessService::class);
+        return $modules->enabledModuleKeysForStore((int) $user->store_id);
     }
 
     private function filterPermissionsByModules($user, array $permissions): array

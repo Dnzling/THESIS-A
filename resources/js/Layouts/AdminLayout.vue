@@ -252,6 +252,11 @@ const adminMenu = [
     icon: "pi pi-shield"
   },
   {
+    to: "/admin/modules",
+    label: "Store Modules",
+    icon: "pi pi-sliders-h"
+  },
+  {
     to: "/admin/users",
     label: "Users",
     icon: "pi pi-users text-gray-500 w-5"

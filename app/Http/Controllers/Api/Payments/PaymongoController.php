@@ -399,17 +399,29 @@ class PaymongoController extends Controller
         }
         $newEndsAt = $baseDate->copy()->addMonths($months);
 
-        $settings = is_array($store->settings) ? $store->settings : [];
-        $settings['trial'] = false;
-        if (strtolower($targetTier) === 'unlimited') {
-            $settings['enabled_modules'] = self::ALL_STORE_MODULES;
-        }
-
         $store->update([
             'subscription_tier' => $targetTier,
             'subscription_ends_at' => $newEndsAt,
-            'settings' => $settings,
         ]);
+
+        if (strtolower($targetTier) === 'unlimited') {
+            $moduleIds = \DB::table('modules')
+                ->whereIn('key', self::ALL_STORE_MODULES)
+                ->pluck('id')
+                ->all();
+
+            foreach ($moduleIds as $moduleId) {
+                \DB::table('store_modules')->updateOrInsert(
+                    ['store_id' => $store->id, 'module_id' => $moduleId],
+                    [
+                        'status' => 'enabled',
+                        'source' => 'manual',
+                        'enabled_at' => now(),
+                        'enabled_by' => $store->owner_id ?? null,
+                    ]
+                );
+            }
+        }
 
         try {
             PlatformRevenue::firstOrCreate(

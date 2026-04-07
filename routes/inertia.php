@@ -30,6 +30,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     Route::middleware('role:super_admin')->group(function () use ($inertia) {
         $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
         $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
+        $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
         $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
@@ -52,12 +53,12 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // System (Store Admin)u
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
-        $inertia('/store/roles-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
         $inertia('/store/settings', 'System/StoreAdmin/Settings', 'store.settings', 'Settings', 'Trial & Configuration');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
-        $inertia('/store/employees', 'System/StoreAdmin/Lite/HRLite', 'store.employees', 'Employees', 'Simple Payroll');
-        $inertia('/store/finance', 'System/StoreAdmin/Lite/FinanceLite', 'store.finance', 'Finance', 'Expenses & Cashflow');
     });
+
+    // Store role permissions accessible by store admins and HR
+    $inertia('/store/role-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
     // HR
     $inertia('/hr/index', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');

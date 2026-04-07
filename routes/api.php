@@ -129,6 +129,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/navigation-items', [RolePermissionController::class, 'createNavigationItem']);
         Route::put('/navigation-items/{id}', [RolePermissionController::class, 'updateNavigationItem']);
         Route::delete('/navigation-items/{id}', [RolePermissionController::class, 'deleteNavigationItem']);
+        // Store Modules (super admin override)
+        Route::get('/store-modules/stores', [\App\Http\Controllers\Api\Admin\StoreModuleController::class, 'stores']);
+        Route::get('/store-modules/modules', [\App\Http\Controllers\Api\Admin\StoreModuleController::class, 'modules']);
+        Route::get('/store-modules', [\App\Http\Controllers\Api\Admin\StoreModuleController::class, 'index']);
+        Route::post('/store-modules/override', [\App\Http\Controllers\Api\Admin\StoreModuleController::class, 'override']);
 
         // Customer Validation
         Route::get('/customer-validations', [CustomerValidationController::class, 'index']);
