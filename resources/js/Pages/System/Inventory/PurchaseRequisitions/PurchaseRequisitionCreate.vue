@@ -121,7 +121,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import ConfirmDialog from 'primevue/confirmdialog'
-import { confirmDialog } from 'primevue/confirmationservice'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
@@ -358,14 +357,7 @@ const submit = async () => {
     return
   }
 
-  confirmDialog({
-    message: 'Are you sure you want to create this purchase requisition?',
-    header: 'Confirm Create',
-    icon: 'pi pi-exclamation-triangle',
-    accept: async () => {
-      await doCreate()
-    },
-  })
+  await doCreate()
 }
 
 onMounted(async () => {

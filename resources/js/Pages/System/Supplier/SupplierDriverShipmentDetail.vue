@@ -100,13 +100,10 @@
     </Card>
 
      <!-- Record Log Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-gray-50 to-white">
+    <Card v-if="shipment?.status !== 'delivered'" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-gray-50 to-white">
       <template #header>
         <div class="px-6 pt-6">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-              <i class="pi pi-plus-circle text-green-600 text-sm"></i>
-            </div>
             <h2 class="text-lg font-semibold text-gray-900">Record a Log</h2>
           </div>
         </div>
@@ -136,23 +133,57 @@
             </div>
 
             <div class="flex flex-col gap-3 md:flex-row">
-              <Button 
-                label="Record Log" 
-                icon="pi pi-save" 
-                class="w-full bg-blue-500 hover:bg-blue-600 border-none text-white font-medium rounded-xl py-3 md:!w-auto flex-1"
-                :loading="logSubmitting" 
-                @click="submitLog" 
-              />
-              <Button
+              <Button v-if="canMarkDelivered"
                 label="Mark Delivered"
-                icon="pi pi-check"
-                severity="success"
+                severity="info"
                 class="w-full border-none text-white font-medium rounded-xl py-3 md:!w-auto flex-1"
                 :class="shipment?.status === 'delivered' ? 'bg-gray-300 hover:bg-gray-300' : 'bg-emerald-500 hover:bg-emerald-600'"
                 :disabled="shipment?.status === 'delivered'"
                 @click="openDeliveryDialog"
               />
+              <Button v-else
+                label="Record Log" 
+                class="w-full bg-blue-500 hover:bg-blue-600 border-none text-white font-medium rounded-xl py-3 md:!w-auto flex-1"
+                :loading="logSubmitting" 
+                @click="submitLog" 
+              />
             </div>
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <!-- Delivered Summary -->
+    <Card v-if="shipment?.status === 'delivered'" class="rounded-2xl border border-green-200 bg-green-50/60 shadow-sm overflow-hidden">
+      <template #header>
+        <div class="px-6 pt-6 flex items-center gap-2">
+          <h2 class="text-lg font-semibold text-gray-900">Delivered</h2>
+        </div>
+      </template>
+      <template #content>
+        <div class="p-6 pt-0 space-y-3">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">Delivered At</span>
+            <span class="font-semibold text-gray-900">{{ formatDate(deliveredLog?.logged_at, true) }}</span>
+          </div>
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">Received By</span>
+            <span class="font-semibold text-gray-900">{{ deliveredLog?.receiver_name || '-' }}</span>
+          </div>
+          <div class="flex items-start justify-between text-sm">
+            <span class="text-gray-600 mt-0.5">Notes</span>
+            <span class="text-gray-800 text-right">{{ deliveredLog?.notes || '—' }}</span>
+          </div>
+          <div class="pt-3">
+            <Button
+              label="View Proof of Delivery"
+              icon="pi pi-image"
+              severity="info"
+              text
+              :disabled="!deliveredAttachments.length"
+              @click="showProofDialog = true"
+            />
+            <p v-if="!deliveredAttachments.length" class="text-xs text-gray-500 mt-1">No proof attachments found.</p>
           </div>
         </div>
       </template>
@@ -164,9 +195,6 @@
         <div class="px-6 pt-6">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-                <i class="pi pi-list text-purple-600 text-sm"></i>
-              </div>
               <h2 class="text-lg font-semibold text-gray-900">Delivery Logs</h2>
             </div>
             <Tag 
@@ -214,6 +242,7 @@
                   <span class="text-xs text-gray-500">{{ formatDate(log.logged_at, true) }}</span>
                 </div>
                 <p class="text-sm text-gray-700">{{ log.notes || 'No notes recorded' }}</p>
+                <p v-if="log.receiver_name" class="text-xs text-gray-500 mt-1">Received by: <span class="font-medium text-gray-800">{{ log.receiver_name }}</span></p>
                 <div v-if="log.attachments?.length" class="mt-3 flex flex-wrap gap-2">
                   <a
                     v-for="attachment in log.attachments"
@@ -245,6 +274,14 @@
         <p class="text-sm text-gray-500">
           Attach at least one image proof of delivery before confirming. Photos become part of the delivery log.
         </p>
+        <div class="space-y-2">
+          <label class="text-xs font-semibold text-gray-600">Received By <span class="text-red-500">*</span></label>
+          <InputText 
+            v-model="receiverName" 
+            class="w-full bg-white border border-gray-200 rounded-xl"
+            placeholder="Name of person who received"
+          />
+        </div>
         <div class="space-y-2">
           <label class="text-xs font-semibold text-gray-600">Notes (optional)</label>
           <Textarea 
@@ -290,9 +327,34 @@
           icon="pi pi-check" 
           severity="success" 
           :loading="deliverySubmitting" 
-          :disabled="!deliveryAttachments.length || deliverySubmitting" 
+          :disabled="!deliveryAttachments.length || !receiverName.trim() || deliverySubmitting" 
           @click="submitDeliveryEvidence" 
         />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showProofDialog" header="Proof of Delivery" class="w-full max-w-3xl" :breakpoints="{ '960px': '90vw' }" modal>
+      <div v-if="deliveredAttachments.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <a
+          v-for="attachment in deliveredAttachments"
+          :key="attachment.id"
+          :href="attachment.public_url"
+          target="_blank"
+          rel="noreferrer"
+          class="block rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition"
+        >
+          <div class="bg-gray-50 px-3 py-2 text-sm text-gray-700 flex items-center gap-2">
+            <i class="pi pi-image text-gray-500"></i>
+            <span class="truncate">{{ attachment.filename }}</span>
+          </div>
+          <img :src="attachment.public_url" alt="Proof" class="w-full h-52 object-cover bg-gray-100" />
+        </a>
+      </div>
+      <div v-else class="text-center text-sm text-gray-500 py-6">
+        No proof attachments available.
+      </div>
+      <template #footer>
+        <Button label="Close" text @click="showProofDialog = false" />
       </template>
     </Dialog>
   </div>
@@ -309,6 +371,7 @@ import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import Skeleton from 'primevue/skeleton'
 import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
@@ -328,7 +391,6 @@ const logTypes = [
   { label: 'Arrived at Location', value: 'Arrived' },
   { label: 'Start Unloading', value: 'Start Unloading' },
   { label: 'Finish Unloading', value: 'Finish Unloading' },
-  { label: 'Delivered', value: 'Delivered' },
   { label: 'Issue / Delay', value: 'Issue' },
 ]
 
@@ -337,9 +399,18 @@ const deliveryNotes = ref('')
 const deliveryAttachments = ref<File[]>([])
 const deliveryAttachmentKey = ref(0)
 const deliverySubmitting = ref(false)
+const receiverName = ref('')
+const showProofDialog = ref(false)
 
 // Computed
 const logCountText = computed(() => `${deliveryLogs.value.length} ${deliveryLogs.value.length === 1 ? 'event' : 'events'}`)
+const deliveredLog = computed(() => deliveryLogs.value.find(log => log.event_type === 'Delivered'))
+const deliveredAttachments = computed(() => deliveredLog.value?.attachments || [])
+const latestLog = computed(() => {
+  if (!deliveryLogs.value.length) return null
+  return [...deliveryLogs.value].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+})
+const canMarkDelivered = computed(() => latestLog.value?.event_type === 'Finish Unloading')
 
 // Helper functions
 const formatStatus = (status?: string): string => {
@@ -493,6 +564,7 @@ const openDeliveryDialog = () => {
   showDeliveredDialog.value = true
   deliveryNotes.value = ''
   deliveryAttachments.value = []
+  receiverName.value = ''
   deliveryAttachmentKey.value += 1
 }
 
@@ -520,11 +592,21 @@ const submitDeliveryEvidence = async () => {
     })
     return
   }
+  if (!receiverName.value.trim()) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Receiver required',
+      detail: 'Please enter the name of the person who received the delivery.',
+      life: 3000,
+    })
+    return
+  }
 
   deliverySubmitting.value = true
   try {
     const response = await supplierService.markShipmentDelivered(shipment.value.id, {
       notes: deliveryNotes.value || undefined,
+      receiver_name: receiverName.value.trim(),
       attachments: deliveryAttachments.value,
     })
 
@@ -546,6 +628,7 @@ const submitDeliveryEvidence = async () => {
     showDeliveredDialog.value = false
     deliveryAttachments.value = []
     deliveryNotes.value = ''
+    receiverName.value = ''
     deliveryAttachmentKey.value += 1
   } catch (error: any) {
     toast.add({

@@ -7,6 +7,7 @@ use App\Services\Modules\ModuleAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class StoreModuleController extends Controller
 {
@@ -17,8 +18,8 @@ class StoreModuleController extends Controller
     public function stores(): JsonResponse
     {
         $stores = DB::table('stores')
-            ->select('id', 'name as store_name', 'name', 'store_code', 'subscription_tier', 'status', 'email', 'phone')
-            ->orderBy('name')
+            ->select('id', 'store_name', 'store_code', 'subscription_tier', 'status', 'email', 'phone')
+            ->orderBy('store_name')
             ->get();
 
         return response()->json([
@@ -98,6 +99,10 @@ class StoreModuleController extends Controller
 
         $storeId = (int) $validated['store_id'];
         $moduleId = (int) DB::table('modules')->where('key', $validated['module_key'])->value('id');
+        $oldAllow = DB::table('store_module_overrides')
+            ->where('store_id', $storeId)
+            ->where('module_id', $moduleId)
+            ->value('allow');
 
         if (!$moduleId) {
             return response()->json(['success' => false, 'message' => 'Module not found'], 404);
@@ -122,9 +127,78 @@ class StoreModuleController extends Controller
             );
         }
 
+        // Auto-sync store_admin role permissions for this module so nav/actions appear when enabled
+        $this->syncStoreAdminPermissions($storeId, $moduleId, $validated['allow']);
+
+        DB::table('store_module_override_logs')->insert([
+            'store_id' => $storeId,
+            'module_id' => $moduleId,
+            'user_id' => $request->user()?->id,
+            'old_allow' => $oldAllow,
+            'new_allow' => $validated['allow'] ?? null,
+            'reason' => $validated['reason'] ?? null,
+            'created_at' => now(),
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => 'Override updated.',
         ]);
+    }
+
+    /**
+     * When a module is forced on/off, grant or revoke all permissions of that module
+     * to the store_admin role for the store, so navigation and actions align.
+     */
+    private function syncStoreAdminPermissions(int $storeId, int $moduleId, bool|null $allow): void
+    {
+        $roleId = DB::table('roles')
+            ->where('store_id', $storeId)
+            ->where('name', 'store_admin')
+            ->value('id');
+
+        if (!$roleId) {
+            return;
+        }
+
+        $moduleKey = DB::table('modules')->where('id', $moduleId)->value('key');
+
+        $permissionQuery = DB::table('permissions');
+        if (Schema::hasColumn('permissions', 'module_id')) {
+            $permissionQuery->where('module_id', $moduleId);
+        }
+        if ($moduleKey) {
+            $permissionQuery->orWhere('module', $moduleKey);
+        }
+        $permissionIds = $permissionQuery->pluck('id')->toArray();
+
+        if (empty($permissionIds)) {
+            return;
+        }
+
+        if ($allow === true) {
+            // Grant missing permissions
+            $existing = DB::table('role_permissions')
+                ->where('role_id', $roleId)
+                ->whereIn('permission_id', $permissionIds)
+                ->pluck('permission_id')
+                ->toArray();
+
+            $missing = array_diff($permissionIds, $existing);
+            if (!empty($missing)) {
+                $insert = array_map(fn ($pid) => [
+                    'role_id' => $roleId,
+                    'permission_id' => $pid,
+                ], $missing);
+                DB::table('role_permissions')->insert($insert);
+            }
+        } elseif ($allow === false) {
+            // Revoke permissions for this module
+            DB::table('role_permissions')
+                ->where('role_id', $roleId)
+                ->whereIn('permission_id', $permissionIds)
+                ->delete();
+        }
+        // If allow is null (reset), leave existing permissions as-is.
     }
 }

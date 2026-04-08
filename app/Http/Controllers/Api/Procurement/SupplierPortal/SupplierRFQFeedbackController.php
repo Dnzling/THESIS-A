@@ -28,7 +28,7 @@ class SupplierRFQFeedbackController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is not verified yet.',
-                ], 403);
+                ], 409);
             }
 
             // Get all active RFQs (exclude drafts/cancelled)
@@ -42,11 +42,57 @@ class SupplierRFQFeedbackController extends Controller
                 $query->where('rfq_number', 'LIKE', "%{$search}%");
             }
 
+            // Filter by status (exact)
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
+            }
+
+            // Date range filter (created_at)
+            $dateFrom = $request->get('date_from');
+            $dateTo = $request->get('date_to');
+            if ($dateFrom && $dateTo) {
+                $query->whereBetween('created_at', [
+                    $dateFrom . ' 00:00:00',
+                    $dateTo . ' 23:59:59',
+                ]);
+            } elseif ($dateFrom) {
+                $query->whereDate('created_at', '>=', $dateFrom);
+            } elseif ($dateTo) {
+                $query->whereDate('created_at', '<=', $dateTo);
+            }
+
+            // Sorting (default: created_at desc)
+            $sortField = $request->get('sort_field', 'created_at');
+            $sortOrder = strtolower($request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSorts = ['created_at', 'issue_date', 'rfq_number', 'status'];
+            if (!in_array($sortField, $allowedSorts, true)) {
+                $sortField = 'created_at';
+            }
+            $query->orderBy($sortField, $sortOrder);
+
             $rfqs = $query->paginate($request->get('per_page', 10));
 
             // Hide payment_terms and attachment_path from supplier-facing responses
             $rfqs->getCollection()->transform(function ($rfq) {
                 $arr = $rfq->toArray();
+
+                // expose store data & fallback store_name
+                if ($rfq->relationLoaded('store') && $rfq->store) {
+                    $arr['store'] = [
+                        'id' => $rfq->store->id ?? null,
+                        'store_name' => $rfq->store->store_name ?? null,
+                        'name' => $rfq->store->name ?? null,
+                        'store_code' => $rfq->store->store_code ?? null,
+                    ];
+                    $arr['store_name'] = $arr['store']['store_name']
+                        ?? $arr['store']['name']
+                        ?? $arr['store']['store_code']
+                        ?? null;
+                } else {
+                    $arr['store'] = null;
+                    $arr['store_name'] = $arr['store_name'] ?? null;
+                }
+
                 if (isset($arr['payment_terms'])) {
                     unset($arr['payment_terms']);
                 }
@@ -84,7 +130,7 @@ class SupplierRFQFeedbackController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is not verified yet.',
-                ], 403);
+                ], 409);
             }
 
             $rfq = RequestForQuotation::with(['items.product', 'attachments', 'store'])
@@ -107,6 +153,21 @@ class SupplierRFQFeedbackController extends Controller
 
             // Hide payment_terms and attachment_path from supplier-facing detail
             $rfqArr = $rfq->toArray();
+            if ($rfq->relationLoaded('store') && $rfq->store) {
+                $rfqArr['store'] = [
+                    'id' => $rfq->store->id ?? null,
+                    'store_name' => $rfq->store->store_name ?? null,
+                    'name' => $rfq->store->name ?? null,
+                    'store_code' => $rfq->store->store_code ?? null,
+                ];
+                $rfqArr['store_name'] = $rfqArr['store']['store_name']
+                    ?? $rfqArr['store']['name']
+                    ?? $rfqArr['store']['store_code']
+                    ?? null;
+            } else {
+                $rfqArr['store'] = null;
+                $rfqArr['store_name'] = $rfqArr['store_name'] ?? null;
+            }
             if (isset($rfqArr['payment_terms'])) {
                 unset($rfqArr['payment_terms']);
             }
@@ -160,7 +221,7 @@ class SupplierRFQFeedbackController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is not verified yet.',
-                ], 403);
+                ], 409);
             }
 
             $rfq = RequestForQuotation::findOrFail($request->rfq_id);

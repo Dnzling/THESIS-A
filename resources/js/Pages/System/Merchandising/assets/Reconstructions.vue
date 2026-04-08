@@ -4,7 +4,8 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">3D Reconstruction</h2>
-        <p class="text-sm text-gray-500 mt-1">Generate 3D models from photos or upload existing 3D files.</p>
+        <p class="text-sm text-gray-500 mt-1">Upload 3D models to view them instantly in the 3D viewer.</p>
+        <p class="text-xs text-gray-400 mt-1">Supported formats: .glb, .gltf, .obj, .ply</p>
       </div>
       <div class="flex gap-2">
         <Button label="3D Gallery" icon="pi pi-cube" severity="info" outlined
@@ -18,7 +19,7 @@
   
   
     <!-- Reconstruction Form -->
-    <Card ref="formCard">
+    <Card v-if="reconstructionEnabled" ref="formCard">
       <template #title>
         <div class="flex items-center gap-2">
           <span>New 3D Reconstruction</span>
@@ -79,7 +80,7 @@
     </Card>
   
     <!-- Current Status -->
-    <Card v-if="currentRecon">
+    <Card v-if="reconstructionEnabled && currentRecon">
       <template #title>
         <div class="flex items-center justify-between">
           <span>Current Reconstruction</span>
@@ -122,6 +123,21 @@
       </template>
     </Card>
   
+    <!-- Disabled Notice -->
+    <Card v-if="!reconstructionEnabled" class="border border-orange-200 bg-orange-50">
+      <template #content>
+        <div class="flex items-start gap-3 text-sm text-orange-800">
+          <i class="pi pi-info-circle text-lg mt-0.5"></i>
+          <div>
+            <p class="font-semibold">3D reconstruction is disabled in production.</p>
+            <p class="text-xs text-orange-700 mt-1">
+              You can still upload 3D models and view them in the 3D Gallery.
+            </p>
+          </div>
+        </div>
+      </template>
+    </Card>
+
     <!-- History -->
     <Card>
       <template #title>
@@ -203,6 +219,7 @@ import Column from 'primevue/column'
 
 const router = useRouter()
 const toast = useToast()
+const reconstructionEnabled = !import.meta.env.PROD
 
 const products = ref<any[]>([])
 const reconstructions = ref<any[]>([])

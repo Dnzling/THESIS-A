@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\ProductCatalog\Product3DReconstruction;
+use App\Models\ProductCatalog\ProductAsset;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -127,10 +128,13 @@ class Run3DReconstructionJob implements ShouldQueue
                 return;
             }
 
+            $assetId = $this->storeOutputAsAsset($reconstruction, $outputDisk, $outputRelativePath, $outputFormat);
+
             $reconstruction->update([
                 'status' => 'ready',
                 'output_path' => $outputRelativePath,
                 'output_format' => $outputFormat,
+                'output_asset_id' => $assetId,
                 'finished_at' => now(),
                 'progress' => 100,
             ]);
@@ -161,5 +165,37 @@ class Run3DReconstructionJob implements ShouldQueue
 
         $process->setTimeout($timeoutSeconds);
         return $process;
+    }
+
+    private function storeOutputAsAsset(Product3DReconstruction $reconstruction, string $disk, string $path, string $format): ?int
+    {
+        $fileName = basename($path);
+        $fileSize = Storage::disk($disk)->size($path) ?: 0;
+        $mimeType = Storage::disk($disk)->mimeType($path) ?: 'model/gltf-binary';
+
+        $setPrimary = (bool) ($reconstruction->options['set_primary'] ?? true);
+
+        if ($setPrimary) {
+            ProductAsset::byStore($reconstruction->store_id)
+                ->where('product_id', $reconstruction->product_id)
+                ->where('asset_type', '3D_Model')
+                ->update(['is_primary' => false]);
+        }
+
+        $asset = ProductAsset::create([
+            'store_id' => $reconstruction->store_id,
+            'product_id' => $reconstruction->product_id,
+            'asset_type' => '3D_Model',
+            'file_name' => $fileName,
+            'file_path' => $path,
+            'file_size_kb' => (int) round($fileSize / 1024),
+            'mime_type' => $mimeType,
+            'model_format' => $format,
+            'is_ar_compatible' => false,
+            'is_primary' => $setPrimary,
+            'display_order' => 0,
+        ]);
+
+        return $asset->id ?? null;
     }
 }

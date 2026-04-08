@@ -73,6 +73,7 @@ class DatabaseSeeder extends Seeder
             SalesNavigationSeeder::class,
             SalesRolePermissionsSeeder::class,
             ModulesFromPermissionsSeeder::class,
+            \Database\Seeders\PlanModulesSeeder::class,
         ]);
     }
 }

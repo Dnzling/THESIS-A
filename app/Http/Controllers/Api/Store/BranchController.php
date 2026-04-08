@@ -16,7 +16,7 @@ class BranchController extends Controller
             
             // Get branches for the user's store
             $query = Branch::where('store_id', $user->store_id)
-                ->select('id', 'name', 'branch_code', 'address', 'status', 'contact_number', 'branch_type')
+                ->select('id', 'name', 'branch_code', 'address', 'status', 'contact_number', 'branch_type', 'latitude', 'longitude', 'geofence_radius_m', 'geofence_enabled')
                 ->orderBy('name');
 
             if ($request->filled('branch_type')) {
@@ -76,11 +76,34 @@ class BranchController extends Controller
         }
     }
 
-    public function show($id) {}
+    public function show($id)
+    {
+        $branch = Branch::findOrFail($id);
+        return response()->json([
+            'success' => true,
+            'data' => $branch,
+        ]);
+    }
 
-    public function update() {}
+    public function update(Request $request, $id)
+    {
+        $branch = Branch::findOrFail($id);
+        $validated = $request->validate([
+            'address' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'geofence_radius_m' => 'nullable|integer|min:0|max:5000',
+            'geofence_enabled' => 'nullable|boolean',
+        ]);
 
-    public function delete() {}
+        $branch->fill($validated);
+        $branch->save();
 
-    public function active() {}
+        return response()->json([
+            'success' => true,
+            'data' => $branch,
+            'message' => 'Branch updated successfully',
+        ]);
+    }
 }

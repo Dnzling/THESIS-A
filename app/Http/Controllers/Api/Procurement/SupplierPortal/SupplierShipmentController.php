@@ -242,6 +242,7 @@ class SupplierShipmentController extends Controller
 
         $validated = $request->validate([
             'notes' => 'nullable|string|max:800',
+            'receiver_name' => 'required|string|max:150',
             'attachments' => 'required|array|min:1',
             'attachments.*' => 'required|image|max:10240',
             'latitude' => 'nullable|numeric|between:-90,90',
@@ -253,6 +254,7 @@ class SupplierShipmentController extends Controller
             'created_by' => auth()->id(),
             'event_type' => 'Delivered',
             'notes' => $validated['notes'] ?? null,
+            'receiver_name' => $validated['receiver_name'],
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
             'logged_at' => now(),

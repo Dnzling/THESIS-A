@@ -118,6 +118,7 @@ class ProductController extends BaseController
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
+                'unit_id' => 'nullable|exists:units,id',
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
@@ -269,6 +270,7 @@ class ProductController extends BaseController
                              ->with([
                                  'category',
                                  'subcategory',
+                                 'unit',
                                  'attributes.attribute',
                                  'assets' => function($query) {
                                      $query->orderBy('display_order');
@@ -397,6 +399,7 @@ class ProductController extends BaseController
                 'description' => 'nullable|string',
                 'category_id' => 'sometimes|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
+                'unit_id' => 'nullable|exists:units,id',
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',

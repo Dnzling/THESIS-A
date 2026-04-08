@@ -15,6 +15,7 @@ class PurchaseOrderDeliveryLog extends Model
         'created_by',
         'event_type',
         'notes',
+        'receiver_name',
         'latitude',
         'longitude',
         'logged_at',

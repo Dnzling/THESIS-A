@@ -373,7 +373,7 @@
               @click="router.push({ name: 'merchandising.products' })" />
             <Button label="3D Gallery" icon="pi pi-cube" severity="info" class="w-full"
               @click="router.push({ name: 'merchandising.3d-gallery' })" />
-            <Button label="3D Reconstruction" icon="pi pi-camera" severity="success" class="w-full"
+            <Button v-if="showReconstruction" label="3D Reconstruction" icon="pi pi-camera" severity="success" class="w-full"
               @click="router.push({ name: 'merchandising.3d-reconstruction' })" />
             <Button label="Upload Assets" icon="pi pi-cloud-upload" severity="secondary" class="w-full"
               @click="router.push({ name: 'merchandising.assets.upload' })" />
@@ -401,6 +401,7 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const toast = useToast()
+const showReconstruction = !import.meta.env.PROD
 
 const loading = ref(true)
 const loadingActivity = ref(false)

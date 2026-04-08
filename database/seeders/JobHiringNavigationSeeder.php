@@ -49,20 +49,18 @@ class JobHiringNavigationSeeder extends Seeder
             ]
         );
 
-        // Get job hiring permissions
-        $listPostingsPermission = Permission::where('name', 'view-job-postings')->first();
-        $createPostingsPermission = Permission::where('name', 'create-job-postings')->first();
-        $editPostingsPermission = Permission::where('name', 'edit-job-postings')->first();
-        $deletePostingsPermission = Permission::where('name', 'delete-job-postings')->first();
-        $viewApplications = Permission::where('name', 'view-job-applications')->first();
-        $updateApplicationStatus = Permission::where('name', 'update-application-status')->first();
+        // Consolidated recruitment permissions
+        $recruitView = Permission::where('name', 'hr.recruitment.view')->first();
+        $recruitManage = Permission::where('name', 'hr.recruitment.manage')->first();
+        $recruitApprove = Permission::where('name', 'hr.recruitment.approve')->first();
+        $recruitDelete = Permission::where('name', 'hr.recruitment.delete')->first();
 
         // Link permissions to Job Postings navigation item
         $permissionsToLink = array_filter([
-            $listPostingsPermission?->id,
-            $createPostingsPermission?->id,
-            $editPostingsPermission?->id,
-            $deletePostingsPermission?->id,
+            $recruitView?->id,
+            $recruitManage?->id,
+            $recruitApprove?->id,
+            $recruitDelete?->id,
         ]);
 
         if ($permissionsToLink) {
@@ -89,8 +87,9 @@ class JobHiringNavigationSeeder extends Seeder
 
         // Link permissions to Screening Pipeline navigation item
         $screeningPermissions = array_filter([
-            $viewApplications?->id,
-            $updateApplicationStatus?->id,
+            $recruitView?->id,
+            $recruitManage?->id,
+            $recruitApprove?->id,
         ]);
 
         if ($screeningPermissions) {

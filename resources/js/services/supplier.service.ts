@@ -249,6 +249,11 @@ class SupplierService {
     return response.data
   }
 
+  async updatePortalCoordinates(data: { latitude: number; longitude: number }) {
+    const response = await axiosClient.put(`${this.portalBaseUrl}/coordinates`, data)
+    return response.data
+  }
+
   async getPortalStats(): Promise<{ success: boolean; data: any }> {
     const response = await axiosClient.get(`${this.portalBaseUrl}/stats`)
     return response.data
@@ -413,11 +418,15 @@ class SupplierService {
     notes?: string
     latitude?: number | null
     longitude?: number | null
+    receiver_name: string
     attachments: File[]
   }) {
     const formData = new FormData()
     if (data.notes) {
       formData.append('notes', data.notes)
+    }
+    if (data.receiver_name) {
+      formData.append('receiver_name', data.receiver_name)
     }
     if (data.latitude !== undefined && data.latitude !== null) {
       formData.append('latitude', String(data.latitude))

@@ -1,10 +1,9 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-8 py-6 px-4 sm:px-6 lg:px-8">
-    <!-- iOS-style Header -->
+  <div class="max-w-7xl mx-auto space-y-6 py-5 px-4 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">Supplier Dashboard</h1>
-        <p class="text-sm text-gray-500 mt-1">Welcome back, {{ portal?.supplier_name || 'Supplier' }}</p>
+        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Supplier Dashboard</h1>
+        <p class="text-xs text-gray-500 mt-1">Welcome back, {{ portal?.supplier_name || 'Supplier' }}</p>
       </div>
       <div class="flex items-center gap-2">
         <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
@@ -65,106 +64,106 @@
     </div>
 
     <!-- iOS-style Stats Cards -->
-    <div v-if="loading" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Skeleton v-for="i in 4" :key="i" height="140px" class="rounded-2xl" />
+    <div v-if="loading" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <Skeleton v-for="i in 4" :key="i" height="120px" class="rounded-xl" />
     </div>
     
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4" v-else-if="stats">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3" v-else-if="stats">
       <!-- Portal Status Card -->
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-blue-500 to-blue-600">
+      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
         <template #content>
-          <div class="p-5">
+          <div class="p-4">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-blue-100 uppercase tracking-wider">Portal Status</span>
-              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-shield text-white text-sm"></i>
+              <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Portal Status</span>
+              <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
+                <i class="pi pi-shield text-blue-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-2xl font-bold text-white capitalize">{{ stats.portal_status }}</p>
-            <p class="text-xs text-blue-200 mt-2">Last updated: Today</p>
+            <p class="text-xl font-bold text-gray-900 capitalize">{{ stats.portal_status }}</p>
+            <p class="text-xs text-gray-400 mt-1">Updated today</p>
           </div>
         </template>
       </Card>
 
       <!-- Total RFQs Card -->
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Total RFQs</span>
+          <div class="p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Total RFQs</span>
               <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
                 <i class="pi pi-file text-green-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.total_rfqs }}</p>
-            <p class="text-xs text-gray-500 mt-2">All time responses</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.total_rfqs }}</p>
+            <p class="text-xs text-gray-500 mt-1">All time responses</p>
           </div>
         </template>
       </Card>
 
       <!-- Total POs Card -->
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Total POs</span>
+          <div class="p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Total POs</span>
               <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
                 <i class="pi pi-shopping-cart text-orange-600 text-sm"></i>
               </div>
             </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.total_pos }}</p>
-            <p class="text-xs text-gray-500 mt-2">Purchase orders received</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ stats.total_pos }}</p>
+            <p class="text-xs text-gray-500 mt-1">Purchase orders received</p>
           </div>
         </template>
       </Card>
 
       <!-- Pending POs Card -->
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-red-500 to-red-600">
+      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
         <template #content>
-          <div class="p-5">
+          <div class="p-4">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-red-100 uppercase tracking-wider">Pending POs</span>
-              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-exclamation-circle text-white text-sm"></i>
+              <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pending POs</span>
+              <div class="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                <i class="pi pi-exclamation-circle text-red-500 text-sm"></i>
               </div>
             </div>
-            <p class="text-3xl font-bold text-white">{{ stats.pending_pos }}</p>
-            <p class="text-xs text-red-200 mt-2">Awaiting your response</p>
+            <p class="text-2xl font-bold text-red-600">{{ stats.pending_pos }}</p>
+            <p class="text-xs text-gray-500 mt-1">Awaiting your response</p>
           </div>
         </template>
       </Card>
     </div>
 
     <!-- iOS-style Action Buttons -->
-    <div class="flex flex-wrap gap-3">
+    <div class="flex flex-wrap gap-2">
       <Button 
         v-if="portal?.status === 'pending'" 
         label="Complete Registration" 
         icon="pi pi-arrow-right"
         iconPos="right"
         @click="router.push('/supplier-portal/registration')"
-        class="bg-blue-500 hover:bg-blue-600 border-none text-white font-medium rounded-xl px-6 py-3 shadow-sm"
+        class="bg-blue-500 hover:bg-blue-600 border-none text-white font-medium rounded-lg px-4 py-2 shadow-sm text-sm"
       />
       <Button 
         v-if="portal?.status === 'approved'" 
         label="View RFQs" 
         icon="pi pi-list"
         @click="router.push('/supplier-portal/rfqs')"
-        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-xl px-6 py-3 border border-gray-200 shadow-sm"
+        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
       />
       <Button 
         v-if="portal?.status === 'approved'" 
         label="View POs" 
         icon="pi pi-shopping-cart"
         @click="router.push('/supplier-portal/pos')"
-        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-xl px-6 py-3 border border-gray-200 shadow-sm"
+        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
       />
       <Button 
         v-if="portal?.status === 'approved'" 
         label="Delivery Board" 
         icon="pi pi-truck"
         @click="router.push('/supplier-portal/deliveries')"
-        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-xl px-6 py-3 border border-gray-200 shadow-sm"
+        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
       />
     </div>
 
@@ -202,7 +201,7 @@
                 v-for="rfq in recentRFQs.slice(0, 5)" 
                 :key="rfq.id"
                 class="group bg-gray-50 hover:bg-gray-100 rounded-xl p-4 transition-all cursor-pointer"
-                @click="router.push(`/supplier-portal/rfqs/${rfq.rfq_id}/view`)"
+                @click="router.push(`/supplier-portal/rfqs/${rfq.rfq_id}`)"
               >
                 <div class="flex items-center justify-between">
                   <div>
@@ -268,7 +267,7 @@
                 v-for="po in recentPOs.slice(0, 5)" 
                 :key="po.id"
                 class="group bg-gray-50 hover:bg-gray-100 rounded-xl p-4 transition-all cursor-pointer"
-                @click="router.push(`/supplier-portal/pos/${po.purchase_order_id}/view`)"
+                @click="router.push(`/supplier-portal/pos/${po.purchase_order_id}`)"
               >
                 <div class="flex items-center justify-between">
                   <div>
@@ -300,48 +299,6 @@
       </Card>
     </div>
 
-    <!-- Quick Actions Footer -->
-    <div v-if="portal?.status === 'approved'" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <button 
-        @click="router.push('/supplier-portal/rfqs')"
-        class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:border-blue-200 hover:shadow-md transition-all text-center"
-      >
-        <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-2">
-          <i class="pi pi-file text-blue-600"></i>
-        </div>
-        <span class="text-sm font-medium text-gray-700">Browse RFQs</span>
-      </button>
-      
-      <button 
-        @click="router.push('/supplier-portal/pos')"
-        class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:border-orange-200 hover:shadow-md transition-all text-center"
-      >
-        <div class="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center mx-auto mb-2">
-          <i class="pi pi-shopping-cart text-orange-600"></i>
-        </div>
-        <span class="text-sm font-medium text-gray-700">View POs</span>
-      </button>
-      
-      <button 
-        @click="router.push('/supplier-portal/deliveries')"
-        class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:border-green-200 hover:shadow-md transition-all text-center"
-      >
-        <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
-          <i class="pi pi-truck text-green-600"></i>
-        </div>
-        <span class="text-sm font-medium text-gray-700">Deliveries</span>
-      </button>
-      
-      <button 
-        @click="router.push('/supplier-portal/profile')"
-        class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:border-purple-200 hover:shadow-md transition-all text-center"
-      >
-        <div class="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-2">
-          <i class="pi pi-user text-purple-600"></i>
-        </div>
-        <span class="text-sm font-medium text-gray-700">Profile</span>
-      </button>
-    </div>
   </div>
 </template>
 

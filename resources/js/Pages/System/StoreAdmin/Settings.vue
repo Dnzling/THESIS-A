@@ -220,35 +220,6 @@
       </template>
     </Dialog>
 
-    <Card>
-      <template #title>Cross-Module Approval Tracker</template>
-      <template #content>
-        <p class="text-sm text-slate-600 mb-4">
-          This shows which actions in one module require approval from another module.
-        </p>
-        <div class="grid gap-3 md:grid-cols-3 mb-4">
-          <div class="rounded-lg border border-slate-200 p-3">
-            <div class="text-xs uppercase text-slate-400">Approval Actions</div>
-            <div class="text-lg font-semibold text-slate-900">{{ approvalMatrixRows.length }}</div>
-          </div>
-          <div class="rounded-lg border border-slate-200 p-3">
-            <div class="text-xs uppercase text-slate-400">Source Modules</div>
-            <div class="text-lg font-semibold text-slate-900">{{ approvalSourceCount }}</div>
-          </div>
-          <div class="rounded-lg border border-slate-200 p-3">
-            <div class="text-xs uppercase text-slate-400">Approver Modules</div>
-            <div class="text-lg font-semibold text-slate-900">{{ approvalApproverCount }}</div>
-          </div>
-        </div>
-        <DataTable :value="approvalMatrixRows" responsiveLayout="scroll" class="text-sm" stripedRows>
-          <Column field="source_module" header="Source Module"></Column>
-          <Column field="action" header="Action"></Column>
-          <Column field="approver_module" header="Approval Module"></Column>
-          <Column field="approver_action" header="Approver Action"></Column>
-          <Column field="notes" header="Notes"></Column>
-        </DataTable>
-      </template>
-    </Card>
 
     <Card>
       <template #title>Store Profile</template>
@@ -256,7 +227,7 @@
         <div class="grid gap-4 md:grid-cols-2 text-sm text-slate-700">
           <div>
             <label class="text-xs uppercase text-slate-400 block mb-1">Store Name</label>
-            <InputText v-model="store.name" class="w-full" placeholder="Store name" />
+            <InputText v-model="store.name" class="w-full" placeholder="Store name" readonly />
           </div>
           <div>
             <label class="text-xs uppercase text-slate-400 block mb-1">Contact Person</label>
@@ -264,7 +235,7 @@
           </div>
           <div>
             <label class="text-xs uppercase text-slate-400 block mb-1">Email</label>
-            <InputText v-model="store.email" class="w-full" placeholder="Store email" />
+            <InputText v-model="store.email" class="w-full" placeholder="Store email" readonly />
           </div>
           <div>
             <label class="text-xs uppercase text-slate-400 block mb-1">Phone</label>
@@ -280,51 +251,20 @@
           </div>
           <div>
             <label class="text-xs uppercase text-slate-400 block mb-1">Province</label>
-            <InputText v-model="store.province" class="w-full" placeholder="Province" />
+            <InputText v-model="store.province" class="w-full" placeholder="Province" readonly/>
           </div>
           <div>
             <label class="text-xs uppercase text-slate-400 block mb-1">Store Type</label>
             <InputText v-model="store.type" class="w-full" placeholder="Retail, Warehouse, etc." />
           </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Store Code</label>
-            <InputText v-model="store.store_code" class="w-full" placeholder="Store code" />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Status</label>
-            <InputText v-model="store.status" class="w-full" placeholder="active / pending" />
-          </div>
         </div>
         <div class="mt-4 flex items-center justify-end gap-2">
           <Button
             label="Save Store Profile"
-            icon="pi pi-save"
+            size="small"
             :loading="savingProfile"
             @click="saveStoreProfile"
           />
-        </div>
-
-        <div class="mt-6">
-          <div class="flex items-center justify-between mb-3">
-            <div>
-              <div class="text-sm font-semibold text-slate-900">Branches</div>
-              <div class="text-xs text-slate-500">Branches linked to this store.</div>
-            </div>
-            <Tag v-if="branches.length" :value="`${branches.length} total`" severity="info" />
-          </div>
-          <DataTable :value="branches" responsiveLayout="scroll" class="text-sm" v-if="branches.length">
-            <Column field="name" header="Branch"></Column>
-            <Column field="city" header="City"></Column>
-            <Column field="province" header="Province"></Column>
-            <Column field="status" header="Status"></Column>
-            <Column field="branch_type" header="Type"></Column>
-            <Column field="is_main_branch" header="Main">
-              <template #body="slotProps">
-                <Tag :value="slotProps.data.is_main_branch ? 'Yes' : 'No'" :severity="slotProps.data.is_main_branch ? 'success' : 'secondary'" />
-              </template>
-            </Column>
-          </DataTable>
-          <div v-else class="text-sm text-slate-500">No branches available yet.</div>
         </div>
       </template>
     </Card>

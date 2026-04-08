@@ -152,6 +152,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/subscriptions/{store}/extend', [SubscriptionManagementController::class, 'extend']);
         Route::get('/subscription-plans', [SubscriptionPlanController::class, 'index']);
         Route::post('/subscription-plans', [SubscriptionPlanController::class, 'store']);
+        Route::get('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'update']);
 
         // Super Admin Management

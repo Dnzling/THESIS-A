@@ -70,8 +70,16 @@
           </div>
   
           <div class="mt-4">
-            <label class="text-sm font-medium text-slate-700">Expected Delivery</label>
-            <DatePicker v-model="form.expected_delivery_date" :minDate="new Date()" fluid class="mt-2" dateFormat="yy-mm-dd" />
+            <label class="text-sm font-medium text-slate-700">Expected Delivery Range</label>
+            <DatePicker
+              v-model="form.expected_delivery_date"
+              selectionMode="range"
+              :minDate="new Date()"
+              fluid
+              class="mt-2"
+              dateFormat="yy-mm-dd"
+            />
+            <small class="text-xs text-slate-500">Select start and end dates.</small>
           </div>
         </template>
       </Card>
@@ -80,23 +88,13 @@
         <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
             <h3 class="text-lg font-semibold text-slate-900">Location & Distance</h3>
-            <p class="text-sm text-slate-500 mb-4">Use your current coordinates to estimate delivery charge.</p>
-  
-            <div class="space-y-3">
-              <Button label="Use Current Location" icon="pi pi-map-marker" fluid outlined @click="useCurrentLocation" />
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="text-xs text-slate-500">Latitude</label>
-                  <InputText v-model="form.current_latitude" class="w-full mt-1" />
-                </div>
-                <div>
-                  <label class="text-xs text-slate-500">Longitude</label>
-                  <InputText v-model="form.current_longitude" class="w-full mt-1" />
-                </div>
+            <p class="text-sm text-slate-500 mb-4">Distance is calculated automatically from your saved coordinates.</p>
+
+            <div class="space-y-3 text-sm">
+              <div v-if="missingCoordMessage" class="rounded-xl border border-amber-200 bg-amber-50 text-amber-800 p-3">
+                {{ missingCoordMessage }}
               </div>
-              <Button label="Calculate Distance" icon="pi pi-compass" class="w-full" :loading="distanceLoading"
-                :disabled="!canCalculateDistance" @click="calculateDistance" />
-              <div class="rounded-xl bg-slate-50 p-4 text-sm">
+              <div v-else class="rounded-xl bg-slate-50 p-4 text-sm">
                 <div class="flex items-center justify-between">
                   <span class="text-slate-500">Distance</span>
                   <span class="font-semibold text-slate-900">{{ distanceKmDisplay }}</span>
@@ -118,9 +116,6 @@
               <div class="font-medium text-slate-800">{{ po.branch?.name || 'Branch' }}</div>
               <div>{{ po.branch?.address }}</div>
               <div>{{ po.branch?.city }}</div>
-              <div class="text-xs text-slate-400">
-                Lat {{ po.branch?.latitude || '-' }}, Lng {{ po.branch?.longitude || '-' }}
-              </div>
             </div>
             <div v-else class="text-sm text-slate-500 mt-4">Branch details unavailable.</div>
           </template>
@@ -216,6 +211,7 @@ import Dialog from 'primevue/dialog'
 import PortalStepper from '@/Components/system/supplier/PortalStepper.vue'
 import Skeleton from 'primevue/skeleton'
 import supplierService, { SupplierDeliveryTemplate } from '../../../services/supplier.service'
+import { watch } from 'vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -223,6 +219,7 @@ const toast = useToast()
 
 const poId = Number(route.params.id)
 const po = ref<any>(null)
+const portal = ref<any>(null)
 const templates = ref<SupplierDeliveryTemplate[]>([])
 const selectedTemplateId = ref<number | null>(null)
 const savingTemplate = ref(false)
@@ -258,7 +255,7 @@ const form = ref({
   cost_per_km: 0,
   current_latitude: '',
   current_longitude: '',
-  expected_delivery_date: null as Date | null,
+  expected_delivery_date: null as Date[] | null,
 })
 
 const activeTemplate = computed(() => {
@@ -273,8 +270,11 @@ const branchCoords = computed(() => {
   return lat && lng ? { lat: Number(lat), lng: Number(lng) } : null
 })
 
+const hasSupplierCoords = computed(() =>
+  Boolean(form.value.current_latitude && form.value.current_longitude)
+)
 const canCalculateDistance = computed(() => {
-  return Boolean(branchCoords.value && form.value.current_latitude && form.value.current_longitude)
+  return Boolean(branchCoords.value && hasSupplierCoords.value)
 })
 
 const deliveryCharge = computed(() => {
@@ -288,10 +288,24 @@ const distanceKmDisplay = computed(() => {
 })
 
 const canContinue = computed(() => {
-  return Boolean(form.value.driver_name && form.value.cost_per_km && distanceKm.value)
+  return Boolean(
+    form.value.driver_name &&
+    form.value.cost_per_km &&
+    distanceKm.value &&
+    form.value.expected_delivery_date &&
+    form.value.expected_delivery_date.length === 2
+  )
 })
 
 const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(value || 0)
+
+const missingCoordMessage = computed(() => {
+  const missing: string[] = []
+  if (!hasSupplierCoords.value) missing.push('supplier coordinates in your profile')
+  if (!branchCoords.value) missing.push('store/branch coordinates')
+  if (!missing.length) return ''
+  return `Missing ${missing.join(' and ')}. Please set them to calculate distance.`
+})
 
 const statusSeverity = (status: string) => {
   if (status === 'sent_to_supplier') return 'info'
@@ -306,6 +320,30 @@ const loadPO = async () => {
   const res = await supplierService.getSupplierPODetail(poId)
   const payload = res.data || res
   po.value = payload?.data?.po || payload?.po || null
+}
+
+const loadPortal = async () => {
+  try {
+    const res = await supplierService.getMyPortal()
+    const payload = res.data || res
+    portal.value = payload?.data || payload || null
+    const lat =
+      portal.value?.latitude ||
+      portal.value?.supplier_latitude ||
+      portal.value?.supplier?.latitude ||
+      portal.value?.supplier?.lat
+    const lng =
+      portal.value?.longitude ||
+      portal.value?.supplier_longitude ||
+      portal.value?.supplier?.longitude ||
+      portal.value?.supplier?.lng
+    if (lat && lng) {
+      form.value.current_latitude = String(lat)
+      form.value.current_longitude = String(lng)
+    }
+  } catch (error) {
+    console.warn('Failed to load portal coordinates', error)
+  }
 }
 
 const loadTemplates = async () => {
@@ -422,26 +460,9 @@ const saveTemplate = async () => {
   }
 }
 
-const useCurrentLocation = () => {
-  if (!navigator.geolocation) {
-    toast.add({ severity: 'warn', summary: 'Unavailable', detail: 'Geolocation is not supported.', life: 2500 })
-    return
-  }
-  navigator.geolocation.getCurrentPosition(
-    position => {
-      form.value.current_latitude = position.coords.latitude.toString()
-      form.value.current_longitude = position.coords.longitude.toString()
-      toast.add({ severity: 'success', summary: 'Location Set', detail: 'Coordinates updated.', life: 2000 })
-    },
-    () => {
-      toast.add({ severity: 'error', summary: 'Location Error', detail: 'Unable to get your location.', life: 2500 })
-    }
-  )
-}
-
 const calculateDistance = async () => {
   if (!canCalculateDistance.value || !branchCoords.value) {
-    toast.add({ severity: 'warn', summary: 'Missing Data', detail: 'Set both origin and destination coordinates.', life: 2500 })
+    distanceKm.value = 0
     return
   }
   distanceLoading.value = true
@@ -469,6 +490,14 @@ const calculateDistance = async () => {
 }
 
 const continueToInvoice = () => {
+  if (!form.value.expected_delivery_date || form.value.expected_delivery_date.length !== 2) {
+    toast.add({ severity: 'warn', summary: 'Delivery Range Required', detail: 'Select a start and end date.', life: 2500 })
+    return
+  }
+  if (!canCalculateDistance.value) {
+    toast.add({ severity: 'warn', summary: 'Coordinates Missing', detail: 'Add supplier and branch coordinates first.', life: 2500 })
+    return
+  }
   const draft = {
     po_id: poId,
     truck_brand: form.value.truck_brand,
@@ -482,7 +511,8 @@ const continueToInvoice = () => {
     current_longitude: form.value.current_longitude ? Number(form.value.current_longitude) : null,
     distance_km: distanceKm.value,
     delivery_charge: deliveryCharge.value,
-    expected_delivery_date: form.value.expected_delivery_date || null,
+    expected_delivery_date: form.value.expected_delivery_date?.[0] || null,
+    expected_delivery_range: form.value.expected_delivery_date || null,
   }
   localStorage.setItem(`supplier_delivery_draft_${poId}`, JSON.stringify(draft))
   router.push(`/supplier-portal/pos/${poId}/invoice`)
@@ -491,9 +521,25 @@ const continueToInvoice = () => {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadPO(), loadTemplates()])
+    await Promise.all([loadPO(), loadTemplates(), loadPortal()])
+    if (canCalculateDistance.value) {
+      await calculateDistance()
+    } else {
+      distanceKm.value = 0
+    }
   } finally {
     loading.value = false
   }
 })
+
+watch(
+  () => [branchCoords.value, form.value.current_latitude, form.value.current_longitude],
+  async () => {
+    if (canCalculateDistance.value) {
+      await calculateDistance()
+    } else {
+      distanceKm.value = 0
+    }
+  }
+)
 </script>

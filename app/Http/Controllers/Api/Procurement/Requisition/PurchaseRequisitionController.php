@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\Config\ProcurementSettings;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -642,6 +645,37 @@ class PurchaseRequisitionController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Purchase requisition cancelled',
+        ]);
+    }
+
+    /**
+     * Delivery logs tied to a PR (via its linked PO shipment if any)
+     * GET /api/procurement/requisitions/{id}/delivery-logs
+     */
+    public function deliveryLogs($id): JsonResponse
+    {
+        $pr = PurchaseRequisition::findOrFail($id);
+        $po = PurchaseOrder::where('purchase_requisition_id', $pr->id)->first();
+        $shipment = null;
+        $logs = [];
+
+        if ($po) {
+            $shipment = PurchaseOrderShipment::where('purchase_order_id', $po->id)->first();
+            if ($shipment) {
+                $logs = PurchaseOrderDeliveryLog::with(['creator', 'attachments'])
+                    ->where('shipment_id', $shipment->id)
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'status' => $po->status ?? $pr->status ?? null,
+                'shipment' => $shipment,
+                'logs' => $logs,
+            ],
         ]);
     }
 

@@ -30,7 +30,7 @@ class SupplierPOFeedbackController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is not verified yet.',
-                ], 403);
+                ], 409);
             }
 
             if (!$portal->supplier_id) {
@@ -59,8 +59,7 @@ class SupplierPOFeedbackController extends Controller
 
             $query = PurchaseOrder::where('supplier_id', $portal->supplier_id)
                 ->whereIn('status', $allowedStatuses)
-                ->with(['items.product', 'supplier'])
-                ->orderBy('created_at', 'desc');
+                ->with(['items.product', 'supplier', 'store']);
 
             // Filter by status
             if ($request->has('status')) {
@@ -73,7 +72,37 @@ class SupplierPOFeedbackController extends Controller
                 $query->where('po_number', 'LIKE', "%{$search}%");
             }
 
+            // Sorting (default: created_at desc)
+            $sortField = $request->get('sort_field', 'created_at');
+            $sortOrder = strtolower($request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSorts = ['created_at', 'order_date', 'expected_delivery_date', 'po_number', 'status'];
+            if (!in_array($sortField, $allowedSorts, true)) {
+                $sortField = 'created_at';
+            }
+            $query->orderBy($sortField, $sortOrder);
+
             $pos = $query->paginate($request->get('per_page', 10));
+
+            // add trimmed store info
+            $pos->getCollection()->transform(function ($po) {
+                $arr = $po->toArray();
+                if ($po->relationLoaded('store') && $po->store) {
+                    $arr['store'] = [
+                        'id' => $po->store->id ?? null,
+                        'store_name' => $po->store->store_name ?? null,
+                        'name' => $po->store->name ?? null,
+                        'store_code' => $po->store->store_code ?? null,
+                    ];
+                    $arr['store_name'] = $arr['store']['store_name']
+                        ?? $arr['store']['name']
+                        ?? $arr['store']['store_code']
+                        ?? null;
+                } else {
+                    $arr['store'] = null;
+                    $arr['store_name'] = $arr['store_name'] ?? null;
+                }
+                return $arr;
+            });
 
             return response()->json([
                 'success' => true,
@@ -101,17 +130,17 @@ class SupplierPOFeedbackController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is not verified yet.',
-                ], 403);
+                ], 409);
             }
 
             if (!$portal->supplier_id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Supplier portal is not linked to a supplier.',
-                ], 403);
+                ], 409);
             }
 
-            $po = PurchaseOrder::with(['items.product', 'supplier', 'branch'])
+            $po = PurchaseOrder::with(['items.product', 'supplier', 'branch', 'store'])
                 ->findOrFail($id);
 
             if ($po->supplier_id !== $portal->supplier_id) {
@@ -206,7 +235,7 @@ class SupplierPOFeedbackController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Your supplier account is not verified yet.',
-                ], 403);
+                ], 409);
             }
 
             $po = PurchaseOrder::findOrFail($request->purchase_order_id);

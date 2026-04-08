@@ -35,9 +35,9 @@
       </div>
     </div>
 
-    <template v-else-if="detail">
+    <div v-else-if="detail" class="space-y-6">
       <!-- iOS-style Stats Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 ">
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">PR Number</span>
@@ -116,87 +116,55 @@
         </div>
       </div>
 
-      <!-- Action Buttons -->
-      <div class="flex justify-end gap-3 flex-wrap">
-        <Button
-          v-if="canManageRequisitions && detail.status === 'draft'"
-          size="small"
-          severity="warn"
-          outlined
-          icon="pi pi-pencil"
-          @click="editPR"
-        />
+      <!-- Delivery Status & Logs -->
+      <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered'].includes(shipmentStatus || '') || deliveryLogs.length" class="space-y-4">
+        <div class="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4">
+          <div class="flex items-center justify-between text-sm font-semibold text-slate-600">
+            <div class="flex items-center gap-2" v-for="step in steps" :key="step.key">
+              <div :class="['w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold',
+                step.active ? 'bg-emerald-500' : 'bg-slate-300']">
+                {{ step.index }}
+              </div>
+              <span :class="step.active ? 'text-emerald-600' : 'text-slate-500'">{{ step.label }}</span>
+              <div v-if="step.index !== steps.length" class="w-10 h-px bg-slate-200 mx-3"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-500 mt-2">
+            <i class="pi pi-info-circle text-slate-400"></i>
+            <span v-if="shipmentStatus">Current shipment status: {{ formatStatus(shipmentStatus) }}</span>
+            <span v-else>No shipment created yet.</span>
+          </div>
+        </div>
 
-        <Button
-          v-if="canManageRequisitions && detail.status === 'draft'"
-          size="small"
-          severity="danger"
-          outlined
-          icon="pi pi-trash"
-          @click="deletePR"
-        />
-
-        <Button
-          v-if="canManageRequisitions && detail.status === 'draft'"
-          size="small"
-          severity="info"
-          icon="pi pi-send"
-          :loading="processing"
-          @click="submit"
-        :label="processing ? 'Submitting...' : 'Submit'" />
-
-        <Button
-          v-if="canApprove"
-          size="small"
-          severity="danger"
-          outlined
-          icon="pi pi-times"
-          :loading="processing"
-          @click="showRejectDialog = true"
-        />
-
-        <Button
-          v-if="canApprove"
-          size="small"
-          severity="success"
-          icon="pi pi-check"
-          :loading="processing"
-          @click="approve"
-          :label="processing ? 'Approving...' : 'Approve'"
-        />
-
-        <Button
-          v-if="detail && detail.status === 'procurement_processing' && (canManagePurchaseOrders || canManageRfq)"
-          size="small"
-          severity="info"
-          icon="pi pi-share"
-          @click="createRequest"
-          label="Create Request"
-        />
-
-        <Button
-          v-if="canManageReceiving && detail.status === 'delivered' && deliveredPO"
-          size="small"
-          severity="secondary"
-          icon="pi pi-archive"
-          @click="createGoodsReceipt(deliveredPO)"
-        />
-
-        <Button
-          v-if="canManageRfq && canCreateRfqFromDetail"
-          size="small"
-          severity="success"
-          icon="pi pi-send"
-          @click="createRfqFromRequisition"
-        />
-
-        <Button
-          v-if="canManagePurchaseOrders && canCreatePoFromDetail"
-          size="small"
-          severity="info"
-          icon="pi pi-shopping-cart"
-          @click="createPoFromRequisition"
-        />
+        <div class="bg-white rounded-2xl border border-slate-200/70 shadow-sm" v-if="deliveryLogs.length">
+          <div class="px-6 pt-4 pb-2 flex items-center gap-2">
+            <i class="pi pi-book text-slate-500"></i>
+            <h3 class="font-semibold text-slate-800">Delivery Logs</h3>
+          </div>
+          <div v-if="shipmentInfo" class="px-6 pb-3 text-sm text-slate-700">
+            <div class="flex flex-wrap gap-4">
+              <span class="font-semibold">{{ shipmentInfo.driver_name || 'Driver' }}</span>
+              <span>Truck: {{ shipmentInfo.truck_brand || '-' }} {{ shipmentInfo.truck_type || '' }}</span>
+              <span>Plate: {{ shipmentInfo.plate_number || '-' }}</span>
+              <span>Contact: {{ shipmentInfo.driver_contact || '-' }}</span>
+            </div>
+          </div>
+          <div class="divide-y divide-slate-100">
+            <div v-for="log in deliveryLogs" :key="log.id" class="py-3 px-6 flex items-start gap-3">
+              <div class="w-2 h-2 rounded-full mt-2" :class="logDotColor(log.event_type)"></div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  {{ log.event_type }}
+                  <Tag :value="formatDateTime(log.created_at)" severity="secondary" class="text-xs" />
+                </div>
+                <div class="text-xs text-slate-500">
+                  By {{ shipmentInfo?.driver_name || 'Driver' }}<span v-if="log.receiver_name"> • Receiver: {{ log.receiver_name }}</span>
+                </div>
+                <p v-if="log.notes" class="text-sm text-slate-700 mt-1">{{ log.notes }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- PR Details Card -->
@@ -278,27 +246,86 @@
         </div>
       </div>
 
-      <!-- Approval Chain Card -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wider flex items-center gap-2">
-            <i class="pi pi-check-circle text-gray-400"></i>
-            Approval Chain ({{ (detail.required_approvals || []).length }} levels)
-          </h3>
-        </div>
-        <div class="p-6">
-          <div class="space-y-2">
-            <div v-for="(approval, index) in (detail?.required_approvals || [])" :key="index" class="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100">
-              <div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
-                <i class="pi pi-check text-green-600 text-xs"></i>
-              </div>
-              <span class="font-medium text-gray-900">{{ capitalizeWords(approval) }}</span>
-            </div>
-            <div v-if="!detail?.required_approvals?.length" class="text-center py-4">
-              <p class="text-gray-500">No approvals required</p>
-            </div>
-          </div>
-        </div>
+       <!-- Action Buttons -->
+      <div class="flex justify-end gap-3 flex-wrap">
+        <Button
+          v-if="canManageRequisitions && detail.status === 'draft'"
+          size="medium"
+          severity="warn"
+          outlined
+          icon="pi pi-pencil"
+          @click="editPR"
+        />
+
+        <Button
+          v-if="canManageRequisitions && detail.status === 'draft'"
+          size="medium"
+          severity="danger"
+          outlined
+          icon="pi pi-trash"
+          @click="deletePR"
+        />
+
+        <Button
+          v-if="canManageRequisitions && detail.status === 'draft'"
+          size="medium"
+          severity="info"
+          icon="pi pi-send"
+          :loading="processing"
+          @click="submit"
+        :label="processing ? 'Submitting...' : 'Submit'" />
+
+        <Button
+          v-if="canApprove"
+          size="medium"
+          severity="danger"
+          outlined
+          icon="pi pi-times"
+          :loading="processing"
+          @click="showRejectDialog = true"
+        />
+
+        <Button
+          v-if="canApprove"
+          size="medium"
+          severity="success"
+          icon="pi pi-check"
+          :loading="processing"
+          @click="approve"
+          :label="processing ? 'Approving...' : 'Approve'"
+        />
+
+        <Button
+          v-if="detail && detail.status === 'procurement_processing' && (canManagePurchaseOrders || canManageRfq)"
+          size="medium"
+          severity="info"
+          @click="createRequest"
+          label="Create Request"
+        />
+
+        <Button
+          v-if="canManageReceiving && detail.status === 'delivered' && deliveredPO"
+          size="medium"
+          severity="secondary"
+          icon="pi pi-archive"
+          @click="createGoodsReceipt(deliveredPO)"
+        />
+
+        <Button
+          v-if="canManageRfq && canCreateRfqFromDetail"
+          size="medium"
+          severity="success"
+          icon="pi pi-send"
+          @click="createRfqFromRequisition"
+        />
+
+        <Button
+          v-if="canManagePurchaseOrders && canCreatePoFromDetail"
+          size="medium"
+          severity="info"
+          icon="pi pi-shopping-cart"
+          @click="createPoFromRequisition"
+        />
       </div>
 
       <!-- Related Purchase Orders -->
@@ -321,7 +348,7 @@
           </div>
         </div>
       </div>
-    </template>
+    </div>
 
     <!-- Not Found State -->
     <div v-else class="text-center py-12 bg-white rounded-2xl border border-gray-100">
@@ -405,6 +432,7 @@ import Toast from 'primevue/toast'
 import Button from 'primevue/button'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
+import axiosClient from '@/axios'
 
 const route = useRoute()
 const router = useRouter()
@@ -426,6 +454,19 @@ const responseVisible = ref(false)
 const responseTitle = ref('')
 const responseMessage = ref('')
 const responseSeverity = ref<'success' | 'error' | 'info'>('info')
+const shipmentStatus = ref<string | null>(null)
+const shipmentInfo = ref<any>(null)
+const deliveryLogs = ref<any[]>([])
+const steps = computed(() => {
+  const sent = shipmentStatus.value === 'sent_to_supplier' || shipmentStatus.value === 'supplier_accepted'
+  const inTransit = shipmentStatus.value === 'in_transit'
+  const delivered = shipmentStatus.value === 'delivered'
+  return [
+    { key: 'supplier', label: 'Supplier Approval', index: 1, active: sent || inTransit || delivered },
+    { key: 'transit', label: 'In Transit', index: 2, active: inTransit || delivered },
+    { key: 'delivered', label: 'Order Delivered', index: 3, active: delivered },
+  ]
+})
 
 const normalize = (value: unknown): string =>
   String(value ?? '')
@@ -597,6 +638,32 @@ const getRfqSeverity = (req: any) => (getRfqCount(req) > 0 ? 'success' : 'second
 const getPoStatus = (req: any) => (getPoCount(req) > 0 ? 'Created' : 'Not Created')
 const getPoSeverity = (req: any) => (getPoCount(req) > 0 ? 'success' : 'secondary')
 
+const logDotColor = (eventType: string) => {
+  const map: Record<string, string> = {
+    'Arrived': 'bg-blue-500',
+    'Start Unloading': 'bg-orange-500',
+    'Finish Unloading': 'bg-green-500',
+    'Delivered': 'bg-emerald-600',
+    'Issue': 'bg-red-500',
+  }
+  return map[eventType] || 'bg-slate-300'
+}
+
+const loadDeliveryLogs = async () => {
+  try {
+    const res = await axiosClient.get(`/api/procurement/requisitions/${requisitionId}/delivery-logs`)
+    const payload = res?.data ?? res ?? {}
+    const data = payload.data ?? {}
+    shipmentStatus.value = data.shipment_status || data.status || data.shipment?.status || null
+    shipmentInfo.value = data.shipment || null
+    deliveryLogs.value = data.logs || []
+  } catch (e) {
+    shipmentStatus.value = null
+    shipmentInfo.value = null
+    deliveryLogs.value = []
+  }
+}
+
 const loadDetail = async () => {
   loading.value = true
   try {
@@ -624,6 +691,7 @@ const loadDetail = async () => {
     } catch (e) {
       // ignore
     }
+    await loadDeliveryLogs()
   } catch (error) {
     console.error('Failed to load PR detail:', error)
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load PR', life: 3000 })
@@ -721,6 +789,7 @@ const createPoFromRequisition = () => {
 
 onMounted(() => {
   loadDetail()
+  loadDeliveryLogs()
 })
 
 const deliveredPO = computed(() => {

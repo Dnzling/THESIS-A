@@ -309,7 +309,7 @@
             </div>
           </template>
         </Card>
-        <Card v-if="goodsReceipt.value" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <Card v-if="goodsReceipt" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">

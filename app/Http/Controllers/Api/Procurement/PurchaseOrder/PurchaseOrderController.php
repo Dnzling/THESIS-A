@@ -10,6 +10,8 @@ use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Procurement\StockOrder\StockOrderRequest;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\Supplier\SupplierContract;
@@ -1304,6 +1306,30 @@ class PurchaseOrderController extends Controller
             'message' => "{$po->po_number} was created from PR {$pr->pr_number}.",
             'severity' => 'info',
             'link' => "/system/procurement/purchase-orders/{$po->id}",
+        ]);
+    }
+
+    /**
+     * Delivery logs and shipment status for a PO
+     */
+    public function deliveryLogs($id): JsonResponse
+    {
+        $shipment = PurchaseOrderShipment::where('purchase_order_id', $id)->first();
+        $logs = [];
+        if ($shipment) {
+            $logs = PurchaseOrderDeliveryLog::with(['creator', 'attachments'])
+                ->where('shipment_id', $shipment->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'shipment_status' => $shipment->status ?? null,
+                'shipment' => $shipment,
+                'logs' => $logs,
+            ],
         ]);
     }
 }

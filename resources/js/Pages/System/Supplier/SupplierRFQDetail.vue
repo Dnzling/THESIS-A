@@ -35,7 +35,7 @@
                 </div>
                 <div>
                   <div class="text-gray-500">Store</div>
-                  <div class="font-medium text-gray-900">{{ rfq.store?.store_name || rfq.store?.name || 'â€”' }}</div>
+                  <div class="font-medium text-gray-900">{{ rfq.store?.store_name || rfq.store?.name || rfq.store_name || rfq.store?.store_code || "—" }}</div>
                 </div>
               </div>
             </div>
@@ -419,3 +419,4 @@ onMounted(() => {
   padding: 16px;
 }
 </style>
+

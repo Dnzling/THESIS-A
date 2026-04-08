@@ -1,0 +1,32 @@
+# VCS / local env
+.git/
+.env
+.env.*
+!.env.example
+
+# Node / build tools not needed on server
+node_modules/
+.gradle/
+.pnpm-store/
+android/
+
+# Tests and temp/debug files
+tests/
+_tmp_*.php
+test_*.php
+verify_*.php
+tmp_*.txt
+
+# Local DB dumps / backups
+*.sql
+Dump*.sql
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+
+# Logs / cache artifacts
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*

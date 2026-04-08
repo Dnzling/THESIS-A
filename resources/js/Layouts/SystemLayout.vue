@@ -265,6 +265,7 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isBooting = ref(true)
 const userDialogRef = ref(null)
 const loadingNavigation = ref(false)
+const enabledModules = ref<string[] | null>(null)
 const sidebarOpen = ref(false)
 const notificationPanel = ref()
 const notifications = ref<any[]>([])
@@ -283,9 +284,9 @@ let responseDialogUnsub: (() => void) | null = null
 // Track expanded/collapsed modules
 const expandedModules = ref<Record<string, boolean>>({
   admin: true,
-  inventory: true,
-  procurement: true,
-  merchandising: true,
+  inventory: false,
+  procurement: false,
+  merchandising: false,
   hr: false,
   supplier: true,
 })
@@ -312,6 +313,19 @@ onMounted(async () => {
     router.visit('/login')
     return
   }
+
+  // If this is a store-scoped role, pull enabled modules so we can hide nav for disabled modules
+  const roleName = (authStore.userRole || '').toLowerCase()
+  if (roleName.includes('store')) {
+    try {
+      const res = await axiosClient.get('/api/store/modules')
+      enabledModules.value = res.data?.data?.enabled_modules ?? []
+    } catch (error) {
+      console.error('Failed to load store modules', error)
+      enabledModules.value = null
+    }
+  }
+
   isBooting.value = false
 
   const saved = localStorage.getItem('expandedModules')
@@ -549,7 +563,18 @@ const groupedNavigation = computed(() => {
   //   }
   // }
 
-  const activeItems = baseNavigation.filter((item: any) => item.is_active)
+  let activeItems = baseNavigation.filter((item: any) => item.is_active)
+
+  // For store roles, hide nav items for modules that are not enabled for their store
+  if (isStoreRole && Array.isArray(enabledModules.value)) {
+    const allowed = new Set<string>(enabledModules.value)
+    activeItems = activeItems.filter((item: any) => {
+      // keep items with no module tag (safety), and account/profile utilities
+      if (!item.module) return true
+      if (['account', 'support'].includes(item.module)) return true
+      return allowed.has(item.module)
+    })
+  }
 
   const itemsById = new Map<number, any>()
   activeItems.forEach((item: any) => itemsById.set(item.id, item))

@@ -18,7 +18,7 @@ class Product3DReconstructionController extends BaseController
     {
         $query = Product3DReconstruction::query()
             ->where('store_id', $this->getStoreId())
-            ->with('product:id,product_name,sku');
+            ->with('product:id,product_name,sku', 'outputAsset');
 
         if ($request->has('product_id')) {
             $query->where('product_id', $request->get('product_id'));
@@ -32,6 +32,10 @@ class Product3DReconstructionController extends BaseController
     public function store(Request $request)
     {
         try {
+            if (!config('three_d.enabled')) {
+                return $this->errorResponse('3D reconstruction is disabled in this environment.', 403);
+            }
+
             $validated = $this->validateRequest($request, [
                 'product_id' => 'required|exists:products,id',
                 'images' => 'required|array|min:8|max:120',
@@ -54,7 +58,10 @@ class Product3DReconstructionController extends BaseController
                     'status' => 'queued',
                     'input_count' => count($validated['images']),
                     'progress' => 0,
-                    'options' => $validated['options'] ?? null,
+                    'options' => $validated['options'] ?? [
+                        'engine' => 'meshroom',
+                        'set_primary' => true,
+                    ],
                 ]);
 
                 $files = $request->file('images');
@@ -117,7 +124,7 @@ class Product3DReconstructionController extends BaseController
     public function show($id)
     {
         $record = Product3DReconstruction::where('store_id', $this->getStoreId())
-            ->with('product:id,product_name,sku', 'images')
+            ->with('product:id,product_name,sku', 'images', 'outputAsset')
             ->findOrFail($id);
 
         return $this->successResponse($record, '3D reconstruction retrieved successfully');
@@ -126,6 +133,7 @@ class Product3DReconstructionController extends BaseController
     public function status($id)
     {
         $record = Product3DReconstruction::where('store_id', $this->getStoreId())
+            ->with('outputAsset')
             ->findOrFail($id);
 
         return $this->successResponse($record, '3D reconstruction status retrieved successfully');

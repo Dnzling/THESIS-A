@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 /node_modules
 /storage/logs
 /storage/framework/cache
@@ -8,6 +10,19 @@
 /public/build
 .htaccess
 /public/.htaccess
+/public/storage
+/storage/app/public
 *.zip
 .gradle
+.pnpm-store
 capacitor.config.json
+
+# Local database dumps / backups
+*.sql
+Dump*.sql
+
+# Local temporary and debug files
+_tmp_*.php
+test_*.php
+verify_*.php
+tmp_*.txt

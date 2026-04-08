@@ -22,6 +22,7 @@ Route::prefix('supplier-portal')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         // Supplier Portal Management
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
+        Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
         Route::get('/stats', [SupplierPortalController::class, 'getStats']);
 
         // Document Management

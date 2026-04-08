@@ -1,20 +1,22 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-5">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Media & Assets</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage images, videos, and documents</p>
+        <h2 class="text-xl font-semibold text-gray-800">Media & Assets</h2>
+        <p class="text-[11px] text-gray-400 mt-1">3D viewer supports .glb, .gltf, .obj, and .ply files.</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button 
           label="3D Models Gallery" 
-          icon="pi pi-cube" 
+          icon="pi pi-box" 
           severity="info"
+          size="small"
           outlined
           @click="router.push({ name: 'merchandising.3d-gallery' })"
         />
         <!-- <Button
+          v-if="showReconstruction"
           label="3D Reconstruction"
           icon="pi pi-camera"
           severity="success"
@@ -25,22 +27,23 @@
           v-if="authStore.hasPermission('merchandising.assets.upload')"
           label="Upload Assets" 
           icon="pi pi-cloud-upload" 
+          size="small"
           @click="router.push({ name: 'merchandising.assets.upload' })"
         />
       </div>
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card v-for="stat in assetStats" :key="stat.type" class="hover:shadow-lg transition-shadow">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <Card v-for="stat in assetStats" :key="stat.type" class="hover:shadow-md transition-shadow">
         <template #content>
           <div class="text-center">
-            <div :class="[stat.bgColor, 'inline-flex p-4 rounded-full mb-3']">
-              <i :class="[stat.icon, stat.iconColor, 'text-2xl']"></i>
+            <div :class="[stat.bgColor, 'inline-flex p-3 rounded-full mb-2']">
+              <i :class="[stat.icon, stat.iconColor, 'text-xl']"></i>
             </div>
-            <p class="text-sm text-gray-600">{{ stat.label }}</p>
-            <h3 class="text-2xl font-bold text-gray-900 mt-1">{{ stat.count }}</h3>
-            <p class="text-xs text-gray-500 mt-1">{{ formatFileSize(stat.totalSize) }}</p>
+            <p class="text-xs text-gray-600">{{ stat.label }}</p>
+            <h3 class="text-lg font-semibold text-gray-900 mt-1">{{ stat.count }}</h3>
+            <p class="text-[11px] text-gray-500 mt-1">{{ formatFileSize(stat.totalSize) }}</p>
           </div>
         </template>
       </Card>
@@ -49,10 +52,10 @@
     <!-- Filters -->
     <Card>
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="searchQuery" placeholder="Search assets..." class="w-full" @input="onSearch" />
+            <InputText v-model="searchQuery" placeholder="Search assets..." class="w-full text-sm" @input="onSearch" />
           </IconField>
 
           <Select 
@@ -82,6 +85,7 @@
               :icon="viewMode === 'grid' ? 'pi pi-th-large' : 'pi pi-list'"
               :severity="viewMode === 'grid' ? 'primary' : 'secondary'"
               outlined
+              size="small"
               @click="toggleViewMode"
               class="flex-1"
             />
@@ -90,6 +94,7 @@
               icon="pi pi-trash" 
               severity="danger"
               outlined
+              size="small"
               @click="bulkDeleteAssets"
               :disabled="selectedAssets.length === 0"
             />
@@ -99,20 +104,20 @@
     </Card>
 
     <!-- Loading State -->
-    <div v-if="loading" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      <Skeleton v-for="i in 8" :key="i" height="250px" class="rounded-lg" />
+    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+      <Skeleton v-for="i in 8" :key="i" height="210px" class="rounded-lg" />
     </div>
 
     <!-- Grid View -->
-    <div v-else-if="viewMode === 'grid' && assets.length > 0" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div v-else-if="viewMode === 'grid' && assets.length > 0" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
       <Card 
         v-for="asset in assets" 
         :key="asset.id"
-        class="hover:shadow-lg transition-shadow cursor-pointer"
+        class="hover:shadow-md transition-shadow cursor-pointer"
         @click="viewAsset(asset)"
       >
         <template #content>
-          <div class="space-y-3">
+          <div class="space-y-2">
             <!-- Asset Preview -->
             <div class="relative aspect-video bg-gray-100 rounded-lg overflow-hidden group">
               
@@ -137,15 +142,17 @@
 
               <!-- Hover Overlay -->
               <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <div class="flex gap-2">
+                <div class="flex gap-1">
                   <Button 
                     icon="pi pi-eye" 
                     rounded 
+                    size="small"
                     @click.stop="viewAsset(asset)"
                   />
                   <Button 
                     icon="pi pi-download" 
                     rounded 
+                    size="small"
                     severity="secondary"
                     @click.stop="downloadAsset(asset)"
                   />
@@ -153,6 +160,7 @@
                     v-if="authStore.hasPermission('merchandising.assets.delete')"
                     icon="pi pi-trash" 
                     rounded 
+                    size="small"
                     severity="danger"
                     @click.stop="confirmDelete(asset)"
                   />
@@ -179,12 +187,12 @@
 
             <!-- Asset Info -->
             <div>
-              <p class="text-sm font-semibold text-gray-900 truncate">{{ asset.file_name }}</p>
+              <p class="text-xs font-semibold text-gray-900 truncate">{{ asset.file_name }}</p>
               <div class="flex items-center gap-2 mt-2">
                 <Tag :value="getAssetTypeLabel(asset.asset_type)" :severity="getAssetTypeSeverity(asset.asset_type)" size="small" />
-                <span class="text-xs text-gray-500">{{ formatFileSize(asset.file_size_kb * 1024) }}</span>
+                <span class="text-[11px] text-gray-500">{{ formatFileSize(asset.file_size_kb * 1024) }}</span>
               </div>
-              <p v-if="asset.product" class="text-xs text-gray-600 mt-2 truncate">
+              <p v-if="asset.product" class="text-[11px] text-gray-600 mt-2 truncate">
                 {{ asset.product.product_name }}
               </p>
             </div>
@@ -313,26 +321,30 @@
       <template #content>
         <div class="text-center py-12">
           <i class="pi pi-cloud-upload text-6xl text-gray-300"></i>
-          <p class="text-gray-600 mt-4 text-lg">No media assets uploaded yet</p>
-          <p class="text-gray-500 text-sm mt-2">Upload images, videos, and documents for your products</p>
-          <div class="flex gap-3 justify-center mt-6">
+          <p class="text-gray-600 mt-4 text-base">No media assets uploaded yet</p>
+          <p class="text-gray-500 text-xs mt-2">Upload images, videos, documents, and 3D models for your products.</p>
+          <p class="text-gray-400 text-[11px] mt-1">Supported 3D formats: .glb, .gltf, .obj, .ply</p>
+          <div class="flex flex-wrap gap-2 justify-center mt-5">
             <Button 
               label="Upload Media Assets" 
               icon="pi pi-cloud-upload" 
+              size="small"
               @click="$router.push({ name: 'merchandising.assets.upload' })"
             />
-            <Button 
+            <!-- <Button 
+              v-if="showReconstruction"
               label="3D Reconstruction" 
               icon="pi pi-camera" 
               severity="success"
               outlined
               @click="$router.push({ name: 'merchandising.3d-reconstruction' })"
-            />
+            /> -->
             <Button 
               label="View 3D Models" 
               icon="pi pi-cube" 
               severity="info"
               outlined
+              size="small"
               @click="$router.push({ name: 'merchandising.3d-gallery' })"
             />
           </div>
@@ -349,7 +361,7 @@
     >
       <div v-if="currentAsset" class="space-y-4">
         <!-- Asset Preview -->
-        <div class="bg-gray-100 rounded-lg p-8 flex items-center justify-center" style="min-height: 500px;">
+        <div class="bg-gray-100 rounded-lg p-5 flex items-center justify-center" style="min-height: 420px;">
           
           <!-- Image Preview -->
           <img 
@@ -478,6 +490,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
+const showReconstruction = !import.meta.env.PROD
 
 // State
 const assets = ref([])

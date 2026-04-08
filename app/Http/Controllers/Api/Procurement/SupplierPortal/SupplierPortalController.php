@@ -39,6 +39,32 @@ class SupplierPortalController extends Controller
     }
 
     /**
+     * Update portal coordinates (supplier profile)
+     * PUT /api/supplier-portal/coordinates
+     */
+    public function updateCoordinates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+        ]);
+
+        $user = auth()->user();
+        $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
+
+        $portal->update([
+            'latitude' => $validated['latitude'],
+            'longitude' => $validated['longitude'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Location updated.',
+            'data' => $portal,
+        ]);
+    }
+
+    /**
      * Register as a supplier
      * POST /api/supplier-portal/register
      */

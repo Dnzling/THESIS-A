@@ -44,6 +44,7 @@ class Branch extends Model
         'latitude',
         'longitude',
         'geofence_radius_m',
+        'geofence_enabled',
         // 'opening_hours',
         'status',
         'branch_code',
@@ -62,6 +63,7 @@ class Branch extends Model
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
         'geofence_radius_m' => 'integer',
+        'geofence_enabled' => 'boolean',
         'opening_hours' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime'

@@ -1,0 +1,11 @@
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+$app = require __DIR__ . '/../bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+$rows = App\Models\Core\Permission::where('display_name', 'like', '%Supplier%')
+    ->orWhere('name', 'like', 'supplier%')
+    ->get(['id', 'name', 'display_name', 'module']);
+
+echo json_encode($rows, JSON_PRETTY_PRINT), PHP_EOL;

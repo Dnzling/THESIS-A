@@ -315,6 +315,30 @@ class AddMissingNavigationItemsSeeder extends Seeder
             ],
         ];
 
+        // ========== STORE ADMIN BRANCHES ==========
+        $storeAdminItems = [
+            [
+                'name' => 'store.branches',
+                'display_name' => 'Branches',
+                'module' => 'store',
+                'section' => 'settings',
+                'route_name' => 'store.branches',
+                'route_path' => '/store/branches',
+                'icon' => 'pi pi-map',
+                'display_order' => 20,
+            ],
+            [
+                'name' => 'store.branches.show',
+                'display_name' => 'Branch Detail',
+                'module' => 'store',
+                'section' => 'settings',
+                'route_name' => 'store.branches.show',
+                'route_path' => '/store/branches/:id',
+                'icon' => null,
+                'display_order' => 21,
+            ],
+        ];
+
         // ========== FINANCE NAVIGATION ITEMS ==========
         $financeItems = [
             [
@@ -488,6 +512,19 @@ class AddMissingNavigationItemsSeeder extends Seeder
 
         // Insert Merchandising items
         foreach ($merchandisingItems as $item) {
+            if (!DB::table('navigation_items')->where('name', $item['name'])->exists()) {
+                DB::table('navigation_items')->insert(array_merge($item, [
+                    'is_active' => 1,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]));
+                $insertedCount++;
+                echo "✓ Added navigation item: {$item['name']}\n";
+            }
+        }
+
+        // Insert Store Admin items
+        foreach ($storeAdminItems as $item) {
             if (!DB::table('navigation_items')->where('name', $item['name'])->exists()) {
                 DB::table('navigation_items')->insert(array_merge($item, [
                     'is_active' => 1,

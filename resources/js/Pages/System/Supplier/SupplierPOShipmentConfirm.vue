@@ -130,7 +130,7 @@
               </div>
               <div class="flex items-center justify-between">
                 <span class="text-slate-500">Expected Delivery</span>
-                <span>{{ formatDate(draft?.expected_delivery_date) }}</span>
+                <span>{{ expectedDeliveryLabel }}</span>
               </div>
               <div class="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold">
                 <span>Delivery Charge</span>
@@ -220,6 +220,17 @@ const distanceDisplay = computed(() => {
   return km ? `${Number(km).toFixed(2)} km` : '-'
 })
 
+const expectedDeliveryLabel = computed(() => {
+  if (draft.value?.expected_delivery_range?.length === 2) {
+    const [start, end] = draft.value.expected_delivery_range
+    return formatRange(start, end)
+  }
+  if (draft.value?.expected_delivery_date) {
+    return formatDate(draft.value.expected_delivery_date)
+  }
+  return '-'
+})
+
 const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(Number(value || 0))
 const formatDate = (value?: string, includeTime = false) => {
   if (!value) return '-'
@@ -231,6 +242,17 @@ const formatDate = (value?: string, includeTime = false) => {
     options.minute = '2-digit'
   }
   return date.toLocaleDateString('en-PH', options)
+}
+
+const formatRange = (start: string | Date, end: string | Date) => {
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return formatDate(String(start))
+  }
+  const formatter = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' })
+  const year = startDate.getFullYear()
+  return `${formatter.format(startDate)}-${formatter.format(endDate)}, ${year}`
 }
 
 
@@ -406,24 +428,28 @@ const printShipment = () => {
     <head>
       <title>Shipment Details - ${po.value.po_number}</title>
       <style>
+        @font-face { font-family: 'BaraBara'; src: url('/fonts/BaraBara.ttf') format('truetype'); font-weight: 700; }
         body { font-family: Arial, sans-serif; color: #0f172a; padding: 24px; }
-        h1 { font-size: 20px; margin: 0 0 8px; }
+        h1 { font-size: 20px; margin: 0 0 8px; display:flex; align-items:center; gap:10px; }
         h2 { font-size: 14px; margin: 20px 0 8px; text-transform: uppercase; color: #475569; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
         th { text-align: left; color: #475569; background: #f8fafc; }
         .row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
         .total { font-weight: 700; font-size: 14px; margin-top: 10px; }
+        .pill { padding: 6px 10px; border-radius: 8px; background:#f1f5f9; }
       </style>
     </head>
     <body>
-      <h1>Shipment Details</h1>
+      <h1><span style="font-family:'BaraBara', Arial, sans-serif; letter-spacing:1px;">FURNISYNC</span> <span class="pill">Shipment Details</span></h1>
       <div class="row"><span>PO Number</span><span>${po.value.po_number}</span></div>
-      <div class="row"><span>Branch</span><span>${po.value.branch?.name || '-'}</span></div>
+      <div class="row"><span>Store</span><span>${po.value.branch?.name || '-'}</span></div>
+      <div class="row"><span>Supplier</span><span>${po.value.supplier?.supplier_name || '-'}</span></div>
       <div class="row"><span>Driver</span><span>${draft.value.driver_name || '-'}</span></div>
       <div class="row"><span>Plate Number</span><span>${draft.value.plate_number || '-'}</span></div>
       <div class="row"><span>Distance</span><span>${distanceDisplay.value}</span></div>
-      <div class="row"><span>Expected Delivery</span><span>${formatDate(draft.value.expected_delivery_date)}</span></div>
+      <div class="row"><span>Expected Delivery</span><span>${expectedDeliveryLabel.value}</span></div>
+      <div class="row"><span>Print Date</span><span>${new Date().toLocaleString('en-PH')}</span></div>
       <div class="row"><span>Delivery Charge</span><span>PHP ${formatMoney(deliveryCharge.value)}</span></div>
       <div class="row"><span>Discount</span><span>PHP ${formatMoney(discountAmount.value)}${contractDiscountPercent.value ? ` (${contractDiscountPercent.value.toFixed(2)}%)` : ''}</span></div>
       <div class="row"><span>Tax</span><span>PHP ${formatMoney(taxVat.value)}${contractTaxRate.value ? ` (${contractTaxRate.value.toFixed(2)}%)` : ''}</span></div>
@@ -441,7 +467,12 @@ const printShipment = () => {
         <tbody>${itemsRows}</tbody>
       </table>
 
-      <div class="total">Total: PHP ${formatMoney(totalAmount.value)}</div>
+      <div class="total">Totals</div>
+      <div class="row"><span>Items Subtotal</span><span>PHP ${formatMoney(subtotalAmount.value)}</span></div>
+      <div class="row"><span>Discount</span><span>PHP ${formatMoney(discountAmount.value)}</span></div>
+      <div class="row"><span>VAT</span><span>PHP ${formatMoney(taxVat.value)}</span></div>
+      <div class="row"><span>Delivery Charge</span><span>PHP ${formatMoney(deliveryCharge.value)}</span></div>
+      <div class="row" style="font-weight:700; font-size:14px;"><span>Total</span><span>PHP ${formatMoney(totalAmount.value)}</span></div>
     </body>
     </html>
   `

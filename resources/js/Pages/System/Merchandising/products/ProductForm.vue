@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Loading Skeleton -->
     <div v-if="loadingData" class="space-y-6">
       <Skeleton height="60px" class="rounded-2xl" />
@@ -98,8 +98,8 @@
                 <small v-if="errors.sku" class="text-red-500">{{ errors.sku }}</small>
               </div>
   
-              <!-- Category & Subcategory -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Category, Subcategory & Unit -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">
                     Category <span class="text-red-500">*</span>
@@ -115,6 +115,13 @@
                   <label class="text-sm font-medium text-gray-700">Subcategory</label>
                   <Select v-model="form.subcategory_id" :options="subcategories" optionLabel="category_name"
                     optionValue="id" placeholder="Select subcategory" showClear :disabled="!form.category_id"
+                    class="w-full bg-gray-50 border-gray-200 rounded-xl" />
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-gray-700">Unit</label>
+                  <Select v-model="form.unit_code" :options="unitOptions" optionLabel="label" optionValue="value"
+                    placeholder="Select unit" showClear
                     class="w-full bg-gray-50 border-gray-200 rounded-xl" />
                 </div>
               </div>
@@ -271,7 +278,7 @@
                 <label class="text-sm font-medium text-gray-700">3D Model</label>
   
                 <!-- Upload Area -->
-                <div v-if="!form.modelFile && !existingModel" @click="$refs.modelInput.click()" @dragover.prevent
+                <div v-if="!form.modelFile && !existingModel" @click="modelInput?.click()" @dragover.prevent
                   @drop.prevent="handleModelDrop"
                   class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer">
                   <i class="pi pi-cloud-upload text-4xl text-gray-400 mb-3 block"></i>
@@ -386,6 +393,67 @@
                 </div>
               </div>
             </div>
+
+            <!-- Variations Section -->
+            <div v-if="activeSection === 'variations'" class="space-y-6">
+              <Message v-if="!isEditMode" severity="info" :closable="false">
+                Save this product first, then you can create and manage variations here.
+              </Message>
+
+              <template v-else>
+                <div class="flex items-center justify-between">
+                  <p class="text-sm text-gray-500">Manage this product variations in one place.</p>
+                  <Button label="Add Variation" icon="pi pi-plus" class="rounded-xl" @click="openCreateVariationDialog" />
+                </div>
+
+                <DataTable
+                  :value="variations"
+                  :loading="loadingVariations"
+                  dataKey="id"
+                  stripedRows
+                  class="p-datatable-sm rounded-xl overflow-hidden border border-gray-100"
+                >
+                  <template #empty>
+                    <div class="py-8 text-center text-sm text-gray-500">No variations yet.</div>
+                  </template>
+
+                  <Column field="variation_sku" header="SKU" style="min-width: 180px">
+                    <template #body="{ data }">
+                      <span class="font-mono text-xs font-semibold">{{ data.variation_sku || '-' }}</span>
+                    </template>
+                  </Column>
+                  <Column field="variation_name" header="Name" style="min-width: 220px" />
+                  <Column header="Attributes" style="min-width: 220px">
+                    <template #body="{ data }">
+                      <div class="flex flex-wrap gap-1">
+                        <Tag v-if="data.color" :value="data.color" severity="info" />
+                        <Tag v-if="data.size" :value="data.size" severity="secondary" />
+                        <Tag v-if="data.material" :value="data.material" severity="success" />
+                        <Tag v-if="data.finish" :value="data.finish" severity="warn" />
+                      </div>
+                    </template>
+                  </Column>
+                  <Column header="Price Adj." style="width: 140px">
+                    <template #body="{ data }">
+                      {{ formatCurrencyPHP(data.price_adjustment || 0) }}
+                    </template>
+                  </Column>
+                  <Column header="Status" style="width: 120px">
+                    <template #body="{ data }">
+                      <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+                    </template>
+                  </Column>
+                  <Column header="Actions" style="width: 140px">
+                    <template #body="{ data }">
+                      <div class="flex items-center gap-1">
+                        <Button icon="pi pi-pencil" text rounded severity="warning" @click="openEditVariationDialog(data)" />
+                        <Button icon="pi pi-trash" text rounded severity="danger" @click="removeVariation(data)" />
+                      </div>
+                    </template>
+                  </Column>
+                </DataTable>
+              </template>
+            </div>
   
             <!-- SEO Section -->
             <div v-if="activeSection === 'seo'" class="space-y-6">
@@ -458,6 +526,63 @@
         <Button label="Crop & Continue" severity="info" @click="applyCropAndNext" class="rounded-xl" />
       </template>
     </Dialog>
+
+    <Dialog
+      v-model:visible="variationDialogVisible"
+      :header="editingVariationId ? 'Edit Variation' : 'Add Variation'"
+      :modal="true"
+      :style="{ width: '680px', maxWidth: '95vw' }"
+    >
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Variation Name <span class="text-red-500">*</span></label>
+          <InputText v-model="variationForm.variation_name" class="w-full" :class="{ 'p-invalid': variationErrors.variation_name }" />
+          <small v-if="variationErrors.variation_name" class="text-red-500">{{ variationErrors.variation_name }}</small>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Variation SKU <span class="text-red-500">*</span></label>
+          <InputText v-model="variationForm.variation_sku" class="w-full bg-gray-100" readonly :class="{ 'p-invalid': variationErrors.variation_sku }" />
+          <small class="text-xs text-gray-500">Auto-generated from product SKU + attributes</small>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Color</label>
+          <InputText v-model="variationForm.color" class="w-full" @input="generateVariationSku" />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Size</label>
+          <InputText v-model="variationForm.size" class="w-full" @input="generateVariationSku" />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Material</label>
+          <InputText v-model="variationForm.material" class="w-full" @input="generateVariationSku" />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Finish</label>
+          <InputText v-model="variationForm.finish" class="w-full" @input="generateVariationSku" />
+        </div>
+        <div class="space-y-2 md:col-span-2">
+          <label class="text-sm font-medium text-gray-700">Pattern</label>
+          <InputText v-model="variationForm.pattern" class="w-full" />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Price Adjustment</label>
+          <InputNumber v-model="variationForm.price_adjustment" mode="currency" currency="PHP" locale="en-PH" class="w-full" fluid />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-gray-700">Active</label>
+          <div class="h-[42px] flex items-center">
+            <Checkbox v-model="variationForm.is_active" :binary="true" />
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="variationDialogVisible = false" />
+        <Button :label="editingVariationId ? 'Update Variation' : 'Create Variation'" icon="pi pi-check" :loading="variationSubmitting" @click="saveVariation" />
+      </template>
+    </Dialog>
   
     <Toast />
   </div>
@@ -468,23 +593,9 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../stores/auth'
-
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
-import Textarea from 'primevue/textarea'
-import Select from 'primevue/select'
-import Checkbox from 'primevue/checkbox'
-import FileUpload from 'primevue/fileupload'
-import Skeleton from 'primevue/skeleton'
-import DatePicker from 'primevue/datepicker'
-import Tag from 'primevue/tag'
-import Badge from 'primevue/badge'
-import Dialog from 'primevue/dialog'
-import Message from 'primevue/message'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import merchandisingService from '../../../../services/merchandising.service'
+import inventoryService from '../../../../services/inventory.service'
 
 const route = useRoute()
 const router = useRouter()
@@ -495,7 +606,7 @@ const isEditMode = computed(() => !!route.params.id)
 const isRawMaterialType = computed(() => form.value.product_type === 'raw_material')
 const submitting = ref(false)
 const loadingData = ref(false)
-const activeSection = ref<'product' | 'pricing' | 'assets' | 'seo'>('product')
+const activeSection = ref<'product' | 'pricing' | 'assets' | 'variations' | 'seo'>('product')
 const loadingCategories = ref(false)
 const existingModel = ref(null)
 const existingImages = ref<any[]>([])
@@ -504,11 +615,29 @@ const cropDialogVisible = ref(false)
 const cropQueue = ref<File[]>([])
 const croppedFiles = ref<File[]>([])
 const currentCropFile = ref<File | null>(null)
+const modelInput = ref<HTMLInputElement | null>(null)
 const cropImageUrl = ref('')
 const cropZoom = ref(1)
 const cropOffsetX = ref(0)
 const cropOffsetY = ref(0)
 const cropViewportSize = 320
+const loadingVariations = ref(false)
+const variations = ref<any[]>([])
+const variationDialogVisible = ref(false)
+const variationSubmitting = ref(false)
+const editingVariationId = ref<number | null>(null)
+const variationErrors = ref<Record<string, string>>({})
+const variationForm = ref({
+  variation_sku: '',
+  variation_name: '',
+  color: '',
+  size: '',
+  material: '',
+  finish: '',
+  pattern: '',
+  price_adjustment: 0,
+  is_active: true
+})
 
 const getModelPreviewUrl = (model: any): string => {
   return model?.url || model?.auth_url || model?.file_url || model?.model_url || ''
@@ -522,6 +651,7 @@ const form = ref({
   sku: '',
   category_id: null,
   subcategory_id: null,
+  unit_code: null as string | null,
   product_type: 'finished_good',
   brand: '',
   collection_name: '',
@@ -556,6 +686,7 @@ const form = ref({
 
 const errors = ref<Record<string, string>>({})
 const categories = ref([])
+const units = ref<any[]>([])
 const productTypeOptions = [
   { label: 'Finished Good', value: 'finished_good' }
 ]
@@ -563,6 +694,36 @@ const subcategories = computed(() => {
   if (!form.value.category_id) return []
   return categories.value.filter((c: any) => c.parent_category_id === form.value.category_id)
 })
+
+// Hard-coded unit values for the select (UI-driven)
+const unitOptions = [
+  { label: 'Pieces (pcs)', value: 'pcs' },
+  { label: 'Set (set)', value: 'set' },
+  { label: 'Pair (pair)', value: 'pair' },
+  { label: 'Box (box)', value: 'box' },
+  { label: 'Kilogram (kg)', value: 'kg' },
+  { label: 'Gram (g)', value: 'g' },
+  { label: 'Pound (lb)', value: 'lb' },
+  { label: 'Meter (m)', value: 'm' },
+  { label: 'Centimeter (cm)', value: 'cm' },
+  { label: 'Millimeter (mm)', value: 'mm' },
+  { label: 'Foot (ft)', value: 'ft' },
+  { label: 'Inch (in)', value: 'in' }
+]
+
+const resolveUnitId = (code: string | null) => {
+  if (!code) return null
+  const normalized = String(code).trim().toLowerCase()
+  const match = units.value.find((unit: any) => {
+    const candidates = [
+      unit.unit_symbol,
+      unit.unit_code,
+      unit.unit_name
+    ].filter(Boolean).map((v: any) => String(v).trim().toLowerCase())
+    return candidates.includes(normalized)
+  })
+  return match?.id ?? null
+}
 
 const loadCategories = async () => {
   loadingCategories.value = true
@@ -574,6 +735,17 @@ const loadCategories = async () => {
     categories.value = []
   } finally {
     loadingCategories.value = false
+  }
+}
+
+const loadUnits = async () => {
+  try {
+    const response = await inventoryService.getUnits({ per_page: 200, is_active: true })
+    const data = response?.data?.data || response?.data?.data?.data || response?.data || []
+    units.value = Array.isArray(data) ? data : []
+  } catch (error) {
+    console.error('Failed to load units:', error)
+    units.value = []
   }
 }
 
@@ -591,6 +763,7 @@ const loadProduct = async () => {
       sku: product.sku || '',
       category_id: product.category_id,
       subcategory_id: product.subcategory_id,
+      unit_code: product.unit?.unit_symbol || product.unit?.unit_code || product.unit?.unit_name || null,
       product_type: product.product_type || 'finished_good',
       brand: product.brand || '',
       collection_name: product.collection_name || '',
@@ -794,8 +967,8 @@ const handleModelDrop = (event: DragEvent) => {
 
 const removeModel = () => {
   form.value.modelFile = null
-  if ($refs.modelInput) {
-    $refs.modelInput.value = null
+  if (modelInput.value) {
+    modelInput.value.value = ''
   }
 }
 
@@ -953,6 +1126,163 @@ const formatCurrencyPHP = (value: number | string | null | undefined) => {
   }).format(Number(value || 0))
 }
 
+const generateVariationSku = () => {
+  const baseSKU = String(form.value.sku || '').trim().toUpperCase()
+  if (!baseSKU) {
+    variationForm.value.variation_sku = ''
+    return
+  }
+
+  const attributes = [
+    variationForm.value.color?.substring(0, 3).toUpperCase(),
+    variationForm.value.size?.substring(0, 2).toUpperCase(),
+    variationForm.value.material?.substring(0, 3).toUpperCase(),
+    variationForm.value.finish?.substring(0, 2).toUpperCase()
+  ].filter(Boolean).join('-')
+
+  variationForm.value.variation_sku = attributes ? `${baseSKU}-${attributes}` : baseSKU
+}
+
+const resetVariationForm = () => {
+  editingVariationId.value = null
+  variationErrors.value = {}
+  variationForm.value = {
+    variation_sku: '',
+    variation_name: '',
+    color: '',
+    size: '',
+    material: '',
+    finish: '',
+    pattern: '',
+    price_adjustment: 0,
+    is_active: true
+  }
+  generateVariationSku()
+}
+
+const loadVariations = async () => {
+  if (!isEditMode.value) return
+  loadingVariations.value = true
+
+  try {
+    const response = await merchandisingService.getVariationsByProduct(Number(route.params.id))
+    const payload = response?.data || {}
+    const list = payload?.variations || payload?.data?.variations || payload?.data || []
+    variations.value = Array.isArray(list) ? list : []
+  } catch (error) {
+    console.error('Failed to load variations:', error)
+    variations.value = []
+  } finally {
+    loadingVariations.value = false
+  }
+}
+
+const openCreateVariationDialog = () => {
+  resetVariationForm()
+  variationDialogVisible.value = true
+}
+
+const openEditVariationDialog = (row: any) => {
+  editingVariationId.value = Number(row.id)
+  variationErrors.value = {}
+  variationForm.value = {
+    variation_sku: row.variation_sku || '',
+    variation_name: row.variation_name || '',
+    color: row.color || '',
+    size: row.size || '',
+    material: row.material || '',
+    finish: row.finish || '',
+    pattern: row.pattern || '',
+    price_adjustment: Number(row.price_adjustment || 0),
+    is_active: !!row.is_active
+  }
+  variationDialogVisible.value = true
+}
+
+const validateVariationForm = () => {
+  variationErrors.value = {}
+  if (!variationForm.value.variation_name?.trim()) {
+    variationErrors.value.variation_name = 'Variation name is required'
+  }
+  if (!variationForm.value.variation_sku?.trim()) {
+    variationErrors.value.variation_sku = 'Variation SKU is required'
+  }
+  return Object.keys(variationErrors.value).length === 0
+}
+
+const saveVariation = async () => {
+  if (!isEditMode.value) return
+  generateVariationSku()
+  if (!validateVariationForm()) return
+
+  variationSubmitting.value = true
+  try {
+    const submitData = {
+      product_id: Number(route.params.id),
+      variation_sku: variationForm.value.variation_sku,
+      variation_name: variationForm.value.variation_name,
+      color: variationForm.value.color || null,
+      size: variationForm.value.size || null,
+      material: variationForm.value.material || null,
+      finish: variationForm.value.finish || null,
+      pattern: variationForm.value.pattern || null,
+      price_adjustment: Number(variationForm.value.price_adjustment || 0),
+      final_price: Number(form.value.base_price || 0) + Number(variationForm.value.price_adjustment || 0),
+      is_active: variationForm.value.is_active
+    }
+
+    if (editingVariationId.value) {
+      await merchandisingService.updateVariation(editingVariationId.value, submitData)
+    } else {
+      await merchandisingService.createVariation(submitData as any)
+    }
+
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: editingVariationId.value ? 'Variation updated successfully' : 'Variation created successfully',
+      life: 2500
+    })
+    variationDialogVisible.value = false
+    await loadVariations()
+  } catch (error: any) {
+    if (error?.response?.status === 422) {
+      variationErrors.value = error.response.data.errors || {}
+    }
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to save variation',
+      life: 3500
+    })
+  } finally {
+    variationSubmitting.value = false
+  }
+}
+
+const removeVariation = async (row: any) => {
+  if (!row?.id) return
+  if (!window.confirm('Delete this variation?')) return
+
+  try {
+    await merchandisingService.deleteVariation(Number(row.id))
+    toast.add({
+      severity: 'success',
+      summary: 'Deleted',
+      detail: 'Variation removed',
+      life: 2200
+    })
+    await loadVariations()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to delete variation',
+      life: 3200
+    })
+  }
+}
+
 const validateForm = () => {
   errors.value = {}
 
@@ -972,15 +1302,6 @@ const validateForm = () => {
     form.value.is_featured = false
     form.value.is_new_arrival = false
     form.value.is_bestseller = false
-  }
-
-  if (
-    isEditMode.value &&
-    form.value.base_price != null &&
-    originalBasePrice.value !== form.value.base_price &&
-    !form.value.price_change_reason
-  ) {
-    errors.value.price_change_reason = 'Price change reason is required'
   }
 
   return Object.keys(errors.value).length === 0
@@ -1008,6 +1329,7 @@ const handleSubmit = async () => {
       sku: form.value.sku,
       category_id: form.value.category_id,
       subcategory_id: form.value.subcategory_id,
+      unit_id: resolveUnitId(form.value.unit_code),
       product_type: 'finished_good',
       brand: form.value.brand,
       collection_name: form.value.collection_name,
@@ -1190,8 +1512,9 @@ const menuItems = computed(() => {
     { key: 'product', label: 'Product Information', icon: 'pi pi-info-circle' },
     { key: 'pricing', label: 'Pricing', icon: 'pi pi-dollar' },
     { key: 'assets', label: 'Assets', icon: 'pi pi-box' },
+    { key: 'variations', label: 'Variations', icon: 'pi pi-sliders-h' },
   ]
-  base.push({ key: 'seo', label: 'SEO', icon: 'pi pi-search' })
+  // base.push({ key: 'seo', label: 'SEO', icon: 'pi pi-search' })
   return base
 })
 
@@ -1200,7 +1523,8 @@ const currentSection = computed(() => {
     product: { title: 'Product Information', description: 'Basic details about your product' },
     pricing: { title: 'Pricing', description: 'Set the price and tax information' },
     assets: { title: 'Assets', description: 'Upload 3D models and product images' },
-    seo: { title: 'SEO & Metadata', description: 'Optimize for search engines' }
+    variations: { title: 'Variations', description: 'Create and manage this product variants' },
+    // seo: { title: 'SEO & Metadata', description: 'Optimize for search engines' }
   }
   return sections[activeSection.value]
 })
@@ -1218,7 +1542,9 @@ onMounted(() => {
   }
   form.value.product_type = 'finished_good'
   loadCategories()
+  loadUnits()
   loadProduct()
+  loadVariations()
 })
 </script>
 <style scoped>

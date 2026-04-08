@@ -34,6 +34,62 @@
   
     <!-- Main Content -->
     <div v-else-if="detail" class="space-y-6">
+      <!-- Delivery Status Steps -->
+    <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered'].includes(detail?.status)" class="space-y-6">
+        <Card v-if="steps && steps.length" class="rounded-2xl border border-slate-200/70 shadow-sm">
+          <template #content>
+            <div class="flex flex-col gap-4">
+              <div class="flex items-center justify-between text-sm font-semibold text-slate-600">
+                <div class="flex items-center gap-2" v-for="step in steps" :key="step.key">
+                  <div :class="['w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold',
+                      step.active ? 'bg-emerald-500' : 'bg-slate-300']">
+                    {{ step.index }}
+                  </div>
+                  <span :class="step.active ? 'text-emerald-600' : 'text-slate-500'">{{ step.label }}</span>
+                  <div v-if="step.index !== steps.length" class="w-10 h-px bg-slate-200 mx-3"></div>
+                </div>
+              </div>
+            </div>
+          </template>
+  
+        </Card>
+  
+        <Card class="rounded-2xl border border-slate-200/70 shadow-sm" v-if="deliveryLogs.length">
+          <template #header>
+            <div class="px-6 pt-4 pb-2 flex items-center gap-2">
+              <i class="pi pi-book text-slate-500"></i>
+              <h3 class="font-semibold text-slate-800">Delivery Logs</h3>
+            </div>
+          </template>
+          <template #content>
+            <div v-if="shipmentInfo" class="px-6 pb-3 text-sm text-slate-700">
+              <div class="flex flex-wrap gap-4">
+                <span class="font-semibold">{{ shipmentInfo.driver_name || 'Driver' }}</span>
+                <span>Truck: {{ shipmentInfo.truck_brand || '-' }} {{ shipmentInfo.truck_type || '' }}</span>
+                <span>Plate: {{ shipmentInfo.plate_number || '-' }}</span>
+                <span>Contact: {{ shipmentInfo.driver_contact || '-' }}</span>
+              </div>
+            </div>
+            <div class="divide-y divide-slate-100">
+              <div v-for="log in deliveryLogs" :key="log.id" class="py-3 px-6 flex items-start gap-3">
+                <div class="w-2 h-2 rounded-full mt-2" :class="logDotColor(log.event_type)"></div>
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    {{ log.event_type }}
+                    <Tag :value="formatDateWithTime(log.created_at)" severity="secondary" class="text-xs" />
+                  </div>
+                  <div class="text-xs text-slate-500">
+                    By {{ shipmentInfo?.driver_name || 'Driver' }}<span v-if="log.receiver_name"> • Receiver: {{
+                      log.receiver_name }}</span>
+                  </div>
+                  <p v-if="log.notes" class="text-sm text-slate-700 mt-1">{{ log.notes }}</p>
+                </div>
+              </div>
+            </div>
+          </template>
+        </Card>
+      </div>
+  
       <div v-if="detail?.status === 'pending_finance_approval'"
         class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
         <i class="pi pi-clock mr-2"></i>
@@ -54,9 +110,9 @@
           <p class="text-lg font-semibold text-gray-900 mt-1">{{ formatDate(detail?.expected_delivery_date) }}</p>
         </div>
         <!-- <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Payment Terms</p>
-          <p class="text-lg font-semibold text-gray-900 mt-1">{{ formatPaymentTerms(detail?.payment_terms) }}</p>
-        </div> -->
+              <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Payment Terms</p>
+              <p class="text-lg font-semibold text-gray-900 mt-1">{{ formatPaymentTerms(detail?.payment_terms) }}</p>
+            </div> -->
       </div>
   
       <!-- Supplier and Branch Info -->
@@ -94,6 +150,9 @@
         <span class="text-gray-400 mx-2">•</span>
         <span>{{ formatDate(detail?.created_at) }}</span>
       </div>
+  
+      <!-- Delivery Logs -->
+  
   
       <!-- PO Items Table -->
       <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -148,12 +207,13 @@
   
         <div class="bg-white p-4 rounded-lg border border-gray-200">
           <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Discounts</p>
-          <p class="text-xl font-semibold text-gray-900 mt-1">{{ formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</p>
+          <p class="text-xl font-semibold text-gray-900 mt-1">{{ formatCurrency(parseFloat(detail?.discount_amount || 0))
+            }}</p>
           <!-- <div v-if="parseFloat(detail?.shipping_cost || 0) > 0 || parseFloat(detail?.discount_amount || 0) > 0"
-            class="text-xs text-gray-500 mt-1">
-            <span v-if="parseFloat(detail?.discount_amount || 0) > 0" class="ml-2">Discount: {{
-              formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</span>
-          </div> -->
+                class="text-xs text-gray-500 mt-1">
+                <span v-if="parseFloat(detail?.discount_amount || 0) > 0" class="ml-2">Discount: {{
+                  formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</span>
+              </div> -->
         </div>
   
         <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
@@ -285,6 +345,7 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '../../../../stores/auth'
 import procurementService from '../../../../services/procurement.service'
+import axiosClient from '@/axios'
 
 const route = useRoute()
 const router = useRouter()
@@ -293,10 +354,23 @@ const confirm = useConfirm()
 const authStore = useAuthStore()
 const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 const poId = Number(route.params.id)
+const steps = computed(() => {
+  const sent = detail.value?.status === 'sent_to_supplier' || detail.value?.status === 'supplier_accepted'
+  const inTransit = shipmentStatus.value === 'in_transit'
+  const delivered = shipmentStatus.value === 'delivered'
+  return [
+    { key: 'supplier', label: 'Supplier Approval', index: 1, active: sent || inTransit || delivered },
+    { key: 'transit', label: 'In Transit', index: 2, active: inTransit || delivered },
+    { key: 'delivered', label: 'Order Delivered', index: 3, active: delivered },
+  ]
+})
 
 // State
 const loading = ref(false)
 const detail = ref<any>(null)
+const shipmentStatus = ref<string | null>(null)
+const deliveryLogs = ref<any[]>([])
+const shipmentInfo = ref<any>(null)
 const showEmailDialog = ref(false)
 const emailSending = ref(false)
 const emailForm = ref({
@@ -319,6 +393,8 @@ const loadDetail = async () => {
     } else {
       detail.value = response.data
     }
+    // fetch delivery logs in background so UI doesn't stay loading
+    loadDeliveryLogs()
   } catch (error) {
     console.error('Failed to load purchase order detail', error)
     toast.add({
@@ -456,6 +532,43 @@ const formatStatus = (status: string) => {
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
 
+const formatDateWithTime = (value?: string) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+const logDotColor = (eventType: string) => {
+  const map: Record<string, string> = {
+    'Arrived': 'bg-blue-500',
+    'Start Unloading': 'bg-orange-500',
+    'Finish Unloading': 'bg-green-500',
+    'Delivered': 'bg-emerald-600',
+    'Issue': 'bg-red-500',
+  }
+  return map[eventType] || 'bg-slate-300'
+}
+
+const loadDeliveryLogs = async () => {
+  try {
+    const res = await axiosClient.get(`/api/procurement/purchase-orders/${poId}/delivery-logs`)
+    const payload = res?.data ?? res ?? {}
+    const data = payload.data ?? {}
+    shipmentStatus.value = data.shipment_status || data.shipment?.status || null
+    shipmentInfo.value = data.shipment || null
+    deliveryLogs.value = data.logs || []
+  } catch (e) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Delivery logs unavailable',
+      detail: 'Could not load shipment status/logs for this PO.',
+      life: 2000,
+    })
+    shipmentStatus.value = null
+    shipmentInfo.value = null
+    deliveryLogs.value = []
+  }
+}
+
 const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | 'contrast' => {
   const statusMap: Record<string, any> = {
     approved: 'success',
@@ -570,6 +683,7 @@ const rejectPO = async () => {
 
 onMounted(() => {
   loadDetail()
+  loadDeliveryLogs()
 })
 </script>
 

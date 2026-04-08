@@ -26,9 +26,6 @@
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                  <i class="pi pi-info-circle text-blue-600 text-sm"></i>
-                </div>
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900">Basic Information</h3>
                   <p class="text-sm text-gray-500 mt-0.5">Enter RFQ header details</p>
@@ -251,9 +248,6 @@
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                  <i class="pi pi-box text-orange-600 text-sm"></i>
-                </div>
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900">Requested Products</h3>
                   <p class="text-sm text-gray-500 mt-0.5">Line items from the requisition</p>
@@ -294,7 +288,7 @@
                     </div>
                     <div>
                       <p class="font-medium text-gray-900">{{ item.product_name }}</p>
-                      <p class="text-xs text-gray-500 mt-0.5">Product ID: {{ item.product_id }}</p>
+ 
                     </div>
                   </div>
 

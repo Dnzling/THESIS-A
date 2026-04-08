@@ -129,8 +129,8 @@
                 />
                 <Button v-if="authStore.hasPermission('merchandising.products.update')" icon="pi pi-pencil"
                   severity="warning" text rounded v-tooltip.top="'Edit'" @click="editProduct(data.id)" />
-                <Button v-if="authStore.hasPermission('merchandising.products.delete')" icon="pi pi-trash"
-                  severity="danger" text rounded v-tooltip.top="'Delete'" @click="confirmDelete(data)" />
+                <!-- <Button v-if="authStore.hasPermission('merchandising.products.delete')" icon="pi pi-trash"
+                  severity="danger" text rounded v-tooltip.top="'Delete'" @click="confirmDelete(data)" /> -->
                 <Button
                   v-if="canApprovePricing() && data.price_approval_status === 'pending'"
                   icon="pi pi-check"

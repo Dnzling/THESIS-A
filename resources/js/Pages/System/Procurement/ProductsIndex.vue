@@ -133,30 +133,30 @@
             <template #body="{ data }">
               <div class="space-y-2">
                 <div
-                  v-for="supplier in data.suppliers.slice(0, 2)"
-                  :key="supplier.id"
+                  v-for="supplier in supplierList(data).slice(0, 2)"
+                  :key="supplier.id || supplier.supplier_id || Math.random()"
                   class="flex items-start gap-2"
                 >
                   <Badge
-                    :value="`★ ${supplier.rating}`"
-                    :severity="supplier.rating >= 4 ? 'success' : supplier.rating >= 3 ? 'warning' : 'danger'"
+                    :value="`★ ${safeRating(supplier)}`"
+                    :severity="safeRating(supplier) >= 4 ? 'success' : safeRating(supplier) >= 3 ? 'warning' : 'danger'"
                     class="min-w-max"
                   />
                   <div>
                     <RouterLink
-                      :to="`/procurement/suppliers/${supplier.id}`"
+                      :to="`/procurement/suppliers/${supplier.id || supplier.supplier_id}`"
                       class="text-blue-600 hover:underline text-sm font-semibold"
                     >
-                      {{ supplier.supplier_name }}
+                      {{ supplier.supplier_name || supplier.name || 'Supplier' }}
                     </RouterLink>
-                    <p v-if="supplier.priceHistory?.[0]" class="text-sm text-green-600 font-bold">
-                      ₱ {{ formatNumber(supplier.priceHistory[0].unit_price) }}
+                    <p v-if="firstPrice(supplier) !== null" class="text-sm text-green-600 font-bold">
+                      ₱ {{ formatNumber(firstPrice(supplier)) }}
                     </p>
                   </div>
                 </div>
                 <Button
-                  v-if="data.suppliers.length > 2"
-                  :label="`+${data.suppliers.length - 2} more`"
+                  v-if="supplierList(data).length > 2"
+                  :label="`+${supplierList(data).length - 2} more`"
                   severity="info"
                   text
                   size="small"
@@ -366,8 +366,19 @@ async function loadProducts() {
       page: currentPage.value + 1,
     })
 
-    products.value = response.data.data || []
-    totalRecords.value = response.data.total || 0
+    const payload = response.data ?? {}
+    const rows = Array.isArray(payload.data)
+      ? payload.data
+      : Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.items)
+          ? payload.items
+          : Array.isArray(payload.data?.data)
+            ? payload.data.data
+            : []
+
+    products.value = rows
+    totalRecords.value = payload.total ?? payload.meta?.total ?? rows.length
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -387,7 +398,7 @@ function onPageChange(event: any) {
 
 function showSupplierDialog(product: any) {
   selectedProduct.value = product
-  selectedProductSuppliers.value = product.suppliers
+  selectedProductSuppliers.value = Array.isArray(product.suppliers) ? product.suppliers : []
   showSuppliersModal.value = true
 }
 
@@ -428,7 +439,29 @@ function goToCreatePO() {
 }
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-PH').format(value)
+  return new Intl.NumberFormat('en-PH').format(Number(value || 0))
+}
+
+function supplierList(row: any) {
+  return Array.isArray(row?.suppliers) ? row.suppliers : []
+}
+
+function safeRating(supplier: any): number {
+  const rating = Number(supplier?.rating ?? 0)
+  return Number.isFinite(rating) ? rating : 0
+}
+
+function firstPrice(supplier: any): number | null {
+  if (Array.isArray(supplier?.priceHistory) && supplier.priceHistory.length > 0) {
+    const price = supplier.priceHistory[0]?.unit_price
+    const num = Number(price)
+    return Number.isFinite(num) ? num : null
+  }
+  if (supplier?.current_price !== undefined) {
+    const num = Number(supplier.current_price)
+    return Number.isFinite(num) ? num : null
+  }
+  return null
 }
 
 // Lifecycle

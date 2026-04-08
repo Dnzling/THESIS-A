@@ -130,19 +130,16 @@ class UserNavigationController extends Controller
         $basePermissions = array_diff($allPermissions, $userRevokes);
         $basePermissions = array_values(array_unique($basePermissions));
 
-        $finalPermissions = $this->filterPermissionsByModules($user, $basePermissions);
-        $finalPermissions = $this->filterPermissionsByTier($user, $finalPermissions);
-        $finalPermissions = array_values(array_unique($finalPermissions));
-
-        $filteredOut = array_values(array_diff($basePermissions, $finalPermissions));
-        sort($filteredOut);
+        // Disable permission filtering for store roles; rely on module enablement + nav permissions instead
+        $finalPermissions = array_values(array_unique($basePermissions));
+        $filteredOut = [];
 
         return [
             'permissions' => $finalPermissions,
             'meta' => [
                 'raw_count' => count($basePermissions),
                 'filtered_count' => count($finalPermissions),
-                'filtered_out_count' => max(0, count($basePermissions) - count($finalPermissions)),
+                'filtered_out_count' => 0,
                 'filtered_out' => $filteredOut,
             ],
         ];
@@ -197,10 +194,6 @@ class UserNavigationController extends Controller
                     continue;
                 }
             }
-
-        if ($roleName === 'store_admin' && $tier === 'small' && in_array($navItem->module, ['hr', 'finance'], true)) {
-            continue;
-        }
 
             // Check if user has permission to access this navigation item
             if ($this->canAccessNavigationItem($navItem, $permissions)) {

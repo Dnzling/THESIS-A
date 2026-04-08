@@ -258,7 +258,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import ConfirmDialog from 'primevue/confirmdialog'
-import { confirmDialog } from 'primevue/confirmationservice'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -272,6 +272,7 @@ const selectedProducts = ref<any[]>([])
 const suggestLoading = ref(false)
 const fetchedBranchName = ref('')
 const toast = useToast()
+const confirm = useConfirm()
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -620,7 +621,7 @@ const submitForm = async () => {
     return
   }
 
-  confirmDialog({
+  confirm.require({
     message: 'Create this stock count? You can edit later if needed.',
     header: 'Confirm Create',
     icon: 'pi pi-exclamation-triangle',

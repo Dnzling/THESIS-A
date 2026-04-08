@@ -3,68 +3,8 @@
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-semibold text-gray-900 tracking-tight">Purchase Orders</h1>
-        <p class="text-sm text-gray-500 mt-1">Manage and track all your purchase orders</p>
+        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Purchase Orders</h1>
       </div>
-    </div>
-
-    <!-- iOS-style Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Total POs</span>
-              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                <i class="pi pi-file text-blue-600 text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.total }}</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Accepted</span>
-              <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                <i class="pi pi-check-circle text-green-600 text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.accepted }}</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">In Transit</span>
-              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                <i class="pi pi-truck text-orange-600 text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-semibold text-gray-900">{{ stats.inTransit }}</p>
-          </div>
-        </template>
-      </Card>
-
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br from-purple-500 to-purple-600">
-        <template #content>
-          <div class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-medium text-purple-100 uppercase tracking-wider">Goods Received</span>
-              <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <i class="pi pi-box text-white text-sm"></i>
-              </div>
-            </div>
-            <p class="text-3xl font-bold text-white">{{ stats.goodsReceived }}</p>
-          </div>
-        </template>
-      </Card>
     </div>
 
     <!-- iOS-style Filters Card -->
@@ -72,10 +12,6 @@
       <template #header>
         <div class="px-6 pt-6">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-              <i class="pi pi-filter text-purple-600 text-sm"></i>
-            </div>
-            <h2 class="text-lg font-semibold text-gray-900">Filter Purchase Orders</h2>
           </div>
         </div>
       </template>
@@ -167,12 +103,23 @@
             :totalRecords="totalRecords"
             :lazy="true"
             dataKey="id"
+            sortMode="single"
+            :sortField="sortField"
+            :sortOrder="sortOrder"
+            @sort="onSort"
             @page="onPageChange"
             class="p-datatable-sm"
             stripedRows
             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+            <!-- Date Column -->
+            <Column header="Date" field="created_at" sortable style="min-width: 140px">
+              <template #body="{ data }">
+                <span class="text-sm text-gray-700">{{ formatDate(data.created_at) }}</span>
+              </template>
+            </Column>
+
             <!-- PO Number Column -->
             <Column header="PO" style="min-width: 140px">
               <template #body="{ data }">
@@ -184,8 +131,17 @@
                     <div class="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer" @click="viewDetail(data.id, getPurchaseOrderStatus(data))">
                       #{{ getPONumber(data) }}
                     </div>
-                    <div class="text-xs text-gray-500 mt-0.5">{{ formatDate(data.created_at) }}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">{{ formatDate(data.order_date || data.created_at) }}</div>
                   </div>
+                </div>
+              </template>
+            </Column>
+
+            <!-- Store Column -->
+            <Column header="Store" style="min-width: 160px">
+              <template #body="{ data }">
+                <div class="text-sm text-gray-800">
+                  {{ data.store?.store_name || data.store?.name || data.store_name || data.store?.store_code || 'N/A' }}
                 </div>
               </template>
             </Column>
@@ -319,6 +275,8 @@ const statusFilter = ref('')
 const first = ref(0)
 const rows = ref(10)
 const totalRecords = ref(0)
+const sortField = ref('created_at')
+const sortOrder = ref(-1)
 const poFeedback = ref<Record<number, any>>({})
 const lastDeliveryPoId = ref<number | null>(null)
 const invoiceCreatingId = ref<number | null>(null)
@@ -522,6 +480,8 @@ const loadPOs = async () => {
     const params: Record<string, any> = {
       page: Math.floor(first.value / rows.value) + 1,
       per_page: rows.value,
+      sort_field: sortField.value,
+      sort_order: sortOrder.value === 1 ? 'asc' : 'desc',
     }
     if (searchQuery.value?.trim()) {
       params.search = searchQuery.value.trim()
@@ -531,15 +491,11 @@ const loadPOs = async () => {
     }
     
     const res = await supplierService.getSupplierPOs(params)
-    const payload = res.data
-  
-    // Handle paginated response
-    if (payload?.data?.data) {
-      pos.value = payload.data.data
-      totalRecords.value = payload.data.total || 0
-    } else if (Array.isArray(payload?.data)) {
-      pos.value = payload.data
-      totalRecords.value = pos.value.length
+    const payload = res ?? {}
+    const pagination = payload.data ?? payload
+    if (pagination?.data) {
+      pos.value = pagination.data
+      totalRecords.value = pagination.total ?? pagination.meta?.total ?? pagination.data.length
     } else {
       pos.value = []
       totalRecords.value = 0
@@ -585,6 +541,12 @@ const onFilterChange = () => {
 
 const onPageChange = (event: any) => {
   first.value = event.first
+  loadPOs()
+}
+
+const onSort = (event: any) => {
+  sortField.value = event.sortField
+  sortOrder.value = event.sortOrder
   loadPOs()
 }
 

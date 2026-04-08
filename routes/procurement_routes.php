@@ -90,6 +90,7 @@ Route::prefix('procurement')->group(function () {
         Route::post('/{id}/approve', [PurchaseRequisitionController::class, 'approve'])->middleware('can:procurement.requisitions.approve');
         Route::post('/{id}/reject', [PurchaseRequisitionController::class, 'reject'])->middleware('can:procurement.requisitions.approve');
         Route::post('/{id}/cancel', [PurchaseRequisitionController::class, 'cancel'])->middleware('can:procurement.requisitions.manage');
+        Route::get('/{id}/delivery-logs', [PurchaseRequisitionController::class, 'deliveryLogs']);
     });
 
     // Stock Order Requests (from Branch Inventory low stock)
@@ -154,6 +155,7 @@ Route::prefix('procurement')->group(function () {
         Route::get('/{id}/label', [PurchaseOrderPrintEmailController::class, 'generateLabel']);
         Route::post('/{id}/request-revision', [PurchaseOrderPrintEmailController::class, 'requestRevision'])->middleware('can:procurement.purchase_orders.manage');
         Route::get('/summary', [PurchaseOrderController::class, 'summary']);
+        Route::get('/{id}/delivery-logs', [PurchaseOrderController::class, 'deliveryLogs']);
 
         // Pending receipt
         Route::get('/{poId}/pending-receipt', [GoodsReceiptController::class, 'pendingForPO']);

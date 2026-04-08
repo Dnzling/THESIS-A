@@ -270,7 +270,7 @@
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted, watch } from 'vue'
 import ConfirmDialog from 'primevue/confirmdialog'
-import { confirmDialog } from 'primevue/confirmationservice'
+import { useConfirm } from 'primevue/useconfirm'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
@@ -279,6 +279,7 @@ import axios from 'axios'
 
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const saving = ref(false)
 const loadingBranches = ref(false)
 const loadingProducts = ref(false)
@@ -599,7 +600,7 @@ const submitTransfer = async () => {
     return
   }
 
-  confirmDialog({
+  confirm.require({
     message: 'Submit this transfer now? You can still cancel before manager approval.',
     header: 'Confirm Submit',
     icon: 'pi pi-exclamation-triangle',

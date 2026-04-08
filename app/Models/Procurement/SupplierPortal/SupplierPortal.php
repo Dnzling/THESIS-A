@@ -23,6 +23,8 @@ class SupplierPortal extends Model
         'city',
         'province',
         'country',
+        'latitude',
+        'longitude',
         'tin',
         'status',
         'rejection_reason',
@@ -35,6 +37,8 @@ class SupplierPortal extends Model
     protected $casts = [
         'verified_at' => 'datetime',
         'last_submission_at' => 'datetime',
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
     ];
 
     // Relationships

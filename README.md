@@ -7,6 +7,103 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Furniture Stores Platform Deployment (Hostinger)
+
+### Quick Deploy Checklist
+
+1. Build frontend assets locally:
+
+```bash
+pnpm install
+pnpm run build
+```
+
+2. Create a deployment zip from project root and exclude paths listed in `.deployignore`.
+3. Upload zip to Hostinger `public_html` (or your app directory), then extract.
+4. Ensure your domain document root points to `public/`.
+5. Create/update production `.env` on server (do not upload local `.env`).
+6. Set correct write permissions for `storage/` and `bootstrap/cache/`.
+7. Run Laravel optimization/migration commands (if SSH terminal is available):
+
+```bash
+php artisan migrate --force
+php artisan optimize
+```
+
+### Git + SSH Deploy Flow (Recommended)
+
+Local machine:
+
+```bash
+git add .
+git commit -m "your update"
+git push origin develop
+```
+
+Server (SSH):
+
+```bash
+cd ~/domains/yourdomain.com/public_html
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh develop
+```
+
+The deploy script will pull latest code, install PHP dependencies, run migrations, optimize Laravel, and build assets if Node tooling exists on the server.
+
+### Important Asset Note
+
+`public/build` is currently ignored by git in this project. This is correct only if the server can run `pnpm run build` or `npm run build` during deploy.
+
+If your server cannot build frontend assets, remove `/public/build` from `.gitignore` and commit built assets so `git pull` includes them.
+
+### Uploaded Images 404 Fix (Production)
+
+If images show in local but return 404 on live, usually one of these is missing:
+
+1. `public/storage` symlink on server:
+
+```bash
+php artisan storage:link
+```
+
+2. Uploaded files are not present on server:
+
+- Your uploads are stored in `storage/app/public/` and are not pushed by git.
+- Sync/copy local uploaded files to server path `storage/app/public/`.
+
+3. Production `.env` has wrong values:
+
+- Set `APP_URL` to your real domain.
+- Set `FILESYSTEM_DISK=public`.
+
+### Include In Upload
+
+- `app/`
+- `bootstrap/`
+- `config/`
+- `database/`
+- `public/` (must include `public/build/`)
+- `resources/`
+- `routes/`
+- `storage/`
+- `vendor/` (if not running composer on server)
+- `artisan`
+- `composer.json`
+- `composer.lock`
+- `vite.config.js`
+- `.htaccess`
+
+### Exclude From Upload
+
+- `.git/`
+- `.env` and local env variants
+- `node_modules/`
+- `tests/`
+- `android/`
+- `.gradle/`, `.pnpm-store/`
+- SQL dumps (`*.sql`, `Dump*.sql`)
+- temp/debug scripts (`_tmp_*.php`, `test_*.php`, `verify_*.php`, `tmp_*.txt`)
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

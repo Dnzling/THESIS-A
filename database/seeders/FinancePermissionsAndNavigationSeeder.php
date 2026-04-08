@@ -25,7 +25,12 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'price-approvals',
         ];
 
-        $actions = ['view', 'manage', 'approve'];
+        // Standardize finance permissions to a minimal, predictable set
+        // - view: read-only access
+        // - manage: create/update (non-final actions)
+        // - approve: financial approvals/authorizations
+        // - delete: destructive removal
+        $actions = ['view', 'manage', 'approve', 'delete'];
 
         foreach ($submodules as $submodule) {
             foreach ($actions as $action) {

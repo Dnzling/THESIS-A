@@ -67,6 +67,11 @@ export const useAuthStore = defineStore('auth', () => {
             return '/shop'
         }
 
+        const normalizedRole = String(user.value?.role || '').toLowerCase()
+        if (normalizedRole === 'supplier') {
+            return '/supplier-portal/dashboard'
+        }
+
         if (user.value?.role === 'super_admin') {
             return '/admin/dashboard'
         }

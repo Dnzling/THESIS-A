@@ -139,6 +139,7 @@ Route::prefix('inventory')->group(function () {
         Route::post('/{id}/approve', [InventoryPurchaseRequisitionController::class, 'approve']);
         Route::post('/{id}/reject', [InventoryPurchaseRequisitionController::class, 'reject']);
         Route::post('/{id}/cancel', [InventoryPurchaseRequisitionController::class, 'cancel']);
+        Route::get('/{id}/delivery-logs', [InventoryPurchaseRequisitionController::class, 'deliveryLogs']);
     });
 
     // Backward-compatible alias (deprecated): /stock-order-requests -> /requisitions

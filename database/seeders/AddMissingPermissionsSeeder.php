@@ -17,80 +17,6 @@ class AddMissingPermissionsSeeder extends Seeder
         $now = Carbon::now();
         $insertedCount = 0;
 
-        // ========== SUPPLIER PORTAL PERMISSIONS ==========
-        $supplierPortalPermissions = [
-            [
-                'name' => 'supplier-portal.dashboard.view',
-                'display_name' => 'Supplier Portal Dashboard View',
-                'module' => 'supplier',
-                'description' => 'View supplier portal dashboard',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-portal.registration.view',
-                'display_name' => 'Supplier Registration View',
-                'module' => 'supplier',
-                'description' => 'View registration form',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-portal.registration.submit',
-                'display_name' => 'Supplier Registration Submit',
-                'module' => 'supplier',
-                'description' => 'Submit supplier registration',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-portal.rfqs.view',
-                'display_name' => 'Supplier RFQs View',
-                'module' => 'supplier',
-                'description' => 'View available RFQs',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-portal.rfqs.respond',
-                'display_name' => 'Supplier RFQ Respond',
-                'module' => 'supplier',
-                'description' => 'Submit quotes to RFQs',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-portal.pos.view',
-                'display_name' => 'Supplier POs View',
-                'module' => 'supplier',
-                'description' => 'View purchase orders',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-portal.pos.respond',
-                'display_name' => 'Supplier PO Respond',
-                'module' => 'supplier',
-                'description' => 'Accept or reject purchase orders',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-verifications.view',
-                'display_name' => 'Supplier Verifications View',
-                'module' => 'supplier',
-                'description' => 'View supplier verification dashboard',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-verifications.approve',
-                'display_name' => 'Supplier Verifications Approve',
-                'module' => 'supplier',
-                'description' => 'Approve supplier registrations',
-                'is_active' => 1,
-            ],
-            [
-                'name' => 'supplier-verifications.reject',
-                'display_name' => 'Supplier Verifications Reject',
-                'module' => 'supplier',
-                'description' => 'Reject supplier registrations',
-                'is_active' => 1,
-            ],
-        ];
-
         // ========== HR PERMISSIONS ==========
         $hrPermissions = [
             [
@@ -240,6 +166,35 @@ class AddMissingPermissionsSeeder extends Seeder
                 'description' => 'Approve payroll',
                 'is_active' => 1,
             ],
+            // Recruitment (consolidated)
+            [
+                'name' => 'hr.recruitment.view',
+                'display_name' => 'Recruitment View',
+                'module' => 'hr',
+                'description' => 'View recruitment items',
+                'is_active' => 1,
+            ],
+            [
+                'name' => 'hr.recruitment.manage',
+                'display_name' => 'Recruitment Manage',
+                'module' => 'hr',
+                'description' => 'Create/update recruitment items',
+                'is_active' => 1,
+            ],
+            [
+                'name' => 'hr.recruitment.approve',
+                'display_name' => 'Recruitment Approve',
+                'module' => 'hr',
+                'description' => 'Approve or advance recruitment decisions',
+                'is_active' => 1,
+            ],
+            [
+                'name' => 'hr.recruitment.delete',
+                'display_name' => 'Recruitment Delete',
+                'module' => 'hr',
+                'description' => 'Delete recruitment items',
+                'is_active' => 1,
+            ],
         ];
 
         // ========== MERCHANDISING PERMISSIONS ==========
@@ -295,18 +250,6 @@ class AddMissingPermissionsSeeder extends Seeder
                 'is_active' => 1,
             ],
         ];
-
-        // Insert supplier portal permissions
-        foreach ($supplierPortalPermissions as $perm) {
-            if (!DB::table('permissions')->where('name', $perm['name'])->exists()) {
-                DB::table('permissions')->insert(array_merge($perm, [
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]));
-                $insertedCount++;
-                echo "✓ Added permission: {$perm['name']}\n";
-            }
-        }
 
         // Insert HR permissions
         foreach ($hrPermissions as $perm) {

@@ -117,7 +117,8 @@ class RequestForQuotationController extends Controller
                     'rejection_reason' => 'Another quote was approved for this item.',
                 ]);
 
-            $approvedSupplierId = $feedback->supplier_portal?->supplier_id;
+            // Use relation to get supplier_id; the attribute supplier_portal is just the FK
+            $approvedSupplierId = $feedback->supplierPortal?->supplier_id;
             if ($approvedSupplierId) {
                 DB::table('rfq_suppliers')
                     ->where('rfq_id', $rfq->id)

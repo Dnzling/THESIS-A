@@ -49,9 +49,10 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
             'hr.payroll.create' => ['hr.payroll.create'],
             'hr.payroll.view' => ['hr.payroll.view'],
             'hr.payroll.edit' => ['hr.payroll.edit'],
-            'hr.job-postings' => ['view-job-postings'],
-            'hr.screening-pipeline' => ['view-job-applications'],
-            'hr.apply-job' => ['view-job-applications'],
+            // Recruitment consolidated
+            'hr.job-postings' => ['hr.recruitment.view'],
+            'hr.screening-pipeline' => ['hr.recruitment.view'],
+            'hr.apply-job' => ['hr.recruitment.view'],
         ];
 
         // ========== MERCHANDISING PERMISSION MAPPINGS ==========
@@ -65,19 +66,22 @@ class LinkMissingNavigationPermissionsSeeder extends Seeder
         ];
 
         // ========== FINANCE PERMISSION MAPPINGS ==========
+        // Finance: keep a simple permission surface (view/manage/approve/delete)
         $financeMappings = [
-            'finance.dashboard' => ['finance.transactions.view.store'],
-            'finance.payables' => ['finance.documents.view.store'],
-            'finance.receivables' => ['finance.documents.view.store'],
-            'finance.expenses' => ['finance.transactions.view.store'],
-            'finance.payroll' => ['finance.workflows.view.store'],
-            'finance.budgets' => ['finance.settings.view.store'],
-            'finance.reports' => ['finance.documents.view.store'],
+            'finance.dashboard' => ['finance.dashboard.view'],
+            'finance.payables' => ['finance.payables.view'],
+            'finance.receivables' => ['finance.receivables.view'],
+            'finance.expenses' => ['finance.expenses.view'],
+            'finance.payroll' => ['finance.payroll.view'],
+            'finance.budgets' => ['finance.budgets.view'],
+            'finance.reports' => ['finance.reports.view'],
+            'finance.cashflow' => ['finance.cashflow.view'],
+            'finance.invoices' => ['finance.invoices.view'],
+            'finance.price-approvals' => ['finance.price-approvals.view'],
             'finance.purchase-orders' => ['finance.purchase-orders.view'],
             'finance.purchase-orders.detail' => [
                 'finance.purchase-orders.view',
                 'finance.purchase-orders.approve',
-                'finance.purchase-orders.reject'
             ],
         ];
 

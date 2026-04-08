@@ -221,7 +221,7 @@ const adminMenu = [
   },
   {
     to: "/admin/subscription",
-    label: "Subscription Management",
+    label: "Subscriptions",
     icon: "pi pi-credit-card text-gray-500 w-5"
   },
   {
@@ -246,20 +246,16 @@ const adminMenu = [
     label: "Stores",
     icon: "pi pi-building text-gray-500 w-5"
   },
-  {
-    to: "/admin/roles-permissions",
-    label: "Roles & Permissions",
-    icon: "pi pi-shield"
-  },
-  {
-    to: "/admin/modules",
-    label: "Store Modules",
-    icon: "pi pi-sliders-h"
-  },
+
   {
     to: "/admin/users",
     label: "Users",
     icon: "pi pi-users text-gray-500 w-5"
+  },
+    {
+    to: "/admin/roles-permissions",
+    label: "Roles & Permissions",
+    icon: "pi pi-shield"
   },
   {
     to: "/admin/violation-reports",

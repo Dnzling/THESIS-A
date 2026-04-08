@@ -10,7 +10,10 @@
             </div>
             <p class="ml-10 text-sm text-slate-500">Users, products, and performance summary.</p>
           </div>
-          <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadStoreDetail" />
+          <div class="flex gap-2">
+            <Button icon="pi pi-sliders-h" label="Modules Override" severity="secondary" outlined @click="openModulesDialog" />
+            <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadStoreDetail" />
+          </div>
         </div>
       </template>
     </Card>
@@ -132,6 +135,12 @@
         </DataTable>
       </template>
     </Card>
+
+    <StoreModulesDialog
+      v-model:modelValue="showModulesDialog"
+      :store-id="store.id"
+      :store-name="store.store_name"
+    />
   </div>
 </template>
 
@@ -142,15 +151,15 @@ import { useToast } from 'primevue/usetoast'
 import axiosClient from '@/axios'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
+import StoreModulesDialog from '@/Components/Admin/StoreModulesDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const loading = ref(false)
+const showModulesDialog = ref(false)
 
 const store = ref<any>({})
 const users = ref<any[]>([])
@@ -208,6 +217,10 @@ const formatDateTime = (value: string | null | undefined) => {
 const formatMoney = (value: number | string | null | undefined) => {
   const num = Number(value || 0)
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(num)
+}
+
+const openModulesDialog = async () => {
+  showModulesDialog.value = true
 }
 
 const loadStoreDetail = async () => {
