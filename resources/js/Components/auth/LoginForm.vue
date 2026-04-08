@@ -1,0 +1,239 @@
+<template>
+  <div class="min-h-screen bg-slate-50">
+    <div class="w-full h-screen bg-white">
+      <div class="grid h-full gap-0 lg:grid-cols-2">
+        <Auth3DHero
+          theme="light"
+          title="Hello Furnisync!"
+          subtitle="Showcase your catalog in 3D and create immersive product stories in minutes."
+          brand="Furnisync"
+          footer="Interactive 3D model preview"
+          class="h-full"
+        />
+        <div class="flex flex-col justify-center p-8 lg:p-12">
+          <div class="flex items-center justify-left mb-6">
+            <div>
+              <h1 class="text-3xl font-bold text-orange-500">Welcome Back</h1>
+              <p class="text-gray-400 mt-1 text-sm font-medium">Sign in to your account</p>
+            </div>
+          </div>
+
+        <!-- Error Message -->
+        <Message v-if="errorMessage" severity="error" :closable="true" @close="errorMessage = ''" class="mb-6">
+          {{ errorMessage }}
+        </Message>
+  
+        <!-- Success Message (for registration redirect) -->
+        <Message v-if="successMessage" severity="success" :closable="true" @close="successMessage = ''" class="mb-6">
+          {{ successMessage }}
+        </Message>
+  
+        <!-- Login Form -->
+        <form @submit.prevent="handleSubmit" class="space-y-6">
+          <!-- Login Field -->
+          <div class="space-y-2">
+            <label for="login" class="block text-sm font-medium text-gray-700">
+              Email or ID <span class="text-red-500">*</span>
+            </label>
+            <div class="p-inputgroup">
+              <InputText id="login" v-model="formData.login" type="text" placeholder="Email, employee ID, or supplier code"
+                :class="{ 'p-invalid': validationErrors.login }" class="w-full" autocomplete="username" />
+            </div>
+            <small v-if="validationErrors.login" class="p-error">
+              {{ validationErrors.login }}
+            </small>
+          </div>
+  
+          <!-- Password Field -->
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <label for="password" class="block text-sm font-medium text-gray-700">
+                Password <span class="text-red-500">*</span>
+              </label>
+              <!-- <router-link 
+                      to="/forgot-password" 
+                      class="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      Forgot password?
+                    </router-link> -->
+            </div>
+            <div class="p-inputgroup">
+              <Password id="password" v-model="formData.password" :feedback="false" toggleMask
+                placeholder="Enter your password" :class="{ 'p-invalid': validationErrors.password }" class="w-full"
+                autocomplete="current-password" />
+            </div>
+            <small v-if="validationErrors.password" class="p-error">
+              {{ validationErrors.password }}
+            </small>
+          </div>
+  
+          <!-- Remember Me & Forgot Password -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <Checkbox v-model="formData.rememberMe" inputId="rememberMe" :binary="true" />
+              <label for="rememberMe" class="ml-2 text-sm text-gray-700 cursor-pointer">
+                Remember me
+              </label>
+            </div>
+          </div>
+  
+          <!-- Submit Button -->
+          <Button type="submit" label="Log In" :loading="props.isSubmitting"
+            fluid
+            :disabled="props.isSubmitting" severity="warn" />
+        </form>
+
+        <div class="text-center pt-6 border-t border-gray-100 mt-6">
+          <!-- <p class="text-gray-600">
+            Don't have an account?
+            <router-link to="/pricing" class="text-blue-600 font-semibold hover:text-blue-800 hover:underline ml-1">
+              Sign up here
+            </router-link>
+          </p> -->
+          <p class="text-sm text-gray-500">
+            By signing in, you agree to our
+            <a href="#" class="text-blue-600 hover:underline">Terms</a> and
+            <a href="#" class="text-blue-600 hover:underline">Privacy Policy</a>
+          </p>
+        </div>
+        </div>
+      </div>
+    </div>
+  
+    <!-- Loading Overlay -->
+    <Dialog v-model:visible="props.isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
+      <div class="flex flex-col items-center justify-center p-6">
+        <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
+        <p class="mt-4 text-lg font-medium text-gray-700">Signing you in...</p>
+        <p class="text-gray-500">Please wait a moment</p>
+      </div>
+    </Dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { usePage } from '@inertiajs/vue3'
+import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
+import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
+import Message from 'primevue/message'
+import Dialog from 'primevue/dialog'
+import ProgressSpinner from 'primevue/progressspinner'
+import Auth3DHero from '@/Components/auth/Auth3DHero.vue'
+
+const props = defineProps<{
+  isSubmitting?: boolean
+}>()
+
+const emit = defineEmits<{
+  submit: [data: LoginFormData]
+  error: [message: string]
+}>()
+
+// Types
+export interface LoginFormData {
+  login: string
+  password: string
+  rememberMe: boolean
+}
+
+interface ValidationErrors {
+  login?: string
+  password?: string
+}
+
+// Router
+// const router = useRouter()
+const page = usePage()
+
+// State
+const formData = reactive<LoginFormData>({
+  login: '',
+  password: '',
+  rememberMe: false
+})
+
+const validationErrors = reactive<ValidationErrors>({})
+const errorMessage = ref<string>('')
+const successMessage = ref<string>('')
+
+// Check for success messages from registration
+onMounted(() => {
+  const query = new URLSearchParams(String(page.url || '').split('?')[1] || '')
+  if (query.get('registered') === 'true') {
+    successMessage.value = 'Account created successfully! Please sign in.'
+  }
+  if (query.get('reset') === 'true') {
+    successMessage.value = 'Password reset successfully! Please sign in with your new password.'
+  }
+
+  // Load remembered user ID if exists
+  const rememberedLogin = localStorage.getItem('rememberedLogin')
+  if (rememberedLogin) {
+    formData.login = rememberedLogin
+    formData.rememberMe = true
+  }
+})
+
+// Validation
+const validateForm = (): boolean => {
+  let isValid = true
+
+  // Clear previous errors
+  validationErrors.login = ''
+  validationErrors.password = ''
+
+  // Login validation
+  if (!formData.login.trim()) {
+    validationErrors.login = 'Email or ID is required'
+    isValid = false
+  }
+
+  // Password validation
+  if (!formData.password) {
+    validationErrors.password = 'Password is required'
+    isValid = false
+  } else if (formData.password.length < 6) {
+    validationErrors.password = 'Password must be at least 6 characters'
+    isValid = false
+  }
+
+  return isValid
+}
+
+// Handle form submission
+const handleSubmit = async () => {
+  if (!validateForm()) {
+    emit('error', 'Please fix the form errors')
+    return
+  }
+
+  if (formData.rememberMe) {
+    localStorage.setItem('rememberedLogin', formData.login)
+  } else {
+    localStorage.removeItem('rememberedLogin')
+  }
+
+  emit('submit', formData)
+}
+</script>
+
+<style scoped>
+/* Custom styles */
+:deep(.p-inputgroup-addon) {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #6b7280;
+}
+
+:deep(.p-button) {
+  padding: 0.75rem 1.5rem;
+  font-weight: 500;
+}
+
+:deep(.p-password-input) {
+  width: 100%;
+}
+</style>

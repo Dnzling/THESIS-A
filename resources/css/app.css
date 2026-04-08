@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.merchandising-hide-delete .pi-trash {
+	display: none !important;
+}

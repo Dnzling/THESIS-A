@@ -1,0 +1,63 @@
+<?php
+// backend/app/Models/Procurement/Requisition/PurchaseRequisitionItem.php
+
+namespace App\Models\Procurement\Requisition;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
+use App\Models\Procurement\Supplier\Supplier;
+
+class PurchaseRequisitionItem extends Model
+{
+    protected $fillable = [
+        'requisition_id',
+        'product_id',
+        'variation_id',
+        'selected_supplier_id',
+        'quantity_requested',
+        'estimated_unit_cost',
+        'tax_rate',
+        'specifications',
+    ];
+
+    protected $casts = [
+        'selected_supplier_id' => 'integer',
+        'quantity_requested' => 'integer',
+        'estimated_unit_cost' => 'decimal:2',
+        'tax_rate' => 'decimal:2',
+    ];
+
+    // Relationships
+    public function requisition(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseRequisition::class, 'requisition_id');
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function variation(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariation::class);
+    }
+
+    public function selectedSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'selected_supplier_id');
+    }
+
+    // Accessors
+    public function getEstimatedTotalAttribute(): float
+    {
+        return $this->quantity_requested * ($this->estimated_unit_cost ?? 0);
+    }
+
+    public function getEstimatedTaxAttribute(): float
+    {
+        return $this->getEstimatedTotalAttribute() * ($this->tax_rate ?? 0) / 100;
+    }
+}

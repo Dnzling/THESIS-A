@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FurniSync Shop</string>
+    <string name="title_activity_main">FurniSync Shop</string>
+    <string name="package_name">com.furnisync.shop</string>
+    <string name="custom_url_scheme">com.furnisync.shop</string>
+</resources>
