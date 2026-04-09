@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Procurement\Supplier;
 
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\User;
 use App\Models\Core\Role;
 use Illuminate\Support\Str;
@@ -18,6 +19,104 @@ use Illuminate\Support\Facades\DB;
 
 class SupplierController extends Controller
 {
+    /**
+     * Directory of verified suppliers registered in supplier portal.
+     * GET /api/procurement/suppliers/verified-directory
+     */
+    public function verifiedDirectory(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->get('search', ''));
+        $limit = (int) $request->get('limit', 100);
+        $limit = max(1, min($limit, 300));
+
+        $storeId = Auth::user()->store_id;
+        $linkedEmails = Supplier::where('store_id', $storeId)
+            ->whereNotNull('email')
+            ->pluck('email')
+            ->map(fn($email) => strtolower(trim((string) $email)))
+            ->filter()
+            ->values()
+            ->all();
+
+        $query = SupplierPortal::query()
+            ->where('status', 'approved')
+            ->with([
+                'user:id,email,fname,lname',
+                'supplier:id,supplier_name,company_name,contact_person,email,phone,address,city,province,country,payment_terms,supplier_type',
+            ])
+            ->orderByDesc('verified_at');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', function ($uq) use ($search) {
+                        $uq->where('email', 'LIKE', "%{$search}%")
+                            ->orWhere('fname', 'LIKE', "%{$search}%")
+                            ->orWhere('lname', 'LIKE', "%{$search}%");
+                    })
+                    ->orWhereHas('supplier', function ($sq) use ($search) {
+                        $sq->where('supplier_name', 'LIKE', "%{$search}%")
+                            ->orWhere('company_name', 'LIKE', "%{$search}%")
+                            ->orWhere('email', 'LIKE', "%{$search}%")
+                            ->orWhere('contact_person', 'LIKE', "%{$search}%");
+                    });
+            });
+        }
+
+        $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails) {
+            return $this->mapVerifiedPortal($portal, $linkedEmails);
+        })->values();
+
+        if ($request->boolean('available_only', true)) {
+            $rows = $rows->where('already_linked', false)->values();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+        ]);
+    }
+
+    /**
+     * Show one verified supplier from directory.
+     * GET /api/procurement/suppliers/verified-directory/{portalId}
+     */
+    public function verifiedDirectoryShow(int $portalId): JsonResponse
+    {
+        $storeId = Auth::user()->store_id;
+        $linkedEmails = Supplier::where('store_id', $storeId)
+            ->whereNotNull('email')
+            ->pluck('email')
+            ->map(fn($email) => strtolower(trim((string) $email)))
+            ->filter()
+            ->values()
+            ->all();
+
+        $portal = SupplierPortal::query()
+            ->where('id', $portalId)
+            ->where('status', 'approved')
+            ->with([
+                'user:id,email,fname,lname',
+                'supplier',
+                'verificationDocuments',
+            ])
+            ->first();
+
+        if (!$portal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Verified supplier not found.',
+            ], 404);
+        }
+
+        $data = $this->mapVerifiedPortal($portal, $linkedEmails);
+        $data['verification_documents'] = $portal->verificationDocuments;
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
     /**
      * List all suppliers
      * GET /api/procurement/suppliers
@@ -89,28 +188,85 @@ class SupplierController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'supplier_name' => 'required|string|max:255',
-            'contact_person' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
+            'supplier_portal_id' => 'nullable|integer|exists:supplier_portals,id',
+            'supplier_name' => 'required_without:supplier_portal_id|string|max:255',
+            'contact_person' => 'required_without:supplier_portal_id|string|max:255',
+            'email' => 'required_without:supplier_portal_id|email|max:255',
+            'phone' => 'nullable|string|max:50',
         ]);
+
+        if (!empty($validated['supplier_portal_id'])) {
+            $portal = SupplierPortal::with(['supplier', 'user'])
+                ->where('id', $validated['supplier_portal_id'])
+                ->where('status', 'approved')
+                ->first();
+
+            if (!$portal) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected supplier is not verified or no longer available.',
+                ], 422);
+            }
+
+            $sourceSupplier = $portal->supplier;
+            $sourceUser = $portal->user;
+            $email = $sourceSupplier?->email ?: $sourceUser?->email;
+            if (!$email) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected supplier has no email record.',
+                ], 422);
+            }
+
+            $existing = Supplier::where('store_id', Auth::user()->store_id)
+                ->where('email', $email)
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Supplier already linked to this store.',
+                    'data' => $existing,
+                    'linked_existing' => true,
+                ]);
+            }
+
+            $supplierName = $sourceSupplier?->supplier_name
+                ?: ($portal->supplier_name ?: trim(($sourceUser?->fname ?? '') . ' ' . ($sourceUser?->lname ?? '')));
+            $contactPerson = $sourceSupplier?->contact_person
+                ?: ($portal->contact_person ?: trim(($sourceUser?->fname ?? '') . ' ' . ($sourceUser?->lname ?? '')));
+
+            $supplier = Supplier::create([
+                'store_id' => Auth::user()->store_id,
+                'supplier_code' => $this->generateSupplierCode(),
+                'supplier_name' => $supplierName ?: 'Unnamed Supplier',
+                'company_name' => $sourceSupplier?->company_name ?: $supplierName,
+                'contact_person' => $contactPerson ?: null,
+                'email' => $email,
+                'phone' => $sourceSupplier?->phone ?: ($portal->phone ?? ''),
+                'address' => $sourceSupplier?->address ?: $portal->address,
+                'city' => $sourceSupplier?->city ?: $portal->city,
+                'province' => $sourceSupplier?->province ?: $portal->province,
+                'postal_code' => $sourceSupplier?->postal_code,
+                'country' => $sourceSupplier?->country ?: ($portal->country ?: 'Philippines'),
+                'tin' => $sourceSupplier?->tin,
+                'supplier_type' => $sourceSupplier?->supplier_type ?: 'wholesaler',
+                'payment_terms' => $sourceSupplier?->payment_terms ?: 'net_30',
+                'status' => 'active',
+                'rating' => 5.00,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Supplier linked successfully.',
+                'data' => $supplier,
+            ], 201);
+        }
 
         \Log::info('[Supplier] Starting supplier creation', ['email' => $validated['email']]);
 
         // Generate supplier code like SUP-2026-005 (incrementing per year)
-        $year = date('Y');
-        $lastCode = Supplier::where('supplier_code', 'LIKE', "SUP-{$year}-%")
-            ->orderBy('supplier_code', 'desc')
-            ->value('supplier_code');
-
-        if ($lastCode) {
-            $parts = explode('-', $lastCode);
-            $lastNumber = (int) ($parts[2] ?? 0);
-            $nextNumber = $lastNumber + 1;
-        } else {
-            $nextNumber = 1;
-        }
-
-        $supplierCode = sprintf('SUP-%s-%03d', $year, $nextNumber);
+        $supplierCode = $this->generateSupplierCode();
 
         // Split supplier_name into first/last for supplier record
         $supplierNameParts = preg_split('/\s+/', trim($validated['supplier_name']), 2);
@@ -266,6 +422,53 @@ class SupplierController extends Controller
         ]);
 
         return response()->json($response, 201);
+    }
+
+    private function generateSupplierCode(): string
+    {
+        $year = date('Y');
+        $lastCode = Supplier::where('supplier_code', 'LIKE', "SUP-{$year}-%")
+            ->orderBy('supplier_code', 'desc')
+            ->value('supplier_code');
+
+        if ($lastCode) {
+            $parts = explode('-', $lastCode);
+            $lastNumber = (int) ($parts[2] ?? 0);
+            $nextNumber = $lastNumber + 1;
+        } else {
+            $nextNumber = 1;
+        }
+
+        return sprintf('SUP-%s-%03d', $year, $nextNumber);
+    }
+
+    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = []): array
+    {
+        $supplier = $portal->supplier;
+        $user = $portal->user;
+
+        $supplierName = $supplier?->supplier_name ?: ($portal->supplier_name ?: trim(($user?->fname ?? '') . ' ' . ($user?->lname ?? '')));
+        $contactPerson = $supplier?->contact_person ?: ($portal->contact_person ?: trim(($user?->fname ?? '') . ' ' . ($user?->lname ?? '')));
+        $email = $supplier?->email ?: $user?->email;
+        $emailNormalized = strtolower(trim((string) $email));
+
+        return [
+            'supplier_portal_id' => $portal->id,
+            'supplier_id' => $supplier?->id,
+            'supplier_name' => $supplierName ?: 'Unnamed Supplier',
+            'company_name' => $supplier?->company_name,
+            'contact_person' => $contactPerson ?: null,
+            'email' => $email,
+            'phone' => $supplier?->phone ?: $portal->phone,
+            'address' => $supplier?->address ?: $portal->address,
+            'city' => $supplier?->city ?: $portal->city,
+            'province' => $supplier?->province ?: $portal->province,
+            'country' => $supplier?->country ?: $portal->country,
+            'payment_terms' => $supplier?->payment_terms,
+            'supplier_type' => $supplier?->supplier_type,
+            'verified_at' => optional($portal->verified_at)->toDateTimeString(),
+            'already_linked' => $emailNormalized !== '' && in_array($emailNormalized, $linkedEmails, true),
+        ];
     }
 
     /**

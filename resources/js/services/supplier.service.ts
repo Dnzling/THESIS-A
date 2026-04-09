@@ -259,6 +259,26 @@ class SupplierService {
     return response.data
   }
 
+  async getLinkedStores() {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/stores/linked`)
+    return response.data
+  }
+
+  async searchStores(params?: { search?: string; limit?: number }) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/stores/search`, { params })
+    return response.data
+  }
+
+  async linkStore(storeId: number) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/stores/link`, { store_id: storeId })
+    return response.data
+  }
+
+  async getLinkedStoreDetail(storeId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/stores/${storeId}`)
+    return response.data
+  }
+
   // Document Management
   async uploadVerificationDocument(file: File, documentType: string) {
     const formData = new FormData()

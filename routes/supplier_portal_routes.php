@@ -24,6 +24,10 @@ Route::prefix('supplier-portal')->group(function () {
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
         Route::get('/stats', [SupplierPortalController::class, 'getStats']);
+        Route::get('/stores/linked', [SupplierPortalController::class, 'getLinkedStores']);
+        Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);
+        Route::post('/stores/link', [SupplierPortalController::class, 'linkStore']);
+        Route::get('/stores/{storeId}', [SupplierPortalController::class, 'getLinkedStoreDetail'])->whereNumber('storeId');
 
         // Document Management
         Route::post('/documents', [SupplierPortalController::class, 'uploadDocument']);

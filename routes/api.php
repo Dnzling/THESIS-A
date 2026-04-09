@@ -47,6 +47,7 @@ Route::prefix('auth')->group(function () {
     Route::middleware('throttle:login')->post('login', [AuthController::class, 'login']);
     Route::middleware('throttle:login-with-clock-in')->post('login-with-clock-in', [AuthController::class, 'loginWithClockIn']);
     Route::middleware('throttle:register')->post('register', [AuthController::class, 'register']);
+    Route::middleware('throttle:register')->post('supplier/register', [AuthController::class, 'registerSupplier']);
     Route::middleware('throttle:password-reset')->post('forgot-password', [AuthController::class, 'forgotPassword']);
     Route::middleware('throttle:password-reset')->post('reset-password', [AuthController::class, 'resetPassword']);
 

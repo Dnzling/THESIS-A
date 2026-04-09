@@ -30,6 +30,136 @@ use \Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    public function registerSupplier(Request $request)
+    {
+        try {
+            // Backward-compatible mapping for different frontend key names.
+            if (!$request->has('password_confirmation') && $request->has('confirmPassword')) {
+                $request->merge(['password_confirmation' => $request->input('confirmPassword')]);
+            }
+
+            $validated = $request->validate([
+                'supplier_name' => 'nullable|string|max:255',
+                'fname' => 'required|string|max:255',
+                'lname' => 'required|string|max:255',
+                'email' => 'required|email|unique:users,email',
+                'password' => 'required|string|min:8|max:255|confirmed',
+                'phone' => 'nullable|string|max:50',
+            ]);
+
+            $user = DB::transaction(function () use ($validated) {
+                $supplierRole = Role::query()->firstOrCreate(
+                    ['name' => 'supplier'],
+                    [
+                        'display_name' => 'Supplier',
+                        'description' => 'Supplier portal user',
+                        'code' => 'SUPP',
+                        'is_active' => true,
+                    ]
+                );
+
+                $storeId = Store::query()->value('id');
+                if (!$storeId) {
+                    throw new \RuntimeException('No store available for supplier registration.');
+                }
+
+                $fullName = trim($validated['fname'] . ' ' . $validated['lname']);
+                $supplierCode = $this->generateSupplierCode();
+
+                $supplierName = trim((string) ($validated['supplier_name'] ?? ''));
+                if ($supplierName === '') {
+                    $supplierName = trim($validated['fname'] . ' ' . $validated['lname']);
+                }
+
+                $supplier = Supplier::create([
+                    'store_id' => $storeId,
+                    'supplier_code' => $supplierCode,
+                    'supplier_name' => $supplierName,
+                    'company_name' => $supplierName,
+                    'contact_person' => $fullName,
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'] ?? '',
+                    'country' => 'Philippines',
+                    'status' => 'inactive',
+                    'supplier_type' => 'wholesaler',
+                    'payment_terms' => 'net_30',
+                ]);
+
+                $user = User::create([
+                    'user_id' => $supplierCode,
+                    'fname' => $validated['fname'],
+                    'lname' => $validated['lname'],
+                    'email' => $validated['email'],
+                    'password' => Hash::make($validated['password']),
+                    'role_id' => (int) $supplierRole->id,
+                    'is_active' => 1,
+                ]);
+
+                SupplierPortal::create([
+                    'user_id' => $user->id,
+                    'supplier_id' => $supplier->id,
+                    'status' => 'pending',
+                    'resubmission_count' => 0,
+                ]);
+
+                return $user;
+            });
+
+            $otp = $user->generateOtp();
+            Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+
+            $user->load(['role' => function ($query) {
+                $query->select('id', 'name', 'display_name');
+            }]);
+
+            $token = $user->createToken('web-browser')->plainTextToken;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Supplier account created. Please verify OTP sent to your email.',
+                'user' => [
+                    'firstname' => $user->fname,
+                    'lastname' => $user->lname,
+                    'email' => $user->email,
+                    'role' => $user->role_name,
+                    'is_active' => $user->is_active,
+                    'access_token' => $token,
+                ],
+                'requires_verification' => true,
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Supplier registration failed',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    private function generateSupplierCode(): string
+    {
+        $year = date('Y');
+        $lastCode = Supplier::where('supplier_code', 'LIKE', "SUP-{$year}-%")
+            ->orderBy('supplier_code', 'desc')
+            ->value('supplier_code');
+
+        if ($lastCode) {
+            $parts = explode('-', $lastCode);
+            $lastNumber = (int) ($parts[2] ?? 0);
+            $nextNumber = $lastNumber + 1;
+        } else {
+            $nextNumber = 1;
+        }
+
+        return sprintf('SUP-%s-%03d', $year, $nextNumber);
+    }
+
     public function register(Request $request)
     {
         try {

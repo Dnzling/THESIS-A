@@ -46,6 +46,10 @@ Route::get('/customer/register', function () {
     return Inertia::render('Auth/CustomerRegister');
 })->name('customer.register');
 
+Route::get('/supplier/register', function () {
+    return Inertia::render('Auth/SupplierRegister');
+})->name('supplier.register');
+
 Route::get('/verify-otp', function () {
     return Inertia::render('Auth/VerifyOtp');
 })->name('verify-otp');
@@ -80,12 +84,9 @@ Route::post('/logout-no-csrf', [AuthenticatedSessionController::class, 'destroy'
 require __DIR__ . '/inertia.php';
 require __DIR__ . '/auth.php';
 
-// Inertia route for admin supplier verification page (use same page as inertia.php)
-Route::get('/admin/supplier-verification', function () {
-    return Inertia::render('System/Admin/SupplierVerification', [
-        'title' => 'Supplier Verification',
-    ]);
-})->middleware(['auth', 'role:super_admin'])->name('admin.supplier-verification');
+// Legacy URL compatibility: keep old path but redirect to canonical route
+Route::middleware(['auth', 'role:super_admin'])
+    ->get('/admin/supplier-verification', fn() => redirect('/admin/verification/suppliers'));
 
 // Compatibility routes used by the new frontend pages
 Route::middleware(['auth', 'role:super_admin'])->group(function () {

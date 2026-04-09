@@ -165,6 +165,13 @@
         @click="router.push('/supplier-portal/deliveries')"
         class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
       />
+      <Button
+        v-if="portal?.status === 'approved'"
+        label="Linked Stores"
+        icon="pi pi-building"
+        @click="router.push('/supplier-portal/stores')"
+        class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
+      />
     </div>
 
     <!-- Recent Activity Section -->

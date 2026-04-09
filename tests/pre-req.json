@@ -1,0 +1,9 @@
+
+const testEmail = `test${Date.now()}@example.com`;
+
+// Set the body with wrong credentials
+pm.request.body.raw = JSON.stringify({
+    email: testEmail,
+    password: 'wrongpassword',
+    device_name: 'postman'
+});

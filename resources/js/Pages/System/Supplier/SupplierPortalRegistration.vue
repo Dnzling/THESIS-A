@@ -1,6 +1,6 @@
 <template>
   <div class="supplier-portal-registration">
-    <PageHeader title="Supplier Registration & Verification" icon="pi pi-user-plus" />
+    <div class="text-2xl font-bold text-gray-800 mb-4">Supplier Registration & Verification</div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Registration Form -->
@@ -27,10 +27,10 @@
 
             <div>
               <label class="block text-sm font-medium mb-2">Phone *</label>
-              <InputText 
+              <InputMask mask="+63 999 9999 999"
                 v-model="formData.phone"
                 type="tel"
-                placeholder="Phone number"
+                placeholder="+63"
                 class="w-full"
               />
             </div>
@@ -47,17 +47,7 @@
               />
             </div>
 
-            <div>
-              <label class="block text-sm font-medium mb-2">Payment Terms *</label>
-              <Select 
-                v-model="formData.payment_terms"
-                :options="paymentTerms"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="Select terms"
-                class="w-full"
-              />
-            </div>
+          
 
             <div>
               <label class="block text-sm font-medium mb-2">Address *</label>
@@ -91,15 +81,6 @@
               </div>
             </div>
 
-            <div>
-              <label class="block text-sm font-medium mb-2">Tax ID (TIN)</label>
-              <InputText 
-                v-model="formData.tin"
-                placeholder="Tax identification number"
-                class="w-full"
-              />
-            </div>
-
             <Button 
               label="Register" 
               type="submit"
@@ -114,12 +95,6 @@
       <Card title="Verification Documents">
         <template #content>
           <div class="space-y-4">
-            <Message 
-              severity="info"
-              text="Please upload all required documents for verification"
-              class="w-full"
-            />
-
             <!-- Required Documents List -->
             <div class="space-y-3">
               <div 

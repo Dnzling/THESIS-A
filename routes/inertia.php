@@ -180,6 +180,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/dashboard', 'System/Procurement/Dashboard', 'procurement.dashboard', 'Procurement Dashboard');
     $inertia('/procurement/suppliers', 'System/Procurement/Suppliers/SupplierIndex', 'procurement.suppliers', 'Suppliers');
     $inertia('/procurement/suppliers/create', 'System/Procurement/Suppliers/SupplierCreate', 'procurement.suppliers.create', 'Create Supplier');
+    $inertia('/procurement/suppliers/verified/{portalId}', 'System/Procurement/Suppliers/VerifiedSupplierShow', 'procurement.suppliers.verified.show', 'Verified Supplier');
     $inertia('/procurement/suppliers/{id}', 'System/Procurement/Suppliers/SupplierDetail', 'procurement.suppliers.detail', 'Supplier Details');
     $inertia('/procurement/suppliers/{id}/edit', 'System/Procurement/Suppliers/SupplierEdit', 'procurement.suppliers.edit', 'Edit Supplier');
     $inertia('/procurement/supplier-contracts', 'System/Procurement/SupplierContracts/SupplierContractIndex', 'procurement.supplier-contracts.index', 'Supplier Contracts');
@@ -309,6 +310,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/supplier-portal/deliveries', 'System/Supplier/SupplierDriverShipmentsIndex', 'supplier.deliveries', 'Delivery Logs');
     $inertia('/supplier-portal/deliveries/{id}', 'System/Supplier/SupplierDriverShipmentDetail', 'supplier.deliveries.detail', 'Delivery Log Detail');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
+    $inertia('/supplier-portal/stores', 'System/Supplier/SupplierStores', 'supplier.stores', 'Linked Stores');
+    $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details');
     $inertia('/supplier-portal/profile', 'Profile/SupplierProfile', 'supplier.profile', 'Supplier Profile');
 });
 

@@ -117,9 +117,11 @@ const fullOtp = computed(() => otpDigits.value.join(''))
 const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
 const isProfileOtp = computed(() => otpContext.value === 'profile_email_change')
+const isSupplierOtp = computed(() => otpContext.value === 'supplier')
 const otpContextLabel = computed(() => {
   if (isCustomerOtp.value) return 'Furnisync Shop Customer Verification'
   if (isProfileOtp.value) return 'Profile Email Change'
+  if (isSupplierOtp.value) return 'Supplier Verification'
   return 'Furnisync Verification'
 })
 
@@ -231,6 +233,11 @@ const verifyOtp = async () => { // Add async here
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.visit('/hr/profile')
+        }, 1200)
+      } else if (isSupplierOtp.value) {
+        setTimeout(() => {
+          localStorage.removeItem('register_token')
+          router.visit('/login')
         }, 1200)
       } else {
         setTimeout(() => {

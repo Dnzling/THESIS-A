@@ -293,6 +293,16 @@ class ProcurementService {
     return response.data
   }
 
+  async getVerifiedSupplierDirectory(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/verified-directory`, { params })
+    return response.data
+  }
+
+  async getVerifiedSupplierDirectoryItem(portalId: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/verified-directory/${portalId}`)
+    return response.data
+  }
+
   async getSupplier(id: number) {
     const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}`)
     return response.data

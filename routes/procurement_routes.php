@@ -51,6 +51,8 @@ Route::prefix('procurement')->group(function () {
     Route::prefix('suppliers')->middleware('can:procurement.suppliers.view')->group(function () {
         Route::get('/stats', [ProcurementDashboardController::class, 'getStats']);
         Route::get('/summary-cards', [ProcurementDashboardController::class, 'getSummaryCards']);
+        Route::get('/verified-directory', [SupplierController::class, 'verifiedDirectory']);
+        Route::get('/verified-directory/{portalId}', [SupplierController::class, 'verifiedDirectoryShow']);
         Route::get('/', [SupplierController::class, 'index']);
         Route::get('/{id}', [SupplierController::class, 'show']);
         Route::post('/', [SupplierController::class, 'store'])->middleware('can:procurement.suppliers.manage');

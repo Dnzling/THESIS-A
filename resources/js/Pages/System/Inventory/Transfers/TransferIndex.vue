@@ -53,7 +53,7 @@
           <DataTable :value="transfers" paginator :rows="pagination.per_page"
             :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
             @page="onPageChange" dataKey="id" class="p-datatable-sm p-datatable-fluid" stripedRows
-            @row-click="onRowClick" :rowClass="rowClass" @sort="onSort" :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1">
+            @row-click="onRowClick" :rowClass="rowClass">
             <template #empty>
               <div class="text-center py-8">
                 <i class="pi pi-inbox text-4xl text-gray-400"></i>
@@ -197,12 +197,6 @@ const onRowClick = (event: any) => {
   if (id) router.push({ name: 'inventory.transfers.detail', params: { id } })
 }
 
-const onSort = (event: any) => {
-  filters.sort_field = event.sortField || 'transfer_date'
-  filters.sort_direction = event.sortOrder === 1 ? 'asc' : 'desc'
-  loadTransfers()
-}
-
 watch(dateRange, (val) => {
   if (!val || !Array.isArray(val)) {
     filters.start_date = null
@@ -243,10 +237,23 @@ const formatStatusLabel = (status: string) => {
 }
 
 const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', {
+  if (!date) return '-'
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
+  })
+}
+
+const formatTime = (date: string) => {
+  if (!date) return '-'
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
   })
 }
 
@@ -355,11 +362,6 @@ const onPageChange = (event: { page: number; first: number; rows: number }) => {
   pagination.current_page = event.page + 1
   loadTransfers(pagination.current_page)
 }
-
-// Watch for per_page changes
-watch(() => pagination.per_page, () => {
-  loadTransfers(1)
-})
 
 onMounted(() => {
   loadTransfers(1)

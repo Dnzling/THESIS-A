@@ -5,15 +5,252 @@ namespace App\Http\Controllers\Api\Procurement\SupplierPortal;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\SupplierPortal\SupplierVerificationDocument;
+use App\Models\Procurement\SupplierPortal\SupplierPOFeedback;
+use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Store\Store;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 class SupplierPortalController extends Controller
 {
+    /**
+     * Get stores currently linked to supplier account.
+     * GET /api/supplier-portal/stores/linked
+     */
+    public function getLinkedStores(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $portal = SupplierPortal::with('supplier')->where('user_id', $user->id)->firstOrFail();
+
+        $supplierEmail = strtolower(trim((string) ($portal->supplier?->email ?: $user->email)));
+        if ($supplierEmail === '') {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        $items = Supplier::query()
+            ->select([
+                'suppliers.id as supplier_id',
+                'suppliers.store_id',
+                'suppliers.supplier_name',
+                'suppliers.contact_person',
+                'suppliers.email',
+                'suppliers.phone',
+                'suppliers.status as supplier_status',
+                'suppliers.created_at as linked_at',
+                'stores.name as store_name',
+                'stores.city',
+                'stores.province',
+                'stores.address',
+                'stores.status as store_status',
+            ])
+            ->join('stores', 'stores.id', '=', 'suppliers.store_id')
+            ->whereRaw('LOWER(suppliers.email) = ?', [$supplierEmail])
+            ->orderByDesc('suppliers.created_at')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Search stores to request/link supplier account.
+     * GET /api/supplier-portal/stores/search
+     */
+    public function searchStores(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $portal = SupplierPortal::with('supplier')->where('user_id', $user->id)->firstOrFail();
+        $supplierEmail = strtolower(trim((string) ($portal->supplier?->email ?: $user->email)));
+
+        $search = trim((string) $request->get('search', ''));
+        $limit = max(1, min((int) $request->get('limit', 30), 100));
+
+        $linkedStoreIds = [];
+        if ($supplierEmail !== '') {
+            $linkedStoreIds = Supplier::query()
+                ->whereRaw('LOWER(email) = ?', [$supplierEmail])
+                ->pluck('store_id')
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        $query = Store::query()
+            ->select(['id', 'name', 'store_code', 'city', 'province', 'address', 'status'])
+            ->whereNotIn('id', $linkedStoreIds)
+            ->orderBy('name');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('store_code', 'LIKE', "%{$search}%")
+                    ->orWhere('city', 'LIKE', "%{$search}%")
+                    ->orWhere('province', 'LIKE', "%{$search}%")
+                    ->orWhere('address', 'LIKE', "%{$search}%");
+            });
+        }
+
+        $stores = $query->limit($limit)->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $stores,
+        ]);
+    }
+
+    /**
+     * Link supplier account to selected store by creating supplier record for that store.
+     * POST /api/supplier-portal/stores/link
+     */
+    public function linkStore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'store_id' => 'required|integer|exists:stores,id',
+        ]);
+
+        $user = auth()->user();
+        $portal = SupplierPortal::with('supplier')->where('user_id', $user->id)->firstOrFail();
+        $sourceSupplier = $portal->supplier;
+
+        $supplierEmail = strtolower(trim((string) ($sourceSupplier?->email ?: $user->email)));
+        if ($supplierEmail === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Supplier email is required before linking a store.',
+            ], 422);
+        }
+
+        $existing = Supplier::query()
+            ->where('store_id', $validated['store_id'])
+            ->whereRaw('LOWER(email) = ?', [$supplierEmail])
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Store already linked.',
+                'data' => $existing,
+            ]);
+        }
+
+        $supplierName = trim((string) ($sourceSupplier?->supplier_name ?: ($portal->supplier_name ?: ($user->fname . ' ' . $user->lname))));
+        $contactPerson = trim((string) ($sourceSupplier?->contact_person ?: ($portal->contact_person ?: ($user->fname . ' ' . $user->lname))));
+
+        $created = DB::transaction(function () use ($validated, $sourceSupplier, $supplierEmail, $supplierName, $contactPerson) {
+            return Supplier::create([
+                'store_id' => $validated['store_id'],
+                'supplier_code' => $this->generateSupplierCode(),
+                'supplier_name' => $supplierName ?: 'Supplier',
+                'company_name' => $sourceSupplier?->company_name ?: $supplierName,
+                'contact_person' => $contactPerson ?: null,
+                'email' => $supplierEmail,
+                'phone' => $sourceSupplier?->phone ?? '',
+                'address' => $sourceSupplier?->address,
+                'city' => $sourceSupplier?->city,
+                'province' => $sourceSupplier?->province,
+                'postal_code' => $sourceSupplier?->postal_code,
+                'country' => $sourceSupplier?->country ?: 'Philippines',
+                'tin' => $sourceSupplier?->tin,
+                'supplier_type' => $sourceSupplier?->supplier_type ?: 'wholesaler',
+                'payment_terms' => $sourceSupplier?->payment_terms ?: 'net_30',
+                'status' => 'active',
+                'rating' => 5.00,
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Store linked successfully.',
+            'data' => $created,
+        ], 201);
+    }
+
+    /**
+     * Get linked store detail with transactions and active contracts.
+     * GET /api/supplier-portal/stores/{storeId}
+     */
+    public function getLinkedStoreDetail(Request $request, int $storeId): JsonResponse
+    {
+        $user = auth()->user();
+        $portal = SupplierPortal::with('supplier')->where('user_id', $user->id)->firstOrFail();
+        $supplierEmail = strtolower(trim((string) ($portal->supplier?->email ?: $user->email)));
+
+        if ($supplierEmail === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Supplier email is missing.',
+            ], 422);
+        }
+
+        $linkedSupplier = Supplier::query()
+            ->where('store_id', $storeId)
+            ->whereRaw('LOWER(email) = ?', [$supplierEmail])
+            ->first();
+
+        if (!$linkedSupplier) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Store is not linked to your supplier account.',
+            ], 404);
+        }
+
+        $store = Store::query()
+            ->select(['id', 'name', 'store_code', 'phone', 'email', 'city', 'province', 'address', 'status'])
+            ->findOrFail($storeId);
+
+        $activeContracts = SupplierContract::query()
+            ->where('store_id', $storeId)
+            ->where('supplier_id', $linkedSupplier->id)
+            ->active()
+            ->orderByDesc('start_date')
+            ->get();
+
+        $poTransactions = SupplierPOFeedback::query()
+            ->with(['purchaseOrder:id,po_number,status,total_amount,order_date,expected_delivery_date,store_id,supplier_id'])
+            ->where('supplier_portal_id', $portal->id)
+            ->whereHas('purchaseOrder', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
+            ->orderByDesc('submitted_at')
+            ->limit(200)
+            ->get();
+
+        $rfqTransactions = SupplierRFQFeedback::query()
+            ->with(['rfq:id,rfq_number,title,status,issue_date,store_id'])
+            ->where('supplier_portal_id', $portal->id)
+            ->whereHas('rfq', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
+            ->orderByDesc('submitted_at')
+            ->limit(200)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'store' => $store,
+                'supplier' => [
+                    'id' => $linkedSupplier->id,
+                    'supplier_name' => $linkedSupplier->supplier_name,
+                    'contact_person' => $linkedSupplier->contact_person,
+                    'email' => $linkedSupplier->email,
+                    'phone' => $linkedSupplier->phone,
+                ],
+                'active_contracts' => $activeContracts,
+                'po_transactions' => $poTransactions,
+                'rfq_transactions' => $rfqTransactions,
+                'can_create_contract' => $activeContracts->isEmpty(),
+            ],
+        ]);
+    }
+
     /**
      * Get supplier portal details (current logged-in supplier)
      * GET /api/supplier-portal/my-portal
@@ -210,17 +447,20 @@ class SupplierPortalController extends Controller
 
     private function generateSupplierCode(): string
     {
-        $prefix = 'SUPP-' . date('Y') . '-';
-        $latest = Supplier::where('supplier_code', 'like', $prefix . '%')
+        $year = date('Y');
+        $lastCode = Supplier::where('supplier_code', 'LIKE', "SUP-{$year}-%")
             ->orderBy('supplier_code', 'desc')
-            ->first();
+            ->value('supplier_code');
 
-        $nextNumber = 1;
-        if ($latest && preg_match('/^' . preg_quote($prefix, '/') . '(\\d+)$/', $latest->supplier_code, $matches)) {
-            $nextNumber = (int) $matches[1] + 1;
+        if ($lastCode) {
+            $parts = explode('-', $lastCode);
+            $lastNumber = (int) ($parts[2] ?? 0);
+            $nextNumber = $lastNumber + 1;
+        } else {
+            $nextNumber = 1;
         }
 
-        return $prefix . str_pad((string) $nextNumber, 5, '0', STR_PAD_LEFT);
+        return sprintf('SUP-%s-%03d', $year, $nextNumber);
     }
 
     /**
