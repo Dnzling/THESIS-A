@@ -270,6 +270,9 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/sales/ecommerce-orders/{id}', 'System/Inventory/EcommerceOrders/EcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
     $inertia('/sales/reviews', 'System/Sales/SalesReviews', 'sales.reviews', 'Reviews');
     $inertia('/sales/reviews/{id}', 'System/Sales/SalesReviewDetail', 'sales.reviews.detail', 'Review Detail');
+    $inertia('/sales/vouchers', 'System/Sales/SalesVouchers', 'sales.vouchers', 'Vouchers');
+    $inertia('/sales/vouchers/create', 'System/Sales/SalesVoucherCreate', 'sales.vouchers.create', 'Create Voucher');
+    $inertia('/sales/vouchers/{id}', 'System/Sales/SalesVoucherShow', 'sales.vouchers.detail', 'Voucher Details');
     $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
     $inertia('/sales/refunds', 'System/Sales/SalesRefunds', 'sales.refunds', 'Refunds');
     $inertia('/sales/refunds/{id}', 'System/Sales/SalesRefundDetail', 'sales.refunds.detail', 'Refund Detail');

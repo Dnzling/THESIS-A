@@ -12,6 +12,8 @@ class EcommerceVoucher extends Model
 
     protected $fillable = [
         'store_id',
+        'voucher_name',
+        'voucher_slots',
         'code',
         'discount_type',
         'discount_value',
@@ -36,4 +38,3 @@ class EcommerceVoucher extends Model
         return $this->belongsTo(Store::class);
     }
 }
-

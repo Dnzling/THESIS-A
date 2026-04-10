@@ -1450,6 +1450,28 @@ class EcommerceController extends Controller
             return $order->fresh('items');
         });
 
+        try {
+            $this->notifyUsersByPermissions(
+                (int) $order->store_id,
+                ['sales.ecommerce-orders.view', 'sales.ecommerce-orders.manage', 'sales.orders.view'],
+                [
+                    'store_id' => (int) $order->store_id,
+                    'branch_id' => (int) ($order->assigned_branch_id ?? 0) ?: null,
+                    'module' => 'sales',
+                    'entity_type' => 'ecommerce_order',
+                    'entity_id' => (int) $order->id,
+                    'action' => 'created',
+                    'title' => 'New Ecommerce Order Received',
+                    'message' => "Ecommerce order {$order->order_number} has been placed.",
+                    'severity' => 'info',
+                    'link' => "/sales/ecommerce-orders/{$order->id}",
+                ],
+                [(int) $user->id]
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Order placed successfully.',
@@ -1653,6 +1675,27 @@ class EcommerceController extends Controller
             'details' => $validated['details'] ?? null,
             'status' => 'pending_verification',
         ]);
+
+        try {
+            $this->notifyUsersByPermissions(
+                (int) $orderItem->order->store_id,
+                ['sales.refunds.view', 'sales.refunds.manage', 'sales.ecommerce-orders.view'],
+                [
+                    'store_id' => (int) $orderItem->order->store_id,
+                    'module' => 'sales',
+                    'entity_type' => 'ecommerce_order_return',
+                    'entity_id' => (int) $returnRecord->id,
+                    'action' => 'requested',
+                    'title' => 'New Return Request',
+                    'message' => "Order {$orderItem->order->order_number} has a new return request pending verification.",
+                    'severity' => 'warn',
+                    'link' => "/sales/ecommerce-orders/{$orderItem->order_id}",
+                ],
+                [(int) $user->id]
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
 
         return response()->json([
             'success' => true,
@@ -2040,6 +2083,27 @@ class EcommerceController extends Controller
         ]);
 
         $thread->update(['last_message_at' => $message->created_at]);
+
+        try {
+            $this->notifyUsersByPermissions(
+                (int) $storeId,
+                ['sales.chats.view', 'sales.chats.manage'],
+                [
+                    'store_id' => (int) $storeId,
+                    'module' => 'sales',
+                    'entity_type' => 'ecommerce_chat_thread',
+                    'entity_id' => (int) $thread->id,
+                    'action' => 'new_message',
+                    'title' => 'New Customer Chat Message',
+                    'message' => 'A customer sent a new message in chat.',
+                    'severity' => 'info',
+                    'link' => '/sales/chats',
+                ],
+                [(int) $user->id]
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
 
         return response()->json(['success' => true, 'data' => $message], 201);
     }

@@ -191,6 +191,26 @@ class SalesService {
     return res.data
   }
 
+  async getVouchers(params?: any) {
+    const res = await axiosClient.get('/api/sales/vouchers', { params })
+    return res.data
+  }
+
+  async createVoucher(payload: any) {
+    const res = await axiosClient.post('/api/sales/vouchers', payload)
+    return res.data
+  }
+
+  async getVoucher(id: number | string) {
+    const res = await axiosClient.get(`/api/sales/vouchers/${id}`)
+    return res.data
+  }
+
+  async updateVoucher(id: number | string, payload: any) {
+    const res = await axiosClient.put(`/api/sales/vouchers/${id}`, payload)
+    return res.data
+  }
+
   async getReview(id: number | string) {
     const res = await axiosClient.get(`/api/sales/reviews/${id}`)
     return res.data

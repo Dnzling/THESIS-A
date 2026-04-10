@@ -2,7 +2,10 @@
 
 namespace App\Models\Sales;
 
+use App\Models\Core\User;
+use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalesReview extends Model
 {
@@ -29,4 +32,14 @@ class SalesReview extends Model
         'rating' => 'integer',
         'replied_at' => 'datetime',
     ];
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function replier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'replied_by');
+    }
 }

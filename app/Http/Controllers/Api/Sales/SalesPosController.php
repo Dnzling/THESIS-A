@@ -169,6 +169,28 @@ class SalesPosController extends Controller
             return $order;
         });
 
+        try {
+            $this->notifyUsersByPermissions(
+                $storeId,
+                ['sales.pos.view', 'sales.pos.manage', 'sales.orders.view'],
+                [
+                    'store_id' => $storeId,
+                    'branch_id' => $branchId ?: null,
+                    'module' => 'sales',
+                    'entity_type' => 'sales_order',
+                    'entity_id' => $order->id,
+                    'action' => 'created',
+                    'title' => 'New In-Store Order Received',
+                    'message' => "POS order {$order->order_number} has been created.",
+                    'severity' => 'info',
+                    'link' => "/sales/pos/orders/{$order->id}",
+                ],
+                [(int) $user->id]
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
         if (in_array($validated['payment_method'], ['cash', 'card', 'cod'], true)) {
             $manualPayment = SalesPayment::create([
                 'store_id' => $storeId,

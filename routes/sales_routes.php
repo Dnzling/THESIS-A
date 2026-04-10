@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Sales\SalesOrderDeliveryController;
 use App\Http\Controllers\Api\Sales\SalesReviewController;
 use App\Http\Controllers\Api\Sales\SalesRefundController;
 use App\Http\Controllers\Api\Sales\SalesReportsController;
+use App\Http\Controllers\Api\Sales\SalesVoucherController;
 use App\Http\Controllers\Api\Inventory\EcommerceOrderManagementController;
 use Illuminate\Support\Facades\Route;
 
@@ -68,6 +69,13 @@ Route::prefix('sales')->group(function () {
         Route::get('/', [SalesReviewController::class, 'index'])->middleware('can:sales.reviews.view');
         Route::get('/{review}', [SalesReviewController::class, 'show'])->middleware('can:sales.reviews.view');
         Route::put('/{review}/reply', [SalesReviewController::class, 'reply'])->middleware('can:sales.reviews.manage');
+    });
+
+    Route::prefix('vouchers')->group(function () {
+        Route::get('/', [SalesVoucherController::class, 'index'])->middleware('can:sales.vouchers.view');
+        Route::post('/', [SalesVoucherController::class, 'store'])->middleware('can:sales.vouchers.manage');
+        Route::get('/{voucher}', [SalesVoucherController::class, 'show'])->middleware('can:sales.vouchers.view');
+        Route::put('/{voucher}', [SalesVoucherController::class, 'update'])->middleware('can:sales.vouchers.manage');
     });
 
     Route::prefix('refunds')->group(function () {

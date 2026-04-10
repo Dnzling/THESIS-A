@@ -127,6 +127,14 @@ export const PERMISSION_CATALOG: PermissionModule[] = [
           'sales.chats.manage',
         ],
       },
+      {
+        key: 'sales_vouchers',
+        label: 'Vouchers',
+        permissions: [
+          'sales.vouchers.view',
+          'sales.vouchers.manage',
+        ],
+      },
     ],
   },
   {
@@ -259,6 +267,7 @@ const SMALL_TIER_FEATURES: Record<string, string[]> = {
     'sales_orders',
     'customer_list_basic',
     'sales_summary',
+    'sales_vouchers',
   ],
   procurement: [
     'suppliers',

@@ -18,11 +18,16 @@ class SalesReviewController extends Controller
         }
 
         $query = SalesReview::query()
+            ->with(['product:id,product_name,sku', 'replier:id,fname,lname'])
             ->where('store_id', $storeId)
             ->orderByDesc('created_at');
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
+        }
+
+        if ($request->filled('rating')) {
+            $query->where('rating', (int) $request->integer('rating'));
         }
 
         if ($request->filled('search')) {
@@ -34,8 +39,27 @@ class SalesReviewController extends Controller
             });
         }
 
+        $perPage = max(10, min((int) $request->integer('per_page', 20), 100));
+        $reviews = $query->paginate($perPage);
+
+        $base = SalesReview::query()->where('store_id', $storeId);
+        $summary = [
+            'total_reviews' => (int) (clone $base)->count(),
+            'pending_reviews' => (int) (clone $base)->where('status', 'pending')->count(),
+            'replied_reviews' => (int) (clone $base)->where('status', 'replied')->count(),
+            'average_rating' => round((float) ((clone $base)->avg('rating') ?? 0), 2),
+            'ratings_breakdown' => [
+                5 => (int) (clone $base)->where('rating', 5)->count(),
+                4 => (int) (clone $base)->where('rating', 4)->count(),
+                3 => (int) (clone $base)->where('rating', 3)->count(),
+                2 => (int) (clone $base)->where('rating', 2)->count(),
+                1 => (int) (clone $base)->where('rating', 1)->count(),
+            ],
+        ];
+
         return response()->json([
-            'data' => $query->paginate(20),
+            'data' => $reviews,
+            'summary' => $summary,
         ]);
     }
 
