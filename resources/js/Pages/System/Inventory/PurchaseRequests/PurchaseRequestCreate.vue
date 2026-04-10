@@ -242,7 +242,6 @@ const loadProducts = async () => {
           ...item.product,
           latestInventory: {
             id: item.id, // Store the branch_inventory_id
-            quantity_on_hand: item.quantity_on_hand,
             reorder_point: item.reorder_point,
             stock_status: item.stock_status,
             quantity_available: item.quantity_available,
@@ -314,7 +313,7 @@ const onProductChange = () => {
 
       // Set inventory details from product's latestInventory
       if (product.latestInventory) {
-        const currentQty = product.latestInventory.quantity_on_hand || 0
+        const currentQty = product.latestInventory.quantity_available || 0
         const reorderQty = product.latestInventory.reorder_point || 0
 
         currentStock.value = currentQty.toString()

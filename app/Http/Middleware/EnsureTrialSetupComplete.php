@@ -37,8 +37,8 @@ class EnsureTrialSetupComplete
             if ($moduleFromPath === 'hr' && !$this->isLitePath($path, '/system/employees')) {
                 return redirect('/system/employees');
             }
-            if ($moduleFromPath === 'finance' && !$this->isLitePath($path, '/system/finance')) {
-                return redirect('/system/finance');
+            if ($moduleFromPath === 'finance' && !$this->isLitePath($path, '/finance')) {
+                return redirect('/finance');
             }
         }
 
@@ -57,7 +57,7 @@ class EnsureTrialSetupComplete
             '/system/settings',
             '/system/store/verification',
             '/system/employees',
-            '/system/finance',
+            '/finance',
             '/profile',
         ];
 

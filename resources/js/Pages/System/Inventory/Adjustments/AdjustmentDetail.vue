@@ -177,7 +177,18 @@
         </div>
         <div class="flex flex-col gap-2">
           <label class="text-sm font-semibold text-gray-700">Rejection Reason *</label>
-          <Textarea v-model="rejectReason" rows="4" placeholder="e.g., Qty mismatch needs recount" />
+          <Select
+            v-model="rejectReason"
+            :options="rejectReasonOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Select rejection reason"
+            fluid
+          />
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-semibold text-gray-700">Additional Notes (optional)</label>
+          <Textarea v-model="rejectNotes" rows="3" placeholder="Add more details..." />
         </div>
       </div>
       <template #footer>
@@ -187,7 +198,7 @@
           icon="pi pi-times"
           severity="danger"
           :loading="processing"
-          :disabled="!rejectReason.trim()"
+          :disabled="!rejectReason"
           @click="confirmReject"
         />
       </template>
@@ -203,6 +214,7 @@ import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
+import Select from 'primevue/select'
 
 const route = useRoute()
 const router = useRouter()
@@ -214,7 +226,16 @@ const loading = ref(false)
 const processing = ref(false)
 const detail = ref<any>(null)
 const showRejectDialog = ref(false)
-const rejectReason = ref('')
+const rejectReason = ref<string | null>(null)
+const rejectNotes = ref('')
+const rejectReasonOptions = [
+  { label: 'Qty mismatch', value: 'qty_mismatch' },
+  { label: 'Wrong branch or items', value: 'wrong_branch_or_items' },
+  { label: 'Missing supporting details', value: 'missing_supporting_details' },
+  { label: 'Duplicate adjustment request', value: 'duplicate_request' },
+  { label: 'Policy violation', value: 'policy_violation' },
+  { label: 'Other', value: 'other' },
+]
 
 const adjustmentId = computed(() => Number(route.params.id))
 
@@ -330,10 +351,10 @@ const approveAdjustment = async () => {
     toast.add({
       severity: 'success',
       summary: 'Approved',
-      detail: 'Stock adjustment approved successfully',
+      detail: 'Stock adjustment approved. Redirecting to updated inventory stock...',
       life: 2500
     })
-    await loadDetail()
+    router.push({ name: 'inventory.items', query: { refreshed: String(Date.now()) } })
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -350,7 +371,11 @@ const rejectAdjustment = async () => {
   if (!detail.value?.id) return
   processing.value = true
   try {
-    await inventoryService.rejectAdjustment(detail.value.id, rejectReason.value.trim())
+    const reasonLabel = rejectReasonOptions.find((r) => r.value === rejectReason.value)?.label || 'Other'
+    const reasonText = rejectNotes.value.trim()
+      ? `${reasonLabel}: ${rejectNotes.value.trim()}`
+      : reasonLabel
+    await inventoryService.rejectAdjustment(detail.value.id, reasonText)
     toast.add({
       severity: 'success',
       summary: 'Rejected',
@@ -358,7 +383,8 @@ const rejectAdjustment = async () => {
       life: 2500
     })
     showRejectDialog.value = false
-    rejectReason.value = ''
+    rejectReason.value = null
+    rejectNotes.value = ''
     await loadDetail()
   } catch (error: any) {
     toast.add({
@@ -384,7 +410,8 @@ const confirmApprove = () => {
 }
 
 const openRejectDialog = () => {
-  rejectReason.value = ''
+  rejectReason.value = null
+  rejectNotes.value = ''
   showRejectDialog.value = true
 }
 

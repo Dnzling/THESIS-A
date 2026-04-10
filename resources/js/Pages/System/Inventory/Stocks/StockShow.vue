@@ -64,7 +64,7 @@
             <div class="text-right">
               <p class="text-sm text-gray-500">Available</p>
               <p class="text-3xl font-bold text-gray-900">{{ item.quantity_available ?? 0 }}</p>
-              <p class="text-xs text-gray-500 mt-1">On hand: {{ item.quantity_on_hand ?? 0 }}</p>
+              <p class="text-xs text-gray-500 mt-1">Available: {{ item.quantity_available ?? 0 }}</p>
             </div>
           </div>
         </template>

@@ -10,9 +10,11 @@ use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
+use App\Models\Hr\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class GoodsReceiptController extends Controller
 {
@@ -146,10 +148,19 @@ class GoodsReceiptController extends Controller
             'items.*.quantity_damaged' => 'nullable|integer|min:0',
             'items.*.condition' => 'required|in:good,damaged,defective',
             'items.*.notes' => 'nullable|string',
+            'status' => 'nullable|in:draft,completed',
         ]);
 
         DB::beginTransaction();
         try {
+            $actorEmployeeId = $this->resolveActorEmployeeId();
+            if (!$actorEmployeeId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account is not linked to an employee profile. Please contact admin before creating a goods receipt.',
+                ], 422);
+            }
+
             $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
 
             // Validate quantities vs expected
@@ -178,9 +189,9 @@ class GoodsReceiptController extends Controller
 
             $mismatchSummaries = [];
             foreach ($validated['items'] as $item) {
-                if ($item['quantity_damaged'] > 0) {
+                if (($item['quantity_damaged'] ?? 0) > 0) {
                     $hasDamaged = true;
-                    $mismatchSummaries[] = "Damaged: product {$item['product_id']} qty {$item['quantity_damaged']}";
+                    $mismatchSummaries[] = "Damaged: product {$item['product_id']} qty " . ($item['quantity_damaged'] ?? 0);
                 }
                 if ($item['quantity_received'] < $item['quantity_expected']) {
                     $hasPartial = true;
@@ -202,7 +213,7 @@ class GoodsReceiptController extends Controller
                 'receipt_date' => $validated['receipt_date'],
                 'receipt_time' => $validated['receipt_time'],
                 'receipt_status' => $receiptStatus,
-                'received_by' => auth()->id(),
+                'received_by' => $actorEmployeeId,
                 'delivery_note_number' => $validated['delivery_note_number'] ?? null,
                 'vehicle_number' => $validated['vehicle_number'] ?? null,
                 'driver_name' => $validated['driver_name'] ?? null,
@@ -218,7 +229,9 @@ class GoodsReceiptController extends Controller
                 $grn->id
             );
 
-            // Create items and update inventory
+            // Create items and, if not a draft, update inventory
+            $isDraft = (isset($validated['status']) && $validated['status'] === 'draft');
+
             foreach ($validated['items'] as $itemData) {
                 // Create GRN item
                 $grnItem = GoodsReceiptItem::create([
@@ -235,10 +248,17 @@ class GoodsReceiptController extends Controller
 
                 // Update PO item
                 $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
+                if (!$poItem) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Invalid PO item selected for PO #{$po->id}.",
+                    ], 422);
+                }
                 $poItem->updateReceived($itemData['quantity_received'], $itemData['quantity_damaged'] ?? 0);
 
-                // Update branch inventory
-                $inventory = BranchInventory::firstOrCreate(
+                if (!$isDraft) {
+                    // Update branch inventory
+                    $inventory = BranchInventory::firstOrCreate(
                     [
                         'branch_id' => $po->branch_id,
                         'product_id' => $itemData['product_id'],
@@ -262,7 +282,7 @@ class GoodsReceiptController extends Controller
                 $inventory->quantity_available += $itemData['quantity_received'];
                 
                 // Add damaged stock
-                if ($itemData['quantity_damaged'] > 0) {
+                if (($itemData['quantity_damaged'] ?? 0) > 0) {
                     $inventory->quantity_damaged += $itemData['quantity_damaged'];
                 }
 
@@ -278,15 +298,12 @@ class GoodsReceiptController extends Controller
                 }
 
                 $inventory->unit_cost = $newCost;
-                // Prevent BranchInventoryObserver from writing duplicate generic "adjustment" TXN.
-                // GR flow writes explicit "purchase"/"damage" transactions below.
-                $inventory->skip_auto_transaction_log = true;
                 $inventory->save();
 
-                $inventory->updateStockStatus();
-                $inventory->calculateTotalValue();
+                    $inventory->updateStockStatus();
+                    $inventory->calculateTotalValue();
 
-                // Create inventory transaction with unique datetime-based number
+                    // Create inventory transaction with unique datetime-based number
                 $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
                 InventoryTransaction::create([
@@ -304,12 +321,12 @@ class GoodsReceiptController extends Controller
                     'notes' => "Received from PO {$po->po_number}",
                     'unit_cost' => $newCost,
                     'total_value' => $newCost * $itemData['quantity_received'],
-                    'created_by' => auth()->user()?->employee?->id,
+                    'created_by' => $actorEmployeeId,
                     'transaction_date' => now(),
                 ]);
 
-                // If damaged, create damage transaction with unique datetime-based number
-                if ($itemData['quantity_damaged'] > 0) {
+                    // If damaged, create damage transaction with unique datetime-based number
+                    if (($itemData['quantity_damaged'] ?? 0) > 0) {
                     $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 
                     InventoryTransaction::create([
@@ -327,17 +344,18 @@ class GoodsReceiptController extends Controller
                         'notes' => "Damaged items received from PO {$po->po_number}",
                         'unit_cost' => $newCost,
                         'total_value' => $newCost * $itemData['quantity_damaged'],
-                        'created_by' => auth()->user()?->employee?->id,
+                        'created_by' => $actorEmployeeId,
                         'transaction_date' => now(),
                     ]);
                 }
+                } // end not draft
             }
 
-            // Update PO status
+            // Update PO status (only when not draft)
+            if (!$isDraft) {
             $allItemsReceived = $po->items->every(function ($item) {
                 return $item->isFullyReceived();
             });
-
             if ($allItemsReceived) {
                 $po->markGoodsReceived();
                 $po->update([
@@ -349,7 +367,9 @@ class GoodsReceiptController extends Controller
                 $actualDate = $validated['receipt_date'];
                 $onTime = $actualDate <= $expectedDate;
 
-                $po->supplier->recordDelivery($onTime);
+                if ($po->supplier) {
+                    $po->supplier->recordDelivery($onTime);
+                }
 
                 ActivityLog::record(
                     'po_delivered',
@@ -369,6 +389,7 @@ class GoodsReceiptController extends Controller
                     $po->id
                 );
             }
+            } // end not draft
 
             DB::commit();
 
@@ -380,6 +401,12 @@ class GoodsReceiptController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Goods receipt create failed', [
+                'user_id' => auth()->id(),
+                'purchase_order_id' => $validated['purchase_order_id'] ?? null,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create goods receipt',
@@ -395,14 +422,158 @@ class GoodsReceiptController extends Controller
     public function verify(int $id): JsonResponse
     {
         $grn = GoodsReceipt::findOrFail($id);
+        $actorEmployeeId = $this->resolveActorEmployeeId();
+        if (!$actorEmployeeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your account is not linked to an employee profile. Please contact admin before verifying a goods receipt.',
+            ], 422);
+        }
 
-        $grn->verify(auth()->id());
+        $grn->verify($actorEmployeeId);
+
+        // If this GRN was a draft (inventory not applied) ensure inventory is applied on verify
+        $hasTransactions = \App\Models\Inventory\InventoryTransaction::where('reference_type', 'goods_receipt')
+            ->where('reference_id', $grn->id)
+            ->exists();
+
+        if (!$hasTransactions) {
+            // Load controller helper to apply inventory changes for this GRN
+            try {
+                $this->applyInventoryForGrn($grn);
+            } catch (\Exception $e) {
+                \Log::error('Failed to apply inventory on GRN verify', ['grn' => $grn->id, 'error' => $e->getMessage()]);
+            }
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Goods receipt verified successfully',
             'data' => $grn->fresh(),
         ]);
+    }
+
+    /**
+     * Apply inventory changes for an existing GRN (used when completing/verifying drafts)
+     */
+    private function applyInventoryForGrn(GoodsReceipt $grn): void
+    {
+        $actorEmployeeId = $this->resolveActorEmployeeId();
+        if (!$actorEmployeeId) {
+            throw new \RuntimeException('Unable to apply inventory: current user has no linked employee profile.');
+        }
+
+        $po = $grn->purchaseOrder()->with('items')->first();
+        if (!$po) return;
+
+        foreach ($grn->items as $grnItem) {
+            $itemData = [
+                'purchase_order_item_id' => $grnItem->purchase_order_item_id,
+                'product_id' => $grnItem->product_id,
+                'variation_id' => $grnItem->variation_id,
+                'quantity_received' => $grnItem->quantity_received,
+                'quantity_damaged' => $grnItem->quantity_damaged ?? 0,
+            ];
+
+            $poItem = $po->items->firstWhere('id', $itemData['purchase_order_item_id']);
+            if ($poItem) {
+                $poItem->updateReceived($itemData['quantity_received'], $itemData['quantity_damaged'] ?? 0);
+            }
+
+            $inventory = BranchInventory::firstOrCreate(
+                [
+                    'branch_id' => $po->branch_id,
+                    'product_id' => $itemData['product_id'],
+                    'variation_id' => $itemData['variation_id'] ?? null,
+                ],
+                [
+                    'store_id' => $po->store_id,
+                    'quantity_on_hand' => 0,
+                    'quantity_available' => 0,
+                    'reorder_point' => 10,
+                    'reorder_quantity' => 20,
+                    'safety_stock' => 5,
+                    'stock_status' => 'out_of_stock',
+                ]
+            );
+
+            $quantityBefore = $inventory->quantity_on_hand;
+            $inventory->quantity_on_hand += $itemData['quantity_received'];
+            $inventory->quantity_available += $itemData['quantity_received'];
+
+            if (($itemData['quantity_damaged'] ?? 0) > 0) {
+                $inventory->quantity_damaged += $itemData['quantity_damaged'];
+            }
+
+            $newCost = $poItem->unit_cost ?? 0;
+            $totalQuantity = $quantityBefore + $itemData['quantity_received'];
+            if ($totalQuantity > 0) {
+                $inventory->average_cost = (
+                    ($inventory->average_cost * $quantityBefore) +
+                    ($newCost * $itemData['quantity_received'])
+                ) / $totalQuantity;
+            }
+            $inventory->unit_cost = $newCost;
+            $inventory->save();
+
+            $inventory->updateStockStatus();
+            $inventory->calculateTotalValue();
+
+            $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+
+            InventoryTransaction::create([
+                'transaction_number' => $transactionNumber,
+                'store_id' => $po->store_id,
+                'branch_id' => $po->branch_id,
+                'product_id' => $itemData['product_id'],
+                'variation_id' => $itemData['variation_id'] ?? null,
+                'transaction_type' => 'purchase',
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => $itemData['quantity_received'],
+                'quantity_after' => $inventory->quantity_on_hand,
+                'reference_type' => 'goods_receipt',
+                'reference_id' => $grn->id,
+                'notes' => "Received from PO {$po->po_number}",
+                'unit_cost' => $newCost,
+                'total_value' => $newCost * $itemData['quantity_received'],
+                'created_by' => $actorEmployeeId,
+                'transaction_date' => now(),
+            ]);
+
+            if (($itemData['quantity_damaged'] ?? 0) > 0) {
+                $damageTransactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+                InventoryTransaction::create([
+                    'transaction_number' => $damageTransactionNumber,
+                    'store_id' => $po->store_id,
+                    'branch_id' => $po->branch_id,
+                    'product_id' => $itemData['product_id'],
+                    'variation_id' => $itemData['variation_id'] ?? null,
+                    'transaction_type' => 'damage',
+                    'quantity_before' => $inventory->quantity_on_hand,
+                    'quantity_change' => $itemData['quantity_damaged'],
+                    'quantity_after' => $inventory->quantity_on_hand,
+                    'reference_type' => 'goods_receipt',
+                    'reference_id' => $grn->id,
+                    'notes' => "Damaged items received from PO {$po->po_number}",
+                    'unit_cost' => $newCost,
+                    'total_value' => $newCost * $itemData['quantity_damaged'],
+                    'created_by' => $actorEmployeeId,
+                    'transaction_date' => now(),
+                ]);
+            }
+        }
+
+        // Update PO status after applying inventory
+        $allItemsReceived = $po->items->every(function ($item) {
+            return $item->isFullyReceived();
+        });
+
+        if ($allItemsReceived) {
+            $po->markGoodsReceived();
+            $po->update(['actual_delivery_date' => $grn->receipt_date]);
+        } else {
+            $po->markInTransit();
+        }
     }
 
     /**
@@ -476,5 +647,27 @@ class GoodsReceiptController extends Controller
             'success' => true,
             'data' => $summary,
         ]);
+    }
+
+    private function resolveActorEmployeeId(): ?int
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return null;
+        }
+
+        $employeeId = $user->employee?->id;
+        if ($employeeId) {
+            return (int) $employeeId;
+        }
+
+        if (!empty($user->employee_id)) {
+            $exists = Employee::where('id', (int) $user->employee_id)->exists();
+            if ($exists) {
+                return (int) $user->employee_id;
+            }
+        }
+
+        return Employee::where('user_id', (int) $user->id)->value('id');
     }
 }

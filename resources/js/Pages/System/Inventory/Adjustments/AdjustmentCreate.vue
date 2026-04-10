@@ -17,17 +17,8 @@
               <label class="text-sm font-semibold text-gray-700">
                 Branch <span class="text-red-500">*</span>
               </label>
-              <Select 
-                v-model="form.branch_id" 
-                :options="branches" 
-                optionLabel="name" 
-                optionValue="id"
-                placeholder="Select branch" 
-                :loading="loadingBranches" 
-                @change="onBranchChange"
-                :class="{ 'p-invalid': errors.branch_id }"
-                fluid
-              />
+              <InputText :model-value="branchLabel" disabled fluid />
+              <small class="text-gray-500">Auto-filled from your profile</small>
               <small v-if="errors.branch_id" class="text-red-500">{{ errors.branch_id }}</small>
             </div>
 
@@ -47,21 +38,6 @@
               <small v-if="errors.type" class="text-red-500">{{ errors.type }}</small>
             </div>
   
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
-                Adjustment Date <span class="text-red-500">*</span>
-              </label>
-              <DatePicker 
-                v-model="form.adjustment_date" 
-                dateFormat="yy-mm-dd" 
-                class="w-full" 
-                :maxDate="new Date()"
-                :class="{ 'p-invalid': errors.adjustment_date }"
-                fluid
-              />
-              <small v-if="errors.adjustment_date" class="text-red-500">{{ errors.adjustment_date }}</small>
-            </div>
-
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
                 Reason <span class="text-red-500">*</span>
@@ -217,13 +193,18 @@
               </template>
             </Column>
   
-            <Column field="quantity" header="Actual Qty" style="width: 10%" />
+            <Column header="Actual Qty" style="width: 10%">
+              <template #body="{ data }">
+                {{ getActualQuantity(data) }}
+              </template>
+            </Column>
   
             <Column header="New Qty" style="width: 10%">
               <template #body="{ data }">
                 <span :class="{
-                  'text-green-600 font-medium': data.adjustment_type === 'add',
-                  'text-red-600 font-medium': data.adjustment_type === 'deduct'
+                  'text-green-600 font-medium': getActualQuantity(data) > getCurrentStock(data.inventory_item_id),
+                  'text-red-600 font-medium': getActualQuantity(data) < getCurrentStock(data.inventory_item_id),
+                  'text-gray-700 font-medium': getActualQuantity(data) === getCurrentStock(data.inventory_item_id)
                 }">
                   {{ calculateNewQuantity(data) }}
                 </span>
@@ -233,11 +214,11 @@
             <Column header="Variance" style="width: 10%">
               <template #body="{ data }">
                 <span :class="{
-                  'text-green-600': data.quantity > getCurrentStock(data.inventory_item_id),
-                  'text-red-600': data.quantity < getCurrentStock(data.inventory_item_id),
-                  'text-gray-600': data.quantity === getCurrentStock(data.inventory_item_id)
+                  'text-green-600': getActualQuantity(data) > getCurrentStock(data.inventory_item_id),
+                  'text-red-600': getActualQuantity(data) < getCurrentStock(data.inventory_item_id),
+                  'text-gray-600': getActualQuantity(data) === getCurrentStock(data.inventory_item_id)
                 }">
-                  {{ data.quantity - getCurrentStock(data.inventory_item_id) }}
+                  {{ getActualQuantity(data) - getCurrentStock(data.inventory_item_id) }}
                 </span>
               </template>
             </Column>
@@ -285,16 +266,7 @@
               fluid
             />
             <Button 
-              label="Save as Draft" 
-              severity="secondary" 
-              type="button" 
-              :loading="savingDraft" 
-              @click="saveDraft"
-              :disabled="form.items.length === 0"
-              fluid
-            />
-            <Button 
-              label="Submit Adjustment" 
+              label="Create Adjustment" 
               icon="pi pi-check" 
               :loading="submitting" 
               type="submit" 
@@ -324,12 +296,13 @@ import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
+import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
+const authStore = useAuthStore()
 
 // State
-const savingDraft = ref(false)
 const submitting = ref(false)
 const loadingBranches = ref(false)
 const loadingProducts = ref(false)
@@ -339,7 +312,6 @@ const showCancelDialog = ref(false)
 const form = reactive({
   branch_id: null as number | null,
   type: '' as string,
-  adjustment_date: new Date(),
   reason: '' as string,
   remarks: '',
   items: [] as Array<{
@@ -361,7 +333,6 @@ const newItem = reactive({
 
 // Validation errors - Updated with type
 const errors = ref({
-  adjustment_date: '',
   branch_id: '',
   type: '',
   reason: ''
@@ -370,6 +341,34 @@ const errors = ref({
 // Data from API
 const branches = ref<any[]>([])
 const inventoryItems = ref<any[]>([])
+
+const currentUserBranchId = computed<number | null>(() => {
+  const user: any = authStore.user || {}
+  return Number(
+    user.branch_id ||
+    user.branch?.id ||
+    user.employee?.branch_id ||
+    0
+  ) || null
+})
+
+const branchLabel = computed(() => {
+  const user: any = authStore.user || {}
+  const nameFromUser =
+    user.branch?.name ||
+    user.employee?.branch?.name ||
+    user.branch_name ||
+    user.employee?.branch_name
+
+  if (nameFromUser) return nameFromUser
+
+  if (form.branch_id) {
+    const fromList = branches.value.find((branch: any) => Number(branch.id) === Number(form.branch_id))
+    if (fromList?.name) return fromList.name
+  }
+
+  return 'No branch assigned'
+})
 
 // Options
 const adjustmentTypeOptions = [
@@ -406,9 +405,15 @@ const productOptions = computed(() => {
     return []
   }
   
+  const currentBranchId = Number(form.branch_id || 0)
   const addedIds = form.items.map(item => item.inventory_item_id)
   
   return inventoryItems.value
+    .filter(item => {
+      // Show only items that belong to the currently selected branch.
+      const itemBranchId = Number(item.branch_id || 0)
+      return !currentBranchId || !itemBranchId || itemBranchId === currentBranchId
+    })
     .filter(item => !addedIds.includes(item.id))
     .map(item => ({
       id: item.id,
@@ -416,8 +421,8 @@ const productOptions = computed(() => {
       variationId: item.variation_id,
       productName: item.product?.product_name || 'Unknown Product',
       sku: item.product?.sku || 'N/A',
-      stock: item.quantity_on_hand || 0,
-      displayName: `${item.product?.product_name || 'Unknown'} (Stock: ${item.quantity_on_hand || 0})`,
+      stock: item.quantity_available || 0,
+      displayName: `${item.product?.product_name || 'Unknown'} (Stock: ${item.quantity_available || 0})`,
       // Keep original data for reference
       original: item
     }))
@@ -443,7 +448,6 @@ const isFormValid = computed(() => {
   return (
     form.branch_id &&
     form.type &&
-    form.adjustment_date &&
     form.reason &&
     form.items.length > 0
   )
@@ -454,7 +458,24 @@ const loadBranches = async () => {
   loadingBranches.value = true
   try {
     const response = await inventoryService.getBranches()
-    branches.value = response.data?.data || response.data || []
+    const payload = response || {}
+    if (Array.isArray(payload?.data)) {
+      branches.value = payload.data
+    } else if (Array.isArray(payload?.data?.data)) {
+      branches.value = payload.data.data
+    } else if (Array.isArray(payload)) {
+      branches.value = payload
+    } else {
+      branches.value = []
+    }
+
+    // Keep auto-branch behavior; fallback to first branch only when user branch is not available.
+    if (!form.branch_id && branches.value.length > 0) {
+      form.branch_id = currentUserBranchId.value || Number(branches.value[0].id)
+      if (form.branch_id) {
+        await loadInventoryItems()
+      }
+    }
   } catch (error) {
     console.error('Failed to load branches:', error)
     toast.add({
@@ -477,14 +498,18 @@ const loadInventoryItems = async () => {
   loadingProducts.value = true
   try {
     const response = await inventoryService.getBranchInventory(form.branch_id, { per_page: 100 })
-    
-    // Handle nested data structure properly
-    if (response.data?.success === true && response.data?.data) {
-      inventoryItems.value = response.data.data
-    } else if (response.data?.data) {
-      inventoryItems.value = response.data.data
-    } else if (Array.isArray(response.data)) {
-      inventoryItems.value = response.data
+
+    // inventoryService already returns axios response.data
+    // BranchInventoryController returns: { success, data: [], meta }
+    const payload = response || {}
+    if (payload?.success === true && Array.isArray(payload?.data)) {
+      inventoryItems.value = payload.data
+    } else if (Array.isArray(payload?.data?.data)) {
+      inventoryItems.value = payload.data.data
+    } else if (Array.isArray(payload?.data)) {
+      inventoryItems.value = payload.data
+    } else if (Array.isArray(payload)) {
+      inventoryItems.value = payload
     } else {
       inventoryItems.value = []
     }
@@ -493,7 +518,7 @@ const loadInventoryItems = async () => {
       toast.add({
         severity: 'info',
         summary: 'No Items',
-        detail: 'No inventory items found for this branch',
+        detail: 'No products available in the current branch inventory.',
         life: 3000
       })
     }
@@ -538,16 +563,15 @@ const getProductSku = (inventoryItemId: number) => {
 const getCurrentStock = (inventoryItemId: number) => {
   if (!inventoryItems.value || inventoryItems.value.length === 0) return 0
   const item = inventoryItems.value.find(i => i.id === inventoryItemId)
-  return item?.quantity_on_hand || 0
+  return item?.quantity_available || 0
+}
+
+const getActualQuantity = (item: any) => {
+  return Number(item.quantity || 0)
 }
 
 const calculateNewQuantity = (item: any) => {
-  const currentStock = getCurrentStock(item.inventory_item_id)
-  if (item.adjustment_type === 'add') {
-    return currentStock + item.quantity
-  } else {
-    return currentStock - item.quantity
-  }
+  return getActualQuantity(item)
 }
 
 const addItem = () => {
@@ -588,12 +612,7 @@ const removeItem = (index: number) => {
 
 const validateForm = () => {
   let isValid = true
-  errors.value = { adjustment_date: '', branch_id: '', type: '', reason: '' }
-
-  if (!form.adjustment_date) {
-    errors.value.adjustment_date = 'Adjustment date is required'
-    isValid = false
-  }
+  errors.value = { branch_id: '', type: '', reason: '' }
 
   if (!form.branch_id) {
     errors.value.branch_id = 'Branch is required'
@@ -628,14 +647,10 @@ const toDateString = (value: Date | null) => {
   return value.toISOString().split('T')[0]
 }
 
-const saveAdjustment = async (submit: boolean) => {
+const saveAdjustment = async () => {
   if (!validateForm()) return
 
-  if (submit) {
-    submitting.value = true
-  } else {
-    savingDraft.value = true
-  }
+  submitting.value = true
 
   try {
     // Prepare data to match backend validation
@@ -643,7 +658,7 @@ const saveAdjustment = async (submit: boolean) => {
       branch_id: form.branch_id,
       type: form.type,
       reason: form.reason,
-      adjustment_date: toDateString(form.adjustment_date),
+      adjustment_date: toDateString(new Date()),
       remarks: form.remarks || undefined,
       items: form.items.map(item => {
         // Find the original inventory item to get product_id and variation_id
@@ -657,14 +672,14 @@ const saveAdjustment = async (submit: boolean) => {
           product_id: inventoryItem.product_id,
           variation_id: inventoryItem.variation_id,
           system_quantity: getCurrentStock(item.inventory_item_id),
-          actual_quantity: item.quantity,
+          actual_quantity: getActualQuantity(item),
           notes: item.remarks || undefined
         }
       })
     }
 
     const response = await inventoryService.createAdjustment(adjustmentData)
-    const adjustmentId = response.data?.id || response.data?.data?.id
+    const adjustmentId = response?.data?.id || response?.id
 
     if (!adjustmentId) {
       throw new Error('No adjustment ID returned')
@@ -672,8 +687,8 @@ const saveAdjustment = async (submit: boolean) => {
 
     toast.add({
       severity: 'success',
-      summary: !submit ? 'Draft Saved' : 'Adjustment Created',
-      detail: `Adjustment #${adjustmentId} has been created successfully`,
+      summary: 'Adjustment Created',
+      detail: `Adjustment #${adjustmentId} submitted for approval`,
       life: 3000
     })
 
@@ -702,17 +717,12 @@ const saveAdjustment = async (submit: boolean) => {
       })
     }
   } finally {
-    savingDraft.value = false
     submitting.value = false
   }
 }
 
-const saveDraft = async () => {
-  await saveAdjustment(false)
-}
-
 const submitAdjustment = async () => {
-  await saveAdjustment(true)
+  await saveAdjustment()
 }
 
 const cancel = () => {
@@ -744,7 +754,15 @@ watch(() => newItem.inventory_item_id, (newVal) => {
 })
 
 // Lifecycle
-onMounted(() => {
-  loadBranches()
+onMounted(async () => {
+  if (!authStore.user) {
+    await authStore.fetchCurrentUser().catch(() => null)
+  }
+
+  form.branch_id = currentUserBranchId.value
+  await loadBranches()
+  if (form.branch_id && inventoryItems.value.length === 0) {
+    await loadInventoryItems()
+  }
 })
 </script>

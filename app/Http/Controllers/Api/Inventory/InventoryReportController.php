@@ -10,11 +10,7 @@ use Illuminate\Support\Facades\Auth;
 
 class InventoryReportController extends Controller
 {
-    public function __construct(protected ReportingService $reportingService)
-    {
-        $this->middleware('auth:sanctum');
-        $this->middleware('can:inventory.reports.view');
-    }
+    public function __construct(protected ReportingService $reportingService) {}
 
     /**
      * Get branch summary with KPIs

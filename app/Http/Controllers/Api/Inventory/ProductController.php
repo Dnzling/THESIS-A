@@ -208,24 +208,49 @@ class ProductController extends Controller
                 'is_active' => 'boolean',
             ]);
 
-            $product->update([
+            DB::beginTransaction();
+
+            $incomingBasePrice = (float) $validated['base_price'];
+            $currentBasePrice = (float) $product->base_price;
+            $isPriceChanged = bccomp((string) $incomingBasePrice, (string) $currentBasePrice, 2) !== 0;
+
+            $updates = [
                 'product_name' => $validated['product_name'],
                 'sku' => $validated['sku'],
                 'description' => $validated['description'] ?? null,
                 'category_id' => $validated['category_id'],
                 'product_type' => $validated['product_type'] ?? $product->product_type ?? 'finished_good',
-                'base_price' => $validated['base_price'],
                 'cost_price' => $validated['cost_price'] ?? null,
                 'is_active' => $validated['is_active'] ?? $product->is_active,
                 'updated_by' => auth()->id(),
-            ]);
+            ];
+
+            if ($isPriceChanged) {
+                // Inventory price updates must pass Finance approval first.
+                // Keep current base_price unchanged until finance approves.
+                $updates['pending_base_price'] = $incomingBasePrice;
+                $updates['price_approval_status'] = 'pending';
+                $updates['price_proposed_by'] = auth()->id();
+                $updates['price_proposed_at'] = now();
+                $updates['price_approved_by'] = null;
+                $updates['price_approved_at'] = null;
+                $updates['price_rejected_by'] = null;
+                $updates['price_rejected_at'] = null;
+                $updates['price_approval_notes'] = 'Price update requested from Inventory All Products';
+            }
+
+            $product->update($updates);
+            DB::commit();
 
             return response()->json([
                 'success' => true,
                 'data' => $product->load(['category', 'variations']),
-                'message' => 'Product updated successfully',
+                'message' => $isPriceChanged
+                    ? 'Price change submitted for finance approval. Live price will update after approval.'
+                    : 'Product updated successfully',
             ]);
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update product',

@@ -120,18 +120,55 @@ class StockAdjustmentController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $context = $this->getUserContext($request);
+        $storeId = (int) ($context['store_id'] ?? 0);
+        $userBranchId = (int) ($context['branch_id'] ?? 0);
+        $isGlobal = $this->hasGlobalAccess();
+
+        if ($storeId <= 0 && !$isGlobal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No store assigned to the current user.',
+            ], 422);
+        }
+
         $validated = $request->validate([
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'type' => 'required|in:physical_count,cycle_count,spot_check,damage,loss,found,correction,writeoff',
-            'reason' => 'required|string',
-            'adjustment_date' => 'required|date',
+            'reason' => 'required|string|max:1000',
+            'adjustment_date' => 'nullable|date|before_or_equal:today',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
-            'items.*.system_quantity' => 'required|integer',
-            'items.*.actual_quantity' => 'required|integer',
-            'items.*.notes' => 'nullable|string',
+            'items.*.system_quantity' => 'required|integer|min:0',
+            'items.*.actual_quantity' => 'required|integer|min:0',
+            'items.*.notes' => 'nullable|string|max:500',
         ]);
+
+        $branchId = $isGlobal
+            ? (int) ($validated['branch_id'] ?? 0)
+            : $userBranchId;
+
+        if ($branchId <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Branch is required.',
+            ], 422);
+        }
+
+        $storeId = $storeId > 0 ? $storeId : (int) (Auth::user()?->store_id ?? 0);
+
+        $branchBelongsToStore = DB::table('branches')
+            ->where('id', $branchId)
+            ->when($storeId > 0, fn($query) => $query->where('store_id', $storeId))
+            ->exists();
+
+        if (!$branchBelongsToStore) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Selected branch is not valid for your store.',
+            ], 422);
+        }
 
         DB::beginTransaction();
         try {
@@ -141,24 +178,32 @@ class StockAdjustmentController extends Controller
             // Create adjustment
             $adjustment = StockAdjustment::create([
                 'adjustment_number' => $number,
-                'store_id' => Auth::user()->store_id,
-                'branch_id' => $validated['branch_id'],
+                'store_id' => $storeId,
+                'branch_id' => $branchId,
                 'type' => $validated['type'],
-                'status' => 'draft',
+                'status' => 'pending_approval',
                 'reason' => $validated['reason'],
-                'adjustment_date' => $validated['adjustment_date'],
+                'adjustment_date' => $validated['adjustment_date'] ?? now()->toDateString(),
                 'created_by' => EmployeeContext::currentEmployeeId(),
             ]);
 
             // Create items
             foreach ($validated['items'] as $item) {
-                $difference = $item['actual_quantity'] - $item['system_quantity'];
-
                 // Get unit cost from inventory
-                $inventory = BranchInventory::where('branch_id', $validated['branch_id'])
+                $inventory = BranchInventory::where('branch_id', $branchId)
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
+
+                if (!$inventory) {
+                    throw new \InvalidArgumentException("Inventory item not found in selected branch for product {$item['product_id']}.");
+                }
+
+                if ((int) $item['system_quantity'] !== (int) $inventory->quantity_available) {
+                    throw new \InvalidArgumentException("System quantity mismatch for product {$item['product_id']}. Please refresh and try again.");
+                }
+
+                $difference = $item['actual_quantity'] - $item['system_quantity'];
 
                 $unitCost = $inventory?->average_cost ?? 0;
                 $valueDifference = $difference * $unitCost;
@@ -187,7 +232,7 @@ class StockAdjustmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Stock adjustment created successfully',
+                'message' => 'Stock adjustment created and submitted for approval',
                 'data' => $adjustment->load('items.product'),
             ], 201);
         } catch (\Exception $e) {
@@ -359,11 +404,14 @@ class StockAdjustmentController extends Controller
                 ->where('variation_id', $item->variation_id)
                 ->firstOrFail();
 
-            $quantityBefore = $inventory->quantity_on_hand;
+            $quantityBefore = (int) $inventory->quantity_available;
+            $difference = (int) $item->difference;
+            $quantityAfter = $quantityBefore + $difference;
 
-            // Update inventory
-            $inventory->quantity_on_hand = $item->actual_quantity;
-            $inventory->quantity_available = $item->actual_quantity - $inventory->quantity_reserved;
+            // Apply adjustment by variance (difference), not by absolute overwrite.
+            $inventory->quantity_available = $quantityAfter;
+            // Keep on-hand synchronized to the operational truth value.
+            $inventory->quantity_on_hand = $quantityAfter;
             $inventory->last_stock_count_date = $adjustment->adjustment_date;
             $inventory->last_counted_quantity = $item->actual_quantity;
             $inventory->last_counted_by = $approvedBy;
@@ -384,7 +432,7 @@ class StockAdjustmentController extends Controller
                 'transaction_type' => 'adjustment',
                 'quantity_before' => $quantityBefore,
                 'quantity_change' => $item->difference,
-                'quantity_after' => $item->actual_quantity,
+                'quantity_after' => $quantityAfter,
                 'reference_type' => 'stock_adjustment',
                 'reference_id' => $adjustment->id,
                 'notes' => $adjustment->reason,

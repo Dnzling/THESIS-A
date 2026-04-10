@@ -238,7 +238,7 @@ class UserNavigationController extends Controller
                 'display_name' => 'Finance',
                 'module' => 'store_admin',
                 'route_name' => 'store.finance',
-                'route_path' => '/system/finance',
+                'route_path' => '/finance',
                 'icon' => 'pi pi-wallet',
                 'parent_id' => null,
                 'display_order' => 21,

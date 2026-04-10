@@ -37,13 +37,27 @@
                     <Select
                       v-model="slotProps.data.branch_inventory_id"
                       :options="inventoryOptions"
-                      optionLabel="label"
+                      optionLabel="searchText"
                       optionValue="value"
                       filter fluid
                       :loading="loadingInventory"
                       placeholder="Select product"
                       @change="onInventoryChange(slotProps.index, $event)"
-                    />
+                    >
+                      <template #option="optionProps">
+                        <div class="flex flex-col">
+                          <span class="text-sm text-gray-800">{{ optionProps.option.title }}</span>
+                          <span class="text-xs text-gray-500">{{ optionProps.option.subtitle }}</span>
+                        </div>
+                      </template>
+                      <template #value="valueProps">
+                        <div v-if="getInventoryOptionByValue(valueProps.value)" class="flex flex-col">
+                          <span class="text-sm text-gray-800">{{ getInventoryOptionByValue(valueProps.value)?.title }}</span>
+                          <span class="text-xs text-gray-500">{{ getInventoryOptionByValue(valueProps.value)?.subtitle }}</span>
+                        </div>
+                        <span v-else class="text-sm text-gray-500">{{ valueProps.placeholder }}</span>
+                      </template>
+                    </Select>
                   </template>
                 </Column>
 
@@ -59,6 +73,12 @@
                   </template>
                 </Column>
 
+                <Column header="Unit Cost" style="width: 140px">
+                  <template #body="slotProps">
+                    {{ formatMoney(resolveUnitCost(getInventoryById(slotProps.data.branch_inventory_id))) }}
+                  </template>
+                </Column>
+
                 <Column header="Supplier (Optional)" style="min-width: 240px">
                   <template #body="slotProps">
                     <Select
@@ -70,6 +90,7 @@
                       showClear
                       placeholder="Auto-resolve"
                       :disabled="!slotProps.data.branch_inventory_id"
+                      @change="onSupplierChange(slotProps.index, $event)"
                     />
                   </template>
                 </Column>
@@ -99,6 +120,43 @@
               </DataTable>
 
               <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
+              <small v-if="hasMixedSupplierSelection" class="p-error mt-2 block">
+                You cannot create a request with mixed items (some with supplier and some without supplier).
+                Please create two separate requests: one with suppliers (PO) and one without suppliers (RFQ).
+              </small>
+              <small v-if="hasDifferentSelectedSuppliers" class="p-error mt-2 block">
+                All items with selected supplier must use the same supplier in one request.
+                Please split by supplier and create separate requests.
+              </small>
+
+              <div v-if="previewItems.length" class="mt-4">
+                <div class="text-sm font-semibold text-gray-800 mb-2">Product List Preview</div>
+                <DataTable :value="previewItems" class="p-datatable-sm text-xs" responsiveLayout="scroll">
+                  <Column header="Product" style="min-width: 260px">
+                    <template #body="{ data }">
+                      <div class="text-sm">
+                        <div class="font-semibold text-gray-900">{{ data.product_name || 'N/A' }}</div>
+                        <div class="text-gray-500">SKU: {{ data.sku || '-' }}</div>
+                      </div>
+                    </template>
+                  </Column>
+                  <Column header="Qty" style="width: 120px">
+                    <template #body="{ data }">
+                      <span class="font-semibold text-gray-900">{{ data.quantity_requested }}</span>
+                    </template>
+                  </Column>
+                  <Column header="Unit Cost" style="width: 140px">
+                    <template #body="{ data }">
+                      {{ formatMoney(data.estimated_unit_cost) }}
+                    </template>
+                  </Column>
+                  <Column header="Line Total" style="width: 160px">
+                    <template #body="{ data }">
+                      {{ formatMoney(Number(data.quantity_requested || 0) * Number(data.estimated_unit_cost || 0)) }}
+                    </template>
+                  </Column>
+                </DataTable>
+              </div>
             </div>
 
             <div class="flex justify-end gap-2 pt-3 border-t">
@@ -108,7 +166,7 @@
                 label="Create Request"
                 size="small"
                 :loading="saving"
-                :disabled="!canManage || validItems.length === 0"
+                :disabled="!canManage || validItems.length === 0 || hasMixedSupplierSelection || hasDifferentSelectedSuppliers"
               />
             </div>
           </form>
@@ -175,18 +233,95 @@ const form = reactive<{
 })
 
 const validItems = computed(() => form.items.filter((item) => item.branch_inventory_id && item.requested_quantity > 0))
-
-const inventoryOptions = computed(() => {
-  return inventoryRows.value.map((row: any) => {
-    const productName = row?.product?.product_name || row?.product_name || 'Unknown'
-    const sku = row?.product?.sku || row?.sku || ''
-    const variant = row?.variation?.variation_name || row?.variant_name || ''
-    const label = `${productName}${variant ? ` - ${variant}` : ''}${sku ? ` (${sku})` : ''}`
-    return { value: row.id, label }
+const previewItems = computed(() => {
+  return validItems.value.map((item) => {
+    const inventoryRow = getInventoryById(item.branch_inventory_id)
+    return {
+      product_name: inventoryRow?.product?.product_name || inventoryRow?.product_name || 'N/A',
+      sku: inventoryRow?.variation?.variation_sku || inventoryRow?.product?.sku || inventoryRow?.sku || '-',
+      quantity_requested: Number(item.requested_quantity || 0),
+      estimated_unit_cost: resolveUnitCost(inventoryRow),
+    }
   })
 })
+const hasMixedSupplierSelection = computed(() => {
+  const items = validItems.value
+  if (items.length <= 1) return false
+
+  const selectedSupplierFlags = items.map((item) => Number(item.selected_supplier_id || 0) > 0)
+  const mixedSelectedSuppliers = selectedSupplierFlags.includes(true) && selectedSupplierFlags.includes(false)
+  if (mixedSelectedSuppliers) return true
+
+  const supplierAvailabilityFlags = items.map((item) => {
+    const inventoryRow = getInventoryById(item.branch_inventory_id)
+    const suppliers = Array.isArray(inventoryRow?.product?.suppliers) ? inventoryRow.product.suppliers : []
+    return suppliers.length > 0
+  })
+  return supplierAvailabilityFlags.includes(true) && supplierAvailabilityFlags.includes(false)
+})
+
+const selectedSupplierIds = computed(() => {
+  return validItems.value
+    .map((item) => Number(item.selected_supplier_id || 0))
+    .filter((supplierId) => supplierId > 0)
+})
+
+const hasDifferentSelectedSuppliers = computed(() => {
+  if (selectedSupplierIds.value.length <= 1) return false
+  return new Set(selectedSupplierIds.value).size > 1
+})
+
+const anchorSupplierId = computed<number | null>(() => {
+  const firstRowSupplierId = Number(form.items[0]?.selected_supplier_id || 0)
+  return firstRowSupplierId > 0 ? firstRowSupplierId : null
+})
+
+const inventoryOptions = computed(() => {
+  return inventoryRows.value
+    .slice()
+    .sort((a: any, b: any) => Number(a?.quantity_available ?? 0) - Number(b?.quantity_available ?? 0))
+    .map((row: any) => {
+      const productName = row?.product?.product_name || row?.product_name || 'Unknown'
+      const sku = row?.product?.sku || row?.sku || ''
+      const variant = row?.variation?.variation_name || row?.variant_name || ''
+      const stock = Number(row?.quantity_available ?? 0)
+      const suppliers = Array.isArray(row?.product?.suppliers) ? row.product.suppliers : []
+      const supplierNames = suppliers
+        .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
+        .filter((name: any) => typeof name === 'string' && name.length > 0)
+      const supplierText = supplierNames.length > 0 ? supplierNames.join(', ') : 'No supplier'
+
+      const title = `${productName}${variant ? ` - ${variant}` : ''}${sku ? ` (${sku})` : ''}`
+      const subtitle = `Stock: ${stock} | Supplier: ${supplierText}`
+      return {
+        value: row.id,
+        title,
+        subtitle,
+        searchText: `${title} ${subtitle}`,
+      }
+    })
+})
+
+const getInventoryOptionByValue = (value: number | string | null | undefined) => {
+  if (!value) return null
+  return inventoryOptions.value.find((option: any) => Number(option.value) === Number(value)) || null
+}
 
 const goBack = () => router.push({ name: 'inventory.requisites.index' })
+const formatMoney = (value: any) => {
+  const n = Number(value || 0)
+  return n.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
+}
+
+const resolveUnitCost = (inventoryRow: any): number => {
+  return Number(
+    inventoryRow?.unit_cost ??
+    inventoryRow?.average_cost ??
+    inventoryRow?.product?.cost_price ??
+    inventoryRow?.product?.base_price ??
+    0
+  )
+}
 
 const loadInventory = async () => {
   if (!currentBranchId.value) return
@@ -231,7 +366,7 @@ const getSupplierOptionsForRow = (item: InventoryPrItem) => {
     ? getInventoryById(item.branch_inventory_id)?.product?.suppliers
     : []
 
-  return suppliers
+  const options = suppliers
     .slice()
     .sort((a: any, b: any) => Number(Boolean(b?.pivot?.is_preferred_supplier)) - Number(Boolean(a?.pivot?.is_preferred_supplier)))
     .map((supplier: any) => ({
@@ -239,6 +374,9 @@ const getSupplierOptionsForRow = (item: InventoryPrItem) => {
       label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
       isPreferred: Boolean(supplier?.pivot?.is_preferred_supplier),
     }))
+
+  if (!anchorSupplierId.value) return options
+  return options.filter((option: any) => Number(option.value) === Number(anchorSupplierId.value))
 }
 
 const getDefaultSupplierIdForRow = (item: InventoryPrItem): number | null => {
@@ -301,11 +439,39 @@ const onInventoryChange = async (index: number, event: any) => {
   item.selected_supplier_id = null
 
   await hydrateInventoryById(item.branch_inventory_id)
+  applyReorderQty(index)
   item.selected_supplier_id = getDefaultSupplierIdForRow(item)
+}
+
+const onSupplierChange = (index: number, event: any) => {
+  const selected = Number(event?.value || form.items[index]?.selected_supplier_id || 0) || null
+  form.items[index].selected_supplier_id = selected
+
+  if (!anchorSupplierId.value) return
+
+  // Keep all rows aligned with supplier chosen on the first row.
+  form.items.forEach((row, rowIndex) => {
+    if (rowIndex === 0) return
+    if (Number(row.selected_supplier_id || 0) > 0 && Number(row.selected_supplier_id) !== Number(anchorSupplierId.value)) {
+      row.selected_supplier_id = null
+    }
+  })
 }
 
 const doCreate = async () => {
   Object.keys(errors).forEach(k => delete errors[k])
+  if (hasMixedSupplierSelection.value) {
+    const message = 'Mixed supplier items are not allowed. Separate into two requests: all items with supplier (PO) or all items without supplier (RFQ).'
+    errors.items = message
+    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
+    return
+  }
+  if (hasDifferentSelectedSuppliers.value) {
+    const message = 'Different selected suppliers in one request are not allowed. Please create separate requests per supplier.'
+    errors.items = message
+    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
+    return
+  }
   saving.value = true
   try {
     const payloadItems = validItems.value.map((item) => {
@@ -316,7 +482,7 @@ const doCreate = async () => {
         variation_id: inventoryRow?.variation_id ?? null,
         selected_supplier_id: item.selected_supplier_id || null,
         quantity_requested: Number(item.requested_quantity),
-        estimated_unit_cost: Number(inventoryRow?.product?.cost_price ?? inventoryRow?.product?.base_price ?? 0),
+        estimated_unit_cost: resolveUnitCost(inventoryRow),
         tax_rate: Number(inventoryRow?.product?.tax_rate ?? 0),
         specifications: null,
       }
@@ -354,6 +520,18 @@ const submit = async () => {
   if (!canManage.value) return
   if (validItems.value.length === 0) {
     errors.items = 'Please add at least one valid item with quantity.'
+    return
+  }
+  if (hasMixedSupplierSelection.value) {
+    const message = 'Mixed supplier items are not allowed. Separate into two requests: all items with supplier (PO) or all items without supplier (RFQ).'
+    errors.items = message
+    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
+    return
+  }
+  if (hasDifferentSelectedSuppliers.value) {
+    const message = 'Different selected suppliers in one request are not allowed. Please create separate requests per supplier.'
+    errors.items = message
+    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
     return
   }
 

@@ -8,8 +8,13 @@ use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrderItem;
+use App\Models\Procurement\RFQ\RequestForQuotation;
+use App\Models\Procurement\RFQ\RFQItem;
+use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
+use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -208,6 +213,41 @@ class PurchaseRequisitionController extends Controller
                 $resolvedItems[] = $item;
             }
 
+            // Hard validation: disallow mixed selected supplier assignment.
+            $hasAnySelectedSupplier = collect($resolvedItems)->contains(function ($item) {
+                return !is_null($item['selected_supplier_id'] ?? null);
+            });
+            $hasAnyWithoutSelectedSupplier = collect($resolvedItems)->contains(function ($item) {
+                return is_null($item['selected_supplier_id'] ?? null);
+            });
+            if ($hasAnySelectedSupplier && $hasAnyWithoutSelectedSupplier) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot create request with mixed supplier selection. Separate items with selected supplier (PO) and without selected supplier (RFQ).',
+                    'errors' => [
+                        'items' => [
+                            'All line items must either all have selected supplier or all have no selected supplier.',
+                        ],
+                    ],
+                ], 422);
+            }
+
+            // Also disallow mixed supplier availability by product mapping.
+            $itemHasSupplierFlags = collect($resolvedItems)->map(function ($item) {
+                return $this->productHasMappedSupplier((int) ($item['product_id'] ?? 0), (int) Auth::user()->store_id);
+            });
+            if ($itemHasSupplierFlags->contains(true) && $itemHasSupplierFlags->contains(false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Mixed items are not allowed in one request. Create separate requisitions: items with supplier (PO) and items without supplier (RFQ).',
+                    'errors' => [
+                        'items' => [
+                            'All line items must either all have supplier mapping or all have no supplier mapping.',
+                        ],
+                    ],
+                ], 422);
+            }
+
             // Calculate estimated amount
             $estimatedAmount = 0;
             foreach ($resolvedItems as $item) {
@@ -229,14 +269,8 @@ class PurchaseRequisitionController extends Controller
                 }
             }
 
-            // Determine required approvals based on amount
-            $requiredApprovals = ['warehouse_manager'];
-            if ($estimatedAmount >= 100000) {
-                $requiredApprovals[] = 'branch_manager';
-            }
-            if ($estimatedAmount >= 500000) {
-                $requiredApprovals[] = 'finance_manager';
-            }
+            // Permission-based approval requirement (no role dependency).
+            $requiredApprovals = ['procurement.requisitions.approve'];
 
             // Create PR
             $requestedBy = auth()->user()?->employee?->id;
@@ -397,6 +431,40 @@ class PurchaseRequisitionController extends Controller
                     $resolvedItems[] = $item;
                 }
 
+                // Hard validation on update path as well.
+                $hasAnySelectedSupplier = collect($resolvedItems)->contains(function ($item) {
+                    return !is_null($item['selected_supplier_id'] ?? null);
+                });
+                $hasAnyWithoutSelectedSupplier = collect($resolvedItems)->contains(function ($item) {
+                    return is_null($item['selected_supplier_id'] ?? null);
+                });
+                if ($hasAnySelectedSupplier && $hasAnyWithoutSelectedSupplier) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot update request with mixed supplier selection. Separate items with selected supplier (PO) and without selected supplier (RFQ).',
+                        'errors' => [
+                            'items' => [
+                                'All line items must either all have selected supplier or all have no selected supplier.',
+                            ],
+                        ],
+                    ], 422);
+                }
+
+                $itemHasSupplierFlags = collect($resolvedItems)->map(function ($item) {
+                    return $this->productHasMappedSupplier((int) ($item['product_id'] ?? 0), (int) Auth::user()->store_id);
+                });
+                if ($itemHasSupplierFlags->contains(true) && $itemHasSupplierFlags->contains(false)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Mixed items are not allowed in one request. Create separate requisitions: items with supplier (PO) and items without supplier (RFQ).',
+                        'errors' => [
+                            'items' => [
+                                'All line items must either all have supplier mapping or all have no supplier mapping.',
+                            ],
+                        ],
+                    ], 422);
+                }
+
                 $estimatedAmount = 0;
                 foreach ($resolvedItems as $item) {
                     $estimatedAmount += ($item['quantity_requested'] * ($item['estimated_unit_cost'] ?? 0));
@@ -415,13 +483,7 @@ class PurchaseRequisitionController extends Controller
                     }
                 }
 
-                $requiredApprovals = ['warehouse_manager'];
-                if ($estimatedAmount >= 100000) {
-                    $requiredApprovals[] = 'branch_manager';
-                }
-                if ($estimatedAmount >= 500000) {
-                    $requiredApprovals[] = 'finance_manager';
-                }
+                $requiredApprovals = ['procurement.requisitions.approve'];
 
                 $updates['items'] = $resolvedItems;
                 $updates['estimated_amount'] = $estimatedAmount;
@@ -507,7 +569,6 @@ class PurchaseRequisitionController extends Controller
                 \Log::info('[Approve] incoming', [
                     'id' => $id,
                     'user_id' => Auth::id(),
-                    'user_role' => Auth::user()?->role?->name ?? Auth::user()?->role ?? null,
                     'payload' => $request->all(),
                 ]);
             } catch (\Throwable $e) {
@@ -515,67 +576,47 @@ class PurchaseRequisitionController extends Controller
             }
 
             $validated = $request->validate([
-            'role' => 'required|string',
-            'notes' => 'nullable|string',
-        ]);
+                'notes' => 'nullable|string',
+            ]);
             try {
-                // Check if user has this role (normalize for consistency)
-                $normalizeRole = function (?string $role): string {
-                    $role = trim((string) $role);
-                    $role = preg_replace('/[\s-]+/', '_', $role);
-                    return strtolower($role);
-                };
-
-                $userRoleRaw = Auth::user()->role->name ?? Auth::user()->role ?? '';
-                $userRole = $normalizeRole($userRoleRaw);
-                $requestedRole = $normalizeRole($validated['role']);
-                if ($userRole !== $requestedRole) {
-                    \Log::warning('[Approve] role mismatch', ['userRole' => $userRole, 'requestedRole' => $requestedRole]);
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'You do not have permission to approve as this role',
-                    ], 403);
-                }
-
-                // Add approval
+                // Permission-based approval record (no role dependency).
                 $pr->addApproval(
-                    $userRole,
+                    'procurement.requisitions.approve',
                     Auth::id(),
                     Auth::user()->full_name,
                     $validated['notes'] ?? null
                 );
 
-                // Update status
-                $requiredApprovals = $pr->required_approvals ?? [];
-                $receivedApprovals = collect($pr->approval_chain ?? [])->pluck('role')->toArray();
+                DB::beginTransaction();
+                try {
+                    $pr = PurchaseRequisition::with(['items.product'])
+                        ->lockForUpdate()
+                        ->findOrFail($id);
 
-                $roleStatusMap = [
-                    'warehouse_manager' => 'warehouse_approved',
-                    'branch_manager' => 'branch_manager_approved',
-                    'finance_manager' => 'pending_central_review',
-                ];
-
-                $allApproved = true;
-                foreach ($requiredApprovals as $requiredRole) {
-                    if (!in_array($requiredRole, $receivedApprovals)) {
-                        $allApproved = false;
-                        break;
-                    }
-                }
-
-                if ($allApproved) {
                     $pr->update(['status' => 'procurement_processing']);
-                } elseif (isset($roleStatusMap[$userRole])) {
-                    $pr->update(['status' => $roleStatusMap[$userRole]]);
+
+                    $automation = $this->runPostApprovalAutomation($pr);
+
+                    DB::commit();
+
+                    $message = $this->buildAutomationMessage($automation);
+
+                    \Log::info('[Approve] success with automation', [
+                        'id' => $id,
+                        'pr_status' => $pr->status,
+                        'automation' => $automation,
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => $message,
+                        'data' => $pr->fresh(),
+                        'automation' => $automation,
+                    ]);
+                } catch (\Throwable $e) {
+                    DB::rollBack();
+                    throw $e;
                 }
-
-                \Log::info('[Approve] success', ['id' => $id, 'pr_status' => $pr->status]);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Purchase requisition approved successfully',
-                    'data' => $pr->fresh(),
-                ]);
             } catch (\Throwable $e) {
                 \Log::error('[Approve] exception', ['exception' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
                 return response()->json([
@@ -602,7 +643,7 @@ class PurchaseRequisitionController extends Controller
             'status' => 'rejected',
             'approval_chain' => array_merge($pr->approval_chain ?? [], [
                 [
-                    'role' => Auth::user()->role->name,
+                    'approver_permission' => 'procurement.requisitions.approve',
                     'user_id' => Auth::id(),
                     'user_name' => Auth::user()->full_name,
                     'action' => 'rejected',
@@ -713,5 +754,261 @@ class PurchaseRequisitionController extends Controller
             ->where('supplier_products.product_id', $productId)
             ->where('suppliers.store_id', $storeId)
             ->exists();
+    }
+
+    private function productHasMappedSupplier(int $productId, int $storeId): bool
+    {
+        if ($productId <= 0) {
+            return false;
+        }
+
+        return DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.product_id', $productId)
+            ->where('suppliers.store_id', $storeId)
+            ->exists();
+    }
+
+    private function runPostApprovalAutomation(PurchaseRequisition $pr): array
+    {
+        $storeId = (int) $pr->store_id;
+        $items = $pr->items ?? collect();
+
+        $rfqItemPayloads = [];
+        $itemsBySupplier = [];
+
+        foreach ($items as $item) {
+            $supplierId = $this->resolveSupplierIdForRequisitionItem($item, $storeId);
+
+            if ($supplierId) {
+                $itemsBySupplier[$supplierId][] = $item;
+                continue;
+            }
+
+            $rfqItemPayloads[] = $item;
+        }
+
+        $createdRfqs = [];
+        $createdPurchaseOrders = [];
+        $processingQueue = [];
+
+        if (!empty($rfqItemPayloads)) {
+            $createdRfqs[] = $this->createDraftRfqForItems($pr, $rfqItemPayloads);
+            $processingQueue[] = 'rfq';
+        }
+
+        if (!empty($itemsBySupplier)) {
+            foreach ($itemsBySupplier as $supplierId => $supplierItems) {
+                $createdPurchaseOrders[] = $this->createDraftPoForSupplierItems(
+                    $pr,
+                    (int) $supplierId,
+                    $supplierItems
+                );
+            }
+            $processingQueue[] = 'po';
+        }
+
+        $nextAction = null;
+        if (in_array('rfq', $processingQueue, true)) {
+            $nextAction = 'rfq';
+        } elseif (in_array('po', $processingQueue, true)) {
+            $nextAction = 'po';
+        }
+
+        return [
+            'next_action' => $nextAction,
+            'processing_queue' => $processingQueue,
+            'rfq_created_count' => count($createdRfqs),
+            'po_created_count' => count($createdPurchaseOrders),
+            'rfqs' => $createdRfqs,
+            'purchase_orders' => $createdPurchaseOrders,
+            'has_mixed_supplier_assignment' => !empty($rfqItemPayloads) && !empty($itemsBySupplier),
+        ];
+    }
+
+    private function buildAutomationMessage(array $automation): string
+    {
+        $rfqCount = (int) ($automation['rfq_created_count'] ?? 0);
+        $poCount = (int) ($automation['po_created_count'] ?? 0);
+        $isMixed = (bool) ($automation['has_mixed_supplier_assignment'] ?? false);
+
+        if ($isMixed) {
+            return "Purchase requisition approved and set to procurement processing. "
+                . "{$rfqCount} RFQ draft(s) were created for items without supplier, then {$poCount} PO draft(s) were created for supplier-linked items.";
+        }
+
+        if ($rfqCount > 0 && $poCount === 0) {
+            return "Purchase requisition approved and set to procurement processing. {$rfqCount} RFQ draft(s) were created for items without supplier.";
+        }
+
+        if ($poCount > 0 && $rfqCount === 0) {
+            return "Purchase requisition approved and set to procurement processing. {$poCount} PO draft(s) were created for supplier-linked items.";
+        }
+
+        return 'Purchase requisition approved and set to procurement processing.';
+    }
+
+    private function createDraftRfqForItems(PurchaseRequisition $pr, array $items): array
+    {
+        $rfq = RequestForQuotation::create([
+            'rfq_number' => $this->generateRfqNumber(),
+            'store_id' => (int) $pr->store_id,
+            'purchase_requisition_id' => $pr->id,
+            'title' => "RFQ for {$pr->pr_number}",
+            'description' => $pr->reason,
+            'rfq_type' => 'purchase',
+            'currency' => 'PHP',
+            'shipping_terms' => null,
+            'instructions' => 'Auto-created from approved purchase requisition.',
+            'qualification_requirements' => null,
+            'issue_date' => now()->toDateString(),
+            'status' => 'draft',
+            'created_by' => auth()->user()?->employee?->id ?? auth()->id(),
+        ]);
+
+        foreach ($items as $item) {
+            RFQItem::create([
+                'rfq_id' => $rfq->id,
+                'product_id' => $item->product_id,
+                'variation_id' => $item->variation_id,
+                'quantity' => (int) $item->quantity_requested,
+                'specifications' => $item->specifications ?? null,
+                'requirements' => null,
+            ]);
+        }
+
+        return [
+            'id' => $rfq->id,
+            'rfq_number' => $rfq->rfq_number,
+            'item_count' => count($items),
+        ];
+    }
+
+    private function createDraftPoForSupplierItems(PurchaseRequisition $pr, int $supplierId, array $items): array
+    {
+        $storeId = (int) $pr->store_id;
+
+        $contract = SupplierContract::where('store_id', $storeId)
+            ->where('supplier_id', $supplierId)
+            ->active()
+            ->orderBy('end_date', 'desc')
+            ->first();
+
+        $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? (float) ($contract->tax_rate ?? 0) : 0.0;
+
+        $subtotal = 0.0;
+        $poItems = [];
+
+        foreach ($items as $item) {
+            $unitCost = (float) ($item->estimated_unit_cost ?? $item->product?->cost_price ?? 0);
+            $quantity = (int) $item->quantity_requested;
+            $lineTotal = $unitCost * $quantity;
+            $subtotal += $lineTotal;
+
+            $poItems[] = [
+                'product_id' => $item->product_id,
+                'variation_id' => $item->variation_id,
+                'quantity_ordered' => $quantity,
+                'quantity_received' => 0,
+                'quantity_rejected' => 0,
+                'allocated_quantity' => $quantity,
+                'unit_cost' => $unitCost,
+                'discount_percent' => 0,
+                'line_total' => $lineTotal,
+                'tax_rate' => $headerTaxRate,
+                'purchase_requisition_item_id' => $item->id,
+            ];
+        }
+
+        $taxAmount = $subtotal * ($headerTaxRate / 100);
+        $shippingCost = 0.0;
+        $discountAmount = 0.0;
+        $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
+
+        $settings = ProcurementSettings::where('store_id', $storeId)->first();
+        $approvalTier = $settings?->getApprovalTierForAmount($totalAmount);
+        $rfqRequired = $settings?->shouldRequireRFQ($totalAmount) ?? false;
+
+        $po = PurchaseOrder::create([
+            'po_number' => $this->generatePoNumber(),
+            'store_id' => $storeId,
+            'branch_id' => (int) $pr->branch_id,
+            'supplier_id' => $supplierId,
+            'purchase_requisition_id' => $pr->id,
+            'status' => 'pending_finance_approval',
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'shipping_cost' => $shippingCost,
+            'discount_amount' => $discountAmount,
+            'total_amount' => $totalAmount,
+            'approval_tier_level' => $approvalTier['level'] ?? null,
+            'required_approvers' => $approvalTier['approvers'] ?? [],
+            'rfq_required' => $rfqRequired,
+            'payment_status' => 'pending',
+            'payment_terms' => 'net_30',
+            'order_date' => now()->toDateString(),
+            'expected_delivery_date' => null,
+            'payment_due_date' => now()->addDays(30)->toDateString(),
+            'created_by' => auth()->user()?->employee?->id,
+            'notes' => 'Auto-created from approved purchase requisition.',
+            'terms_conditions' => null,
+        ]);
+
+        foreach ($poItems as $poItem) {
+            PurchaseOrderItem::create(array_merge(
+                ['purchase_order_id' => $po->id],
+                $poItem
+            ));
+        }
+
+        ActivityLog::record(
+            'po_created',
+            "PO {$po->po_number} auto-created from approved purchase requisition {$pr->pr_number}.",
+            [
+                'po_number' => $po->po_number,
+                'purchase_requisition_id' => $pr->id,
+                'supplier_id' => $supplierId,
+            ],
+            'purchase_order',
+            $po->id
+        );
+
+        return [
+            'id' => $po->id,
+            'po_number' => $po->po_number,
+            'supplier_id' => $supplierId,
+            'item_count' => count($items),
+        ];
+    }
+
+    private function resolveSupplierIdForRequisitionItem(PurchaseRequisitionItem $item, int $storeId): ?int
+    {
+        if (!empty($item->selected_supplier_id)) {
+            return (int) $item->selected_supplier_id;
+        }
+
+        $supplierIds = DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
+            ->where('supplier_products.product_id', $item->product_id)
+            ->where('suppliers.store_id', $storeId)
+            ->pluck('supplier_products.supplier_id')
+            ->unique()
+            ->values();
+
+        if ($supplierIds->count() === 1) {
+            return (int) $supplierIds->first();
+        }
+
+        return null;
+    }
+
+    private function generateRfqNumber(): string
+    {
+        return 'RFQ-' . date('YmdHis') . '-' . str_pad((string) random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
+    }
+
+    private function generatePoNumber(): string
+    {
+        return 'PO-' . date('YmdHis') . '-' . str_pad((string) random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
     }
 }

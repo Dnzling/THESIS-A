@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Store\StoreVerificationController;
+use App\Http\Controllers\Api\Inventory\InventoryTransactionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
@@ -74,6 +75,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/inventory/transactions/{id}/print', [InventoryTransactionController::class, 'print'])
+        ->name('inventory.transactions.print');
 });
 
 Route::post('/logout-no-csrf', [AuthenticatedSessionController::class, 'destroy'])

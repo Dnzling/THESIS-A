@@ -33,21 +33,6 @@
                 <div class="text-lg font-bold text-gray-900">{{ detail.pr_number || `PR #${detail.id}` }}</div>
                 <div class="text-xs text-gray-500 mt-0.5">Created {{ formatDateTime(detail.created_at) }}</div>
               </div>
-  
-              <div class="flex gap-2">
-                <Button v-if="canManage && String(detail.status) === 'draft'" label="Submit" icon="pi pi-send"
-                  severity="info" size="small" :loading="submitting" @click="confirmSubmit" />
-                <Button
-                  v-if="canApprove && ['draft', 'pending', 'warehouse_approved', 'branch_manager_approved'].includes(String(detail.status))"
-                  label="Approve" icon="pi pi-check" severity="success" size="small" :loading="approving"
-                  @click="confirmApprove" />
-                <Button
-                  v-if="canApprove && ['pending', 'warehouse_approved', 'branch_manager_approved'].includes(String(detail.status))"
-                  label="Reject" icon="pi pi-times" severity="danger" outlined size="small" :loading="rejecting"
-                  @click="openReject" />
-                <Button v-if="canManage && ['draft', 'pending'].includes(String(detail.status))" label="Cancel"
-                  icon="pi pi-ban" severity="secondary" outlined size="small" :loading="cancelling" @click="openCancel" />
-              </div>
             </div>
   
             <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
@@ -114,33 +99,7 @@
     </div>
   </div>
   
-  <ConfirmDialog />
   
-  <Dialog v-model:visible="rejectDialogVisible" header="Reject PR" modal :style="{ width: '28rem' }">
-    <div class="text-sm text-gray-600 mb-3">Provide a reason for rejection.</div>
-    <Textarea v-model="rejectReason" rows="4" class="w-full" placeholder="Reason" />
-    <small v-if="rejectError" class="p-error">{{ rejectError }}</small>
-    <template #footer>
-      <div class="flex justify-end gap-2">
-        <Button label="Cancel" severity="secondary" size="small" :disabled="rejecting"
-          @click="rejectDialogVisible = false" />
-        <Button label="Reject" severity="danger" size="small" :loading="rejecting" @click="submitReject" />
-      </div>
-    </template>
-  </Dialog>
-  
-  <Dialog v-model:visible="cancelDialogVisible" header="Cancel PR" modal :style="{ width: '28rem' }">
-    <div class="text-sm text-gray-600 mb-3">Provide a cancellation reason.</div>
-    <Textarea v-model="cancelReason" rows="4" class="w-full" placeholder="Reason" />
-    <small v-if="cancelError" class="p-error">{{ cancelError }}</small>
-    <template #footer>
-      <div class="flex justify-end gap-2">
-        <Button label="Back" severity="secondary" size="small" :disabled="cancelling"
-          @click="cancelDialogVisible = false" />
-        <Button label="Cancel PR" severity="secondary" size="small" :loading="cancelling" @click="submitCancel" />
-      </div>
-    </template>
-  </Dialog>
 </template>
 
 <script setup lang="ts">

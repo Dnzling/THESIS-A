@@ -107,6 +107,17 @@ class InventoryService {
     return response.data
   }
 
+  // ==================== INVENTORY CONFIGURATION ====================
+  async getInventoryConfiguration() {
+    const response = await axiosClient.get(`${this.baseUrl}/configuration`)
+    return response.data
+  }
+
+  async updateInventoryConfiguration(data: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/configuration`, data)
+    return response.data
+  }
+
   async getSummaryCards() {
     const response = await axiosClient.get(`${this.baseUrl}/dashboard/summary-cards`)
     return response.data
@@ -224,13 +235,79 @@ class InventoryService {
     return response.data
   }
 
+  async sendTransferToLogistics(id: number, notes?: string) {
+    const response = await axiosClient.post(`${this.baseUrl}/transfers/${id}/send-to-logistics`, { notes })
+    return response.data
+  }
+
+  async createTransferDelivery(
+    id: number,
+    payload: {
+      vehicle_type: string
+      driver_name: string
+      driver_contact: string
+      tracking_number?: string
+      notes?: string
+    }
+  ) {
+    const response = await axiosClient.post(`${this.baseUrl}/transfers/${id}/create-delivery`, payload)
+    return response.data
+  }
+
+  async addTransferDeliveryLog(
+    id: number,
+    payload: {
+      event:
+        | 'arrived_at_location'
+        | 'unloading_started'
+        | 'unloading_completed'
+        | 'delivery_delay'
+        | 'delivery_issue'
+        | 'received_by_branch'
+        | 'custom_note'
+      notes?: string
+    }
+  ) {
+    const response = await axiosClient.post(`${this.baseUrl}/transfers/${id}/delivery-log`, payload)
+    return response.data
+  }
+
   async shipTransfer(id: number, notes?: string) {
     const response = await axiosClient.post(`${this.baseUrl}/transfers/${id}/ship`, { notes })
     return response.data
   }
 
-  async receiveTransfer(id: number, notes?: string) {
-    const response = await axiosClient.post(`${this.baseUrl}/transfers/${id}/receive`, { notes })
+  async receiveTransfer(
+    id: number,
+    payload?:
+      | string
+      | {
+          notes?: string
+          items?: Array<{
+            id: number
+            received_quantity: number
+            damaged_quantity?: number
+          }>
+        }
+      | FormData
+  ) {
+    const isFormData = payload instanceof FormData
+    const body = isFormData
+      ? payload
+      : (typeof payload === 'string'
+        ? { notes: payload }
+        : payload || {})
+    const response = await axiosClient.post(
+      `${this.baseUrl}/transfers/${id}/receive`,
+      body,
+      isFormData
+        ? {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        : undefined
+    )
     return response.data
   }
 

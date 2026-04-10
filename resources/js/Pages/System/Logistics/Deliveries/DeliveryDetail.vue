@@ -119,7 +119,19 @@
     </div>
 
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>Timeline</template>
+      <template #title>
+        <div class="flex items-center justify-between gap-3">
+          <span>Timeline</span>
+          <Button
+            v-if="canRecordTransitLog"
+            icon="pi pi-plus"
+            label="Record a Log"
+            size="small"
+            outlined
+            @click="recordLogDialogVisible = true"
+          />
+        </div>
+      </template>
       <template #content>
         <div v-if="!logs.length" class="text-sm text-slate-500">No timeline entries yet.</div>
         <div v-else class="space-y-3">
@@ -136,6 +148,27 @@
         </div>
       </template>
     </Card>
+
+    <Dialog v-model:visible="recordLogDialogVisible" modal header="Record Delivery Log" class="w-full max-w-xl">
+      <div class="space-y-3">
+        <Textarea
+          v-model="recordLogMessage"
+          rows="4"
+          fluid
+          placeholder="Enter delivery log message (e.g., Arrived at checkpoint, traffic delay, unloading started)."
+        />
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="recordLogDialogVisible = false" />
+        <Button
+          icon="pi pi-check"
+          label="Save Log"
+          :loading="savingLog"
+          :disabled="!recordLogMessage.trim()"
+          @click="saveTransitLog"
+        />
+      </template>
+    </Dialog>
 
     <Dialog v-model:visible="deliveredDialogVisible" modal header="Upload Proof of Delivery" class="w-full max-w-xl">
       <div class="space-y-3">
@@ -204,6 +237,9 @@ const loading = ref(false)
 const statusUpdating = ref(false)
 const delivering = ref(false)
 const deliveredDialogVisible = ref(false)
+const recordLogDialogVisible = ref(false)
+const recordLogMessage = ref('')
+const savingLog = ref(false)
 
 const order = ref<any>(null)
 const delivery = ref<any>(null)
@@ -238,6 +274,10 @@ const driverName = computed(() => {
   return d ? `${d.fname || ''} ${d.lname || ''}`.trim() : delivery.value?.courier_name || '-'
 })
 const isDelivered = computed(() => String(delivery.value?.status || '').toLowerCase() === 'delivered')
+const canRecordTransitLog = computed(() => {
+  const status = String(delivery.value?.status || '').toLowerCase()
+  return ['in_transit', 'out_for_delivery'].includes(status) && canManageDeliveries
+})
 const canAssignDelivery = computed(() => canManageDeliveries && !delivery.value && !!order.value)
 
 const loadAll = async () => {
@@ -276,6 +316,30 @@ const saveStatus = async () => {
     toast.add({ severity: 'error', summary: 'Update Failed', detail: error?.response?.data?.message || 'Failed to update delivery status.', life: 3500 })
   } finally {
     statusUpdating.value = false
+  }
+}
+
+const saveTransitLog = async () => {
+  if (!recordLogMessage.value.trim()) return
+
+  savingLog.value = true
+  try {
+    await logisticsService.addUnifiedDeliveryLog(source.value as 'ecommerce' | 'sales', orderId.value, {
+      message: recordLogMessage.value.trim(),
+    })
+    toast.add({ severity: 'success', summary: 'Logged', detail: 'Delivery log recorded.', life: 2200 })
+    recordLogMessage.value = ''
+    recordLogDialogVisible.value = false
+    await loadAll()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Log Failed',
+      detail: error?.response?.data?.message || 'Unable to record delivery log.',
+      life: 3000,
+    })
+  } finally {
+    savingLog.value = false
   }
 }
 

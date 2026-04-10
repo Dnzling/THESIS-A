@@ -50,10 +50,10 @@
       <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <div class="flex items-center justify-between mb-3">
           <span class="text-gray-500 text-sm font-medium">Payment</span>
-          <div :class="getPaymentDot(invoice?.payment_status)" class="w-2 h-2 rounded-full"></div>
+          <div :class="getPaymentDot(effectivePaymentStatus)" class="w-2 h-2 rounded-full"></div>
         </div>
-        <span :class="getPaymentClass(invoice?.payment_status)" class="text-base font-semibold">
-          {{ formatPaymentStatus(invoice?.payment_status) }}
+        <span :class="getPaymentClass(effectivePaymentStatus)" class="text-base font-semibold">
+          {{ formatPaymentStatus(effectivePaymentStatus) }}
         </span>
       </div>
 
@@ -171,7 +171,7 @@
                   <span class="text-gray-500">GRN Number</span>
                   <RouterLink
                     v-if="invoice?.goods_receipt"
-                    :to="`/procurement/goods-receipts/${invoice?.goods_receipt_id}`"
+                    :to="`/inventory/goods-receipts/${invoice?.goods_receipt_id}`"
                     class="font-medium text-blue-500 hover:text-blue-600"
                   >
                     {{ invoice?.goods_receipt?.grn_number }}
@@ -205,8 +205,6 @@
                     <th class="px-5 py-4 text-right font-medium">Qty</th>
                     <th class="px-5 py-4 text-right font-medium">Unit Price</th>
                     <th class="px-5 py-4 text-right font-medium">Line Total</th>
-                    <th class="px-5 py-4 text-right font-medium">Tax Rate</th>
-                    <th class="px-5 py-4 text-right font-medium">Tax Amount</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -220,25 +218,23 @@
                     <td class="px-5 py-4 text-right text-gray-900">{{ item.quantity_invoiced || item.quantity }}</td>
                     <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.unit_price) }}</td>
                     <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.line_amount || item.unit_price * (item.quantity_invoiced || item.quantity)) }}</td>
-                    <td class="px-5 py-4 text-right text-gray-900">{{ item.tax_rate }}%</td>
-                    <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(item.tax_amount) }}</td>
                   </tr>
                 </tbody>
                 <tfoot class="bg-gray-50/80 font-medium">
                   <tr>
-                    <td colspan="5" class="px-5 py-4 text-right text-gray-600">Subtotal</td>
+                    <td colspan="3" class="px-5 py-4 text-right text-gray-600">Subtotal</td>
                     <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.subtotal || invoice?.net_amount) }}</td>
                   </tr>
                   <tr>
-                    <td colspan="5" class="px-5 py-4 text-right text-gray-600">Shipping Cost</td>
+                    <td colspan="3" class="px-5 py-4 text-right text-gray-600">Shipping Cost</td>
                     <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.shipping_cost) }}</td>
                   </tr>
                   <tr>
-                    <td colspan="5" class="px-5 py-4 text-right text-gray-600">Tax Total</td>
+                    <td colspan="3" class="px-5 py-4 text-right text-gray-600">Tax Total</td>
                     <td class="px-5 py-4 text-right text-gray-900">₱{{ formatNumber(invoice?.tax_amount) }}</td>
                   </tr>
                   <tr>
-                    <td colspan="5" class="px-5 py-4 text-right text-gray-900 font-semibold">Total</td>
+                    <td colspan="3" class="px-5 py-4 text-right text-gray-900 font-semibold">Total</td>
                     <td class="px-5 py-4 text-right text-blue-600 font-semibold">₱{{ formatNumber(invoice?.net_amount || invoice?.total_amount) }}</td>
                   </tr>
                 </tfoot>
@@ -418,7 +414,7 @@
             <div class="space-y-4">
               <div class="flex items-center justify-between">
                 <span class="text-gray-500">Payment Status</span>
-                <span :class="getPaymentClass(invoice?.payment_status)" class="font-medium">{{ formatPaymentStatus(invoice?.payment_status) }}</span>
+                <span :class="getPaymentClass(effectivePaymentStatus)" class="font-medium">{{ formatPaymentStatus(effectivePaymentStatus) }}</span>
               </div>
 
               <div class="bg-gray-50 rounded-lg p-4">
@@ -434,7 +430,7 @@
                 </div>
               </div>
 
-              <div v-if="invoice?.payment_status === 'paid'" class="bg-green-50 rounded-lg p-4">
+              <div v-if="['paid', 'succeeded'].includes(String(effectivePaymentStatus).toLowerCase())" class="bg-green-50 rounded-lg p-4">
                 <p class="text-sm text-green-800">
                   Paid on <span class="font-medium">{{ formatDate(invoice?.payment_date) }}</span>
                 </p>
@@ -519,6 +515,14 @@ const paymongoInvoicePolling = ref<ReturnType<typeof setInterval> | null>(null)
 const invoiceMarkedPaidByPaymongo = ref(false)
 
 const isFinanceRoute = computed(() => String(route.name || '').startsWith('finance.'))
+const effectivePaymentStatus = computed(() => {
+  const paymongoStatus = String(paymongoInvoiceStatus.value || '').toLowerCase()
+  if (['succeeded', 'paid'].includes(paymongoStatus)) {
+    return 'succeeded'
+  }
+  return String(invoice.value?.payment_status || 'pending')
+})
+
 const paymongoInvoiceActionLabel = computed(() => {
   if (invoice.value?.payment_status === 'paid') return 'Invoice Paid'
   if (!paymongoInvoiceIntentId.value) return 'Pay with PayMongo'
@@ -717,7 +721,14 @@ async function loadLatestPaymongoInvoiceIntent() {
     paymongoInvoiceIntentId.value = latest.payment_intent_id || null
     paymongoInvoiceStatus.value = latest.status || paymongoInvoiceStatus.value
 
-    if (paymongoInvoiceIntentId.value && !['succeeded', 'failed', 'canceled', 'cancelled', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {
+    const normalized = String(paymongoInvoiceStatus.value).toLowerCase()
+
+    if (['succeeded', 'paid'].includes(normalized) && invoice.value?.payment_status !== 'paid') {
+      await pollInvoicePaymongoStatus()
+      return
+    }
+
+    if (paymongoInvoiceIntentId.value && !['succeeded', 'failed', 'canceled', 'cancelled', 'paid'].includes(normalized)) {
       startInvoicePaymongoPolling()
     }
   } catch {
@@ -800,6 +811,10 @@ async function pollInvoicePaymongoStatus() {
     const response = await paymongoService.getIntent(paymongoInvoiceIntentId.value)
     paymongoInvoiceStatus.value = response?.data?.attributes?.status || paymongoInvoiceStatus.value
 
+    if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {
+      await loadInvoice()
+    }
+
     if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase()) && invoice.value?.payment_status !== 'paid' && !invoiceMarkedPaidByPaymongo.value) {
       invoiceMarkedPaidByPaymongo.value = true
       const payload = {
@@ -825,8 +840,8 @@ async function pollInvoicePaymongoStatus() {
     if (['succeeded', 'failed', 'canceled', 'cancelled', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {
       stopInvoicePaymongoPolling()
     }
-  } catch {
-    // ignore polling failures to keep UI responsive
+  } catch (error: any) {
+    console.error('PayMongo invoice polling failed', error)
   } finally {
     paymongoInvoiceLoading.value = false
   }
@@ -910,6 +925,7 @@ function formatPaymentStatus(status: string): string {
   const map: Record<string, string> = {
     pending: 'Pending',
     scheduled: 'Scheduled',
+    succeeded: 'Succeeded',
     paid: 'Paid',
     overdue: 'Overdue',
   }
@@ -940,6 +956,7 @@ function getPaymentClass(status: string): string {
   const map: Record<string, string> = {
     pending: 'text-orange-500',
     scheduled: 'text-blue-500',
+    succeeded: 'text-green-600',
     paid: 'text-green-600',
     overdue: 'text-red-500',
   }
@@ -970,6 +987,7 @@ function getPaymentDot(status: string): string {
   const map: Record<string, string> = {
     pending: 'bg-orange-400',
     scheduled: 'bg-blue-500',
+    succeeded: 'bg-green-500',
     paid: 'bg-green-500',
     overdue: 'bg-red-500',
   }

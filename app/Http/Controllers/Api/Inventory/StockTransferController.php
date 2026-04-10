@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class StockTransferController extends Controller
 {
@@ -311,6 +312,183 @@ class StockTransferController extends Controller
     }
 
     /**
+     * Send transfer to logistics
+     * POST /api/inventory/transfers/{id}/send-to-logistics
+     */
+    public function sendToLogistics(Request $request, int $id): JsonResponse
+    {
+        $transfer = StockTransfer::with('items.product')->findOrFail($id);
+
+        if (!in_array($transfer->status, ['receiver_acknowledge', 'receiver_acknowledged'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only receiver acknowledged transfers can be sent to logistics.',
+            ], 422);
+        }
+
+        $transfer->update([
+            'status' => 'in_transit',
+            'shipped_by' => EmployeeContext::currentEmployeeId(),
+            'shipped_date' => now(),
+            'notes' => trim((string) ($transfer->notes ?? '') . "\nSent to logistics on " . now()->toDateTimeString()),
+        ]);
+
+        $this->recordLog(
+            'inventory.stock_transfer.sent_to_logistics',
+            "Sent stock transfer {$transfer->transfer_number} to logistics",
+            $transfer,
+            ['status' => $transfer->status]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Transfer sent to logistics successfully.',
+            'data' => $transfer->fresh(['items.product']),
+        ]);
+    }
+
+    /**
+     * Create delivery assignment for logistics stock transfer
+     * POST /api/inventory/transfers/{id}/create-delivery
+     */
+    public function createDelivery(Request $request, int $id): JsonResponse
+    {
+        $transfer = StockTransfer::with('items.product')->findOrFail($id);
+
+        if ($transfer->status !== 'in_transit') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery can only be created when transfer is in transit.',
+            ], 422);
+        }
+
+        // Validation: prevent duplicate delivery assignment for the same transfer.
+        if (!empty($transfer->driver_name) || !empty($transfer->vehicle_type) || !empty($transfer->tracking_number)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery already exists for this stock transfer.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'vehicle_type' => 'required|string|max:100',
+            'driver_name' => 'required|string|max:100',
+            'driver_contact' => 'required|string|max:50',
+            'tracking_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $extraNotes = trim((string) ($validated['notes'] ?? ''));
+        $noteParts = array_filter([
+            trim((string) ($transfer->notes ?? '')),
+            'Delivery created by logistics on ' . now()->toDateTimeString(),
+            $extraNotes !== '' ? $extraNotes : null,
+            'Delivery fee: 0.00 (stock transfer)',
+        ]);
+
+        $transfer->update([
+            'vehicle_type' => $validated['vehicle_type'],
+            'driver_name' => $validated['driver_name'],
+            'driver_contact' => $validated['driver_contact'],
+            'tracking_number' => $validated['tracking_number'] ?? $transfer->tracking_number,
+            'notes' => implode("\n", $noteParts),
+            // No delivery charges for stock transfer logistics.
+            'transfer_cost' => 0,
+        ]);
+
+        $this->recordLog(
+            'inventory.stock_transfer.delivery_created',
+            "Created logistics delivery for stock transfer {$transfer->transfer_number}",
+            $transfer,
+            [
+                'status' => $transfer->status,
+                'tracking_number' => $transfer->tracking_number,
+                'delivery_fee' => 0,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery created successfully (no delivery charge for stock transfers).',
+            'data' => $transfer->fresh(['items.product']),
+        ]);
+    }
+
+    /**
+     * Add delivery log for stock transfer shipment overview
+     * POST /api/inventory/transfers/{id}/delivery-log
+     */
+    public function addDeliveryLog(Request $request, int $id): JsonResponse
+    {
+        $transfer = StockTransfer::findOrFail($id);
+
+        if (!in_array($transfer->status, ['in_transit', 'received'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery logs can only be added when transfer is In Transit or Received.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'event' => 'required|string|in:arrived_at_location,unloading_started,unloading_completed,delivery_delay,delivery_issue,received_by_branch,custom_note',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $actor = auth()->user();
+        $actorName = trim((string) (($actor?->fname ?? '') . ' ' . ($actor?->lname ?? ''))) ?: 'Logistics';
+        $timestamp = now()->toDateTimeString();
+
+        $eventLabels = [
+            'arrived_at_location' => 'Arrived at Location',
+            'unloading_started' => 'Unloading Started',
+            'unloading_completed' => 'Unloading Completed',
+            'delivery_delay' => 'Delivery Delay',
+            'delivery_issue' => 'Delivery Issue',
+            'received_by_branch' => 'Received by Branch',
+            'custom_note' => 'Custom Note',
+        ];
+
+        $event = (string) $validated['event'];
+        $label = $eventLabels[$event] ?? 'Delivery Log';
+        $notes = trim((string) ($validated['notes'] ?? ''));
+        $message = $notes !== '' ? "{$label} - {$notes}" : $label;
+        $safeNotes = str_replace(["\r", "\n", '|'], [' ', ' ', '/'], $notes);
+        // LOG2 format keeps selected event key to ensure UI shows exact chosen event.
+        $entry = sprintf(
+            'LOG2|%s|%s|%s|%s',
+            $timestamp,
+            str_replace('|', '/', $actorName),
+            str_replace('|', '/', $event),
+            $safeNotes
+        );
+
+        $parts = array_filter([
+            trim((string) ($transfer->notes ?? '')),
+            $entry,
+        ]);
+
+        $transfer->update([
+            'notes' => implode("\n", $parts),
+        ]);
+
+        $this->recordLog(
+            'inventory.stock_transfer.delivery_log_added',
+            "Added delivery log for stock transfer {$transfer->transfer_number}",
+            $transfer,
+            [
+                'status' => $transfer->status,
+                'message' => $message,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery log recorded successfully.',
+            'data' => $transfer->fresh(['items.product']),
+        ], 201);
+    }
+
+    /**
      * Ship transfer
      * POST /api/inventory/transfers/{id}/ship
      */
@@ -334,11 +512,12 @@ class StockTransferController extends Controller
                     ->where('variation_id', $item->variation_id)
                     ->firstOrFail();
 
-                $quantityBefore = $inventory->quantity_on_hand;
+                $quantityBefore = $inventory->quantity_available;
 
                 // Deduct stock
-                $inventory->quantity_on_hand -= $item->approved_quantity;
                 $inventory->quantity_available -= $item->approved_quantity;
+                // Keep on-hand synchronized to available as single operational stock value.
+                $inventory->quantity_on_hand = $inventory->quantity_available;
                 $inventory->save();
                 $inventory->updateStockStatus();
                 $inventory->calculateTotalValue();
@@ -355,7 +534,7 @@ class StockTransferController extends Controller
                     'transaction_type' => 'transfer_out',
                     'quantity_before' => $quantityBefore,
                     'quantity_change' => -$item->approved_quantity,
-                    'quantity_after' => $inventory->quantity_on_hand,
+                    'quantity_after' => $inventory->quantity_available,
                     'related_branch_id' => $transfer->to_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
@@ -420,11 +599,21 @@ class StockTransferController extends Controller
             ], 422);
         }
 
+        if (!$request->has('items') && $request->filled('items_json')) {
+            $decoded = json_decode((string) $request->input('items_json'), true);
+            if (is_array($decoded)) {
+                $request->merge(['items' => $decoded]);
+            }
+        }
+
         $validated = $request->validate([
             'items' => 'required|array',
             'items.*.id' => 'required|exists:stock_transfer_items,id',
             'items.*.received_quantity' => 'required|integer|min:0',
             'items.*.damaged_quantity' => 'nullable|integer|min:0',
+            'photos' => 'nullable|array',
+            'photos.*' => 'file|mimes:jpg,jpeg,png,gif,webp,bmp|max:10240',
+            'notes' => 'nullable|string|max:5000',
         ]);
 
         DB::beginTransaction();
@@ -456,11 +645,12 @@ class StockTransferController extends Controller
                     ]
                 );
 
-                $quantityBefore = $inventory->quantity_on_hand;
+                $quantityBefore = $inventory->quantity_available;
 
                 // Add received stock
-                $inventory->quantity_on_hand += $itemData['received_quantity'];
                 $inventory->quantity_available += $itemData['received_quantity'];
+                // Keep on-hand synchronized to available as single operational stock value.
+                $inventory->quantity_on_hand = $inventory->quantity_available;
                 $inventory->quantity_damaged += ($itemData['damaged_quantity'] ?? 0);
                 $inventory->save();
                 $inventory->updateStockStatus();
@@ -478,7 +668,7 @@ class StockTransferController extends Controller
                     'transaction_type' => 'transfer_in',
                     'quantity_before' => $quantityBefore,
                     'quantity_change' => $itemData['received_quantity'],
-                    'quantity_after' => $inventory->quantity_on_hand,
+                    'quantity_after' => $inventory->quantity_available,
                     'related_branch_id' => $transfer->from_branch_id,
                     'reference_type' => 'stock_transfer',
                     'reference_id' => $transfer->id,
@@ -487,10 +677,44 @@ class StockTransferController extends Controller
                 ]);
             }
 
+            $podEntries = [];
+            if ($request->hasFile('photos')) {
+                foreach ((array) $request->file('photos') as $photo) {
+                    if (!$photo) {
+                        continue;
+                    }
+                    $path = $photo->store('inventory/stock-transfers/pod', 'public');
+                    // Fallback for environments where public/storage is not a symlink.
+                    // Mirror uploaded file to public/storage so browser URLs still resolve.
+                    $publicMirrorPath = public_path('storage/' . $path);
+                    $publicMirrorDir = dirname($publicMirrorPath);
+                    if (!is_dir($publicMirrorDir)) {
+                        @mkdir($publicMirrorDir, 0777, true);
+                    }
+                    $sourcePath = storage_path('app/public/' . $path);
+                    if (is_file($sourcePath) && !is_file($publicMirrorPath)) {
+                        @copy($sourcePath, $publicMirrorPath);
+                    }
+                    $podEntries[] = sprintf(
+                        'POD|%s|%s',
+                        Storage::disk('public')->url($path),
+                        str_replace(['|', "\n", "\r"], ['/', ' ', ' '], (string) $photo->getClientOriginalName())
+                    );
+                }
+            }
+
+            $extraNotes = trim((string) ($validated['notes'] ?? ''));
+            $noteParts = array_filter([
+                trim((string) ($transfer->notes ?? '')),
+                $extraNotes !== '' ? $extraNotes : null,
+                ...$podEntries,
+            ]);
+
             $transfer->update([
                 'status' => 'received',
                 'received_by' => EmployeeContext::currentEmployeeId(),
                 'received_date' => now(),
+                'notes' => implode("\n", $noteParts),
             ]);
 
             DB::commit();

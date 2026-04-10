@@ -281,7 +281,7 @@
             <tbody class="divide-y divide-gray-100">
               <tr v-for="receipt in detail.goods_receipts" :key="receipt.id" class="hover:bg-gray-50/50 transition-colors">
                 <td class="px-6 py-4">
-                  <RouterLink :to="`/procurement/goods-receipts/${receipt.id}`"
+                  <RouterLink :to="`/inventory/goods-receipts/${receipt.id}`"
                     class="text-blue-600 hover:text-blue-800 font-medium">
                     {{ receipt.gr_number }}
                   </RouterLink>

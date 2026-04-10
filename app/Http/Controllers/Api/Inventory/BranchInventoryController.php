@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\StoreInventoryRequest;
 use App\Models\Core\ActivityLog;
+use App\Models\Hr\Employee;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\ReorderRule;
 use App\Services\Inventory\InventoryService;
@@ -27,7 +28,16 @@ class BranchInventoryController extends Controller
      */
     private function getUserBranchId(): int
     {
-        return auth()->user()->branch_id;
+        $user = auth()->user();
+        $branchId = (int) ($user?->branch_id ?? 0);
+
+        if ($branchId <= 0 && $user) {
+            $branchId = (int) (Employee::query()
+                ->where('user_id', $user->id)
+                ->value('branch_id') ?? 0);
+        }
+
+        return $branchId;
     }
 
     /**
@@ -35,9 +45,22 @@ class BranchInventoryController extends Controller
      */
     private function getUserContext(): array
     {
+        $user = auth()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $branchId = (int) ($user?->branch_id ?? 0);
+
+        if (($storeId <= 0 || $branchId <= 0) && $user) {
+            $employee = Employee::query()
+                ->where('user_id', $user->id)
+                ->first(['store_id', 'branch_id']);
+
+            $storeId = $storeId > 0 ? $storeId : (int) ($employee?->store_id ?? 0);
+            $branchId = $branchId > 0 ? $branchId : (int) ($employee?->branch_id ?? 0);
+        }
+
         return [
-            'store_id' => auth()->user()->store_id,
-            'branch_id' => auth()->user()->branch_id,
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
         ];
     }
 

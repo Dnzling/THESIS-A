@@ -4,19 +4,23 @@ namespace App\Http\Controllers\Api\Payments;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\Finance\FinanceCashflowTransaction;
 use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
+use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Sales\SalesPayment;
 use App\Models\Store\Store;
 use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
 use App\Services\Finance\CashflowService;
+use App\Services\Finance\FinanceExpenseService;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class PaymongoController extends Controller
@@ -148,6 +152,8 @@ class PaymongoController extends Controller
             $freshIntent = $intent->fresh();
             $this->syncSalesPaymentFromIntent($freshIntent, $status);
             $this->syncEcommerceOrderFromIntent($freshIntent, $status);
+            $this->syncInvoiceFromIntent($freshIntent, $status);
+            $this->syncCashflowTopUpFromIntent($freshIntent, $status);
             $this->syncSubscriptionFromIntent($freshIntent, $status);
         }
 
@@ -255,6 +261,8 @@ class PaymongoController extends Controller
         if ($intent) {
             $this->syncSalesPaymentFromIntent($intent, (string) $intent->status);
             $this->syncEcommerceOrderFromIntent($intent, (string) $intent->status);
+            $this->syncInvoiceFromIntent($intent, (string) $intent->status);
+            $this->syncCashflowTopUpFromIntent($intent, (string) $intent->status);
             $this->syncSubscriptionFromIntent($intent, (string) $intent->status);
             return response()->json(['message' => 'Event processed']);
         }
@@ -446,6 +454,140 @@ class PaymongoController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function syncInvoiceFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
+    {
+        if ($intent->payable_type !== 'invoice') {
+            return;
+        }
+
+        $invoice = Invoice::query()->find((int) $intent->payable_id);
+        if (!$invoice) {
+            return;
+        }
+
+        $normalizedStatus = strtolower(trim($paymongoStatus));
+        if (!in_array($normalizedStatus, ['succeeded', 'paid'], true)) {
+            return;
+        }
+
+        $paymentAmount = (float) ($invoice->net_amount ?: $invoice->invoice_amount ?: 0);
+
+        DB::transaction(function () use ($invoice, $intent, $paymentAmount) {
+            // Keep invoice state in sync with successful PayMongo payment.
+            $invoice->update([
+                'payment_status' => 'paid',
+                'payment_method' => 'paymongo_gcash',
+                'payment_amount' => $paymentAmount,
+                'payment_date' => now()->toDateString(),
+                'status' => 'paid',
+            ]);
+
+            if ($invoice->purchaseOrder) {
+                $invoice->purchaseOrder->update(['payment_status' => 'paid']);
+            }
+
+            // Ensure linked finance expense also reflects paid state.
+            $financeService = new FinanceExpenseService();
+            $expense = $financeService->ensureExpense([
+                'store_id' => $invoice->store_id,
+                'department' => 'procurement',
+                'category' => 'supplier_invoice',
+                'amount' => $paymentAmount,
+                'expense_date' => $invoice->invoice_date,
+                'status' => 'pending_approval',
+                'reference_number' => $invoice->invoice_number,
+                'reference_type' => 'invoice',
+                'reference_id' => $invoice->id,
+                'currency' => $invoice->currency ?? 'PHP',
+                'description' => "Supplier invoice {$invoice->invoice_number}",
+                'notes' => $invoice->remarks,
+                'requested_by' => auth()->id(),
+            ], true, auth()->id());
+
+            if ($expense->status !== 'paid') {
+                $expense->update([
+                    'status' => 'paid',
+                    'payment_method' => 'paymongo_gcash',
+                    'payment_date' => now()->toDateString(),
+                    'paid_by' => auth()->id(),
+                    'paid_at' => now(),
+                ]);
+            }
+
+            // Record cashflow outflow once per invoice.
+            $alreadyRecorded = DB::table('finance_cashflow_transactions')
+                ->where('store_id', (int) $invoice->store_id)
+                ->where('direction', 'out')
+                ->where('reference_type', 'invoice')
+                ->where('reference_id', (int) $invoice->id)
+                ->exists();
+
+            if (!$alreadyRecorded && $paymentAmount > 0) {
+                $cashflow = new CashflowService();
+                $cashflow->debit(
+                    (int) $invoice->store_id,
+                    $paymentAmount,
+                    'invoice',
+                    (int) $invoice->id,
+                    auth()->id(),
+                    'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)) . ' via PayMongo',
+                    'paymongo_gcash',
+                    [
+                        'payment_intent_id' => $intent->payment_intent_id,
+                    ]
+                );
+            }
+        });
+    }
+
+    private function syncCashflowTopUpFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
+    {
+        if ($intent->payable_type !== 'cashflow_topup') {
+            return;
+        }
+
+        $normalizedStatus = strtolower(trim($paymongoStatus));
+        if (!in_array($normalizedStatus, ['succeeded', 'paid'], true)) {
+            return;
+        }
+
+        $meta = is_array($intent->metadata) ? $intent->metadata : [];
+        $storeId = (int) ($intent->store_id ?: ($meta['store_id'] ?? $intent->payable_id));
+        if ($storeId <= 0) {
+            return;
+        }
+
+        $amount = round(((float) ($intent->amount ?? 0)) / 100, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $alreadyRecorded = FinanceCashflowTransaction::query()
+            ->where('store_id', $storeId)
+            ->where('direction', 'in')
+            ->where('reference_type', 'cashflow_topup')
+            ->where('reference_id', (int) $intent->id)
+            ->exists();
+
+        if ($alreadyRecorded) {
+            return;
+        }
+
+        $cashflow = new CashflowService();
+        $cashflow->credit(
+            $storeId,
+            $amount,
+            'cashflow_topup',
+            (int) $intent->id,
+            Auth::id(),
+            'Cashflow top-up via PayMongo',
+            'paymongo_gcash',
+            [
+                'payment_intent_id' => $intent->payment_intent_id,
+            ]
+        );
     }
 
     private function normalizeMetadata(?array $metadata): array

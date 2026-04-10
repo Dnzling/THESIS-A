@@ -390,7 +390,6 @@ const loadProducts = async () => {
       const rows = Array.isArray(response.data) ? response.data : (response.data?.data || [])
       availableProducts.value = rows.map((item: any) => {
         const currentStock = Number(
-          item.quantity_on_hand ??
           item.quantity_available ??
           item.current_stock ??
           0
@@ -580,6 +579,47 @@ const doCreateStockCount = async () => {
     const response = await inventoryService.createStockCount(submitData)
 
     if (response.success) {
+      const createdId = response.data?.id
+      if (createdId) {
+        try {
+          const detailResponse = await inventoryService.getStockCount(createdId)
+          const sheets = detailResponse?.data?.count_sheets || []
+
+          const sheetsByInventoryId = new Map<number, any>()
+          const sheetsByProductVariation = new Map<string, any>()
+          for (const sheet of sheets) {
+            if (sheet?.branch_inventory_id) {
+              sheetsByInventoryId.set(Number(sheet.branch_inventory_id), sheet)
+            }
+            const key = `${Number(sheet?.product_id || 0)}:${Number(sheet?.variation_id || 0)}`
+            sheetsByProductVariation.set(key, sheet)
+          }
+
+          const countsPayload = form.items
+            .filter((item: any) => item.counted_quantity !== null && item.counted_quantity !== undefined && item.counted_quantity !== '')
+            .map((item: any) => {
+              const byInventory = item.inventory_item_id ? sheetsByInventoryId.get(Number(item.inventory_item_id)) : null
+              const key = `${Number(item.product_id || 0)}:${Number(item.variation_id || 0)}`
+              const byProductVariation = sheetsByProductVariation.get(key)
+              const matched = byInventory || byProductVariation
+              if (!matched?.id) return null
+
+              return {
+                count_sheet_id: Number(matched.id),
+                counted_quantity: Number(item.counted_quantity),
+                notes: item.notes || null,
+              }
+            })
+            .filter(Boolean)
+
+          if (countsPayload.length > 0) {
+            await inventoryService.updateStockCounts(Number(createdId), { counts: countsPayload })
+          }
+        } catch {
+          // non-blocking fallback
+        }
+      }
+
       toast.add({
         severity: 'success',
         summary: 'Success',

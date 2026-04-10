@@ -478,13 +478,13 @@ class ProcurementService {
     return response.data
   }
 
-  async approvePurchaseRequisition(id: number, data: { role: string; notes?: string }) {
+  async approvePurchaseRequisition(id: number, data?: { notes?: string }) {
     // Suppress global response dialog for this action; UI will handle notifications
-    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/approve`, data, { headers: { 'X-Suppress-Dialog': '1' } })
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/approve`, data || {}, { headers: { 'X-Suppress-Dialog': '1' } })
     return response.data
   }
 
-  async rejectPurchaseRequisition(id: number, data?: { role: string; reason?: string }) {
+  async rejectPurchaseRequisition(id: number, data?: { reason?: string }) {
     const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/reject`, data || {})
     return response.data
   }

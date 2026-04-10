@@ -46,6 +46,62 @@ class StockCountService
             // Generate count sheets based on the count type and filters
             $this->generateCountSheets($count);
 
+            // If counted quantities were provided during creation, persist them immediately.
+            $submittedItems = collect($data['items'] ?? [])
+                ->filter(fn ($item) => is_array($item) && array_key_exists('counted_quantity', $item))
+                ->values();
+
+            if ($submittedItems->isNotEmpty()) {
+                $sheets = $count->countSheets()->get();
+                $sheetsByInventoryId = $sheets->keyBy('branch_inventory_id');
+                $sheetsByProductVariation = $sheets->keyBy(function ($sheet) {
+                    return ((int) $sheet->product_id) . ':' . ((int) ($sheet->variation_id ?? 0));
+                });
+                $defaultCountedBy = (int) ($data['assigned_to'] ?? $data['assigned_by'] ?? 0);
+
+                foreach ($submittedItems as $item) {
+                    $sheet = null;
+
+                    $inventoryItemId = isset($item['inventory_item_id']) && is_numeric($item['inventory_item_id'])
+                        ? (int) $item['inventory_item_id']
+                        : null;
+
+                    if (!empty($inventoryItemId) && $sheetsByInventoryId->has($inventoryItemId)) {
+                        $sheet = $sheetsByInventoryId->get($inventoryItemId);
+                    } else {
+                        $productId = isset($item['product_id']) && is_numeric($item['product_id'])
+                            ? (int) $item['product_id']
+                            : 0;
+                        $variationId = isset($item['variation_id']) && is_numeric($item['variation_id'])
+                            ? (int) $item['variation_id']
+                            : 0;
+                        $sheet = $sheetsByProductVariation->get($productId . ':' . $variationId);
+                    }
+
+                    if (!$sheet) {
+                        continue;
+                    }
+
+                    if ($item['counted_quantity'] === null || $item['counted_quantity'] === '') {
+                        continue;
+                    }
+
+                    $sheet->counted_quantity = (int) $item['counted_quantity'];
+                    $sheet->counted_unit_cost = $sheet->system_unit_cost;
+                    $sheet->counted_total_value = $sheet->counted_quantity * (float) $sheet->system_unit_cost;
+                    $sheet->counted_at = now();
+                    $sheet->counted_by = $defaultCountedBy > 0 ? $defaultCountedBy : null;
+                    $sheet->notes = $item['notes'] ?? $sheet->notes;
+                    $sheet->calculateDiscrepancy();
+                    $sheet->save();
+                }
+
+                $count->update([
+                    'total_items_counted' => $count->countSheets()->whereNotNull('counted_quantity')->count(),
+                    'items_with_discrepancy' => $count->countSheets()->where('count_status', 'discrepancy_found')->count(),
+                ]);
+            }
+
             return $count;
         });
     }
@@ -148,8 +204,9 @@ class StockCountService
                     $inventory = $sheet->branchInventory;
                     if ($inventory) {
                         $inventory->update([
-                            'quantity_on_hand' => $sheet->counted_quantity,
                             'quantity_available' => $sheet->counted_quantity,
+                            // Keep on-hand synchronized to available as single operational stock value.
+                            'quantity_on_hand' => $sheet->counted_quantity,
                             'last_stock_count_date' => now(),
                             'last_counted_quantity' => $sheet->counted_quantity,
                             'last_counted_by' => $data['approved_by'],
@@ -204,7 +261,12 @@ class StockCountService
         $query = BranchInventory::with(['product', 'variation'])
             ->where('store_id', $count->store_id)
             ->where('branch_id', $count->branch_id)
-            ->where('quantity_on_hand', '>', 0); // Only count items with stock
+            ->where('quantity_available', '>', 0); // Only count items with available stock
+
+        // Always prioritize explicit product selection when present.
+        if (!empty($count->product_ids) && is_array($count->product_ids)) {
+            $query->whereIn('product_id', $count->product_ids);
+        }
 
         // Apply filters based on count type
         switch ($count->count_type) {
@@ -226,24 +288,16 @@ class StockCountService
                         $q->whereIn('category_id', $count->category_ids);
                     });
                 }
-                if ($count->product_ids) {
-                    $query->whereIn('product_id', $count->product_ids);
-                }
                 break;
 
             case 'spot_check':
-                if ($count->product_ids) {
-                    $query->whereIn('product_id', $count->product_ids);
-                }
                 // Limit to a smaller sample for spot checks
                 $query->inRandomOrder()->limit(20);
                 break;
 
             case 'cycle_count':
                 // Cycle counts typically focus on high-value or fast-moving items
-                if ($count->product_ids) {
-                    $query->whereIn('product_id', $count->product_ids);
-                } else {
+                if (empty($count->product_ids)) {
                     $query->orderBy('total_value', 'desc')->limit(50);
                 }
                 break;
@@ -265,7 +319,7 @@ class StockCountService
                 'branch_inventory_id' => $item->id,
                 'product_id' => $item->product_id,
                 'variation_id' => $item->variation_id,
-                'system_quantity' => $item->quantity_on_hand,
+                'system_quantity' => $item->quantity_available,
                 'system_unit_cost' => $item->unit_cost ?? 0,
                 'system_total_value' => $item->total_value ?? 0,
                 'warehouse_section' => $item->warehouse_section,
@@ -290,7 +344,7 @@ class StockCountService
         $inventory = BranchInventory::with('product')
             ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('quantity_on_hand', '>', 0)
+            ->where('quantity_available', '>', 0)
             ->get();
 
         $discrepancies = CountSheet::whereHas('stockCount', function ($q) use ($storeId, $branchId, $days) {
@@ -323,7 +377,7 @@ class StockCountService
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->product_name,
                 'sku' => $item->product?->sku,
-                'current_stock' => $item->quantity_on_hand,
+                'current_stock' => $item->quantity_available,
                 'total_value' => $value,
                 'score' => $score,
                 'reasons' => $reasons,

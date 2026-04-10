@@ -548,7 +548,7 @@ function personName(person: any) {
 }
 
 function goBack() {
-  router.push({ name: 'procurement.goods-receipts' })
+  router.push({ name: 'inventory.goods-receipts' })
 }
 
 async function printReceipt() {

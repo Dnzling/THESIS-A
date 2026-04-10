@@ -64,7 +64,7 @@
             <template #body="{ data }">
               <div class="text-xs">
                 <div>{{ formatDate(data.adjustment_date) }}</div>
-                <div class="text-gray-500 text-xs">{{ formatTime(data.adjustment_date) }}</div>
+                <div class="text-gray-500 text-xs">{{ formatTime(data.created_at || data.adjustment_date) }}</div>
               </div>
             </template>
           </Column>
@@ -99,11 +99,6 @@
                 <Button v-if="canViewAdjustments" icon="pi pi-eye" size="small" text severity="info"
                   @click="router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })"
                   v-tooltip="'View details'" />
-                <Button v-if="data.status === 'draft' && canCreateAdjustments" icon="pi pi-pencil" size="small" text severity="warning"
-                  @click="router.push({ name: 'inventory.adjustments.edit', params: { id: data.id } })"
-                  v-tooltip="'Edit'" />
-                <Button v-if="data.status === 'draft' && canSubmitAdjustments" icon="pi pi-check" size="small" text severity="success"
-                  @click="submitAdjustment(data.id)" v-tooltip="'Submit'" />
               </div>
             </template>
           </Column>
@@ -138,7 +133,6 @@ const adjustments = ref<any[]>([])
 
 const canViewAdjustments = authStore.hasPermission('inventory.adjustments.view')
 const canCreateAdjustments = authStore.hasPermission('inventory.adjustments.manage')
-const canSubmitAdjustments = authStore.hasPermission('inventory.adjustments.manage')
 
 const pagination = reactive<Pagination>({
   current_page: 1,
@@ -170,7 +164,7 @@ const filters = reactive({
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Submitted', value: 'submitted' },
+  { label: 'Pending Approval', value: 'pending_approval' },
   { label: 'Approved', value: 'approved' },
   { label: 'Rejected', value: 'rejected' }
 ]
@@ -178,7 +172,7 @@ const statusOptions = [
 const statusSeverity = (status: string) => {
   const severities: Record<string, string> = {
     draft: 'secondary',
-    submitted: 'info',
+    pending_approval: 'warning',
     approved: 'success',
     rejected: 'danger'
   }
@@ -276,27 +270,6 @@ const onPageChange = (event: any) => {
   pagination.current_page = event.page + 1
   pagination.per_page = event.rows
   loadAdjustments()
-}
-
-const submitAdjustment = async (id: number) => {
-  try {
-    await axios.post(`/api/inventory/adjustments/${id}/submit`)
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Adjustment submitted successfully',
-      life: 2000
-    })
-    loadAdjustments(pagination.current_page)
-  } catch (error: any) {
-    console.error('Failed to submit adjustment', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to submit adjustment',
-      life: 3000
-    })
-  }
 }
 
 const resetFilters = () => {

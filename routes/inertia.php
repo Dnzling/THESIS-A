@@ -99,7 +99,9 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // Redirect legacy/mistyped requisitions paths to the correct 'requisites' routes
     Route::redirect('/inventory/requisitions', '/inventory/requisites')->name('inventory.requisitions');
     Route::redirect('/inventory/requisitions/create', '/inventory/requisites/create')->name('inventory.requisitions.create');
-    Route::get('/inventory/requisitions/{id}', fn($id) => redirect("/inventory/requisitions/{$id}"));
+    Route::redirect('/inventory/requisitions/view', '/inventory/requisites');
+    Route::redirect('/inventory/requisitions/view/{id}', '/inventory/requisites/{id}');
+    Route::get('/inventory/requisitions/{id}', fn($id) => redirect("/inventory/requisites/{$id}"));
     $inertia('/inventory/dashboard', 'System/Inventory/InventoryDashboard', 'inventory.dashboard', 'Inventory Dashboard');
     Route::redirect('/inventory/ecommerce-orders', '/sales/ecommerce-orders')->name('inventory.ecommerce-orders');
     Route::get('/inventory/ecommerce-orders/{id}', fn($id) => redirect("/sales/ecommerce-orders/{$id}"))->name('inventory.ecommerce-orders.detail');
@@ -201,9 +203,14 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
     $inertia('/procurement/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'procurement.invoices.detail', 'Invoice Details');
     $inertia('/procurement/invoices/{id}/edit', 'System/Procurement/Invoices/InvoiceEdit', 'procurement.invoices.edit', 'Edit Invoice');
-    $inertia('/procurement/goods-receipts', 'System/Procurement/GoodsReceipts/GoodsReceiptIndex', 'procurement.goods-receipts', 'Goods Receipts');
-    $inertia('/procurement/goods-receipts/create', 'System/Procurement/GoodsReceipts/GoodsReceiptCreate', 'procurement.goods-receipts.create', 'Create Goods Receipt');
-    $inertia('/procurement/goods-receipts/{id}', 'System/Procurement/GoodsReceipts/GoodsReceiptDetail', 'procurement.goods-receipts.detail', 'Goods Receipt Detail');
+    $inertia('/inventory/goods-receipts', 'System/Inventory/GoodsReceipts/GoodsReceiptIndex', 'inventory.goods-receipts', 'Goods Receipts');
+    $inertia('/inventory/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'inventory.goods-receipts.create', 'Create Goods Receipt');
+    $inertia('/inventory/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'inventory.goods-receipts.detail', 'Goods Receipt Detail');
+
+    // Procurement aliases (same UI as Inventory Goods Receipts)
+    $inertia('/procurement/goods-receipts', 'System/Inventory/GoodsReceipts/GoodsReceiptIndex', 'procurement.goods-receipts', 'Goods Receipts');
+    $inertia('/procurement/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'procurement.goods-receipts.create', 'Create Goods Receipt');
+    $inertia('/procurement/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'procurement.goods-receipts.detail', 'Goods Receipt Detail');
     $inertia('/procurement/products', 'System/Procurement/ProductsIndex', 'procurement.products', 'Products');
     $inertia('/procurement/analytics/reorder-suggestions', 'System/Procurement/Analytics/ReorderSuggestions', 'procurement.analytics.reorder-suggestions', 'Reorder Suggestions');
     $inertia('/procurement/analytics/spend', 'System/Procurement/Analytics/SpendAnalytics', 'procurement.analytics.spend', 'Spend Analytics');
@@ -239,6 +246,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
+    $inertia('/logistics/stock-transfers', 'System/Logistics/StockTransfers/StockTransferIndex', 'logistics.stock-transfers', 'Stock Transfers');
+    $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');

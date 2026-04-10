@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Invoice\InvoiceItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Supplier\SupplierContract;
+use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -134,8 +136,6 @@ class InvoiceController extends Controller
                 'items.*.quantity_invoiced' => 'required|integer|min:1',
                 'items.*.unit_price' => 'required|numeric|min:0',
                 'items.*.line_amount' => 'required|numeric|min:0',
-                'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
-                'items.*.tax_amount' => 'nullable|numeric|min:0',
             ]);
 
             DB::beginTransaction();
@@ -159,6 +159,14 @@ class InvoiceController extends Controller
                     ], 422);
                 }
 
+                $contract = $this->getActiveContract($po->store_id, (int) $validated['supplier_id']);
+                if (!$contract) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No active supplier contract found for this store. Please activate a contract before creating an invoice.',
+                    ], 422);
+                }
+
                 if (!empty($validated['goods_receipt_id'])) {
                     $grnValid = \App\Models\Procurement\Receiving\GoodsReceipt::where('id', $validated['goods_receipt_id'])
                         ->where('purchase_order_id', $po->id)
@@ -172,10 +180,8 @@ class InvoiceController extends Controller
                     }
                 }
 
-                // Calculate net amount
-                $taxAmount = $validated['tax_amount'] ?? 0;
+                // Calculate amounts from active supplier contract (header-level rates).
                 $shippingCost = $validated['shipping_cost'] ?? 0;
-                $discountAmount = $validated['discount_amount'] ?? 0;
                 $itemsSubtotal = collect($validated['items'])->sum(function ($item) {
                     return (float) ($item['line_amount'] ?? 0);
                 });
@@ -185,7 +191,13 @@ class InvoiceController extends Controller
                         'message' => 'Invoice amount must equal the sum of item line amounts (product subtotal).',
                     ], 422);
                 }
-                $netAmount = $validated['invoice_amount'] + $taxAmount + $shippingCost - $discountAmount;
+
+                $taxRate = $contract->is_tax_exempt ? 0.0 : (float) ($contract->tax_rate ?? 0);
+                $discountRate = (float) ($contract->discount_percentage ?? 0);
+                $invoiceAmount = (float) $validated['invoice_amount'];
+                $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
+                $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
+                $netAmount = $invoiceAmount + (float) $taxAmount + (float) $shippingCost - (float) $discountAmount;
 
                 // Create invoice
                 $invoice = Invoice::create([
@@ -196,7 +208,7 @@ class InvoiceController extends Controller
                     'goods_receipt_id' => $validated['goods_receipt_id'],
                     'invoice_date' => $validated['invoice_date'],
                     'due_date' => $validated['due_date'],
-                    'invoice_amount' => $validated['invoice_amount'],
+                    'invoice_amount' => $invoiceAmount,
                     'tax_amount' => $taxAmount,
                     'shipping_cost' => $shippingCost,
                     'discount_amount' => $discountAmount,
@@ -217,8 +229,6 @@ class InvoiceController extends Controller
                         'quantity_invoiced' => $item['quantity_invoiced'],
                         'unit_price' => $item['unit_price'],
                         'line_amount' => $item['line_amount'],
-                        'tax_rate' => $item['tax_rate'] ?? 0,
-                        'tax_amount' => $item['tax_amount'] ?? 0,
                     ]);
                 }
 
@@ -257,7 +267,7 @@ class InvoiceController extends Controller
         try {
             $validated = $request->validate([
                 'purchase_order_id' => 'required|exists:purchase_orders,id',
-                'goods_receipt_id' => 'required|exists:goods_receipts,id',
+                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
             ]);
 
             DB::beginTransaction();
@@ -266,6 +276,14 @@ class InvoiceController extends Controller
                 ->with('items')
                 ->findOrFail($validated['purchase_order_id']);
 
+            $contract = $this->getActiveContract($po->store_id, (int) $po->supplier_id);
+            if (!$contract) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No active supplier contract found for this store. Please activate a contract before creating an invoice.',
+                ], 422);
+            }
+
             if ($po->status !== 'goods_received') {
                 return response()->json([
                     'success' => false,
@@ -273,40 +291,77 @@ class InvoiceController extends Controller
                 ], 422);
             }
 
-            $grn = \App\Models\Procurement\Receiving\GoodsReceipt::with('items')
-                ->where('purchase_order_id', $po->id)
-                ->findOrFail($validated['goods_receipt_id']);
+            $grnQuery = \App\Models\Procurement\Receiving\GoodsReceipt::with('items')
+                ->where('purchase_order_id', $po->id);
+
+            if (!empty($validated['goods_receipt_id'])) {
+                $grn = $grnQuery->findOrFail($validated['goods_receipt_id']);
+            } else {
+                $grn = $grnQuery->latest('id')->first();
+            }
+
+            if (!$grn) {
+                $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::where('purchase_order_id', $po->id)
+                    ->whereIn('status', ['in_transit', 'delivered'])
+                    ->latest('id')
+                    ->first();
+
+                if (!$shipment) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No goods receipt or shipment found for this PO yet.',
+                    ], 422);
+                }
+            }
 
             $invoiceNumber = 'INV-' . now()->format('YmdHis') . '-' . strtoupper(\Str::random(4));
             $paymentDays = $this->getPaymentDays($po->payment_terms);
             $dueDate = now()->addDays($paymentDays)->toDateString();
 
             $itemsPayload = [];
-            $taxAmountTotal = 0;
             $invoiceAmount = 0;
 
-            foreach ($grn->items as $item) {
-                $poItem = $po->items->firstWhere('id', $item->purchase_order_item_id);
-                if (!$poItem || $item->quantity_received === 0) {
-                    continue;
+            if ($grn) {
+                foreach ($grn->items as $item) {
+                    $poItem = $po->items->firstWhere('id', $item->purchase_order_item_id);
+                    if (!$poItem || $item->quantity_received === 0) {
+                        continue;
+                    }
+
+                    $lineAmount = round($poItem->unit_cost * $item->quantity_received, 2);
+                    $itemsPayload[] = [
+                        'product_id' => $item->product_id,
+                        'quantity_invoiced' => $item->quantity_received,
+                        'unit_price' => $poItem->unit_cost,
+                        'line_amount' => $lineAmount,
+                    ];
+
+                    $invoiceAmount += $lineAmount;
                 }
+            } else {
+                foreach ($po->items as $poItem) {
+                    $qty = (int) ($poItem->quantity_ordered ?? 0);
+                    if ($qty <= 0) {
+                        continue;
+                    }
 
-                $lineAmount = round($poItem->unit_cost * $item->quantity_received, 2);
-                $itemsPayload[] = [
-                    'product_id' => $item->product_id,
-                    'quantity_invoiced' => $item->quantity_received,
-                    'unit_price' => $poItem->unit_cost,
-                    'line_amount' => $lineAmount,
-                    'tax_rate' => $poItem->tax_rate,
-                    'tax_amount' => round(($lineAmount * ($poItem->tax_rate ?? 0)) / 100, 2),
-                ];
+                    $lineAmount = round($poItem->unit_cost * $qty, 2);
+                    $itemsPayload[] = [
+                        'product_id' => $poItem->product_id,
+                        'quantity_invoiced' => $qty,
+                        'unit_price' => $poItem->unit_cost,
+                        'line_amount' => $lineAmount,
+                    ];
 
-                $invoiceAmount += $lineAmount;
-                $taxAmountTotal += $itemsPayload[count($itemsPayload) - 1]['tax_amount'];
+                    $invoiceAmount += $lineAmount;
+                }
             }
 
+            $taxRate = $contract->is_tax_exempt ? 0.0 : (float) ($contract->tax_rate ?? 0);
+            $discountRate = (float) ($contract->discount_percentage ?? 0);
+            $taxAmountTotal = round(($invoiceAmount * $taxRate) / 100, 2);
             $shippingCost = $po->shipping_cost;
-            $discountAmount = $po->discount_amount;
+            $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
             $netAmount = $invoiceAmount + $taxAmountTotal + $shippingCost - $discountAmount;
 
             $invoice = Invoice::create([
@@ -314,7 +369,7 @@ class InvoiceController extends Controller
                 'invoice_number' => $invoiceNumber,
                 'supplier_id' => $po->supplier_id,
                 'purchase_order_id' => $po->id,
-                'goods_receipt_id' => $grn->id,
+                'goods_receipt_id' => $grn?->id,
                 'invoice_date' => now()->toDateString(),
                 'due_date' => $dueDate,
                 'invoice_amount' => $invoiceAmount,
@@ -326,7 +381,9 @@ class InvoiceController extends Controller
                 'status' => 'draft',
                 'match_status' => 'pending',
                 'payment_status' => 'pending',
-                'remarks' => "Auto-created from GRN {$grn->grn_number}",
+                'remarks' => $grn
+                    ? "Auto-created from GRN {$grn->grn_number}"
+                    : 'Auto-created from shipment confirmation',
             ]);
 
             foreach ($itemsPayload as $item) {
@@ -569,7 +626,37 @@ class InvoiceController extends Controller
                 'payment_amount' => 'required|numeric|min:0',
             ]);
 
-            if ($invoice->markAsPaid($validated['payment_method'], $validated['payment_amount'])) {
+            DB::transaction(function () use ($invoice, $validated) {
+                // Record finance cashflow out when invoice payment is posted.
+                $alreadyRecorded = DB::table('finance_cashflow_transactions')
+                    ->where('store_id', (int) $invoice->store_id)
+                    ->where('direction', 'out')
+                    ->where('reference_type', 'invoice')
+                    ->where('reference_id', (int) $invoice->id)
+                    ->exists();
+
+                if (!$alreadyRecorded) {
+                    $cashflow = new CashflowService();
+                    $cashflow->debit(
+                        (int) $invoice->store_id,
+                        (float) $validated['payment_amount'],
+                        'invoice',
+                        (int) $invoice->id,
+                        auth()->id(),
+                        'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)),
+                        $validated['payment_method']
+                    );
+                }
+
+                if (!$invoice->markAsPaid($validated['payment_method'], (float) $validated['payment_amount'])) {
+                    throw new \RuntimeException('Failed to mark invoice as paid');
+                }
+
+                $invoice->update([
+                    'status' => 'paid',
+                    'payment_date' => now()->toDateString(),
+                ]);
+
                 $financeService = new FinanceExpenseService();
                 $expense = $financeService->ensureExpense([
                     'store_id' => $invoice->store_id,
@@ -600,7 +687,9 @@ class InvoiceController extends Controller
                 if ($invoice->purchaseOrder) {
                     $invoice->purchaseOrder->update(['payment_status' => 'paid']);
                 }
+            });
 
+            if ($invoice->fresh()) {
                 Log::info("Invoice marked as paid: {$invoice->invoice_number}", [
                     'invoice_id' => $id,
                     'paid_by' => auth()->id(),
@@ -610,7 +699,7 @@ class InvoiceController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'Invoice marked as paid',
-                    'data' => $invoice,
+                    'data' => $invoice->fresh(),
                 ]);
             }
 
@@ -619,6 +708,11 @@ class InvoiceController extends Controller
                 'message' => 'Failed to mark invoice as paid'
             ], 500);
 
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Failed to mark invoice as paid', ['error' => $e->getMessage()]);
             return response()->json([
@@ -684,5 +778,14 @@ class InvoiceController extends Controller
                 'message' => 'Failed to retrieve exceptions'
             ], 500);
         }
+    }
+
+    private function getActiveContract(int $storeId, int $supplierId): ?SupplierContract
+    {
+        return SupplierContract::where('store_id', $storeId)
+            ->where('supplier_id', $supplierId)
+            ->active()
+            ->orderBy('end_date', 'desc')
+            ->first();
     }
 }
