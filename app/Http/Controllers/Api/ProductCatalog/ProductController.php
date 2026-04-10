@@ -3,6 +3,7 @@
 
 namespace App\Http\Controllers\Api\ProductCatalog;
 
+use App\Models\Hr\Employee;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductAsset;
@@ -125,7 +126,6 @@ class ProductController extends BaseController
                 'base_price' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0',
-                'tax_rate' => 'nullable|numeric|min:0|max:100',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
@@ -186,7 +186,7 @@ class ProductController extends BaseController
                     'price_type' => 'Base',
                     'reason' => 'Initial pricing',
                     'effective_date' => now(),
-                    'created_by' => $this->getUserId()
+                    'created_by' => $this->getActorEmployeeId()
                 ]);
             }
 
@@ -284,8 +284,7 @@ class ProductController extends BaseController
             ->findOrFail($id);
 
             $product->cost_price = $product->getRawOriginal('cost_price');
-            $product->tax_rate = $product->getRawOriginal('tax_rate');
-            $product->makeVisible(['cost_price', 'tax_rate']);
+            $product->makeVisible(['cost_price']);
 
             // Get related products
             $product->related = $product->relatedProducts()
@@ -295,7 +294,6 @@ class ProductController extends BaseController
 
             $payload = $product->toArray();
             $payload['cost_price'] = $product->getRawOriginal('cost_price');
-            $payload['tax_rate'] = $product->getRawOriginal('tax_rate');
 
             return $this->successResponse($payload, 'Product retrieved successfully');
 
@@ -406,7 +404,6 @@ class ProductController extends BaseController
                 'base_price' => 'sometimes|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
-                'tax_rate' => 'nullable|numeric|min:0|max:100',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
@@ -440,9 +437,7 @@ class ProductController extends BaseController
                 $oldPrice = $product->base_price;
                 $data = $validated;
                 $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
-                $isFinanceApprover = $this->isFinancePriceApprover();
-
-                if ($isPriceUpdateRequested && !$isFinanceApprover) {
+                if ($isPriceUpdateRequested) {
                     $data = $this->removeLivePriceFields($data);
                     $data['pending_base_price'] = array_key_exists('base_price', $validated)
                         ? $validated['base_price']
@@ -458,41 +453,16 @@ class ProductController extends BaseController
                     $data['price_rejected_by'] = null;
                     $data['price_rejected_at'] = null;
                     $data['price_approval_notes'] = $validated['price_change_reason'] ?? null;
-                } elseif ($isPriceUpdateRequested && $isFinanceApprover) {
-                    $data['price_approval_status'] = 'approved';
-                    $data['pending_base_price'] = null;
-                    $data['pending_discounted_price'] = null;
-                    $data['price_proposed_by'] = $this->getUserId();
-                    $data['price_proposed_at'] = now();
-                    $data['price_approved_by'] = $this->getUserId();
-                    $data['price_approved_at'] = now();
-                    $data['price_rejected_by'] = null;
-                    $data['price_rejected_at'] = null;
-                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? null;
                 }
 
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
 
-                // Create pricing history if finance directly applied price update
-                if ($isPriceUpdateRequested && $isFinanceApprover && isset($data['base_price']) && $data['base_price'] != $oldPrice) {
-                    PricingHistory::create([
-                        'store_id' => $this->getStoreId(),
-                        'product_id' => $product->id,
-                        'old_price' => $oldPrice,
-                        'new_price' => $product->base_price,
-                        'price_type' => 'Base',
-                        'reason' => $validated['price_change_reason'] ?? 'Price update',
-                        'effective_date' => now(),
-                        'created_by' => $this->getUserId()
-                    ]);
-                }
-
                 DB::commit();
 
                 $fresh = $product->fresh(['category', 'subcategory']);
-                $message = ($isPriceUpdateRequested && !$isFinanceApprover)
+                $message = $isPriceUpdateRequested
                     ? 'Price change submitted for finance approval'
                     : 'Product updated successfully';
 
@@ -574,7 +544,7 @@ class ProductController extends BaseController
                         'price_type' => 'Base',
                         'reason' => $validated['notes'] ?? 'Finance approved price change',
                         'effective_date' => now(),
-                        'created_by' => $this->getUserId()
+                        'created_by' => $this->getActorEmployeeId()
                     ]);
                 }
 
@@ -913,5 +883,24 @@ class ProductController extends BaseController
                 ]
             );
         }
+    }
+
+    private function getActorEmployeeId(): ?int
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return null;
+        }
+
+        if (!empty($user->employee?->id)) {
+            return (int) $user->employee->id;
+        }
+
+        $employeeId = Employee::query()
+            ->where('user_id', (int) $user->id)
+            ->where('store_id', (int) $this->getStoreId())
+            ->value('id');
+
+        return $employeeId ? (int) $employeeId : null;
     }
 }

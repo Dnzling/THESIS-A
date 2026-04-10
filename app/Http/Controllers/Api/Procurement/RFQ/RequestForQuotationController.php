@@ -347,7 +347,62 @@ class RequestForQuotationController extends Controller
 
             Product::where('id', $productId)->update([
                 'cost_price' => $feedback->quoted_price,
-                'tax_rate' => $feedback->tax_rate ?? 0,
+            ]);
+        }
+    }
+
+    private function syncAwardedSupplierProducts(int $rfqId, int $supplierId): void
+    {
+        $quotation = SupplierQuotation::where('rfq_id', $rfqId)
+            ->where('supplier_id', $supplierId)
+            ->first();
+
+        if (!$quotation) {
+            return;
+        }
+
+        $awardedRows = DB::table('supplier_quotation_items as sqi')
+            ->join('rfq_items as ri', 'ri.id', '=', 'sqi.rfq_item_id')
+            ->where('sqi.quotation_id', $quotation->id)
+            ->select('ri.product_id', 'sqi.unit_price')
+            ->get();
+
+        foreach ($awardedRows as $row) {
+            $productId = (int) ($row->product_id ?? 0);
+            $unitPrice = (float) ($row->unit_price ?? 0);
+
+            if ($productId <= 0 || $unitPrice <= 0) {
+                continue;
+            }
+
+            $existing = DB::table('supplier_products')
+                ->where('supplier_id', $supplierId)
+                ->where('product_id', $productId)
+                ->first();
+
+            if ($existing) {
+                DB::table('supplier_products')
+                    ->where('supplier_id', $supplierId)
+                    ->where('product_id', $productId)
+                    ->update([
+                        'supplier_price' => $unitPrice,
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                DB::table('supplier_products')->insert([
+                    'supplier_id' => $supplierId,
+                    'product_id' => $productId,
+                    'supplier_price' => $unitPrice,
+                    'minimum_order_quantity' => 1,
+                    'lead_time_days' => 7,
+                    'is_preferred_supplier' => false,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            Product::where('id', $productId)->update([
+                'cost_price' => $unitPrice,
             ]);
         }
     }
@@ -862,6 +917,9 @@ class RequestForQuotationController extends Controller
                 'responded_at' => now(),
             ]);
         }
+
+        // Keep supplier-product mapping in sync even when awarding directly.
+        $this->syncAwardedSupplierProducts($rfq->id, (int) $validated['supplier_id']);
 
         // Notify suppliers of award outcome
         try {

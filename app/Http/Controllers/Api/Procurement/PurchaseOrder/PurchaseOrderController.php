@@ -573,34 +573,9 @@ class PurchaseOrderController extends Controller
         ]);
 
         $user = auth()->user();
-        $isFinanceRoute = $request->is('api/finance/*');
-        $approvalPermissions = [
-            'finance.purchase-orders.approve',
-            'finance.purchase_orders.approve',
-            'procurement.purchase-orders.approve',
-            'procurement.purchase_orders.approve',
-        ];
-
-        if (!$isFinanceRoute && !$this->userHasAnyPermission($approvalPermissions, $user)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You do not have permission to approve this purchase order',
-            ], 403);
-        }
-
-        $approvalPermission = 'finance.purchase_orders.approve';
-        if (!$isFinanceRoute) {
-            $approvalPermission = null;
-            foreach ($approvalPermissions as $permission) {
-                if ($this->userHasAnyPermission([$permission], $user)) {
-                    $approvalPermission = $permission;
-                    break;
-                }
-            }
-            $approvalPermission = $approvalPermission ?? $approvalPermissions[0];
-        }
-
-        $userRole = $user->role->name ?? $user->role ?? null;
+        $approvalPermission = $request->is('api/finance/*')
+            ? 'finance.purchase_orders.approve'
+            : 'procurement.purchase_orders.approve';
         $settings = ProcurementSettings::forStore((int) $user->store_id);
         $isSelfApproval = $this->isSelfApproval($po, $user);
 
@@ -614,27 +589,11 @@ class PurchaseOrderController extends Controller
             }
         }
 
-        // Check if this role is actually required for approval
-        $requiredRoles = $po->required_approvers ?? [];
-        $normalizePermissionKey = static function ($value) {
-            return $value;
-        };
-
-        $normalizedRequiredRoles = array_map($normalizePermissionKey, $requiredRoles);
-        $requiresPermissions = collect($normalizedRequiredRoles)->contains(fn($value) => is_string($value) && str_contains($value, '.'));
-        if (!$isFinanceRoute && $requiresPermissions && !in_array($approvalPermission, $normalizedRequiredRoles, true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This permission is not required for approval of this purchase order',
-            ], 403);
-        }
-
-        // Check if this role has already approved
+        // Check if this permission has already approved
         $approversReceived = collect($po->approvals_received ?? []);
         $approverPermissions = $approversReceived
             ->pluck('approver_permission')
             ->filter()
-            ->map($normalizePermissionKey)
             ->toArray();
         if (in_array($approvalPermission, $approverPermissions, true)) {
             if ($approvalPermission === 'finance.purchase_orders.approve' && $po->status !== 'approved') {
@@ -658,16 +617,11 @@ class PurchaseOrderController extends Controller
             auth()->id(),
             $user->full_name,
             $validated['notes'] ?? null,
-            $userRole
+            null
         );
 
-        // Finance approval is final in this workflow
-        if ($this->normalizePermission($approvalPermission) === 'finance.purchase_orders.approve') {
-            $po->update(['status' => 'approved']);
-        } else {
-            $this->tryAutoFinanceApprovalForDualRole($po, $user, $settings, $isSelfApproval);
-            $po = $po->fresh();
-        }
+        // Permission-based workflow: approval action finalizes PO approval.
+        $po->update(['status' => 'approved']);
 
         $this->enforceMinimumApprovers($po, $settings);
         $po = $po->fresh();
@@ -684,7 +638,6 @@ class PurchaseOrderController extends Controller
             [
                 'po_number' => $po->po_number,
                 'permission' => $approvalPermission,
-                'role' => $userRole,
                 'notes' => $validated['notes'] ?? null,
             ],
             'purchase_order',
@@ -752,11 +705,7 @@ class PurchaseOrderController extends Controller
             'reason' => 'required|string',
         ]);
 
-        $po->reject(
-            auth()->user()->role->name,
-            auth()->id(),
-            $validated['reason']
-        );
+        $po->reject('procurement.purchase_orders.approve', auth()->id(), $validated['reason']);
 
         ActivityLog::record(
             'po_rejected',
@@ -1182,7 +1131,7 @@ class PurchaseOrderController extends Controller
                 (int) $user->id,
                 (string) $user->full_name,
                 'Auto-approved by dual-role workflow policy.',
-                $user->role->name ?? null
+                null
             );
         }
 

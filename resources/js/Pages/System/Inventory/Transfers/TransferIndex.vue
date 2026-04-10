@@ -94,7 +94,12 @@
     
             <Column field="status" header="Status" style="width: 15%">
               <template #body="{ data }">
-                <Tag :value="formatStatusLabel(data.status)" :severity="statusSeverity(data.status)" />
+                <span
+                  class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+                  :class="statusBadgeClass(data.status)"
+                >
+                  {{ formatStatusLabel(data.status) }}
+                </span>
               </template>
             </Column>
     
@@ -232,8 +237,37 @@ const statusSeverity = (status: string) => {
 }
 
 const formatStatusLabel = (status: string) => {
-  if (status === 'requested' || status === 'pending_approval') return 'pending approval'
-  return status
+  const normalized = String(status || '').toLowerCase()
+  const map: Record<string, string> = {
+    draft: 'Draft',
+    requested: 'Pending Approval',
+    pending_approval: 'Pending Approval',
+    submitted: 'Submitted',
+    approved: 'Approved',
+    shipped: 'Shipped',
+    in_transit: 'In Transit',
+    received: 'Received',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+  }
+  return map[normalized] || normalized.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+const statusBadgeClass = (status: string) => {
+  const normalized = String(status || '').toLowerCase()
+  const map: Record<string, string> = {
+    draft: 'bg-slate-100 text-slate-700',
+    requested: 'bg-amber-100 text-amber-700',
+    pending_approval: 'bg-amber-100 text-amber-700',
+    submitted: 'bg-sky-100 text-sky-700',
+    approved: 'bg-indigo-100 text-indigo-700',
+    shipped: 'bg-blue-100 text-blue-700',
+    in_transit: 'bg-cyan-100 text-cyan-700',
+    received: 'bg-emerald-100 text-emerald-700',
+    completed: 'bg-green-100 text-green-700',
+    cancelled: 'bg-red-100 text-red-700',
+  }
+  return map[normalized] || 'bg-slate-100 text-slate-700'
 }
 
 const formatDate = (date: string) => {

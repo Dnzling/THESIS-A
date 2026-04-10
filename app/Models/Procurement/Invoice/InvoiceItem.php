@@ -16,8 +16,6 @@ class InvoiceItem extends Model
         'quantity_invoiced',
         'unit_price',
         'line_amount',
-        'tax_rate',
-        'tax_amount',
         'remarks',
     ];
 
@@ -25,8 +23,6 @@ class InvoiceItem extends Model
         'quantity_invoiced' => 'integer',
         'unit_price' => 'decimal:2',
         'line_amount' => 'decimal:2',
-        'tax_rate' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
     ];
 
     public function invoice(): BelongsTo
@@ -44,8 +40,6 @@ class InvoiceItem extends Model
      */
     public function getLineTotalAttribute(): float
     {
-        $lineAmount = $this->line_amount ?? 0;
-        $taxAmount = $this->tax_amount ?? 0;
-        return $lineAmount + $taxAmount;
+        return (float) ($this->line_amount ?? 0);
     }
 }

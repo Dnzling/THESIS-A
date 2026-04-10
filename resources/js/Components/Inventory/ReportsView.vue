@@ -51,15 +51,15 @@
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">From Date</label>
-            <Calendar v-model="filters.startDate" dateFormat="dd/mm/yy" class="w-full" />
+            <DatePicker v-model="filters.startDate" dateFormat="dd/mm/yy" class="w-full" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">To Date</label>
-            <Calendar v-model="filters.endDate" dateFormat="dd/mm/yy" class="w-full" />
+            <DatePicker v-model="filters.endDate" dateFormat="dd/mm/yy" class="w-full" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Group By</label>
-            <Dropdown
+            <Select
               v-model="filters.groupBy"
               :options="groupByOptions"
               optionLabel="label"
@@ -69,7 +69,7 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Product Type</label>
-            <Dropdown
+            <Select
               v-model="filters.productType"
               :options="productTypeOptions"
               optionLabel="label"
@@ -178,11 +178,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
-import { Chart } from 'chart.js/auto'
+import { ref, reactive, watch } from 'vue'
+import 'chart.js/auto'
 import axiosClient from '../../axios'
+import { useToast } from 'primevue/usetoast'
 
-type ReportType = 'branch_summary' | 'store_summary' | 'movements' | 'category' | 'slow_movers' | 'fast_movers' | 'transfers' | 'aging' | 'activity_logs'
+type ReportType = 'slow_movers' | 'fast_movers' | 'aging'
 
 const selectedReport = ref<ReportType | null>(null)
 const loading = ref(false)
@@ -190,33 +191,10 @@ const reportData = ref<any[]>([])
 const reportSummary = ref<any[]>([])
 const chartData = ref<any>(null)
 const pieChartData = ref<any>(null)
+const toast = useToast()
 
 const reportColumns = ref<any[]>([])
 const reportTypes = [
-  {
-    id: 'branch_summary',
-    name: 'Branch Summary',
-    description: 'Key performance indicators by branch',
-    icon: 'pi pi-chart-pie'
-  },
-  {
-    id: 'store_summary',
-    name: 'Store Overview',
-    description: 'Overall inventory metrics',
-    icon: 'pi pi-chart-line'
-  },
-  {
-    id: 'movements',
-    name: 'Stock Movement',
-    description: 'Inbound and outbound trends',
-    icon: 'pi pi-arrow-right-arrow-left'
-  },
-  {
-    id: 'category',
-    name: 'By Category',
-    description: 'Inventory breakdown by category',
-    icon: 'pi pi-sitemap'
-  },
   {
     id: 'slow_movers',
     name: 'Slow Movers',
@@ -230,22 +208,10 @@ const reportTypes = [
     icon: 'pi pi-arrow-up'
   },
   {
-    id: 'transfers',
-    name: 'Transfer Metrics',
-    description: 'Inter-store transfer analysis',
-    icon: 'pi pi-sitemap'
-  },
-  {
     id: 'aging',
     name: 'Stock Aging',
     description: 'Product age analysis',
     icon: 'pi pi-clock'
-  },
-  {
-    id: 'activity_logs',
-    name: 'Activity Logs',
-    description: 'Inventory action trail by users',
-    icon: 'pi pi-history'
   }
 ]
 
@@ -308,6 +274,63 @@ const getStatusSeverity = (status: string): string => {
   return severities[status] || 'info'
 }
 
+const normalizeReportData = (reportType: ReportType, raw: any) => {
+  switch (reportType) {
+    case 'slow_movers': {
+      const rows = Array.isArray(raw) ? raw.map((x: any) => ({
+        sku: x?.product?.sku || x?.sku || '-',
+        product_name: x?.product?.product_name || x?.product_name || '-',
+        quantity_on_hand: Number(x?.quantity_available ?? x?.quantity_on_hand ?? 0),
+        units_sold: 0,
+        days_in_stock: 0,
+      })) : []
+      return {
+        summary: [
+          { label: 'Slow Movers', value: rows.length, type: 'number' },
+        ],
+        items: rows,
+      }
+    }
+
+    case 'fast_movers': {
+      const rows = Array.isArray(raw) ? raw.map((x: any) => ({
+        sku: x?.sku || '-',
+        product_name: x?.product_name || '-',
+        quantity_on_hand: Number(x?.current_stock || 0),
+        units_sold: Number(x?.units_sold || 0),
+        sales_velocity: Number(x?.days_until_stockout || 0),
+      })) : []
+      return {
+        summary: [
+          { label: 'Fast Movers', value: rows.length, type: 'number' },
+          { label: 'Units Sold', value: rows.reduce((s: number, r: any) => s + Number(r.units_sold || 0), 0), type: 'number' },
+        ],
+        items: rows,
+      }
+    }
+
+    case 'aging': {
+      const rows = [
+        { sku: '-', product_name: '< 30 days', received_date: '-', days_in_inventory: 30, inventory_value: Number(raw?.less_than_30_days || 0) },
+        { sku: '-', product_name: '30-60 days', received_date: '-', days_in_inventory: 60, inventory_value: Number(raw?.between_30_60_days || 0) },
+        { sku: '-', product_name: '60-90 days', received_date: '-', days_in_inventory: 90, inventory_value: Number(raw?.between_60_90_days || 0) },
+        { sku: '-', product_name: '> 90 days', received_date: '-', days_in_inventory: 120, inventory_value: Number(raw?.older_than_90_days || 0) },
+        { sku: '-', product_name: 'Never counted', received_date: '-', days_in_inventory: 0, inventory_value: Number(raw?.never_counted || 0) },
+      ]
+      return {
+        summary: [
+          { label: 'Aging Buckets', value: rows.length, type: 'number' },
+          { label: 'Total Items', value: rows.reduce((s: number, r: any) => s + Number(r.inventory_value || 0), 0), type: 'number' },
+        ],
+        items: rows,
+      }
+    }
+
+    default:
+      return { summary: [], items: [] }
+  }
+}
+
 const formatDateTime = (value: any): string => {
   if (!value) return 'N/A'
   const d = new Date(value)
@@ -326,78 +349,65 @@ const loadSelectedReport = async () => {
 
   loading.value = true
   try {
-    if (selectedReport.value === 'activity_logs') {
-      const response = await axiosClient.get('/api/inventory/activity-logs', {
-        params: {
-          from_date: filters.startDate?.toISOString().split('T')[0],
-          to_date: filters.endDate?.toISOString().split('T')[0],
-          per_page: 200
-        }
-      })
-      const rows = Array.isArray(response.data?.data?.data) ? response.data.data.data : []
-      reportData.value = rows.map((row: any) => ({
-        ...row,
-        action: (row.action || '').replace('inventory.', '').replaceAll('.', ' '),
-        entity_type: (row.entity_type || '').replace('inventory.', '').replaceAll('.', ' ')
-      }))
-      reportSummary.value = [
-        { label: 'Total Logs', value: Number(response.data?.data?.total || rows.length), type: 'number' },
-        { label: 'Users Involved', value: new Set(rows.map((x: any) => x.user_id).filter(Boolean)).size, type: 'number' },
-        { label: 'Actions', value: new Set(rows.map((x: any) => x.action).filter(Boolean)).size, type: 'number' },
-      ]
-      setReportColumns()
-      chartData.value = null
-
-      const actionMap = rows.reduce((acc: Record<string, number>, row: any) => {
-        const key = row.action || 'unknown'
-        acc[key] = (acc[key] || 0) + 1
-        return acc
-      }, {})
-
-      pieChartData.value = {
-        labels: Object.keys(actionMap).map(k => k.replace('inventory.', '').replaceAll('.', ' ')),
-        datasets: [{
-          data: Object.values(actionMap),
-          backgroundColor: [
-            '#3b82f6',
-            '#ef4444',
-            '#10b981',
-            '#f59e0b',
-            '#8b5cf6',
-            '#ec4899',
-            '#06b6d4',
-            '#84cc16'
-          ]
-        }]
-      }
-      return
+    const endpointMap: Record<ReportType, string> = {
+      slow_movers: '/api/inventory/reports/slow-movers',
+      fast_movers: '/api/inventory/reports/fast-movers',
+      aging: '/api/inventory/reports/aging',
     }
 
-    const endpoint = `/api/inventory/reports/${selectedReport.value}`
+    const endpoint = endpointMap[selectedReport.value]
+
+    const days = Math.max(
+      1,
+      Math.ceil((Number(filters.endDate) - Number(filters.startDate)) / (1000 * 60 * 60 * 24))
+    )
+
     const response = await axiosClient.get(endpoint, {
       params: {
-        from_date: filters.startDate?.toISOString(),
-        to_date: filters.endDate?.toISOString(),
+        days,
         group_by: filters.groupBy,
         product_type: filters.productType || undefined
       }
     })
 
     const data = response.data.data
+    const normalized = normalizeReportData(selectedReport.value, data)
 
-    // Set summary cards
-    reportSummary.value = data.summary || []
-
-    // Set table data
-    reportData.value = data.items || data.details || []
+    reportSummary.value = normalized.summary || []
+    reportData.value = normalized.items || []
 
     // Set columns based on report type
     setReportColumns()
 
     // Generate charts
-    generateCharts(data)
-  } catch (error) {
+    generateCharts({
+      chart_data: data?.chart_data || null,
+      distribution_data: data?.distribution_data || null,
+    })
+
+    if (reportData.value.length > 0) {
+      toast.add({
+        severity: 'success',
+        summary: `${getReportTitle()} Loaded`,
+        detail: `Returned ${reportData.value.length} record(s).`,
+        life: 2200,
+      })
+    } else {
+      toast.add({
+        severity: 'warn',
+        summary: `${getReportTitle()} Loaded`,
+        detail: 'No data found for selected filters.',
+        life: 2600,
+      })
+    }
+  } catch (error: any) {
     console.error('Failed to load report:', error)
+    toast.add({
+      severity: 'error',
+      summary: `${getReportTitle()} Error`,
+      detail: error?.response?.data?.message || 'Failed to load report data.',
+      life: 3000,
+    })
   } finally {
     loading.value = false
   }
@@ -405,31 +415,6 @@ const loadSelectedReport = async () => {
 
 const setReportColumns = () => {
   const columnMap: { [key in ReportType]: any[] } = {
-    branch_summary: [
-      { field: 'branch_name', header: 'Branch', width: '200px' },
-      { field: 'total_items', header: 'Total Items', type: 'number' },
-      { field: 'total_value', header: 'Inventory Value', type: 'currency' },
-      { field: 'low_stock_count', header: 'Low Stock', type: 'number' },
-      { field: 'status', header: 'Status', type: 'status' }
-    ],
-    store_summary: [
-      { field: 'metric', header: 'Metric', width: '250px' },
-      { field: 'value', header: 'Value', type: 'number' },
-      { field: 'change', header: 'Change', type: 'percent' },
-      { field: 'target', header: 'Target', type: 'number' }
-    ],
-    movements: [
-      { field: 'date', header: 'Date', width: '120px' },
-      { field: 'inbound', header: 'Inbound', type: 'number' },
-      { field: 'outbound', header: 'Outbound', type: 'number' },
-      { field: 'net', header: 'Net', type: 'number' }
-    ],
-    category: [
-      { field: 'category_name', header: 'Category', width: '200px' },
-      { field: 'product_count', header: 'Products', type: 'number' },
-      { field: 'inventory_value', header: 'Value', type: 'currency' },
-      { field: 'percentage', header: '% of Total', type: 'percent' }
-    ],
     slow_movers: [
       { field: 'sku', header: 'SKU', width: '100px' },
       { field: 'product_name', header: 'Product', width: '200px' },
@@ -444,26 +429,12 @@ const setReportColumns = () => {
       { field: 'units_sold', header: '90-Day Sales', type: 'number' },
       { field: 'sales_velocity', header: 'Velocity', type: 'number' }
     ],
-    transfers: [
-      { field: 'transfer_no', header: 'Transfer #', width: '120px' },
-      { field: 'from_branch', header: 'From', width: '150px' },
-      { field: 'to_branch', header: 'To', width: '150px' },
-      { field: 'item_count', header: 'Items', type: 'number' },
-      { field: 'status', header: 'Status', type: 'status' }
-    ],
     aging: [
       { field: 'sku', header: 'SKU', width: '100px' },
       { field: 'product_name', header: 'Product', width: '200px' },
       { field: 'received_date', header: 'Received', width: '120px' },
       { field: 'days_in_inventory', header: 'Days In Inventory', type: 'number' },
       { field: 'inventory_value', header: 'Value', type: 'currency' }
-    ],
-    activity_logs: [
-      { field: 'created_at', header: 'Date', width: '180px', type: 'datetime' },
-      { field: 'action', header: 'Action', width: '220px' },
-      { field: 'description', header: 'Description', width: '260px' },
-      { field: 'entity_type', header: 'Entity', width: '180px' },
-      { field: 'entity_id', header: 'Source ID', width: '100px' }
     ]
   }
 
@@ -506,29 +477,63 @@ const exportReport = async () => {
   if (!selectedReport.value) return
 
   try {
-    const endpoint = `/api/inventory/reports/${selectedReport.value}/export`
-    const response = await axiosClient.get(endpoint, {
-      params: {
-        from_date: filters.startDate?.toISOString(),
-        to_date: filters.endDate?.toISOString(),
-        export_format: 'csv',
-        product_type: filters.productType || undefined
-      },
-      responseType: 'blob'
-    })
+    if (!reportData.value.length) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Export Skipped',
+        detail: 'No report rows available to export.',
+        life: 2400,
+      })
+      return
+    }
 
-    // Create download link
-    const url = window.URL.createObjectURL(response.data)
+    const columns = reportColumns.value.map((c: any) => c.field)
+    const headers = reportColumns.value.map((c: any) => c.header)
+    const escapeCsv = (value: any) => {
+      const text = String(value ?? '')
+      if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+        return `"${text.replace(/"/g, '""')}"`
+      }
+      return text
+    }
+
+    const rows = reportData.value.map((row: any) =>
+      columns.map((col: string) => escapeCsv(row[col])).join(',')
+    )
+
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.setAttribute('download', `${selectedReport.value}_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     link.parentElement?.removeChild(link)
-  } catch (error) {
+    window.URL.revokeObjectURL(url)
+
+    toast.add({
+      severity: 'success',
+      summary: 'Exported',
+      detail: `${getReportTitle()} exported successfully.`,
+      life: 2200,
+    })
+  } catch (error: any) {
     console.error('Failed to export report:', error)
+    toast.add({
+      severity: 'error',
+      summary: 'Export Error',
+      detail: error?.response?.data?.message || 'Failed to export report.',
+      life: 3000,
+    })
   }
 }
+
+watch(selectedReport, async (value) => {
+  if (!value) return
+  setReportColumns()
+  await loadSelectedReport()
+})
 </script>
 
 <style scoped>

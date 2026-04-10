@@ -28,7 +28,7 @@
                   optionValue="id" 
                   placeholder="Select source branch"
                   :loading="loadingBranches"
-                  :disabled="true" fluid
+                  fluid
                   @change="onFromBranchChange"
                   :class="{ 'p-invalid': errors.from_branch_id }"
                 />
@@ -51,6 +51,20 @@
                 :class="{ 'p-invalid': errors.to_branch_id }"
               />
               <small v-if="errors.to_branch_id" class="text-red-500">{{ errors.to_branch_id }}</small>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label class="text-sm font-semibold text-gray-700">Swap</label>
+              <Button
+                type="button"
+                label="Swap Branches"
+                icon="pi pi-sync"
+                severity="secondary"
+                outlined
+                :disabled="!form.from_branch_id || !form.to_branch_id"
+                @click="swapBranches"
+              />
+              <small class="text-gray-500">Switch source and destination branch</small>
             </div>
 
             <div class="flex flex-col gap-2">
@@ -115,7 +129,7 @@
                     <div class="flex flex-col">
                       <span class="font-medium">{{ option.product?.product_name || 'Unknown' }}</span>
                       <span class="text-xs text-gray-500">
-                        SKU: {{ option.product?.sku || 'N/A' }} | Available: {{ option.quantity_on_hand || 0 }}
+                        SKU: {{ option.product?.sku || 'N/A' }} | Available: {{ option.quantity_available || 0 }}
                       </span>
                     </div>
                   </template>
@@ -127,7 +141,7 @@
                 <InputNumber 
                   v-model="newItem.quantity" 
                   :min="1" 
-                  :max="selectedProduct?.quantity_on_hand || 999999"
+                  :max="selectedProduct?.quantity_available || 999999"
                   showButtons
                   buttonLayout="horizontal"
                  fluid
@@ -161,13 +175,13 @@
                   <span class="text-xs text-gray-500 ml-2">SKU: {{ selectedProduct.product?.sku }}</span>
                 </div>
                 <span :class="{
-                  'text-green-600 font-medium': selectedProduct.quantity_on_hand > 0,
-                  'text-red-600 font-medium': selectedProduct.quantity_on_hand === 0
+                  'text-green-600 font-medium': selectedProduct.quantity_available > 0,
+                  'text-red-600 font-medium': selectedProduct.quantity_available === 0
                 }">
-                  Available: {{ selectedProduct.quantity_on_hand || 0 }} units
+                  Available: {{ selectedProduct.quantity_available || 0 }} units
                 </span>
               </div>
-              <div v-if="newItem.quantity > (selectedProduct?.quantity_on_hand || 0)" 
+              <div v-if="newItem.quantity > (selectedProduct?.quantity_available || 0)" 
                    class="mt-2 text-amber-600 text-xs">
                 <i class="pi pi-exclamation-triangle mr-1"></i>
                 Warning: Requested quantity exceeds available stock
@@ -341,7 +355,7 @@ const selectedProduct = computed(() => {
 const canAddItem = computed(() => {
   if (!newItem.inventory_item_id || newItem.quantity <= 0) return false
   if (!selectedProduct.value) return false
-  return newItem.quantity <= Number(selectedProduct.value.quantity_on_hand || 0)
+  return newItem.quantity <= Number(selectedProduct.value.quantity_available || 0)
 })
 
 const isFormValid = computed(() => {
@@ -415,6 +429,20 @@ const onFromBranchChange = async () => {
   if (form.from_branch_id) {
     await loadInventoryForBranch(form.from_branch_id)
   }
+}
+
+const swapBranches = async () => {
+  const from = form.from_branch_id
+  const to = form.to_branch_id
+  if (!from || !to) return
+
+  form.from_branch_id = to
+  form.to_branch_id = from
+  form.items = []
+  inventoryItems.value = []
+  newItem.inventory_item_id = null
+
+  await loadInventoryForBranch(form.from_branch_id)
 }
 
 const loadInventoryForBranch = async (branchId: number | null) => {
@@ -625,7 +653,7 @@ const confirmCancel = () => {
 
 // Watch for quantity validation
 watch(() => newItem.quantity, (newVal) => {
-  if (selectedProduct.value && newVal > selectedProduct.value.quantity_on_hand) {
+  if (selectedProduct.value && newVal > selectedProduct.value.quantity_available) {
     toast.add({
       severity: 'warn',
       summary: 'Warning',

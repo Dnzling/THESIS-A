@@ -220,6 +220,69 @@ class PurchaseRequisitionController extends Controller
                 $resolvedItems[] = $item;
             }
 
+            // Hard validation: mixed selected supplier assignment is not allowed.
+            $hasAnySelectedSupplier = collect($resolvedItems)->contains(function ($item) {
+                return !is_null($item['selected_supplier_id'] ?? null);
+            });
+            $hasAnyWithoutSelectedSupplier = collect($resolvedItems)->contains(function ($item) {
+                return is_null($item['selected_supplier_id'] ?? null);
+            });
+            if ($hasAnySelectedSupplier && $hasAnyWithoutSelectedSupplier) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot create request with mixed supplier selection. Separate items with selected supplier (PO) and without selected supplier (RFQ).',
+                    'errors' => [
+                        'items' => [
+                            'All line items must either all have selected supplier or all have no selected supplier.',
+                        ],
+                    ],
+                ], 422);
+            }
+
+            // Hard validation: when suppliers are selected, all selected items must use the same supplier.
+            $selectedSupplierIds = collect($resolvedItems)
+                ->map(function ($item) {
+                    return isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
+                })
+                ->filter(function ($supplierId) {
+                    return !is_null($supplierId) && $supplierId > 0;
+                })
+                ->unique()
+                ->values();
+
+            if ($selectedSupplierIds->count() > 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'All selected suppliers must be the same for one request. Create separate requisitions per supplier to avoid processing errors.',
+                    'errors' => [
+                        'items' => [
+                            'Selected supplier must be identical across all line items.',
+                        ],
+                    ],
+                ], 422);
+            }
+
+            // Validation rule by product supplier mapping:
+            // - all items with supplier mapping => allowed (PO flow)
+            // - all items without supplier mapping => allowed (RFQ flow)
+            // - mixed (some with supplier mapping, some without) => not allowed
+            $itemHasSupplierFlags = collect($resolvedItems)->map(function ($item) use ($storeId) {
+                return $this->productHasMappedSupplier((int) ($item['product_id'] ?? 0), $storeId);
+            });
+            $hasAnyWithSupplier = $itemHasSupplierFlags->contains(true);
+            $hasAnyWithoutSupplier = $itemHasSupplierFlags->contains(false);
+            if ($hasAnyWithSupplier && $hasAnyWithoutSupplier) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Mixed items are not allowed in one request. Create separate requisitions: items with supplier (PO) and items without supplier (RFQ).',
+                    'errors' => [
+                        'items' => [
+                            'All line items must either all have supplier mapping or all have no supplier mapping.',
+                        ],
+                    ],
+                ], 422);
+            }
+
             $estimatedAmount = 0;
             foreach ($resolvedItems as $item) {
                 $estimatedAmount += ((int) $item['quantity_requested'] * (float) ($item['estimated_unit_cost'] ?? 0));
@@ -514,6 +577,19 @@ class PurchaseRequisitionController extends Controller
         return DB::table('supplier_products')
             ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.supplier_id', $supplierId)
+            ->where('supplier_products.product_id', $productId)
+            ->where('suppliers.store_id', $storeId)
+            ->exists();
+    }
+
+    private function productHasMappedSupplier(int $productId, int $storeId): bool
+    {
+        if ($productId <= 0) {
+            return false;
+        }
+
+        return DB::table('supplier_products')
+            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.product_id', $productId)
             ->where('suppliers.store_id', $storeId)
             ->exists();

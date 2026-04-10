@@ -159,6 +159,9 @@ Route::prefix('inventory')->group(function () {
         Route::get('/{id}', [StockTransferController::class, 'show'])->middleware('can:inventory.transfers.view');
         Route::post('/', [StockTransferController::class, 'store'])->middleware('can:inventory.transfers.manage');
         Route::post('/{id}/approve', [StockTransferController::class, 'approve'])->middleware('can:inventory.transfers.approve');
+        Route::post('/{id}/send-to-logistics', [StockTransferController::class, 'sendToLogistics'])->middleware('can:inventory.transfers.manage');
+        Route::post('/{id}/create-delivery', [StockTransferController::class, 'createDelivery'])->middleware('can:inventory.transfers.manage');
+        Route::post('/{id}/delivery-log', [StockTransferController::class, 'addDeliveryLog'])->middleware('can:inventory.transfers.manage');
         Route::post('/{id}/ship', [StockTransferController::class, 'ship'])->middleware('can:inventory.transfers.manage');
         Route::post('/{id}/receive', [StockTransferController::class, 'receive'])->middleware('can:inventory.transfers.manage');
         Route::post('/{id}/cancel', [StockTransferController::class, 'cancel'])->middleware('can:inventory.transfers.manage');

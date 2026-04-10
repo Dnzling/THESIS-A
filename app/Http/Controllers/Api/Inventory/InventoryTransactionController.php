@@ -9,6 +9,7 @@ use App\Models\Inventory\InventoryTransaction;
 use App\Services\Core\ApprovalEngine;
 use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -130,6 +131,44 @@ class InventoryTransactionController extends Controller
             'success' => true,
             'data' => $transaction,
         ]);
+    }
+
+    /**
+     * Printable transaction detail page (Blade) for PDF/print.
+     * GET /inventory/transactions/{id}/print
+     */
+    public function print(int $id): View
+    {
+        $user = Auth::user();
+
+        $transaction = InventoryTransaction::with([
+            'branch',
+            'product',
+            'variation',
+            'relatedBranch',
+            'createdBy',
+        ])->findOrFail($id);
+
+        if (!$this->hasGlobalAccess() && (int) ($transaction->store_id ?? 0) !== (int) ($user?->store_id ?? 0)) {
+            abort(403, 'Unauthorized access to this transaction print view.');
+        }
+
+        return view('inventory.transactions.print', [
+            'transaction' => $transaction,
+            'transactionTypeLabel' => $this->formatTransactionType($transaction->transaction_type),
+            'generatedAt' => now(),
+        ]);
+    }
+
+    private function formatTransactionType(?string $type): string
+    {
+        if (!$type) {
+            return '-';
+        }
+
+        return collect(explode('_', $type))
+            ->map(fn ($word) => ucfirst($word))
+            ->implode(' ');
     }
     /**
      * Create an inventory transaction and evaluate approval workflow.

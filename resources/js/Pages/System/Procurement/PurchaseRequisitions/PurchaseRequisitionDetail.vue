@@ -548,15 +548,6 @@ const canApprove = computed(() => {
   return approvableStatuses.has(status) && hasApprovalPermission.value
 })
 
-const approvalRole = computed(() => {
-  const explicitRole = normalize(userRole.value)
-  if (explicitRole) return explicitRole
-
-  const raw = normalize((authStore.user as any)?.role)
-  if (raw) return raw
-  return ''
-})
-
 // Helper functions
 const capitalizeWords = (str: string): string => {
   if (!str || typeof str !== 'string') return 'N/A'
@@ -670,33 +661,52 @@ const loadDetail = async () => {
     const response = await procurementService.getPurchaseRequisition(requisitionId)
     detail.value = response.data || null
 
-    // Ensure each product in line items has suppliers populated so downstream flows can auto-resolve
-    try {
-      const items = Array.isArray(detail.value?.items) ? detail.value.items : []
-      await Promise.all(items.map(async (it: any) => {
-        const pid = Number(it?.product?.id || it?.product_id)
-        if (!pid) return
-        const hasSuppliers = Array.isArray(it?.product?.suppliers) && it.product.suppliers.length > 0
-        if (!hasSuppliers) {
-          try {
-            const supRes = await procurementService.getProductSuppliers(pid)
-            const suppliers = supRes?.data || supRes || []
-            it.product = it.product || {}
-            it.product.suppliers = Array.isArray(suppliers) ? suppliers : (suppliers.data || [])
-          } catch (e) {
-            // ignore supplier fetch errors
-          }
-        }
-      }))
-    } catch (e) {
-      // ignore
-    }
-    await loadDeliveryLogs()
+    // Run non-critical enrichment in background so main details never get stuck in loading state.
+    void enrichSuppliersForItems()
+    void loadDeliveryLogs()
   } catch (error) {
     console.error('Failed to load PR detail:', error)
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load PR', life: 3000 })
   } finally {
     loading.value = false
+  }
+}
+
+const withTimeout = async <T>(promise: Promise<T>, ms = 5000): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Request timed out')), ms)
+  })
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+const enrichSuppliersForItems = async () => {
+  try {
+    const items = Array.isArray(detail.value?.items) ? detail.value.items : []
+    const tasks = items.map(async (it: any) => {
+      const pid = Number(it?.product?.id || it?.product_id)
+      if (!pid) return
+
+      const hasSuppliers = Array.isArray(it?.product?.suppliers) && it.product.suppliers.length > 0
+      if (hasSuppliers) return
+
+      try {
+        const supRes = await withTimeout(procurementService.getProductSuppliers(pid), 4000)
+        const suppliers = supRes?.data || supRes || []
+        it.product = it.product || {}
+        it.product.suppliers = Array.isArray(suppliers) ? suppliers : (suppliers.data || [])
+      } catch (e) {
+        // Keep silent; enrichment is optional for initial page load.
+      }
+    })
+
+    await Promise.allSettled(tasks)
+  } catch (e) {
+    // silent background failure
   }
 }
 
@@ -709,15 +719,9 @@ const submit = async () => {
 }
 
 const approve = async () => {
-  const roleRaw = (authStore.user?.role && authStore.user.role.name) ? authStore.user.role.name : (authStore.user?.role || '')
-  if (!roleRaw) {
-    toast.add({ severity: 'error', summary: 'Missing Role', detail: 'Unable to determine your role', life: 3000 })
-    return
-  }
-
   processing.value = true
   try {
-    const res = await procurementService.approvePurchaseRequisition(requisitionId, { role: roleRaw, notes: '' })
+    const res = await procurementService.approvePurchaseRequisition(requisitionId, { notes: '' })
     // Log response for debugging
     console.debug('[PR Detail] approve response', res)
     const payload = res.data ?? res
@@ -730,11 +734,49 @@ const approve = async () => {
     if (httpOk) {
       try { toast.clear() } catch (e) {}
       toast.add({ severity: 'success', summary: 'Approved', detail: payload?.message || 'Purchase requisition approved successfully', life: 1200 })
-        // suppress global response error dialogs for a short window to avoid
-        // race conditions where a background request triggers an error after success
-        try { (window as any).__suppressResponseErrors = true } catch (e) {}
-        setTimeout(() => { try { (window as any).__suppressResponseErrors = false } catch (e) {} }, 2000)
-      setTimeout(() => router.push({ name: 'procurement.purchase-requisitions' }), 1200)
+      // suppress global response error dialogs for a short window to avoid
+      // race conditions where a background request triggers an error after success
+      try { (window as any).__suppressResponseErrors = true } catch (e) {}
+      setTimeout(() => { try { (window as any).__suppressResponseErrors = false } catch (e) {} }, 2000)
+
+      const automation = payload?.automation || {}
+      const nextAction = automation?.next_action
+      const hasMixed = Boolean(automation?.has_mixed_supplier_assignment)
+      const rfqs = Array.isArray(automation?.rfqs) ? automation.rfqs : []
+      const pos = Array.isArray(automation?.purchase_orders) ? automation.purchase_orders : []
+
+      if (hasMixed) {
+        toast.add({
+          severity: 'info',
+          summary: 'Processing Queue',
+          detail: 'Mixed supplier assignment detected. RFQ was created first for items without supplier, then PO(s) for supplier-linked items.',
+          life: 5000
+        })
+      }
+
+      setTimeout(() => {
+        if (nextAction === 'rfq') {
+          const firstRfq = rfqs[0]
+          if (firstRfq?.id) {
+            router.push({ name: 'procurement.rfqs.detail', params: { id: firstRfq.id } })
+            return
+          }
+          router.push({ name: 'procurement.rfqs', query: { requisition_id: requisitionId } })
+          return
+        }
+
+        if (nextAction === 'po') {
+          const firstPo = pos[0]
+          if (firstPo?.id) {
+            router.push({ name: 'procurement.purchase-orders.detail', params: { id: firstPo.id } })
+            return
+          }
+          router.push({ name: 'procurement.purchase-orders', query: { requisition_id: requisitionId } })
+          return
+        }
+
+        router.push({ name: 'procurement.purchase-requisitions' })
+      }, 1200)
     } else {
       console.error('[PR Detail] approve indicates non-success payload', payload)
       toast.add({ severity: 'error', summary: 'Error', detail: payload?.message || 'Failed to approve', life: 4000 })
@@ -815,17 +857,9 @@ const performConfirmedAction = async () => {
     if (action === 'submit') {
       res = await procurementService.submitPurchaseRequisition(requisitionId)
     } else if (action === 'approve') {
-      if (!approvalRole.value) {
-        responseTitle.value = 'Missing Role'
-        responseMessage.value = 'Unable to determine your role.'
-        responseSeverity.value = 'error'
-        responseVisible.value = true
-        return
-      }
-      res = await procurementService.approvePurchaseRequisition(requisitionId, { role: approvalRole.value, notes: '' })
+      res = await procurementService.approvePurchaseRequisition(requisitionId, { notes: '' })
     } else if (action === 'reject') {
       res = await procurementService.rejectPurchaseRequisition(requisitionId, {
-        role: approvalRole.value || 'procurement',
         reason: rejectReason.value,
       })
       // close reject dialog when confirmed
@@ -845,7 +879,7 @@ const performConfirmedAction = async () => {
       return
     } else if (action && action.startsWith('create_gr:')) {
       const poId = Number(action.split(':')[1])
-      router.push({ name: 'procurement.goods-receipts.create', query: { po_id: poId } })
+      router.push({ name: 'inventory.goods-receipts.create', query: { po_id: poId } })
       return
     }
 
@@ -858,7 +892,35 @@ const performConfirmedAction = async () => {
       await loadDetail()
       if (ok) {
         toast.add({ severity: 'success', summary: 'Success', detail: payload?.message || 'Action completed successfully', life: 1200 })
-        setTimeout(() => router.push({ name: 'procurement.purchase-requisitions' }), 1200)
+
+        const automation = payload?.automation || {}
+        const nextAction = automation?.next_action
+        const rfqs = Array.isArray(automation?.rfqs) ? automation.rfqs : []
+        const pos = Array.isArray(automation?.purchase_orders) ? automation.purchase_orders : []
+
+        setTimeout(() => {
+          if (nextAction === 'rfq') {
+            const firstRfq = rfqs[0]
+            if (firstRfq?.id) {
+              router.push({ name: 'procurement.rfqs.detail', params: { id: firstRfq.id } })
+              return
+            }
+            router.push({ name: 'procurement.rfqs', query: { requisition_id: requisitionId } })
+            return
+          }
+
+          if (nextAction === 'po') {
+            const firstPo = pos[0]
+            if (firstPo?.id) {
+              router.push({ name: 'procurement.purchase-orders.detail', params: { id: firstPo.id } })
+              return
+            }
+            router.push({ name: 'procurement.purchase-orders', query: { requisition_id: requisitionId } })
+            return
+          }
+
+          router.push({ name: 'procurement.purchase-requisitions' })
+        }, 1200)
       } else {
         // Fallback: show error dialog when server indicates failure
         responseTitle.value = 'Response'

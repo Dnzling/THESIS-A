@@ -84,6 +84,30 @@ class StockCountController extends Controller
     }
 
     /**
+     * Normalize selected item rows from UI into unique product_ids.
+     */
+    private function extractProductIdsFromItems(Request $request): array
+    {
+        $items = $request->input('items', []);
+        if (!is_array($items)) {
+            return [];
+        }
+
+        return collect($items)
+            ->map(function ($item) {
+                if (!is_array($item)) {
+                    return null;
+                }
+                $productId = $item['product_id'] ?? null;
+                return is_numeric($productId) ? (int) $productId : null;
+            })
+            ->filter(fn ($id) => !empty($id))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Display a listing of stock counts
      * GET /api/inventory/counts
      */
@@ -185,6 +209,12 @@ class StockCountController extends Controller
             $context = $this->getUserContext();
             $employeeId = $this->getCurrentEmployeeId();
             $data = $request->validated();
+            $data['items'] = is_array($request->input('items')) ? $request->input('items') : [];
+            $itemProductIds = $this->extractProductIdsFromItems($request);
+            if (!empty($itemProductIds)) {
+                $data['product_ids'] = $itemProductIds;
+                $data['count_type'] = 'partial_count';
+            }
             $data['branch_id'] = (int) ($data['branch_id'] ?? $context['branch_id']);
             $data['assigned_to'] = (int) ($data['assigned_to'] ?? $employeeId ?? 0);
             $data['store_id'] = $context['store_id'];
@@ -299,6 +329,11 @@ class StockCountController extends Controller
             DB::beginTransaction();
 
             $data = $request->validated();
+            $itemProductIds = $this->extractProductIdsFromItems($request);
+            if (!empty($itemProductIds)) {
+                $data['product_ids'] = $itemProductIds;
+                $data['count_type'] = 'partial_count';
+            }
             $employeeId = $this->getCurrentEmployeeId();
             $data['branch_id'] = (int) ($data['branch_id'] ?? $count->branch_id ?? $context['branch_id']);
             $data['assigned_to'] = (int) ($data['assigned_to'] ?? $count->assigned_to ?? $employeeId ?? 0);

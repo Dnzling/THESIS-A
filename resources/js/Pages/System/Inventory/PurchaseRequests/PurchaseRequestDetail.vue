@@ -51,7 +51,7 @@
               </div>
               <div>
                 <div class="text-xs text-slate-500 mb-1">Current Stock Level</div>
-                <div class="text-lg font-semibold text-slate-800">{{ request.branch_inventory?.quantity_on_hand ?? 'N/A' }}
+                <div class="text-lg font-semibold text-slate-800">{{ request.branch_inventory?.quantity_available ?? 'N/A' }}
                   units</div>
               </div>
               <div>

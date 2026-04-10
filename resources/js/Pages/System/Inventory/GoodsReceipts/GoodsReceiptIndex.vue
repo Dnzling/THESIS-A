@@ -5,7 +5,7 @@
         <h1 class="text-3xl font-bold text-gray-900">Goods Receipts</h1>
         <p class="text-gray-600">Track receiving confirmations and quality checks</p>
       </div>
-      <Button label="New Receipt" icon="pi pi-plus" class="bg-blue-600 text-white" @click="$router.push('/procurement/goods-receipts/create')" />
+      <Button label="New Receipt" icon="pi pi-plus" class="bg-blue-600 text-white" @click="$router.push('/inventory/goods-receipts/create')" />
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -156,7 +156,7 @@ const formatDate = (value: string | null | undefined): string => {
 
 const router = useRouter()
 const goToDetail = (id: number) => {
-  router.push({ name: 'procurement.goods-receipts.detail', params: { id } })
+  router.push({ name: 'inventory.goods-receipts.detail', params: { id } })
 }
 
 const printPdf = async (id: number) => {

@@ -221,9 +221,6 @@
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                  <i class="pi pi-truck text-orange-600 text-sm"></i>
-                </div>
                 <h3 class="text-lg font-semibold text-gray-900">Delivery Information</h3>
               </div>
             </div>

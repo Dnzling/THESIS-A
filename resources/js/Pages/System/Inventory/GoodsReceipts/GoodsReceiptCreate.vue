@@ -5,7 +5,7 @@
 
     <!-- Header -->
     <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.goods-receipts' })" />
+      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.goods-receipts' })" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Goods Receipt</h2>
         <p class="text-sm text-gray-500 mt-1">Receive and verify purchased items from supplier</p>
@@ -290,7 +290,7 @@
               severity="secondary"
               text
               type="button"
-              @click="router.push({ name: 'procurement.goods-receipts' })"
+              @click="router.push({ name: 'inventory.goods-receipts' })"
             />
             <Button
               label="Save as Draft"
@@ -417,9 +417,10 @@ const onPoSelected = async () => {
     return
   }
 
-    try {
+  try {
       const response = await procurementService.getPurchaseOrder(form.purchase_order_id)
-      selectedPO.value = response.data || null
+      const payload = response?.data ?? response
+      selectedPO.value = payload?.data ?? payload ?? null
       form.branch_id = selectedPO.value?.branch_id
 
     // Initialize received items from PO items
@@ -622,7 +623,7 @@ const submitForm = async () => {
     })
 
     setTimeout(() => {
-      router.push({ name: 'procurement.goods-receipts' })
+      router.push({ name: 'inventory.goods-receipts' })
     }, 1500)
   } catch (error) {
     console.error('Failed to create goods receipt', error)

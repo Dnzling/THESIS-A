@@ -7,14 +7,24 @@
           Branch-aware decision support for low stock replenishment.
         </p>
       </div>
-      <Button
-        label="Generate Suggestions"
-        icon="pi pi-bolt"
-        size="small"
-        severity="info"
-        :loading="generating"
-        @click="generateSuggestions"
-      />
+      <div class="flex items-center gap-2">
+        <Button
+          label="Settings"
+          icon="pi pi-cog"
+          size="small"
+          severity="secondary"
+          outlined
+          @click="openSettings"
+        />
+        <Button
+          label="Generate Suggestions"
+          icon="pi pi-bolt"
+          size="small"
+          severity="info"
+          :loading="generating"
+          @click="generateSuggestions"
+        />
+      </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -182,6 +192,52 @@
         </DataTable>
       </template>
     </Card>
+
+    <Dialog
+      v-model:visible="settingsDialogVisible"
+      modal
+      header="Auto Generate Settings"
+      :style="{ width: '30rem' }"
+      :closable="!savingSettings"
+    >
+      <div class="space-y-4">
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="settingsForm.enable_auto_reorder_suggestions" :binary="true" inputId="enable-auto-reorder" />
+          <label for="enable-auto-reorder" class="text-sm font-medium text-gray-700">
+            Enable auto generation of reorder suggestions
+          </label>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold mb-2">Auto Generate Time</label>
+          <input
+            v-model="settingsForm.auto_reorder_suggestions_time"
+            type="time"
+            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            :disabled="!settingsForm.enable_auto_reorder_suggestions"
+          />
+          <p class="text-xs text-gray-500 mt-2">
+            The scheduler will run daily at this time.
+          </p>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button
+          label="Cancel"
+          severity="secondary"
+          outlined
+          :disabled="savingSettings"
+          @click="settingsDialogVisible = false"
+        />
+        <Button
+          label="Save Settings"
+          icon="pi pi-save"
+          :loading="savingSettings"
+          @click="saveSettings"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -198,6 +254,8 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const generating = ref(false)
+const savingSettings = ref(false)
+const settingsDialogVisible = ref(false)
 const suggestions = ref<any[]>([])
 const stats = ref<any>({})
 const pagination = reactive({
@@ -212,6 +270,11 @@ const filters = reactive({
   type: null as string | null,
   page: 1,
   per_page: 15,
+})
+
+const settingsForm = reactive({
+  enable_auto_reorder_suggestions: true,
+  auto_reorder_suggestions_time: '08:00',
 })
 
 const userBranchId = Number((authStore.user as any)?.branch_id || 0)
@@ -343,6 +406,50 @@ const generateSuggestions = async () => {
     })
   } finally {
     generating.value = false
+  }
+}
+
+const openSettings = async () => {
+  settingsDialogVisible.value = true
+  try {
+    const response = await inventoryService.getInventoryConfiguration()
+    const config = response?.data || {}
+    settingsForm.enable_auto_reorder_suggestions = Boolean(config.enable_auto_reorder_suggestions ?? true)
+    settingsForm.auto_reorder_suggestions_time = String(config.auto_reorder_suggestions_time || '08:00').slice(0, 5)
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to load auto-generate settings',
+      life: 3000,
+    })
+  }
+}
+
+const saveSettings = async () => {
+  savingSettings.value = true
+  try {
+    await inventoryService.updateInventoryConfiguration({
+      enable_auto_reorder_suggestions: settingsForm.enable_auto_reorder_suggestions,
+      auto_reorder_suggestions_time: settingsForm.auto_reorder_suggestions_time || '08:00',
+    })
+
+    settingsDialogVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Saved',
+      detail: 'Auto generate suggestion time updated successfully.',
+      life: 2500,
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error?.response?.data?.message || 'Failed to save auto-generate settings',
+      life: 3000,
+    })
+  } finally {
+    savingSettings.value = false
   }
 }
 

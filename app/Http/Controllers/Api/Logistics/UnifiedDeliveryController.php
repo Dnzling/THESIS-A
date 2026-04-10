@@ -696,6 +696,12 @@ class UnifiedDeliveryController extends Controller
             if (!$order->delivery) {
                 return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
             }
+            if (!in_array(strtolower((string) $order->delivery->status), ['in_transit', 'out_for_delivery'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You can only record logs when delivery is In Transit or Out For Delivery.',
+                ], 422);
+            }
 
             $log = EcommerceDeliveryLog::query()->create([
                 'delivery_id' => $order->delivery->id,
@@ -712,6 +718,12 @@ class UnifiedDeliveryController extends Controller
         $order = $this->resolveSalesOrder($request, $orderId, withDelivery: true);
         if (!$order->delivery) {
             return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
+        }
+        if (!in_array(strtolower((string) $order->delivery->status), ['in_transit', 'out_for_delivery'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only record logs when delivery is In Transit or Out For Delivery.',
+            ], 422);
         }
 
         $log = SalesOrderDeliveryLog::query()->create([

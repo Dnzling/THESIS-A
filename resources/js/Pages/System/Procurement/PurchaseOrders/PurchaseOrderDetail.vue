@@ -287,7 +287,7 @@
             <tbody class="divide-y divide-gray-200">
               <tr v-for="receipt in detail.goods_receipts" :key="receipt.id" class="hover:bg-gray-50">
                 <td class="px-6 py-4">
-                  <RouterLink :to="`/procurement/goods-receipts/${receipt.id}`"
+                  <RouterLink :to="`/inventory/goods-receipts/${receipt.id}`"
                     class="text-blue-600 hover:text-blue-800 font-medium">
                     {{ receipt.gr_number }}
                   </RouterLink>
@@ -300,6 +300,15 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div class="flex justify-end">
+        <Button
+          label="Create Goods Receipt"
+          icon="pi pi-plus-circle"
+          severity="success"
+          @click="createGoodsReceipt"
+        />
       </div>
     </div>
     <!-- Not Found State -->
@@ -679,6 +688,10 @@ const rejectPO = async () => {
       life: 3000
     })
   }
+}
+
+const createGoodsReceipt = () => {
+  router.push({ name: 'inventory.goods-receipts.create', query: { po_id: poId } })
 }
 
 onMounted(() => {

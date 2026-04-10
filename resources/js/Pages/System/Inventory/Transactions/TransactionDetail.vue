@@ -176,7 +176,17 @@ const goBack = () => {
 }
 
 const printPage = () => {
-  window.print()
+  if (!transactionId.value || Number.isNaN(transactionId.value)) {
+    toast.add({
+      severity: 'error',
+      summary: 'Invalid Transaction',
+      detail: 'Cannot open print view for this transaction.',
+      life: 2500,
+    })
+    return
+  }
+
+  window.open(`/inventory/transactions/${transactionId.value}/print`, '_blank')
 }
 
 const formatText = (value?: string | null) => {

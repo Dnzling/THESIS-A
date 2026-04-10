@@ -145,9 +145,9 @@
                 </template>
               </Column>
 
-              <Column field="quantity_on_hand" header="On Hand" style="width: 10%">
+              <Column field="quantity_available" header="Stock" style="width: 10%">
                 <template #body="{ data }">
-                  <span class="font-medium">{{ data.quantity_on_hand }}</span>
+                  <span class="font-medium">{{ data.quantity_available }}</span>
                 </template>
               </Column>
 

@@ -348,12 +348,13 @@ const populateForm = () => {
   form.count_method = stockCount.value.count_method || ''
   form.notes = stockCount.value.notes || ''
 
-  // Populate items
-  form.items = stockCount.value.items?.map((item: any) => ({
+  // Populate items from count sheets (primary), fallback to items
+  const rows = stockCount.value.count_sheets || stockCount.value.items || []
+  form.items = rows.map((item: any) => ({
     id: item.id,
     product_id: item.product_id,
     product: item.product,
-    expected_quantity: item.expected_quantity,
+    expected_quantity: item.expected_quantity ?? item.system_quantity ?? 0,
     counted_quantity: item.counted_quantity,
     notes: item.notes
   })) || []

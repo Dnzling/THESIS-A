@@ -120,15 +120,9 @@
             </template>
           </Column>
 
-          <Column field="quantity_on_hand" header="On Hand" style="width: 10%">
+          <Column field="quantity_available" header="Available Stock" style="width: 10%">
             <template #body="{ data }">
-              <span class="font-medium">{{ data.quantity_on_hand }}</span>
-            </template>
-          </Column>
-
-          <Column field="quantity_available" header="Available" style="width: 10%">
-            <template #body="{ data }">
-              {{ data.quantity_available }}
+              <span class="font-medium">{{ data.quantity_available }}</span>
             </template>
           </Column>
 
@@ -198,6 +192,15 @@ const authStore = useAuthStore()
 
 const canCreateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
 const canUpdateItems = computed(() => authStore.hasPermission('inventory.branch_inventory.manage'))
+const currentUserBranchId = computed<number | null>(() => {
+  const user: any = authStore.user || {}
+  return Number(
+    user.branch_id ||
+    user.branch?.id ||
+    user.employee?.branch_id ||
+    0
+  ) || null
+})
 
 const filters = reactive({
   search: '',
@@ -235,7 +238,9 @@ const loadItems = async () => {
     params.sort_by = sortField.value
     params.sort_order = sortOrder.value === 1 ? 'asc' : 'desc'
 
-    const response = await inventoryService.getInventoryItems(params)
+    const response = currentUserBranchId.value
+      ? await inventoryService.getBranchInventory(currentUserBranchId.value, params)
+      : await inventoryService.getInventoryItems(params)
 
     if (response?.data) {
       items.value = response.data
@@ -308,7 +313,10 @@ const getStockSeverity = (status: string) => {
   return severities[status] ?? 'secondary'
 }
 
-onMounted(() => {
+onMounted(async () => {
+  if (!authStore.user) {
+    await authStore.fetchCurrentUser().catch(() => null)
+  }
   loadItems()
 })
 

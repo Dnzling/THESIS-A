@@ -6,7 +6,8 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Inventory\StockTransfer;
 use App\Models\ProductCatalog\Product;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
 use Carbon\Carbon;
 
 class ReportingService
@@ -97,7 +98,7 @@ class ReportingService
             ->where('branch_id', $branchId)
             ->where('created_at', '>=', $startDate)
             ->when($productType, function ($query) use ($productIds) {
-                $query->whereIn('details->product_id', $productIds);
+                $query->whereIn('product_id', $productIds);
             })
             ->get();
 
@@ -109,11 +110,15 @@ class ReportingService
 
             $trends[$date] = [
                 'date' => $date,
-                'additions' => $dayTransactions->where('transaction_type', 'ADD')->sum('details.quantity') ?? 0,
-                'deductions' => $dayTransactions->where('transaction_type', 'DEDUCT')->sum('details.quantity') ?? 0,
-                'adjustments' => $dayTransactions->where('transaction_type', 'ADJUST')->count(),
-                'transfers_in' => $dayTransactions->where('transaction_type', 'TRANSFER_IN')->count(),
-                'transfers_out' => $dayTransactions->where('transaction_type', 'TRANSFER_OUT')->count(),
+                'additions' => $dayTransactions
+                    ->filter(fn ($t) => in_array(strtolower((string) $t->transaction_type), ['add', 'receive', 'purchase'], true))
+                    ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0))),
+                'deductions' => $dayTransactions
+                    ->filter(fn ($t) => in_array(strtolower((string) $t->transaction_type), ['deduct', 'sale', 'issue'], true))
+                    ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0))),
+                'adjustments' => $dayTransactions->filter(fn ($t) => strtolower((string) $t->transaction_type) === 'adjustment')->count(),
+                'transfers_in' => $dayTransactions->filter(fn ($t) => strtolower((string) $t->transaction_type) === 'transfer_in')->count(),
+                'transfers_out' => $dayTransactions->filter(fn ($t) => strtolower((string) $t->transaction_type) === 'transfer_out')->count(),
             ];
         }
 
@@ -167,7 +172,7 @@ class ReportingService
         return $items->filter(function ($item) use ($cutoffDate, $storeId, $branchId) {
             $lastMovement = InventoryTransaction::where('store_id', $storeId)
                 ->where('branch_id', $branchId)
-                ->where('details->product_id', $item->product_id)
+                ->where('product_id', $item->product_id)
                 ->where('created_at', '<', $cutoffDate)
                 ->latest()
                 ->first();
@@ -186,18 +191,18 @@ class ReportingService
 
         $transactionsByProduct = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('transaction_type', 'DEDUCT')
+            ->whereIn('transaction_type', ['deduct', 'DEDUCT', 'sale', 'SALE', 'issue', 'ISSUE'])
             ->where('created_at', '>=', $startDate)
             ->when($productType, function ($query) use ($productIds) {
-                $query->whereIn('details->product_id', $productIds);
+                $query->whereIn('product_id', $productIds);
             })
             ->get()
-            ->groupBy('details.product_id');
+            ->groupBy('product_id');
 
         $fastMovers = collect();
 
         foreach ($transactionsByProduct as $productId => $transactions) {
-            $totalQty = $transactions->sum('details.quantity');
+            $totalQty = $transactions->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0)));
 
             if ($totalQty >= $minQty) {
                 $inventory = BranchInventory::where('store_id', $storeId)
@@ -208,7 +213,7 @@ class ReportingService
                 if ($inventory) {
                     $fastMovers->push([
                         'product_id' => $productId,
-                        'product_name' => $inventory->product->name,
+                        'product_name' => $inventory->product?->product_name ?? $inventory->product?->name ?? 'Unknown Product',
                         'units_sold' => $totalQty,
                         'current_stock' => $inventory->quantity_available,
                         'days_until_stockout' => $inventory->quantity_available > 0 
@@ -280,12 +285,13 @@ class ReportingService
         // Calculate total sales in period
         $sales = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('transaction_type', 'DEDUCT')
+            ->whereIn('transaction_type', ['deduct', 'DEDUCT', 'sale', 'SALE', 'issue', 'ISSUE'])
             ->where('created_at', '>=', $startDate)
             ->when($productType, function ($query) use ($productIds) {
-                $query->whereIn('details->product_id', $productIds);
+                $query->whereIn('product_id', $productIds);
             })
-            ->sum('details.quantity');
+            ->get()
+            ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0)));
 
         // Calculate average inventory value
         $items = BranchInventory::where('store_id', $storeId)
@@ -330,21 +336,23 @@ class ReportingService
 
         $sold = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('transaction_type', 'DEDUCT')
+            ->whereIn('transaction_type', ['deduct', 'DEDUCT', 'sale', 'SALE', 'issue', 'ISSUE'])
             ->where('created_at', '>=', $startDate)
             ->when($productType, function ($query) use ($productIds) {
-                $query->whereIn('details->product_id', $productIds);
+                $query->whereIn('product_id', $productIds);
             })
-            ->sum('details.quantity');
+            ->get()
+            ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0)));
 
         $received = InventoryTransaction::where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('transaction_type', 'ADD')
+            ->whereIn('transaction_type', ['add', 'ADD', 'receive', 'RECEIVE', 'purchase', 'PURCHASE'])
             ->where('created_at', '>=', $startDate)
             ->when($productType, function ($query) use ($productIds) {
-                $query->whereIn('details->product_id', $productIds);
+                $query->whereIn('product_id', $productIds);
             })
-            ->sum('details.quantity');
+            ->get()
+            ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0)));
 
         $totalAvailable = $sold + BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
