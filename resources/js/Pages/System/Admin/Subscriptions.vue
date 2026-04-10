@@ -138,7 +138,17 @@
           </Column>
           <Column field="status" header="Store Status" sortable>
             <template #body="{ data }">
-              <Tag :value="toTitle(data.status)" :severity="storeStatusSeverity(data.status)" />
+              <div class="flex items-center gap-2">
+                <Tag :value="toTitle(data.status)" :severity="storeStatusSeverity(data.status)" />
+                <Button
+                  v-if="showStatusInfoButton(data)"
+                  icon="pi pi-info-circle"
+                  text
+                  rounded
+                  severity="secondary"
+                  @click="openStatusInfoDialog(data)"
+                />
+              </div>
             </template>
           </Column>
           <Column header="Usage">
@@ -276,6 +286,42 @@
         <Button label="Save" icon="pi pi-check" severity="info" :loading="savingPlan" @click="savePlan" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="statusInfoDialog" header="Store Status Details" :style="{ width: '520px' }" modal>
+      <div v-if="statusInfoStore" class="space-y-3">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p class="font-semibold text-slate-900">{{ statusInfoStore.store_name }}</p>
+          <p class="text-xs text-slate-500">{{ statusInfoStore.email || 'No email' }}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-slate-500">Current Status</p>
+            <Tag :value="toTitle(statusInfoStore.status)" :severity="storeStatusSeverity(statusInfoStore.status)" />
+          </div>
+          <div v-if="statusInfoStore?.status_details?.actioned_at">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Action Date</p>
+            <p class="text-sm text-slate-800">{{ formatDateTime(statusInfoStore.status_details.actioned_at) }}</p>
+          </div>
+          <div v-if="statusInfoStore.status === 'suspended'" class="md:col-span-2">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Suspension Remaining</p>
+            <p class="text-sm font-semibold text-amber-600">{{ suspensionRemainingLabel(statusInfoStore?.status_details) }}</p>
+          </div>
+          <div v-if="statusInfoStore.status === 'banned'" class="md:col-span-2">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Ban Duration</p>
+            <p class="text-sm font-semibold text-rose-600">Permanent until admin reinstates this store.</p>
+          </div>
+          <div class="md:col-span-2">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Reason</p>
+            <p class="text-sm text-slate-800 whitespace-pre-wrap">
+              {{ statusInfoStore?.status_details?.action_reason || 'No reason was recorded.' }}
+            </p>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Close" text @click="statusInfoDialog = false" />
+      </template>
+    </Dialog>
   </div>
 
   <ConfirmDialog />
@@ -310,6 +356,8 @@ const confirm = useConfirm()
 const loading = ref(false)
 const saving = ref(false)
 const manageDialog = ref(false)
+const statusInfoDialog = ref(false)
+const statusInfoStore = ref<any | null>(null)
 const stores = ref<any[]>([])
 const selectedStore = ref<any | null>(null)
 const stats = reactive({
@@ -365,6 +413,7 @@ const statusOptions = [
   { label: 'Pending', value: 'pending' },
   { label: 'Inactive', value: 'inactive' },
   { label: 'Suspended', value: 'suspended' },
+  { label: 'Banned', value: 'banned' },
 ]
 
 const queryParams = computed(() => ({
@@ -386,6 +435,13 @@ const formatDate = (value: string | null | undefined) => {
   return date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+const formatDateTime = (value: string | null | undefined) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 const tierSeverity = (tier: string) => {
   switch (tier) {
     case 'enterprise': return 'help'
@@ -400,8 +456,26 @@ const storeStatusSeverity = (status: string) => {
     case 'active': return 'success'
     case 'pending': return 'warning'
     case 'suspended': return 'danger'
+    case 'banned': return 'danger'
     default: return 'secondary'
   }
+}
+
+const showStatusInfoButton = (store: any) => {
+  const status = String(store?.status || '').toLowerCase()
+  return status === 'suspended' || status === 'banned'
+}
+
+const suspensionRemainingLabel = (details: any) => {
+  const days = Number(details?.suspension_days_remaining)
+  if (Number.isNaN(days)) return 'Not available'
+  if (days <= 0) return 'Suspension period ended (awaiting admin update).'
+  return `${days} day(s) remaining`
+}
+
+const openStatusInfoDialog = (store: any) => {
+  statusInfoStore.value = store
+  statusInfoDialog.value = true
 }
 
 const daysLabel = (daysRemaining: number | null, tier: string) => {

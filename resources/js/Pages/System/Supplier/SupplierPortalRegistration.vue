@@ -1,90 +1,123 @@
 <template>
-  <div class="supplier-portal-registration">
-    <div class="text-2xl font-bold text-gray-800 mb-4">Supplier Registration & Verification</div>
+  <div class="supplier-portal-registration max-w-6xl mx-auto">
+    <div class="mb-4">
+      <h1 class="text-xl font-semibold text-slate-900">Supplier Registration & Verification</h1>
+      <p class="text-xs text-slate-500 mt-1">Complete your company profile, then upload required documents.</p>
+    </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <Message
+      v-if="errorSummary"
+      severity="error"
+      class="mb-4"
+    >
+      <div class="text-sm">
+        <p class="font-semibold mb-1">{{ errorSummary }}</p>
+        <ul v-if="errorList.length" class="list-disc ml-5 space-y-0.5">
+          <li v-for="(err, idx) in errorList" :key="idx">{{ err }}</li>
+        </ul>
+      </div>
+    </Message>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Registration Form -->
-      <Card title="Company Information">
+      <Card>
+        <template #title>
+          <div class="text-sm font-semibold text-slate-800">Company Information</div>
+        </template>
         <template #content>
           <form @submit.prevent="submitRegistration" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium mb-2">Company Name *</label>
-              <InputText 
+              <label class="block text-xs font-medium mb-1 text-slate-600">Company Name *</label>
+              <InputText
                 v-model="formData.company_name"
                 placeholder="Enter company name"
-                class="w-full"
+                class="w-full p-inputtext-sm"
+                :invalid="hasFieldError('company_name')"
               />
+              <small v-if="hasFieldError('company_name')" class="text-red-500">{{ firstFieldError('company_name') }}</small>
             </div>
 
             <div>
-              <label class="block text-sm font-medium mb-2">Contact Person *</label>
-              <InputText 
+              <label class="block text-xs font-medium mb-1 text-slate-600">Contact Person *</label>
+              <InputText
                 v-model="formData.contact_person"
                 placeholder="Full name"
-                class="w-full"
+                class="w-full p-inputtext-sm"
+                :invalid="hasFieldError('contact_person')"
               />
+              <small v-if="hasFieldError('contact_person')" class="text-red-500">{{ firstFieldError('contact_person') }}</small>
             </div>
 
             <div>
-              <label class="block text-sm font-medium mb-2">Phone *</label>
+              <label class="block text-xs font-medium mb-1 text-slate-600">Phone *</label>
               <InputMask mask="+63 999 9999 999"
                 v-model="formData.phone"
                 type="tel"
                 placeholder="+63"
-                class="w-full"
+                class="w-full p-inputtext-sm"
+                :invalid="hasFieldError('phone')"
               />
+              <small v-if="hasFieldError('phone')" class="text-red-500">{{ firstFieldError('phone') }}</small>
             </div>
 
             <div>
-              <label class="block text-sm font-medium mb-2">Supplier Type *</label>
-              <Select 
+              <label class="block text-xs font-medium mb-1 text-slate-600">Supplier Type *</label>
+              <Select
                 v-model="formData.supplier_type"
                 :options="supplierTypes"
                 optionLabel="label"
                 optionValue="value"
                 placeholder="Select type"
                 class="w-full"
+                size="small"
+                :invalid="hasFieldError('supplier_type')"
               />
+              <small v-if="hasFieldError('supplier_type')" class="text-red-500">{{ firstFieldError('supplier_type') }}</small>
             </div>
 
-          
-
             <div>
-              <label class="block text-sm font-medium mb-2">Address *</label>
-              <Textarea 
+              <label class="block text-xs font-medium mb-1 text-slate-600">Address *</label>
+              <Textarea
                 v-model="formData.address"
                 placeholder="Street address"
                 rows="2"
                 class="w-full"
+                :invalid="hasFieldError('address')"
               />
+              <small v-if="hasFieldError('address')" class="text-red-500">{{ firstFieldError('address') }}</small>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium mb-2">City *</label>
-                <InputText v-model="formData.city" class="w-full" />
+                <label class="block text-xs font-medium mb-1 text-slate-600">City *</label>
+                <InputText v-model="formData.city" class="w-full p-inputtext-sm" :invalid="hasFieldError('city')" />
+                <small v-if="hasFieldError('city')" class="text-red-500">{{ firstFieldError('city') }}</small>
               </div>
               <div>
-                <label class="block text-sm font-medium mb-2">Province *</label>
-                <InputText v-model="formData.province" class="w-full" />
+                <label class="block text-xs font-medium mb-1 text-slate-600">Province *</label>
+                <InputText v-model="formData.province" class="w-full p-inputtext-sm" :invalid="hasFieldError('province')" />
+                <small v-if="hasFieldError('province')" class="text-red-500">{{ firstFieldError('province') }}</small>
               </div>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium mb-2">Postal Code *</label>
-                <InputText v-model="formData.postal_code" class="w-full" />
+                <label class="block text-xs font-medium mb-1 text-slate-600">Postal Code *</label>
+                <InputText v-model="formData.postal_code" class="w-full p-inputtext-sm" :invalid="hasFieldError('postal_code')" />
+                <small v-if="hasFieldError('postal_code')" class="text-red-500">{{ firstFieldError('postal_code') }}</small>
               </div>
               <div>
-                <label class="block text-sm font-medium mb-2">Country *</label>
-                <Select v-model="formData.country" :options="countries" optionLabel="name" optionValue="value" placeholder="Select country" class="w-full" />
+                <label class="block text-xs font-medium mb-1 text-slate-600">Country *</label>
+                <Select v-model="formData.country" :options="countries" optionLabel="name" optionValue="value" placeholder="Select country" class="w-full" size="small" :invalid="hasFieldError('country')" />
+                <small v-if="hasFieldError('country')" class="text-red-500">{{ firstFieldError('country') }}</small>
               </div>
             </div>
 
-            <Button 
-              label="Register" 
+            <Button
+              :label="portalCreated ? 'Update Profile' : 'Submit Registration'"
               type="submit"
-              class="w-full p-button-primary"
+              size="small"
+              class="w-full"
               :loading="submitting"
             />
           </form>
@@ -92,20 +125,30 @@
       </Card>
 
       <!-- Document Upload -->
-      <Card title="Verification Documents">
+      <Card>
+        <template #title>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold text-slate-800">Verification Documents</span>
+            <Tag :value="`${Object.values(uploadedDocuments).filter(Boolean).length}/${requiredDocuments.length}`" severity="info" />
+          </div>
+        </template>
         <template #content>
           <div class="space-y-4">
+            <Message v-if="!portalCreated" severity="warn" class="text-sm">
+              Submit the company information first before uploading documents.
+            </Message>
+
             <!-- Required Documents List -->
             <div class="space-y-3">
-              <div 
-                v-for="doc in requiredDocuments" 
+              <div
+                v-for="doc in requiredDocuments"
                 :key="doc.value"
-                class="p-4 border rounded hover:bg-gray-50"
+                class="p-3 border border-slate-200 rounded-lg"
               >
                 <div class="flex items-center justify-between mb-2">
                   <div class="flex items-center gap-2">
                     <i class="pi pi-file" :class="getDocumentIcon(doc.value)"></i>
-                    <span class="font-semibold">{{ doc.label }}</span>
+                    <span class="text-sm font-medium text-slate-800">{{ doc.label }}</span>
                   </div>
                   <Tag 
                     v-if="uploadedDocuments[doc.value]"
@@ -125,10 +168,10 @@
                   @uploader="(event) => uploadDocument(event, doc.value)"
                   :showUploadButton="false"
                   :showCancelButton="false"
-                  class="w-full"
+                  class="w-full p-fileupload-sm"
                 >
                   <template #empty>
-                    <p class="m-0">Drag and drop files here to upload.</p>
+                    <p class="m-0 text-xs text-slate-500">Drag and drop or click to upload (PDF/Image, max 5MB)</p>
                   </template>
                 </FileUpload>
               </div>
@@ -137,7 +180,7 @@
             <Message 
               v-if="allUploaded"
               severity="success"
-              text="All required documents uploaded!"
+              text="All required documents uploaded. Your verification is ready for review."
               class="w-full"
             />
           </div>
@@ -167,7 +210,6 @@ import FileUpload from 'primevue/fileupload'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
-import PageHeader from '@/Components/PageHeader.vue'
 import supplierService from '../../../services/supplier.service'
 
 const router = useRouter()
@@ -176,6 +218,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const portalCreated = ref(false)
 const uploadedDocuments = ref<Record<string, boolean>>({})
+const fieldErrors = ref<Record<string, string[]>>({})
+const errorSummary = ref('')
 
 const requiredDocuments = [
   { label: 'Business License', value: 'business_license' },
@@ -204,15 +248,6 @@ const formData = ref({
   supplier_type: 'raw_materials',
 })
 
-const paymentTerms = [
-  { label: 'Cash on Delivery', value: 'cash_on_delivery' },
-  { label: 'Net 7', value: 'net_7' },
-  { label: 'Net 15', value: 'net_15' },
-  { label: 'Net 30', value: 'net_30' },
-  { label: 'Net 60', value: 'net_60' },
-  { label: 'Advance Payment', value: 'advance_payment' },
-]
-
 const countries = [
   { name: 'Philippines', value: 'Philippines' },
   { name: 'United States', value: 'United States' },
@@ -222,6 +257,61 @@ const countries = [
 ]
 
 const allUploaded = computed(() => requiredDocuments.every(doc => uploadedDocuments.value[doc.value]))
+const errorList = computed(() => Object.values(fieldErrors.value).flat())
+
+const hasFieldError = (field: string) => !!fieldErrors.value[field]?.length
+const firstFieldError = (field: string) => fieldErrors.value[field]?.[0] || ''
+
+const normalizeFieldLabel = (field: string): string =>
+  field.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+const validateForm = () => {
+  const errors: Record<string, string[]> = {}
+  const requiredFields = [
+    'company_name',
+    'contact_person',
+    'phone',
+    'supplier_type',
+    'address',
+    'city',
+    'province',
+    'postal_code',
+    'country',
+  ]
+
+  requiredFields.forEach((field) => {
+    const value = String((formData.value as any)[field] ?? '').trim()
+    if (!value) errors[field] = [`${normalizeFieldLabel(field)} is required.`]
+  })
+
+  const phoneRaw = String(formData.value.phone || '').replace(/\D/g, '')
+  if (formData.value.phone && phoneRaw.length < 12) {
+    errors.phone = ['Please enter a valid phone number (e.g. +63 912 3456 789).']
+  }
+
+  fieldErrors.value = errors
+  if (Object.keys(errors).length) {
+    errorSummary.value = 'Please fix the highlighted fields before submitting.'
+    return false
+  }
+
+  errorSummary.value = ''
+  return true
+}
+
+const applyServerValidation = (error: any) => {
+  const status = error?.response?.status
+  const responseData = error?.response?.data ?? {}
+
+  if (status === 422 && responseData?.errors) {
+    fieldErrors.value = responseData.errors
+    errorSummary.value = responseData?.message || 'Validation failed. Please review the form fields.'
+    return
+  }
+
+  fieldErrors.value = {}
+  errorSummary.value = responseData?.message || 'Unable to submit registration. Please try again.'
+}
 
 const getDocumentIcon = (docType: string) => {
   const icons: { [key: string]: string } = {
@@ -234,6 +324,10 @@ const getDocumentIcon = (docType: string) => {
 }
 
 const submitRegistration = async () => {
+  fieldErrors.value = {}
+  errorSummary.value = ''
+  if (!validateForm()) return
+
   try {
     submitting.value = true
     await supplierService.registerSupplierPortal(formData.value)
@@ -248,11 +342,12 @@ const submitRegistration = async () => {
 
     setTimeout(() => router.push('/supplier-portal/dashboard'), 1500)
   } catch (error: any) {
+    applyServerValidation(error)
     toast.add({
       severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Registration failed',
-      life: 3000,
+      summary: 'Registration Failed',
+      detail: errorSummary.value || 'Please review the fields and try again.',
+      life: 3500,
     })
   } finally {
     submitting.value = false

@@ -19,7 +19,7 @@
             </div>
             <div>
               <div class="text-xs text-gray-500">Status</div>
-              <div class="font-medium">{{ supplier?.portal?.status || supplier?.status || 'pending' }}</div>
+              <div class="font-medium">{{ verificationStatus }}</div>
             </div>
             <div>
               <div class="text-xs text-gray-500">Name</div>
@@ -134,10 +134,15 @@ import axiosClient from '@/axios'
 
 const supplier = ref<any | null>(null)
 const documents = ref<any[]>([])
-const isPending = computed(() => {
-  const status = supplier.value?.portal?.status || supplier.value?.status || 'pending'
-  return String(status).toLowerCase() === 'pending'
-})
+const verificationStatus = ref<'pending' | 'approved' | 'rejected'>('pending')
+const normalizeStatus = (raw: any) => {
+  const s = String(raw || '').toLowerCase()
+  if (['approved', 'active'].includes(s)) return 'approved'
+  if (['rejected'].includes(s)) return 'rejected'
+  return 'pending'
+}
+
+const isPending = computed(() => verificationStatus.value === 'pending')
 // derive id from current URL if Inertia is not available
 const parseIdFromPath = () => {
   try {
@@ -155,9 +160,32 @@ const id = parseIdFromPath()
 const load = async () => {
   if (!id) return
   try {
-    const res = await axiosClient.get(`/api/suppliers/${id}`)
-    const payload = res?.data?.data ?? res?.data ?? null
-    supplier.value = payload || {}
+    // Keep full supplier details from supplier endpoint.
+    const detailRes = await axiosClient.get(`/api/suppliers/${id}`)
+    const detailPayload = detailRes?.data?.data ?? detailRes?.data ?? null
+    supplier.value = detailPayload || {}
+
+    // Prefer portal status (same source used by verification index).
+    const portalId =
+      supplier.value?.portal?.id ||
+      supplier.value?.supplier_portal?.id ||
+      supplier.value?.portal_id ||
+      null
+
+    try {
+      if (portalId) {
+        const portalRes = await axiosClient.get(`/api/supplier-verifications/${portalId}`)
+        const portalPayload = portalRes?.data?.data ?? portalRes?.data ?? null
+        verificationStatus.value = normalizeStatus(portalPayload?.status)
+      } else {
+        const statusRes = await axiosClient.get(`/api/admin/suppliers/${id}`)
+        const statusPayload = statusRes?.data?.data ?? statusRes?.data ?? null
+        verificationStatus.value = normalizeStatus(statusPayload?.status)
+      }
+    } catch {
+      verificationStatus.value = normalizeStatus(supplier.value?.status)
+    }
+
     // support multiple possible document sources: verificationDocuments, portal/supplier_portal verification_documents, or inattach
     documents.value = supplier.value.verificationDocuments
       || supplier.value.portal?.verificationDocuments
@@ -254,7 +282,12 @@ const openDocumentDialog = async (doc: any) => {
 }
 
 const getPortalId = () => {
-  return supplier.value?.portal?.id || supplier.value?.portal_id || supplier.value?.supplier_portal?.id || supplier.value?.id || null
+  return (
+    supplier.value?.portal?.id ||
+    supplier.value?.supplier_portal?.id ||
+    supplier.value?.portal_id ||
+    null
+  )
 }
 
 const showApproveDialog = ref(false)
@@ -279,11 +312,7 @@ const confirmApprove = async () => {
     await axiosClient.post(`/api/supplier-verifications/${portalId}/approve`)
     alert('Approved')
     showApproveDialog.value = false
-    if (typeof window !== 'undefined' && window.Inertia && typeof window.Inertia.visit === 'function') {
-      window.Inertia.visit('/system/admin/supplier-verifications')
-    } else {
-      window.location.href = '/system/admin/supplier-verifications'
-    }
+    navigateBack()
   } catch (e) { console.error(e); const msg = e?.response?.data?.message || 'Approve failed'; alert(msg) }
 }
 
@@ -308,11 +337,7 @@ const submitReject = async () => {
     await axiosClient.post(`/api/supplier-verifications/${portalId}/reject`, { rejection_reason: reasonText })
     alert('Rejected')
     showRejectDialog.value = false
-    if (typeof window !== 'undefined' && window.Inertia && typeof window.Inertia.visit === 'function') {
-      window.Inertia.visit('/system/admin/supplier-verifications')
-    } else {
-      window.location.href = '/system/admin/supplier-verifications'
-    }
+    navigateBack()
   } catch (e) { console.error(e); const msg = e?.response?.data?.message || 'Reject failed'; alert(msg) }
 }
 
@@ -325,9 +350,10 @@ const router = (() => {
 })()
 
 const navigateBack = () => {
-
-      router.push({ path: '/admin/verification/suppliers' })
-      return
-
+  if (router) {
+    router.push({ path: '/admin/verification/suppliers' })
+    return
+  }
+  window.location.href = '/admin/verification/suppliers'
 }
 </script>

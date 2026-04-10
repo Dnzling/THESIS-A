@@ -87,6 +87,11 @@ class ProductVariationController extends BaseController
                 'material' => 'nullable|string|max:100',
                 'price_adjustment' => 'required|numeric',
                 'custom_3d_model_id' => 'nullable|exists:product_assets,id',
+                'custom_image_id' => 'nullable|exists:product_assets,id',
+                'length_cm' => 'nullable|numeric|min:0',
+                'width_cm' => 'nullable|numeric|min:0',
+                'height_cm' => 'nullable|numeric|min:0',
+                'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean'
             ]);
 
@@ -110,6 +115,19 @@ class ProductVariationController extends BaseController
                     if (!$modelAsset) {
                         DB::rollBack();
                         return $this->errorResponse('Selected 3D model is invalid for this product/store', 422);
+                    }
+                }
+
+                if (!empty($validated['custom_image_id'])) {
+                    $imageAsset = ProductAsset::byStore($this->getStoreId())
+                        ->where('id', $validated['custom_image_id'])
+                        ->where('product_id', $product->id)
+                        ->whereIn('asset_type', ['Image_Main', 'Image_Gallery'])
+                        ->first();
+
+                    if (!$imageAsset) {
+                        DB::rollBack();
+                        return $this->errorResponse('Selected variation image is invalid for this product/store', 422);
                     }
                 }
 
@@ -140,7 +158,7 @@ class ProductVariationController extends BaseController
                         'price_type' => 'Variation',
                         'reason' => 'Initial variation pricing',
                         'effective_date' => now(),
-                        'created_by' => $this->getUserId()
+                        'created_by' => $this->getEmployeeId()
                     ]);
                 }
 
@@ -238,6 +256,11 @@ class ProductVariationController extends BaseController
                 'material' => 'nullable|string|max:100',
                 'price_adjustment' => 'sometimes|numeric',
                 'custom_3d_model_id' => 'nullable|exists:product_assets,id',
+                'custom_image_id' => 'nullable|exists:product_assets,id',
+                'length_cm' => 'nullable|numeric|min:0',
+                'width_cm' => 'nullable|numeric|min:0',
+                'height_cm' => 'nullable|numeric|min:0',
+                'weight_kg' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean',
                 'price_change_reason' => 'required_if:price_adjustment,changed|string|nullable'
             ]);
@@ -255,6 +278,19 @@ class ProductVariationController extends BaseController
                     if (!$modelAsset) {
                         DB::rollBack();
                         return $this->errorResponse('Selected 3D model is invalid for this variation product/store', 422);
+                    }
+                }
+
+                if (array_key_exists('custom_image_id', $validated) && !empty($validated['custom_image_id'])) {
+                    $imageAsset = ProductAsset::byStore($this->getStoreId())
+                        ->where('id', $validated['custom_image_id'])
+                        ->where('product_id', $variation->product_id)
+                        ->whereIn('asset_type', ['Image_Main', 'Image_Gallery'])
+                        ->first();
+
+                    if (!$imageAsset) {
+                        DB::rollBack();
+                        return $this->errorResponse('Selected variation image is invalid for this product/store', 422);
                     }
                 }
 
@@ -276,7 +312,7 @@ class ProductVariationController extends BaseController
                         'price_type' => 'Variation',
                         'reason' => $validated['price_change_reason'] ?? 'Price adjustment update',
                         'effective_date' => now(),
-                        'created_by' => $this->getUserId()
+                        'created_by' => $this->getEmployeeId()
                     ]);
                 }
 
@@ -374,7 +410,7 @@ class ProductVariationController extends BaseController
 
             $variations = ProductVariation::byStore($this->getStoreId())
                                          ->where('product_id', $productId)
-                                         ->with('custom3dModel')
+                                         ->with(['custom3dModel', 'customImage'])
                                          ->orderBy('is_active', 'desc')
                                          ->orderBy('created_at', 'desc')
                                          ->get();

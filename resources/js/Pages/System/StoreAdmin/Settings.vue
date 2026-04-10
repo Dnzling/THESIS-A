@@ -46,6 +46,20 @@
         <template #content>
           <div class="space-y-3 text-sm text-slate-700">
             <div class="flex items-center justify-between">
+              <span>Store Status</span>
+              <div class="flex items-center gap-2">
+                <Tag :value="storeStatusLabel" :severity="storeStatusSeverity" />
+                <Button
+                  v-if="showStoreStatusInfo"
+                  icon="pi pi-info-circle"
+                  text
+                  rounded
+                  severity="secondary"
+                  @click="storeStatusDialogVisible = true"
+                />
+              </div>
+            </div>
+            <div class="flex items-center justify-between">
               <span>Plan</span>
               <span class="font-semibold">{{ currentPlanLabel }}</span>
             </div>
@@ -140,6 +154,36 @@
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="gcashDialogVisible = false" />
         <Button label="Continue to GCash" :loading="upgrading" @click="submitUpgradeCheckout" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="storeStatusDialogVisible" modal header="Store Status Details" :style="{ width: '34rem' }">
+      <div class="space-y-3 text-sm">
+        <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div class="font-semibold text-slate-900">{{ store.name || 'Store' }}</div>
+          <div class="text-xs text-slate-500">{{ store.email || '-' }}</div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-600">Current Status</span>
+          <Tag :value="storeStatusLabel" :severity="storeStatusSeverity" />
+        </div>
+        <div v-if="store.status === 'suspended'" class="flex items-center justify-between">
+          <span class="text-slate-600">Suspension Remaining</span>
+          <span class="font-semibold text-amber-600">{{ formatRemainingDays(store.status_details?.suspension_days_remaining) }}</span>
+        </div>
+        <div v-if="store.status_details?.actioned_at" class="flex items-center justify-between">
+          <span class="text-slate-600">Action Date</span>
+          <span class="font-semibold text-slate-800">{{ formatDateTime(store.status_details.actioned_at) }}</span>
+        </div>
+        <div>
+          <div class="text-slate-600 mb-1">Reason</div>
+          <div class="rounded-lg border border-slate-200 p-3 text-slate-800 whitespace-pre-wrap">
+            {{ store.status_details?.action_reason || 'No reason was recorded.' }}
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Close" text @click="storeStatusDialogVisible = false" />
       </template>
     </Dialog>
 
@@ -377,6 +421,7 @@ const savingProfile = ref(false)
 const upgrading = ref(false)
 const planDialogVisible = ref(false)
 const gcashDialogVisible = ref(false)
+const storeStatusDialogVisible = ref(false)
 const loading = ref(true)
 const mapEl = ref<HTMLElement | null>(null)
 const mapReady = ref(false)
@@ -419,6 +464,7 @@ const store = reactive({
   type: '',
   store_code: '',
   status: '',
+  status_details: null as any,
 })
 
 const attendance = reactive({
@@ -517,6 +563,31 @@ const subscriptionStatusLabel = computed(() => {
   if (subscription.status === 'active') return 'Active'
   return 'Trial'
 })
+
+const storeStatusLabel = computed(() => {
+  const raw = String(store.status || 'unknown')
+  return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+})
+
+const storeStatusSeverity = computed(() => {
+  const status = String(store.status || '').toLowerCase()
+  if (status === 'active' || status === 'approved' || status === 'verified') return 'success'
+  if (status === 'pending') return 'warning'
+  if (status === 'suspended' || status === 'banned') return 'danger'
+  return 'secondary'
+})
+
+const showStoreStatusInfo = computed(() => {
+  const status = String(store.status || '').toLowerCase()
+  return status === 'suspended' || status === 'banned'
+})
+
+const formatRemainingDays = (value: number) => {
+  if (!Number.isFinite(value)) return 'Not available'
+  if (value <= 0) return 'Suspension period ended'
+  return `${Math.round(value)} day(s) remaining`
+}
+
 
 const subscriptionSeverity = computed(() => {
   if (subscription.status === 'expired') return 'danger'
@@ -651,6 +722,7 @@ const fetchSettings = async () => {
     store.type = data.store?.type || ''
     store.store_code = data.store?.store_code || ''
     store.status = data.store?.status || ''
+    store.status_details = data.store?.status_details || null
 
     subscription.tier = data.subscription?.tier || 'free'
     subscription.status = data.subscription?.status || 'trial'

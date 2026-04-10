@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPOFeedbackContro
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierShipmentController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierDeliveryLogController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierDeliveryTemplateController;
+use App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController;
 use Illuminate\Support\Facades\Route;
 
 // ============================================
@@ -19,7 +20,7 @@ Route::prefix('supplier-portal')->group(function () {
     Route::post('/register', [SupplierPortalController::class, 'register']);
 
     // Authenticated supplier routes
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'account.operational'])->group(function () {
         // Supplier Portal Management
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
@@ -28,6 +29,9 @@ Route::prefix('supplier-portal')->group(function () {
         Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);
         Route::post('/stores/link', [SupplierPortalController::class, 'linkStore']);
         Route::get('/stores/{storeId}', [SupplierPortalController::class, 'getLinkedStoreDetail'])->whereNumber('storeId');
+        Route::post('/contracts/{id}/report', [SupplierContractController::class, 'report'])->whereNumber('id');
+        Route::post('/contracts/{id}/terminate-request', [SupplierContractController::class, 'requestTermination'])->whereNumber('id');
+        Route::post('/contracts/{id}/terminate-request/respond', [SupplierContractController::class, 'respondTerminationRequest'])->whereNumber('id');
 
         // Document Management
         Route::post('/documents', [SupplierPortalController::class, 'uploadDocument']);

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
+use Illuminate\Support\Facades\DB;
 
 class SupplierVerificationController extends Controller
 {
@@ -22,11 +24,47 @@ class SupplierVerificationController extends Controller
 
     public function approve(Request $request, $id): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
-        $supplier->status = 'active';
-        $supplier->save();
+        $adminId = auth()->id();
 
-        return response()->json(['success' => true, 'message' => 'Supplier approved', 'data' => $supplier]);
+        $result = DB::transaction(function () use ($id, $adminId) {
+            $supplier = Supplier::findOrFail($id);
+            $portal = SupplierPortal::where('supplier_id', $supplier->id)->first();
+
+            // 1) Supplier operational status
+            $supplier->status = 'active';
+            if (isset($supplier->rejection_reason)) {
+                $supplier->rejection_reason = null;
+            }
+            $supplier->save();
+
+            if ($portal) {
+                // 2) Supplier portal verification status
+                $portal->status = 'approved';
+                $portal->rejection_reason = null;
+                $portal->verified_by = $adminId;
+                $portal->verified_at = now();
+                $portal->save();
+
+                // 3) Supplier verification documents status
+                $portal->verificationDocuments()->update([
+                    'status' => 'approved',
+                    'rejection_reason' => null,
+                    'reviewed_by' => $adminId,
+                    'reviewed_at' => now(),
+                ]);
+            }
+
+            return [$supplier, $portal];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier approved. Supplier, portal, and verification documents were updated.',
+            'data' => [
+                'supplier' => $result[0],
+                'portal' => $result[1],
+            ],
+        ]);
     }
 
     public function reject(Request $request, $id): JsonResponse
@@ -39,12 +77,48 @@ class SupplierVerificationController extends Controller
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $supplier = Supplier::findOrFail($id);
-        $supplier->status = 'rejected';
-        $supplier->rejection_reason = $request->rejection_reason;
-        $supplier->save();
+        $adminId = auth()->id();
+        $reason = (string) $request->rejection_reason;
 
-        return response()->json(['success' => true, 'message' => 'Supplier rejected', 'data' => $supplier]);
+        $result = DB::transaction(function () use ($id, $adminId, $reason) {
+            $supplier = Supplier::findOrFail($id);
+            $portal = SupplierPortal::where('supplier_id', $supplier->id)->first();
+
+            // 1) Supplier operational status
+            $supplier->status = 'rejected';
+            if (isset($supplier->rejection_reason)) {
+                $supplier->rejection_reason = $reason;
+            }
+            $supplier->save();
+
+            if ($portal) {
+                // 2) Supplier portal verification status
+                $portal->status = 'rejected';
+                $portal->rejection_reason = $reason;
+                $portal->verified_by = $adminId;
+                $portal->verified_at = now();
+                $portal->save();
+
+                // 3) Supplier verification documents status
+                $portal->verificationDocuments()->update([
+                    'status' => 'rejected',
+                    'rejection_reason' => $reason,
+                    'reviewed_by' => $adminId,
+                    'reviewed_at' => now(),
+                ]);
+            }
+
+            return [$supplier, $portal];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier rejected. Supplier, portal, and verification documents were updated.',
+            'data' => [
+                'supplier' => $result[0],
+                'portal' => $result[1],
+            ],
+        ]);
     }
 
     /**

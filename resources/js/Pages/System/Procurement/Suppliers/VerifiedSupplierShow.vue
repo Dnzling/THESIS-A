@@ -9,12 +9,12 @@
         </div>
       </div>
       <Button
-        label="Link Supplier"
-        icon="pi pi-link"
+        :label="detail?.already_linked ? 'View in Procurement' : 'Link Supplier'"
+        :icon="detail?.already_linked ? 'pi pi-eye' : 'pi pi-link'"
         severity="success"
-        :disabled="Boolean(detail?.already_linked)"
+        :disabled="detail?.already_linked ? !detail?.linked_supplier_id : false"
         :loading="linking"
-        @click="linkSupplier"
+        @click="detail?.already_linked ? viewLinkedSupplier() : linkSupplier()"
       />
     </div>
 
@@ -143,6 +143,12 @@ const linkSupplier = async () => {
   } finally {
     linking.value = false
   }
+}
+
+const viewLinkedSupplier = () => {
+  const id = Number(detail.value?.linked_supplier_id || 0)
+  if (!id) return
+  router.push({ name: 'procurement.suppliers.detail', params: { id } })
 }
 
 onMounted(loadDetail)

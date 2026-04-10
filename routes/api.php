@@ -96,6 +96,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/admin/suppliers/{id}/reject', [SupplierVerificationController::class, 'reject']);
     Route::get('/admin/suppliers/{id}', [SupplierVerificationController::class, 'show']);
     Route::post('/admin/suppliers/{id}/request-resubmission', [SupplierVerificationController::class, 'requestResubmission']);
+    Route::get('/violation-reports/my', [ViolationReportController::class, 'my']);
+    Route::get('/violation-reports/{id}/responses', [ViolationReportController::class, 'responses']);
+    Route::post('/violation-reports/{id}/responses', [ViolationReportController::class, 'addResponse']);
     Route::prefix('notifications')->group(function () {
         Route::get('/', [SystemNotificationController::class, 'index']);
         Route::get('/unread', [SystemNotificationController::class, 'getUnread']);

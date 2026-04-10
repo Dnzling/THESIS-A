@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-4xl mx-auto space-y-6 pb-6">
+  <div :class="embedded ? 'space-y-6' : 'max-w-4xl mx-auto space-y-6 pb-6'">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div v-if="!embedded" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">
           {{ isEditMode ? 'Edit Variation' : 'Add New Variation' }}
@@ -39,7 +39,7 @@
           <div class="space-y-4">
             
             <!-- Product Selection -->
-            <div class="flex flex-col gap-2">
+            <div v-if="!embedded" class="flex flex-col gap-2">
               <label for="product_id" class="text-sm font-semibold text-gray-700">
                 Product <span class="text-red-500">*</span>
               </label>
@@ -56,6 +56,11 @@
                 @change="onProductChange"
               />
               <small v-if="errors.product_id" class="text-red-500">{{ errors.product_id }}</small>
+            </div>
+
+            <div v-else class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <p class="text-sm font-semibold text-gray-800">{{ embeddedProduct?.product_name || 'Selected Product' }}</p>
+              <p class="text-xs text-gray-500 mt-1">SKU: <span class="font-mono font-semibold">{{ embeddedProduct?.sku || '—' }}</span></p>
             </div>
 
             <!-- Variation SKU (Auto-generated) -->
@@ -346,13 +351,75 @@
         </template>
       </Card>
 
+      <!-- Variant Photo Card -->
+      <Card class="mb-6">
+        <template #title>
+          <div class="flex items-center gap-2">
+            <i class="pi pi-image text-sky-600"></i>
+            <span>Variant Photo</span>
+          </div>
+        </template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="flex flex-col gap-2">
+              <label for="variant_image_upload" class="text-sm font-semibold text-gray-700">
+                Upload Photo <span class="text-red-500">*</span>
+              </label>
+              <InputText
+                id="variant_image_upload"
+                type="file"
+                accept="image/*"
+                class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                @change="handleVariantImageSelect"
+              />
+              <small class="text-gray-500">Required for new variations. Used in ecommerce variation preview.</small>
+              <small v-if="errors.custom_image_id" class="text-red-500">{{ errors.custom_image_id }}</small>
+            </div>
+
+            <div v-if="variantImagePreviewUrl" class="rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
+              <img :src="variantImagePreviewUrl" alt="Variation photo preview" class="w-full aspect-square object-cover" />
+            </div>
+          </div>
+        </template>
+      </Card>
+
+      <!-- Variant Specs Card -->
+      <Card class="mb-6">
+        <template #title>
+          <div class="flex items-center gap-2">
+            <i class="pi pi-ruler text-indigo-600"></i>
+            <span>Variant Specs</span>
+          </div>
+        </template>
+        <template #content>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-gray-700">Length (cm)</label>
+              <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-gray-700">Width (cm)</label>
+              <InputNumber v-model="form.width_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-gray-700">Height (cm)</label>
+              <InputNumber v-model="form.height_cm" :minFractionDigits="2" suffix=" cm" :min="0" fluid />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-gray-700">Weight (kg)</label>
+              <InputNumber v-model="form.weight_kg" :minFractionDigits="2" suffix=" kg" :min="0" fluid />
+            </div>
+          </div>
+        </template>
+      </Card>
+
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3 pt-6 border-t border-gray-200">
         <Button 
           label="Cancel" 
           severity="secondary" 
           outlined 
-          @click="$router.push({ name: 'merchandising.variations' })" 
+          @click="embedded ? emit('cancel') : $router.push({ name: 'merchandising.variations' })" 
         />
         <Button 
           :label="isEditMode ? 'Update Variation' : 'Create Variation'" 
@@ -366,7 +433,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import merchandisingService from '../../../../services/merchandising.service'
@@ -381,11 +448,33 @@ import Skeleton from 'primevue/skeleton'
 import ColorPicker from 'primevue/colorpicker'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 
+const props = withDefaults(defineProps<{
+  embedded?: boolean
+  embeddedProduct?: any
+  embeddedVariation?: any
+}>(), {
+  embedded: false,
+  embeddedProduct: null,
+  embeddedVariation: null
+})
+
+const emit = defineEmits<{
+  (e: 'saved'): void
+  (e: 'cancel'): void
+}>()
+
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 
-const isEditMode = computed(() => !!route.params.id)
+const embedded = computed(() => !!props.embedded)
+const embeddedProduct = computed(() => props.embeddedProduct)
+const embeddedVariation = computed(() => props.embeddedVariation)
+
+const isEditMode = computed(() => {
+  if (embedded.value) return !!embeddedVariation.value?.id
+  return !!route.params.id
+})
 const submitting = ref(false)
 const loadingData = ref(false)
 const loadingProducts = ref(false)
@@ -395,6 +484,8 @@ const products = ref([])
 const product3DModels = ref<any[]>([])
 const selectedProduct = ref(null)
 const variantModelFile = ref<File | null>(null)
+const variantImageFile = ref<File | null>(null)
+const variantImagePreviewUrl = ref('')
 
 const form = reactive({
   product_id: null,
@@ -408,9 +499,14 @@ const form = reactive({
   pattern: '',
   price_adjustment: 0,
   custom_3d_model_id: null as number | null,
+  custom_image_id: null as number | null,
   default_camera_angle_x: 0,
   default_camera_angle_y: 15,
   default_zoom_level: 1.5,
+  length_cm: null as number | null,
+  width_cm: null as number | null,
+  height_cm: null as number | null,
+  weight_kg: null as number | null,
   is_active: true
 })
 
@@ -507,7 +603,8 @@ const loadVariation = async () => {
   
   loadingData.value = true
   try {
-    const response = await merchandisingService.getVariation(Number(route.params.id))
+    const variationId = embedded.value ? Number(embeddedVariation.value?.id) : Number(route.params.id)
+    const response = await merchandisingService.getVariation(variationId)
     const payload = response.data || {}
     const variation = payload?.data || payload || {}
     
@@ -523,9 +620,14 @@ const loadVariation = async () => {
       pattern: variation.pattern || '',
       price_adjustment: variation.price_adjustment || 0,
       custom_3d_model_id: variation.custom_3d_model_id || null,
+      custom_image_id: variation.custom_image_id || null,
       default_camera_angle_x: Number(variation?.custom_3d_model?.default_camera_angle_x ?? 0),
       default_camera_angle_y: Number(variation?.custom_3d_model?.default_camera_angle_y ?? 15),
       default_zoom_level: Number(variation?.custom_3d_model?.default_zoom_level ?? 1.5),
+      length_cm: variation.length_cm ?? null,
+      width_cm: variation.width_cm ?? null,
+      height_cm: variation.height_cm ?? null,
+      weight_kg: variation.weight_kg ?? null,
       is_active: variation.is_active
     })
 
@@ -540,7 +642,9 @@ const loadVariation = async () => {
       detail: error.response?.data?.message || 'Failed to load variation',
       life: 5000
     })
-    router.push({ name: 'merchandising.variations' })
+    if (!embedded.value) {
+      router.push({ name: 'merchandising.variations' })
+    }
   } finally {
     loadingData.value = false
   }
@@ -565,6 +669,21 @@ const handleVariantModelSelect = (event: Event) => {
     return
   }
   variantModelFile.value = file
+}
+
+const handleVariantImageSelect = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input?.files?.[0] || null
+  variantImageFile.value = file
+
+  if (variantImagePreviewUrl.value) {
+    URL.revokeObjectURL(variantImagePreviewUrl.value)
+    variantImagePreviewUrl.value = ''
+  }
+
+  if (file) {
+    variantImagePreviewUrl.value = URL.createObjectURL(file)
+  }
 }
 
 const uploadVariantModelIfNeeded = async (): Promise<number | null> => {
@@ -606,6 +725,36 @@ const uploadVariantModelIfNeeded = async (): Promise<number | null> => {
   }
 }
 
+const uploadVariantImageIfNeeded = async (): Promise<number | null> => {
+  if (!variantImageFile.value) return form.custom_image_id || null
+  if (!form.product_id) return null
+
+  try {
+    const formData = new FormData()
+    formData.append('product_id', String(form.product_id))
+    formData.append('asset_type', 'Image_Gallery')
+    formData.append('asset_file', variantImageFile.value)
+    formData.append('is_primary', '0')
+    formData.append('display_order', '0')
+
+    const response = await merchandisingService.uploadAsset(formData)
+    const uploaded = response.data || null
+    return uploaded?.id || null
+  } catch (error: any) {
+    const validationErrors = error?.response?.data?.errors
+    const firstValidationMessage = validationErrors
+      ? Object.values(validationErrors)?.[0]?.[0]
+      : null
+    toast.add({
+      severity: 'error',
+      summary: 'Photo Upload Failed',
+      detail: firstValidationMessage || error?.response?.data?.message || 'Unable to upload variant photo',
+      life: 4000
+    })
+    throw error
+  }
+}
+
 const generateSKU = () => {
   if (!selectedProduct.value) return
   
@@ -628,7 +777,9 @@ const ensureUniqueVariationSku = async () => {
     const payload = response.data || {}
     const rows = payload?.variations || payload?.data?.variations || []
 
-    const currentId = isEditMode.value ? Number(route.params.id) : null
+    const currentId = isEditMode.value
+      ? (embedded.value ? Number(embeddedVariation.value?.id) : Number(route.params.id))
+      : null
     const existing = rows
       .filter((v: any) => !currentId || Number(v.id) !== currentId)
       .map((v: any) => String(v.variation_sku || '').toUpperCase())
@@ -661,6 +812,10 @@ const validateForm = () => {
   if (!form.variation_sku) {
     errors.value.variation_sku = 'Variation SKU is required'
   }
+
+  if (!isEditMode.value && !variantImageFile.value) {
+    errors.value.custom_image_id = 'Variation photo is required'
+  }
   
   return Object.keys(errors.value).length === 0
 }
@@ -682,15 +837,18 @@ const handleSubmit = async () => {
     // Calculate final price
     await ensureUniqueVariationSku()
     const uploadedModelId = await uploadVariantModelIfNeeded()
+    const uploadedImageId = await uploadVariantImageIfNeeded()
 
     const submitData = {
       ...form,
       custom_3d_model_id: uploadedModelId,
+      custom_image_id: uploadedImageId,
       final_price: finalPrice.value
     }
 
     if (isEditMode.value) {
-      await merchandisingService.updateVariation(Number(route.params.id), submitData)
+      const variationId = embedded.value ? Number(embeddedVariation.value?.id) : Number(route.params.id)
+      await merchandisingService.updateVariation(variationId, submitData)
       toast.add({
         severity: 'success',
         summary: 'Success',
@@ -706,7 +864,12 @@ const handleSubmit = async () => {
         life: 3000
       })
     }
-    
+
+    if (embedded.value) {
+      emit('saved')
+      return
+    }
+
     router.push({ name: 'merchandising.variations' })
   } catch (error: any) {
     console.error('Form submission error:', error)
@@ -737,6 +900,21 @@ const formatPrice = (price: number) => {
 }
 
 onMounted(() => {
+  if (embedded.value) {
+    const productId = Number(embeddedProduct.value?.id || 0)
+    if (productId) {
+      form.product_id = productId
+      selectedProduct.value = embeddedProduct.value
+      loadProductModels(productId)
+    }
+    if (embeddedVariation.value?.id) {
+      loadVariation()
+    } else {
+      generateSKU()
+    }
+    return
+  }
+
   Promise.resolve(loadProducts()).then(async () => {
     const productFromQuery = route.query.product_id ? Number(route.query.product_id) : null
     if (!isEditMode.value && productFromQuery) {
@@ -746,6 +924,12 @@ onMounted(() => {
     }
     await loadVariation()
   })
+})
+
+onBeforeUnmount(() => {
+  if (variantImagePreviewUrl.value) {
+    URL.revokeObjectURL(variantImagePreviewUrl.value)
+  }
 })
 </script>
 
