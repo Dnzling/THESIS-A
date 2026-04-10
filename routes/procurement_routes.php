@@ -73,7 +73,11 @@ Route::prefix('procurement')->group(function () {
         Route::put('/{id}', [SupplierContractController::class, 'update'])->middleware('can:procurement.supplier_contracts.manage');
         Route::delete('/{id}', [SupplierContractController::class, 'destroy'])->middleware('can:procurement.supplier_contracts.manage');
         Route::post('/{id}/activate', [SupplierContractController::class, 'activate'])->middleware('can:procurement.supplier_contracts.approve');
+        Route::post('/{id}/reject', [SupplierContractController::class, 'reject'])->middleware('can:procurement.supplier_contracts.approve');
         Route::post('/{id}/terminate', [SupplierContractController::class, 'terminate'])->middleware('can:procurement.supplier_contracts.approve');
+        Route::post('/{id}/terminate-request', [SupplierContractController::class, 'requestTermination']);
+        Route::post('/{id}/terminate-request/respond', [SupplierContractController::class, 'respondTerminationRequest']);
+        Route::post('/{id}/report', [SupplierContractController::class, 'report']);
         Route::get('/expiring', [SupplierContractController::class, 'expiring']);
     });
 

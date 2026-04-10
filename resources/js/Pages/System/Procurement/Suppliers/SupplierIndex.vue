@@ -52,7 +52,6 @@
             <template #body="{ data }">
               <div class="flex gap-2">
                 <Button icon="pi pi-eye" severity="info" text rounded @click="router.push({ name: 'procurement.suppliers.detail', params: { id: data.id } })" />
-                <Button v-if="canManageSuppliers" icon="pi pi-pencil" severity="warning" text rounded @click="router.push({ name: 'procurement.suppliers.edit', params: { id: data.id } })" />
               </div>
             </template>
           </Column>

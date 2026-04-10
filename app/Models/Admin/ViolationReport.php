@@ -6,6 +6,7 @@ use App\Models\Core\User;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ViolationReport extends Model
 {
@@ -43,5 +44,10 @@ class ViolationReport extends Model
     public function actionBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'action_by');
+    }
+
+    public function responses(): HasMany
+    {
+        return $this->hasMany(ViolationReportResponse::class, 'violation_report_id')->orderBy('created_at');
     }
 }

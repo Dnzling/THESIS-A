@@ -30,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'store_manager' => \App\Http\Middleware\CheckStoreManager::class,
             'trial.setup' => \App\Http\Middleware\EnsureTrialSetupComplete::class,
             'module' => \App\Http\Middleware\EnsureModuleEnabled::class,
+            'account.operational' => \App\Http\Middleware\EnsureAccountOperational::class,
         ]);
 
     })

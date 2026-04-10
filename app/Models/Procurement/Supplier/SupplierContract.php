@@ -19,7 +19,6 @@ class SupplierContract extends Model
         'end_date',
         'contract_type',
         'minimum_order_value',
-        'payment_terms_days',
         'discount_percentage',
         'tax_rate',
         'is_tax_exempt',
@@ -27,17 +26,30 @@ class SupplierContract extends Model
         'terms_conditions',
         'contract_file_path',
         'status',
+        'rejection_reason',
+        'rejected_by_user_id',
+        'rejected_at',
         'created_by',
+        'termination_request_status',
+        'termination_requested_by_user_id',
+        'termination_requested_by_type',
+        'termination_request_reason',
+        'termination_requested_at',
+        'termination_response_by_user_id',
+        'termination_response_notes',
+        'termination_responded_at',
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
         'minimum_order_value' => 'decimal:2',
-        'payment_terms_days' => 'integer',
         'discount_percentage' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'is_tax_exempt' => 'boolean',
+        'rejected_at' => 'datetime',
+        'termination_requested_at' => 'datetime',
+        'termination_responded_at' => 'datetime',
     ];
 
     // Relationships

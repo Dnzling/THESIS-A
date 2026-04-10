@@ -279,17 +279,16 @@ const filterType = ref<string | null>(null)
 const filterSupplier = ref<string>('')
 
 const statusOptions = [
+  { label: 'Pending', value: 'pending' },
   { label: 'Active', value: 'active' },
   { label: 'Draft', value: 'draft' },
-  { label: 'Expired', value: 'expired' },
+  { label: 'Completed', value: 'completed' },
   { label: 'Terminated', value: 'terminated' },
 ]
 
 const contractTypeOptions = [
-  { label: 'Fixed Price', value: 'fixed_price' },
-  { label: 'Volume Discount', value: 'volume_discount' },
-  { label: 'Consignment', value: 'consignment' },
-  { label: 'Exclusive', value: 'exclusive' },
+  { label: 'Supply', value: 'supply' },
+  { label: 'Service', value: 'service' },
 ]
 
 const summary = computed(() => {
@@ -299,7 +298,7 @@ const summary = computed(() => {
   return {
     total: total.value,
     active: contracts.value.filter(c => c?.status === 'active').length,
-    draft: contracts.value.filter(c => c?.status === 'draft').length,
+    draft: contracts.value.filter(c => ['draft', 'pending'].includes(c?.status)).length,
     expiring: contracts.value.filter(c => {
       const endDate = new Date(c?.end_date)
       return endDate <= thirtyDaysAhead && endDate >= today && c?.status === 'active'
@@ -338,8 +337,9 @@ const getExpiryClass = (deadline: string | null): string => {
 const statusSeverity = (status: string): string => {
   const severityMap: Record<string, string> = {
     active: 'success',
+    pending: 'warning',
     draft: 'secondary',
-    expired: 'danger',
+    completed: 'info',
     terminated: 'warning',
   }
   return severityMap[status] || 'secondary'

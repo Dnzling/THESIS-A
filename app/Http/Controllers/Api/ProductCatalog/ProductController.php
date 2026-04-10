@@ -186,7 +186,7 @@ class ProductController extends BaseController
                     'price_type' => 'Base',
                     'reason' => 'Initial pricing',
                     'effective_date' => now(),
-                    'created_by' => $this->getUserId()
+                    'created_by' => $this->getEmployeeId()
                 ]);
             }
 
@@ -207,7 +207,7 @@ class ProductController extends BaseController
                             'issue_date' => now()->toDateString(),
                             'deadline_date' => now()->addDays(7)->toDateString(),
                             'status' => 'draft',
-                            'created_by' => auth()->user()?->employee?->id ?? $this->getUserId(),
+                            'created_by' => auth()->user()?->employee?->id ?? $this->getEmployeeId(),
                         ]);
 
                         RFQItem::create([
@@ -485,7 +485,7 @@ class ProductController extends BaseController
                         'price_type' => 'Base',
                         'reason' => $validated['price_change_reason'] ?? 'Price update',
                         'effective_date' => now(),
-                        'created_by' => $this->getUserId()
+                        'created_by' => $this->getEmployeeId()
                     ]);
                 }
 
@@ -574,7 +574,7 @@ class ProductController extends BaseController
                         'price_type' => 'Base',
                         'reason' => $validated['notes'] ?? 'Finance approved price change',
                         'effective_date' => now(),
-                        'created_by' => $this->getUserId()
+                        'created_by' => $this->getEmployeeId()
                     ]);
                 }
 

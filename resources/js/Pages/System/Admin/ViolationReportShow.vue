@@ -1,7 +1,7 @@
 <template>
   <Toast />
-  <div class="max-w-3xl mx-auto py-6">
-    <Card>
+  <div class="max-w-5xl mx-auto py-6">
+    <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #header>
         <div class="flex items-center justify-between">
           <div>
@@ -15,11 +15,16 @@
       <template #content>
         <div v-if="loading" class="p-4 text-sm text-gray-500">Loading report...</div>
         <div v-else class="space-y-4 text-sm">
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <div class="text-xs text-gray-500">Store</div>
               <div class="font-medium">{{ report?.store?.name || '-' }}</div>
               <div class="text-xs text-gray-400">{{ report?.store?.store_code || 'No code' }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500">Supplier</div>
+              <div class="font-medium">{{ report?.supplier?.supplier_name || '-' }}</div>
+              <div class="text-xs text-gray-400">{{ report?.supplier?.supplier_code || 'No code' }}</div>
             </div>
             <div>
               <div class="text-xs text-gray-500">Status</div>
@@ -28,13 +33,23 @@
             <div>
               <div class="text-xs text-gray-500">Reporter</div>
               <div class="font-medium">
-                {{ report?.reporter?.first_name || 'Anonymous' }} {{ report?.reporter?.last_name || '' }}
+                {{ userFullName(report?.reporter) }}
               </div>
               <div class="text-xs text-gray-400">{{ report?.reporter?.email || report?.reporter_type || '-' }}</div>
             </div>
             <div>
               <div class="text-xs text-gray-500">Reported At</div>
               <div class="font-medium">{{ formatDate(report?.created_at) }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500">Contract</div>
+              <div class="font-medium">{{ report?.contract_number || '-' }}</div>
+              <div class="text-xs text-gray-400">{{ report?.contract_title || 'No contract info' }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500">Action Target</div>
+              <Tag :value="actionTargetLabel" :severity="actionTargetSeverity" />
+              <div class="text-xs text-gray-400 mt-1">Who will be affected by suspend/ban.</div>
             </div>
           </div>
 
@@ -51,14 +66,18 @@
 
           <div v-if="(report?.evidence_urls || []).length">
             <div class="text-xs text-gray-500">Evidence</div>
-            <ul class="list-disc list-inside text-sm text-blue-600">
-              <li v-for="(url, index) in report?.evidence_urls" :key="`evidence-${index}`">
-                <a :href="url" target="_blank" rel="noopener">{{ url }}</a>
-              </li>
-            </ul>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <a v-for="(url, index) in report?.evidence_urls" :key="`evidence-${index}`" :href="evidenceUrl(url)" target="_blank" rel="noopener">
+                <img :src="evidenceUrl(url)" class="h-20 w-20 rounded border border-slate-200 object-cover" />
+              </a>
+            </div>
           </div>
 
           <Divider />
+
+          <div v-if="isTerminationRequest" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            This is a termination request raised by one contract party. Review the evidence before taking administrative action.
+          </div>
 
           <div>
             <div class="text-xs text-gray-500">Action Taken</div>
@@ -69,13 +88,42 @@
             </div>
             <div v-else class="text-sm text-gray-400">No action taken yet.</div>
           </div>
+
+          <Divider />
+
+          <div>
+            <div class="text-xs text-gray-500 mb-2">Case Conversation</div>
+            <div v-if="threadLoading" class="text-sm text-gray-500">Loading conversation...</div>
+            <div v-else-if="thread.length === 0" class="text-sm text-gray-400">No responses yet.</div>
+            <div v-else class="space-y-2 max-h-56 overflow-auto pr-1">
+              <div v-for="item in thread" :key="item.id" class="rounded border border-gray-200 p-2">
+                <p class="text-xs font-semibold text-gray-700">{{ userFullName(item.responder) }} <span class="text-gray-400">({{ item.responder_type }})</span></p>
+                <p class="text-xs text-gray-700 whitespace-pre-wrap">{{ item.message || '-' }}</p>
+                <div v-if="Array.isArray(item.attachments) && item.attachments.length" class="mt-1 flex flex-wrap gap-1">
+                  <a v-for="(ev, idx) in item.attachments" :key="`ev-${item.id}-${idx}`" :href="evidenceUrl(ev)" target="_blank" rel="noopener">
+                    <img :src="evidenceUrl(ev)" class="h-8 w-8 rounded border border-slate-200 object-cover" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t pt-3">
+            <div class="text-xs text-gray-500 mb-1">Admin Response</div>
+            <Textarea v-model="replyMessage" rows="3" class="w-full" placeholder="Write admin response..." />
+            <input type="file" accept="image/*" multiple @change="onReplyFilesChanged" class="mt-2 w-full text-xs" />
+            <div class="mt-2 flex justify-end">
+              <Button label="Send Response" size="small" :loading="replySubmitting" @click="submitReply" />
+            </div>
+          </div>
         </div>
       </template>
 
       <template #footer>
         <div class="flex justify-end space-x-2">
-          <Button label="Suspend Store" severity="warning" size="small" :disabled="actionDisabled" @click="openAction('suspend')" />
-          <Button label="Ban Store" severity="danger" size="small" :disabled="actionDisabled" @click="openAction('ban')" />
+          <Button v-if="!isTerminationRequest" label="Suspend Store" severity="warning" size="small" :disabled="actionDisabled" @click="openAction('suspend')" />
+          <Button v-if="!isTerminationRequest" label="Ban Store" severity="danger" size="small" :disabled="actionDisabled" @click="openAction('ban')" />
+          <span v-if="isTerminationRequest" class="text-xs text-gray-500">Use contract management flow to finalize termination.</span>
         </div>
       </template>
     </Card>
@@ -113,6 +161,11 @@ const router = useRouter()
 const toast = useToast()
 const loading = ref(false)
 const report = ref<any | null>(null)
+const thread = ref<any[]>([])
+const threadLoading = ref(false)
+const replyMessage = ref('')
+const replyFiles = ref<File[]>([])
+const replySubmitting = ref(false)
 
 const actionDialog = reactive({
   visible: false,
@@ -142,6 +195,19 @@ const loadReport = async () => {
     console.error('Failed to load violation report', error)
   } finally {
     loading.value = false
+  }
+}
+
+const loadThread = async () => {
+  if (!reportId) return
+  threadLoading.value = true
+  try {
+    const res = await axiosClient.get(`/api/violation-reports/${reportId}/responses`)
+    thread.value = res?.data?.data || []
+  } catch {
+    thread.value = []
+  } finally {
+    threadLoading.value = false
   }
 }
 
@@ -197,6 +263,17 @@ const formatStatus = (value: string) => {
   return value.replace(/_/g, ' ').toUpperCase()
 }
 
+const userFullName = (u: any) => {
+  if (!u) return 'Anonymous'
+  return [u.first_name || u.fname, u.last_name || u.lname].filter(Boolean).join(' ') || 'Anonymous'
+}
+
+const evidenceUrl = (path: string) => {
+  if (!path) return '#'
+  if (/^https?:\/\//i.test(path)) return path
+  return `/storage/${String(path).replace(/^\/+/, '')}`
+}
+
 const statusSeverity = (status: string) => {
   if (status === 'actioned') return 'success'
   if (status === 'pending') return 'warning'
@@ -209,8 +286,43 @@ const actionedByLabel = computed(() => {
 })
 
 const actionDisabled = computed(() => report.value?.status === 'actioned')
+const isTerminationRequest = computed(() => report.value?.action_type === 'termination_requested')
+const actionTargetLabel = computed(() => {
+  const rt = String(report.value?.reporter_type || '')
+  return ['store_user', 'employee'].includes(rt) ? 'SUPPLIER' : 'STORE'
+})
+const actionTargetSeverity = computed(() => (actionTargetLabel.value === 'SUPPLIER' ? 'danger' : 'warning'))
+
+const onReplyFilesChanged = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  replyFiles.value = input.files ? Array.from(input.files) : []
+}
+
+const submitReply = async () => {
+  if (!reportId) return
+  if (!replyMessage.value.trim() && replyFiles.value.length === 0) {
+    toast.add({ severity: 'warn', summary: 'Input Required', detail: 'Add message or attachment.', life: 2500 })
+    return
+  }
+  replySubmitting.value = true
+  try {
+    const fd = new FormData()
+    if (replyMessage.value.trim()) fd.append('message', replyMessage.value.trim())
+    replyFiles.value.forEach((f) => fd.append('attachments[]', f))
+    await axiosClient.post(`/api/violation-reports/${reportId}/responses`, fd)
+    replyMessage.value = ''
+    replyFiles.value = []
+    await loadThread()
+    toast.add({ severity: 'success', summary: 'Sent', detail: 'Response posted.', life: 2000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Send Failed', detail: error?.response?.data?.message || 'Unable to send response.', life: 3000 })
+  } finally {
+    replySubmitting.value = false
+  }
+}
 
 onMounted(() => {
   loadReport()
+  loadThread()
 })
 </script>

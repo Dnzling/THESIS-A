@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
+use App\Models\Admin\ViolationReport;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -94,7 +95,7 @@ class SubscriptionManagementController extends Controller
         $validated = $request->validate([
             'subscription_tier' => 'required|in:free,basic,premium,enterprise',
             'subscription_ends_at' => 'nullable|date',
-            'status' => 'nullable|in:pending,active,inactive,suspended,verified,rejected',
+            'status' => 'nullable|in:pending,active,inactive,suspended,banned,verified,rejected',
         ]);
 
         $store->update([
@@ -148,6 +149,7 @@ class SubscriptionManagementController extends Controller
     {
         $today = Carbon::today();
         $endsAt = $store->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
+        $statusDetails = $this->getStatusDetailsForStore((int) $store->id, (string) $store->status);
 
         $subscriptionStatus = 'free';
         $daysRemaining = null;
@@ -171,9 +173,53 @@ class SubscriptionManagementController extends Controller
             'subscription_ends_at' => optional($endsAt)->toDateString(),
             'subscription_status' => $subscriptionStatus,
             'days_remaining' => $daysRemaining,
+            'status_details' => $statusDetails,
             'users_count' => $store->users_count ?? $store->users()->count(),
             'products_count' => $store->products_count ?? $store->products()->count(),
             'created_at' => optional($store->created_at)->toDateTimeString(),
+        ];
+    }
+
+    private function getStatusDetailsForStore(int $storeId, string $storeStatus): ?array
+    {
+        $normalizedStatus = strtolower(trim($storeStatus));
+        if (!in_array($normalizedStatus, ['suspended', 'banned'], true)) {
+            return null;
+        }
+
+        $latestAction = ViolationReport::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'actioned')
+            ->whereIn('action_type', ['suspended', 'banned'])
+            ->orderByDesc('actioned_at')
+            ->orderByDesc('id')
+            ->first(['id', 'action_type', 'action_reason', 'actioned_at']);
+
+        if (!$latestAction) {
+            return [
+                'action_type' => $normalizedStatus,
+                'action_reason' => null,
+                'actioned_at' => null,
+                'suspension_days' => $normalizedStatus === 'suspended' ? 30 : null,
+                'suspension_days_remaining' => $normalizedStatus === 'suspended' ? null : null,
+            ];
+        }
+
+        $actionedAt = $latestAction->actioned_at ? Carbon::parse($latestAction->actioned_at) : null;
+        $remaining = null;
+        $suspensionDays = null;
+        if (($latestAction->action_type ?? '') === 'suspended' && $actionedAt) {
+            $suspensionDays = 30;
+            $elapsed = $actionedAt->diffInDays(Carbon::today());
+            $remaining = max(0, $suspensionDays - $elapsed);
+        }
+
+        return [
+            'action_type' => $latestAction->action_type,
+            'action_reason' => $latestAction->action_reason,
+            'actioned_at' => optional($actionedAt)->toDateTimeString(),
+            'suspension_days' => $suspensionDays,
+            'suspension_days_remaining' => $remaining,
         ];
     }
 

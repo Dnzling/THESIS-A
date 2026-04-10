@@ -3,12 +3,12 @@
     <div class="flex items-center justify-between mb-4">
       <div>
         <h2 class="text-2xl font-bold">Violation Reports</h2>
-        <p class="text-sm text-gray-500">Reported store violations submitted by customers.</p>
+        <p class="text-sm text-gray-500">Review both contract reports and termination requests.</p>
       </div>
       <Button label="Refresh" icon="pi pi-refresh" severity="secondary" @click="loadReports" />
     </div>
 
-    <Card>
+    <Card class="rounded-xl border border-slate-200 shadow-sm">
       <template #content>
         <div class="p-4 space-y-4">
           <div class="flex flex-wrap items-center gap-3">
@@ -55,11 +55,28 @@
             </Column>
             <Column header="Reporter">
               <template #body="{ data }">
-                <div class="text-sm">{{ data.reporter?.first_name || 'Anonymous' }} {{ data.reporter?.last_name || '' }}</div>
+                <div class="text-sm">{{ userFullName(data.reporter) }}</div>
                 <div class="text-xs text-gray-500">{{ data.reporter?.email || data.reporter_type }}</div>
               </template>
             </Column>
+            <Column header="Supplier">
+              <template #body="{ data }">
+                <div class="text-sm font-medium text-gray-900">{{ data.supplier?.supplier_name || '-' }}</div>
+                <div class="text-xs text-gray-500">{{ data.supplier?.supplier_code || 'No code' }}</div>
+              </template>
+            </Column>
+            <Column header="Contract">
+              <template #body="{ data }">
+                <div class="text-sm font-medium text-gray-900">{{ data.contract_number || '-' }}</div>
+                <div class="text-xs text-gray-500">{{ data.contract_title || 'No contract info' }}</div>
+              </template>
+            </Column>
             <Column field="report_reason" header="Reason" />
+            <Column header="Type" style="width: 190px">
+              <template #body="{ data }">
+                <Tag :value="reportTypeLabel(data)" :severity="reportTypeSeverity(data)" />
+              </template>
+            </Column>
             <Column header="Status">
               <template #body="{ data }">
                 <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
@@ -120,6 +137,7 @@ const statusOptions = [
 
 const actionOptions = [
   { label: 'All Actions', value: '' },
+  { label: 'Termination Requested', value: 'termination_requested' },
   { label: 'Suspended', value: 'suspended' },
   { label: 'Banned', value: 'banned' },
 ]
@@ -170,6 +188,19 @@ const statusSeverity = (status: string) => {
   if (status === 'actioned') return 'success'
   if (status === 'pending') return 'warning'
   return 'secondary'
+}
+
+const userFullName = (u: any) => {
+  if (!u) return 'Anonymous'
+  return [u.first_name || u.fname, u.last_name || u.lname].filter(Boolean).join(' ') || 'Anonymous'
+}
+
+const reportTypeLabel = (row: any) => {
+  return row?.action_type === 'termination_requested' ? 'Termination Request' : 'Violation Report'
+}
+
+const reportTypeSeverity = (row: any) => {
+  return row?.action_type === 'termination_requested' ? 'danger' : 'info'
 }
 
 onMounted(() => {

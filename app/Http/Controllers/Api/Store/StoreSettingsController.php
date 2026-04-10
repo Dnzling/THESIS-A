@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Employee;
+use App\Models\Admin\ViolationReport;
 use App\Models\Admin\SubscriptionPlan;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
@@ -70,6 +71,7 @@ class StoreSettingsController extends Controller
                     'type' => $store?->type,
                     'store_code' => $store?->store_code,
                     'status' => $store?->status,
+                    'status_details' => $store ? $this->resolveStoreStatusDetails((int) $store->id, (string) $store->status) : null,
                     'contact_person' => is_array($store?->settings) ? ($store->settings['contact_person'] ?? null) : null,
                 ],
                 'branches' => $store?->branches()
@@ -201,6 +203,49 @@ class StoreSettingsController extends Controller
             'reviewed_at' => $verification->reviewed_at ?? null,
             'rejection_reason' => $verification->rejection_reason ?? null,
             'documents_submitted' => (bool) $verification,
+        ];
+    }
+
+    private function resolveStoreStatusDetails(int $storeId, string $storeStatus): ?array
+    {
+        $normalizedStatus = strtolower(trim($storeStatus));
+        if (!in_array($normalizedStatus, ['suspended', 'banned'], true)) {
+            return null;
+        }
+
+        $latestAction = ViolationReport::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'actioned')
+            ->whereIn('action_type', ['suspended', 'banned'])
+            ->orderByDesc('actioned_at')
+            ->orderByDesc('id')
+            ->first(['id', 'action_type', 'action_reason', 'actioned_at']);
+
+        if (!$latestAction) {
+            return [
+                'action_type' => $normalizedStatus,
+                'action_reason' => null,
+                'actioned_at' => null,
+                'suspension_days' => $normalizedStatus === 'suspended' ? 30 : null,
+                'suspension_days_remaining' => null,
+            ];
+        }
+
+        $actionedAt = $latestAction->actioned_at ? Carbon::parse($latestAction->actioned_at) : null;
+        $suspensionDays = null;
+        $remaining = null;
+        if (($latestAction->action_type ?? '') === 'suspended' && $actionedAt) {
+            $suspensionDays = 30;
+            $elapsed = $actionedAt->diffInDays(Carbon::today());
+            $remaining = max(0, $suspensionDays - $elapsed);
+        }
+
+        return [
+            'action_type' => $latestAction->action_type,
+            'action_reason' => $latestAction->action_reason,
+            'actioned_at' => optional($actionedAt)->toDateTimeString(),
+            'suspension_days' => $suspensionDays,
+            'suspension_days_remaining' => $remaining,
         ];
     }
 

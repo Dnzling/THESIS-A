@@ -88,6 +88,24 @@ class BaseController extends Controller
         return $this->userId;
     }
 
+    /**
+     * pricing_history.created_by references employees.id (not users.id).
+     */
+    protected function getEmployeeId(): ?int
+    {
+        if (!$this->userId) {
+            return null;
+        }
+
+        $query = Employee::query()->where('user_id', $this->userId);
+
+        if ($this->storeId) {
+            $query->where('store_id', $this->storeId);
+        }
+
+        return $query->value('id');
+    }
+
     protected function successResponse($data, $message = 'Success', $code = 200)
     {
         $this->recordCatalogActivity('success', $message, $code);

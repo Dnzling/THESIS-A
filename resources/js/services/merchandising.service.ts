@@ -66,6 +66,11 @@ export interface ProductVariation {
     material?: string
     price_adjustment: number
     custom_3d_model_id?: number
+    custom_image_id?: number
+    length_cm?: number | null
+    width_cm?: number | null
+    height_cm?: number | null
+    weight_kg?: number | null
     is_active?: boolean
 }
 

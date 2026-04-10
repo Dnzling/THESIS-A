@@ -206,8 +206,8 @@
                 <span v-else-if="form.status === 'active'">
                   This contract is active. Some fields are locked to prevent accidental modifications. Contact support if you need to make major changes.
                 </span>
-                <span v-else-if="form.status === 'expired'">
-                  This contract has expired and is read-only.
+                <span v-else-if="form.status === 'completed'">
+                  This contract is completed and is read-only.
                 </span>
                 <span v-else-if="form.status === 'terminated'">
                   This contract has been terminated and is read-only.
@@ -247,7 +247,7 @@ const form = reactive<any>({
   supplier_id: null,
   contract_number: '',
   contract_title: '',
-  contract_type: 'volume_discount',
+  contract_type: 'supply',
   start_date: null,
   end_date: null,
   minimum_order_value: 0,
@@ -260,10 +260,8 @@ const form = reactive<any>({
 const errors = reactive<Record<string, string>>({})
 
 const contractTypes = [
-  { label: 'Fixed Price', value: 'fixed_price' },
-  { label: 'Volume Discount', value: 'volume_discount' },
-  { label: 'Consignment', value: 'consignment' },
-  { label: 'Exclusive', value: 'exclusive' },
+  { label: 'Supply', value: 'supply' },
+  { label: 'Service', value: 'service' },
 ]
 
 const formProgress = computed(() => {

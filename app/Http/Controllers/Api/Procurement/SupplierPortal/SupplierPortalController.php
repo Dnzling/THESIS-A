@@ -84,6 +84,7 @@ class SupplierPortalController extends Controller
 
         $query = Store::query()
             ->select(['id', 'name', 'store_code', 'city', 'province', 'address', 'status'])
+            ->where('status', 'active')
             ->whereNotIn('id', $linkedStoreIds)
             ->orderBy('name');
 
@@ -205,11 +206,11 @@ class SupplierPortalController extends Controller
             ->select(['id', 'name', 'store_code', 'phone', 'email', 'city', 'province', 'address', 'status'])
             ->findOrFail($storeId);
 
-        $activeContracts = SupplierContract::query()
+        $contracts = SupplierContract::query()
             ->where('store_id', $storeId)
             ->where('supplier_id', $linkedSupplier->id)
-            ->active()
-            ->orderByDesc('start_date')
+            ->orderByRaw("FIELD(status,'active','pending','draft','rejected','terminated','completed') ASC")
+            ->orderByDesc('created_at')
             ->get();
 
         $poTransactions = SupplierPOFeedback::query()
@@ -243,10 +244,10 @@ class SupplierPortalController extends Controller
                     'email' => $linkedSupplier->email,
                     'phone' => $linkedSupplier->phone,
                 ],
-                'active_contracts' => $activeContracts,
+                'contracts' => $contracts,
                 'po_transactions' => $poTransactions,
                 'rfq_transactions' => $rfqTransactions,
-                'can_create_contract' => $activeContracts->isEmpty(),
+                'can_create_contract' => !$contracts->contains(fn($c) => (string) $c->status === 'active'),
             ],
         ]);
     }

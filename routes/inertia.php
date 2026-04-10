@@ -312,6 +312,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
     $inertia('/supplier-portal/stores', 'System/Supplier/SupplierStores', 'supplier.stores', 'Linked Stores');
     $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details');
+    $inertia('/supplier-portal/contracts/create', 'System/Supplier/SupplierContractCreate', 'supplier.contracts.create', 'Create Contract');
+    $inertia('/supplier-portal/contracts/{id}', 'System/Supplier/SupplierContractShow', 'supplier.contracts.show', 'Contract Details');
     $inertia('/supplier-portal/profile', 'Profile/SupplierProfile', 'supplier.profile', 'Supplier Profile');
 });
 

@@ -77,6 +77,8 @@ import FloatLabel from 'primevue/floatlabel';
 import Slider from 'primevue/slider';
 import Rating from 'primevue/rating';
 import ToggleSwitch from 'primevue/toggleswitch';
+import  Galleria  from 'primevue/galleria';
+import Editor from 'primevue/editor';
 import { Link, router as inertiaRouter } from '@inertiajs/vue3';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Furnisync';
@@ -126,6 +128,8 @@ createInertiaApp({
         app.use(ConfirmationService);
 
         const components = {
+            Editor,
+            Galleria,
             ToggleSwitch,
             Rating,
             Slider,

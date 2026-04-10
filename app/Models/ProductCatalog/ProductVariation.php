@@ -24,11 +24,20 @@ class ProductVariation extends Model
         'material',
         'price_adjustment',
         'custom_3d_model_id',
+        'custom_image_id',
+        'length_cm',
+        'width_cm',
+        'height_cm',
+        'weight_kg',
         'is_active'
     ];
 
     protected $casts = [
         'price_adjustment' => 'decimal:2',
+        'length_cm' => 'decimal:2',
+        'width_cm' => 'decimal:2',
+        'height_cm' => 'decimal:2',
+        'weight_kg' => 'decimal:2',
         'is_active' => 'boolean'
     ];
 
@@ -46,6 +55,11 @@ class ProductVariation extends Model
     public function custom3dModel()
     {
         return $this->belongsTo(ProductAsset::class, 'custom_3d_model_id');
+    }
+
+    public function customImage()
+    {
+        return $this->belongsTo(ProductAsset::class, 'custom_image_id');
     }
 
     public function pricingHistory()

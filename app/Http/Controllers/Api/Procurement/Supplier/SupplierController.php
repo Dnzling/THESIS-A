@@ -30,13 +30,21 @@ class SupplierController extends Controller
         $limit = max(1, min($limit, 300));
 
         $storeId = Auth::user()->store_id;
-        $linkedEmails = Supplier::where('store_id', $storeId)
+        $linkedSuppliers = Supplier::where('store_id', $storeId)
             ->whereNotNull('email')
+            ->get(['id', 'email']);
+        $linkedEmails = $linkedSuppliers
             ->pluck('email')
             ->map(fn($email) => strtolower(trim((string) $email)))
             ->filter()
             ->values()
             ->all();
+        $linkedSupplierIdsByEmail = $linkedSuppliers
+            ->mapWithKeys(function ($row) {
+                $key = strtolower(trim((string) $row->email));
+                return $key !== '' ? [$key => (int) $row->id] : [];
+            })
+            ->toArray();
 
         $query = SupplierPortal::query()
             ->where('status', 'approved')
@@ -62,8 +70,8 @@ class SupplierController extends Controller
             });
         }
 
-        $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails) {
-            return $this->mapVerifiedPortal($portal, $linkedEmails);
+        $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails, $linkedSupplierIdsByEmail) {
+            return $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
         })->values();
 
         if ($request->boolean('available_only', true)) {
@@ -83,13 +91,21 @@ class SupplierController extends Controller
     public function verifiedDirectoryShow(int $portalId): JsonResponse
     {
         $storeId = Auth::user()->store_id;
-        $linkedEmails = Supplier::where('store_id', $storeId)
+        $linkedSuppliers = Supplier::where('store_id', $storeId)
             ->whereNotNull('email')
+            ->get(['id', 'email']);
+        $linkedEmails = $linkedSuppliers
             ->pluck('email')
             ->map(fn($email) => strtolower(trim((string) $email)))
             ->filter()
             ->values()
             ->all();
+        $linkedSupplierIdsByEmail = $linkedSuppliers
+            ->mapWithKeys(function ($row) {
+                $key = strtolower(trim((string) $row->email));
+                return $key !== '' ? [$key => (int) $row->id] : [];
+            })
+            ->toArray();
 
         $portal = SupplierPortal::query()
             ->where('id', $portalId)
@@ -108,7 +124,7 @@ class SupplierController extends Controller
             ], 404);
         }
 
-        $data = $this->mapVerifiedPortal($portal, $linkedEmails);
+        $data = $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
         $data['verification_documents'] = $portal->verificationDocuments;
 
         return response()->json([
@@ -168,6 +184,7 @@ class SupplierController extends Controller
     public function show(int $id): JsonResponse
     {
         $supplier = Supplier::with([
+            'store:id,name,store_code,city,province,address',
             'contracts',
             'products',
             'purchaseOrders' => function ($query) {
@@ -442,7 +459,7 @@ class SupplierController extends Controller
         return sprintf('SUP-%s-%03d', $year, $nextNumber);
     }
 
-    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = []): array
+    private function mapVerifiedPortal(SupplierPortal $portal, array $linkedEmails = [], array $linkedSupplierIdsByEmail = []): array
     {
         $supplier = $portal->supplier;
         $user = $portal->user;
@@ -455,6 +472,7 @@ class SupplierController extends Controller
         return [
             'supplier_portal_id' => $portal->id,
             'supplier_id' => $supplier?->id,
+            'linked_supplier_id' => $linkedSupplierIdsByEmail[$emailNormalized] ?? null,
             'supplier_name' => $supplierName ?: 'Unnamed Supplier',
             'company_name' => $supplier?->company_name,
             'contact_person' => $contactPerson ?: null,
