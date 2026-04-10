@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders\Permission;
+namespace Database\Seeders\Permission\Merchandise;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
