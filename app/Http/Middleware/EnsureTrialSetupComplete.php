@@ -34,8 +34,8 @@ class EnsureTrialSetupComplete
         $tier = $this->resolveTier($profile);
 
         if ($tier === 'small') {
-            if ($moduleFromPath === 'hr' && !$this->isLitePath($path, '/system/employees')) {
-                return redirect('/system/employees');
+            if ($moduleFromPath === 'hr' && !$this->isLitePath($path, '/hr/employees')) {
+                return redirect('/hr/employees');
             }
             if ($moduleFromPath === 'finance' && !$this->isLitePath($path, '/finance')) {
                 return redirect('/finance');
@@ -43,7 +43,7 @@ class EnsureTrialSetupComplete
         }
 
         if ($moduleFromPath && !empty($allowedModules) && !in_array($moduleFromPath, $allowedModules, true)) {
-            return redirect('/system/setup-required?module=' . $moduleFromPath);
+            return redirect('/store/setup-required?module=' . $moduleFromPath);
         }
 
         return $next($request);
@@ -53,10 +53,10 @@ class EnsureTrialSetupComplete
     {
         $allow = [
             '/trial-onboarding',
-            '/system/setup-required',
+            '/store/setup-required',
             '/system/settings',
             '/system/store/verification',
-            '/system/employees',
+            '/hr/employees',
             '/finance',
             '/profile',
         ];

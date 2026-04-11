@@ -215,40 +215,6 @@ class UserNavigationController extends Controller
             }
         }
 
-        if ($roleName === 'store_admin' && $tier === 'small') {
-            $accessibleNavigation[] = [
-                'id' => 9001,
-                'name' => 'store.employees',
-                'display_name' => 'Employees',
-                'module' => 'store_admin',
-                'route_name' => 'store.employees',
-                'route_path' => '/system/employees',
-                'icon' => 'pi pi-users',
-                'parent_id' => null,
-                'display_order' => 20,
-                'section' => 'Quick Start',
-                'meta' => [],
-                'is_active' => true,
-                'badge_count' => 0,
-            ];
-
-            $accessibleNavigation[] = [
-                'id' => 9002,
-                'name' => 'store.finance',
-                'display_name' => 'Finance',
-                'module' => 'store_admin',
-                'route_name' => 'store.finance',
-                'route_path' => '/finance',
-                'icon' => 'pi pi-wallet',
-                'parent_id' => null,
-                'display_order' => 21,
-                'section' => 'Quick Start',
-                'meta' => [],
-                'is_active' => true,
-                'badge_count' => 0,
-            ];
-        }
-
         return $accessibleNavigation;
     }
 
