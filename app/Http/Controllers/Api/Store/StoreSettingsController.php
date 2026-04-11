@@ -74,6 +74,7 @@ class StoreSettingsController extends Controller
                     'status_details' => $store ? $this->resolveStoreStatusDetails((int) $store->id, (string) $store->status) : null,
                     'contact_person' => is_array($store?->settings) ? ($store->settings['contact_person'] ?? null) : null,
                 ],
+                'payments' => $this->resolvePaymentSettings($store),
                 'branches' => $store?->branches()
                     ->orderByDesc('is_main_branch')
                     ->orderBy('name')
@@ -105,6 +106,42 @@ class StoreSettingsController extends Controller
                     'completed_at' => $profile?->completed_at?->toDateTimeString(),
                     'tier' => $this->resolveTier($profile?->employee_range ?? ''),
                 ],
+            ],
+        ]);
+    }
+
+    public function updatePaymentSettings(Request $request)
+    {
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+        if (!$store) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Store not found for this user.',
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'paymongo_payment_methods' => 'required|array|min:1',
+            'paymongo_payment_methods.*' => 'string|in:card,gcash,grab_pay,paymaya',
+        ]);
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $payments = is_array($settings['payments'] ?? null) ? $settings['payments'] : [];
+        $paymongo = is_array($payments['paymongo'] ?? null) ? $payments['paymongo'] : [];
+
+        $paymongo['payment_method_allowed'] = array_values(array_unique($validated['paymongo_payment_methods']));
+        $payments['paymongo'] = $paymongo;
+        $settings['payments'] = $payments;
+
+        $store->settings = $settings;
+        $store->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment settings updated.',
+            'data' => [
+                'payments' => $this->resolvePaymentSettings($store->fresh()),
             ],
         ]);
     }
@@ -203,6 +240,23 @@ class StoreSettingsController extends Controller
             'reviewed_at' => $verification->reviewed_at ?? null,
             'rejection_reason' => $verification->rejection_reason ?? null,
             'documents_submitted' => (bool) $verification,
+        ];
+    }
+
+    private function resolvePaymentSettings(?Store $store): array
+    {
+        $settings = is_array($store?->settings) ? $store->settings : [];
+        $paymongoAllowed = data_get($settings, 'payments.paymongo.payment_method_allowed');
+        if (!is_array($paymongoAllowed) || count($paymongoAllowed) === 0) {
+            // Default to GCash so existing flows keep working.
+            $paymongoAllowed = ['gcash'];
+        }
+
+        return [
+            'paymongo' => [
+                'payment_method_allowed' => array_values(array_unique(array_map('strval', $paymongoAllowed))),
+                'supported' => ['card', 'gcash', 'grab_pay', 'paymaya'],
+            ],
         ];
     }
 

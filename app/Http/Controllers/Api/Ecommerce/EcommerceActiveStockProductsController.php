@@ -7,25 +7,33 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class EcommerceActiveStockProductsController extends Controller
 {
+    private static ?bool $hasProductTaxRateColumn = null;
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->input('per_page', 16), 1), 100);
 
+        $selectColumns = [
+            'id',
+            'store_id',
+            'sku',
+            'product_name',
+            'description',
+            'category_id',
+            'base_price',
+            'discounted_price',
+        ];
+
+        if ($this->productHasTaxRateColumn()) {
+            $selectColumns[] = 'tax_rate';
+        }
+
         $query = Product::query()
-            ->select([
-                'id',
-                'store_id',
-                'sku',
-                'product_name',
-                'description',
-                'category_id',
-                'base_price',
-                'discounted_price',
-                'tax_rate',
-            ])
+            ->select($selectColumns)
             ->with([
                 'category:id,category_name',
                 'assets:id,product_id,file_path,asset_type,is_primary,display_order,created_at',
@@ -111,6 +119,16 @@ class EcommerceActiveStockProductsController extends Controller
                 'active_only' => true,
             ],
         ]);
+    }
+
+    private function productHasTaxRateColumn(): bool
+    {
+        if (self::$hasProductTaxRateColumn !== null) {
+            return self::$hasProductTaxRateColumn;
+        }
+
+        self::$hasProductTaxRateColumn = Schema::hasColumn('products', 'tax_rate');
+        return self::$hasProductTaxRateColumn;
     }
 
     private function selectBestImage(Product $product)

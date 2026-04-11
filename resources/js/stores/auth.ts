@@ -30,6 +30,17 @@ interface NavigationItem {
 }
 
 export const useAuthStore = defineStore('auth', () => {
+    const readStoredArray = <T = any>(key: string): T[] => {
+        try {
+            const raw = localStorage.getItem(key)
+            if (!raw) return []
+            const parsed = JSON.parse(raw)
+            return Array.isArray(parsed) ? parsed as T[] : []
+        } catch {
+            return []
+        }
+    }
+
     // ==========================================
     // STATE
     // ==========================================
@@ -39,9 +50,9 @@ export const useAuthStore = defineStore('auth', () => {
     const error = ref<string | null>(null)
 
     // RBAC State
-    const permissions = ref<string[]>([])
-    const navigation = ref<NavigationItem[]>([])
-    const permissionsLoaded = ref(false)
+    const permissions = ref<string[]>(readStoredArray<string>('permissions'))
+    const navigation = ref<NavigationItem[]>(readStoredArray<NavigationItem>('navigation'))
+    const permissionsLoaded = ref(permissions.value.length > 0 || navigation.value.length > 0)
     const isLoadingPermissions = ref(false)
     let permissionsPromise: Promise<void> | null = null
 
@@ -333,7 +344,7 @@ export const useAuthStore = defineStore('auth', () => {
             const normalizedRole = String(userData?.role || '')
                 .toLowerCase()
                 .replace(/[\s-]+/g, '_')
-            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin'].includes(normalizedRole)
+            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin', 'applicant'].includes(normalizedRole)
             const customerUser = isCustomerRoleValue(userData?.role)
 
             token.value = accessToken
@@ -484,11 +495,24 @@ export const useAuthStore = defineStore('auth', () => {
      * Initialize auth on app load
      */
     const initialize = async () => {
-        if (token.value && user.value && !permissionsLoaded.value && !isLoadingPermissions.value) {
+        if (token.value && user.value) {
             console.log('Initializing auth store...')
             axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-            if (user.value?.role !== 'super_admin') {
+
+            const normalizedRole = String(user.value?.role || '').toLowerCase()
+            const shouldLoadRbac = !normalizedRole.includes('customer') && normalizedRole !== 'super_admin'
+            if (!shouldLoadRbac) {
+                return
+            }
+
+            if (!permissionsLoaded.value && !isLoadingPermissions.value) {
                 await loadPermissions()
+                return
+            }
+
+            // If we already hydrated from cache, refresh in background.
+            if (permissionsLoaded.value && !isLoadingPermissions.value) {
+                void fetchNavigation()
             }
         }
     }

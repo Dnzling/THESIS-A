@@ -110,6 +110,14 @@ const ecommerceService = {
     return ecommerceClient.post('/api/ecommerce/cart/clear')
   },
 
+  getFavorites() {
+    return ecommerceClient.get('/api/ecommerce/favorites')
+  },
+
+  toggleFavorite(productId: number) {
+    return ecommerceClient.post('/api/ecommerce/favorites/toggle', { product_id: productId })
+  },
+
   getAddressTemplates() {
     return ecommerceClient.get('/api/ecommerce/address-templates')
   },

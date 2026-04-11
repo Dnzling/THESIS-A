@@ -138,7 +138,15 @@ class BranchInventoryObserver
                 'total_value'        => abs($change) * (float) ($inventory->average_cost ?? 0),
                 'requires_approval'  => false,
                 'approval_status'    => 'not_required',
-                'created_by'         => auth()->user()?->employee_id ?? auth()->id(),
+                // Map the authenticated user to an Employee.id when possible.
+                // If no employee found (webhooks / background jobs), fall back to
+                // the configured system employee id `app.system_employee_id` (default 1).
+                // This prevents FK violations when `employees` has no record for the user.
+                'created_by' => (
+                    auth()->check()
+                        ? \App\Models\Hr\Employee::where('user_id', auth()->id())->value('id')
+                        : null
+                ) ?? config('app.system_employee_id', 1),
                 'transaction_date'   => now(),
             ]);
         } catch (\Exception $e) {

@@ -96,7 +96,12 @@
               <Column header="">
                 <template #body="{ data }">
                   <div class="flex items-center justify-end gap-1">
-                    <Button icon="pi pi-heart" text severity="secondary" @click="toggleFavorite(data)" />
+                    <Button
+                      :icon="data.is_favorite ? 'pi pi-heart-fill' : 'pi pi-heart'"
+                      text
+                      :severity="data.is_favorite ? 'danger' : 'secondary'"
+                      @click="toggleFavorite(data)"
+                    />
                     <Button icon="pi pi-trash" text severity="danger" @click="removeItem(data.id)" />
                   </div>
                 </template>
@@ -135,7 +140,7 @@
               <span>Checkout Total</span>
               <span>PHP {{ selectedTotal.toFixed(2) }}</span>
             </div>
-            <Button label="Check Out" severity="info" class="mt-2 w-full" :disabled="!selectedItemIds.length"
+            <Button label="Check Out" severity="warn" class="mt-2 w-full" :disabled="!selectedItemIds.length"
               @click="goCheckout" />
           </div>
         </template>
@@ -220,11 +225,22 @@ function toggleAll(checked: boolean) {
 }
 
 function toggleFavorite(item: any) {
-  showAlert({
-    severity: 'info',
-    summary: 'Favorites',
-    detail: `${item.product_name} will be supported for favorites next.`,
-  })
+  const productId = Number(item?.product_id || 0)
+  if (!productId) return
+
+  const nextState = !Boolean(item.is_favorite)
+  item.is_favorite = nextState
+
+  ecommerceService
+    .toggleFavorite(productId)
+    .then((res) => {
+      const isFavorite = Boolean(res.data?.data?.is_favorite)
+      item.is_favorite = isFavorite
+    })
+    .catch((error: any) => {
+      item.is_favorite = !nextState
+      showAlert({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to update favorites.' })
+    })
 }
 
 async function removeItem(itemId: number) {
@@ -266,4 +282,3 @@ function goCheckout() {
 
 onMounted(loadCart)
 </script>
-

@@ -18,6 +18,9 @@ Route::prefix('ecommerce')->group(function () {
     Route::post('/vouchers/validate', [EcommerceController::class, 'validateVoucher']);
     Route::post('/shipping/estimate', [EcommerceController::class, 'estimateShippingFee']);
 
+    Route::get('/favorites', [EcommerceController::class, 'favorites']);
+    Route::post('/favorites/toggle', [EcommerceController::class, 'toggleFavorite']);
+
     Route::post('/checkout', [EcommerceController::class, 'checkout']);
     Route::post('/dss/recommendations', [EcommerceController::class, 'dssRecommendations']);
     Route::get('/orders', [EcommerceController::class, 'orders']);

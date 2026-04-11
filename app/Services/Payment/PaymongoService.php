@@ -81,6 +81,43 @@ class PaymongoService
         return json_decode($response->getBody()->getContents(), true);
     }
 
+    public function createCheckoutSession(array $payload): array
+    {
+        $response = $this->client->post('/checkout_sessions', [
+            'json' => $payload,
+        ]);
+
+        $status = (int) $response->getStatusCode();
+        $decoded = json_decode($response->getBody()->getContents(), true);
+
+        if ($status >= 400) {
+            Log::error('PaymongoService: createCheckoutSession failed', [
+                'http_status' => $status,
+                'errors' => data_get($decoded, 'errors', []),
+                'payload' => $payload,
+            ]);
+        }
+
+        return $decoded;
+    }
+
+    public function retrieveCheckoutSession(string $sessionId): array
+    {
+        $response = $this->client->get("/checkout_sessions/{$sessionId}");
+        $status = (int) $response->getStatusCode();
+        $decoded = json_decode($response->getBody()->getContents(), true);
+
+        if ($status >= 400) {
+            Log::error('PaymongoService: retrieveCheckoutSession failed', [
+                'http_status' => $status,
+                'session_id' => $sessionId,
+                'errors' => data_get($decoded, 'errors', []),
+            ]);
+        }
+
+        return $decoded;
+    }
+
     public function verifySignature(string $payload, string $signature): bool
     {
         if (!$signature || !config('paymongo.webhook_secret')) {

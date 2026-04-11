@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceCart;
 use App\Models\Ecommerce\EcommerceCartItem;
+use App\Models\Ecommerce\EcommerceFavorite;
 use App\Models\Ecommerce\EcommerceAddressTemplate;
 use App\Models\Ecommerce\EcommerceChatMessage;
 use App\Models\Ecommerce\EcommerceChatThread;
@@ -30,6 +31,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class EcommerceController extends Controller
 {
@@ -37,7 +39,16 @@ class EcommerceController extends Controller
     {
         $query = Store::query()
             ->select(['id', 'name', 'phone as contact_number', 'city', 'address', 'status', 'created_at'])
-            ->whereIn('status', ['active', 'verified']);
+            ->whereIn('status', ['active', 'verified'])
+            // Hide stores with no active products available in ecommerce.
+            ->whereHas('products', function ($productQuery) {
+                $productQuery->where('is_active', true)
+                    ->whereNull('deleted_at')
+                    ->whereHas('inventory', function ($inventoryQuery) {
+                        $inventoryQuery->where('quantity_available', '>', 0)
+                            ->where('stock_status', '!=', 'out_of_stock');
+                    });
+            });
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
@@ -89,13 +100,15 @@ class EcommerceController extends Controller
     public function storeProfile(Request $request, int $storeId)
     {
         $store = Store::query()
-            ->select(['id', 'name as store_name', 'phone as contact_number', 'city', 'address', 'status', 'created_at'])
+            ->select(['id', 'name', 'phone as contact_number', 'city', 'address', 'status', 'created_at', 'settings'])
             ->whereIn('status', ['active', 'verified'])
             ->findOrFail($storeId);
 
         $statsMap = $this->buildStoreStatsMap(collect([$storeId]));
         $stats = $statsMap[$storeId] ?? $this->defaultStoreStats();
         $followMap = $this->buildFollowMapForUser(collect([$storeId]));
+        $storeSettings = is_array($store->settings) ? $store->settings : [];
+        $storeLogo = $storeSettings['logo'] ?? $storeSettings['logo_path'] ?? null;
 
         $categories = Category::query()
             ->select(['categories.id', 'categories.category_name'])
@@ -137,15 +150,35 @@ class EcommerceController extends Controller
             ])
             ->values();
 
+        $branches = Branch::query()
+            ->select(['id', 'store_id', 'name', 'city', 'province', 'address', 'contact_number', 'is_main_branch'])
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->orderByDesc('is_main_branch')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Branch $branch) => [
+                'id' => $branch->id,
+                'name' => $branch->name,
+                'city' => $branch->city,
+                'province' => $branch->province,
+                'address' => $branch->address,
+                'contact_number' => $branch->contact_number,
+                'is_main_branch' => (bool) $branch->is_main_branch,
+            ])
+            ->values();
+
         return response()->json([
             'success' => true,
             'data' => [
                 'id' => $store->id,
-                'store_name' => $store->store_name,
+                'store_name' => $store->name,
+                'name' => $store->name,
                 'contact_person' => null,
                 'contact_number' => $store->contact_number,
                 'city' => $store->city,
                 'address' => $store->address,
+                'store_logo' => $this->toAssetUrl($storeLogo),
                 'status' => $store->status,
                 'created_at' => $store->created_at,
                 'is_following' => (bool) ($followMap[$store->id] ?? false),
@@ -157,6 +190,7 @@ class EcommerceController extends Controller
                 'badges' => $stats['badges'],
                 'categories' => $categories,
                 'vouchers' => $vouchers,
+                'branches' => $branches,
             ],
         ]);
     }
@@ -659,12 +693,18 @@ class EcommerceController extends Controller
                 'sku' => $product->sku,
                 'product_name' => $product->product_name,
                 'description' => $product->description,
+                'brand' => $product->brand,
+                'collection_name' => $product->collection_name,
                 'store_id' => $product->store_id,
                 'store_name' => $product->store?->name,
                 'store_logo' => $this->toAssetUrl($storeLogo),
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
+                'assembly_required' => (bool) ($product->assembly_required ?? false),
+                'is_featured' => (bool) ($product->is_featured ?? false),
+                'is_new_arrival' => (bool) ($product->is_new_arrival ?? false),
+                'is_bestseller' => (bool) ($product->is_bestseller ?? false),
                 'dimensions' => [
                     'length_cm' => $product->length_cm !== null ? (float) $product->length_cm : null,
                     'width_cm' => $product->width_cm !== null ? (float) $product->width_cm : null,
@@ -748,9 +788,73 @@ class EcommerceController extends Controller
             'items.variation',
         ]);
 
+        $favoriteIds = EcommerceFavorite::query()
+            ->where('user_id', $user->id)
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $favoriteMap = array_fill_keys($favoriteIds, true);
+
         return response()->json([
             'success' => true,
-            'data' => $this->formatCart($cart),
+            'data' => $this->formatCart($cart, $favoriteMap),
+        ]);
+    }
+
+    public function favorites(): \Illuminate\Http\JsonResponse
+    {
+        $user = Auth::user();
+        $ids = EcommerceFavorite::query()
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'product_ids' => $ids,
+            ],
+        ]);
+    }
+
+    public function toggleFavorite(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = Auth::user();
+        $validated = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+        ]);
+
+        $productId = (int) $validated['product_id'];
+
+        $existing = EcommerceFavorite::query()
+            ->where('user_id', $user->id)
+            ->where('product_id', $productId)
+            ->first();
+
+        if ($existing) {
+            $existing->delete();
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'product_id' => $productId,
+                    'is_favorite' => false,
+                ],
+            ]);
+        }
+
+        EcommerceFavorite::create([
+            'user_id' => $user->id,
+            'product_id' => $productId,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'product_id' => $productId,
+                'is_favorite' => true,
+            ],
         ]);
     }
 
@@ -1358,11 +1462,13 @@ class EcommerceController extends Controller
             $subtotal = 0;
             $taxAmount = 0;
             $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
+            $isPaymongo = in_array($validated['payment_method'], ['card', 'e_wallet'], true);
 
             $order = EcommerceOrder::create([
                 'store_id' => $cart->store_id,
                 'assigned_branch_id' => $fulfillmentBranch->id,
                 'user_id' => $user->id,
+                'pending_cart_id' => $isPaymongo ? $cart->id : null,
                 'order_number' => $this->generateOrderNumber(),
                 'status' => 'pending',
                 'payment_method' => $validated['payment_method'],
@@ -1376,6 +1482,40 @@ class EcommerceController extends Controller
                 'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
                 'placed_at' => now(),
             ]);
+
+            // For PayMongo methods, defer order item creation and inventory reservation until payment is confirmed.
+            // This prevents "products ordered" being stored/consumed when PayMongo checkout is cancelled/expired.
+            if ($isPaymongo) {
+                $snapshotItems = $itemsForCheckout->map(function ($item) {
+                    return [
+                        'cart_item_id' => (int) $item->id,
+                        'product_id' => (int) $item->product_id,
+                        'variation_id' => $item->variation_id ? (int) $item->variation_id : null,
+                        'variation_name' => $item->variation_name ? (string) $item->variation_name : null,
+                        'quantity' => (int) $item->quantity,
+                        'unit_price' => (float) $item->unit_price,
+                        'tax_rate' => (float) $item->tax_rate,
+                    ];
+                })->values()->all();
+
+                foreach ($itemsForCheckout as $item) {
+                    $subtotal += (float) $item->unit_price * (int) $item->quantity;
+                }
+
+                $totalAmount = round($subtotal + $shippingFee - $discountAmount, 2);
+                $order->update([
+                    'subtotal' => round($subtotal, 2),
+                    'tax_amount' => round($taxAmount, 2),
+                    'shipping_fee' => round($shippingFee, 2),
+                    'discount_amount' => round($discountAmount, 2),
+                    'total_amount' => $totalAmount,
+                    'pending_snapshot' => [
+                        'items' => $snapshotItems,
+                    ],
+                ]);
+
+                return $order->fresh();
+            }
 
             foreach ($itemsForCheckout as $item) {
                 $inventory = BranchInventory::query()
@@ -2282,13 +2422,15 @@ class EcommerceController extends Controller
         ]);
     }
 
-    private function formatCart(EcommerceCart $cart): array
+    private function formatCart(EcommerceCart $cart, array $favoriteMap = []): array
     {
-        $items = $cart->items->map(function (EcommerceCartItem $item) {
+        $items = $cart->items->map(function (EcommerceCartItem $item) use ($favoriteMap) {
             $lineSubtotal = (float) $item->unit_price * (int) $item->quantity;
             // Unit price is already tax-inclusive for ecommerce cart totals.
             $lineTax = 0;
             $lineTotal = $lineSubtotal;
+
+            $productId = (int) $item->product_id;
 
             return [
                 'id' => $item->id,
@@ -2300,6 +2442,7 @@ class EcommerceController extends Controller
                 'variation_name' => $item->variation_name ?: $item->variation?->variation_name,
                 'variation_sku' => $item->variation?->variation_sku,
                 'image' => $item->product ? $this->toAssetUrl($this->selectBestProductImage($item->product)?->file_path) : null,
+                'is_favorite' => isset($favoriteMap[$productId]),
                 'quantity' => (int) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
                 'tax_rate' => (float) $item->tax_rate,
@@ -2647,6 +2790,18 @@ class EcommerceController extends Controller
     private function buildFollowMapForUser($storeIds): array
     {
         $user = Auth::user();
+
+        if (!$user) {
+            $token = request()?->bearerToken();
+            if ($token) {
+                $accessToken = PersonalAccessToken::findToken($token);
+                $tokenable = $accessToken?->tokenable;
+                if ($tokenable) {
+                    $user = $tokenable;
+                }
+            }
+        }
+
         if (!$user || $storeIds->isEmpty() || !Schema::hasTable('ecommerce_store_follows')) {
             return [];
         }

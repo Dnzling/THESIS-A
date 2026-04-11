@@ -314,6 +314,25 @@ onMounted(async () => {
     return
   }
 
+  const normalizedRole = (authStore.userRole || '').toLowerCase()
+  const requiresRbacNavigation =
+    normalizedRole !== 'super_admin' &&
+    !normalizedRole.includes('supplier') &&
+    !normalizedRole.includes('customer')
+
+  if (requiresRbacNavigation) {
+    loadingNavigation.value = true
+    try {
+      await authStore.loadPermissions()
+    } catch (error) {
+      console.warn('Failed to load navigation during layout bootstrap:', error)
+    } finally {
+      loadingNavigation.value = false
+    }
+  } else {
+    loadingNavigation.value = false
+  }
+
   // If this is a store-scoped role, pull enabled modules so we can hide nav for disabled modules
   const roleName = (authStore.userRole || '').toLowerCase()
   if (roleName.includes('store')) {
@@ -517,6 +536,10 @@ const supplierFallbackNavigation = [
 // ]
 
 const groupedNavigation = computed(() => {
+  if (loadingNavigation.value && authStore.navigation.length === 0) {
+    return []
+  }
+
   const isSupplierRole = (authStore.userRole || '').toLowerCase().includes('supplier')
   const isStoreRole = (authStore.userRole || '').toLowerCase().includes('store')
   const isCustomerRole = (authStore.userRole || '').toLowerCase().includes('customer')

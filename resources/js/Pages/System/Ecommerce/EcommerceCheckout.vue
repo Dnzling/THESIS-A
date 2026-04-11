@@ -83,15 +83,15 @@
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Method</p>
               <p class="mt-1 text-sm font-semibold text-slate-900">{{ paymentMethodLabel(selectedPaymentMethod) }}</p>
-              <Button label="View all payment methods" size="small" link severity="info" @click="paymentDrawerVisible = true" />
+              <Button label="View all payment methods" size="small" link severity="warn" @click="paymentDrawerVisible = true" />
             </div>
 
             <div class="rounded-lg border border-slate-200 p-3">
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Voucher</label>
-              <!-- <div class="flex flex-col gap-2 sm:flex-row">
+              <div class="flex flex-col gap-2 sm:flex-row">
                 <InputText v-model="voucherCode" fluid placeholder="Enter voucher code" />
-                <Button label="Apply" size="small" severity="info" class="w-full sm:w-auto" :loading="applyingVoucher" @click="applyVoucher" />
-              </div> -->
+                <Button label="Apply" size="small" severity="warn" class="w-full sm:w-auto" :loading="applyingVoucher" @click="applyVoucher" />
+              </div>
               <p v-if="appliedVoucher" class="mt-1 text-xs text-emerald-600">
                 Applied: {{ appliedVoucher.code }} ({{ voucherLabel }})
               </p>
@@ -142,7 +142,7 @@
             </div> -->
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ totalAmount.toFixed(2) }}</span></div>
-            <Button label="Place Order" severity="info" class="mt-2 w-full" :loading="placing || paymongoCreating" @click="placeOrder" />
+            <Button label="Place Order" severity="warn" class="mt-2 w-full" :loading="placing || paymongoCreating" @click="placeOrder" />
           </div>
         </template>
       </Card>
@@ -169,7 +169,7 @@
             </label>
           </div>
           <div class="mt-2 flex justify-end">
-            <Button label="Edit" size="small" text severity="info" @click="startEditAddress(address)" />
+            <Button label="Edit" size="small" text severity="warn" @click="startEditAddress(address)" />
           </div>
         </div>
 
@@ -177,7 +177,7 @@
 
         <div v-if="showAddAddressForm" class="space-y-2 rounded-lg border border-slate-200 p-3">
           <InputText v-model="newAddress.full_name" fluid placeholder="Full name" />
-          <InputMask mask="9999-999-9999" v-model="newAddress.contact_number" fluid placeholder="0912-456-7890" />
+          <InputMask mask="+63 999-999-9999" v-model="newAddress.contact_number" fluid placeholder="+63 999-999-9999" />
           <Select
             v-model="newAddressSelection.provinceId"
             :options="provinceOptions"
@@ -207,21 +207,21 @@
             :disabled="!newAddressSelection.cityId"
           />
           <Textarea v-model="newAddress.address_line" rows="2" fluid placeholder="Address line" />
-          <Button
-            label="Get Coordinates"
-            icon="pi pi-map-marker"
-            severity="secondary"
-            :loading="fetchingCoordinates"
-            @click="fetchCoordinates"
-          />
+          <Button label="Get Coordinates" icon="pi pi-map-marker" severity="secondary" @click="openCoordsMapDialog" />
           <Button
             :label="isEditingAddress ? 'Update Address Template' : 'Save Address Template'"
-            severity="info"
+            severity="warn"
             @click="saveNewAddress"
           />
         </div>
 
-        <Button label="Use Selected Address" severity="info" fluid @click="addressDrawerVisible = false" />
+        <Button
+          v-if="addressTemplates.length && selectedAddressId"
+          label="Use Selected Address"
+          severity="warn"
+          fluid
+          @click="addressDrawerVisible = false"
+        />
       </div>
     </Drawer>
 
@@ -247,73 +247,121 @@
             COD is not available for totals above PHP {{ COD_LIMIT.toLocaleString() }}. Use GCash or Credit Card.
           </p>
         </div>
-        <Button label="Use Payment Method" severity="info" fluid @click="paymentDrawerVisible = false" />
+        <Button label="Use Payment Method" severity="warn" fluid @click="paymentDrawerVisible = false" />
       </div>
     </Drawer>
 
-    <Dialog
-      v-model:visible="gcashModal.visible"
-      modal
-      :draggable="false"
-      :closable="!gcashModal.processing"
-      class="w-full max-w-md"
-      :pt="{ root: { class: 'overflow-hidden' } }"
-    >
-      <template #header>
-        <div class="flex w-full items-center gap-2 rounded-t-lg bg-blue-600 px-3 py-2 text-white">
-          <i class="pi pi-wallet text-sm"></i>
-          <span class="text-sm font-semibold">GCash Checkout Details</span>
+    <Dialog v-model:visible="coordsMap.visible" modal header="Location" class="w-full max-w-4xl" :draggable="false">
+   
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <label class="text-xs font-semibold text-slate-600">Search Location</label>
+            <div class="flex gap-2">
+              <InputText
+                v-model="coordsMap.searchQuery"
+                placeholder="Type address or place (e.g., Dasmariñas City, Cavite)"
+                class="flex-1"
+                @keyup.enter="searchCoordsLocation"
+              />
+              <Button label="Search" icon="pi pi-search" severity="warn" @click="searchCoordsLocation" :loading="coordsMap.searching" />
+            </div>
+            <small class="text-xs text-slate-500">Press Enter to search. Click or drag the pin to refine.</small>
+          </div>
         </div>
-      </template>
-      <div class="space-y-3 p-1">
-        <Message severity="info" :closable="false">
-          Enter your GCash number and receipt email before redirecting to PayMongo.
-        </Message>
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
-          <InputMask
-            v-model="gcashModal.phone"
-            mask="09999999999"
-            fluid
-            placeholder="09999999999"
-            :autoClear="false"
-          />
+
+        <div class="h-80 overflow-hidden rounded-xl border border-slate-200">
+          <div id="checkout-coords-map" class="h-full w-full"></div>
         </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
-          <InputText v-model="gcashModal.email" type="email" fluid placeholder="name@example.com" />
-        </div>
-      </div>
+
       <template #footer>
-        <Button label="Cancel" severity="secondary" outlined :disabled="gcashModal.processing" @click="gcashModal.visible = false" />
-        <Button
-          label="Continue to PayMongo"
-          severity="info"
-          :loading="gcashModal.processing"
-          :disabled="gcashModal.processing"
-          @click="proceedGcashCheckout"
-        />
+        <Button label="Save" fluid severity="warn" @click="saveCoordsFromMap" />
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="coordsDialog.visible" modal :draggable="false" :closable="true" class="w-full max-w-sm">
-      <template #header>
-        <div class="flex items-center gap-2">
-          <i :class="coordsDialog.success ? 'pi pi-check-circle text-emerald-600' : 'pi pi-exclamation-triangle text-amber-600'"></i>
-          <span class="text-sm font-semibold">Coordinates</span>
+    <Dialog
+      v-model:visible="gcashDialog.visible"
+      modal
+      header="GCash Payment"
+      class="w-full max-w-md"
+      :draggable="false"
+      :closable="!gcashDialog.processing"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-slate-600">Confirm details for your GCash receipt before redirecting to authorization.</p>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
+          <InputMask v-model="gcashDialog.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false" />
         </div>
-      </template>
-      <p class="text-sm text-slate-700">{{ coordsDialog.message }}</p>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
+          <InputText v-model="gcashDialog.email" type="email" fluid placeholder="name@example.com" />
+        </div>
+      </div>
       <template #footer>
-        <Button label="OK" severity="info" @click="coordsDialog.visible = false" />
+        <Button label="Cancel" severity="secondary" outlined :disabled="gcashDialog.processing" @click="gcashDialog.visible = false" />
+        <Button label="Continue" severity="warn" :loading="gcashDialog.processing" :disabled="gcashDialog.processing" @click="submitGcashPayment" />
       </template>
     </Dialog>
+
+    <Dialog
+      v-model:visible="cardDialog.visible"
+      modal
+      header="Card Payment"
+      class="w-full max-w-md"
+      :draggable="false"
+      :closable="!cardDialog.processing"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-slate-600">
+          Enter your card details to continue. This form sends card data directly to PayMongo using your public key.
+        </p>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Card Number</label>
+          <InputMask v-model="cardDialog.cardNumber" mask="0000 0000 0000 0000" fluid placeholder="4111 1111 1111 1111" />
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">MM</label>
+            <InputMask v-model="cardDialog.expMonth" mask="00" inputmode="numeric" fluid placeholder="01" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">YYYY</label>
+            <InputMask v-model="cardDialog.expYear" mask="0000" inputmode="numeric" fluid placeholder="2030" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">CVC</label>
+            <InputMask v-model="cardDialog.cvc" mask="000" inputmode="numeric" fluid placeholder="123" />
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined :disabled="cardDialog.processing" @click="cardDialog.visible = false" />
+        <Button label="Continue" severity="warn" :loading="cardDialog.processing" :disabled="cardDialog.processing" @click="submitCardPayment" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="threeDsDialog.visible" modal header="Secure Authentication" class="w-full max-w-2xl" :draggable="false">
+      <div class="h-[70vh] overflow-hidden rounded-lg border border-slate-200">
+        <iframe v-if="threeDsDialog.url" :src="threeDsDialog.url" class="h-full w-full" />
+      </div>
+      <template #footer>
+        <Button
+          label="I've Completed Authentication"
+          severity="warn"
+          :loading="checkingPaymongoResult"
+          :disabled="checkingPaymongoResult"
+          @click="pendingPaymongo.orderId ? checkPaymongoResult(pendingPaymongo.orderId) : null"
+        />
+        <Button label="Close" severity="secondary" outlined @click="threeDsDialog.visible = false" />
+      </template>
+    </Dialog>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Drawer from 'primevue/drawer'
 import RadioButton from 'primevue/radiobutton'
@@ -327,6 +375,8 @@ import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 import InputMask from 'primevue/inputmask'
 import { showAlert } from '@/utils/swal'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -359,6 +409,7 @@ const placing = ref(false)
 const paymongoCreating = ref(false)
 const applyingVoucher = ref(false)
 const loading = ref(false)
+const checkingPaymongoResult = ref(false)
 const checkoutItems = ref<any[]>([])
 const selectedItemIds = ref<number[]>([])
 const addressDrawerVisible = ref(false)
@@ -366,23 +417,153 @@ const paymentDrawerVisible = ref(false)
 const showAddAddressForm = ref(false)
 const isEditingAddress = ref(false)
 const editingAddressId = ref<number | null>(null)
-const pendingGcashIntentId = ref<string | null>(null)
-const pendingGcashOrderId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
-const fetchingCoordinates = ref(false)
 
-const coordsDialog = reactive({
+const cardDialog = reactive({
   visible: false,
-  success: false,
-  message: '',
+  processing: false,
+  cardNumber: '',
+  expMonth: '',
+  expYear: '',
+  cvc: '',
 })
 
-const gcashModal = reactive({
+const gcashDialog = reactive({
   visible: false,
   processing: false,
   phone: '',
   email: '',
+})
+
+const threeDsDialog = reactive({
+  visible: false,
+  url: '',
+})
+
+const pendingPaymongo = reactive({
+  orderId: 0,
+  storeId: 0,
+  intentId: '',
+  clientKey: '',
+})
+
+let cachedPaymongoPublicKey: string | null = null
+const PAYMONGO_PENDING_ORDER_STORAGE_KEY = 'paymongo_pending_order_id'
+const DEFAULT_DASM_LAT = 14.3294
+const DEFAULT_DASM_LNG = 120.9367
+
+const coordsMap = reactive({
+  visible: false,
+  searching: false,
+  searchQuery: 'Dasmariñas City, Cavite',
+  latitude: null as number | null,
+  longitude: null as number | null,
+})
+
+let coordsLeafletMap: L.Map | null = null
+let coordsLeafletMarker: L.Marker | null = null
+let coordsMapReady = false
+
+const initCoordsMap = () => {
+  const container = document.getElementById('checkout-coords-map')
+  if (!container) return
+
+  const lat = Number(coordsMap.latitude ?? newAddress.latitude ?? DEFAULT_DASM_LAT) || DEFAULT_DASM_LAT
+  const lng = Number(coordsMap.longitude ?? newAddress.longitude ?? DEFAULT_DASM_LNG) || DEFAULT_DASM_LNG
+  coordsMap.latitude = Number(lat.toFixed(6))
+  coordsMap.longitude = Number(lng.toFixed(6))
+
+  if (!coordsMapReady) {
+    coordsLeafletMap = L.map(container).setView([lat, lng], 14)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(coordsLeafletMap)
+
+    coordsLeafletMap.on('click', (e: any) => {
+      coordsMap.latitude = Number(e.latlng.lat.toFixed(6))
+      coordsMap.longitude = Number(e.latlng.lng.toFixed(6))
+      redrawCoordsMarker()
+    })
+
+    coordsMapReady = true
+  }
+
+  redrawCoordsMarker()
+  setTimeout(() => coordsLeafletMap?.invalidateSize(), 150)
+}
+
+const redrawCoordsMarker = () => {
+  if (!coordsLeafletMap) return
+  const lat = Number(coordsMap.latitude ?? DEFAULT_DASM_LAT) || DEFAULT_DASM_LAT
+  const lng = Number(coordsMap.longitude ?? DEFAULT_DASM_LNG) || DEFAULT_DASM_LNG
+
+  if (coordsLeafletMarker) coordsLeafletMarker.remove()
+  coordsLeafletMarker = L.marker([lat, lng], { draggable: true }).addTo(coordsLeafletMap)
+  coordsLeafletMarker.on('dragend', () => {
+    const pos = coordsLeafletMarker!.getLatLng()
+    coordsMap.latitude = Number(pos.lat.toFixed(6))
+    coordsMap.longitude = Number(pos.lng.toFixed(6))
+  })
+
+  coordsLeafletMap.setView([lat, lng], 14)
+}
+
+const openCoordsMapDialog = async () => {
+  coordsMap.latitude = newAddress.latitude ? Number(newAddress.latitude) : DEFAULT_DASM_LAT
+  coordsMap.longitude = newAddress.longitude ? Number(newAddress.longitude) : DEFAULT_DASM_LNG
+  coordsMap.visible = true
+  await nextTick()
+  initCoordsMap()
+}
+
+async function searchCoordsLocation() {
+  if (!coordsMap.searchQuery.trim()) return
+  coordsMap.searching = true
+  try {
+    const q = encodeURIComponent(coordsMap.searchQuery.trim())
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
+    const results = await res.json()
+    if (results && results.length > 0) {
+      const first = results[0]
+      coordsMap.latitude = Number(Number(first.lat).toFixed(6))
+      coordsMap.longitude = Number(Number(first.lon).toFixed(6))
+      redrawCoordsMarker()
+    }
+  } catch (e) {
+    console.warn('Search failed', e)
+  } finally {
+    coordsMap.searching = false
+  }
+}
+
+const saveCoordsFromMap = () => {
+  newAddress.latitude = coordsMap.latitude
+  newAddress.longitude = coordsMap.longitude
+  customerLatitude.value = coordsMap.latitude
+  customerLongitude.value = coordsMap.longitude
+  estimateShippingFee()
+  coordsMap.visible = false
+}
+
+watch(
+  () => coordsMap.visible,
+  async (visible) => {
+    if (visible) {
+      await nextTick()
+      initCoordsMap()
+    }
+  }
+)
+
+onBeforeUnmount(() => {
+  if (coordsLeafletMap) {
+    coordsLeafletMap.remove()
+    coordsLeafletMap = null
+    coordsLeafletMarker = null
+    coordsMapReady = false
+  }
 })
 
 const shippingFeeTotal = ref(0)
@@ -442,11 +623,12 @@ const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
 const citiesCache = ref<Record<string, any[]>>({})
 
-const selectedPaymentMethod = ref<'cod' | 'gcash'>('cod')
+const selectedPaymentMethod = ref<'cod' | 'gcash' | 'card'>('cod')
 const COD_LIMIT = 20000
 const allPaymentMethods = [
   { label: 'Cash on Delivery (COD)', value: 'cod' as const },
   { label: 'GCash (PayMongo)', value: 'gcash' as const },
+  { label: 'Credit/Debit Card (PayMongo)', value: 'card' as const },
 ]
 
 const voucherCode = ref('')
@@ -479,7 +661,7 @@ const discountAmount = computed(() => validatedDiscountAmount.value)
 const totalAmount = computed(() => Math.max(0, subtotal.value + shippingFeeTotal.value - discountAmount.value))
 const codBlocked = computed(() => totalAmount.value > COD_LIMIT)
 
-function paymentMethodLabel(method: 'cod' | 'gcash') {
+function paymentMethodLabel(method: 'cod' | 'gcash' | 'card') {
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
 }
 
@@ -677,8 +859,9 @@ async function estimateShippingFee() {
   }
 }
 
-function toBackendPaymentMethod(method: 'cod' | 'gcash') {
+function toBackendPaymentMethod(method: 'cod' | 'gcash' | 'card') {
   if (method === 'gcash') return 'e_wallet'
+  if (method === 'card') return 'card'
   return 'cod'
 }
 
@@ -813,68 +996,7 @@ async function startEditAddress(address: AddressTemplate) {
   }
 }
 
-async function fetchCoordinates() {
-  const fallbackAddress = buildAddressForGeocoding()
-
-  if (!navigator.geolocation) {
-    const geocoded = await geocodeAddressText(fallbackAddress)
-    if (geocoded) {
-      customerLatitude.value = geocoded.latitude
-      customerLongitude.value = geocoded.longitude
-      newAddress.latitude = geocoded.latitude
-      newAddress.longitude = geocoded.longitude
-      coordsDialog.success = true
-      coordsDialog.message = 'Coordinates were resolved from your shipping address.'
-      coordsDialog.visible = true
-      estimateShippingFee()
-      return
-    }
-
-    coordsDialog.success = false
-    coordsDialog.message = 'Geolocation is not supported by this device or browser, and address geocoding failed. Complete your address and try again.'
-    coordsDialog.visible = true
-    return
-  }
-
-  fetchingCoordinates.value = true
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      customerLatitude.value = position.coords.latitude
-      customerLongitude.value = position.coords.longitude
-      newAddress.latitude = position.coords.latitude
-      newAddress.longitude = position.coords.longitude
-      coordsDialog.success = true
-      coordsDialog.message = 'Coordinates fetched successfully and will be used for delivery.'
-      coordsDialog.visible = true
-      estimateShippingFee()
-      fetchingCoordinates.value = false
-    },
-    async (error) => {
-      const geocoded = await geocodeAddressText(fallbackAddress)
-      if (geocoded) {
-        customerLatitude.value = geocoded.latitude
-        customerLongitude.value = geocoded.longitude
-        newAddress.latitude = geocoded.latitude
-        newAddress.longitude = geocoded.longitude
-        coordsDialog.success = true
-        coordsDialog.message = 'Coordinates fetched successfully from your shipping address.'
-        coordsDialog.visible = true
-        estimateShippingFee()
-        fetchingCoordinates.value = false
-        return
-      }
-
-      const denied = error?.code === 1
-      coordsDialog.success = false
-      coordsDialog.message = denied
-        ? 'Location permission denied. Enable location access in your browser site settings, or complete your full address and try again.'
-        : (error?.message || 'Unable to fetch coordinates.')
-      coordsDialog.visible = true
-      fetchingCoordinates.value = false
-    },
-    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
-  )
-}
+// Coordinates are picked via the interactive map dialog (Leaflet).
 
 async function placeOrder() {
   if (!selectedAddress.value) {
@@ -926,30 +1048,52 @@ async function placeOrder() {
     const orderId = response.data?.data?.id
     const orderStoreId = Number(response.data?.data?.store_id || checkoutItems.value?.[0]?.store_id || 0)
 
-    if (selectedPaymentMethod.value === 'gcash') {
+    if (selectedPaymentMethod.value === 'gcash' || selectedPaymentMethod.value === 'card') {
       if (!orderId || !orderStoreId) {
         throw new Error('Order ID or store ID is missing for PayMongo checkout.')
       }
 
       paymongoCreating.value = true
+
       const intentResponse = await paymongoService.createIntent({
         amount: Math.max(Math.round(totalAmount.value * 100), 1),
-        payment_method_allowed: ['gcash'],
+        currency: 'PHP',
+        description: `Order #${orderId}`,
+        statement_descriptor: 'Ecommerce Order',
+        payment_method_allowed: [selectedPaymentMethod.value === 'gcash' ? 'gcash' : 'card'],
         store_id: orderStoreId,
         payable_type: 'ecommerce_order',
         payable_id: Number(orderId),
+        metadata: { order_id: orderId },
       })
-      const intentId = intentResponse?.data?.data?.id
-      if (!intentId) {
-        throw new Error('Failed to initialize PayMongo payment intent.')
+
+      const intentId = String(intentResponse?.data?.data?.id || '')
+      const clientKey = String(intentResponse?.data?.data?.attributes?.client_key || '')
+      if (!intentId || !clientKey) {
+        throw new Error(intentResponse?.message || 'Failed to initialize PayMongo payment intent.')
       }
 
-      pendingGcashIntentId.value = String(intentId)
-      pendingGcashOrderId.value = Number(orderId)
-      gcashModal.phone = cleanPhoneNumber(selectedAddress.value.contact_number || '')
-      gcashModal.email = authStore.user?.email || payload.shipping_email || ''
-      gcashModal.visible = true
-      showAlert({ severity: 'success', summary: 'Order Placed', detail: 'Enter GCash details to continue payment.' })
+      pendingPaymongo.orderId = Number(orderId)
+      pendingPaymongo.storeId = Number(orderStoreId)
+      pendingPaymongo.intentId = intentId
+      pendingPaymongo.clientKey = clientKey
+      try {
+        window.sessionStorage.setItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY, String(orderId))
+      } catch {}
+
+      if (selectedPaymentMethod.value === 'gcash') {
+        gcashDialog.phone = String(selectedAddress.value?.contact_number || '').trim()
+        gcashDialog.email = (authStore.user?.email || payload.shipping_email || '').trim()
+        gcashDialog.visible = true
+        return
+      }
+
+      // Card: open local form. Card details will be sent directly to PayMongo via public key + client_key attach.
+      cardDialog.cardNumber = ''
+      cardDialog.expMonth = ''
+      cardDialog.expYear = ''
+      cardDialog.cvc = ''
+      cardDialog.visible = true
       return
     }
 
@@ -961,18 +1105,6 @@ async function placeOrder() {
     placing.value = false
     paymongoCreating.value = false
   }
-}
-
-function cleanPhoneNumber(raw: string) {
-  const digits = String(raw || '').replace(/\D/g, '')
-  if (!digits) return ''
-  if (digits.startsWith('63') && digits.length >= 12) {
-    return `0${digits.slice(2, 12)}`
-  }
-  if (digits.length > 11) {
-    return digits.slice(digits.length - 11)
-  }
-  return digits
 }
 
 function normalizeImageUrl(raw: string) {
@@ -988,41 +1120,230 @@ function onImageError(event: Event) {
   if (target) target.src = '/F.svg'
 }
 
-async function proceedGcashCheckout() {
-  if (!pendingGcashIntentId.value || !pendingGcashOrderId.value) {
-    showAlert({ severity: 'warn', summary: 'Missing Payment Context', detail: 'Please place the order again.' })
+function base64Encode(value: string) {
+  try {
+    return btoa(value)
+  } catch {
+    return btoa(unescape(encodeURIComponent(value)))
+  }
+}
+
+async function getPaymongoPublicKey(): Promise<string> {
+  if (cachedPaymongoPublicKey) return cachedPaymongoPublicKey
+  const res = await paymongoService.getPublicKey()
+  const key = String(res?.data?.public_key || '').trim()
+  if (!key) throw new Error('Missing PayMongo public key.')
+  cachedPaymongoPublicKey = key
+  return key
+}
+
+async function createPaymongoCardPaymentMethod(args: {
+  cardNumber: string
+  expMonth: number
+  expYear: number
+  cvc: string
+  billing: { name: string; email: string; phone?: string }
+}) {
+  const publicKey = await getPaymongoPublicKey()
+  const authorization = `Basic ${base64Encode(`${publicKey}:`)}`
+
+  const response = await fetch('https://api.paymongo.com/v1/payment_methods', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authorization,
+    },
+    body: JSON.stringify({
+      data: {
+        attributes: {
+          type: 'card',
+          details: {
+            card_number: args.cardNumber.replace(/\s+/g, ''),
+            exp_month: args.expMonth,
+            exp_year: args.expYear,
+            cvc: args.cvc,
+          },
+          billing: args.billing,
+        },
+      },
+    }),
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = payload?.errors?.[0]?.detail || 'Unable to create PayMongo card payment method.'
+    throw new Error(detail)
+  }
+
+  const paymentMethodId = String(payload?.data?.id || '')
+  if (!paymentMethodId) throw new Error('PayMongo did not return a payment_method id.')
+  return paymentMethodId
+}
+
+function cleanPhoneNumber(raw: string) {
+  const digits = String(raw || '').replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('63') && digits.length >= 12) {
+    return `0${digits.slice(2, 12)}`
+  }
+  if (digits.length > 11) {
+    return digits.slice(digits.length - 11)
+  }
+  return digits
+}
+
+async function submitGcashPayment() {
+  if (!pendingPaymongo.orderId || !pendingPaymongo.intentId) {
+    showAlert({ severity: 'warn', summary: 'Missing Context', detail: 'Please place the order again.' })
     return
   }
 
-  const phone = cleanPhoneNumber(gcashModal.phone)
+  const name = selectedAddress.value?.full_name || 'Customer'
+  const phone = cleanPhoneNumber(gcashDialog.phone)
+  const email = String(gcashDialog.email || '').trim()
+
   if (!/^09\d{9}$/.test(phone)) {
     showAlert({ severity: 'warn', summary: 'Invalid Number', detail: 'Use an 11-digit GCash number (09XXXXXXXXX).' })
     return
   }
-  if (!gcashModal.email.trim()) {
-    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please provide receipt email.' })
+  if (!email) {
+    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please provide an email for the receipt.' })
     return
   }
 
-  gcashModal.processing = true
+  gcashDialog.processing = true
   paymongoCreating.value = true
   try {
-    const gcashResponse = await paymongoService.startGcash(pendingGcashIntentId.value, {
-      name: selectedAddress.value?.full_name || 'Customer',
-      email: gcashModal.email.trim(),
-      phone,
-      return_url: `${window.location.origin}/shop/orders/${pendingGcashOrderId.value}`,
-    })
-    const redirectUrl = gcashResponse?.data?.redirect_url
-    if (!redirectUrl) {
-      throw new Error('PayMongo did not return a checkout URL.')
-    }
-    window.location.href = redirectUrl
+    const returnUrl = `${window.location.origin}/shop/orders/${encodeURIComponent(String(pendingPaymongo.orderId))}`
+    const walletRes = await paymongoService.startWallet(pendingPaymongo.intentId, 'gcash', { name, email, phone, return_url: returnUrl })
+    const redirectUrl = walletRes?.data?.redirect_url
+    if (!redirectUrl) throw new Error(walletRes?.message || 'Failed to start GCash checkout.')
+    gcashDialog.visible = false
+    window.location.href = String(redirectUrl).trim()
   } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Unable to start GCash checkout.' })
+    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || error?.message || 'Unable to start GCash checkout.' })
   } finally {
-    gcashModal.processing = false
+    gcashDialog.processing = false
     paymongoCreating.value = false
+  }
+}
+
+async function attachPaymentMethodToIntent(clientKey: string, paymentMethodId: string, returnUrl: string) {
+  const paymentIntentId = String(clientKey).split('_client')[0]
+  const authorization = `Basic ${base64Encode(`${clientKey}:`)}`
+
+  const response = await fetch(`https://api.paymongo.com/v1/payment_intents/${encodeURIComponent(paymentIntentId)}/attach`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authorization,
+    },
+    body: JSON.stringify({
+      data: {
+        attributes: {
+          payment_method: paymentMethodId,
+          return_url: returnUrl,
+        },
+      },
+    }),
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = payload?.errors?.[0]?.detail || 'Unable to attach payment method to intent.'
+    throw new Error(detail)
+  }
+  return payload
+}
+
+async function submitCardPayment() {
+  if (!pendingPaymongo.orderId || !pendingPaymongo.clientKey) {
+    showAlert({ severity: 'warn', summary: 'Missing Context', detail: 'Please place the order again.' })
+    return
+  }
+
+  const cardNumber = String(cardDialog.cardNumber || '').trim()
+  const expMonth = Number(String(cardDialog.expMonth || '').trim())
+  const expYear = Number(String(cardDialog.expYear || '').trim())
+  const cvc = String(cardDialog.cvc || '').trim()
+  if (!cardNumber || !expMonth || !expYear || !cvc) {
+    showAlert({ severity: 'warn', summary: 'Incomplete Card', detail: 'Please fill in card number, expiry, and CVC.' })
+    return
+  }
+
+  const billingName = selectedAddress.value?.full_name || 'Customer'
+  const billingPhone = String(selectedAddress.value?.contact_number || '').trim()
+  const billingEmail = (authStore.user?.email || '').trim()
+  if (!billingEmail) {
+    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please login so we can use your email for the receipt.' })
+    return
+  }
+
+  cardDialog.processing = true
+  paymongoCreating.value = true
+  try {
+    const pmId = await createPaymongoCardPaymentMethod({
+      cardNumber,
+      expMonth,
+      expYear,
+      cvc,
+      billing: { name: billingName, email: billingEmail, phone: billingPhone || undefined },
+    })
+
+    const returnUrl = `${window.location.origin}/shop/orders/${encodeURIComponent(String(pendingPaymongo.orderId))}`
+    const attached = await attachPaymentMethodToIntent(pendingPaymongo.clientKey, pmId, returnUrl)
+
+    const status = String(attached?.data?.attributes?.status || '').toLowerCase().trim()
+    const nextUrl = attached?.data?.attributes?.next_action?.redirect?.url
+
+    cardDialog.visible = false
+
+    if (status === 'awaiting_next_action' && nextUrl) {
+      threeDsDialog.url = String(nextUrl)
+      threeDsDialog.visible = true
+      return
+    }
+
+    // If it immediately succeeded/processing, just bring user back to checkout status screen.
+    await checkPaymongoResult(pendingPaymongo.orderId)
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Payment Failed', detail: error?.message || 'Unable to process card payment.' })
+  } finally {
+    cardDialog.processing = false
+    paymongoCreating.value = false
+  }
+}
+
+async function checkPaymongoResult(orderId: number) {
+  checkingPaymongoResult.value = true
+  try {
+    const latest = await paymongoService.getLatestIntentByPayable('ecommerce_order', orderId, { sync: true })
+    const status = String(latest?.data?.status || '').toLowerCase().trim()
+
+    if (!status) {
+      showAlert({ severity: 'warn', summary: 'Payment Pending', detail: 'No PayMongo status yet. Please wait a moment and refresh.' })
+      return
+    }
+
+    if (status === 'succeeded') {
+      showAlert({ severity: 'success', summary: 'Payment Successful', detail: 'Your payment was confirmed.' })
+      try {
+        window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)
+      } catch {}
+      router.replace({ name: 'ecommerce.order-detail', params: { id: orderId } })
+      return
+    }
+
+    if (status === 'failed' || status === 'cancelled' || status === 'canceled') {
+      showAlert({ severity: 'error', summary: 'Payment Failed', detail: 'Your payment was not completed. You can try again.' })
+      return
+    }
+
+    // silent for intermediate statuses; user can refresh or close dialogs
+  } catch (error: any) {
+    showAlert({ severity: 'warn', summary: 'Payment Pending', detail: 'Unable to confirm payment yet. Please refresh in a moment.' })
+  } finally {
+    checkingPaymongoResult.value = false
   }
 }
 
@@ -1031,6 +1352,29 @@ function goCart() {
 }
 
 onMounted(async () => {
+  let paymongoOrderId = Number(route.query?.paymongo_order_id || 0)
+  if (!paymongoOrderId) {
+    try {
+      const stored = Number(window.sessionStorage.getItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY) || 0)
+      if (stored > 0) paymongoOrderId = stored
+    } catch {}
+  }
+  if (paymongoOrderId > 0) {
+    if (String(route.query?.paymongo_cancel || '') === '1') {
+      showAlert({ severity: 'info', summary: 'Payment Cancelled', detail: 'You cancelled the PayMongo checkout. No payment was made.' })
+    } else {
+      await checkPaymongoResult(paymongoOrderId)
+    }
+    // Remove the query so refresh doesn't keep firing the toast.
+    const nextQuery = { ...route.query }
+    delete (nextQuery as any).paymongo_order_id
+    delete (nextQuery as any).paymongo_success
+    delete (nextQuery as any).paymongo_cancel
+    if (Object.keys(nextQuery).length !== Object.keys(route.query).length) {
+      router.replace({ query: nextQuery })
+    }
+  }
+
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -1056,4 +1400,3 @@ onMounted(async () => {
   }
 })
 </script>
-

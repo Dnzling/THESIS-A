@@ -182,6 +182,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/settings', [StoreSettingsController::class, 'show']);
         Route::put('/settings/profile', [StoreSettingsController::class, 'updateProfile']);
         Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
+        Route::put('/settings/payments', [StoreSettingsController::class, 'updatePaymentSettings']);
         Route::get('/settings/hr', [StoreSettingsController::class, 'showHrSettings']);
         Route::put('/settings/hr', [StoreSettingsController::class, 'updateHrSettings']);
         Route::put('/settings/attendance', [StoreSettingsController::class, 'updateAttendanceSettings']);
@@ -201,9 +202,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     Route::prefix('payments')->group(function () {
         Route::post('paymongo/create', [PaymongoController::class, 'create']);
+        Route::post('paymongo/checkout-session', [PaymongoController::class, 'createCheckoutSession']);
+        Route::get('paymongo/checkout-session/{id}', [PaymongoController::class, 'retrieveCheckoutSession']);
+        Route::get('paymongo/public-key', [PaymongoController::class, 'publicKey']);
         Route::get('paymongo/latest', [PaymongoController::class, 'latestByPayable']);
         Route::get('paymongo/{id}', [PaymongoController::class, 'status']);
         Route::post('paymongo/{id}/gcash-start', [PaymongoController::class, 'startGcash']);
+        Route::post('paymongo/{id}/wallet/{type}/start', [PaymongoController::class, 'startWallet']);
+        Route::post('paymongo/{id}/card-start', [PaymongoController::class, 'startCard']);
     });
 
 

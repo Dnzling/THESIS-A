@@ -6,11 +6,11 @@
         <div class="flex items-center gap-2">
           <InputText v-model="search" placeholder="Search store" fluid />
           <Select v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" placeholder="Sort" fluid />
-          <Button icon="pi pi-search" severity="info" @click="loadStores" size="small" fluid/>
+          <Button icon="pi pi-search" severity="warn" @click="loadStores" size="small" fluid/>
         </div>
       </div>
 
-      <div v-if="loading" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div v-if="loading" class="mt-4 space-y-3">
         <Card v-for="idx in 6" :key="idx" class="border border-slate-200 shadow-none">
           <template #content>
             <div class="space-y-2">
@@ -23,30 +23,28 @@
         </Card>
       </div>
 
-      <div v-else class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div v-else class="mt-4 space-y-3">
         <Card v-for="store in stores" :key="store.id" class="border border-slate-200 shadow-none">
           <template #content>
-            <div class="space-y-3">
-              <div>
-                <h2 class="text-lg font-semibold text-slate-900">{{ store.store_name }}</h2>
-                <p class="text-xs text-slate-500">{{ store.city || 'N/A City' }}</p>
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div class="min-w-0">
+                <h2 class="truncate text-lg font-semibold text-slate-900">{{ store.store_name }}</h2>
+                <p class="truncate text-xs text-slate-500">{{ store.city || 'N/A City' }} · {{ store.address || '—' }}</p>
+                <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                  <span class="rounded-full border border-slate-200 px-2 py-1">
+                    Products: <span class="font-semibold">{{ store.products_count }}</span>
+                  </span>
+                  <span class="rounded-full border border-slate-200 px-2 py-1">
+                    Rating: <span class="font-semibold">{{ Number(store.rating_avg || 0).toFixed(2) }}</span>
+                  </span>
+                  <span class="rounded-full border border-slate-200 px-2 py-1">
+                    Reviews: <span class="font-semibold">{{ store.rating_count }}</span>
+                  </span>
+                </div>
               </div>
 
-              <div class="grid grid-cols-2 gap-2 text-xs">
-                <div class="rounded-lg border border-slate-200 p-2">Products: <span class="font-semibold">{{ store.products_count }}</span></div>
-                <div class="rounded-lg border border-slate-200 p-2">Categories: <span class="font-semibold">{{ store.categories_count }}</span></div>
-                <div class="rounded-lg border border-slate-200 p-2">Rating: <span class="font-semibold">{{ Number(store.rating_avg || 0).toFixed(2) }}</span></div>
-                <div class="rounded-lg border border-slate-200 p-2">Reviews: <span class="font-semibold">{{ store.rating_count }}</span></div>
-              </div>
-
-              <div class="flex flex-wrap gap-2 text-xs">
-                <Tag :value="`Response ${Number(store.badges?.response_rate || 0).toFixed(1)}%`" severity="info" />
-                <Tag :value="`Cancel ${Number(store.badges?.cancellation_rate || 0).toFixed(1)}%`" severity="secondary" />
-                <Tag :value="`Ship ${Number(store.badges?.avg_shipping_time_hours || 0).toFixed(1)}h`" severity="success" />
-              </div>
-
-              <div class="flex items-center gap-2">
-                <Button label="Visit Store" severity="info" fluid @click="goStore(store.id)" />
+              <div class="flex shrink-0 items-center gap-2">
+                <Button label="Visit Store" severity="warn" @click="goStore(store.id)" />
               </div>
             </div>
           </template>
@@ -98,4 +96,3 @@ function goStore(storeId: number) {
 
 onMounted(loadStores)
 </script>
-

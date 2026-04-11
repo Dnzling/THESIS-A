@@ -18,6 +18,7 @@ class EcommerceOrder extends Model
         'store_id',
         'assigned_branch_id',
         'user_id',
+        'pending_cart_id',
         'order_number',
         'status',
         'payment_method',
@@ -34,6 +35,7 @@ class EcommerceOrder extends Model
         'discount_amount',
         'total_amount',
         'notes',
+        'pending_snapshot',
         'placed_at',
     ];
 
@@ -46,6 +48,7 @@ class EcommerceOrder extends Model
         'placed_at' => 'datetime',
         'customer_latitude' => 'decimal:7',
         'customer_longitude' => 'decimal:7',
+        'pending_snapshot' => 'array',
     ];
 
     public function store(): BelongsTo

@@ -2,7 +2,7 @@
   <Head v-if="pageTitle" :title="pageTitle" />
   <div class="min-h-screen bg-linear-to-b from-[#e0e7f5] to-[#f6f9fd]">
     <Toast />
-    <header class="sticky top-0 z-20 border-b border-slate-200/70 bg-white/90 backdrop-blur-sm">
+    <header class="sticky top-0 z-20 hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
       <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-2 py-1.5 sm:px-3 sm:py-2 md:px-4">
         <button link severity="secondary" @click="router.push({name: 'ecommerce.products'})"
           class="flex items-center justify-center rounded-lg">

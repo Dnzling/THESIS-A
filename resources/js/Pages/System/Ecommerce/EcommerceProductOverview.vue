@@ -32,56 +32,117 @@
     <Card v-else-if="product" class="plain-card overflow-hidden">
       <template #content>
         <div class="grid grid-cols-1 gap-5 md:gap-8 md:grid-cols-2">
-          <div class="overflow-hidden rounded-2xl bg-slate-100">
-            <div class="flex items-center justify-end p-3">
-              <Button v-if="selectedModel3D" :label="show3DViewer ? 'Show Photo' : '3D'" icon="pi pi-cube" size="small"
-                severity="info" raised @click="toggle3DViewer" />
+          <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+            <div class="flex items-center justify-between p-3">
+              <div class="flex flex-wrap gap-2">
+                <Tag v-if="product?.is_new_arrival" value="New" severity="info" />
+                <Tag v-if="product?.is_bestseller" value="Bestseller" severity="success" />
+                <Tag v-if="product?.is_featured" value="Featured" severity="warning" />
+              </div>
+              <Button
+                v-if="selectedModel3D"
+                :label="show3DViewer ? 'Show Photo' : '3D'"
+                icon="pi pi-cube"
+                size="small"
+                severity="info"
+                raised
+                @click="toggle3DViewer"
+              />
             </div>
   
-            <div v-if="show3DViewer && selectedModel3D" class="relative min-h-90 w-full">
-              <Model3DPreview :model-url="selectedModel3D.url" :model-format="selectedModel3D.model_format"
+            <div v-if="show3DViewer && selectedModel3D" class="relative w-full aspect-square">
+              <Model3DPreview
+                :model-url="selectedModel3D.url"
+                :model-format="selectedModel3D.model_format"
                 :camera-x="selectedModel3D?.camera_settings?.angle_x ?? 0"
                 :camera-y="selectedModel3D?.camera_settings?.angle_y ?? 15"
-                :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="360px" />
+                :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5"
+                height="100%"
+              />
             </div>
   
-            <img v-else-if="primaryImage" :src="primaryImage" :alt="product.product_name"
-              class="h-full w-full object-cover" @error="handleImageError" />
-            <div v-else class="flex min-h-90 items-center justify-center text-slate-400">
+            <div v-else-if="primaryImage" class="relative w-full aspect-square">
+              <img
+                :src="primaryImage"
+                :alt="product.product_name"
+                class="absolute inset-0 h-full w-full object-cover"
+                @error="handleImageError"
+              />
+            </div>
+            <div v-else class="flex aspect-square items-center justify-center text-slate-400">
               <i class="pi pi-image text-5xl opacity-30" />
             </div>
   
             <div v-if="!show3DViewer && galleryImages.length > 1" class="border-t border-slate-200 bg-white p-3">
-              <Carousel :value="galleryImages" :numVisible="4" :numScroll="1" :circular="false">
-                <template #item="{ data }">
-                  <button type="button" class="h-18 w-18 overflow-hidden rounded-lg border transition"
-                    :class="data === primaryImage ? 'border-blue-500' : 'border-slate-200 hover:border-slate-300'"
-                    @click="selectedImage = data">
-                    <img :src="data" alt="Product image" class="h-full w-full object-cover" @error="handleImageError" />
-                  </button>
-                </template>
-              </Carousel>
+              <div class="flex gap-2 overflow-x-auto pb-1">
+                <button
+                  v-for="(img, idx) in galleryImages"
+                  :key="`${img}-${idx}`"
+                  type="button"
+                  class="shrink-0 h-16 w-16 overflow-hidden rounded-xl border transition"
+                  :class="img === primaryImage ? 'border-blue-500' : 'border-slate-200 hover:border-slate-300'"
+                  @click="selectedImage = img"
+                >
+                  <img :src="img" alt="Product image" class="h-full w-full object-cover" @error="handleImageError" />
+                </button>
+              </div>
             </div>
           </div>
   
           <div class="space-y-4">
             <Tag :value="stockLabel" :severity="stockSeverity" />
-            <h1 class="text-2xl md:text-3xl font-semibold text-slate-900">{{ product.product_name }}</h1>
-            <p class="text-sm leading-7 text-slate-600">{{ product.description || 'No description available.' }}</p>
-            <p class="text-3xl font-bold text-slate-900">{{ formatCurrency(product.price) }}</p>
-            <p class="text-sm text-slate-500">{{ product.quantity_available || 0 }} items available</p>
+            <div class="space-y-2">
+              <h1 class="text-2xl md:text-3xl font-semibold text-slate-900">{{ product.product_name }}</h1>
+              <div class="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+                <span v-if="product.brand">{{ product.brand }}</span>
+                <span v-if="product.brand && product.collection_name" class="text-slate-300">•</span>
+                <span v-if="product.collection_name">{{ product.collection_name }}</span>
+                <span v-if="(product.brand || product.collection_name) && product.category" class="text-slate-300">•</span>
+                <span v-if="product.category">{{ product.category }}</span>
+              </div>
+              <p class="text-xs text-slate-500">
+                SKU: <span class="font-mono font-semibold text-slate-700">{{ product.sku || '—' }}</span>
+              </p>
+            </div>
+
+            <div class="space-y-1">
+              <p class="text-3xl font-bold text-slate-900">{{ formatCurrency(product.price) }}</p>
+              <p class="text-sm text-slate-500">
+                {{ product.quantity_available || 0 }} items available
+                <span v-if="product.assembly_required" class="mx-2 text-slate-300">•</span>
+                <span v-if="product.assembly_required">Assembly required</span>
+              </p>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
+              <div
+                v-if="product.description"
+                class="text-sm leading-7 text-slate-600 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+                v-html="displayDescriptionHtml"
+              ></div>
+              <p v-else class="text-sm leading-7 text-slate-600">No description available.</p>
+            </div>
   
-            <div class="rounded-xl border border-slate-200 p-3">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Dimensions</p>
-              <div class="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-700">
-                <p>Length: <span class="font-semibold">{{ displayDimension(product?.dimensions?.length_cm, 'cm') }}</span>
-                </p>
-                <p>Width: <span class="font-semibold">{{ displayDimension(product?.dimensions?.width_cm, 'cm') }}</span>
-                </p>
-                <p>Height: <span class="font-semibold">{{ displayDimension(product?.dimensions?.height_cm, 'cm') }}</span>
-                </p>
-                <p>Weight: <span class="font-semibold">{{ displayDimension(product?.dimensions?.weight_kg, 'kg') }}</span>
-                </p>
+            <div class="space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Specs</p>
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] text-slate-500">L</p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.length_cm ?? '—' }}<span v-if="displayDimensions?.length_cm"> cm</span></p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] text-slate-500">W</p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.width_cm ?? '—' }}<span v-if="displayDimensions?.width_cm"> cm</span></p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] text-slate-500">H</p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.height_cm ?? '—' }}<span v-if="displayDimensions?.height_cm"> cm</span></p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] text-slate-500">Weight</p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.weight_kg ?? '—' }}<span v-if="displayDimensions?.weight_kg"> kg</span></p>
+                </div>
               </div>
             </div>
   
@@ -97,7 +158,7 @@
               <p v-if="selectedVariation" class="text-sm text-slate-600">
                 Variation Price: <span class="font-semibold">{{ formatCurrency(selectedVariation.final_price ||
                   product.price) }}</span>
-                <span v-if="selectedVariation.model_3d" class="ml-2 text-xs text-emerald-600">(Has 3D model)</span>
+                <span v-if="selectedModel3D" class="ml-2 text-xs text-emerald-600">(Has 3D model)</span>
               </p>
             </div>
   
@@ -158,9 +219,12 @@
   
       <div v-if="activeTab === 'description'" class="p-5">
         <h3 class="text-lg font-semibold text-slate-900">Product Description</h3>
-        <p class="mt-3 text-sm leading-7 text-slate-600">
-          {{ product.description || 'No description available for this product yet.' }}
-        </p>
+        <div
+          v-if="product.description"
+          class="mt-3 text-sm leading-7 text-slate-600 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+          v-html="displayDescriptionHtml"
+        ></div>
+        <p v-else class="mt-3 text-sm leading-7 text-slate-600">No description available for this product yet.</p>
       </div>
   
       <div v-else-if="activeTab === 'reviews'" class="p-5">
@@ -294,15 +358,80 @@ const reportForm = ref({
   details: '',
   evidence_images: [] as File[],
 })
+
+const displayDescriptionHtml = computed(() => {
+  const html = String(product.value?.description || '').trim()
+  if (!html) return ''
+  // PrimeVue Editor outputs HTML; render it and normalize NBSP for nicer wrapping.
+  return html.replace(/&nbsp;/g, ' ')
+})
 const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
 const productHasVariations = computed(() => Array.isArray(product.value?.variations) && product.value.variations.length > 0)
-const selectedModel3D = computed(() => selectedVariation.value?.model_3d || product.value?.model_3d || null)
-const galleryImages = computed<string[]>(() => {
+const selectedModel3D = computed(() => {
+  const v: any = selectedVariation.value
+  // Only fall back to parent when the selected variation has no own media/specs.
+  if (v && variationHasOwnMediaOrSpecs.value) {
+    return v?.model_3d || null
+  }
+  return product.value?.model_3d || null
+})
+
+// If a variation does not provide its own media/specs, fall back to the parent product.
+const variationHasOwnMediaOrSpecs = computed(() => {
+  const v: any = selectedVariation.value
+  if (!v) return false
+
+  const has3d = !!v.model_3d
+  const varImages = Array.isArray(v.images) ? v.images : (v.image ? [v.image] : [])
+  const hasImages = varImages.some((img: any) => {
+    const raw = typeof img === 'string' ? img : (img?.url || img?.image_url || img?.src || '')
+    return Boolean(String(raw || '').trim())
+  })
+  const dims = v.dimensions || v
+  const hasSpecs = ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((k) => {
+    const val = dims?.[k]
+    return val !== null && val !== undefined && val !== ''
+  })
+
+  return has3d || hasImages || hasSpecs
+})
+
+const displayDimensions = computed(() => {
+  const v: any = selectedVariation.value
+  const p: any = product.value
+
+  const parentDims = p?.dimensions || p || {}
+  const variationDims = v?.dimensions || v || {}
+
+  const pick = (key: 'length_cm' | 'width_cm' | 'height_cm' | 'weight_kg') => {
+    const vv = variationDims?.[key]
+    if (vv !== null && vv !== undefined && vv !== '') return vv
+    const pv = parentDims?.[key]
+    if (pv !== null && pv !== undefined && pv !== '') return pv
+    return null
+  }
+
+  return {
+    length_cm: pick('length_cm'),
+    width_cm: pick('width_cm'),
+    height_cm: pick('height_cm'),
+    weight_kg: pick('weight_kg'),
+  }
+})
+
+const displayImagesRaw = computed<any[]>(() => {
+  const v: any = selectedVariation.value
+  if (variationHasOwnMediaOrSpecs.value) {
+    const imgs = Array.isArray(v?.images) ? v.images : (v?.image ? [v.image] : [])
+    if (imgs.length) return imgs
+  }
   const images = product.value?.images
-  const rawImages = Array.isArray(images) ? images : (product.value?.image ? [product.value.image] : [])
-  return rawImages
+  return Array.isArray(images) ? images : (product.value?.image ? [product.value.image] : [])
+})
+const galleryImages = computed<string[]>(() => {
+  return displayImagesRaw.value
     .map((img: any) => normalizeImageUrl(typeof img === 'string' ? img : (img?.url || img?.image_url || img?.src || '')))
     .filter((url): url is string => Boolean(url) && !brokenImages.value.includes(url))
 })
@@ -393,6 +522,11 @@ function variationLabel(variation: any) {
 function selectVariation(variationId: number) {
   selectedVariationId.value = Number(variationId)
 }
+
+watch(selectedVariationId, () => {
+  selectedImage.value = null
+  show3DViewer.value = false
+})
 
 async function loadProduct() {
   loading.value = true
@@ -588,4 +722,3 @@ watch(() => route.params.id, async () => {
   box-shadow: none;
 }
 </style>
-

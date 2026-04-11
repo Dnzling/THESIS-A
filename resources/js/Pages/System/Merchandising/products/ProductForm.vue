@@ -513,11 +513,11 @@
                   <Model3DPreview
                     v-if="previewShow3d && previewModelUrl"
                     :model-url="previewModelUrl"
-                    :model-format="previewUsesVariationAssets ? (selectedVariation3dAsset?.model_format) : existingModel?.model_format"
+                    :model-format="previewUsesVariation3d ? (selectedVariation3dAsset?.model_format) : existingModel?.model_format"
                     :auth-token="previewAuthToken"
-                    :camera-x="previewUsesVariationAssets ? Number(selectedVariation3dAsset?.default_camera_angle_x ?? 0) : form.default_camera_angle_x"
-                    :camera-y="previewUsesVariationAssets ? Number(selectedVariation3dAsset?.default_camera_angle_y ?? 15) : form.default_camera_angle_y"
-                    :zoom="previewUsesVariationAssets ? Number(selectedVariation3dAsset?.default_zoom_level ?? 1.5) : form.default_zoom_level"
+                    :camera-x="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_camera_angle_x ?? 0) : form.default_camera_angle_x"
+                    :camera-y="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_camera_angle_y ?? 15) : form.default_camera_angle_y"
+                    :zoom="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_zoom_level ?? 1.5) : form.default_zoom_level"
                     height="100%"
                   />
                   <img
@@ -542,7 +542,7 @@
               </div>
 
               <!-- Image Selector (Base product only) -->
-              <div v-if="!previewUsesVariationAssets && basePreviewImages.length > 1" class="flex gap-2 overflow-x-auto pb-1">
+              <div v-if="!previewUsesVariationImage && basePreviewImages.length > 1" class="flex gap-2 overflow-x-auto pb-1">
                 <button
                   v-for="(img, idx) in basePreviewImages"
                   :key="img.key"
@@ -715,6 +715,7 @@
       />
     </Dialog>
   
+    <ConfirmDialog />
     <Toast />
   </div>
 </template>
@@ -723,6 +724,8 @@
 import { ref, onMounted, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import { useAuthStore } from '../../../../stores/auth'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import VariationFormDialog from '../variations/VariationForm.vue'
@@ -732,6 +735,7 @@ import inventoryService from '../../../../services/inventory.service'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 
 const isEditMode = computed(() => !!route.params.id)
@@ -747,6 +751,8 @@ const cropQueue = ref<File[]>([])
 const croppedFiles = ref<File[]>([])
 const currentCropFile = ref<File | null>(null)
 const imageUploadBaseFiles = ref<File[]>([])
+type CropSettings = { zoom: number; offsetX: number; offsetY: number }
+const cropSettingsByKey = ref<Record<string, CropSettings>>({})
 const modelInput = ref<HTMLInputElement | null>(null)
 const cropImageUrl = ref('')
 const cropZoom = ref(1)
@@ -849,13 +855,13 @@ const previewModelObjectUrl = ref<string>('')
 const previewName = computed(() => (form.value.product_name || '').trim() || 'Untitled product')
 const previewDescriptionHtml = computed(() => String(form.value.description || '').trim())
 const previewHasDiscount = computed(() => {
-  if (previewUsesVariationAssets.value) return false
+  if (previewUsesVariationPricing.value) return false
   const base = Number(form.value.base_price ?? 0)
   const discounted = Number(form.value.discounted_price ?? 0)
   return discounted > 0 && discounted < base
 })
 const previewDisplayPrice = computed(() => {
-  if (previewUsesVariationAssets.value) {
+  if (previewUsesVariationPricing.value) {
     const v: any = selectedVariation.value
     const final = Number(v?.final_price ?? 0)
     if (final > 0) return final
@@ -867,7 +873,7 @@ const previewDisplayPrice = computed(() => {
   return Number(form.value.base_price ?? 0)
 })
 const previewOriginalPrice = computed(() => {
-  if (previewUsesVariationAssets.value) return Number(form.value.base_price ?? 0)
+  if (previewUsesVariationPricing.value) return Number(form.value.base_price ?? 0)
   return Number(form.value.base_price ?? 0)
 })
 
@@ -890,7 +896,32 @@ const selectedVariationImageUrl = computed(() => {
   const img: any = selectedVariationImageAsset.value
   return img?.url || img?.auth_url || img?.file_url || img?.image_url || ''
 })
-const previewUsesVariationAssets = computed(() => (variations.value || []).length > 0 && !!selectedVariation.value)
+// Pricing follows the selected variation (if any), even when it has no media/spec overrides.
+const previewUsesVariationPricing = computed(() => (variations.value || []).length > 0 && !!selectedVariation.value)
+
+// Media/specs fall back to parent when the variation has nothing to show.
+const variationHasOwnMediaOrSpecs = computed(() => {
+  const v: any = selectedVariation.value
+  if (!v) return false
+  const has3d = !!selectedVariationModelUrl.value
+  const hasImage = !!String(selectedVariationImageUrl.value || '').trim()
+  const hasSpecs = ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((k) => {
+    const val = v?.[k]
+    return val !== null && val !== undefined && val !== ''
+  })
+  return has3d || hasImage || hasSpecs
+})
+const previewUsesVariationAssets = computed(() => previewUsesVariationPricing.value && variationHasOwnMediaOrSpecs.value)
+const previewUsesVariation3d = computed(() => previewUsesVariationPricing.value && !!selectedVariationModelUrl.value)
+const previewUsesVariationImage = computed(() => previewUsesVariationPricing.value && !!String(selectedVariationImageUrl.value || '').trim())
+const previewUsesVariationSpecs = computed(() => {
+  const v: any = selectedVariation.value
+  if (!previewUsesVariationPricing.value || !v) return false
+  return ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((k) => {
+    const val = v?.[k]
+    return val !== null && val !== undefined && val !== ''
+  })
+})
 
 const basePreviewImages = computed(() => {
   const items: Array<{ key: string; src: string; alt: string }> = []
@@ -930,25 +961,25 @@ watch(basePreviewImages, (items) => {
 })
 
 const previewImageUrl = computed(() => {
-  if (previewUsesVariationAssets.value) return selectedVariationImageUrl.value || ''
+  if (previewUsesVariationImage.value) return selectedVariationImageUrl.value || ''
   const items = basePreviewImages.value
   return items[selectedBaseImageIndex.value]?.src || items[0]?.src || ''
 })
-const previewLengthCm = computed(() => previewUsesVariationAssets.value ? (selectedVariation.value?.length_cm ?? null) : form.value.length_cm)
-const previewWidthCm = computed(() => previewUsesVariationAssets.value ? (selectedVariation.value?.width_cm ?? null) : form.value.width_cm)
-const previewHeightCm = computed(() => previewUsesVariationAssets.value ? (selectedVariation.value?.height_cm ?? null) : form.value.height_cm)
-const previewWeightKg = computed(() => previewUsesVariationAssets.value ? (selectedVariation.value?.weight_kg ?? null) : form.value.weight_kg)
+const previewLengthCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.length_cm ?? null) : form.value.length_cm)
+const previewWidthCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.width_cm ?? null) : form.value.width_cm)
+const previewHeightCm = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.height_cm ?? null) : form.value.height_cm)
+const previewWeightKg = computed(() => previewUsesVariationSpecs.value ? (selectedVariation.value?.weight_kg ?? null) : form.value.weight_kg)
 
 const previewPrimaryImageUrl = computed(() => previewImageUrl.value)
 
 const previewModelUrl = computed(() => {
   if (previewModelObjectUrl.value) return previewModelObjectUrl.value
-  if (previewUsesVariationAssets.value && selectedVariationModelUrl.value) return selectedVariationModelUrl.value
+  if (previewUsesVariation3d.value && selectedVariationModelUrl.value) return selectedVariationModelUrl.value
   return existingModelPreviewUrl.value || ''
 })
 
 const previewHas3d = computed(() => {
-  if (previewUsesVariationAssets.value) return !!selectedVariationModelUrl.value
+  if (previewUsesVariation3d.value) return !!selectedVariationModelUrl.value
   return !!(form.value.modelFile || existingModelPreviewUrl.value)
 })
 
@@ -1307,32 +1338,51 @@ const handleModelDrop = (event: DragEvent) => {
 }
 
 const removeModel = () => {
-  form.value.modelFile = null
-  if (modelInput.value) {
-    modelInput.value.value = ''
-  }
+  if (!form.value.modelFile) return
+  confirm.require({
+    header: 'Remove 3D model?',
+    message: 'This will remove the selected file from the form (it will not delete anything already uploaded).',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    acceptLabel: 'Remove',
+    rejectLabel: 'Cancel',
+    accept: () => {
+      form.value.modelFile = null
+      if (modelInput.value) modelInput.value.value = ''
+    },
+  })
 }
 
 const deleteExistingModel = async () => {
   if (!existingModel.value?.id) return
 
-  try {
-    await merchandisingService.deleteAsset(existingModel.value.id)
-    existingModel.value = null
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: '3D model deleted',
-      life: 3000
-    })
-  } catch (error) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to delete model',
-      life: 3000
-    })
-  }
+  confirm.require({
+    header: 'Delete existing 3D model?',
+    message: 'This will permanently delete the uploaded 3D model from the product.',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    acceptLabel: 'Delete',
+    rejectLabel: 'Cancel',
+    accept: async () => {
+      try {
+        await merchandisingService.deleteAsset(existingModel.value.id)
+        existingModel.value = null
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: '3D model deleted',
+          life: 3000,
+        })
+      } catch (error) {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: 'Failed to delete model',
+          life: 3000,
+        })
+      }
+    },
+  })
 }
 
 const resetCropAdjustments = () => {
@@ -1371,65 +1421,80 @@ const finalizeCurrentCrop = (fileToAppend: File) => {
   }
 }
 
-const createCroppedFile = async () => {
-  if (!currentCropFile.value || !cropImageUrl.value) return null
+const fileKey = (file: File) => {
+  return [file.name, file.size, file.lastModified].join('|')
+}
+
+const createCroppedFileFrom = async (sourceFile: File, settings: CropSettings) => {
+  const objectUrl = URL.createObjectURL(sourceFile)
 
   return await new Promise<File | null>((resolve) => {
     const image = new Image()
     image.onload = () => {
-      const canvas = document.createElement('canvas')
-      const outputSize = 1200
-      canvas.width = outputSize
-      canvas.height = outputSize
+      try {
+        const canvas = document.createElement('canvas')
+        const outputSize = 1200
+        canvas.width = outputSize
+        canvas.height = outputSize
 
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        resolve(null)
-        return
-      }
-
-      const naturalW = image.naturalWidth
-      const naturalH = image.naturalHeight
-      const baseScale = Math.max(cropViewportSize / naturalW, cropViewportSize / naturalH)
-      const finalScale = baseScale * cropZoom.value
-
-      const renderedW = naturalW * finalScale
-      const renderedH = naturalH * finalScale
-      const renderedLeft = (cropViewportSize - renderedW) / 2 + cropOffsetX.value
-      const renderedTop = (cropViewportSize - renderedH) / 2 + cropOffsetY.value
-
-      let sx = (-renderedLeft) / finalScale
-      let sy = (-renderedTop) / finalScale
-      let sw = cropViewportSize / finalScale
-      let sh = cropViewportSize / finalScale
-
-      sx = Math.max(0, Math.min(sx, naturalW - 1))
-      sy = Math.max(0, Math.min(sy, naturalH - 1))
-      sw = Math.min(sw, naturalW - sx)
-      sh = Math.min(sh, naturalH - sy)
-
-      ctx.drawImage(image, sx, sy, sw, sh, 0, 0, outputSize, outputSize)
-      canvas.toBlob((blob) => {
-        if (!blob) {
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
           resolve(null)
           return
         }
-        const fileName = currentCropFile.value?.name || `image-${Date.now()}.jpg`
-        resolve(new File([blob], fileName, { type: 'image/jpeg' }))
-      }, 'image/jpeg', 0.92)
+
+        const naturalW = image.naturalWidth
+        const naturalH = image.naturalHeight
+        const baseScale = Math.max(cropViewportSize / naturalW, cropViewportSize / naturalH)
+        const finalScale = baseScale * settings.zoom
+
+        const renderedW = naturalW * finalScale
+        const renderedH = naturalH * finalScale
+        const renderedLeft = (cropViewportSize - renderedW) / 2 + settings.offsetX
+        const renderedTop = (cropViewportSize - renderedH) / 2 + settings.offsetY
+
+        let sx = (-renderedLeft) / finalScale
+        let sy = (-renderedTop) / finalScale
+        let sw = cropViewportSize / finalScale
+        let sh = cropViewportSize / finalScale
+
+        sx = Math.max(0, Math.min(sx, naturalW - 1))
+        sy = Math.max(0, Math.min(sy, naturalH - 1))
+        sw = Math.min(sw, naturalW - sx)
+        sh = Math.min(sh, naturalH - sy)
+
+        ctx.drawImage(image, sx, sy, sw, sh, 0, 0, outputSize, outputSize)
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve(null)
+            return
+          }
+          const fileName = sourceFile?.name || `image-${Date.now()}.jpg`
+          resolve(new File([blob], fileName, { type: 'image/jpeg' }))
+        }, 'image/jpeg', 0.92)
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
     }
     image.onerror = () => resolve(null)
-    image.src = cropImageUrl.value
+    image.src = objectUrl
   })
 }
 
 const applyCropAndNext = async () => {
-  const cropped = await createCroppedFile()
-  finalizeCurrentCrop(cropped || currentCropFile.value!)
+  if (!currentCropFile.value) return
+  cropSettingsByKey.value[fileKey(currentCropFile.value)] = {
+    zoom: cropZoom.value,
+    offsetX: cropOffsetX.value,
+    offsetY: cropOffsetY.value
+  }
+  // Keep the original file in state; cropping is applied only on submit/upload.
+  finalizeCurrentCrop(currentCropFile.value)
 }
 
 const skipCurrentCrop = () => {
   if (!currentCropFile.value) return
+  delete cropSettingsByKey.value[fileKey(currentCropFile.value)]
   finalizeCurrentCrop(currentCropFile.value)
 }
 
@@ -1922,10 +1987,17 @@ const uploadImages = async (productId: number) => {
 
   try {
     for (let i = 0; i < form.value.imageFiles.length; i++) {
+      const originalFile = form.value.imageFiles[i] as File
+      const settings = cropSettingsByKey.value[fileKey(originalFile)]
+      const fileToUpload = settings ? (await createCroppedFileFrom(originalFile, settings)) : originalFile
+      if (!fileToUpload) {
+        throw new Error('Failed to crop image')
+      }
+
       const formData = new FormData()
       formData.append('product_id', productId.toString())
       formData.append('asset_type', i === 0 ? 'Image_Main' : 'Image_Gallery')
-      formData.append('asset_file', form.value.imageFiles[i]) // Note: asset_file
+      formData.append('asset_file', fileToUpload) // Note: asset_file
       formData.append('is_primary', i === 0 ? '1' : '0') // Use '1'/'0'
       formData.append('display_order', i.toString())
 

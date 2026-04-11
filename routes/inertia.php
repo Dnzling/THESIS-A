@@ -347,6 +347,7 @@ $inertia('/shop/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.tren
 $inertia('/shop/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
 $inertia('/shop/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');
 $inertia('/shop/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
+$inertia('/shop/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
 $inertia('/shop/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
 
 Route::middleware('auth:sanctum')->group(function () use ($inertia) {

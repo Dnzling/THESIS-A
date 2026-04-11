@@ -79,7 +79,35 @@
           <div class="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
             Upgrade your plan anytime to unlock all modules and remove trial limits.
           </div>
-          <Button class="mt-4 w-full" label="Upgrade Plan (GCash)" severity="info" :loading="upgrading" @click="goToUpgrade" />
+          <Button class="mt-4 w-full" label="Upgrade Plan" severity="info" :loading="upgrading" @click="goToUpgrade" />
+        </template>
+      </Card>
+
+      <Card>
+        <template #title>PayMongo Methods</template>
+        <template #content>
+          <p class="text-sm text-slate-600 mb-3">
+            Choose which e-wallet methods your store will accept for PayMongo payments.
+          </p>
+          <MultiSelect
+            v-model="paymongoPaymentMethods"
+            :options="paymongoMethodOptions"
+            optionLabel="label"
+            optionValue="value"
+            display="chip"
+            class="w-full"
+            placeholder="Select payment methods"
+          />
+          <div class="mt-3 flex items-center justify-between">
+            <p class="text-xs text-slate-500">At least one method is required.</p>
+            <Button
+              label="Save"
+              icon="pi pi-save"
+              :loading="savingPayments"
+              :disabled="savingPayments || paymongoPaymentMethods.length === 0"
+              @click="savePaymentSettings"
+            />
+          </div>
         </template>
       </Card>
 
@@ -139,21 +167,26 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="gcashDialogVisible" modal header="GCash Account Details" :style="{ width: '28rem' }">
+    <Dialog v-model:visible="gcashDialogVisible" modal header="Payment Details" :style="{ width: '28rem' }">
       <div class="space-y-4">
         <div>
-          <label class="text-sm font-medium text-slate-700 block mb-1">GCash Account Name</label>
+          <label class="text-sm font-medium text-slate-700 block mb-1">Payment Method</label>
+          <Select v-model="selectedWalletType" :options="walletTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+          <p class="mt-1 text-xs text-slate-500">This selection affects the wallet you will be redirected to.</p>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-700 block mb-1">Account Name</label>
           <InputText v-model="gcashForm.name" class="w-full" placeholder="Juan Dela Cruz" />
         </div>
         <div>
-          <label class="text-sm font-medium text-slate-700 block mb-1">GCash Number</label>
+          <label class="text-sm font-medium text-slate-700 block mb-1">Mobile Number</label>
           <InputMask v-model="gcashForm.phone" class="w-full" mask="0999 999 9999" placeholder="09__ ___ ____" />
-          <p class="mt-1 text-xs text-slate-500">Use your active Philippine mobile number linked to GCash.</p>
+          <p class="mt-1 text-xs text-slate-500">Use your active Philippine mobile number linked to the selected wallet.</p>
         </div>
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="gcashDialogVisible = false" />
-        <Button label="Continue to GCash" :loading="upgrading" @click="submitUpgradeCheckout" />
+        <Button :label="`Continue to ${selectedWalletLabel}`" :loading="upgrading" @click="submitUpgradeCheckout" />
       </template>
     </Dialog>
 
@@ -421,6 +454,26 @@ const savingProfile = ref(false)
 const upgrading = ref(false)
 const planDialogVisible = ref(false)
 const gcashDialogVisible = ref(false)
+const savingPayments = ref(false)
+const paymongoMethodOptions = [
+  { label: 'Credit/Debit Card', value: 'card' },
+  { label: 'GCash', value: 'gcash' },
+  { label: 'GrabPay', value: 'grab_pay' },
+  { label: 'PayMaya', value: 'paymaya' },
+]
+const paymongoPaymentMethods = ref<string[]>(['gcash'])
+const selectedWalletType = ref<'card' | 'gcash' | 'grab_pay' | 'paymaya'>('gcash')
+const walletTypeOptions = computed(() => {
+  const allowed = Array.isArray(paymongoPaymentMethods.value) ? paymongoPaymentMethods.value : ['gcash']
+  const map: Record<string, string> = { card: 'Card', gcash: 'GCash', grab_pay: 'GrabPay', paymaya: 'PayMaya' }
+  return allowed
+    .filter((v) => ['card', 'gcash', 'grab_pay', 'paymaya'].includes(String(v)))
+    .map((v) => ({ label: map[String(v)] || String(v), value: v as any }))
+})
+const selectedWalletLabel = computed(() => {
+  const opt = walletTypeOptions.value.find((o) => o.value === selectedWalletType.value)
+  return opt?.label || 'Wallet'
+})
 const storeStatusDialogVisible = ref(false)
 const loading = ref(true)
 const mapEl = ref<HTMLElement | null>(null)
@@ -750,10 +803,36 @@ const fetchSettings = async () => {
     attendance.longitude = data.attendance?.longitude ?? null
     attendance.geofence_radius_m = data.attendance?.geofence_radius_m ?? 5
     attendance.geofence_enabled = data.attendance?.geofence_enabled ?? true
+
+    const methods = data?.payments?.paymongo?.payment_method_allowed
+    paymongoPaymentMethods.value = Array.isArray(methods) && methods.length ? methods : ['gcash']
   } catch (error) {
     console.error('Failed to load settings', error)
   } finally {
     loading.value = false
+  }
+}
+
+const savePaymentSettings = async () => {
+  if (paymongoPaymentMethods.value.length === 0) {
+    toast.add({ severity: 'warn', summary: 'Select a method', detail: 'Choose at least one payment method.', life: 3000 })
+    return
+  }
+  savingPayments.value = true
+  try {
+    await axiosClient.put('/api/store/settings/payments', {
+      paymongo_payment_methods: paymongoPaymentMethods.value,
+    })
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Payment methods updated.', life: 2500 })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Save failed',
+      detail: error?.response?.data?.message || 'Unable to update payment settings.',
+      life: 3500,
+    })
+  } finally {
+    savingPayments.value = false
   }
 }
 
@@ -990,6 +1069,8 @@ const openGcashDialogForSelectedPlan = () => {
   planDialogVisible.value = false
   gcashForm.name = ''
   gcashForm.phone = ''
+  const first = walletTypeOptions.value[0]?.value
+  selectedWalletType.value = (first as any) || 'gcash'
   gcashDialogVisible.value = true
 }
 
@@ -1065,12 +1146,36 @@ const startUpgradeCheckout = async (gcashName: string, gcashPhone: string) => {
       plan_label: selectedPlan.label,
     }
 
+    const fallbackEmail = (store.email || 'owner@example.com').trim()
+
+    // Card payments should use PayMongo hosted checkout so we never collect card data on our site.
+    if (selectedWalletType.value === 'card') {
+      const successUrl = `${window.location.origin}/store/settings?paymongo_checkout=1`
+      const cancelUrl = `${window.location.origin}/store/settings?paymongo_checkout_cancel=1`
+      const sessionRes = await paymongoService.createCheckoutSession({
+        amount: selectedPlan.amountPhp * 100,
+        currency: 'PHP',
+        description: `Store plan upgrade (${selectedPlan.label})`,
+        payment_method_allowed: paymongoPaymentMethods.value.length ? paymongoPaymentMethods.value : ['gcash'],
+        metadata: { ...metadata, payer_email: fallbackEmail, payer_name: gcashName, payer_phone: gcashPhone },
+        store_id: effectiveStoreId,
+        payable_type: 'subscription_upgrade',
+        payable_id: effectiveStoreId,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      })
+      const checkoutUrl = sessionRes?.data?.checkout_url
+      if (!checkoutUrl) throw new Error(sessionRes?.message || 'Unable to start card checkout.')
+      window.location.href = checkoutUrl
+      return
+    }
+
     const intentResponse = await paymongoService.createIntent({
       amount: selectedPlan.amountPhp * 100,
       currency: 'PHP',
       description: `Store plan upgrade (${selectedPlan.label})`,
       statement_descriptor: 'Store Upgrade',
-      payment_method_allowed: ['gcash'],
+      payment_method_allowed: paymongoPaymentMethods.value.length ? paymongoPaymentMethods.value : ['gcash'],
       metadata,
       store_id: effectiveStoreId,
       payable_type: 'subscription_upgrade',
@@ -1082,19 +1187,17 @@ const startUpgradeCheckout = async (gcashName: string, gcashPhone: string) => {
       throw new Error(intentResponse?.message || 'Unable to create payment intent.')
     }
 
-    const fallbackEmail = (store.email || 'owner@example.com').trim()
-
     const returnUrl = `${window.location.origin}/store/settings?paymongo_intent=${encodeURIComponent(paymentIntentId)}`
-    const gcashResponse = await paymongoService.startGcash(paymentIntentId, {
+    const walletResponse = await paymongoService.startWallet(paymentIntentId, selectedWalletType.value as any, {
       name: gcashName,
       email: fallbackEmail,
       phone: gcashPhone,
       return_url: returnUrl,
     })
 
-    const redirectUrl = gcashResponse?.data?.redirect_url
+    const redirectUrl = walletResponse?.data?.redirect_url
     if (!redirectUrl) {
-      throw new Error(gcashResponse?.message || 'Unable to start GCash checkout.')
+      throw new Error(walletResponse?.message || 'Unable to start wallet checkout.')
     }
 
     window.location.href = redirectUrl
