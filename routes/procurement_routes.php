@@ -178,18 +178,18 @@ Route::prefix('procurement')->group(function () {
     });
 
     // Invoices
-    Route::prefix('invoices')->middleware('can:procurement.invoices.view')->group(function () {
+    Route::prefix('invoices')->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/pending/match', [InvoiceController::class, 'getPendingMatch']);
         Route::get('/exceptions', [InvoiceController::class, 'getExceptions']);
         Route::get('/{id}', [InvoiceController::class, 'show'])->whereNumber('id');
-        Route::post('/', [InvoiceController::class, 'store'])->middleware('can:procurement.invoices.manage');
-        Route::post('/from-grn', [InvoiceController::class, 'createFromGoodsReceipt'])->middleware('can:procurement.invoices.manage');
-        Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id')->middleware('can:procurement.invoices.manage');
-        Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id')->middleware('can:procurement.invoices.approve');
-        Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id')->middleware('can:procurement.invoices.approve');
-        Route::post('/{id}/mark-paid', [InvoiceController::class, 'markPaid'])->whereNumber('id')->middleware('can:procurement.invoices.approve');
-        Route::post('/{id}/schedule-payment', [InvoiceController::class, 'schedulePayment'])->whereNumber('id')->middleware('can:procurement.invoices.manage');
+        Route::post('/', [InvoiceController::class, 'store']);
+        Route::post('/from-grn', [InvoiceController::class, 'createFromGoodsReceipt']);
+        Route::put('/{id}', [InvoiceController::class, 'update'])->whereNumber('id');
+        Route::post('/{id}/match', [InvoiceController::class, 'performMatch'])->whereNumber('id');
+        Route::post('/{id}/approve', [InvoiceController::class, 'approve'])->whereNumber('id');
+        Route::post('/{id}/mark-paid', [InvoiceController::class, 'markPaid'])->whereNumber('id');
+        Route::post('/{id}/schedule-payment', [InvoiceController::class, 'schedulePayment'])->whereNumber('id');
     });
 
     // Supplier Payments
