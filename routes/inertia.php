@@ -246,6 +246,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
+    $inertia('/logistics/return-pickups', 'System/Logistics/ReturnPickups/ReturnPickupIndex', 'logistics.return-pickups', 'Return Pickups');
+    $inertia('/logistics/return-pickups/{id}', 'System/Logistics/ReturnPickups/ReturnPickupDetail', 'logistics.return-pickups.detail', 'Return Pickup Detail');
     $inertia('/logistics/stock-transfers', 'System/Logistics/StockTransfers/StockTransferIndex', 'logistics.stock-transfers', 'Stock Transfers');
     $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
@@ -276,6 +278,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
     $inertia('/sales/refunds', 'System/Sales/SalesRefunds', 'sales.refunds', 'Refunds');
     $inertia('/sales/refunds/{id}', 'System/Sales/SalesRefundDetail', 'sales.refunds.detail', 'Refund Detail');
+    $inertia('/sales/returns', 'System/Sales/SalesReturnsIndex', 'sales.returns', 'Returns');
+    $inertia('/sales/returns/{id}', 'System/Sales/SalesReturnDetail', 'sales.returns.detail', 'Return Detail');
 
     // Merchandising
     Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');

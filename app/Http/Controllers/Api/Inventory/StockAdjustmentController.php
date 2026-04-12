@@ -221,6 +221,25 @@ class StockAdjustmentController extends Controller
                 ]);
             }
 
+            $shouldAutoApprove = $this->userHasPermissions([
+                'inventory.adjustments.approve',
+                // Backward-compatible aliases (some modules used a more explicit permission name)
+                'inventory.stock-adjustments.approve',
+                'inventory.stock_adjustments.approve',
+            ], $request->user());
+
+            if ($shouldAutoApprove) {
+                $adjustment->load('items');
+                $this->applyApprovedAdjustment($adjustment, 'Auto-approved on creation (inventory.adjustments.approve)', EmployeeContext::currentEmployeeId());
+
+                $this->recordLog(
+                    'inventory.stock_adjustment.auto_approved',
+                    "Auto-approved stock adjustment {$adjustment->adjustment_number} on creation",
+                    $adjustment,
+                    ['status' => $adjustment->status]
+                );
+            }
+
             DB::commit();
 
             $this->recordLog(
@@ -232,7 +251,7 @@ class StockAdjustmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Stock adjustment created and submitted for approval',
+                'message' => $shouldAutoApprove ? 'Stock adjustment created and auto-approved' : 'Stock adjustment created and submitted for approval',
                 'data' => $adjustment->load('items.product'),
             ], 201);
         } catch (\Exception $e) {

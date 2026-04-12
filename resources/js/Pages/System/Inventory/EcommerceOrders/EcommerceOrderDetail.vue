@@ -87,14 +87,14 @@
                   label="Approve Cancellation"
                   severity="danger"
                   :loading="reviewingCancellation"
-                  @click="reviewCancellation('approved')"
+                  @click="confirmReviewCancellation('approved')"
                 />
                 <Button
                   label="Reject"
                   severity="secondary"
                   outlined
                   :loading="reviewingCancellation"
-                  @click="reviewCancellation('rejected')"
+                  @click="openRejectDialog"
                 />
               </div>
             </div>
@@ -164,6 +164,36 @@
       </Card>
     </template>
 
+    <ConfirmDialog />
+
+    <Dialog v-model:visible="rejectDialogVisible" header="Reject Cancellation" modal class="w-full max-w-xl">
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600">Select a reason and optionally add notes. This will reject the customer cancellation request.</p>
+        <div class="space-y-2">
+          <label class="text-sm text-gray-600">Reject Reason</label>
+          <Select
+            v-model="rejectDialog.reason"
+            :options="rejectReasonOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Select a reason"
+            fluid
+            showClear
+          />
+          <small v-if="rejectDialogAttempted && !String(rejectDialog.reason || '').trim()" class="text-xs text-red-600">
+            Reject reason is required.
+          </small>
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm text-gray-600">Notes (optional)</label>
+          <Textarea v-model="rejectDialog.notes" rows="4" autoResize class="w-full" placeholder="Add notes (optional)" />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined size="small" @click="rejectDialogVisible = false" />
+        <Button label="Reject" severity="danger" size="small" :loading="reviewingCancellation" @click="submitReject" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -171,6 +201,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import salesService from '@/services/sales.service'
 import { useAuthStore } from '@/stores/auth'
 import Card from 'primevue/card'
@@ -183,10 +214,14 @@ import Timeline from 'primevue/timeline'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
+import ConfirmDialog from 'primevue/confirmdialog'
+import Dialog from 'primevue/dialog'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 
 const loading = ref(false)
@@ -194,6 +229,25 @@ const order = ref<any>(null)
 const sendingToLogistics = ref(false)
 const reviewingCancellation = ref(false)
 const reviewNotes = ref('')
+const rejectDialogVisible = ref(false)
+const rejectDialogAttempted = ref(false)
+const rejectDialog = ref<{ reason: string | null; notes: string }>({
+  reason: null,
+  notes: '',
+})
+const rejectReasonOptions = [
+  { label: 'Changed mind', value: 'Changed mind' },
+  { label: 'Found better price elsewhere', value: 'Found better price elsewhere' },
+  { label: 'Incorrect order details', value: 'Incorrect order details' },
+  { label: 'Cannot cancel (already in transit)', value: 'Cannot cancel (already in transit)' },
+  { label: 'Other', value: 'Other' },
+]
+
+const openRejectDialog = () => {
+  rejectDialogAttempted.value = false
+  rejectDialog.value = { reason: null, notes: '' }
+  rejectDialogVisible.value = true
+}
 
 const latestCancellation = computed(() => {
   const requests = order.value?.cancellation_requests || order.value?.cancellationRequests || []
@@ -268,35 +322,69 @@ const printReceipt = () => {
   window.open(`/api/sales/ecommerce-orders/${order.value.id}/receipt`, '_blank')
 }
 
-const reviewCancellation = async (status: 'approved' | 'rejected') => {
+const submitReject = async () => {
   if (!order.value || !latestCancellation.value) return
-  if (!window.confirm(`Are you sure you want to ${status} this cancellation request?`)) return
-
-  reviewingCancellation.value = true
-  try {
-    const response = await salesService.reviewEcommerceOrderCancellation(
-      String(order.value.id),
-      String(latestCancellation.value.id),
-      { status, review_notes: reviewNotes.value.trim() || undefined }
-    )
-    order.value = response?.data || order.value
-    reviewNotes.value = ''
-    toast.add({
-      severity: 'success',
-      summary: 'Updated',
-      detail: `Cancellation request ${status}.`,
-      life: 3000,
-    })
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Failed',
-      detail: error?.response?.data?.message || 'Unable to review cancellation request.',
-      life: 3000,
-    })
-  } finally {
-    reviewingCancellation.value = false
+  rejectDialogAttempted.value = true
+  const reason = String(rejectDialog.value.reason || '').trim()
+  if (!reason) {
+    toast.add({ severity: 'warn', summary: 'Required', detail: 'Please select a reject reason.', life: 2500 })
+    return
   }
+
+  rejectDialogVisible.value = false
+  await confirmReviewCancellation('rejected', { reason, notes: String(rejectDialog.value.notes || '').trim() })
+}
+
+const confirmReviewCancellation = (status: 'approved' | 'rejected', rejectPayload?: { reason: string; notes?: string }) => {
+  if (!order.value || !latestCancellation.value) return
+
+  const label = status === 'approved' ? 'Approve cancellation?' : 'Reject cancellation?'
+  const message = status === 'approved'
+    ? 'This will approve the customer cancellation request.'
+    : 'This will reject the customer cancellation request.'
+
+  confirm.require({
+    header: label,
+    message,
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Cancel', outlined: true, size: 'small' },
+    acceptProps: { label: 'Confirm', size: 'small', severity: status === 'rejected' ? 'danger' : 'success' },
+    accept: async () => {
+      reviewingCancellation.value = true
+      try {
+        const notes = String(reviewNotes.value || '').trim()
+        const rejectReason = String(rejectPayload?.reason || '').trim()
+        const rejectNotes = String(rejectPayload?.notes || '').trim()
+        const combined = status === 'rejected'
+          ? (rejectReason && rejectNotes ? `${rejectReason}\n\n${rejectNotes}` : (rejectReason || rejectNotes))
+          : (notes || undefined)
+
+        const response = await salesService.reviewEcommerceOrderCancellation(
+          String(order.value.id),
+          String(latestCancellation.value.id),
+          { status, review_notes: combined }
+        )
+        order.value = response?.data || order.value
+        reviewNotes.value = ''
+        rejectDialogAttempted.value = false
+        toast.add({
+          severity: 'success',
+          summary: 'Updated',
+          detail: `Cancellation request ${status}.`,
+          life: 3000,
+        })
+      } catch (error: any) {
+        toast.add({
+          severity: 'error',
+          summary: 'Failed',
+          detail: error?.response?.data?.message || 'Unable to review cancellation request.',
+          life: 3000,
+        })
+      } finally {
+        reviewingCancellation.value = false
+      }
+    },
+  })
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

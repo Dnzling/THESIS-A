@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Sales\SalesPosController;
 use App\Http\Controllers\Api\Sales\SalesOrderDeliveryController;
 use App\Http\Controllers\Api\Sales\SalesReviewController;
 use App\Http\Controllers\Api\Sales\SalesRefundController;
+use App\Http\Controllers\Api\Sales\SalesReturnController;
 use App\Http\Controllers\Api\Sales\SalesReportsController;
 use App\Http\Controllers\Api\Sales\SalesVoucherController;
 use App\Http\Controllers\Api\Inventory\EcommerceOrderManagementController;
@@ -83,6 +84,15 @@ Route::prefix('sales')->group(function () {
         Route::get('/{refund}', [SalesRefundController::class, 'show'])->middleware('can:sales.refunds.view');
         Route::post('/', [SalesRefundController::class, 'store'])->middleware('can:sales.refunds.manage');
         Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus'])->middleware('can:sales.refunds.manage');
+    });
+
+    Route::prefix('returns')->group(function () {
+        Route::get('/', [SalesReturnController::class, 'index'])->middleware('can:sales.ecommerce-orders.view');
+        Route::get('/{return}', [SalesReturnController::class, 'show'])->middleware('can:sales.ecommerce-orders.view');
+        Route::put('/{return}/status', [SalesReturnController::class, 'updateStatus'])->middleware('can:sales.ecommerce-orders.manage');
+        Route::post('/{return}/pickup', [SalesReturnController::class, 'createPickup'])->middleware('can:sales.ecommerce-orders.manage');
+        Route::post('/{return}/receive', [SalesReturnController::class, 'receive'])->middleware('can:sales.ecommerce-orders.manage');
+        Route::post('/{return}/refund', [SalesReturnController::class, 'refund'])->middleware('can:sales.ecommerce-orders.manage');
     });
 
     Route::get('/reports/summary', [SalesReportsController::class, 'summary'])->middleware('can:sales.reports.view');

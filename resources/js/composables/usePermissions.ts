@@ -1,6 +1,5 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { PERMISSION_CATALOG, getTierPermissionList, getTierPermissionFeatures } from '@/config/permissionCatalog'
 
 /**
  * usePermissions - Global Permission Checker Composable
@@ -131,8 +130,5 @@ export const usePermissions = () => {
     userPermissions,
     permissionsByModule,
     isSuperAdmin,
-    permissionCatalog: PERMISSION_CATALOG,
-    getTierPermissionList,
-    getTierPermissionFeatures,
   }
 }

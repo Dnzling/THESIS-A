@@ -3,9 +3,11 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\Core\User;
+use App\Models\Logistics\ReturnPickup;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class EcommerceOrderReturn extends Model
 {
@@ -19,6 +21,7 @@ class EcommerceOrderReturn extends Model
         'requested_quantity',
         'reason',
         'details',
+        'evidence_urls',
         'status',
         'reviewed_by',
         'reviewed_at',
@@ -28,6 +31,7 @@ class EcommerceOrderReturn extends Model
     protected $casts = [
         'requested_quantity' => 'integer',
         'reviewed_at' => 'datetime',
+        'evidence_urls' => 'array',
     ];
 
     public function order(): BelongsTo
@@ -53,5 +57,10 @@ class EcommerceOrderReturn extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function pickup(): HasOne
+    {
+        return $this->hasOne(ReturnPickup::class, 'return_id');
     }
 }

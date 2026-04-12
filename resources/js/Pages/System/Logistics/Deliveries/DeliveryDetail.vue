@@ -55,6 +55,23 @@
       </template>
     </Card>
 
+    <Card v-if="order?.items?.length" class="rounded-3xl border border-slate-200/80 shadow-sm">
+      <template #title>Order Items</template>
+      <template #content>
+        <DataTable :value="order.items" size="small" stripedRows responsiveLayout="scroll">
+          <Column field="product_name" header="Product" style="min-width: 14rem" />
+          <Column field="sku" header="SKU" style="min-width: 10rem" />
+          <Column field="quantity" header="Qty" style="width: 6rem" />
+          <Column field="unit_price" header="Unit Price" style="width: 10rem">
+            <template #body="{ data }">₱ {{ formatMoney(data.unit_price) }}</template>
+          </Column>
+          <Column field="line_total" header="Line Total" style="width: 10rem">
+            <template #body="{ data }">₱ {{ formatMoney(data.line_total) }}</template>
+          </Column>
+        </DataTable>
+      </template>
+    </Card>
+
     <div v-if="delivery" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
         <template #title>Status Logs</template>
@@ -220,6 +237,8 @@ import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 import Message from 'primevue/message'
 import Dialog from 'primevue/dialog'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -228,6 +247,11 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage')
+
+const formatMoney = (value: any) => {
+  const num = Number(value || 0)
+  return num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 const source = computed(() => (String(route.params.source || '').toLowerCase() === 'sales' ? 'sales' : 'ecommerce'))
 const orderId = computed(() => Number(route.params.orderId || 0))

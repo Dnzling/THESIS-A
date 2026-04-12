@@ -7,6 +7,7 @@ Route::prefix('ecommerce')->group(function () {
     Route::post('/stores/{storeId}/follow', [EcommerceController::class, 'followStore']);
     Route::delete('/stores/{storeId}/follow', [EcommerceController::class, 'unfollowStore']);
 
+    Route::get('/carts', [EcommerceController::class, 'carts']);
     Route::get('/cart', [EcommerceController::class, 'getCart']);
     Route::post('/cart/items', [EcommerceController::class, 'addCartItem']);
     Route::put('/cart/items/{itemId}', [EcommerceController::class, 'updateCartItem']);

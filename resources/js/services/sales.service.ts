@@ -241,6 +241,36 @@ class SalesService {
     return res.data
   }
 
+  async getReturns(params?: any) {
+    const res = await axiosClient.get('/api/sales/returns', { params })
+    return res.data
+  }
+
+  async getReturn(id: number | string) {
+    const res = await axiosClient.get(`/api/sales/returns/${id}`)
+    return res.data
+  }
+
+  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected' | 'received' | 'refunded'; review_notes?: string }) {
+    const res = await axiosClient.put(`/api/sales/returns/${id}/status`, payload)
+    return res.data
+  }
+
+  async scheduleReturnPickup(id: number | string, payload: { scheduled_at: string; pickup_name?: string; pickup_phone?: string; pickup_address?: string; notes?: string }) {
+    const res = await axiosClient.post(`/api/sales/returns/${id}/pickup`, payload)
+    return res.data
+  }
+
+  async receiveReturn(id: number | string, payload: { received_quantity: number; condition: 'resellable' | 'damaged'; notes?: string }) {
+    const res = await axiosClient.post(`/api/sales/returns/${id}/receive`, payload)
+    return res.data
+  }
+
+  async createReturnRefund(id: number | string, payload: { amount: number; reason?: string; notes?: string; mark_as_approved?: boolean }) {
+    const res = await axiosClient.post(`/api/sales/returns/${id}/refund`, payload)
+    return res.data
+  }
+
   async getReportsSummary(params?: any) {
     const res = await axiosClient.get('/api/sales/reports/summary', { params })
     return res.data

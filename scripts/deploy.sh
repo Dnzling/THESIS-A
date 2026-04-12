@@ -29,7 +29,13 @@ if command -v php >/dev/null 2>&1; then
   echo "==> Running database migrations"
   php artisan migrate --force
 
+  echo "==> Removing Vite hot file (production safety)"
+  rm -f public/hot
+
   echo "==> Optimizing Laravel caches"
+  php artisan optimize:clear
+  php artisan config:cache
+  php artisan view:cache
   php artisan optimize
 else
   echo "Error: php is required on the server."

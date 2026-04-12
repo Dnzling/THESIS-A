@@ -90,8 +90,12 @@ const ecommerceService = {
     return ecommerceClient.delete(`/api/ecommerce/stores/${storeId}/follow`)
   },
 
-  getCart() {
-    return ecommerceClient.get('/api/ecommerce/cart')
+  getCarts() {
+    return ecommerceClient.get('/api/ecommerce/carts')
+  },
+
+  getCart(params?: any) {
+    return ecommerceClient.get('/api/ecommerce/cart', { params })
   },
 
   addToCart(payload: { product_id: number; variation_id?: number | null; quantity: number; store_id?: number | null }) {
@@ -216,8 +220,27 @@ const ecommerceService = {
     reason: string
     details?: string
     requested_quantity?: number
+    evidence_images?: File[]
   }) {
-    return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/return-requests`, payload)
+    if (Array.isArray(payload.evidence_images) && payload.evidence_images.length) {
+      const formData = new FormData()
+      formData.append('reason', payload.reason)
+      if (payload.details) formData.append('details', payload.details)
+      if (payload.requested_quantity) formData.append('requested_quantity', String(payload.requested_quantity))
+      payload.evidence_images.forEach((file) => formData.append('evidence_images[]', file))
+
+      return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/return-requests`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    }
+
+    const body = {
+      reason: payload.reason,
+      details: payload.details,
+      requested_quantity: payload.requested_quantity,
+    }
+
+    return ecommerceClient.post(`/api/ecommerce/order-items/${itemId}/return-requests`, body)
   },
 
   submitItemReview(itemId: number | string, payload: {

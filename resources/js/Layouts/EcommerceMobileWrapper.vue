@@ -1,6 +1,6 @@
 <template>
   <EcommerceLayout>
-    <div class="pb-20 md:pb-0">
+    <div class="pb-20 md:pb-0 pt-5">
       <slot />
     </div>
 
@@ -103,9 +103,9 @@ async function loadCartCount() {
     return
   }
   try {
-    const response = await ecommerceService.getCart()
-    const summary = response.data?.data?.summary || {}
-    cartCount.value = Number(summary.items_count || 0)
+    const response = await ecommerceService.getCarts()
+    const carts = response.data?.data || []
+    cartCount.value = carts.reduce((sum: number, c: any) => sum + Number(c.items_count || 0), 0)
   } catch {
     cartCount.value = 0
   }

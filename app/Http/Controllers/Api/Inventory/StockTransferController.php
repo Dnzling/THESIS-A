@@ -18,9 +18,35 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class StockTransferController extends Controller
 {
+    private function userHasAnyPermission(array $permissionNames, int $storeId): bool
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return false;
+        }
+
+        foreach ($permissionNames as $permission) {
+            $normalized = (string) $permission;
+            $aliases = array_values(array_unique([
+                $normalized,
+                Str::contains($normalized, '_') ? str_replace('_', '-', $normalized) : $normalized,
+                Str::contains($normalized, '-') ? str_replace('-', '_', $normalized) : $normalized,
+            ]));
+
+            foreach ($aliases as $candidate) {
+                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private function hasGlobalAccess(): bool
     {
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
@@ -137,6 +163,9 @@ class StockTransferController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $user = Auth::user();
+        $storeId = (int) ($user?->store_id ?? 0);
+
         $validated = $request->validate([
             'from_branch_id' => 'required|exists:branches,id|different:to_branch_id',
             'to_branch_id' => 'required|exists:branches,id',
@@ -152,7 +181,7 @@ class StockTransferController extends Controller
         DB::beginTransaction();
         try {
             // Get procurement settings
-            $settings = ProcurementSettings::where('store_id', Auth::user()->store_id)->first();
+            $settings = ProcurementSettings::where('store_id', $storeId)->first();
 
             // Generate transfer number using datetime for uniqueness
             $number = 'TRF-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
@@ -177,7 +206,7 @@ class StockTransferController extends Controller
             // Create transfer
             $transfer = StockTransfer::create([
                 'transfer_number' => $number,
-                'store_id' => Auth::user()->store_id,
+                'store_id' => $storeId,
                 'from_branch_id' => $validated['from_branch_id'],
                 'to_branch_id' => $validated['to_branch_id'],
                 // Keep persisted status compatible with existing enum/schema.
@@ -212,6 +241,29 @@ class StockTransferController extends Controller
                 ]);
             }
 
+            if ($user && $this->userHasAnyPermission(['inventory.transfers.approve'], $storeId)) {
+                $transfer->load(['items.product']);
+
+                foreach ($transfer->items as $item) {
+                    $inventory = BranchInventory::where('branch_id', $transfer->from_branch_id)
+                        ->where('product_id', $item->product_id)
+                        ->where('variation_id', $item->variation_id)
+                        ->first();
+
+                    if (!$inventory || $inventory->quantity_available < $item->requested_quantity) {
+                        throw new \Exception("Insufficient stock for {$item->product->product_name}");
+                    }
+
+                    $item->update(['approved_quantity' => $item->requested_quantity]);
+                }
+
+                $transfer->update([
+                    'status' => 'sender_approved',
+                    'sender_approved_by' => EmployeeContext::currentEmployeeId(),
+                    'sender_approved_date' => now(),
+                ]);
+            }
+
             DB::commit();
 
             $this->recordLog(
@@ -224,6 +276,15 @@ class StockTransferController extends Controller
                     'to_branch_id' => $transfer->to_branch_id,
                 ]
             );
+
+            if ($transfer->status === 'sender_approved') {
+                $this->recordLog(
+                    'inventory.stock_transfer.auto_approved',
+                    "Auto-approved stock transfer {$transfer->transfer_number}",
+                    $transfer,
+                    ['status' => $transfer->status]
+                );
+            }
 
             return response()->json([
                 'success' => true,
@@ -248,7 +309,7 @@ class StockTransferController extends Controller
     public function approve(Request $request, int $id): JsonResponse
     {
         $user = Auth::user();
-        if (!$user || !$user->hasPermissionTo('inventory.transfers.approve', (int) $user->store_id)) {
+        if (!$user || !$this->userHasAnyPermission(['inventory.transfers.approve'], (int) $user->store_id)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized. Approval permission is required.',

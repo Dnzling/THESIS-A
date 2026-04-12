@@ -176,6 +176,33 @@ class LogisticsService {
     const response = await axiosClient.post(`${this.baseUrl}/trips/${id}/orders/remove`, payload)
     return response.data
   }
+
+  async getReturnPickups(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/return-pickups`, { params })
+    return response.data
+  }
+
+  async getReturnPickup(id: string | number) {
+    const response = await axiosClient.get(`${this.baseUrl}/return-pickups/${id}`)
+    return response.data
+  }
+
+  async updateReturnPickup(id: string | number, payload: any) {
+    const response = await axiosClient.put(`${this.baseUrl}/return-pickups/${id}`, payload)
+    return response.data
+  }
+
+  async assignReturnPickupDriver(id: string | number, payload: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/return-pickups/${id}/assign-driver`, payload)
+    return response.data
+  }
+
+  async uploadReturnPickupProof(id: string | number, payload: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/return-pickups/${id}/proof`, payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
 }
 
 export default new LogisticsService()

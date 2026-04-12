@@ -8,6 +8,7 @@ use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -156,14 +157,23 @@ class DeliveryController extends Controller
             return response()->json(['success' => false, 'message' => 'No branch assigned.'], 422);
         }
 
+        $roleIds = DB::table('role_permissions')
+            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+            ->whereIn('permissions.name', ['logistics.deliveries.view', 'logistics.deliveries.manage'])
+            ->pluck('role_permissions.role_id')
+            ->unique()
+            ->values();
+
         $drivers = User::query()
             ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,phone,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
+            ->when($roleIds->isNotEmpty(), fn ($query) => $query->whereIn('role_id', $roleIds))
             ->when($branchId, fn ($q) => $q->whereHas('employee', fn ($employee) => $employee->where('branch_id', $branchId)))
             ->orderBy('fname')
             ->orderBy('lname')
             ->get()
+            ->filter(fn (User $driver) => $driver->hasAnyPermission(['logistics.deliveries.view', 'logistics.deliveries.manage'], $storeId))
             ->map(fn (User $driver) => [
                 'id' => $driver->id,
                 'name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
@@ -379,4 +389,3 @@ class DeliveryController extends Controller
         ]);
     }
 }
-

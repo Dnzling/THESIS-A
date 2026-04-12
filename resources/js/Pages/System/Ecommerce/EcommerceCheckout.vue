@@ -755,7 +755,8 @@ async function saveNewAddress() {
 }
 
 async function loadCheckoutItems() {
-  const response = await ecommerceService.getCart()
+  const storeId = route.query.store_id ? Number(route.query.store_id) : null
+  const response = await ecommerceService.getCart(storeId ? { store_id: storeId } : undefined)
   const cart = response.data?.data
   const allItems = cart?.items || []
 

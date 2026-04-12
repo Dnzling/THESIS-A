@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -59,9 +60,35 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\ProductCatalog\Product::observe(\App\Observers\ProductObserver::class);
         \App\Models\Inventory\BranchInventory::observe(\App\Observers\BranchInventoryObserver::class);
 
-        // TEMP: Bypass permission checks globally (until RBAC is re-enabled)
+        // Permission checks (RBAC)
+        // `can:<permission>` route middleware relies on Gate abilities.
+        // We treat the ability name as a permission atom and defer to User::hasPermissionTo().
+        // Set RBAC_BYPASS=true only for local/dev troubleshooting.
         Gate::before(function ($user, string $ability) {
-            return true;
+            if (config('app.rbac_bypass', false)) {
+                return true;
+            }
+
+            if (!$user || !method_exists($user, 'hasPermissionTo')) {
+                return null;
+            }
+
+            $storeId = (int) ($user->store_id ?? ($user->employee?->store_id ?? 0));
+            $storeContext = $storeId > 0 ? $storeId : null;
+
+            $candidates = array_values(array_unique([
+                $ability,
+                Str::contains($ability, '_') ? str_replace('_', '-', $ability) : $ability,
+                Str::contains($ability, '-') ? str_replace('-', '_', $ability) : $ability,
+            ]));
+
+            foreach ($candidates as $candidate) {
+                if ($candidate && $user->hasPermissionTo((string) $candidate, $storeContext)) {
+                    return true;
+                }
+            }
+
+            return null;
         });
     }
 }

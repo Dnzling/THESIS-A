@@ -20,11 +20,20 @@
           <div class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Return quantity</label>
             <InputNumber v-model="form.requested_quantity" :min="1" :max="selectedItem.quantity" fluid />
+            <small class="text-xs text-slate-500">Max: {{ selectedItem.quantity }}</small>
           </div>
 
           <div class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Reason</label>
-            <Textarea v-model="form.reason" rows="3" fluid placeholder="Why do you want to return this item?" />
+            <Select
+              v-model="form.reason"
+              :options="reasonOptions"
+              optionLabel="label"
+              optionValue="value"
+              fluid
+              placeholder="Select a reason"
+              showClear
+            />
           </div>
 
           <div class="space-y-2">
@@ -32,11 +41,62 @@
             <Textarea v-model="form.details" rows="3" fluid placeholder="Add details (damage, wrong item, etc.)." />
           </div>
 
-          <Button label="Submit Return Request" severity="info" :loading="submitting" @click="submitReturn" />
+          <div class="space-y-2">
+            <label class="text-sm font-semibold text-slate-700">Upload photos (optional)</label>
+            <input ref="evidenceInput" type="file" accept="image/*" multiple class="hidden" @change="onEvidenceChange" />
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                icon="pi pi-upload"
+                label="Choose photos"
+                size="small"
+                outlined
+                severity="secondary"
+                @click="openEvidencePicker"
+              />
+              <span v-if="form.evidence_images.length" class="text-xs text-slate-500">
+                {{ form.evidence_images.length }} selected
+              </span>
+            </div>
+            <div v-if="form.evidence_images.length" class="flex flex-wrap gap-2">
+              <Button icon="pi pi-images" label="Preview" size="small" outlined severity="secondary" @click="evidenceDialogVisible = true" />
+              <Button icon="pi pi-times" label="Clear" size="small" text severity="danger" @click="clearEvidence" />
+              <span class="text-xs text-slate-500 self-center">{{ form.evidence_images.length }} file(s)</span>
+            </div>
+            <small class="text-xs text-slate-500">Up to 5 images, 4MB each.</small>
+          </div>
+
+          <Button label="Submit Return Request" severity="warn" :loading="submitting" @click="confirmSubmitReturn" />
         </div>
       </template>
     </Card>
   </div>
+
+  <Dialog v-model:visible="evidenceDialogVisible" modal header="Photos" class="w-full max-w-5xl">
+    <Galleria
+      v-if="evidenceItems.length"
+      :value="evidenceItems"
+      :numVisible="6"
+      :circular="true"
+      :showItemNavigators="true"
+      :showThumbnails="true"
+      containerStyle="max-width: 100%"
+    >
+      <template #item="{ item }">
+        <div class="flex justify-center bg-black/5 rounded-lg overflow-hidden">
+          <img :src="item.url" :alt="item.name" class="max-h-[520px] w-auto object-contain" />
+        </div>
+      </template>
+      <template #thumbnail="{ item }">
+        <img :src="item.url" :alt="item.name" class="h-14 w-14 object-cover rounded-md" />
+      </template>
+    </Galleria>
+    <div v-else class="py-10 text-center text-sm text-gray-600">No photos selected.</div>
+    <template #footer>
+      <Button label="Close" severity="secondary" outlined @click="evidenceDialogVisible = false" />
+    </template>
+  </Dialog>
+
+  <ConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -46,6 +106,9 @@ import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import Textarea from 'primevue/textarea'
 import InputNumber from 'primevue/inputnumber'
+import Select from 'primevue/select'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -54,6 +117,7 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
+const confirm = useConfirm()
 const loading = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
@@ -61,12 +125,46 @@ const form = reactive({
   requested_quantity: 1,
   reason: '',
   details: '',
+  evidence_images: [] as File[],
 })
+
+const evidenceInput = ref<HTMLInputElement | null>(null)
+function openEvidencePicker() {
+  evidenceInput.value?.click()
+}
+
+const reasonOptions = [
+  { label: 'Damaged item', value: 'Damaged item' },
+  { label: 'Wrong item received', value: 'Wrong item received' },
+  { label: 'Missing parts', value: 'Missing parts' },
+  { label: 'Quality issue', value: 'Quality issue' },
+  { label: 'Other', value: 'Other' },
+]
 
 const selectedItem = computed(() => {
   const itemId = Number(route.params.itemId)
   return (order.value?.items || []).find((item: any) => Number(item.id) === itemId) || null
 })
+
+const evidenceDialogVisible = ref(false)
+const evidenceItems = computed(() => {
+  return form.evidence_images.map((file, idx) => ({
+    name: file.name || `Photo ${idx + 1}`,
+    url: URL.createObjectURL(file),
+  }))
+})
+
+function onEvidenceChange(event: any) {
+  const files = Array.from(event?.target?.files || []) as File[]
+  form.evidence_images = files.slice(0, 5)
+}
+
+function clearEvidence() {
+  form.evidence_images = []
+  if (evidenceInput.value) {
+    evidenceInput.value.value = ''
+  }
+}
 
 async function loadOrder() {
   loading.value = true
@@ -89,17 +187,25 @@ async function loadOrder() {
 
 async function submitReturn() {
   if (!selectedItem.value) return
-  if (!form.reason.trim()) {
+  if (!String(form.reason || '').trim()) {
     showAlert({ severity: 'warn', summary: 'Required', detail: 'Please provide a reason.' })
+    return
+  }
+
+  const maxQty = Number(selectedItem.value.quantity || 1)
+  const qty = Math.max(1, Math.min(maxQty, Number(form.requested_quantity || 1)))
+  if (qty < 1 || qty > maxQty) {
+    showAlert({ severity: 'warn', summary: 'Invalid', detail: `Return quantity must be between 1 and ${maxQty}.` })
     return
   }
 
   submitting.value = true
   try {
     await ecommerceService.requestOrderReturn(selectedItem.value.id, {
-      reason: form.reason.trim(),
+      reason: String(form.reason).trim(),
       details: form.details.trim() || undefined,
-      requested_quantity: Number(form.requested_quantity || 1),
+      requested_quantity: qty,
+      evidence_images: form.evidence_images.length ? form.evidence_images : undefined,
     })
     showAlert({ severity: 'success', summary: 'Submitted', detail: 'Return request sent for store verification.' })
     goBack()
@@ -110,10 +216,20 @@ async function submitReturn() {
   }
 }
 
+async function confirmSubmitReturn() {
+  confirm.require({
+    header: 'Submit return request?',
+    message: 'Please confirm you want to submit this return request for verification.',
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Cancel', outlined: true },
+    acceptProps: { label: 'Submit', severity: 'warn' },
+    accept: submitReturn,
+  })
+}
+
 function goBack() {
   router.push({ name: 'ecommerce.order-detail', params: { id: route.params.id } })
 }
 
 onMounted(loadOrder)
 </script>
-

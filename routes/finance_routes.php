@@ -65,6 +65,7 @@ Route::prefix('finance')->group(function () {
     Route::delete('/expenses/{id}', [FinanceExpenseController::class, 'destroy']);
 
     Route::get('/budgets', [FinanceBudgetController::class, 'index']);
+    
     Route::post('/budgets', [FinanceBudgetController::class, 'store']);
     Route::get('/budgets/{id}', [FinanceBudgetController::class, 'show']);
     Route::put('/budgets/{id}', [FinanceBudgetController::class, 'update']);

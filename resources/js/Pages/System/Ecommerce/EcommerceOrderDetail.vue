@@ -9,7 +9,7 @@
         <Button label="Back" severity="secondary" outlined @click="goBack" />
       </div>
     </div>
-
+  
     <div v-if="loading" class="space-y-4">
       <Card class="border border-slate-200 shadow-none">
         <template #content>
@@ -26,20 +26,31 @@
         </template>
       </Card>
     </div>
-
+  
     <template v-else-if="order">
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-            <div><span class="text-slate-500">Order #:</span> <span class="font-semibold">{{ order.order_number }}</span></div>
-            <div><span class="text-slate-500">Date:</span> <span class="font-semibold">{{ formatDate(order.created_at) }}</span></div>
-            <div><span class="text-slate-500">Status:</span> <Tag :value="formatStatus(order.status)" /></div>
-            <div><span class="text-slate-500">Payment:</span> <Tag :value="formatStatus(order.payment_status)" severity="secondary" /></div>
-            <div class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
-            <div><span class="text-slate-500">Tracking Number:</span> <span class="font-semibold">{{ order.delivery?.tracking_number || '-' }}</span></div>
-            <div><span class="text-slate-500">Courier:</span> <span class="font-semibold">{{ order.delivery?.courier_name || '-' }}</span></div>
-            <div><span class="text-slate-500">Courier Contact:</span> <span class="font-semibold">{{ order.delivery?.courier_contact || '-' }}</span></div>
-            <div><span class="text-slate-500">Delivery Status:</span> <Tag :value="formatStatus(order.delivery?.status || 'pending')" severity="info" /></div>
+            <div><span class="text-slate-500">Order #:</span> <span class="font-semibold">{{ order.order_number }}</span>
+            </div>
+            <div><span class="text-slate-500">Date:</span> <span class="font-semibold">{{ formatDate(order.created_at)
+                }}</span></div>
+            <div><span class="text-slate-500">Status:</span>
+              <Tag :value="statusLabel(order.primary_status || order.status)" />
+            </div>
+            <div><span class="text-slate-500">Payment:</span>
+              <Tag :value="formatStatus(order.payment_status)" severity="secondary" />
+            </div>
+            <div class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span
+                class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
+            <template v-if="showTransitDetails">
+              <div><span class="text-slate-500">Tracking Number:</span> <span class="font-semibold">{{
+                  order.delivery?.tracking_number || '-' }}</span></div>
+              <div><span class="text-slate-500">Courier:</span> <span class="font-semibold">{{
+                  order.delivery?.courier_name || '-' }}</span></div>
+              <div><span class="text-slate-500">Courier Contact:</span> <span class="font-semibold">{{
+                  order.delivery?.courier_contact || '-' }}</span></div>
+            </template>
             <div v-if="order.cancellation_request" class="md:col-span-2">
               <span class="text-slate-500">Cancellation Request:</span>
               <Tag :value="formatStatus(order.cancellation_request.status)" severity="warning" class="ml-2" />
@@ -47,20 +58,18 @@
           </div>
         </template>
       </Card>
-
+  
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <div class="space-y-3">
             <div class="flex items-center justify-between border-b border-slate-100 pb-2">
               <p class="text-sm font-semibold text-slate-800">Store: {{ order.store_name || 'Store' }}</p>
-              <Button v-if="order.store_id" label="Chat" icon="pi pi-comments" size="small" severity="help" text @click="goChatStore" />
+              <Button v-if="order.store_id" label="Chat" icon="pi pi-comments" size="small" severity="help" text
+                @click="goChatStore" />
             </div>
-
-            <div
-              v-for="item in order.items || []"
-              :key="item.id"
-              class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3"
-            >
+  
+            <div v-for="item in order.items || []" :key="item.id"
+              class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3">
               <div class="flex min-w-0 items-center gap-3">
                 <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
                   class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
@@ -69,33 +78,62 @@
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
                 </div>
               </div>
+  
+              <div class="mt-2 flex w-full flex-col gap-2 sm:mt-0 sm:w-auto sm:flex-row sm:items-center sm:gap-5">
+                <Tag :value="statusLabel(order.primary_status || order.status)" severity="secondary" class="w-fit" />
 
-                <div class="flex items-center gap-5">
-                <Tag :value="formatStatus(order.status)" severity="secondary" />
-                <p class="text-sm text-slate-600">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
-                <p class="text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
-                <p class="text-base font-semibold text-slate-900">PHP {{ Number(item.line_total || 0).toFixed(2) }}</p>
-                <Button v-if="item.can_return" label="Return" severity="secondary" outlined @click="goReturnPage(item.id)" />
-                <Button v-if="item.can_review" label="Review" severity="info" outlined @click="goReviewPage(item.id)" />
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:flex sm:items-center sm:gap-5">
+                  <p class="text-slate-600">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
+                  <p class="font-semibold text-slate-700">Qty {{ item.quantity }}</p>
+                  <p class="col-span-2 text-base font-semibold text-slate-900 sm:col-span-1">
+                    PHP {{ Number(item.line_total || 0).toFixed(2) }}
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap gap-2 sm:flex-nowrap">
+                  <Button
+                    v-if="item.can_return"
+                    label="Return"
+                    size="small"
+                    severity="danger"
+                    outlined
+                    class="w-full sm:w-auto"
+                    @click="goReturnPage(item.id)"
+                  />
+                  <Button
+                    v-if="item.can_review"
+                    label="Review"
+                    severity="warn"
+                    size="small"
+                    class="w-full sm:w-auto"
+                    @click="goReviewPage(item.id)"
+                  />
+                </div>
               </div>
-              <div v-if="item.return_request || item.review" class="w-full border-t border-slate-100 pt-2 text-xs text-slate-600">
-                <p v-if="item.return_request">Return request: <span class="font-semibold">{{ item.return_request.status }}</span></p>
+              <div v-if="item.return_request || item.review"
+                class="w-full border-t border-slate-100 pt-2 text-xs text-slate-600">
                 <p v-if="item.review">Your review: {{ item.review.rating }}/5</p>
+  
               </div>
             </div>
           </div>
-
+  
           <div class="mt-4 ml-auto max-w-sm space-y-2 text-sm">
-            <div class="flex justify-between"><span>Subtotal</span><span>PHP {{ Number(order.subtotal || 0).toFixed(2) }}</span></div>
-            <div class="flex justify-between"><span>Tax</span><span>PHP {{ Number(order.tax_amount || 0).toFixed(2) }}</span></div>
-            <div class="flex justify-between"><span>Shipping</span><span>PHP {{ Number(order.shipping_fee || 0).toFixed(2) }}</span></div>
-            <div class="flex justify-between"><span>Discount</span><span>- PHP {{ Number(order.discount_amount || 0).toFixed(2) }}</span></div>
+            <div class="flex justify-between"><span>Subtotal</span><span>PHP {{ Number(order.subtotal || 0).toFixed(2)
+                }}</span></div>
+            <div class="flex justify-between"><span>Tax</span><span>PHP {{ Number(order.tax_amount || 0).toFixed(2)
+                }}</span></div>
+            <div class="flex justify-between"><span>Shipping</span><span>PHP {{ Number(order.shipping_fee || 0).toFixed(2)
+                }}</span></div>
+            <div class="flex justify-between"><span>Discount</span><span>- PHP {{ Number(order.discount_amount ||
+                0).toFixed(2) }}</span></div>
             <Divider />
-            <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ Number(order.total_amount || 0).toFixed(2) }}</span></div>
+            <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ Number(order.total_amount
+                || 0).toFixed(2) }}</span></div>
           </div>
         </template>
       </Card>
-
+  
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <div class="mb-3">
@@ -113,25 +151,13 @@
                 <p class="mt-1 text-xs text-slate-400">
                   {{ formatDateTime(item.created_at) }} • {{ item.actor || 'System' }}
                 </p>
-                <div v-if="item.meta?.proof_photo_url || item.meta?.proof_signature_url" class="mt-2 flex flex-wrap gap-2">
-                  <Button
-                    v-if="item.meta?.proof_photo_url"
-                    size="small"
-                    outlined
-                    severity="secondary"
-                    icon="pi pi-image"
-                    label="Proof Photo"
-                    @click="previewMedia(item.meta.proof_photo_url, 'Proof Photo')"
-                  />
-                  <Button
-                    v-if="item.meta?.proof_signature_url"
-                    size="small"
-                    outlined
-                    severity="secondary"
-                    icon="pi pi-pencil"
-                    label="Signature"
-                    @click="previewMedia(item.meta.proof_signature_url, 'Signature')"
-                  />
+                <div v-if="item.meta?.proof_photo_url || item.meta?.proof_signature_url"
+                  class="mt-2 flex flex-wrap gap-2">
+                  <Button v-if="item.meta?.proof_photo_url" size="small" outlined severity="secondary" icon="pi pi-image"
+                    label="Proof Photo" @click="previewMedia(item.meta.proof_photo_url, 'Proof Photo')" />
+                  <Button v-if="item.meta?.proof_signature_url" size="small" outlined severity="secondary"
+                    icon="pi pi-pencil" label="Signature"
+                    @click="previewMedia(item.meta.proof_signature_url, 'Signature')" />
                 </div>
               </div>
             </template>
@@ -140,10 +166,11 @@
         </template>
       </Card>
     </template>
-
+  
     <Dialog v-model:visible="mediaPreview.visible" modal :header="mediaPreview.title" class="w-full max-w-4xl">
       <div class="flex items-center justify-center rounded-lg bg-slate-50 p-2">
-        <img v-if="mediaPreview.url" :src="mediaPreview.url" alt="Delivery proof" class="max-h-[70vh] w-auto rounded-lg object-contain" />
+        <img v-if="mediaPreview.url" :src="mediaPreview.url" alt="Delivery proof"
+          class="max-h-[70vh] w-auto rounded-lg object-contain" />
       </div>
       <template #footer>
         <Button label="Open Full View" icon="pi pi-external-link" outlined @click="openExternal(mediaPreview.url)" />
@@ -154,7 +181,7 @@
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import paymongoService from '@/services/paymongo.service'
@@ -219,6 +246,28 @@ async function syncPaymongoPaymentStatus() {
   }
 }
 
+const showTransitDetails = computed(() => {
+  const primary = String(order.value?.primary_status || '').toLowerCase()
+  if (primary === 'in_transit') return true
+  const deliveryStatus = String(order.value?.delivery?.status || '').toLowerCase()
+  return ['in_transit', 'out_for_delivery', 'on_delivery'].includes(deliveryStatus)
+})
+
+function statusLabel(status: string) {
+  const value = String(status || '').toLowerCase()
+  if (value === 'pending') return 'Pending'
+  if (value === 'packing') return 'Packing'
+  if (value === 'in_transit') return 'In Transit'
+  if (value === 'delivered') return 'Delivered'
+  if (value === 'cancel_pending') return 'Cancel Pending'
+  if (value === 'cancelled') return 'Cancelled'
+  if (value === 'return_pending') return 'Return Pending'
+  if (value === 'return_approved') return 'Return Approved'
+  if (value === 'return_received') return 'Return Received'
+  if (value === 'refunded') return 'Refunded'
+  return formatStatus(status)
+}
+
 function formatDate(value: string) {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -237,6 +286,9 @@ function formatDateTime(value: string) {
 
 function formatStatus(value: string) {
   if (!value) return '-'
+  const normalized = String(value).toLowerCase()
+  // Customer-facing: keep fulfillment status separate; "pending_cancellation" is driven by cancellation request.
+  if (normalized === 'pending_cancellation') return 'Pending'
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 }
 
@@ -290,4 +342,3 @@ function goChatStore() {
 
 onMounted(loadOrderDetail)
 </script>
-

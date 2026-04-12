@@ -217,6 +217,8 @@ class SupplierContractController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $isSupplierPortal = $this->isSupplierPortalRequest($request);
+
         $storeId = (int) (auth()->user()?->store_id ?? 0);
         if ($storeId <= 0) {
             $storeId = (int) $request->input('store_id', 0);
@@ -240,7 +242,8 @@ class SupplierContractController extends Controller
         }
 
         $validated = $request->validate([
-            'supplier_id' => 'required|exists:suppliers,id',
+            // When supplier portal creates a contract, lock supplier_id to the portal profile (ignore client input).
+            'supplier_id' => ($isSupplierPortal ? 'nullable' : 'required') . '|exists:suppliers,id',
             'store_id' => 'nullable|integer|exists:stores,id',
             'contract_title' => 'required|string|max:255',
             'start_date' => 'required|date',
@@ -260,16 +263,31 @@ class SupplierContractController extends Controller
         // Generate contract number using datetime for uniqueness
         $contractNumber = 'CON-' . date('YmdHis') . '-' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
 
-        $supplierBelongsToStore = \App\Models\Procurement\Supplier\Supplier::query()
-            ->where('id', (int) $validated['supplier_id'])
-            ->where('store_id', $storeId)
-            ->exists();
+        if ($isSupplierPortal) {
+            $portal = SupplierPortal::query()
+                ->where('user_id', (int) auth()->id())
+                ->first(['supplier_id']);
 
-        if (!$supplierBelongsToStore) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Selected supplier does not belong to your store.',
-            ], 422);
+            if (!$portal || (int) ($portal->supplier_id ?? 0) <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: supplier portal profile is missing.',
+                ], 403);
+            }
+
+            $validated['supplier_id'] = (int) $portal->supplier_id;
+        } else {
+            $supplierBelongsToStore = \App\Models\Procurement\Supplier\Supplier::query()
+                ->where('id', (int) $validated['supplier_id'])
+                ->where('store_id', $storeId)
+                ->exists();
+
+            if (!$supplierBelongsToStore) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected supplier does not belong to your store.',
+                ], 422);
+            }
         }
 
         $store = \App\Models\Store\Store::query()->find($storeId);
@@ -304,7 +322,7 @@ class SupplierContractController extends Controller
 
         $validated['contract_number'] = $contractNumber;
         $validated['store_id'] = $storeId;
-        $validated['status'] = $validated['status'] ?? ($this->isSupplierPortalRequest($request) ? 'pending' : 'draft');
+        $validated['status'] = $validated['status'] ?? ($isSupplierPortal ? 'pending' : 'draft');
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
 
         if ($request->hasFile('contract_file')) {
@@ -316,7 +334,7 @@ class SupplierContractController extends Controller
 
         $contract = SupplierContract::create($validated);
 
-        if ($this->isSupplierPortalRequest($request)) {
+        if ($isSupplierPortal) {
             $supplierName = (string) ($supplier?->supplier_name ?? $supplier?->company_name ?? $supplier?->contact_person ?? 'A supplier');
             $this->notifyStoreUsers(
                 (int) $storeId,

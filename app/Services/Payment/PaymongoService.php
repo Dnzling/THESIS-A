@@ -50,72 +50,138 @@ class PaymongoService
 
     public function createIntent(array $payload): array
     {
-        $response = $this->client->post('/payment_intents', [
-            'json' => $payload,
-        ]);
+        try {
+            $response = $this->client->post('/payment_intents', [
+                'json' => $payload,
+            ]);
 
-        return json_decode($response->getBody()->getContents(), true);
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Throwable $e) {
+            Log::error('PaymongoService: createIntent exception', ['error' => $e->getMessage()]);
+            return [
+                'errors' => [[
+                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                ]],
+            ];
+        }
     }
 
     public function retrieveIntent(string $intentId): array
     {
-        $response = $this->client->get("/payment_intents/{$intentId}");
-        return json_decode($response->getBody()->getContents(), true);
+        try {
+            $response = $this->client->get("/payment_intents/{$intentId}");
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Throwable $e) {
+            Log::warning('PaymongoService: retrieveIntent exception', [
+                'intent_id' => $intentId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'errors' => [[
+                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                ]],
+            ];
+        }
     }
 
     public function createPaymentMethod(array $payload): array
     {
-        $response = $this->client->post('/payment_methods', [
-            'json' => $payload,
-        ]);
+        try {
+            $response = $this->client->post('/payment_methods', [
+                'json' => $payload,
+            ]);
 
-        return json_decode($response->getBody()->getContents(), true);
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Throwable $e) {
+            Log::error('PaymongoService: createPaymentMethod exception', ['error' => $e->getMessage()]);
+            return [
+                'errors' => [[
+                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                ]],
+            ];
+        }
     }
 
     public function attachIntent(string $intentId, array $payload): array
     {
-        $response = $this->client->post("/payment_intents/{$intentId}/attach", [
-            'json' => $payload,
-        ]);
+        try {
+            $response = $this->client->post("/payment_intents/{$intentId}/attach", [
+                'json' => $payload,
+            ]);
 
-        return json_decode($response->getBody()->getContents(), true);
+            return json_decode($response->getBody()->getContents(), true);
+        } catch (\Throwable $e) {
+            Log::warning('PaymongoService: attachIntent exception', [
+                'intent_id' => $intentId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'errors' => [[
+                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                ]],
+            ];
+        }
     }
 
     public function createCheckoutSession(array $payload): array
     {
-        $response = $this->client->post('/checkout_sessions', [
-            'json' => $payload,
-        ]);
-
-        $status = (int) $response->getStatusCode();
-        $decoded = json_decode($response->getBody()->getContents(), true);
-
-        if ($status >= 400) {
-            Log::error('PaymongoService: createCheckoutSession failed', [
-                'http_status' => $status,
-                'errors' => data_get($decoded, 'errors', []),
-                'payload' => $payload,
+        try {
+            $response = $this->client->post('/checkout_sessions', [
+                'json' => $payload,
             ]);
-        }
 
-        return $decoded;
+            $status = (int) $response->getStatusCode();
+            $decoded = json_decode($response->getBody()->getContents(), true);
+
+            if ($status >= 400) {
+                Log::error('PaymongoService: createCheckoutSession failed', [
+                    'http_status' => $status,
+                    'errors' => data_get($decoded, 'errors', []),
+                    'payload' => $payload,
+                ]);
+            }
+
+            return $decoded;
+        } catch (\Throwable $e) {
+            Log::error('PaymongoService: createCheckoutSession exception', ['error' => $e->getMessage()]);
+            return [
+                'errors' => [[
+                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                ]],
+            ];
+        }
     }
 
     public function retrieveCheckoutSession(string $sessionId): array
     {
-        $response = $this->client->get("/checkout_sessions/{$sessionId}");
-        $status = (int) $response->getStatusCode();
-        $decoded = json_decode($response->getBody()->getContents(), true);
+        try {
+            $response = $this->client->get("/checkout_sessions/{$sessionId}");
+            $status = (int) $response->getStatusCode();
+            $decoded = json_decode($response->getBody()->getContents(), true);
 
-        if ($status >= 400) {
-            Log::error('PaymongoService: retrieveCheckoutSession failed', [
-                'http_status' => $status,
+            if ($status >= 400) {
+                Log::error('PaymongoService: retrieveCheckoutSession failed', [
+                    'http_status' => $status,
+                    'session_id' => $sessionId,
+                    'errors' => data_get($decoded, 'errors', []),
+                ]);
+            }
+
+            return $decoded;
+        } catch (\Throwable $e) {
+            Log::warning('PaymongoService: retrieveCheckoutSession exception', [
                 'session_id' => $sessionId,
-                'errors' => data_get($decoded, 'errors', []),
+                'error' => $e->getMessage(),
             ]);
-        }
 
-        return $decoded;
+            return [
+                'errors' => [[
+                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                ]],
+            ];
+        }
     }
 
     public function verifySignature(string $payload, string $signature): bool

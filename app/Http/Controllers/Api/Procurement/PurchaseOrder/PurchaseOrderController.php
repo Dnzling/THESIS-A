@@ -21,9 +21,36 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Illuminate\Support\Str;
 
 class PurchaseOrderController extends Controller
 {
+    private function userHasAnyPermission(array $permissionNames, $user = null): bool
+    {
+        $user = $user ?? Auth::user();
+        if (!$user) {
+            return false;
+        }
+
+        $storeId = (int) ($user->store_id ?? 0);
+        foreach ($permissionNames as $permission) {
+            $normalized = (string) $permission;
+            $aliases = array_values(array_unique([
+                $normalized,
+                Str::contains($normalized, '_') ? str_replace('_', '-', $normalized) : $normalized,
+                Str::contains($normalized, '-') ? str_replace('-', '_', $normalized) : $normalized,
+            ]));
+
+            foreach ($aliases as $candidate) {
+                if ($candidate && method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo($candidate, $storeId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /**
      * List all purchase orders
      * GET /api/procurement/ purchase_orders
@@ -413,6 +440,55 @@ class PurchaseOrderController extends Controller
                 );
 
                 $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'po_created');
+            }
+
+            $user = auth()->user();
+            if ($this->userHasAnyPermission(['finance.purchase-orders.approve'], $user) && $po->status === 'pending_finance_approval') {
+                $settings = ProcurementSettings::forStore((int) $user->store_id);
+                $isSelfApproval = $this->isSelfApproval($po, $user);
+
+                if (!$isSelfApproval || !$settings->enforce_separation_of_duties || $settings->isSelfApprovalAllowedForAmount((float) $po->total_amount)) {
+                    $approvalPermission = 'finance.purchase_orders.approve';
+
+                    $approversReceived = collect($po->approvals_received ?? []);
+                    $approverPermissions = $approversReceived
+                        ->pluck('approver_permission')
+                        ->filter()
+                        ->map(fn($permission) => $this->normalizePermission((string) $permission))
+                        ->toArray();
+
+                    if (!in_array($this->normalizePermission($approvalPermission), $approverPermissions, true)) {
+                        $po->addApproval(
+                            $approvalPermission,
+                            auth()->id(),
+                            $user->full_name,
+                            'Auto-approved on creation (finance.purchase-orders.approve)',
+                            null
+                        );
+
+                        $po->update(['status' => 'approved']);
+                        $this->enforceMinimumApprovers($po, $settings);
+                        $po = $po->fresh();
+
+                        $autoSent = false;
+                        if ($this->shouldAutoSendAfterFinanceApproval($po)) {
+                            $autoSent = $this->dispatchApprovedPoToSupplier($po, true);
+                            $po = $po->fresh();
+                        }
+
+                        ActivityLog::record(
+                            'po_auto_approved',
+                            "PO {$po->po_number} auto-approved by finance on creation.",
+                            [
+                                'po_number' => $po->po_number,
+                                'permission' => $approvalPermission,
+                                'auto_sent' => $autoSent,
+                            ],
+                            'purchase_order',
+                            $po->id
+                        );
+                    }
+                }
             }
 
             DB::commit();

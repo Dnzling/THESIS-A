@@ -48,7 +48,22 @@
               <transition name="accordion">
                 <div v-if="expandedModules[moduleGroup.module]" class="space-y-1 mt-1">
                   <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
-                    <button v-if="item.children?.length" @click="toggleSection(item.id)"
+                    <div v-if="item.children?.length && item.route_path && !String(item.route_path).startsWith('#') && !item.meta?.is_group"
+                      class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
+                      <Link :href="item.route_path" class="flex items-center space-x-3 flex-1 min-w-0"
+                        :class="{ 'text-blue-600': isActive(item.route_path) }">
+                        <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>
+                        <span class="truncate">{{ item.display_name }}</span>
+                      </Link>
+                      <button type="button" class="shrink-0" @click.stop="toggleSection(item.id)">
+                        <i :class="[
+                                                  'pi text-xs transition-transform',
+                                                  expandedSections[item.id] ? 'pi-chevron-down' : 'pi-chevron-right'
+                                              ]"></i>
+                      </button>
+                    </div>
+
+                    <button v-else-if="item.children?.length" @click="toggleSection(item.id)"
                       class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
                       <div class="flex items-center space-x-3">
                         <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>

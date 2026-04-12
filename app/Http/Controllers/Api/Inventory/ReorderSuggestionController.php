@@ -12,12 +12,37 @@ use App\Support\EmployeeContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use App\Models\Core\SystemNotification;
 use Exception;
 
 class ReorderSuggestionController extends Controller
 {
     protected ReorderSuggestionService $suggestionService;
+
+    private function userHasAnyPermission($user, array $permissionNames, int $storeId): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        foreach ($permissionNames as $permission) {
+            $normalized = (string) $permission;
+            $aliases = array_values(array_unique([
+                $normalized,
+                Str::contains($normalized, '_') ? str_replace('_', '-', $normalized) : $normalized,
+                Str::contains($normalized, '-') ? str_replace('-', '_', $normalized) : $normalized,
+            ]));
+
+            foreach ($aliases as $candidate) {
+                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
     public function __construct(ReorderSuggestionService $suggestionService)
     {
@@ -136,12 +161,21 @@ class ReorderSuggestionController extends Controller
     public function store(ReorderSuggestionRequest $request): JsonResponse
     {
         try {
+            $user = auth()->user();
+            $storeId = (int) ($user?->store_id ?? 0);
+
             $payload = $request->validated();
             if (empty($payload['branch_id'])) {
                 $payload['branch_id'] = $this->resolveBranchId($request);
             }
 
             $suggestion = $this->suggestionService->createSuggestion($payload);
+
+            if ($this->userHasAnyPermission($user, ['inventory.reorder_suggestions.approve'], $storeId) && $suggestion->isPending()) {
+                $approvedBy = EmployeeContext::currentEmployeeId();
+                $this->suggestionService->approveSuggestion($suggestion, $approvedBy, 'Auto-approved on creation.');
+                $suggestion = $suggestion->fresh(['reorderRule', 'product', 'branch', 'approver']);
+            }
 
             return response()->json([
                 'success' => true,

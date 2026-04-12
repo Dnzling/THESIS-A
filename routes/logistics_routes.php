@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Logistics\DeliveryController;
 use App\Http\Controllers\Api\Logistics\DeliveryTripController;
 use App\Http\Controllers\Api\Logistics\DeliveryZoneController;
+use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
 
@@ -62,5 +63,14 @@ Route::prefix('logistics')->group(function () {
         Route::put('/{id}/status', [DeliveryTripController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
         Route::post('/{id}/orders', [DeliveryTripController::class, 'addOrders'])->middleware('can:logistics.deliveries.manage');
         Route::post('/{id}/orders/remove', [DeliveryTripController::class, 'removeOrders'])->middleware('can:logistics.deliveries.manage');
+    });
+
+    // Return Pickups (Customer Returns)
+    Route::prefix('return-pickups')->group(function () {
+        Route::get('/', [ReturnPickupController::class, 'index'])->middleware('can:logistics.deliveries.view');
+        Route::get('/{pickup}', [ReturnPickupController::class, 'show'])->middleware('can:logistics.deliveries.view');
+        Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
+        Route::post('/{pickup}/assign-driver', [ReturnPickupController::class, 'assignDriver'])->middleware('can:logistics.deliveries.manage');
+        Route::post('/{pickup}/proof', [ReturnPickupController::class, 'uploadProof'])->middleware('can:logistics.deliveries.manage');
     });
 });

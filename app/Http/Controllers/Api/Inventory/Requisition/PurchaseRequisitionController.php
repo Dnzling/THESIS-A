@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /**
  * Inventory-scoped Purchase Requisitions (branch-only).
@@ -22,6 +23,31 @@ use Illuminate\Support\Facades\Schema;
  */
 class PurchaseRequisitionController extends Controller
 {
+    private function userHasAnyPermission(array $permissionNames, int $storeId): bool
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return false;
+        }
+
+        foreach ($permissionNames as $permission) {
+            $normalized = (string) $permission;
+            $aliases = array_values(array_unique([
+                $normalized,
+                Str::contains($normalized, '_') ? str_replace('_', '-', $normalized) : $normalized,
+                Str::contains($normalized, '-') ? str_replace('-', '_', $normalized) : $normalized,
+            ]));
+
+            foreach ($aliases as $candidate) {
+                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private function resolveBranchId(): int
     {
         $user = Auth::user();
@@ -336,6 +362,35 @@ class PurchaseRequisitionController extends Controller
             if ($autoSubmit) {
                 $pr->submit();
                 $this->notifyProcurementTeamForSubmittedPr($pr);
+            }
+
+            $canInventoryApprove = $this->userHasAnyPermission([
+                'inventory.requisitions.approve',
+                'inventory.requisition.approve',
+                'inventory.requisites.approve',
+            ], $storeId);
+
+            if ($autoSubmit && $canInventoryApprove) {
+                $note = 'Auto-approved on creation.';
+
+                $chain = $pr->approval_chain ?? [];
+                $chain[] = [
+                    'role' => Auth::user()->role->name ?? 'approver',
+                    'user_id' => Auth::id(),
+                    'user_name' => Auth::user()->full_name ?? null,
+                    'action' => 'approved',
+                    'notes' => $note,
+                    'approved_at' => now()->toDateTimeString(),
+                ];
+
+                $pr->update([
+                    'status' => 'procurement_processing',
+                    'approval_chain' => $chain,
+                ]);
+
+                if ($this->userHasAnyPermission(['procurement.requisitions.approve'], $storeId)) {
+                    $pr->addApproval('procurement.requisitions.approve', (int) Auth::id(), (string) (Auth::user()->full_name ?? 'Approver'), $note);
+                }
             }
 
             DB::commit();

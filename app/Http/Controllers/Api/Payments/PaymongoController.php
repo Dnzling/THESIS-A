@@ -310,6 +310,14 @@ class PaymongoController extends Controller
         $intent = PaymongoIntent::where('payment_intent_id', $paymentIntentId)->first();
         $payload = $this->service->retrieveIntent($paymentIntentId);
 
+        if (data_get($payload, 'errors.0.detail')) {
+            return response()->json([
+                'message' => data_get($payload, 'errors.0.detail', 'Unable to retrieve PayMongo payment intent.'),
+                'errors' => data_get($payload, 'errors', []),
+                'data' => $payload,
+            ], 502);
+        }
+
         if ($intent) {
             $attrs = data_get($payload, 'data.attributes', []);
             $status = (string) data_get($attrs, 'status', $intent->status);

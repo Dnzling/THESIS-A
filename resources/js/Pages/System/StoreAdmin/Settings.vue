@@ -111,7 +111,7 @@
         </template>
       </Card>
 
-      <Card v-if="isActiveSubscription">
+      <Card v-if="isActiveSubscription && store.status !== 'trial'">
         <template #title>Store Verification</template>
         <template #content>
           <div class="space-y-3 text-sm text-slate-700">
@@ -220,7 +220,7 @@
       </template>
     </Dialog>
 
-    <Card v-if="!isActiveSubscription">
+    <Card v-if="!isActiveSubscription && store.status !== 'trial'">
       <template #title>Store Verification</template>
       <template #content>
         <div class="space-y-3 text-sm text-slate-700">
@@ -587,20 +587,7 @@ const moduleOptions = [
   { label: 'E-commerce', value: 'ecommerce' },
 ]
 
-const { permissionCatalog, getTierPermissionFeatures, getTierPermissionList } = usePermissions()
-
-const smallFeatureMap = computed(() => getTierPermissionFeatures('small'))
-const smallModules = computed(() =>
-  permissionCatalog
-    .filter(module => (smallFeatureMap.value[module.key] || []).length > 0)
-    .map(module => ({
-      ...module,
-      features: module.features.filter(feature =>
-        (smallFeatureMap.value[module.key] || []).includes(feature.key),
-      ),
-    })),
-)
-const smallPermissionList = computed(() => getTierPermissionList('small'))
+usePermissions()
 
 const trialPlanLabel = computed(() => onboarding.plan === 'unlimited' ? 'Unlimited Trial' : 'Simple Trial')
 const isActiveSubscription = computed(() => subscription.status === 'active')

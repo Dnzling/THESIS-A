@@ -801,6 +801,31 @@ class EcommerceController extends Controller
         ]);
     }
 
+    public function carts()
+    {
+        $user = Auth::user();
+
+        $carts = EcommerceCart::query()
+            ->with(['store:id,name'])
+            ->withCount('items')
+            ->where('user_id', $user->id)
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn (EcommerceCart $cart) => [
+                'id' => (int) $cart->id,
+                'store_id' => (int) $cart->store_id,
+                'store_name' => $cart->store?->name ?? 'Store',
+                'items_count' => (int) ($cart->items_count ?? 0),
+                'updated_at' => $cart->updated_at,
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => $carts,
+        ]);
+    }
+
     public function favorites(): \Illuminate\Http\JsonResponse
     {
         $user = Auth::user();
@@ -1764,6 +1789,8 @@ class EcommerceController extends Controller
             'reason' => ['required', 'string', 'max:1000'],
             'details' => ['nullable', 'string', 'max:2000'],
             'requested_quantity' => ['nullable', 'integer', 'min:1'],
+            'evidence_images' => ['nullable', 'array', 'max:5'],
+            'evidence_images.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ]);
 
         $user = Auth::user();
@@ -1786,6 +1813,12 @@ class EcommerceController extends Controller
         }
 
         $requestedQuantity = (int) ($validated['requested_quantity'] ?? 1);
+        if ($requestedQuantity < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Requested return quantity must be at least 1.',
+            ], 422);
+        }
         if ($requestedQuantity > (int) $orderItem->quantity) {
             return response()->json([
                 'success' => false,
@@ -1805,6 +1838,14 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $evidenceUrls = [];
+        if ($request->hasFile('evidence_images')) {
+            foreach ($request->file('evidence_images') as $file) {
+                $path = $file->store("ecommerce/returns/{$storeId}/orders/{$orderItem->order_id}/users/{$user->id}", 'public');
+                $evidenceUrls[] = Storage::disk('public')->url($path);
+            }
+        }
+
         $returnRecord = EcommerceOrderReturn::query()->create([
             'order_id' => $orderItem->order_id,
             'order_item_id' => $orderItem->id,
@@ -1813,6 +1854,7 @@ class EcommerceController extends Controller
             'requested_quantity' => $requestedQuantity,
             'reason' => $validated['reason'],
             'details' => $validated['details'] ?? null,
+            'evidence_urls' => $evidenceUrls,
             'status' => 'pending_verification',
         ]);
 
@@ -2679,9 +2721,14 @@ class EcommerceController extends Controller
         ?EcommerceOrderCancellation $latestCancellation,
         ?EcommerceOrderReturn $latestReturn
     ): string {
-        if (in_array($orderStatus, ['cancelled', 'canceled', 'returned', 'refunded'], true)) {
-            return $orderStatus;
-        }
+        // Normalize the customer-facing order status to a small set of timeline states.
+        $baseStatus = match (true) {
+            in_array($orderStatus, ['cancelled', 'canceled'], true) => 'cancelled',
+            in_array($orderStatus, ['delivered', 'completed'], true) => 'delivered',
+            in_array($orderStatus, ['packed', 'shipped', 'in_transit', 'out_for_delivery', 'on_delivery'], true) => 'in_transit',
+            in_array($orderStatus, ['processing', 'confirmed', 'ready_for_dispatch'], true) => 'packing',
+            default => 'pending',
+        };
 
         if ($latestCancellation) {
             $cancelStatus = strtolower((string) $latestCancellation->status);
@@ -2689,7 +2736,7 @@ class EcommerceController extends Controller
                 return 'cancelled';
             }
             if ($cancelStatus === 'pending_verification') {
-                return 'cancellation_pending_verification';
+                return 'cancel_pending';
             }
         }
 
@@ -2705,11 +2752,11 @@ class EcommerceController extends Controller
                 return 'return_approved';
             }
             if ($returnStatus === 'pending_verification') {
-                return 'return_pending_verification';
+                return 'return_pending';
             }
         }
 
-        return $orderStatus;
+        return $baseStatus;
     }
 
     private function formatOrderTimeline(EcommerceOrder $order): array

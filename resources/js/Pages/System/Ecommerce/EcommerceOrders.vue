@@ -2,16 +2,20 @@
   <div class="space-y-4">
     <div class="rounded-2xl md:rounded-3xl border border-slate-200 bg-white/70 p-3 md:p-4">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-wrap gap-2">
-          <Button
-            v-for="tab in tabs"
-            :key="tab.value"
-            :label="tab.label"
-            :outlined="activeTab !== tab.value"
-            :severity="activeTab === tab.value ? 'info' : 'secondary'"
-            rounded
-            @click="activeTab = tab.value"
-          />
+        <div class="-mx-1 flex w-full overflow-x-auto px-1 sm:w-auto">
+          <div class="flex flex-nowrap gap-2">
+            <Button
+              v-for="tab in tabs"
+              :key="tab.value"
+              :label="tab.label"
+              :outlined="activeTab !== tab.value"
+              :severity="activeTab === tab.value ? 'warn' : 'secondary'"
+              rounded
+              size="small"
+              class="shrink-0"
+              @click="activeTab = tab.value"
+            />
+          </div>
         </div>
 
         <IconField class="w-full sm:w-auto">
@@ -25,15 +29,20 @@
       </div>
 
       <div v-else class="space-y-4">
-        <Card
-          v-for="group in groupedStoreOrders"
-          :key="group.store_name"
-          class="border border-slate-200 shadow-none"
-        >
+        <Card v-for="group in groupedOrders" :key="group.order_id" class="border border-slate-200 shadow-none">
           <template #content>
             <div class="space-y-3">
               <div class="border-b border-slate-100 pb-2">
-                <p class="text-sm font-semibold text-slate-800">Store: {{ group.store_name }}</p>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="text-sm font-semibold text-slate-800">Order No: {{ group.order_number }}</p>
+                    <p class="text-xs text-slate-500 truncate">Store: {{ group.store_name }}</p>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <Tag :value="statusLabel(group.status)" :class="statusTagClass(group.status)" />
+                    <Button label="View" severity="warn" outlined size="small" @click="goOrderDetail(group.order_id)" />
+                  </div>
+                </div>
               </div>
 
               <div
@@ -47,23 +56,20 @@
                   <div class="min-w-0">
                     <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                     <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                    <p class="text-xs text-slate-500">Order No: {{ item.order_number }}</p>
                   </div>
                 </div>
 
                 <div class="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:items-center sm:gap-4 md:gap-5">
-                  <Tag :value="statusLabel(item.status)" :class="statusTagClass(item.status)" />
                   <p class="text-xs sm:text-sm text-slate-600">{{ formatDate(item.created_at) }}</p>
                   <p class="text-sm sm:text-lg font-semibold text-slate-900">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
                   <p class="text-xs sm:text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
-                  <Button label="View" severity="info" outlined class="col-span-2 sm:col-span-1" @click="goOrderDetail(item.order_id)" />
                 </div>
               </div>
             </div>
           </template>
         </Card>
 
-        <div v-if="!groupedStoreOrders.length" class="py-14 text-center text-slate-500">
+        <div v-if="!groupedOrders.length" class="py-14 text-center text-slate-500">
           No orders found for this filter.
         </div>
       </div>
@@ -88,6 +94,7 @@ type OrderItemRow = {
   store_name: string
   order_number: string
   status: string
+  delivery_status: string
   created_at: string
   product_name: string
   sku: string | null
@@ -112,18 +119,21 @@ const tabs = [
 
 const ongoingStatuses = new Set(['pending', 'processing', 'packed', 'shipped', 'in_transit', 'on_delivery'])
 const completedStatuses = new Set(['completed', 'delivered'])
-const returnStatuses = new Set(['returned', 'return_requested', 'refunded'])
-const cancellationStatuses = new Set(['cancelled', 'canceled'])
+const returnStatuses = new Set(['return_pending', 'return_approved', 'return_received', 'refunded'])
+const cancellationStatuses = new Set(['cancel_pending', 'cancelled'])
 
 const flattenedItems = computed<OrderItemRow[]>(() => {
   return orders.value.flatMap((order: any) => {
     const items = Array.isArray(order.items) ? order.items : []
+    const effectiveStatus = String(order.primary_status || order.status || '')
+    const deliveryStatus = String(order.delivery?.status || 'pending')
     return items.map((item: any) => ({
       order_id: Number(order.id),
       item_id: Number(item.id),
       store_name: String(order.store_name || 'Store'),
       order_number: String(order.order_number || ''),
-      status: String(order.status || ''),
+      status: effectiveStatus,
+      delivery_status: deliveryStatus,
       created_at: String(order.created_at || ''),
       product_name: String(item.product_name || ''),
       sku: item.sku || null,
@@ -154,15 +164,36 @@ const filteredItems = computed(() => {
   })
 })
 
-const groupedStoreOrders = computed(() => {
-  const groups = new Map<string, OrderItemRow[]>()
+type OrderGroup = {
+  order_id: number
+  order_number: string
+  store_name: string
+  status: string
+  delivery_status: string
+  created_at: string
+  items: OrderItemRow[]
+}
+
+const groupedOrders = computed<OrderGroup[]>(() => {
+  const groups = new Map<number, OrderGroup>()
+
   for (const item of filteredItems.value) {
-    const key = item.store_name
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)?.push(item)
+    const key = item.order_id
+    if (!groups.has(key)) {
+      groups.set(key, {
+        order_id: item.order_id,
+        order_number: item.order_number,
+        store_name: item.store_name,
+        status: item.status,
+        delivery_status: item.delivery_status,
+        created_at: item.created_at,
+        items: [],
+      })
+    }
+    groups.get(key)!.items.push(item)
   }
 
-  return Array.from(groups.entries()).map(([store_name, items]) => ({ store_name, items }))
+  return Array.from(groups.values()).sort((a, b) => (new Date(b.created_at).getTime() || 0) - (new Date(a.created_at).getTime() || 0))
 })
 
 async function loadOrders() {
@@ -177,11 +208,33 @@ async function loadOrders() {
 
 function statusLabel(status: string) {
   const value = String(status || '').toLowerCase()
-  if (ongoingStatuses.has(value)) return 'Order in progress'
-  if (completedStatuses.has(value)) return 'Order completed'
-  if (returnStatuses.has(value)) return 'Returned'
+  if (ongoingStatuses.has(value) || value === 'pending') return 'Pending'
+  if (value === 'packing') return 'Packing'
+  if (value === 'in_transit') return 'In Transit'
+  if (completedStatuses.has(value) || value === 'delivered') return 'Delivered'
+  if (returnStatuses.has(value)) {
+    if (value === 'return_pending') return 'Return Pending'
+    if (value === 'return_approved') return 'Return Approved'
+    if (value === 'return_received') return 'Return Received'
+    if (value === 'refunded') return 'Refunded'
+    return 'Return'
+  }
+  if (value === 'cancel_pending') return 'Cancel Pending'
   if (cancellationStatuses.has(value)) return 'Cancelled'
   return status || 'Unknown'
+}
+
+function deliveryLabel(status: string) {
+  const value = String(status || '').toLowerCase()
+  if (value === 'pending') return 'Delivery pending'
+  if (value === 'assigned') return 'Delivery assigned'
+  if (value === 'packed') return 'Packed'
+  if (value === 'in_transit') return 'In transit'
+  if (value === 'out_for_delivery') return 'Out for delivery'
+  if (value === 'delivered') return 'Delivered'
+  if (value === 'failed_delivery') return 'Failed delivery'
+  if (value === 'cancelled') return 'Cancelled'
+  return status || 'Delivery'
 }
 
 function statusTagClass(status: string) {
@@ -217,4 +270,3 @@ function onImageError(event: Event) {
 
 onMounted(loadOrders)
 </script>
-

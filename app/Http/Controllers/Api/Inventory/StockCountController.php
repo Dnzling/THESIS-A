@@ -16,12 +16,37 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class StockCountController extends Controller
 {
     public function __construct(
         protected StockCountService $stockCountService
     ) {
+    }
+
+    private function userHasAnyPermission($user, array $permissionNames, int $storeId): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        foreach ($permissionNames as $permission) {
+            $normalized = (string) $permission;
+            $aliases = array_values(array_unique([
+                $normalized,
+                Str::contains($normalized, '_') ? str_replace('_', '-', $normalized) : $normalized,
+                Str::contains($normalized, '-') ? str_replace('-', '_', $normalized) : $normalized,
+            ]));
+
+            foreach ($aliases as $candidate) {
+                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -456,6 +481,7 @@ class StockCountController extends Controller
     public function complete(Request $request, StockCount $count): JsonResponse
     {
         try {
+            $user = auth()->user();
             // Check if user has access to this count
             $context = $this->getUserContext();
             if ($count->store_id !== $context['store_id']) {
@@ -480,6 +506,19 @@ class StockCountController extends Controller
                 $count
             );
 
+            if ($this->userHasAnyPermission($user, ['inventory.stock_counts.approve'], (int) $context['store_id'])) {
+                $count = $this->stockCountService->approveStockCount($count, [
+                    'approved_by' => EmployeeContext::currentEmployeeId(),
+                    'approval_notes' => 'Auto-approved on completion.',
+                ]);
+
+                $this->recordLog(
+                    'inventory.stock_count.auto_approved',
+                    "Auto-approved stock count {$count->count_number}",
+                    $count
+                );
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Stock count completed successfully',
@@ -501,7 +540,7 @@ class StockCountController extends Controller
     {
         try {
             $user = auth()->user();
-            if (!$user || !$user->hasPermissionTo('inventory.stock_counts.approve', (int) $user->store_id)) {
+            if (!$this->userHasAnyPermission($user, ['inventory.stock_counts.approve'], (int) $user->store_id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized. Approval permission is required.',
