@@ -23,7 +23,7 @@ ecommerceClient.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status
-    if (status === 401 || status === 403) {
+    if (status === 401) {
       const redirect = window.location.pathname + window.location.search
       router.visit('/customer/login', { data: { redirect }, replace: true })
     }

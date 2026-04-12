@@ -28,7 +28,7 @@
   
             <div class="space-y-2">
               <label class="text-base font-semibold text-slate-900 sm:text-lg">Birthday</label>
-              <DatePicker v-model="form.birthday" :maxDate="new Date()" fluid showIcon dateFormat="yy-mm-dd"
+              <DatePicker v-model="form.birthday" :maxDate="minimumAdultDate" fluid showIcon dateFormat="yy-mm-dd"
                 placeholder="Select birthday" />
             </div>
   
@@ -80,7 +80,7 @@
 
 <script setup lang="ts">
 import axios from 'axios'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
@@ -94,6 +94,11 @@ import CustomerAuth3DHero from '@/Components/auth/CustomerAuth3DHero.vue'
 const toast = useToast()
 const isSubmitting = ref(false)
 const acceptedTerms = ref(false)
+const minimumAdultDate = computed(() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 18)
+  return d
+})
 
 const form = reactive({
   fname: '',
@@ -110,6 +115,14 @@ async function submitRegister() {
   if (!form.fname || !form.lname || !form.email || !form.password || !form.confirmPassword || !form.birthday) {
     toast.add({ severity: 'warn', summary: 'Missing fields', detail: 'Please complete all required fields.', life: 3000 })
     return
+  }
+
+  if (form.birthday) {
+    const birthDate = new Date(form.birthday)
+    if (Number.isNaN(birthDate.getTime()) || birthDate > minimumAdultDate.value) {
+      toast.add({ severity: 'warn', summary: 'Age restriction', detail: 'You must be at least 18 years old to register.', life: 3500 })
+      return
+    }
   }
 
   if (form.password !== form.confirmPassword) {

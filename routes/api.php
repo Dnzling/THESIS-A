@@ -141,6 +141,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
         // Customer Validation
         Route::get('/customer-validations', [CustomerValidationController::class, 'index']);
+        Route::get('/customer-validations/documents/{document}/serve', [CustomerValidationController::class, 'serveDocument']);
         Route::get('/customer-validations/{id}', [CustomerValidationController::class, 'show']);
         Route::post('/customer-validations/{id}/review', [CustomerValidationController::class, 'review']);
 
@@ -238,6 +239,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // ========== PROFILE ==========
     Route::prefix('profile')->controller(ApiProfileController::class)->group(function () {
         Route::get('/', 'show');
+        Route::get('/verification', 'verificationStatus');
+        Route::post('/verification', 'submitVerification');
+        Route::get('/verification/documents/{document}/serve', 'serveVerificationDocument');
         Route::put('/', 'update');
         Route::post('avatar', 'updateAvatar');
         Route::delete('avatar', 'removeAvatar');

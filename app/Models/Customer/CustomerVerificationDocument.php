@@ -11,6 +11,8 @@ class CustomerVerificationDocument extends Model
     protected $fillable = [
         'user_id',
         'document_type',
+        'id_type',
+        'id_number',
         'file_path',
         'original_filename',
         'file_mime_type',
@@ -28,6 +30,8 @@ class CustomerVerificationDocument extends Model
 
     public static array $DOCUMENT_TYPES = [
         'government_id' => 'Government ID',
+        'primary_id' => 'Primary ID',
+        'selfie_with_id' => 'Selfie with ID',
         'proof_of_address' => 'Proof of Address',
         'selfie' => 'Selfie Photo',
         'business_permit' => 'Business Permit',

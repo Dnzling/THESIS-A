@@ -44,6 +44,7 @@
         </div>
         <div class="space-y-1 border-t border-slate-200 pt-2">
           <Button label="Profile" text severity="secondary" class="w-full justify-start" @click="goProfile" />
+          <Button label="Notifications" text severity="secondary" class="w-full justify-start" @click="goNotifications" />
           <Button label="Orders" text severity="secondary" class="w-full justify-start" @click="goOrders" />
           <Button label="Chats" text severity="secondary" class="w-full justify-start" @click="goChats" />
           <Button label="Logout" text severity="danger" class="w-full justify-start" @click="logoutCustomer" />
@@ -106,6 +107,16 @@ function goLogin() {
 function goProfile() {
   profilePopoverRef.value?.hide()
   router.push({ name: 'ecommerce.profile' })
+}
+
+function goNotifications() {
+  profilePopoverRef.value?.hide()
+  try {
+    localStorage.setItem('ecommerce_profile_section', 'notifications')
+  } catch {
+    // no-op
+  }
+  router.push('/shop/profile?section=notifications')
 }
 
 function toggleProfilePopover(event: Event) {

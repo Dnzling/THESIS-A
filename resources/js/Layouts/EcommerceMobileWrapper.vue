@@ -9,7 +9,7 @@
       aria-label="Mobile navigation"
     >
       <div class="mx-auto w-full max-w-7xl px-4">
-        <div class="grid grid-cols-5 gap-1 py-2 text-[11px] font-medium text-slate-500">
+        <div class="grid grid-cols-6 gap-1 py-2 text-[11px] font-medium text-slate-500">
           <button
             type="button"
             class="flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
@@ -36,6 +36,15 @@
           >
             <i class="pi pi-receipt text-lg" />
             <span>Orders</span>
+          </button>
+          <button
+            type="button"
+            class="flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
+            :class="isNotificationsActive ? 'text-orange-600' : 'hover:text-slate-900'"
+            @click="goNotifications"
+          >
+            <i class="pi pi-bell text-lg" />
+            <span>Notifs</span>
           </button>
           <button
             type="button"
@@ -80,6 +89,7 @@ const authStore = useAuthStore()
 
 const isLoggedIn = computed(() => authStore.isAuthenticated)
 const cartCount = ref(0)
+const isNotificationsActive = computed(() => String(route.name || '') === 'ecommerce.profile' && String(route.query?.section || '') === 'notifications')
 
 function isActive(names: string[]) {
   return names.includes(String(route.name || ''))
@@ -95,6 +105,15 @@ function goAuth(name: string) {
     return
   }
   router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
+}
+
+function goNotifications() {
+  try {
+    localStorage.setItem('ecommerce_profile_section', 'notifications')
+  } catch {
+    // no-op
+  }
+  router.push('/shop/profile?section=notifications')
 }
 
 async function loadCartCount() {

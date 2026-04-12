@@ -1,6 +1,7 @@
 <!-- layouts/SystemLayout.vue -->
 <template>
   <Head v-if="pageTitle" :title="pageTitle" />
+  <Toast />
   <div class="flex h-screen w-full max-w-[100vw] overflow-hidden">
     <!-- Sidebar -->
     <aside class="sidebar bg-white w-64 shadow-lg flex flex-col z-30 overflow-y-auto">
@@ -180,6 +181,7 @@ import { startCase, toLower } from 'lodash'
 import Button from 'primevue/button'
 import Skeleton from 'primevue/skeleton'
 import Popover from 'primevue/popover'
+import Toast from 'primevue/toast'
 import axiosClient from '@/axios'
 
 const page = usePage()

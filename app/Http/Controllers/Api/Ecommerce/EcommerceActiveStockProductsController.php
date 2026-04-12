@@ -8,6 +8,7 @@ use App\Models\ProductCatalog\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class EcommerceActiveStockProductsController extends Controller
 {
@@ -160,10 +161,34 @@ class EcommerceActiveStockProductsController extends Controller
             return $path;
         }
 
-        if (str_starts_with($path, '/storage/')) {
-            return $path;
+        $normalized = ltrim((string) $path, '/');
+        if (str_starts_with($normalized, 'storage/')) {
+            $normalized = preg_replace('#^storage/#', '', $normalized);
         }
 
-        return asset('storage/' . ltrim($path, '/'));
+        $normalized = ltrim((string) $normalized, '/');
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (Storage::disk('public')->exists($normalized)) {
+            return asset('storage/' . $normalized);
+        }
+
+        if (Storage::disk('local')->exists($normalized)) {
+            return Storage::disk('local')->url($normalized);
+        }
+
+        $publicStoragePath = public_path('storage/' . $normalized);
+        if (is_file($publicStoragePath)) {
+            return '/storage/' . $normalized;
+        }
+
+        $publicDirectPath = public_path($normalized);
+        if (is_file($publicDirectPath)) {
+            return '/' . $normalized;
+        }
+
+        return null;
     }
 }

@@ -26,6 +26,11 @@ const isSubmitting = ref(false)
 
 const getFirstAvailableRoute = (): string => {
   const normalizedRole = String(authStore.user?.role || '').toLowerCase()
+  const displayRole = String((authStore.user as any)?.display_role || '').toLowerCase()
+
+  if (normalizedRole.includes('customer') || displayRole.includes('customer')) {
+    return '/shop'
+  }
 
   if (normalizedRole === 'super_admin') return '/admin/dashboard'
   if (normalizedRole === 'supplier') return '/supplier-portal/dashboard'
@@ -82,7 +87,12 @@ const handleLogin = async (formData: LoginFormData) => {
 
     // Override with query redirect if available
     const redirectParam = getQueryParam('redirect')
-    if (redirectParam) {
+    const isCustomerRole =
+      String(authStore.user?.role || '').toLowerCase().includes('customer') ||
+      String((authStore.user as any)?.display_role || '').toLowerCase().includes('customer')
+
+    // For customer logins, always land on /shop first to avoid auth loop back to /customer/login.
+    if (!isCustomerRole && redirectParam) {
       redirectTo = redirectParam
     }
 

@@ -27,6 +27,18 @@
       </template>
     </Card>
 
+    <Card v-if="requiresVerification" class="border border-amber-200 bg-amber-50 shadow-none">
+      <template #content>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-amber-800">Account Verification Required</p>
+            <p class="text-xs text-amber-700">You need to complete customer verification before placing an order.</p>
+          </div>
+          <Button label="Go to Verification" severity="warn" @click="goToVerificationProfile" />
+        </div>
+      </template>
+    </Card>
+
     <div v-if="loading" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <Card class="border border-slate-200 shadow-none lg:col-span-2">
         <template #content>
@@ -142,7 +154,7 @@
             </div> -->
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ totalAmount.toFixed(2) }}</span></div>
-            <Button label="Place Order" severity="warn" class="mt-2 w-full" :loading="placing || paymongoCreating" @click="placeOrder" />
+            <Button label="Place Order" severity="warn" class="mt-2 w-full" :loading="placing || paymongoCreating" :disabled="requiresVerification" @click="placeOrder" />
           </div>
         </template>
       </Card>
@@ -419,6 +431,7 @@ const isEditingAddress = ref(false)
 const editingAddressId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
+const customerVerificationStatus = ref('unverified')
 
 const cardDialog = reactive({
   visible: false,
@@ -636,6 +649,7 @@ const appliedVoucher = ref<AppliedVoucher | null>(null)
 const validatedDiscountAmount = ref(0)
 
 const selectedAddress = computed(() => addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null)
+const requiresVerification = computed(() => String(customerVerificationStatus.value || 'unverified').toLowerCase() !== 'verified')
 const selectedAddressSummary = computed(() =>
   selectedAddress.value
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
@@ -702,6 +716,15 @@ async function loadAddressTemplates() {
     }
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Address', detail: error?.response?.data?.message || 'Failed to load addresses' })
+  }
+}
+
+async function loadCustomerVerificationStatus() {
+  try {
+    const response = await axios.get('/api/profile')
+    customerVerificationStatus.value = String(response?.data?.data?.customer?.verification_status || 'unverified')
+  } catch {
+    customerVerificationStatus.value = 'unverified'
   }
 }
 
@@ -1000,6 +1023,16 @@ async function startEditAddress(address: AddressTemplate) {
 // Coordinates are picked via the interactive map dialog (Leaflet).
 
 async function placeOrder() {
+  if (requiresVerification.value) {
+    showAlert({
+      severity: 'warn',
+      summary: 'Verification Required',
+      detail: 'Please complete your customer verification before placing an order.',
+    })
+    goToVerificationProfile()
+    return
+  }
+
   if (!selectedAddress.value) {
     showAlert({ severity: 'warn', summary: 'Address Required', detail: 'Please select a shipping address.' })
     return
@@ -1101,7 +1134,16 @@ async function placeOrder() {
     showAlert({ severity: 'success', summary: 'Order Placed', detail: 'Your order was created successfully.' })
     router.push({ name: 'ecommerce.orders', query: { placed: orderId } })
   } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.' })
+    if (error?.response?.status === 403 && error?.response?.data?.code === 'CUSTOMER_NOT_VERIFIED') {
+      showAlert({
+        severity: 'warn',
+        summary: 'Verification Required',
+        detail: error?.response?.data?.message || 'Please complete customer verification before checkout.',
+      })
+      goToVerificationProfile()
+    } else {
+      showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.' })
+    }
   } finally {
     placing.value = false
     paymongoCreating.value = false
@@ -1352,6 +1394,10 @@ function goCart() {
   router.push({ name: 'ecommerce.cart' })
 }
 
+function goToVerificationProfile() {
+  router.push({ name: 'ecommerce.profile', query: { section: 'verification' } })
+}
+
 onMounted(async () => {
   let paymongoOrderId = Number(route.query?.paymongo_order_id || 0)
   if (!paymongoOrderId) {
@@ -1395,6 +1441,7 @@ onMounted(async () => {
     await fetchProvinces()
     await loadAddressTemplates()
     await loadCheckoutItems()
+    await loadCustomerVerificationStatus()
     await estimateShippingFee()
   } finally {
     loading.value = false

@@ -16,6 +16,7 @@ use App\Models\Ecommerce\EcommerceProductReview;
 use App\Models\Ecommerce\EcommerceStoreFollow;
 use App\Models\Ecommerce\EcommerceVoucher;
 use App\Models\Admin\ViolationReport;
+use App\Models\Customer\Customer;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
@@ -1308,6 +1309,17 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
+        $customer = Customer::query()->where('user_id', $user->id)->first();
+        $verificationStatus = strtolower((string) ($customer?->verification_status ?? 'unverified'));
+        if ($verificationStatus !== 'verified') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your account must be verified before placing an order.',
+                'code' => 'CUSTOMER_NOT_VERIFIED',
+                'redirect_to' => '/shop/profile?section=verification',
+            ], 403);
+        }
+
         $cart = null;
         $itemsForCheckout = collect();
 
@@ -2556,11 +2568,35 @@ class EcommerceController extends Controller
             return $path;
         }
 
-        if (str_starts_with($path, '/storage/')) {
-            return $path;
+        $normalized = ltrim((string) $path, '/');
+        if (str_starts_with($normalized, 'storage/')) {
+            $normalized = preg_replace('#^storage/#', '', $normalized);
         }
 
-        return Storage::disk('public')->url(ltrim($path, '/'));
+        $normalized = ltrim((string) $normalized, '/');
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (Storage::disk('public')->exists($normalized)) {
+            return Storage::disk('public')->url($normalized);
+        }
+
+        if (Storage::disk('local')->exists($normalized)) {
+            return Storage::disk('local')->url($normalized);
+        }
+
+        $publicStoragePath = public_path('storage/' . $normalized);
+        if (is_file($publicStoragePath)) {
+            return '/storage/' . $normalized;
+        }
+
+        $publicDirectPath = public_path($normalized);
+        if (is_file($publicDirectPath)) {
+            return '/' . $normalized;
+        }
+
+        return null;
     }
 
     private function selectBestProductImage(Product $product)

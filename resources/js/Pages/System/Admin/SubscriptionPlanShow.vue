@@ -199,10 +199,19 @@ const permissionsByModule = computed(() => {
   return result
 })
 
-const moduleIncluded = (key: string) => form.modules.includes(key)
+const moduleIncluded = (key: string) => {
+  if (validModuleKeys.value.has(key)) {
+    return form.modules.includes(key)
+  }
+
+  // Support permission-only groups (e.g. `store.*`) that are not real module keys.
+  return form.permissions.some((p) => p.startsWith(`${key}.`))
+}
 const permissionIncluded = (name: string) => form.permissions.includes(name)
 const submoduleIncluded = (moduleKey: string, subKey: string) =>
   form.permissions.some((p) => p.startsWith(`${moduleKey}.${subKey}.`))
+const validModuleKeys = computed(() => new Set(modules.value.map((m: any) => String(m.key))))
+const validPermissionNames = computed(() => new Set(permissions.value.map((p: any) => String(p.name))))
 
 const moduleLabel = (key: string) =>
   String(key || '')
@@ -213,20 +222,33 @@ const moduleLabel = (key: string) =>
 
 const setModule = (key: string, val: boolean) => {
   if (val) {
-    if (!form.modules.includes(key)) form.modules.push(key)
+    if (validModuleKeys.value.has(key) && !form.modules.includes(key)) form.modules.push(key)
+    // Keep module and grouped submodule toggles in sync by enabling all permissions in this module.
+    const modulePermNames = permissions.value
+      .filter((p) => String(p.name || '').startsWith(`${key}.`))
+      .map((p) => String(p.name))
+    modulePermNames.forEach((name) => {
+      if (!form.permissions.includes(name)) form.permissions.push(name)
+    })
   } else {
-    form.modules = form.modules.filter((k) => k !== key)
+    if (validModuleKeys.value.has(key)) {
+      form.modules = form.modules.filter((k) => k !== key)
+    }
     // also drop permissions of this module
     form.permissions = form.permissions.filter((p) => !p.startsWith(`${key}.`))
   }
 }
 
 const setPermission = (name: string, val: boolean) => {
+  if (!validPermissionNames.value.has(name)) {
+    return
+  }
+
   if (val) {
     if (!form.permissions.includes(name)) form.permissions.push(name)
     // ensure module is on
     const moduleKey = name.split('.')[0]
-    if (moduleKey && !form.modules.includes(moduleKey)) {
+    if (moduleKey && validModuleKeys.value.has(moduleKey) && !form.modules.includes(moduleKey)) {
       form.modules.push(moduleKey)
     }
   } else {
@@ -239,9 +261,9 @@ const setSubmodule = (moduleKey: string, subKey: string, val: boolean) => {
   const names = permissions.value.filter((p) => (p.name || '').startsWith(prefix)).map((p) => p.name)
   if (val) {
     names.forEach((n) => {
-      if (!form.permissions.includes(n)) form.permissions.push(n)
+      if (validPermissionNames.value.has(n) && !form.permissions.includes(n)) form.permissions.push(n)
     })
-    if (!form.modules.includes(moduleKey)) form.modules.push(moduleKey)
+    if (validModuleKeys.value.has(moduleKey) && !form.modules.includes(moduleKey)) form.modules.push(moduleKey)
   } else {
     form.permissions = form.permissions.filter((p) => !p.startsWith(prefix))
   }
@@ -305,7 +327,10 @@ const save = async () => {
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean)
-    await axiosClient.put(`/api/admin/subscription-plans/${planId.value}`, {
+    const sanitizedModules = Array.from(new Set(form.modules.filter((m) => validModuleKeys.value.has(m))))
+    const sanitizedPermissions = Array.from(new Set(form.permissions.filter((p) => validPermissionNames.value.has(p))))
+
+    const response = await axiosClient.put(`/api/admin/subscription-plans/${planId.value}`, {
       name: form.name,
       description: form.description || null,
       monthly_price: form.monthly_price,
@@ -314,12 +339,14 @@ const save = async () => {
       is_featured: form.is_featured,
       is_active: form.is_active,
       sort_order: form.sort_order,
-      modules: form.modules,
-      permissions: form.permissions,
+      modules: sanitizedModules,
+      permissions: sanitizedPermissions,
     })
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Plan updated', life: 2000 })
+    toast.add({ severity: 'success', summary: 'Saved', detail: response?.data?.message || 'Plan updated', life: 2000 })
   } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.message || 'Failed to save', life: 3000 })
+    const firstValidationError = Object.values(e?.response?.data?.errors || {})?.[0]
+    const validationMessage = Array.isArray(firstValidationError) ? firstValidationError[0] : undefined
+    toast.add({ severity: 'error', summary: 'Error', detail: validationMessage || e?.response?.data?.message || 'Failed to save', life: 3000 })
   } finally {
     saving.value = false
   }

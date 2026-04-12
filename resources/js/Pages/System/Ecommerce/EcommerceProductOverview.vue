@@ -322,6 +322,7 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import ecommerceService from '@/services/ecommerce.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
@@ -607,6 +608,18 @@ async function buyNow() {
     return
   }
   try {
+    const profileResponse = await axios.get('/api/profile')
+    const verificationStatus = String(profileResponse?.data?.data?.customer?.verification_status || 'unverified').toLowerCase()
+    if (verificationStatus !== 'verified') {
+      showAlert({
+        severity: 'warn',
+        summary: 'Verification required',
+        detail: 'You must complete account verification before using Buy Now.',
+      })
+      router.push({ name: 'ecommerce.profile', query: { section: 'verification' } })
+      return
+    }
+
     const confirmed = await confirmAlert({
       title: 'Proceed to checkout?',
       text: 'Are you sure you want to buy this item now? This will add it to your cart and take you to checkout.',
@@ -627,7 +640,11 @@ async function buyNow() {
     })
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
     router.push({ name: 'ecommerce.checkout' })
-  } catch {
+  } catch (error: any) {
+    if (Number(error?.response?.status) === 401) {
+      router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
+      return
+    }
     showAlert({ severity: 'error', summary: 'Error', detail: 'Could not process Buy Now.' })
   }
 }

@@ -14,6 +14,10 @@
                   class="justify-start" @click="activeSection = 'address'" />
                 <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'info' : 'secondary'"
                   class="justify-start" @click="activeSection = 'payment'" />
+                <Button label="Verification" text fluid :severity="activeSection === 'verification' ? 'info' : 'secondary'"
+                  class="justify-start" @click="activeSection = 'verification'" />
+                <Button label="Notifications" text fluid :severity="activeSection === 'notifications' ? 'info' : 'secondary'"
+                  class="justify-start" @click="openNotificationsSection" />
               </div>
             </div>
   
@@ -38,6 +42,10 @@
           <template v-else>
             <div v-if="activeSection === 'basic'" class="space-y-4">
               <h3 class="text-2xl font-semibold text-slate-900">Basic Information</h3>
+              <div class="rounded-xl border p-3 text-sm" :class="verificationBannerClass">
+                <p class="font-semibold">Verification: {{ verificationStatusLabel }}</p>
+                <p v-if="needsVerificationFlag" class="text-xs mt-1">Your account is not verified yet. Submit valid ID + selfie with card to proceed faster during checkout review.</p>
+              </div>
   
               <div class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                 <div class="rounded-xl border border-slate-200 p-3">
@@ -122,7 +130,81 @@
               <div class="rounded-xl border border-slate-200 p-4 text-sm">GCash (PayMongo)</div>
               <div class="rounded-xl border border-slate-200 p-4 text-sm">Credit Card</div>
             </div>
-  
+
+            <div v-else-if="activeSection === 'notifications'" class="space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="text-2xl font-semibold text-slate-900">Notifications</h3>
+                <Button label="Mark all as read" size="small" text severity="secondary" :disabled="notificationsLoading || unreadNotificationCount === 0" @click="markAllNotificationsRead" />
+              </div>
+              <p v-if="notificationsLoading" class="text-sm text-slate-500">Loading notifications...</p>
+              <p v-else-if="notifications.length === 0" class="text-sm text-slate-500">No notifications yet.</p>
+              <div v-else class="space-y-2">
+                <button
+                  v-for="notif in notifications"
+                  :key="notif.id"
+                  type="button"
+                  class="w-full rounded-xl border p-3 text-left transition"
+                  :class="notif.is_read ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50'"
+                  @click="openNotification(notif)"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <p class="text-sm font-semibold text-slate-900">{{ notif.title || 'Notification' }}</p>
+                    <span class="text-xs text-slate-500">{{ formatDate(notif.created_at) }}</span>
+                  </div>
+                  <p class="mt-1 text-xs text-slate-600">{{ notif.message || 'Tap to view details.' }}</p>
+                </button>
+              </div>
+            </div>
+
+            <div v-else-if="activeSection === 'verification'" class="space-y-4">
+              <h3 class="text-2xl font-semibold text-slate-900">Customer Verification</h3>
+
+              <div class="rounded-xl border p-4" :class="verificationBannerClass">
+                <p class="font-semibold">Status: {{ verificationStatusLabel }}</p>
+                <p class="text-xs mt-1">Accepted IDs: National ID, SSS, PhilHealth, Passport, Driver's License, Postal ID, UMID, Voter's ID.</p>
+              </div>
+
+              <div v-if="!isVerificationApproved" class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-slate-700">Primary ID Type</label>
+                  <Select v-model="verificationForm.id_type" :options="idTypeOptions" optionLabel="label" optionValue="value" placeholder="Select ID type" fluid />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-slate-700">ID Number</label>
+                  <InputText v-model="verificationForm.id_number" fluid placeholder="Enter ID number" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-slate-700">Primary ID File</label>
+                  <input type="file" accept=".jpg,.jpeg,.png,.pdf" class="block w-full text-sm" @change="onPrimaryIdFileChange" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-slate-700">Selfie with ID Card</label>
+                  <input type="file" accept=".jpg,.jpeg,.png" class="block w-full text-sm" @change="onSelfieFileChange" />
+                </div>
+              </div>
+
+              <Button
+                v-if="!isVerificationApproved"
+                label="Submit Verification"
+                severity="info"
+                :loading="submittingVerification"
+                @click="submitCustomerVerification"
+              />
+
+              <div v-if="!isVerificationApproved" class="space-y-2">
+                <p class="text-sm font-semibold text-slate-800">Uploaded Documents</p>
+                <p v-if="!verificationDocuments.length" class="text-sm text-slate-500">No verification documents uploaded yet.</p>
+                <div v-for="doc in verificationDocuments" :key="doc.id" class="rounded-xl border border-slate-200 p-3 text-sm">
+                  <p class="font-semibold text-slate-900">{{ doc.document_type_label || doc.document_type }}</p>
+                  <p class="text-xs text-slate-600">Status: {{ doc.status }}</p>
+                  <p v-if="doc.id_type" class="text-xs text-slate-600">ID Type: {{ formatIdType(doc.id_type) }}</p>
+                  <p v-if="doc.id_number" class="text-xs text-slate-600">ID Number: {{ doc.id_number }}</p>
+                  <button v-if="doc.file_url" type="button" class="text-xs text-blue-600 hover:underline" @click="viewVerificationDocument(doc)">View document</button>
+                  <p v-if="doc.rejection_reason" class="text-xs text-rose-600">Reason: {{ doc.rejection_reason }}</p>
+                </div>
+              </div>
+            </div>
+
             <div v-else-if="activeSection === 'returns'" class="space-y-4">
               <h3 class="text-2xl font-semibold text-slate-900">Returns</h3>
               <p class="text-sm text-slate-500" v-if="!returnOrders.length">No return records.</p>
@@ -206,14 +288,38 @@
         <Button label="Save Address" severity="info" :loading="savingNewAddress" @click="createAddressTemplate" />
       </div>
     </Dialog>
+
+    <Dialog
+      v-model:visible="documentPreviewVisible"
+      modal
+      :header="documentPreviewTitle || 'Document Preview'"
+      :style="{ width: '78rem', maxWidth: '95vw' }"
+      @hide="closeDocumentPreview"
+    >
+      <div class="min-h-[65vh]">
+        <img
+          v-if="documentPreviewMime.startsWith('image/')"
+          :src="documentPreviewUrl"
+          alt="Document preview"
+          class="max-h-[70vh] w-full object-contain rounded"
+        />
+        <iframe
+          v-else
+          :src="documentPreviewUrl"
+          class="h-[70vh] w-full rounded border border-slate-200"
+        />
+      </div>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
+import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'
+import { useRoute, useRouter } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Password from 'primevue/password'
@@ -239,11 +345,15 @@ type AddressTemplate = {
 }
 
 const loading = ref(false)
-const activeSection = ref<'basic' | 'address' | 'payment' | 'returns' | 'cancellations'>('basic')
+const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'verification' | 'returns' | 'cancellations'>('basic')
+const route = useRoute()
+const router = useRouter()
 const myOrders = ref<any[]>([])
 const profileUser = ref<any>({})
 const profileEmployee = ref<any>(null)
 const profileCustomer = ref<any>(null)
+const verificationDocuments = ref<any[]>([])
+const notifications = ref<any[]>([])
 const addressTemplates = ref<AddressTemplate[]>([])
 const editingAddressId = ref<number | null>(null)
 const savingAddress = ref(false)
@@ -258,6 +368,12 @@ const changingPassword = ref(false)
 const sendingOtp = ref(false)
 const savingContactChange = ref(false)
 const savingNewAddress = ref(false)
+const submittingVerification = ref(false)
+const notificationsLoading = ref(false)
+const documentPreviewVisible = ref(false)
+const documentPreviewUrl = ref('')
+const documentPreviewTitle = ref('')
+const documentPreviewMime = ref('')
 
 const editForm = reactive<{ fname: string; lname: string; birthday: Date | null }>({ fname: '', lname: '', birthday: null })
 const passwordForm = reactive({ current_password: '', password: '', password_confirmation: '' })
@@ -284,6 +400,12 @@ const addAddressForm = reactive({
 })
 const addAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
 const editAddressSelection = reactive({ provinceId: '', cityId: '', barangayCode: '' })
+const verificationForm = reactive({
+  id_type: '',
+  id_number: '',
+  primary_id_file: null as File | null,
+  selfie_with_id_file: null as File | null,
+})
 
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
@@ -294,6 +416,17 @@ const citiesCache = ref<Record<string, any[]>>({})
 
 const returnOrders = computed(() => myOrders.value.filter((o) => ['returned', 'return_requested', 'refunded'].includes(String(o.status || '').toLowerCase())))
 const cancellationOrders = computed(() => myOrders.value.filter((o) => ['cancelled', 'canceled'].includes(String(o.status || '').toLowerCase())))
+const unreadNotificationCount = computed(() => notifications.value.filter((n: any) => !n?.is_read).length)
+const idTypeOptions = [
+  { label: 'National ID', value: 'national_id' },
+  { label: 'SSS', value: 'sss' },
+  { label: 'PhilHealth', value: 'philhealth' },
+  { label: 'Passport', value: 'passport' },
+  { label: "Driver's License", value: 'drivers_license' },
+  { label: 'Postal ID', value: 'postal_id' },
+  { label: 'UMID', value: 'umid' },
+  { label: "Voter's ID", value: 'voters_id' },
+]
 
 const basicInfo = computed(() => ({
   firstName: profileUser.value?.fname || '-',
@@ -303,11 +436,37 @@ const basicInfo = computed(() => ({
   formattedBirthday: formatDate(profileUser.value?.birthday || profileEmployee.value?.date_of_birth),
   formattedCreatedAt: formatDate(profileUser.value?.created_at),
 }))
+const customerVerificationStatus = computed(() => String(profileCustomer.value?.verification_status || 'unverified').toLowerCase())
+const isVerificationApproved = computed(() => ['verified', 'approved'].includes(customerVerificationStatus.value))
+const verificationStatusLabel = computed(() => {
+  const status = customerVerificationStatus.value
+  if (status === 'verified' || status === 'approved') return 'Approved'
+  if (status === 'pending') return 'Pending Review'
+  if (status === 'rejected') return 'Rejected'
+  return 'For Verification'
+})
+const needsVerificationFlag = computed(() => !isVerificationApproved.value)
+const verificationBannerClass = computed(() => {
+  const status = customerVerificationStatus.value
+  if (status === 'verified' || status === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+  if (status === 'rejected') return 'border-rose-200 bg-rose-50 text-rose-700'
+  return 'border-slate-200 bg-slate-50 text-slate-700'
+})
 const provinceOptions = computed(() => provinces.value.map((p: any) => ({ label: p.name, value: p.province_id })))
 const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
 const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
 const editCityOptions = computed(() => editCities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
 const editBarangayOptions = computed(() => editBarangays.value.map((b: any) => ({ label: b.name, value: b.code })))
+
+function getSectionFromUrl(): string {
+  try {
+    const qs = new URLSearchParams(window.location.search)
+    return String(qs.get('section') || '').toLowerCase()
+  } catch {
+    return ''
+  }
+}
 
 function maskEmail(email: string) {
   if (!email || !email.includes('@')) return '-'
@@ -330,14 +489,140 @@ function formatDate(value?: string | null) {
   return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
+function formatIdType(value?: string | null) {
+  if (!value) return '-'
+  return String(value).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 async function loadProfile() {
   const response = await axios.get('/api/profile')
   profileUser.value = response.data?.data?.user || {}
   profileEmployee.value = response.data?.data?.employee || null
   profileCustomer.value = response.data?.data?.customer || null
+  verificationDocuments.value = response.data?.data?.verification_documents || []
   editForm.fname = profileUser.value?.fname || ''
   editForm.lname = profileUser.value?.lname || ''
   editForm.birthday = profileUser.value?.birthday ? new Date(profileUser.value.birthday) : (profileEmployee.value?.date_of_birth ? new Date(profileEmployee.value.date_of_birth) : null)
+}
+
+async function loadNotifications() {
+  notificationsLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/notifications', {
+      params: { per_page: 20 },
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    const payload = response?.data || {}
+    notifications.value = payload?.data || []
+  } catch {
+    notifications.value = []
+  } finally {
+    notificationsLoading.value = false
+  }
+}
+
+function openNotificationsSection() {
+  activeSection.value = 'notifications'
+  router.replace({ query: { ...route.query, section: 'notifications' } })
+  loadNotifications()
+}
+
+async function markAllNotificationsRead() {
+  if (!notifications.value.length) return
+  try {
+    await axiosClient.put('/api/notifications/mark-all-read', {}, { headers: { 'X-Suppress-Dialog': '1' } })
+    notifications.value = notifications.value.map((n: any) => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
+  } catch {
+    // no-op
+  }
+}
+
+async function openNotification(notif: any) {
+  try {
+    if (!notif?.is_read && notif?.id) {
+      await axiosClient.put(`/api/notifications/${notif.id}/read`, {}, { headers: { 'X-Suppress-Dialog': '1' } })
+      notif.is_read = true
+    }
+  } catch {
+    // no-op
+  }
+
+  if (notif?.link) {
+    router.push(notif.link)
+  }
+}
+
+function onPrimaryIdFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  verificationForm.primary_id_file = target.files?.[0] || null
+}
+
+function onSelfieFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  verificationForm.selfie_with_id_file = target.files?.[0] || null
+}
+
+async function submitCustomerVerification() {
+  if (!verificationForm.id_type || !verificationForm.id_number || !verificationForm.primary_id_file || !verificationForm.selfie_with_id_file) {
+    showAlert({ severity: 'warn', summary: 'Missing fields', detail: 'Please provide ID type, ID number, primary ID file, and selfie with ID.' })
+    return
+  }
+
+  const payload = new FormData()
+  payload.append('id_type', verificationForm.id_type)
+  payload.append('id_number', verificationForm.id_number)
+  payload.append('primary_id_file', verificationForm.primary_id_file)
+  payload.append('selfie_with_id_file', verificationForm.selfie_with_id_file)
+
+  submittingVerification.value = true
+  try {
+    await axios.post('/api/profile/verification', payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    verificationForm.primary_id_file = null
+    verificationForm.selfie_with_id_file = null
+    await loadProfile()
+    showAlert({ severity: 'success', summary: 'Submitted', detail: 'Verification documents submitted. Status is now pending review.' })
+  } catch (error: any) {
+    const firstError = Object.values(error?.response?.data?.errors || {})?.[0]
+    const firstErrorMessage = Array.isArray(firstError) ? firstError[0] : null
+    showAlert({ severity: 'error', summary: 'Failed', detail: firstErrorMessage || error?.response?.data?.message || 'Unable to submit verification documents.' })
+  } finally {
+    submittingVerification.value = false
+  }
+}
+
+async function viewVerificationDocument(doc: any) {
+  if (!doc?.file_url) {
+    showAlert({ severity: 'info', summary: 'No Document', detail: 'No document file available.' })
+    return
+  }
+
+  try {
+    const response = await axiosClient.get(doc.file_url, {
+      responseType: 'blob',
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    if (documentPreviewUrl.value) {
+      URL.revokeObjectURL(documentPreviewUrl.value)
+    }
+    documentPreviewUrl.value = URL.createObjectURL(response.data)
+    documentPreviewMime.value = response.data?.type || response.headers?.['content-type'] || ''
+    documentPreviewTitle.value = doc?.document_type_label || doc?.document_type || 'Document Preview'
+    documentPreviewVisible.value = true
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to open document.' })
+  }
+}
+
+function closeDocumentPreview() {
+  documentPreviewVisible.value = false
+  documentPreviewTitle.value = ''
+  documentPreviewMime.value = ''
+  if (documentPreviewUrl.value) {
+    URL.revokeObjectURL(documentPreviewUrl.value)
+    documentPreviewUrl.value = ''
+  }
 }
 
 async function loadAddressTemplates() {
@@ -635,9 +920,51 @@ onMounted(async () => {
   loading.value = true
   try {
     await Promise.all([loadProfile(), loadAddressTemplates(), loadOrders(), fetchProvinces()])
+    const querySection = String(route.query?.section || '').toLowerCase() || getSectionFromUrl()
+    if (!querySection) {
+      const remembered = String(localStorage.getItem('ecommerce_profile_section') || '').toLowerCase()
+      if (remembered === 'notifications') {
+        activeSection.value = 'notifications'
+        await loadNotifications()
+        router.replace({ query: { ...route.query, section: 'notifications' } })
+      }
+      localStorage.removeItem('ecommerce_profile_section')
+    }
   } finally {
     loading.value = false
   }
 })
-</script>
 
+watch(
+  () => String(route.query?.section || '').toLowerCase() || getSectionFromUrl(),
+  async (section) => {
+    if (section === 'notifications') {
+      activeSection.value = 'notifications'
+      await loadNotifications()
+      return
+    }
+    if (section === 'verification') {
+      activeSection.value = 'verification'
+      return
+    }
+    if (section === 'address') {
+      activeSection.value = 'address'
+      return
+    }
+    if (section === 'payment') {
+      activeSection.value = 'payment'
+      return
+    }
+    if (section === 'returns') {
+      activeSection.value = 'returns'
+      return
+    }
+    if (section === 'cancellations') {
+      activeSection.value = 'cancellations'
+      return
+    }
+    activeSection.value = 'basic'
+  },
+  { immediate: true },
+)
+</script>

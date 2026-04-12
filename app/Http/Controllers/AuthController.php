@@ -169,13 +169,33 @@ class AuthController extends Controller
                 'email' => 'required|email|unique:users',
                 'password' => 'required|string|min:8|max:255',
                 'role_id' => 'nullable|integer|exists:roles,id',
+                'birthday' => 'nullable|date|before_or_equal:today',
             ]);
+
+            $targetRoleId = (int) ($validated['role_id'] ?? 2);
+            $isCustomerRegistration = $targetRoleId === 16;
+            if ($isCustomerRegistration) {
+                $birthday = $validated['birthday'] ?? null;
+                if (!$birthday) {
+                    throw ValidationException::withMessages([
+                        'birthday' => ['Birthday is required for customer registration.'],
+                    ]);
+                }
+
+                $isAdult = Carbon::parse($birthday)->lte(Carbon::today()->subYears(18));
+                if (!$isAdult) {
+                    throw ValidationException::withMessages([
+                        'birthday' => ['You must be at least 18 years old to register.'],
+                    ]);
+                }
+            }
 
             $user = DB::transaction(function () use ($validated) {
                 $user = User::create([
                     'fname' => $validated['fname'],
                     'lname' => $validated['lname'],
                     'email' => $validated['email'],
+                    'birthday' => $validated['birthday'] ?? null,
                     'password' => Hash::make($validated['password']),
                     'role_id' => $validated['role_id'] ?? 2,
                     'is_active' => 1,

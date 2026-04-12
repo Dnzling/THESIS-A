@@ -625,11 +625,11 @@ const savePlan = async () => {
           modules: planForm.modules,
         }
         if (creatingPlan.value) {
-          await axiosClient.post('/api/admin/subscription-plans', payload)
-          toast.add({ severity: 'success', summary: 'Saved', detail: 'Plan created successfully', life: 2500 })
+          const response = await axiosClient.post('/api/admin/subscription-plans', payload)
+          toast.add({ severity: 'success', summary: 'Saved', detail: response?.data?.message || 'Plan created successfully', life: 2500 })
         } else {
-          await axiosClient.put(`/api/admin/subscription-plans/${planForm.id}`, payload)
-          toast.add({ severity: 'success', summary: 'Saved', detail: 'Plan updated successfully', life: 2500 })
+          const response = await axiosClient.put(`/api/admin/subscription-plans/${planForm.id}`, payload)
+          toast.add({ severity: 'success', summary: 'Saved', detail: response?.data?.message || 'Plan updated successfully', life: 2500 })
         }
         planDialog.value = false
         await loadPlans()
@@ -646,14 +646,14 @@ const saveSubscription = async () => {
   if (!selectedStore.value) return
   saving.value = true
   try {
-    await axiosClient.put(`/api/admin/subscriptions/${selectedStore.value.id}`, {
+    const response = await axiosClient.put(`/api/admin/subscriptions/${selectedStore.value.id}`, {
       subscription_tier: editForm.subscription_tier,
       status: editForm.status,
       subscription_ends_at: editForm.subscription_ends_at
         ? editForm.subscription_ends_at.toISOString().slice(0, 10)
         : null,
     })
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Subscription updated successfully', life: 2500 })
+    toast.add({ severity: 'success', summary: 'Saved', detail: response?.data?.message || 'Subscription updated successfully', life: 2500 })
     manageDialog.value = false
     await loadAll()
   } catch (error: any) {
@@ -665,8 +665,8 @@ const saveSubscription = async () => {
 
 const quickExtend = async (storeId: number, days: number) => {
   try {
-    await axiosClient.post(`/api/admin/subscriptions/${storeId}/extend`, { days })
-    toast.add({ severity: 'success', summary: 'Extended', detail: `Subscription extended by ${days} days`, life: 2200 })
+    const response = await axiosClient.post(`/api/admin/subscriptions/${storeId}/extend`, { days })
+    toast.add({ severity: 'success', summary: 'Extended', detail: response?.data?.message || `Subscription extended by ${days} days`, life: 2200 })
     await loadAll()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to extend subscription', life: 3000 })

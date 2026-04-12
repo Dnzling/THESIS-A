@@ -1397,12 +1397,28 @@ const rereviewCustomer = () => {
   toast.add({ severity: 'info', summary: 'Not Available', detail: 'Re-review is not implemented yet.', life: 3000 })
 }
 
-const viewDocument = (doc: any) => {
-  if (doc?.url) {
-    window.open(doc.url, '_blank', 'noopener,noreferrer')
+const viewDocument = async (doc: any) => {
+  if (!doc?.url) {
+    toast.add({ severity: 'info', summary: 'No Document', detail: 'No document file available.', life: 2500 })
     return
   }
-  toast.add({ severity: 'info', summary: 'No Document', detail: 'No document file available.', life: 2500 })
+
+  try {
+    const response = await axiosClient.get(doc.url, {
+      responseType: 'blob',
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    const blobUrl = URL.createObjectURL(response.data)
+    window.open(blobUrl, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 30000)
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Open Failed',
+      detail: error?.response?.data?.message || 'Unable to open document.',
+      life: 3000
+    })
+  }
 }
 
 const requestMoreInfo = () => {
