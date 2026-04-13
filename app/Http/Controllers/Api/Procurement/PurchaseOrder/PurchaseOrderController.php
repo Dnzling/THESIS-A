@@ -14,6 +14,7 @@ use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Supplier\SupplierContract;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -263,6 +264,14 @@ class PurchaseOrderController extends Controller
 
                 foreach ($stockOrderRequests as $stockRequest) {
                     $product = $stockRequest->branchInventory->product;
+                    $variationId = $stockRequest->branchInventory->variation_id;
+
+                    if (!$this->isValidVariationForProduct($variationId, (int) $product->id, (int) $storeId)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Invalid variation mapping for stock order request {$stockRequest->id}.",
+                        ], 422);
+                    }
 
                     // Use product's unit cost as default
                     $unitCost = $product->unit_cost ?? 0;
@@ -356,7 +365,19 @@ class PurchaseOrderController extends Controller
                 $this->setPurchaseRequisitionStatus($po->purchase_requisition_id, 'po_created');
             } else {
                 // Manual PO creation from items
-                foreach ($validated['items'] as $item) {
+                foreach ($validated['items'] as $index => $item) {
+                    if (!$this->isValidVariationForProduct($item['variation_id'] ?? null, (int) $item['product_id'], (int) $storeId)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Selected variation does not belong to the chosen product for items.{$index}.",
+                            'errors' => [
+                                "items.{$index}.variation_id" => [
+                                    'Selected variation does not belong to the chosen product.',
+                                ],
+                            ],
+                        ], 422);
+                    }
+
                     $product = Product::find($item['product_id']);
                     $unitCostValue = $item['unit_cost'] ?? $product?->cost_price ?? 0;
                     $itemSubtotal = $unitCostValue * $item['quantity_ordered'];
@@ -583,7 +604,19 @@ class PurchaseOrderController extends Controller
                 $subtotal = 0;
                 $taxAmount = 0;
 
-                foreach ($validated['items'] as $item) {
+                foreach ($validated['items'] as $index => $item) {
+                    if (!$this->isValidVariationForProduct($item['variation_id'] ?? null, (int) $item['product_id'], (int) $storeId)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Selected variation does not belong to the chosen product for items.{$index}.",
+                            'errors' => [
+                                "items.{$index}.variation_id" => [
+                                    'Selected variation does not belong to the chosen product.',
+                                ],
+                            ],
+                        ], 422);
+                    }
+
                     $itemSubtotal = $item['unit_cost'] * $item['quantity_ordered'];
 
                     if (isset($item['discount_percent'])) {
@@ -1332,6 +1365,19 @@ class PurchaseOrderController extends Controller
             'severity' => 'info',
             'link' => "/system/procurement/purchase-orders/{$po->id}",
         ]);
+    }
+
+    private function isValidVariationForProduct($variationId, int $productId, int $storeId): bool
+    {
+        if (empty($variationId)) {
+            return true;
+        }
+
+        return ProductVariation::query()
+            ->where('id', (int) $variationId)
+            ->where('product_id', $productId)
+            ->where('store_id', $storeId)
+            ->exists();
     }
 
     /**

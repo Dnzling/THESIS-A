@@ -16,6 +16,7 @@ use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -197,7 +198,19 @@ class PurchaseRequisitionController extends Controller
             // Resolve item estimated unit costs with fallback:
             // request value -> best supplier linked price -> product cost_price -> product base_price
             $resolvedItems = [];
-            foreach ($validated['items'] as $item) {
+            foreach ($validated['items'] as $index => $item) {
+                if (!$this->isValidVariationForProduct($item['variation_id'] ?? null, (int) $item['product_id'], (int) Auth::user()->store_id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Selected variation does not belong to the chosen product for items.{$index}.",
+                        'errors' => [
+                            "items.{$index}.variation_id" => [
+                                'Selected variation does not belong to the chosen product.',
+                            ],
+                        ],
+                    ], 422);
+                }
+
                 $selectedSupplierId = isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
                 if ($selectedSupplierId && !$this->supplierCanProvideProduct($selectedSupplierId, (int) $item['product_id'], Auth::user()->store_id)) {
                     return response()->json([
@@ -415,7 +428,19 @@ class PurchaseRequisitionController extends Controller
 
             if (!empty($validated['items'])) {
                 $resolvedItems = [];
-                foreach ($validated['items'] as $item) {
+                foreach ($validated['items'] as $index => $item) {
+                    if (!$this->isValidVariationForProduct($item['variation_id'] ?? null, (int) $item['product_id'], (int) Auth::user()->store_id)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Selected variation does not belong to the chosen product for items.{$index}.",
+                            'errors' => [
+                                "items.{$index}.variation_id" => [
+                                    'Selected variation does not belong to the chosen product.',
+                                ],
+                            ],
+                        ], 422);
+                    }
+
                     $selectedSupplierId = isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
                     if ($selectedSupplierId && !$this->supplierCanProvideProduct($selectedSupplierId, (int) $item['product_id'], Auth::user()->store_id)) {
                         return response()->json([
@@ -850,6 +875,19 @@ class PurchaseRequisitionController extends Controller
             ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
             ->where('supplier_products.product_id', $productId)
             ->where('suppliers.store_id', $storeId)
+            ->exists();
+    }
+
+    private function isValidVariationForProduct($variationId, int $productId, int $storeId): bool
+    {
+        if (empty($variationId)) {
+            return true;
+        }
+
+        return ProductVariation::query()
+            ->where('id', (int) $variationId)
+            ->where('product_id', $productId)
+            ->where('store_id', $storeId)
             ->exists();
     }
 
