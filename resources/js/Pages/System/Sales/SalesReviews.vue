@@ -2,7 +2,7 @@
   <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Reviews Index</h1>
+        <h1 class="text-2xl font-semibold text-gray-900">Reviews</h1>
         <p class="text-sm text-gray-500">Track ratings, feedback, and customer replies.</p>
       </div>
       <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" :loading="loading" @click="loadReviews" />
@@ -103,7 +103,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'primevue/usetoast'
 import salesService from '@/services/sales.service'
@@ -120,6 +120,7 @@ import Textarea from 'primevue/textarea'
 const authStore = useAuthStore()
 const canManageReviews = authStore.hasPermission('sales.reviews.manage')
 const toast = useToast()
+const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
@@ -171,7 +172,9 @@ const openDetail = (review: any) => {
 const loadReviews = async () => {
   loading.value = true
   try {
+    const storeId = route.query.store_id ? Number(route.query.store_id) : undefined
     const res = await salesService.getReviews({
+      store_id: storeId || undefined,
       search: filters.value.search || undefined,
       status: filters.value.status || undefined,
       rating: filters.value.rating ?? undefined,

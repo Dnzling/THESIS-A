@@ -48,6 +48,7 @@ class DashboardController extends Controller
             ->whereBetween('termination_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->count();
 
+        // Count distinct employees scheduled in the period (avoid double-counting multiple shifts)
         $scheduledCount = ShiftSchedule::query()
             ->whereBetween('schedule_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereHas('employee', function ($q) use ($storeId, $branchId) {
@@ -56,8 +57,10 @@ class DashboardController extends Controller
                     $q->where('branch_id', $branchId);
                 }
             })
-            ->count();
+            ->distinct('employee_id')
+            ->count('employee_id');
 
+        // Aggregate attendance by status (use DATE on attendance_date if datetime stored)
         $attendanceStats = Attendance::query()
             ->whereBetween('attendance_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereHas('employee', function ($q) use ($storeId, $branchId) {
@@ -229,12 +232,21 @@ class DashboardController extends Controller
             'date' => $today,
             'day_name' => now()->format('l'),
             'total_employees' => Employee::where('store_id', $storeId)->count(),
+            // scheduled_today counts distinct scheduled employees for the day
             'scheduled_today' => ShiftSchedule::where('schedule_date', $today)
                 ->whereHas('employee', fn($q) => $q->where('store_id', $storeId))
-                ->count(),
+                ->distinct('employee_id')
+                ->count('employee_id'),
+            // attended_today only counts attendances for employees who are scheduled today
             'attended_today' => Attendance::where('attendance_date', $today)
                 ->whereIn('status', ['present', 'late'])
                 ->whereHas('employee', fn($q) => $q->where('store_id', $storeId))
+                ->whereExists(function ($query) use ($today) {
+                    $query->select(DB::raw(1))
+                        ->from('shift_schedules')
+                        ->whereColumn('shift_schedules.employee_id', 'attendances.employee_id')
+                        ->where('shift_schedules.schedule_date', $today);
+                })
                 ->count(),
             'absent_today' => Attendance::where('attendance_date', $today)
                 ->where('status', 'absent')
@@ -270,10 +282,11 @@ class DashboardController extends Controller
         $startDate = Carbon::now()->startOfWeek();
         $endDate = Carbon::now()->endOfWeek();
         
-        $attendance = Attendance::whereBetween('attendance_date', [$startDate, $endDate])
-            ->whereHas('employee', fn($q) => $q->where('store_id', $storeId))
-            ->selectRaw('attendance_date, status, count(*) as total')
-            ->groupBy('attendance_date', 'status')
+        // Aggregate by date (use DATE() to normalize datetime values) and filter by DATE(...) to avoid datetime mismatches
+        $attendance = Attendance::whereHas('employee', fn($q) => $q->where('store_id', $storeId))
+            ->selectRaw('DATE(attendance_date) as attendance_date, status, count(*) as total')
+            ->whereBetween(DB::raw('DATE(attendance_date)'), [$startDate->toDateString(), $endDate->toDateString()])
+            ->groupBy(DB::raw('DATE(attendance_date)'), 'status')
             ->get()
             ->groupBy('attendance_date');
 

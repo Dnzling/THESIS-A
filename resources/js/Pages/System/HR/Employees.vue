@@ -34,8 +34,15 @@
               placeholder="All Status" class="w-full md:w-40" size="small"/>
           </div>
           <div class="flex space-x-2">
-            <Button label="Add Employee" icon="pi pi-user-plus" @click="showAddDialog = true" severity="info"
-              class="ml-auto" size="small" />
+            <Button
+              v-if="!authStore.hasPermission('hr.recruitment.manage')"
+              label="Add Employee"
+              icon="pi pi-user-plus"
+              @click="showAddDialog = true"
+              severity="info"
+              class="ml-auto"
+              size="small"
+            />
           </div>
         </div>
   
@@ -111,8 +118,6 @@
               <div class="flex space-x-1">
                 <Button icon="pi pi-eye" size="small" text rounded @click="viewEmployee(slotProps.data)"
                   v-tooltip.top="'View Details'" />
-                <Button icon="pi pi-pencil" size="small" text rounded severity="secondary"
-                  @click="editEmployee(slotProps.data)" v-tooltip.top="'Edit Employee'" />
               </div>
             </template>
           </Column>

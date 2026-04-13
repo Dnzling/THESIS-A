@@ -3,6 +3,7 @@
 namespace App\Models\Hr;
 
 use App\Models\Core\User;
+use App\Models\Hr\OvertimeRequest;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -163,7 +164,15 @@ class Attendance extends Model
         $clockIn = Carbon::parse($this->clock_in);
 
         if ($clockIn > $shiftStart) {
-            $minutesLate = $shiftStart->diffInMinutes($clockIn, false);
+            $minutesLate = abs($shiftStart->diffInMinutes($clockIn, false));
+
+            // If employee clocks in 120+ minutes after shift start, mark as half day.
+            if ($minutesLate >= 120) {
+                $this->late_minutes = $minutesLate;
+                $this->status = 'half_day';
+                $this->save();
+                return;
+            }
             $gracePeriod = $this->shift->grace_period_minutes ?? 15;
 
             if ($minutesLate > $gracePeriod) {
@@ -198,6 +207,44 @@ class Attendance extends Model
     }
 
     /**
+     * Get shift end time as Carbon instance (handles overnight shifts).
+     */
+    protected function getShiftEndCarbon(): Carbon
+    {
+        $endTime = $this->shift->end_time;
+
+        // Check if end_time already contains a date
+        if (preg_match('/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/', (string) $endTime)) {
+            return Carbon::parse($endTime);
+        }
+
+        $start = $this->getShiftStartCarbon();
+        $end = Carbon::parse($this->attendance_date->format('Y-m-d') . ' ' . $endTime);
+
+        // Overnight shift: end time is on the next day.
+        if ($end->lessThanOrEqualTo($start)) {
+            $end = $end->addDay();
+        }
+
+        return $end;
+    }
+
+    protected function appendNoteOnce(string $note): void
+    {
+        $note = trim($note);
+        if ($note === '') {
+            return;
+        }
+
+        $existing = (string) ($this->notes ?? '');
+        if ($existing !== '' && str_contains(strtolower($existing), strtolower($note))) {
+            return;
+        }
+
+        $this->notes = trim($existing === '' ? $note : ($existing . "\n" . $note));
+    }
+
+    /**
      * Calculate total worked minutes
      */
     public function calculateTotalWorked(): void
@@ -209,6 +256,36 @@ class Attendance extends Model
         $clockIn = Carbon::parse($this->clock_in);
         $clockOut = Carbon::parse($this->clock_out);
 
+        // Shift-aligned calculations (work hours count only when fully within the scheduled window).
+        if ($this->shift) {
+            $shiftStart = $this->getShiftStartCarbon();
+            $shiftEnd = $this->getShiftEndCarbon();
+
+            if ($clockIn->lt($shiftStart)) {
+                $this->appendNoteOnce('EARLY');
+            }
+
+            if ($clockOut->gt($shiftEnd)) {
+                $hasOvertimeRequest = OvertimeRequest::query()
+                    ->where('attendance_id', $this->id)
+                    ->whereIn('status', ['pending', 'approved'])
+                    ->exists();
+
+                if (!$hasOvertimeRequest) {
+                    $this->appendNoteOnce('Overtime not included (no overtime request filed).');
+                }
+            }
+
+            $isWithinShift = $clockIn->greaterThanOrEqualTo($shiftStart) && $clockOut->lessThanOrEqualTo($shiftEnd);
+            if (!$isWithinShift) {
+                $this->total_worked_minutes = 0;
+                $this->overtime_minutes = 0;
+                $this->night_differential_minutes = 0;
+                $this->save();
+                return;
+            }
+        }
+
         // Calculate total minutes between clock in and out
         $totalMinutes = $clockIn->diffInMinutes($clockOut, false);
 
@@ -216,16 +293,8 @@ class Attendance extends Model
         $breakMinutes = $this->break_minutes ?? 0;
         $this->total_worked_minutes = max(0, $totalMinutes - $breakMinutes);
 
-        // Determine if overtime
-        if ($this->shift && $this->shift->total_hours) {
-            $scheduledMinutes = (float) $this->shift->total_hours * 60;
-
-            if ($this->total_worked_minutes > $scheduledMinutes) {
-                $this->overtime_minutes = $this->total_worked_minutes - $scheduledMinutes;
-            } else {
-                $this->overtime_minutes = 0;
-            }
-        }
+        // Overtime is tracked via overtime requests; don't infer from raw clock span here.
+        $this->overtime_minutes = (int) ($this->overtime_minutes ?? 0);
 
         // Calculate night differential (10 PM to 6 AM)
         $this->calculateNightDifferential();

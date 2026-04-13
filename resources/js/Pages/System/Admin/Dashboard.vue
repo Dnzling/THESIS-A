@@ -1,26 +1,26 @@
 <!-- views/admin/Dashboard.vue -->
 <template>
-  <div class="space-y-6">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <!-- Welcome Header -->
-    <div class=" shadow-xl rounded-2xl p-8">
-      <div class="flex justify-between items-center">
+    <div class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
+      <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-3xl font-bold">FurnitureSync Admin Dashboard</h1>
-          <p class="text-blue-100 mt-2">Welcome back, Admin! Here's your platform overview</p>
-          <div class="flex items-center space-x-4 mt-4">
-            <div class="flex items-center">
-              <i class="pi pi-calendar mr-2"></i>
+          <h1 class="text-2xl font-semibold text-gray-900 sm:text-3xl">FurnitureSync Admin Dashboard</h1>
+          <p class="mt-2 text-sm text-gray-500">Welcome back, Admin. Here’s your platform overview.</p>
+          <div class="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+            <div class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+              <i class="pi pi-calendar text-gray-500"></i>
               <span>{{ currentDate }}</span>
             </div>
-            <div class="flex items-center">
-              <i class="pi pi-clock mr-2"></i>
+            <div class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+              <i class="pi pi-clock text-gray-500"></i>
               <span>{{ currentTime }}</span>
             </div>
           </div>
         </div>
-        <div class="text-right">
-          <div class="text-4xl font-bold">{{ formatCurrency(totalPlatformRevenue) }}</div>
-          <p class="text-blue-200">Total Platform Revenue</p>
+        <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
+          <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
+          <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}</div>
         </div>
       </div>
     </div>

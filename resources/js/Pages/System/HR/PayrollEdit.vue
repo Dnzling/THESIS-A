@@ -100,39 +100,33 @@
           <div class="text-xs space-y-1">
             <div class="flex items-center gap-1">
               <span class="w-16">Tax:</span>
-              <InputNumber size="small" fluid v-model="data.governmentDeductions.tax" mode="currency" currency="PHP"
-                locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
+              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.tax) }}</span>
             </div>
             <div class="flex items-center gap-1">
               <span class="w-16">SSS:</span>
-              <InputNumber size="small" fluid v-model="data.governmentDeductions.sss" mode="currency" currency="PHP"
-                locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
+              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.sss) }}</span>
             </div>
             <div class="flex items-center gap-1">
               <span class="w-16">PhilHealth:</span>
-              <InputNumber size="small" fluid v-model="data.governmentDeductions.philhealth" mode="currency"
-                currency="PHP" locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
+              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.philhealth) }}</span>
             </div>
             <div class="flex items-center gap-1">
               <span class="w-16">Pag-IBIG:</span>
-              <InputNumber size="small" fluid v-model="data.governmentDeductions.pagibig" mode="currency" currency="PHP"
-                locale="en-PH" :min="0" @blur="recalculateTotals(data)" />
+              <span class="font-medium">{{ formatCurrency(data.governmentDeductions.pagibig) }}</span>
             </div>
           </div>
         </template>
       </Column>
   
       <Column class="text-xs" field="lateDeductions" header="Late" sortable>
-        <template #body="{ data }">
-          <InputNumber size="small" fluid v-model="data.lateDeductions" mode="currency" currency="PHP" locale="en-PH"
-            :min="0" @blur="recalculateTotals(data)" />
+          <template #body="{ data }">
+          <span class="font-medium">{{ formatCurrency(data.lateDeductions) }}</span>
         </template>
       </Column>
   
       <Column class="text-xs" field="leaveDeductions" header="Leave" sortable>
-        <template #body="{ data }">
-          <InputNumber size="small" fluid v-model="data.leaveDeductions" mode="currency" currency="PHP" locale="en-PH"
-            :min="0" @blur="recalculateTotals(data)" />
+          <template #body="{ data }">
+          <span class="font-medium">{{ formatCurrency(data.leaveDeductions) }}</span>
         </template>
       </Column>
   
@@ -334,17 +328,36 @@ const fetchBatchInfo = async () => {
 
 const transformPayrollData = (apiData: any[]): PayrollItem[] => {
   return apiData.map((item: any) => {
+    // Build itemized deductions (parity with PayrollView)
+    const rawDeductionItems = Array.isArray(item.deduction_items) ? item.deduction_items : []
+    const deductionItems = rawDeductionItems.map((d: any) => ({
+      name: String(d?.name || ''),
+      amount: Number(d?.amount || 0)
+    }))
+
+    // Aggregate gov't deductions from itemized entries if explicit fields aren't present
+    const govFromItems = { tax: 0, sss: 0, philhealth: 0, pagibig: 0 }
+    deductionItems.forEach(d => {
+      const name = d.name.toLowerCase()
+      if (name.includes('tax')) govFromItems.tax += d.amount
+      else if (name.includes('sss')) govFromItems.sss += d.amount
+      else if (name.includes('philhealth')) govFromItems.philhealth += d.amount
+      else if (name.includes('pag-ibig') || name.includes('pag ibig') || name.includes('pagibig')) govFromItems.pagibig += d.amount
+    })
+
     const govDeductions = {
-      tax: parseFloat(item.tax_amount) || 0,
-      sss: 0,
-      philhealth: 0,
-      pagibig: 0
+      tax: parseFloat(item.tax_amount) || parseFloat(item.income_tax) || govFromItems.tax || 0,
+      sss: parseFloat(item.sss_amount) || parseFloat(item.sss) || govFromItems.sss || 0,
+      philhealth: parseFloat(item.philhealth_amount) || parseFloat(item.philhealth) || govFromItems.philhealth || 0,
+      pagibig: parseFloat(item.pagibig_amount) || parseFloat(item.pagibig) || govFromItems.pagibig || 0
     }
 
     const grossPay = (parseFloat(item.base_salary) || 0)
       + (parseFloat(item.overtime_amount) || 0)
       + (parseFloat(item.bonuses_total) || 0)
       + (parseFloat(item.allowances_total) || 0)
+
+    const totalDeductionsValue = parseFloat(item.deductions_total) || deductionItems.reduce((s: number, d: any) => s + (d.amount || 0), 0) || 0
 
     return {
       id: item.id?.toString() || '',
@@ -360,11 +373,12 @@ const transformPayrollData = (apiData: any[]): PayrollItem[] => {
       allowanceAmount: parseFloat(item.allowances_total) || 0,
       bonusPay: parseFloat(item.bonuses_total) || 0,
       governmentDeductions: govDeductions,
+      deductionItems: deductionItems,
       lateDeductions: parseFloat(item.late_deduction) || 0,
-      leaveDeductions: 0,
+      leaveDeductions: parseFloat(item.leave_deduction) || 0,
       otherDeductions: 0,
       grossPay,
-      totalDeductions: (parseFloat(item.deductions_total) || 0) + govDeductions.tax,
+      totalDeductions: totalDeductionsValue,
       netPay: parseFloat(item.net_salary) || 0,
       status: item.status || 'draft',
       saving: false,

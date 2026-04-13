@@ -11,8 +11,8 @@
             <p class="ml-10 text-sm text-slate-500">Users, products, and performance summary.</p>
           </div>
           <div class="flex gap-2">
-            <Button icon="pi pi-sliders-h" label="Modules Override" severity="secondary" outlined @click="openModulesDialog" />
-            <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadStoreDetail" />
+            <!-- <Button icon="pi pi-sliders-h" label="Modules Override" severity="secondary" outlined @click="openModulesDialog" />
+            <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadStoreDetail" /> -->
           </div>
         </div>
       </template>

@@ -287,7 +287,8 @@ class EcommerceController extends Controller
                 'category' => $product->category?->category_name,
                 'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
-                'image' => $this->toAssetUrl($this->selectBestProductImage($product)?->file_path),
+                // Prefer served asset URL (avoids relying on public /storage symlink in production).
+                'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'stock_status' => $inventory?->stock_status ?? 'out_of_stock',
                 'sold_quantity' => (int) ($product->sold_quantity ?? 0),
@@ -648,6 +649,30 @@ class EcommerceController extends Controller
 
         $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
 
+        // Variation-level availability across branches (best available row per variation).
+        $variationInventories = BranchInventory::query()
+            ->select(['variation_id', 'quantity_available', 'stock_status'])
+            ->where('store_id', $storeId)
+            ->where('product_id', $product->id)
+            ->whereNotNull('variation_id')
+            ->orderBy('variation_id')
+            ->orderByDesc('quantity_available')
+            ->get();
+
+        $variationInventoryMap = [];
+        foreach ($variationInventories as $row) {
+            $variationId = (int) ($row->variation_id ?? 0);
+            if ($variationId <= 0) {
+                continue;
+            }
+            if (!array_key_exists($variationId, $variationInventoryMap)) {
+                $variationInventoryMap[$variationId] = [
+                    'quantity_available' => (int) ($row->quantity_available ?? 0),
+                    'stock_status' => (string) ($row->stock_status ?? 'out_of_stock'),
+                ];
+            }
+        }
+
         $model3d = $this->selectBest3DModel($product);
         $storeSettings = is_array($product->store?->settings) ? $product->store->settings : [];
         $storeLogo = $storeSettings['logo'] ?? $storeSettings['logo_path'] ?? null;
@@ -712,11 +737,11 @@ class EcommerceController extends Controller
                     'height_cm' => $product->height_cm !== null ? (float) $product->height_cm : null,
                     'weight_kg' => $product->weight_kg !== null ? (float) $product->weight_kg : null,
                 ],
-                'image' => $this->toAssetUrl($this->selectBestProductImage($product)?->file_path),
+                'image' => $this->selectBestProductImage($product)?->url,
                 'images' => $product->assets
                     ->filter(fn($a) => $this->isImageAsset($a->asset_type) && !empty($a->file_path) && !is_null($a->created_at))
                     ->sortBy([['is_primary', 'desc'], ['display_order', 'asc'], ['created_at', 'desc']])
-                    ->map(fn($a) => $this->toAssetUrl($a->file_path))
+                    ->map(fn($a) => $a->url)
                     ->values(),
                 'model_3d' => $model3d ? [
                     'id' => $model3d->id,
@@ -729,8 +754,14 @@ class EcommerceController extends Controller
                         'zoom' => (float) ($model3d->default_zoom_level ?? 3),
                     ],
                 ] : null,
-                'variations' => $product->variations->map(function ($variation) use ($price) {
+                'variations' => $product->variations->map(function ($variation) use ($price, $variationInventoryMap) {
                     $variationModel = $variation->custom3dModel;
+                    $variationInventory = $variationInventoryMap[(int) $variation->id] ?? [
+                        'quantity_available' => 0,
+                        'stock_status' => 'out_of_stock',
+                    ];
+                    $isSelectable = ((int) $variationInventory['quantity_available']) > 0
+                        && ((string) $variationInventory['stock_status']) !== 'out_of_stock';
                     return [
                         'id' => (int) $variation->id,
                         'variation_name' => $variation->variation_name,
@@ -740,6 +771,9 @@ class EcommerceController extends Controller
                         'material' => $variation->material,
                         'price_adjustment' => (float) ($variation->price_adjustment ?? 0),
                         'final_price' => round($price + (float) ($variation->price_adjustment ?? 0), 2),
+                        'quantity_available' => (int) ($variationInventory['quantity_available'] ?? 0),
+                        'stock_status' => (string) ($variationInventory['stock_status'] ?? 'out_of_stock'),
+                        'is_selectable' => (bool) $isSelectable,
                         'model_3d' => $variationModel ? [
                             'id' => $variationModel->id,
                             'file_name' => $variationModel->file_name,
@@ -1806,15 +1840,23 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-        $storeId = $this->resolveAuthenticatedStoreId();
 
         $orderItem = \App\Models\Ecommerce\EcommerceOrderItem::query()
             ->with('order')
-            ->whereHas('order', function ($query) use ($storeId, $user) {
-                $query->where('store_id', $storeId)
-                    ->where('user_id', $user->id);
+            ->whereHas('order', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
             })
-            ->findOrFail($itemId);
+            ->whereKey($itemId)
+            ->first();
+
+        if (!$orderItem) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order item not found. Please refresh your orders and try again.',
+            ], 404);
+        }
+
+        $storeIdForStorage = (int) ($orderItem->order?->store_id ?? 0);
 
         $orderStatus = strtolower((string) $orderItem->order?->status);
         if (!in_array($orderStatus, ['delivered', 'completed'], true)) {
@@ -1853,7 +1895,7 @@ class EcommerceController extends Controller
         $evidenceUrls = [];
         if ($request->hasFile('evidence_images')) {
             foreach ($request->file('evidence_images') as $file) {
-                $path = $file->store("ecommerce/returns/{$storeId}/orders/{$orderItem->order_id}/users/{$user->id}", 'public');
+                $path = $file->store("ecommerce/returns/{$storeIdForStorage}/orders/{$orderItem->order_id}/users/{$user->id}", 'public');
                 $evidenceUrls[] = Storage::disk('public')->url($path);
             }
         }
@@ -1906,15 +1948,21 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-        $storeId = $this->resolveAuthenticatedStoreId();
 
         $orderItem = \App\Models\Ecommerce\EcommerceOrderItem::query()
             ->with('order')
-            ->whereHas('order', function ($query) use ($storeId, $user) {
-                $query->where('store_id', $storeId)
-                    ->where('user_id', $user->id);
+            ->whereHas('order', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
             })
-            ->findOrFail($itemId);
+            ->whereKey($itemId)
+            ->first();
+
+        if (!$orderItem) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order item not found. Please refresh your orders and try again.',
+            ], 404);
+        }
 
         $orderStatus = strtolower((string) $orderItem->order?->status);
         if (!in_array($orderStatus, ['delivered', 'completed'], true)) {
@@ -1938,6 +1986,32 @@ class EcommerceController extends Controller
                 'status' => 'published',
             ]
         );
+
+        // Keep Sales Reviews in sync so the Sales module can manage/answer reviews.
+        try {
+            $customerName = (string) ($user?->full_name ?: trim((string) ($user?->fname . ' ' . $user?->lname)));
+            $customerContact = (string) ($user?->phone_number ?: $user?->email ?: '');
+
+            \App\Models\Sales\SalesReview::query()->updateOrCreate(
+                [
+                    'order_type' => 'ecommerce',
+                    'order_id' => (int) $orderItem->order_id,
+                    'product_id' => (int) $orderItem->product_id,
+                    'created_by' => (int) $user->id,
+                ],
+                [
+                    'store_id' => (int) $orderItem->order->store_id,
+                    'branch_id' => $orderItem->order->branch_id ?? null,
+                    'customer_name' => $customerName ?: null,
+                    'customer_contact' => $customerContact ?: null,
+                    'rating' => (int) $validated['rating'],
+                    'message' => $validated['review_text'] ?? null,
+                    'status' => 'pending',
+                ]
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
 
         return response()->json([
             'success' => true,
@@ -2037,7 +2111,7 @@ class EcommerceController extends Controller
                 'product_name' => $product->product_name,
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
-                'image' => $this->toAssetUrl($this->selectBestProductImage($product)?->file_path),
+                'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'score' => $weightedScore,
                 'score_breakdown' => [
@@ -2151,7 +2225,7 @@ class EcommerceController extends Controller
                 'product_name' => $product->product_name,
                 'category' => $product->category?->category_name,
                 'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
-                'image' => $this->toAssetUrl($this->selectBestProductImage($product)?->file_path),
+                'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'movement_score' => $movementScore,
                 'movement' => [
@@ -2495,7 +2569,7 @@ class EcommerceController extends Controller
                 'variation_id' => $item->variation_id,
                 'variation_name' => $item->variation_name ?: $item->variation?->variation_name,
                 'variation_sku' => $item->variation?->variation_sku,
-                'image' => $item->product ? $this->toAssetUrl($this->selectBestProductImage($item->product)?->file_path) : null,
+                'image' => $item->product ? $this->selectBestProductImage($item->product)?->url : null,
                 'is_favorite' => isset($favoriteMap[$productId]),
                 'quantity' => (int) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
@@ -2729,7 +2803,7 @@ class EcommerceController extends Controller
                     'line_subtotal' => (float) $item->line_subtotal,
                     'line_tax' => (float) $item->line_tax,
                     'line_total' => (float) $item->line_total,
-                    'image' => $item->product ? $this->toAssetUrl($this->selectBestProductImage($item->product)?->file_path) : null,
+                    'image' => $item->product ? $this->selectBestProductImage($item->product)?->url : null,
                     'can_return' => $eligibleAfterDelivery && (!$latestReturn || $latestReturn->status === 'rejected'),
                     'can_review' => $eligibleAfterDelivery && !$review,
                     'return_request' => $latestReturn ? [
@@ -3251,17 +3325,142 @@ class EcommerceController extends Controller
 
     private function containsProfanity(string $message): bool
     {
-        $patterns = [
-            '/\b(fuck|fucking|fucker|shit|bitch|asshole|bastard|dick|pussy|motherfucker|cunt|damn)\b/i',
-            '/\b(putang\s*ina|putangina|tangina|puta|gago|ulol|tanga|bobo|tarantado|kupal)\b/i',
-        ];
+        static $pattern = null;
+        if (!is_string($pattern) || $pattern === '') {
+            $words = [
+                // English
+                'fuck',
+                'fucking',
+                'fucker',
+                'shit',
+                'bitch',
+                'asshole',
+                'bastard',
+                'dick',
+                'pussy',
+                'motherfucker',
+                'cunt',
+                'damn',
+                'abnormal',
+                'adik',
+                'ahas',
+                'abusado',
+                'amputa',
+                'baboy',
+                'bading',
+                'baliw',
+                'balasubas',
+                'bastos',
+                'bastos-na-bastos',
+                'bastos-na-walanghiya',
+                'bastardo',
+                'basura',
+                'basura-ka',
+                'bayag',
+                'bobong-bobo',
+                'bobo',
+                'bogo',
+                'burat',
+                'buhay-hayop',
+                'buhay-na-demonyo',
+                'buwisit',
+                'bilat',
+                'bwisit',
+                'bwisit-na-gago',
+                'bunganga',
+                'demonyita',
+                'demonyo',
+                'demonyo-ka-talaga',
+                'dugyot',
+                'duwag',
+                'duwag-na-duwag',
+                'gago',
+                'gaga',
+                'gagi',
+                'gago-ka-talaga',
+                'gago-amputa',
+                'gago-ulol',
+                'gunggong',
+                'hambog',
+                'hampaslupa',
+                'hayop',
+                'hayop-ka',
+                'hayop-ka-talaga',
+                'hayup',
+                'hindot',
+                'hinayupak',
+                'hinayupak-ka',
+                'hinayupak-ka-talaga',
+                'hudas',
+                'hudas-barabas',
+                'impyerno',
+                'inutil',
+                'itits',
+                'insulto',
+                'ipokrito',
+                'iyot',
+                'iyot-ka',
+                'judas',
+                'kupaloid',
+                'kupal',
+                'kantot',
+                'kantutan',
+                'lapastangan',
+                'leche',
+                'leche-ka',
+                'leche-ka-talaga',
+                'lecheng-buhay',
+                'letse-flan',
+                'lintik',
+                'lintik-ka',
+                'lintik-na-buhay',
+                'loko',
+                'loko-loko',
+                'lupang-ina',
+                'makapal-na-mukha',
+                'makasarili',
+                'malandi',
+                'malaswa',
+                'malibog',
+                'mangmang',
+                'mangmang-na-mangmang',
+                'manloloko',
+                'manyak',
+                'manyakis',
+                'nimal',
+                'ogag',
+                'ogag-ka',
+                'ogag-na-ogag',
+                'pakyo',
+                'pakyu-pakyu',
+                'pakyut',
+                'palahula',
+                'pangit',
+                'patay-gutom',
+                'peste',
+                'poke',
+                'poki',
+                'pakshet',
+                'pambihira',
+                'puta',
+                'putanginamo',
+                'putangina',
+                'putragis',
+                'saksakan',
+                'shet',
+                'shit',
+                'tangina-gago',
+                'tangina-mo',
+                'tangnamo',
+                'ulupong',
+            ];
 
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $message)) {
-                return true;
-            }
+            // Match whole terms, allowing hyphenated phrases. Use Unicode-safe boundaries.
+            $escaped = array_map(static fn ($w) => preg_quote($w, '/'), $words);
+            $alternation = implode('|', $escaped);
+            $pattern = '/(?<![\\pL\\pN_])(?:' . $alternation . ')(?![\\pL\\pN_])/iu';
         }
 
-        return false;
+        return preg_match($pattern, $message) === 1;
     }
 }

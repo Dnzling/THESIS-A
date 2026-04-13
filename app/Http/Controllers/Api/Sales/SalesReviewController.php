@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\EcommerceProductReview;
 use App\Models\Sales\SalesReview;
+use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 
 class SalesReviewController extends Controller
@@ -13,9 +15,19 @@ class SalesReviewController extends Controller
         $user = $request->user();
         $storeId = $user?->store_id;
 
+        if (!$storeId && $request->filled('store_id')) {
+            $storeId = (int) $request->integer('store_id');
+        }
+
+        if (!$storeId && $user?->branch_id) {
+            $storeId = Branch::query()->whereKey($user->branch_id)->value('store_id');
+        }
+
         if (!$storeId) {
             return response()->json(['data' => []]);
         }
+
+        $this->syncEcommerceReviewsToSales((int) $storeId);
 
         $query = SalesReview::query()
             ->with(['product:id,product_name,sku', 'replier:id,fname,lname'])
@@ -61,6 +73,51 @@ class SalesReviewController extends Controller
             'data' => $reviews,
             'summary' => $summary,
         ]);
+    }
+
+    private function syncEcommerceReviewsToSales(int $storeId): void
+    {
+        try {
+            EcommerceProductReview::query()
+                ->with(['user:id,fname,lname,email,phone_number', 'product:id,product_name,sku'])
+                ->where('store_id', $storeId)
+                ->where('status', 'published')
+                ->orderBy('id')
+                ->chunkById(200, function ($reviews) use ($storeId) {
+                    $reviews->each(function (EcommerceProductReview $review) use ($storeId) {
+                    $customerName = trim(($review->user?->fname ?? '') . ' ' . ($review->user?->lname ?? ''));
+                    $customerContact = (string) ($review->user?->phone_number ?: $review->user?->email ?: '');
+
+                    $salesReview = SalesReview::query()->firstOrNew([
+                        'order_type' => 'ecommerce',
+                        'order_id' => (int) $review->order_id,
+                        'product_id' => (int) $review->product_id,
+                        'created_by' => (int) $review->user_id,
+                    ]);
+
+                    $existingStatus = (string) ($salesReview->status ?? 'pending');
+
+                    $salesReview->store_id = $storeId;
+                    $salesReview->customer_name = $customerName ?: ($salesReview->customer_name ?: null);
+                    $salesReview->customer_contact = $customerContact ?: ($salesReview->customer_contact ?: null);
+                    $salesReview->rating = (int) $review->rating;
+                    $salesReview->message = $review->review_text;
+
+                    if ($existingStatus !== 'replied') {
+                        $salesReview->status = 'pending';
+                    }
+
+                    if (!$salesReview->exists) {
+                        $salesReview->created_at = $review->created_at;
+                        $salesReview->updated_at = $review->updated_at;
+                    }
+
+                    $salesReview->save();
+                    });
+                });
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 
     public function show(SalesReview $review)

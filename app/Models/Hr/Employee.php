@@ -46,6 +46,8 @@ class Employee extends Model
         'hire_date',
         'department',
         'employment_type',
+        'pay_type',
+        'hourly_rate',
         'salary',
         'bank_account',
         'tax_id',
@@ -68,6 +70,7 @@ class Employee extends Model
         'date_of_birth' => 'date',
         'hire_date' => 'date',
         'salary' => 'decimal:2',
+        'hourly_rate' => 'decimal:4',
         'termination_date' => 'date',
         'settings' => 'array',
     ];

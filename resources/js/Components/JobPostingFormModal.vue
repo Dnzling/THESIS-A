@@ -363,10 +363,11 @@ const resetForm = () => {
 const loadDepartments = async () => {
   loadingDepartments.value = true
   try {
+    // Request departments (backend scopes by auth user). Avoid sending extra params to prevent 500.
     const response = await hrService.getDepartmentOptions()
     const items = response?.data || []
     departmentOptions.value = items.map((department: any) => ({
-      label: department.code ? `${department.name} (${department.code})` : department.name,
+      label: department.name,
       value: department.name,
     }))
   } finally {

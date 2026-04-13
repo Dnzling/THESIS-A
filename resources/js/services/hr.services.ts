@@ -136,6 +136,7 @@ export interface HireApplicantPayload {
   position: string
   phone?: string
   address?: string
+  pay_type?: 'monthly' | 'hourly' | 'hybrid'
 }
 
 export interface ApplicantProfile {
@@ -307,8 +308,8 @@ const hrService = {
     return response.data
   },
 
-  async getDepartmentOptions() {
-    const response = await axiosClient.get('/api/departments-options')
+  async getDepartmentOptions(params?: any) {
+    const response = await axiosClient.get('/api/departments-options', { params })
     return response.data
   },
 

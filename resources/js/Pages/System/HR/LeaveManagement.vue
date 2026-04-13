@@ -692,8 +692,8 @@ const approveLeave = async (id: number) => {
 
 const rejectLeave = async (id: number, reason: string) => {
   try {
-    const response = await hrService.api.post(`/api/leaves/${id}/reject`, {
-      reason: reason
+    const response = await hrService.api.put(`/api/leaves/${id}/reject`, {
+      rejected_reason: reason
     })
 
     if (response.data.success) {

@@ -82,19 +82,19 @@ Route::get('dashboard/weekly-attendance', [DashboardController::class, 'getWeekl
 // Shift Swap Requests
 // NOTE: named routes must be declared BEFORE apiResource to avoid being caught by show()
 Route::get('shift-swap-requests/my-pending', [ShiftSwapRequestController::class, 'myPendingRequests']);
+Route::get('shift-swap-requests/suggestions', [ShiftSwapRequestController::class, 'suggestions']);
 Route::apiResource('shift-swap-requests', ShiftSwapRequestController::class)->except(['update', 'destroy']);
 Route::put('shift-swap-requests/{id}/accept', [ShiftSwapRequestController::class, 'accept']);
 Route::put('shift-swap-requests/{id}/reject', [ShiftSwapRequestController::class, 'reject']);
 Route::put('shift-swap-requests/{id}/cancel', [ShiftSwapRequestController::class, 'cancel']);
-Route::get('shift-swap-requests/suggestions', [ShiftSwapRequestController::class, 'suggestions']);
 
 // Shift Swaps (alias endpoints for HR flow)
 Route::get('shift-swaps/my-pending', [ShiftSwapRequestController::class, 'myPendingRequests']);
 Route::get('shift-swaps', [ShiftSwapRequestController::class, 'index']);
 Route::post('shift-swaps', [ShiftSwapRequestController::class, 'store']);
+Route::get('shift-swaps/suggestions', [ShiftSwapRequestController::class, 'suggestions']);
 Route::get('shift-swaps/{id}', [ShiftSwapRequestController::class, 'show']);
 Route::put('shift-swaps/{id}/accept', [ShiftSwapRequestController::class, 'accept']);
 Route::put('shift-swaps/{id}/approve', [ShiftSwapRequestController::class, 'accept']);
 Route::put('shift-swaps/{id}/reject', [ShiftSwapRequestController::class, 'reject']);
 Route::put('shift-swaps/{id}/cancel', [ShiftSwapRequestController::class, 'cancel']);
-Route::get('shift-swaps/suggestions', [ShiftSwapRequestController::class, 'suggestions']);

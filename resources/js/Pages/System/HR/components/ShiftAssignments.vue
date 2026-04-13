@@ -82,11 +82,11 @@
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
             <label class="block text-sm font-medium mb-1">Start Date <span class="text-red-500">*</span></label>
-            <DatePicker v-model="form.start_date" dateFormat="yy-mm-dd" class="w-full" />
+            <DatePicker v-model="form.start_date" :minDate="new Date()" dateFormat="yy-mm-dd" class="w-full" />
           </div>
           <div class="field">
             <label class="block text-sm font-medium mb-1">End Date</label>
-            <DatePicker v-model="form.end_date" dateFormat="yy-mm-dd" class="w-full" />
+            <DatePicker v-model="form.end_date" :minDate="form.start_date" dateFormat="yy-mm-dd" class="w-full" />
           </div>
         </div>
         <div class="field">

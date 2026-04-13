@@ -34,11 +34,11 @@
           </div>
         </template>
       </Card>
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
         <template #content>
           <div class="p-5">
-            <p class="text-xs font-medium text-blue-100 uppercase tracking-wider mb-2">Pending Value</p>
-            <p class="text-xl font-bold text-white">PHP {{ formatNumber(stats.pendingAmount) }}</p>
+            <p class="text-xs font-medium text-blue-600 uppercase tracking-wider mb-2">Pending Value</p>
+            <p class="text-xl font-bold text-gray-900">PHP {{ formatNumber(stats.pendingAmount) }}</p>
           </div>
         </template>
       </Card>

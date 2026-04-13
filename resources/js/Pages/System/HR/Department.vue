@@ -1,6 +1,7 @@
 ```vue
 <template>
-  <div class="space-y-6">
+    <div class="space-y-6">
+      <ConfirmDialog />
     <!-- Header Section -->
     <div class="flex justify-between items-center">
       <div>
@@ -84,15 +85,14 @@
         sortMode="multiple" class="text-sm">
         <Column field="name" header="Department Name" sortable style="min-width: 200px">
           <template #body="{ data }">
-            <div class="flex items-center gap-2">
-              <i class="pi pi-building text-blue-500"></i>
-              <div>
-                <div class="font-medium">{{ data.name }}</div>
-                <div v-if="data.code" class="text-xs text-gray-500">{{ data.code }}</div>
-              </div>
-            </div>
-          </template>
-        </Column>
+                <div class="flex items-center gap-2">
+                  <i class="pi pi-building text-blue-500"></i>
+                  <div>
+                    <div class="font-medium">{{ data.name }}</div>
+                  </div>
+                </div>
+              </template>
+            </Column>
 
         <Column field="description" header="Description" style="min-width: 250px">
           <template #body="{ data }">
@@ -136,8 +136,8 @@
                 v-tooltip.top="'View Details'" />
               <Button icon="pi pi-pencil" severity="contrast" text rounded size="small" @click="editDepartment(data)"
                 v-tooltip.top="'Edit'" />
-              <Button icon="pi pi-trash" severity="danger" text rounded size="small" @click="confirmDelete(data)"
-                v-tooltip.top="'Delete'" />
+              <Button icon="pi pi-trash" severity="danger" text rounded size="small" :loading="deletingId === data.id" :disabled="deletingId !== null"
+                @click="confirmDelete(data)" v-tooltip.top="'Delete'" />
             </div>
           </template>
         </Column>
@@ -158,11 +158,6 @@
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Department Name *</label>
           <InputText v-model="formData.name" placeholder="Enter department name" class="w-full" />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Department Code</label>
-          <InputText v-model="formData.code" placeholder="e.g., HR, IT, FIN" class="w-full" />
         </div>
 
         <div>
@@ -211,7 +206,6 @@
       <div v-if="selectedDepartment" class="space-y-4">
         <div class="bg-blue-50 p-4 rounded-lg">
           <h3 class="text-lg font-semibold text-blue-900">{{ selectedDepartment.name }}</h3>
-          <p v-if="selectedDepartment.code" class="text-sm text-blue-600 mt-1">Code: {{ selectedDepartment.code }}</p>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
@@ -263,6 +257,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import ConfirmDialog from 'primevue/confirmdialog'
+import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import hrService from '@/services/hr.services'
@@ -272,7 +268,6 @@ import { useAuthStore } from '../../../stores/auth'
 interface Department {
   id: number
   name: string
-  code?: string
   description?: string
   manager_id?: number
   manager_name?: string
@@ -307,6 +302,7 @@ const departments = ref<Department[]>([])
 const employees = ref<Employee[]>([])
 const roles = ref<RoleOption[]>([])
 const selectedDepartment = ref<Department | null>(null)
+const deletingId = ref<number | null>(null)
 
 // Filters
 const filters = ref({
@@ -322,7 +318,6 @@ const statusOptions = [
 // Form Data
 const formData = ref({
   name: '',
-  code: '',
   description: '',
   manager_id: null as number | null,
   role_ids: [] as number[],
@@ -333,8 +328,7 @@ const formData = ref({
 const filteredDepartments = computed(() => {
   return departments.value.filter(dept => {
     const matchesSearch = !filters.value.search ||
-      dept.name.toLowerCase().includes(filters.value.search.toLowerCase()) ||
-      dept.code?.toLowerCase().includes(filters.value.search.toLowerCase())
+      dept.name.toLowerCase().includes(filters.value.search.toLowerCase())
     const matchesStatus = !filters.value.status || dept.status === filters.value.status
     return matchesSearch && matchesStatus
   })
@@ -414,7 +408,6 @@ const editDepartment = (dept: Department) => {
   isEditMode.value = true
   formData.value = {
     name: dept.name,
-    code: dept.code || '',
     description: dept.description || '',
     manager_id: dept.manager_id || null,
     role_ids: dept.roles?.map((r: any) => r.id) || [],
@@ -485,8 +478,9 @@ const confirmDelete = (dept: Department) => {
     icon: 'pi pi-exclamation-triangle',
     acceptClass: 'p-button-danger',
     accept: async () => {
+      deletingId.value = dept.id
       try {
-        const response = await hrService.api.delete(`/api/departments/${dept.id}`, {
+        const response = await axios.delete(`/api/departments/${dept.id}`, {
           headers: { 'Authorization': `Bearer ${authStore.token}` }
         })
         if (response.data.success) {
@@ -505,6 +499,8 @@ const confirmDelete = (dept: Department) => {
           detail: error.response?.data?.message || 'Failed to delete department',
           life: 3000
         })
+      } finally {
+        deletingId.value = null
       }
     }
   })
@@ -513,7 +509,6 @@ const confirmDelete = (dept: Department) => {
 const resetForm = () => {
   formData.value = {
     name: '',
-    code: '',
     description: '',
     manager_id: null,
     role_ids: [],
@@ -566,4 +561,3 @@ onMounted(() => {
   fetchRoles()
 })
 </script>
-

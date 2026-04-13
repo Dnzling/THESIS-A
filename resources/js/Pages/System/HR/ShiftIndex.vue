@@ -109,6 +109,10 @@
           <!-- COVERAGE VIEW -->
           <TabPanel value="coverage">
             <div class="space-y-4">
+              <div v-if="coverageUnavailable" class="p-6 border border-dashed border-gray-200 rounded-lg bg-yellow-50 text-sm text-gray-700">
+                Coverage is temporarily unavailable while we validate schedule data. Please check back shortly.
+              </div>
+              <div v-else>
               <div class="flex items-center gap-4">
                 <div class="flex items-center gap-2">
                   <Button icon="pi pi-chevron-left" text rounded size="small" @click="previousDay" />
@@ -124,7 +128,8 @@
                   <div class="flex justify-between items-center mb-3">
                     <h3 class="font-semibold">{{ dept.name }}</h3>
                     <div>
-                      <span class="text-sm font-medium">{{ dept.scheduled }}/{{ dept.totalEmployees }}</span>
+                      <span v-if="dept.totalEmployees > 0" class="text-sm font-medium">{{ dept.scheduled }} / {{ dept.totalEmployees }}</span>
+                      <span v-else class="text-sm font-medium">{{ dept.scheduled }} scheduled</span>
                       <span class="text-xs text-gray-400 ml-1">scheduled</span>
                     </div>
                   </div>
@@ -148,6 +153,7 @@
                   </div>
                 </div>
               </div>
+            </div>
             </div>
           </TabPanel>
   
@@ -289,7 +295,6 @@
                 <Column field="name" header="Name" sortable>
                   <template #body="{ data }">
                     <div class="flex items-center gap-2">
-                      <span class="w-3 h-3 rounded-full inline-block" :style="{ background: data.color || '#3b82f6' }"></span>
                       <span class="font-medium">{{ data.name }}</span>
                     </div>
                   </template>
@@ -297,13 +302,15 @@
                 <Column field="code" header="Code" sortable />
                 <Column header="Schedule">
                   <template #body="{ data }">
-                    {{ data.start_time ? String(data.start_time).substring(0,5) : '--' }}
+                    {{ formatTime(data.start_time) }}
                     –
-                    {{ data.end_time ? String(data.end_time).substring(0,5) : '--' }}
+                    {{ formatTime(data.end_time) }}
                   </template>
                 </Column>
-                <Column field="total_hours" header="Hours">
-                  <template #body="{ data }">{{ data.total_hours }}h</template>
+                <Column header="Days">
+                  <template #body="{ data }">
+                    <span class="text-xs text-gray-700">{{ formatShiftDays(data.week_days) }}</span>
+                  </template>
                 </Column>
                 <Column field="shift_type" header="Type" sortable>
                   <template #body="{ data }">
@@ -350,11 +357,11 @@
         <div class="grid grid-cols-2 gap-4">
           <div class="field">
             <label class="block text-sm font-medium mb-1">Start Date</label>
-            <DatePicker v-model="assignmentForm.start_date" showIcon class="w-full" />
+            <DatePicker v-model="assignmentForm.start_date" :minDate="new Date()" showIcon class="w-full" />
           </div>
           <div class="field">
             <label class="block text-sm font-medium mb-1">End Date (Optional)</label>
-            <DatePicker v-model="assignmentForm.end_date" showIcon class="w-full" />
+            <DatePicker v-model="assignmentForm.end_date" :minDate="assignmentForm.start_date" showIcon class="w-full" />
           </div>
         </div>
         <div class="field">
@@ -451,44 +458,28 @@
             <small class="text-red-500" v-if="editShiftErrors.name">{{ editShiftErrors.name[0] }}</small>
           </div>
           <div class="field">
-            <label class="block text-sm font-medium mb-1">Shift Code <span class="text-red-500">*</span></label>
-            <InputText v-model="editShiftForm.code" class="w-full" :class="{ 'p-invalid': editShiftErrors.code }" />
-            <small class="text-red-500" v-if="editShiftErrors.code">{{ editShiftErrors.code[0] }}</small>
-          </div>
-          <div class="field">
             <label class="block text-sm font-medium mb-1">Shift Type</label>
             <Select v-model="editShiftForm.shift_type"
               :options="[{label:'Fixed',value:'fixed'},{label:'Rotating',value:'rotating'},{label:'Flexible',value:'flexible'}]"
               optionLabel="label" optionValue="value" class="w-full" />
           </div>
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">Color</label>
-            <div class="flex gap-2 items-center">
-              <input type="color" v-model="editShiftForm.color" class="h-9 w-14 rounded border border-gray-300 cursor-pointer" />
-              <InputText v-model="editShiftForm.color" class="flex-1" />
-            </div>
-          </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="field">
             <label class="block text-sm font-medium mb-1">Start Time</label>
-            <InputText v-model="editShiftForm.start_time" type="time" class="w-full" />
+            <DatePicker v-model="editShiftForm.start_time" timeOnly hourFormat="12" class="w-full" />
           </div>
           <div class="field">
             <label class="block text-sm font-medium mb-1">End Time</label>
-            <InputText v-model="editShiftForm.end_time" type="time" class="w-full" />
+            <InputText :modelValue="editEndTimeDisplay" disabled class="w-full bg-gray-50" />
           </div>
           <div class="field">
             <label class="block text-sm font-medium mb-1">Break Start</label>
-            <InputText v-model="editShiftForm.break_start" type="time" class="w-full" />
+            <DatePicker v-model="editShiftForm.break_start" timeOnly hourFormat="12" class="w-full" />
           </div>
           <div class="field">
             <label class="block text-sm font-medium mb-1">Break End</label>
-            <InputText v-model="editShiftForm.break_end" type="time" class="w-full" />
-          </div>
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">Total Hours</label>
-            <InputText v-model="editShiftForm.total_hours" class="w-full" />
+            <InputText :modelValue="editBreakEndDisplay" disabled class="w-full bg-gray-50" />
           </div>
           <div class="field">
             <label class="block text-sm font-medium mb-1">Grace Period (min)</label>
@@ -508,22 +499,6 @@
               </div>
             </div>
           </div>
-        </div>
-        <!-- Night Diff -->
-        <div class="grid grid-cols-2 gap-4">
-          <div class="field">
-            <label class="block text-sm font-medium mb-1">Min Employees Required</label>
-            <InputNumber v-model="editShiftForm.min_employees_required" :min="1" class="w-full" />
-          </div>
-          <div class="field flex items-center gap-3 pt-6">
-            <Checkbox v-model="editShiftForm.has_night_diff" inputId="editNightDiff" binary />
-            <label for="editNightDiff" class="text-sm">Night Differential</label>
-          </div>
-        </div>
-        <div v-if="editShiftForm.has_night_diff" class="field">
-          <label class="block text-sm font-medium mb-1">Night Diff Rate</label>
-          <InputNumber v-model="editShiftForm.night_diff_rate" :min="1" :max="3" :step="0.01"
-            :minFractionDigits="2" :maxFractionDigits="2" class="w-full" />
         </div>
         <div class="field flex items-center gap-3">
           <Checkbox v-model="editShiftForm.is_active" inputId="editIsActive" binary />
@@ -563,6 +538,7 @@ import { useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
+import DatePicker from 'primevue/datepicker'
 
 const router = useRouter()
 const toast = useToast()
@@ -621,6 +597,7 @@ const assignmentForm = ref({
 const employeeOptions = ref<{ label: string; value: number }[]>([])
 const myShiftOptions = ref<{ label: string; value: number }[]>([])
 const receiverShiftOptions = ref<{ label: string; value: number }[]>([])
+const departmentEmployeeCounts = ref<Record<string, number>>({})
 
 // --- Swap State ---
 const swapRequests = ref<any[]>([])
@@ -674,17 +651,10 @@ const editShiftForm = ref({
   name: '',
   code: '',
   shift_type: 'fixed' as string,
-  start_time: '09:00',
-  end_time: '18:00',
-  break_start: '' as string,
-  break_end: '' as string,
-  total_hours: '8',
+  start_time: new Date(0, 0, 0, 9, 0, 0) as Date | null,
+  break_start: null as Date | null,
   week_days: [] as string[],
   grace_period_minutes: 15 as number,
-  has_night_diff: false,
-  night_diff_rate: 1.10 as number,
-  min_employees_required: 1 as number,
-  color: '#3b82f6',
   description: '',
   is_active: true
 })
@@ -698,6 +668,30 @@ const weekDayOptions = [
   { label: 'S', full: 'Saturday', value: 'saturday' },
   { label: 'S', full: 'Sunday', value: 'sunday' }
 ]
+
+const toTimeString = (date: Date | null): string | null => {
+  if (!date) return null
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+const addHours = (date: Date | null, hours: number): Date | null => {
+  if (!date) return null
+  const next = new Date(date.getTime())
+  next.setHours(next.getHours() + hours)
+  return next
+}
+
+const editEndTimeDisplay = computed(() => {
+  const end = addHours(editShiftForm.value.start_time, 8)
+  return end ? end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'
+})
+
+const editBreakEndDisplay = computed(() => {
+  const end = addHours(editShiftForm.value.break_start, 1)
+  return end ? end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'
+})
 
 // --- Computed: Filtered Shift Definitions ---
 const filteredShiftDefinitions = computed(() => {
@@ -753,7 +747,46 @@ const formatDate = (date: string | null): string => {
   } catch { return date }
 }
 
-const formatTime = (time: string | null): string => time || '--:--'
+const formatTime = (value: string | null): string => {
+  if (!value) return '--:--'
+  const raw = String(value).trim()
+
+  const timePart = raw.includes('T')
+    ? raw.split('T')[1]?.split('.')[0]
+    : raw.includes(' ')
+      ? raw.split(' ')[1]
+      : raw
+
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(timePart || '').trim())
+  if (!match) return raw
+
+  let hours = Number(match[1])
+  const minutes = match[2]
+  const suffix = hours >= 12 ? 'PM' : 'AM'
+  hours = hours % 12
+  if (hours === 0) hours = 12
+  return `${hours}:${minutes} ${suffix}`
+}
+
+const formatShiftDays = (days: any): string => {
+  const list = Array.isArray(days) ? days : []
+  if (list.length === 0) return '—'
+
+  const map: Record<string, string> = {
+    monday: 'Mon',
+    tuesday: 'Tue',
+    wednesday: 'Wed',
+    thursday: 'Thu',
+    friday: 'Fri',
+    saturday: 'Sat',
+    sunday: 'Sun',
+  }
+
+  const ordered = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+  const normalized = list.map((d: any) => String(d || '').toLowerCase())
+  const sorted = ordered.filter((d) => normalized.includes(d))
+  return sorted.map((d) => map[d] || d).join(', ')
+}
 
 const getInitials = (name: string): string => {
   if (!name) return '?'
@@ -792,6 +825,9 @@ const getSwapStatusSeverity = (status: string): string => {
 }
 
 const isToday = computed(() => new Date().toDateString() === selectedDate.value.toDateString())
+
+// Temporarily disable live coverage until data is validated
+const coverageUnavailable = ref(true)
 
 // --- Data Transformers ---
 const transformShiftData = (records: any[]): any[] => {
@@ -950,7 +986,12 @@ const processDepartmentsData = () => {
       d.scheduledEmployees.push({ id: shift.employee.id, name: shift.employee.full_name, shiftType: shift.shift.name })
     }
   })
-  deptMap.forEach((d: any) => d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0)
+
+  deptMap.forEach((d: any) => {
+    d.totalEmployees = departmentEmployeeCounts.value[d.name] ?? 0
+    d.unfilledCount = Math.max(0, d.totalEmployees - d.scheduled)
+    d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
+  })
   departments.value = Array.from(deptMap.values())
 }
 
@@ -963,14 +1004,28 @@ const extractFilterOptions = () => {
 }
 
 const fetchCoverageData = async () => {
-  // Filter shifts by selected date
-  const dateStr = formatDateForAPI(selectedDate.value)
-  const filtered = shiftsData.value.filter((s: any) => s.schedule_date?.startsWith(dateStr))
+  if (coverageUnavailable.value) return
+  try {
+    // Prefer server-side coverage endpoint (temporary debug) to get today's assignments
+    const resp = await hrService.api.get('api/test/_debug/shifts-today', {
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    })
+    const records = resp.data.data || []
 
-  // Reprocess departments with filtered data
-  const deptMap = new Map<string, any>()
-  filtered.forEach((shift: any) => {
-    const dept = shift.employee.department || 'Unassigned'
+    // Map debug records to internal shift shape (include branch and department)
+    const filtered = records.map((r: any) => ({
+      id: r.id,
+      employee: { id: r.employee_id, fname: r.employee?.split(' ')[0] || r.employee, lname: r.employee?.split(' ')[1] || '' , full_name: r.employee, department: r.department },
+      shift: { name: 'Scheduled' },
+      branch: r.branch,
+      schedule_date: r.start_date ? r.start_date.split('T')[0] : null,
+      status: 'scheduled'
+    }))
+
+    // Reprocess departments grouped by branch with filtered data
+    const deptMap = new Map<string, any>()
+    filtered.forEach((shift: any) => {
+    const dept = shift.branch ? `${shift.branch} / ${shift.employee.department || 'Unassigned'}` : (shift.employee.department || 'Unassigned')
     if (!deptMap.has(dept)) {
       deptMap.set(dept, { id: dept, name: dept, totalEmployees: 0, scheduled: 0, scheduledEmployees: [], unfilledCount: 0, coveragePercentage: 0 })
     }
@@ -980,8 +1035,35 @@ const fetchCoverageData = async () => {
       d.scheduledEmployees.push({ id: shift.employee.id, name: shift.employee.full_name, shiftType: shift.shift.name })
     }
   })
-  deptMap.forEach((d: any) => d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0)
+  deptMap.forEach((d: any) => {
+    d.totalEmployees = departmentEmployeeCounts.value[d.name] ?? 0
+    d.unfilledCount = Math.max(0, d.totalEmployees - d.scheduled)
+    d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
+  })
   departments.value = Array.from(deptMap.values())
+  } catch (err:any) {
+    // fallback to client-side computation if debug endpoint fails
+    const dateStr = formatDateForAPI(selectedDate.value)
+    const filtered = shiftsData.value.filter((s: any) => s.schedule_date?.startsWith(dateStr))
+    const deptMap = new Map<string, any>()
+    filtered.forEach((shift: any) => {
+      const dept = shift.employee.department || 'Unassigned'
+      if (!deptMap.has(dept)) {
+        deptMap.set(dept, { id: dept, name: dept, totalEmployees: 0, scheduled: 0, scheduledEmployees: [], unfilledCount: 0, coveragePercentage: 0 })
+      }
+      const d = deptMap.get(dept)
+      if (shift.status === 'scheduled') {
+        d.scheduled++
+        d.scheduledEmployees.push({ id: shift.employee.id, name: shift.employee.full_name, shiftType: shift.shift.name })
+      }
+    })
+    deptMap.forEach((d: any) => {
+      d.totalEmployees = departmentEmployeeCounts.value[d.name] ?? 0
+      d.unfilledCount = Math.max(0, d.totalEmployees - d.scheduled)
+      d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
+    })
+    departments.value = Array.from(deptMap.values())
+  }
 }
 
 const filterShifts = () => {
@@ -1199,22 +1281,29 @@ const fetchShiftDefinitions = async () => {
 
 const openEditShiftDialog = (shift: any) => {
   editShiftErrors.value = {}
+  const parseTimeToDate = (value: any): Date | null => {
+    if (!value) return null
+    const raw = String(value)
+    const timePart = raw.includes('T')
+      ? raw.split('T')[1]?.split('.')[0]
+      : raw.includes(' ')
+        ? raw.split(' ')[1]
+        : raw
+    const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(timePart || '').trim())
+    if (!match) return null
+    const hours = Number(match[1])
+    const minutes = Number(match[2])
+    return new Date(0, 0, 0, hours, minutes, 0)
+  }
   editShiftForm.value = {
     id: shift.id,
     name: shift.name || '',
     code: shift.code || '',
     shift_type: shift.shift_type || 'fixed',
-    start_time: shift.start_time ? String(shift.start_time).substring(0, 5) : '09:00',
-    end_time: shift.end_time ? String(shift.end_time).substring(0, 5) : '18:00',
-    break_start: shift.break_start ? String(shift.break_start).substring(0, 5) : '',
-    break_end: shift.break_end ? String(shift.break_end).substring(0, 5) : '',
-    total_hours: String(shift.total_hours || '8'),
+    start_time: parseTimeToDate(shift.start_time) || new Date(0, 0, 0, 9, 0, 0),
+    break_start: parseTimeToDate(shift.break_start),
     week_days: shift.week_days || [],
     grace_period_minutes: shift.grace_period_minutes ?? 15,
-    has_night_diff: shift.has_night_diff || false,
-    night_diff_rate: shift.night_diff_rate || 1.10,
-    min_employees_required: shift.min_employees_required || 1,
-    color: shift.color || '#3b82f6',
     description: shift.description || '',
     is_active: shift.is_active !== undefined ? shift.is_active : true
   }
@@ -1226,24 +1315,24 @@ const updateShift = async () => {
   editShiftErrors.value = {}
   editShiftSaving.value = true
   try {
+    const startTime = toTimeString(editShiftForm.value.start_time)
+    if (!startTime) {
+      showError('Start time is required.')
+      return
+    }
+
     const payload: Record<string, any> = {
       name: editShiftForm.value.name,
-      code: editShiftForm.value.code,
       shift_type: editShiftForm.value.shift_type,
-      start_time: editShiftForm.value.start_time,
-      end_time: editShiftForm.value.end_time,
-      total_hours: Number(editShiftForm.value.total_hours),
+      start_time: startTime,
       week_days: editShiftForm.value.week_days.length > 0 ? editShiftForm.value.week_days : null,
       grace_period_minutes: editShiftForm.value.grace_period_minutes,
-      has_night_diff: editShiftForm.value.has_night_diff,
-      night_diff_rate: editShiftForm.value.has_night_diff ? editShiftForm.value.night_diff_rate : 1.10,
-      min_employees_required: editShiftForm.value.min_employees_required,
-      color: editShiftForm.value.color,
       description: editShiftForm.value.description || null,
       is_active: editShiftForm.value.is_active
     }
-    if (editShiftForm.value.break_start) payload.break_start = editShiftForm.value.break_start
-    if (editShiftForm.value.break_end) payload.break_end = editShiftForm.value.break_end
+
+    const breakStart = toTimeString(editShiftForm.value.break_start)
+    if (breakStart) payload.break_start = breakStart
 
     const response = await hrService.api.put(`api/shift-management/templates/${editShiftForm.value.id}`, payload, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
@@ -1344,6 +1433,12 @@ const fetchEmployeeOptions = async () => {
     })
     if (response.data.success) {
       const employees = response.data.data.data || response.data.data || []
+      const deptCounts: Record<string, number> = {}
+      employees.forEach((e: any) => {
+        const dept = e.department || 'Unassigned'
+        deptCounts[dept] = (deptCounts[dept] || 0) + 1
+      })
+      departmentEmployeeCounts.value = deptCounts
       employeeOptions.value = employees.map((e: any) => ({
         label: `${e.fname} ${e.lname}`,
         value: e.id
@@ -1389,11 +1484,11 @@ const exportReport = () => {
 }
 
 // --- Lifecycle ---
-onMounted(() => {
-  fetchData()
+onMounted(async () => {
+  await fetchEmployeeOptions()
+  await fetchData()
   fetchAssignments()
   fetchSwapRequests()
   fetchShiftDefinitions()
 })
 </script>
-

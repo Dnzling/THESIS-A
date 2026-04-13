@@ -24,9 +24,14 @@ class StoreDashboardController extends Controller
                 ], 400);
             }
 
-            $today = Carbon::today();
-            $last7Days = Carbon::today()->subDays(6);
-            $last30Days = Carbon::today()->subDays(29);
+            // Use application timezone-aware day boundaries, convert to UTC for DB comparisons
+            $tz = config('app.timezone') ?? 'UTC';
+            $nowTz = Carbon::now($tz);
+            $todayStart = $nowTz->copy()->startOfDay()->setTimezone('UTC');
+            $todayEnd = $nowTz->copy()->endOfDay()->setTimezone('UTC');
+
+            $last7Start = $nowTz->copy()->subDays(6)->startOfDay()->setTimezone('UTC');
+            $last30Start = $nowTz->copy()->subDays(29)->startOfDay()->setTimezone('UTC');
 
             $data = [
                 'kpis' => [
@@ -58,22 +63,22 @@ class StoreDashboardController extends Controller
 
                 $data['kpis']['sales_today'] = (float) $ordersQuery
                     ->clone()
-                    ->whereDate('created_at', $today)
+                    ->whereBetween('created_at', [$todayStart->toDateTimeString(), $todayEnd->toDateTimeString()])
                     ->sum('total_amount');
 
                 $data['kpis']['orders_today'] = (int) $ordersQuery
                     ->clone()
-                    ->whereDate('created_at', $today)
+                    ->whereBetween('created_at', [$todayStart->toDateTimeString(), $todayEnd->toDateTimeString()])
                     ->count();
 
                 $sales30d = (float) $ordersQuery
                     ->clone()
-                    ->whereDate('created_at', '>=', $last30Days)
+                    ->where('created_at', '>=', $last30Start->toDateTimeString())
                     ->sum('total_amount');
 
                 $orders30d = (int) $ordersQuery
                     ->clone()
-                    ->whereDate('created_at', '>=', $last30Days)
+                    ->where('created_at', '>=', $last30Start->toDateTimeString())
                     ->count();
 
                 $data['kpis']['sales_30d'] = $sales30d;
@@ -81,19 +86,24 @@ class StoreDashboardController extends Controller
                     ? round($sales30d / $orders30d, 2)
                     : 0;
 
+                // Trend: aggregate totals per day for last 7 days using timezone-aware grouping in PHP
                 $trendRows = $ordersQuery
                     ->clone()
-                    ->select(DB::raw('DATE(created_at) as day'), DB::raw('SUM(total_amount) as total'))
-                    ->whereDate('created_at', '>=', $last7Days)
-                    ->groupBy(DB::raw('DATE(created_at)'))
-                    ->orderBy('day')
+                    ->select('created_at', 'total_amount')
+                    ->whereBetween('created_at', [$last7Start->toDateTimeString(), $todayEnd->toDateTimeString()])
+                    ->orderBy('created_at')
                     ->get();
 
-                $trendMap = $trendRows->pluck('total', 'day');
+                $trendMap = $trendRows->groupBy(function ($row) use ($tz) {
+                    return Carbon::parse($row->created_at)->setTimezone($tz)->toDateString();
+                })->map(function ($group) {
+                    return $group->sum('total_amount');
+                });
+
                 $labels = [];
                 $values = [];
                 for ($i = 0; $i < 7; $i++) {
-                    $date = $last7Days->copy()->addDays($i);
+                    $date = Carbon::now($tz)->subDays(6)->startOfDay()->addDays($i);
                     $key = $date->toDateString();
                     $labels[] = $date->format('M d');
                     $values[] = (float) ($trendMap[$key] ?? 0);
@@ -103,7 +113,7 @@ class StoreDashboardController extends Controller
                 $statusRows = $ordersQuery
                     ->clone()
                     ->select('status', DB::raw('COUNT(*) as total'))
-                    ->whereDate('created_at', '>=', $last30Days)
+                    ->where('created_at', '>=', $last30Start->toDateTimeString())
                     ->groupBy('status')
                     ->orderBy('total', 'desc')
                     ->get();
@@ -140,7 +150,7 @@ class StoreDashboardController extends Controller
 
                 $topProducts = $itemsQuery
                     ->select('items.product_name', DB::raw('SUM(items.quantity) as qty'))
-                    ->whereDate('orders.created_at', '>=', $last30Days)
+                    ->where('orders.created_at', '>=', $last30Start->toDateTimeString())
                     ->groupBy('items.product_name')
                     ->orderByDesc('qty')
                     ->limit(5)

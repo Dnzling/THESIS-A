@@ -26,6 +26,11 @@ class AttendanceResource extends JsonResource
             'employee_id' => $this->employee_id,
             'attendance_date' => $this->attendance_date?->format('Y-m-d'),
             'status' => $this->status,
+            'flags' => [
+                'is_early' => is_string($this->notes) && stripos($this->notes, 'EARLY') !== false,
+                'overtime_not_included' => is_string($this->notes) && stripos($this->notes, 'Overtime not included') !== false,
+                'workhours_counted' => (int) ($this->total_worked_minutes ?? 0) > 0,
+            ],
         ];
 
         // Table view data (always included)
@@ -34,7 +39,7 @@ class AttendanceResource extends JsonResource
                 'id' => $employee?->id,
                 'full_name' => $employee?->fname . ' ' . $employee?->lname,
                 'employee_number' => $employee?->employee_number,
-                'role_name' => $user?->role_name,
+                'role_name' => $user?->role_name ?? $user?->role?->name,
                 'department' => $employee?->department,
                 'branch' => $user?->branch?->name ?? $employee?->branch?->name,
             ],

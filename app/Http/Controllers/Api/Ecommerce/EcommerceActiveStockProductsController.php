@@ -106,7 +106,8 @@ class EcommerceActiveStockProductsController extends Controller
                 'category' => $product->category?->category_name,
                 'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
-                'image' => $this->toAssetUrl($imageAsset?->file_path),
+                // Prefer the signed/served asset URL to avoid relying on /storage symlinks in production.
+                'image' => $imageAsset?->url ? (string) $imageAsset->url : $this->toAssetUrl($imageAsset?->file_path),
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'stock_status' => (string) ($inventory?->stock_status ?? 'out_of_stock'),
             ];

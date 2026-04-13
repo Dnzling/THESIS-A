@@ -1,6 +1,7 @@
 <!-- views/system/hr/CreateShift.vue -->
 <template>
   <div class="p-6 max-w-4xl mx-auto">
+    <ConfirmDialog />
     <!-- Header -->
     <div class="flex justify-between items-center mb-6">
       <div>
@@ -25,23 +26,10 @@
               <small class="text-red-500" v-if="errors.name">{{ errors.name[0] }}</small>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Shift Code <span class="text-red-500">*</span></label>
-              <InputText v-model="form.code" placeholder="e.g., MORN-01" class="w-full"
-                :class="{ 'p-invalid': errors.code }" />
-              <small class="text-red-500" v-if="errors.code">{{ errors.code[0] }}</small>
-            </div>
-            <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Shift Type <span class="text-red-500">*</span></label>
               <Select v-model="form.shift_type" :options="shiftTypeOptions" optionLabel="label" optionValue="value"
                 placeholder="Select type" class="w-full" :class="{ 'p-invalid': errors.shift_type }" />
               <small class="text-red-500" v-if="errors.shift_type">{{ errors.shift_type[0] }}</small>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Color</label>
-              <div class="flex gap-2 items-center">
-                <input type="color" v-model="form.color" class="h-10 w-16 rounded border border-gray-300 cursor-pointer" />
-                <InputText v-model="form.color" placeholder="#3b82f6" class="flex-1" />
-              </div>
             </div>
           </div>
           <div class="mt-4">
@@ -57,28 +45,21 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Start Time <span class="text-red-500">*</span></label>
-              <InputText v-model="form.start_time" type="time" class="w-full"
-                :class="{ 'p-invalid': errors.start_time }" @change="recalcHours" />
+              <DatePicker v-model="form.start_time" timeOnly hourFormat="12" class="w-full"
+                :class="{ 'p-invalid': errors.start_time }" />
               <small class="text-red-500" v-if="errors.start_time">{{ errors.start_time[0] }}</small>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">End Time <span class="text-red-500">*</span></label>
-              <InputText v-model="form.end_time" type="time" class="w-full"
-                :class="{ 'p-invalid': errors.end_time }" @change="recalcHours" />
-              <small class="text-red-500" v-if="errors.end_time">{{ errors.end_time[0] }}</small>
+              <InputText :modelValue="endTimeDisplay" disabled class="w-full bg-gray-50" />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Break Start</label>
-              <InputText v-model="form.break_start" type="time" class="w-full" />
+              <DatePicker v-model="form.break_start" timeOnly hourFormat="12" class="w-full" />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Break End</label>
-              <InputText v-model="form.break_end" type="time" class="w-full" />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Total Hours <span class="text-red-500">*</span></label>
-              <InputText v-model="form.total_hours" class="w-full bg-gray-50" placeholder="Auto-calculated" />
-              <small class="text-red-500" v-if="errors.total_hours">{{ errors.total_hours[0] }}</small>
+              <InputText :modelValue="breakEndDisplay" disabled class="w-full bg-gray-50" />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Grace Period (minutes) <span class="text-red-500">*</span></label>
@@ -104,46 +85,12 @@
           </div>
         </div>
 
-        <!-- Assignment Rules -->
-        <div class="border-t border-gray-100 pt-6">
-          <h2 class="font-semibold text-gray-700 mb-4">Assignment Rules</h2>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Min Employees Required <span class="text-red-500">*</span></label>
-              <InputNumber v-model="form.min_employees_required" :min="1" :max="100" class="w-full"
-                :class="{ 'p-invalid': errors.min_employees_required }" />
-              <small class="text-red-500" v-if="errors.min_employees_required">{{ errors.min_employees_required[0] }}</small>
-            </div>
-          </div>
-        </div>
-
-        <!-- Night Differential -->
-        <div class="border-t border-gray-100 pt-6">
-          <h2 class="font-semibold text-gray-700 mb-4">Night Differential</h2>
-          <div class="space-y-4">
-            <div class="flex items-center gap-3">
-              <Checkbox v-model="form.has_night_diff" inputId="hasNightDiff" binary />
-              <label for="hasNightDiff" class="text-sm font-medium">Enable Night Differential</label>
-            </div>
-            <div v-if="form.has_night_diff" class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Night Diff Rate <span class="text-red-500">*</span></label>
-                <InputNumber v-model="form.night_diff_rate" :min="1" :max="3" :step="0.01" :minFractionDigits="2"
-                  :maxFractionDigits="2" class="w-full" placeholder="e.g., 1.10"
-                  :class="{ 'p-invalid': errors.night_diff_rate }" />
-                <small class="text-gray-400 text-xs">Multiplier (e.g., 1.10 = 10% extra)</small>
-                <small class="text-red-500 block" v-if="errors.night_diff_rate">{{ errors.night_diff_rate[0] }}</small>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
 
       <!-- Footer Actions -->
       <div class="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex justify-end gap-2">
         <Button label="Cancel" icon="pi pi-times" severity="secondary" outlined @click="cancel" />
-        <Button label="Create Shift" icon="pi pi-check" severity="info" @click="createShift" :loading="saving" />
+        <Button label="Create Shift" icon="pi pi-check" severity="info" @click="confirmCreateShift" :loading="saving" />
       </div>
     </div>
 
@@ -183,10 +130,14 @@ import { useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
+import DatePicker from 'primevue/datepicker'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const toast = useToast()
+const confirm = useConfirm()
 
 // --- State ---
 const saving = ref(false)
@@ -198,19 +149,11 @@ const errors = ref<Record<string, string[]>>({})
 // --- Form ---
 const form = ref({
   name: '',
-  code: '',
   shift_type: 'fixed' as string,
-  start_time: '09:00',
-  end_time: '18:00',
-  break_start: '' as string,
-  break_end: '' as string,
-  total_hours: '8',
+  start_time: new Date(0, 0, 0, 9, 0, 0) as Date | null,
+  break_start: null as Date | null,
   week_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as string[],
   grace_period_minutes: 15 as number,
-  has_night_diff: false,
-  night_diff_rate: 1.10 as number,
-  min_employees_required: 1 as number,
-  color: '#3b82f6',
   description: ''
 })
 
@@ -235,53 +178,78 @@ const weekDays = [
 const toggleDay = (day: string) => {
   const index = form.value.week_days.indexOf(day)
   if (index === -1) {
+    if (form.value.week_days.length >= 5) {
+      toast.add({ severity: 'warn', summary: 'Limit reached', detail: 'Select up to 5 working days only.', life: 2500 })
+      return
+    }
     form.value.week_days.push(day)
   } else {
     form.value.week_days.splice(index, 1)
   }
 }
 
-const recalcHours = () => {
-  if (!form.value.start_time || !form.value.end_time) return
-  const startParts = form.value.start_time.split(':').map(Number)
-  const endParts = form.value.end_time.split(':').map(Number)
-  const sh = startParts[0] ?? 0
-  const sm = startParts[1] ?? 0
-  const eh = endParts[0] ?? 0
-  const em = endParts[1] ?? 0
-  let totalMins = (eh * 60 + em) - (sh * 60 + sm)
-  if (totalMins < 0) totalMins += 24 * 60
-  form.value.total_hours = String(parseFloat((totalMins / 60).toFixed(2)))
+const toTimeString = (date: Date | null): string | null => {
+  if (!date) return null
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+const addHours = (date: Date | null, hours: number): Date | null => {
+  if (!date) return null
+  const next = new Date(date.getTime())
+  next.setHours(next.getHours() + hours)
+  return next
+}
+
+const endTimeDisplay = computed(() => {
+  const end = addHours(form.value.start_time, 8)
+  return end ? end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'
+})
+
+const breakEndDisplay = computed(() => {
+  const end = addHours(form.value.break_start, 1)
+  return end ? end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'
+})
+
+const confirmCreateShift = () => {
+  confirm.require({
+    header: 'Create Shift',
+    message: 'Save this shift? End time will be set to 8 hours after the start time.',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Save',
+    rejectLabel: 'Cancel',
+    accept: () => createShift(),
+  })
 }
 
 const createShift = async () => {
   errors.value = {}
 
-  if (!form.value.name || !form.value.code || !form.value.start_time || !form.value.end_time) {
+  if (!form.value.name || !form.value.start_time) {
     toast.add({ severity: 'warn', summary: 'Validation', detail: 'Please fill in all required fields', life: 3000 })
     return
   }
 
   saving.value = true
   try {
+    const startTime = toTimeString(form.value.start_time)
+    if (!startTime) {
+      toast.add({ severity: 'warn', summary: 'Validation', detail: 'Start time is required.', life: 3000 })
+      return
+    }
+
     const payload: Record<string, any> = {
       name: form.value.name,
-      code: form.value.code,
       shift_type: form.value.shift_type,
-      start_time: form.value.start_time,
-      end_time: form.value.end_time,
-      total_hours: Number(form.value.total_hours),
+      start_time: startTime,
       week_days: form.value.week_days.length > 0 ? form.value.week_days : null,
       grace_period_minutes: form.value.grace_period_minutes,
-      has_night_diff: form.value.has_night_diff,
-      night_diff_rate: form.value.has_night_diff ? form.value.night_diff_rate : 1.10,
-      min_employees_required: form.value.min_employees_required,
-      color: form.value.color,
       description: form.value.description || null
     }
 
-    if (form.value.break_start) payload.break_start = form.value.break_start
-    if (form.value.break_end) payload.break_end = form.value.break_end
+    const breakStart = toTimeString(form.value.break_start)
+    if (breakStart) payload.break_start = breakStart
 
     const response = await hrService.api.post('/api/shifts', payload, {
       headers: { Authorization: `Bearer ${authStore.token}` }
@@ -315,22 +283,13 @@ const createAnother = () => {
   showSuccessDialog.value = false
   form.value = {
     name: '',
-    code: '',
     shift_type: 'fixed' as string,
-    start_time: '09:00',
-    end_time: '18:00',
-    break_start: '' as string,
-    break_end: '' as string,
-    total_hours: '8',
+    start_time: new Date(0, 0, 0, 9, 0, 0),
+    break_start: null,
     week_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as string[],
     grace_period_minutes: 15 as number,
-    has_night_diff: false,
-    night_diff_rate: 1.10 as number,
-    min_employees_required: 1 as number,
-    color: '#3b82f6',
     description: ''
   }
   errors.value = {}
 }
 </script>
-

@@ -19,9 +19,27 @@ use Illuminate\Validation\ValidationException;
 use App\Models\Core\ActivityLog;
 use Carbon\CarbonInterface;
 use App\Services\Finance\CashflowService;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 class PayrollController extends Controller
 {
+    private function renderBladePdf(string $view, array $data, string $paper = 'A4', string $orientation = 'portrait'): string
+    {
+        $html = view($view, $data)->render();
+
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('isHtml5ParserEnabled', true);
+
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper($paper, $orientation);
+        $dompdf->render();
+
+        return $dompdf->output();
+    }
+
     public function index(Request $request)
     {
         try {
@@ -185,6 +203,17 @@ class PayrollController extends Controller
 
                     // Calculate payroll
                     $payrollData = $this->calculateEmployeePayroll($employee, $payPeriod);
+
+                    // Validation: flag mismatch when period is short but base looks like full month
+                    $monthly = (float) ($employee->salary ?? 0);
+                    $baseForPeriod = $payrollData['base_salary'] ?? 0;
+                    $periodDays = $payrollData['payslip_snapshot']['period_days'] ?? null;
+                    if ($periodDays !== null && $periodDays < 15 && $monthly > 0) {
+                        if ($baseForPeriod >= ($monthly * 0.9)) {
+                            $payrollData['mismatch_flag'] = true;
+                            $payrollData['mismatch_reason'] = 'Pay period is short but base salary equals near-full month; check pay_period or proration.';
+                        }
+                    }
 
                     if ($existing) {
                         // Update existing payroll
@@ -599,9 +628,9 @@ class PayrollController extends Controller
             )
             ->first();
 
-        // 2. Calculate hourly rate
-        $hourlyRate = $employee->salary / 160; // 160 hours per month (20 days × 8 hours)
-        $dailyRate = $employee->salary / 20; // 20 working days per month
+        // 2. Calculate hourly rate (use PayrollService for canonical derivation)
+        $hourlyRate = \App\Services\Hr\PayrollService::deriveHourlyRate($employee);
+        $dailyRate = ($employee->salary ?? 0) / 30; // use 30-day month for proration
 
         // 3. Calculate regular hours worked
         $regularHours = ($attendance->total_minutes ?? 0) / 60;
@@ -641,7 +670,15 @@ class PayrollController extends Controller
         }
 
         // 10. Calculate totals
-        $baseSalary = $employee->salary / 2; // Monthly salary
+        // Determine days in period for proration
+        $periodDays = Carbon::parse($period->start_date)->diffInDays(Carbon::parse($period->cutoff_date)) + 1;
+        // If employee is monthly, prorate base salary by days in period; if hourly, compute from hours
+        if (($employee->pay_type ?? 'monthly') === 'hourly') {
+            $baseSalary = $regularHours * $hourlyRate;
+        } else {
+            $monthly = (float) ($employee->salary ?? 0);
+            $baseSalary = round($monthly / 30 * $periodDays, 2);
+        }
         $overtimeHours = ($attendance->total_overtime ?? 0) / 60;
         $overtimeRate = config('payroll.overtime_rate', $hourlyRate * 1.25);
         $overtimeAmount = $overtimeHours * $overtimeRate;
@@ -674,6 +711,22 @@ class PayrollController extends Controller
         $netSalary = $grossPay - $totalDeductions - $taxAmount;
 
         // Map only to columns that exist in the payrolls table
+        // Also include hourly_rate for persistence and a basic snapshot
+        $snapshot = [
+            'derived_hourly_rate' => $hourlyRate,
+            'period_days' => $periodDays,
+            'regular_hours' => $regularHours,
+            'overtime_hours' => $overtimeHours ?? 0,
+            'calculations' => [
+                'base_salary' => $baseSalary,
+                'overtime_amount' => $overtimeAmount,
+                'gross_pay' => $grossPay ?? null,
+                'deductions_total' => $totalDeductions ?? null,
+                'tax_amount' => $taxAmount ?? null,
+                'net_salary' => $netSalary ?? null,
+            ]
+        ];
+
         return [
             'base_salary'       => $baseSalary,
             'overtime_hours'    => $overtimeHours,
@@ -1304,6 +1357,18 @@ class PayrollController extends Controller
 
                     // Calculate and save
                     $payrollData = $this->calculateEmployeePayroll($employee, $payPeriod);
+
+                    // Validation: flag mismatch when period is short but base looks like full month
+                    $monthly = (float) ($employee->salary ?? 0);
+                    $baseForPeriod = $payrollData['base_salary'] ?? 0;
+                    $periodDays = $payrollData['payslip_snapshot']['period_days'] ?? null;
+                    if ($periodDays !== null && $periodDays < 15 && $monthly > 0) {
+                        // If base is >= 90% of monthly, likely mismatch
+                        if ($baseForPeriod >= ($monthly * 0.9)) {
+                            $payrollData['mismatch_flag'] = true;
+                            $payrollData['mismatch_reason'] = 'Pay period is short but base salary equals near-full month; check pay_period or proration.';
+                        }
+                    }
 
                     if ($existing) {
                         $existing->update($payrollData);
@@ -2015,18 +2080,25 @@ class PayrollController extends Controller
 
     public function downloadPayslipPdf($id)
     {
+        if (!class_exists(\Dompdf\Dompdf::class)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF generation dependency is not installed.'
+            ], 503);
+        }
+
         $payroll = Payroll::with(['employee.user', 'payPeriod', 'items'])
             ->findOrFail($id);
 
         $printedAt = now();
 
-        $pdf = app('dompdf.wrapper')->loadView('hr.payslip-pdf', [
+        $pdfContent = $this->renderBladePdf('hr.payslip-pdf', [
             'payroll' => $payroll,
             'employee' => $payroll->employee,
             'user' => $payroll->employee?->user,
             'payPeriod' => $payroll->payPeriod,
             'printedAt' => $printedAt,
-        ])->setPaper('A4');
+        ], 'A4', 'portrait');
 
         ActivityLog::record(
             'payslip.downloaded',
@@ -2038,23 +2110,33 @@ class PayrollController extends Controller
 
         $fileName = 'payslip_' . ($payroll->employee?->employee_number ?? $payroll->id) . '.pdf';
 
-        return $pdf->download($fileName);
+        return response($pdfContent, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+        ]);
     }
 
     public function printPayslip($id)
     {
+        if (!class_exists(\Dompdf\Dompdf::class)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF generation dependency is not installed.'
+            ], 503);
+        }
+
         $payroll = Payroll::with(['employee.user', 'payPeriod', 'items'])
             ->findOrFail($id);
 
         $printedAt = now();
 
-        $pdf = app('dompdf.wrapper')->loadView('hr.payslip-pdf', [
+        $pdfContent = $this->renderBladePdf('hr.payslip-pdf', [
             'payroll' => $payroll,
             'employee' => $payroll->employee,
             'user' => $payroll->employee?->user,
             'payPeriod' => $payroll->payPeriod,
             'printedAt' => $printedAt,
-        ])->setPaper('A4');
+        ], 'A4', 'portrait');
 
         ActivityLog::record(
             'payslip.printed',
@@ -2064,11 +2146,21 @@ class PayrollController extends Controller
             $payroll->id
         );
 
-        return $pdf->stream('payslip_' . $payroll->id . '.pdf');
+        return response($pdfContent, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="payslip_' . $payroll->id . '.pdf"',
+        ]);
     }
 
     public function printEmployeePayrollRundown(Request $request, $employeeId)
     {
+        if (!class_exists(\Dompdf\Dompdf::class)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PDF generation dependency is not installed.'
+            ], 503);
+        }
+
         $user = Auth::user();
 
         if (!$user->store_id) {
@@ -2143,7 +2235,7 @@ class PayrollController extends Controller
 
         $printedAt = now();
 
-        $pdf = app('dompdf.wrapper')->loadView('hr.payroll-rundown-pdf', [
+        $pdfContent = $this->renderBladePdf('hr.payroll-rundown-pdf', [
             'employee' => $employee,
             'rows' => $rows,
             'totals' => $totals,
@@ -2154,9 +2246,12 @@ class PayrollController extends Controller
                 'status' => $request->status,
             ],
             'printedAt' => $printedAt,
-        ])->setPaper('A4', 'portrait');
+        ], 'A4', 'portrait');
 
-        return $pdf->stream('payroll_rundown_' . ($employee->employee_number ?? $employee->id) . '.pdf');
+        return response($pdfContent, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="payroll_rundown_' . ($employee->employee_number ?? $employee->id) . '.pdf"',
+        ]);
     }
 
     /**

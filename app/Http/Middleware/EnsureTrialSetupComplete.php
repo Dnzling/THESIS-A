@@ -33,15 +33,6 @@ class EnsureTrialSetupComplete
         $moduleFromPath = $this->resolveModuleFromPath($path);
         $tier = $this->resolveTier($profile);
 
-        if ($tier === 'small') {
-            if ($moduleFromPath === 'hr' && !$this->isLitePath($path, '/hr/employees')) {
-                return redirect('/hr/employees');
-            }
-            if ($moduleFromPath === 'finance' && !$this->isLitePath($path, '/finance')) {
-                return redirect('/finance');
-            }
-        }
-
         if ($moduleFromPath && !empty($allowedModules) && !in_array($moduleFromPath, $allowedModules, true)) {
             return redirect('/store/setup-required?module=' . $moduleFromPath);
         }

@@ -272,8 +272,6 @@ class InvoiceController extends Controller
                 'submitted_by_supplier' => 'nullable|boolean',
             ]);
 
-            DB::beginTransaction();
-
             $po = PurchaseOrder::where('store_id', auth()->user()->store_id)
                 ->with('items')
                 ->findOrFail($validated['purchase_order_id']);
@@ -292,6 +290,8 @@ class InvoiceController extends Controller
                     'message' => 'Invoice can only be generated for approved or active supplier purchase orders.',
                 ], 422);
             }
+
+            DB::beginTransaction();
 
             $grnQuery = \App\Models\Procurement\Receiving\GoodsReceipt::with('items')
                 ->where('purchase_order_id', $po->id);
@@ -359,10 +359,18 @@ class InvoiceController extends Controller
                 }
             }
 
+            if (count($itemsPayload) === 0) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No invoiceable items found for this PO/GRN.',
+                ], 422);
+            }
+
             $taxRate = $contract->is_tax_exempt ? 0.0 : (float) ($contract->tax_rate ?? 0);
             $discountRate = (float) ($contract->discount_percentage ?? 0);
             $taxAmountTotal = round(($invoiceAmount * $taxRate) / 100, 2);
-            $shippingCost = $po->shipping_cost;
+            $shippingCost = (float) ($po->shipping_cost ?? 0);
             $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
             $netAmount = $invoiceAmount + $taxAmountTotal + $shippingCost - $discountAmount;
 
@@ -392,7 +400,17 @@ class InvoiceController extends Controller
                 InvoiceItem::create(array_merge($item, ['invoice_id' => $invoice->id]));
             }
 
-            $invoice->performThreeWayMatch();
+            try {
+                $invoice->performThreeWayMatch();
+            } catch (\Throwable $matchError) {
+                Log::warning('Invoice three-way match failed during GRN draft creation', [
+                    'invoice_id' => $invoice->id,
+                    'purchase_order_id' => $po->id,
+                    'goods_receipt_id' => $grn?->id,
+                    'error' => $matchError->getMessage(),
+                ]);
+                // Keep draft created; user can manually match later.
+            }
 
             // Supplier balance is recognized when Finance actually pays the invoice.
 

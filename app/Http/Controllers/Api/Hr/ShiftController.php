@@ -9,6 +9,7 @@ use App\Models\Core\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class ShiftController extends Controller
 {
@@ -43,20 +44,15 @@ class ShiftController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'code' => 'nullable|string|max:50|unique:shifts',
+            // Code is auto-generated when omitted.
+            'code' => 'nullable|string|max:50',
             'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i|after:start_time',
             'break_start' => 'nullable|date_format:H:i',
-            'break_end' => 'nullable|date_format:H:i|after:break_start',
-            'total_hours' => 'required|numeric|min:0|max:24',
             'shift_type' => 'required|in:fixed,rotating,flexible',
             'week_days' => 'nullable|array',
-            'week_days.*' => 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'week_days' => 'nullable|array|max:5',
+            'week_days.*' => 'in:monday,tuesday,wednesday,thursday,friday,saturday',
             'grace_period_minutes' => 'required|integer|min:0|max:60',
-            'has_night_diff' => 'boolean',
-            'night_diff_rate' => 'required_if:has_night_diff,true|numeric|min:1|max:3',
-            'min_employees_required' => 'required|integer|min:1',
-            'color' => 'nullable|string|max:20',
             'description' => 'nullable|string'
         ]);
 
@@ -67,10 +63,34 @@ class ShiftController extends Controller
             ], 422);
         }
 
-        $payload = $request->all();
+        $payload = $validator->validated();
         if (empty($payload['code'])) {
             $payload['code'] = $this->generateShiftCode((string) $payload['name'], (int) $storeId);
         }
+
+        // Auto-calculate end_time as start_time + 8 hours.
+        $start = Carbon::createFromFormat('H:i', (string) $payload['start_time']);
+        $end = (clone $start)->addHours(8);
+        $payload['end_time'] = $end->format('H:i');
+
+        // Auto-fill break_end as break_start + 1 hour, when break_start is provided.
+        if (!empty($payload['break_start'])) {
+            $breakStart = Carbon::createFromFormat('H:i', (string) $payload['break_start']);
+            $payload['break_end'] = (clone $breakStart)->addHour()->format('H:i');
+
+            // Validate break window is within shift window (same-day time arithmetic; overnight not supported here).
+            if ($breakStart->lt($start) || $breakStart->gt($end)) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['break_start' => ['Break start must be within the shift schedule.']],
+                ], 422);
+            }
+        } else {
+            $payload['break_end'] = null;
+        }
+
+        // Total hours derived from start/end difference.
+        $payload['total_hours'] = round($start->diffInMinutes($end) / 60, 2);
 
         $shift = Shift::create(array_merge(
             $payload,
@@ -122,20 +142,15 @@ class ShiftController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:100',
-            'code' => 'sometimes|string|max:50|unique:shifts,code,' . $id,
+            // Code is optional; keep existing if omitted.
+            'code' => 'sometimes|string|max:50',
             'start_time' => 'sometimes|date_format:H:i',
-            'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'break_start' => 'nullable|date_format:H:i',
-            'break_end' => 'nullable|date_format:H:i|after:break_start',
-            'total_hours' => 'sometimes|numeric|min:0|max:24',
             'shift_type' => 'sometimes|in:fixed,rotating,flexible',
             'week_days' => 'nullable|array',
-            'week_days.*' => 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'week_days' => 'nullable|array|max:5',
+            'week_days.*' => 'in:monday,tuesday,wednesday,thursday,friday,saturday',
             'grace_period_minutes' => 'sometimes|integer|min:0|max:60',
-            'has_night_diff' => 'boolean',
-            'night_diff_rate' => 'required_if:has_night_diff,true|numeric|min:1|max:3',
-            'min_employees_required' => 'sometimes|integer|min:1',
-            'color' => 'nullable|string|max:20',
             'is_active' => 'boolean',
             'description' => 'nullable|string'
         ]);
@@ -147,7 +162,41 @@ class ShiftController extends Controller
             ], 422);
         }
 
-        $shift->update($request->all());
+        $payload = $validator->validated();
+
+        // If name is updated and code is missing, keep existing code.
+        if (array_key_exists('name', $payload) && !array_key_exists('code', $payload)) {
+            // no-op
+        }
+
+        // Always keep schedule aligned: end_time is derived from start_time.
+        $resolvedStart = array_key_exists('start_time', $payload) ? (string) $payload['start_time'] : (string) $shift->start_time;
+        $start = Carbon::createFromFormat('H:i', substr($resolvedStart, 0, 5));
+        $end = (clone $start)->addHours(8);
+        $payload['end_time'] = $end->format('H:i');
+        $payload['total_hours'] = round($start->diffInMinutes($end) / 60, 2);
+
+        // Break end derived from break start.
+        if (array_key_exists('break_start', $payload)) {
+            if (!empty($payload['break_start'])) {
+                $breakStart = Carbon::createFromFormat('H:i', (string) $payload['break_start']);
+                $payload['break_end'] = (clone $breakStart)->addHour()->format('H:i');
+
+                if ($breakStart->lt($start) || $breakStart->gt($end)) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => ['break_start' => ['Break start must be within the shift schedule.']],
+                    ], 422);
+                }
+            } else {
+                $payload['break_end'] = null;
+            }
+        }
+
+        // Force-remove legacy fields if sent by older UI.
+        unset($payload['color'], $payload['min_employees_required'], $payload['has_night_diff'], $payload['night_diff_rate']);
+
+        $shift->update($payload);
 
         return response()->json([
             'success' => true,

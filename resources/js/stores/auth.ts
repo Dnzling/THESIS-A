@@ -356,15 +356,20 @@ export const useAuthStore = defineStore('auth', () => {
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
             document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
 
-            if (roleExcludedFromGeoloc || customerUser) {
+            // Load RBAC navigation immediately for roles that rely on DB permissions.
+            // (Fixes initial load showing only the account/profile nav until a reload.)
+            const shouldLoadRbac = !customerUser && normalizedRole !== 'super_admin' && !normalizedRole.includes('supplier')
+            if (shouldLoadRbac) {
+                permissionsLoaded.value = false
+                await loadPermissions()
+            } else {
                 permissions.value = []
                 navigation.value = []
                 permissionsLoaded.value = true
-            } else {
-                // Load permissions ONCE
-                await loadPermissions()
+            }
 
-                // Clock in ONLY ONCE
+            // Clock-in is separate from RBAC loading; some roles are excluded from geofence/clock-in.
+            if (!roleExcludedFromGeoloc && !customerUser) {
                 try {
                     await axios.post('/api/attendances/clock-in', {
                         user_id: userData.id,

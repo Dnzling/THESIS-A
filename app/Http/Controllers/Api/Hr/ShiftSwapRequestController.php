@@ -601,33 +601,46 @@ class ShiftSwapRequestController extends Controller
         }
 
         $requestor = $requestorSchedule->employee;
-        $roleId = $requestor?->user?->role_id;
+        $inferredRoleId = $requestor?->user?->role_id;
 
-        if (!$requestor || !$roleId) {
+        if (!$requestor || !$inferredRoleId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Requestor role not found'
             ], 422);
         }
 
-        $candidates = ShiftSchedule::with(['shift', 'employee.user'])
+        // Allow client to pass explicit filters; otherwise infer from requestor
+        $filterRoleId = $request->get('role_id', $inferredRoleId);
+        $filterShiftId = $request->get('shift_id', $requestorSchedule->shift_id ?? null);
+        $filterBranchId = $request->get('branch_id', $requestor->branch_id ?? null);
+        $filterStoreId = $request->get('store_id', $requestor->store_id ?? $storeId);
+
+        $candidatesQuery = ShiftSchedule::with(['shift', 'employee.user'])
             ->whereDate('schedule_date', $requestorSchedule->schedule_date)
             ->where('status', 'scheduled')
-            ->whereHas('employee', function ($q) use ($storeId, $roleId, $requestor) {
-                $q->where('store_id', $storeId)
+            ->whereHas('employee', function ($q) use ($filterStoreId, $requestor, $filterRoleId, $filterBranchId) {
+                $q->where('store_id', $filterStoreId)
                     ->where('id', '!=', $requestor->id)
-                    ->whereHas('user', function ($u) use ($roleId) {
-                        $u->where('role_id', $roleId);
+                    ->whereHas('user', function ($u) use ($filterRoleId) {
+                        $u->where('role_id', $filterRoleId);
                     });
-            })
-            ->orderBy('schedule_date')
-            ->get()
-            ->map(function ($schedule) {
-                return [
-                    'schedule' => $schedule,
-                    'employee' => $schedule->employee,
-                ];
+
+                if ($filterBranchId) {
+                    $q->where('branch_id', $filterBranchId);
+                }
             });
+
+        if ($filterShiftId) {
+            $candidatesQuery->where('shift_id', $filterShiftId);
+        }
+
+        $candidates = $candidatesQuery->orderBy('schedule_date')->get()->map(function ($schedule) {
+            return [
+                'schedule' => $schedule,
+                'employee' => $schedule->employee,
+            ];
+        });
 
         return response()->json([
             'success' => true,

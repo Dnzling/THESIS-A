@@ -159,16 +159,6 @@
                     @click="approveOne(data.payrollId, data.payroll.status)"
                   />
                   <Button
-                    v-if="canReleasePayroll(data.payroll.status)"
-                    icon="pi pi-wallet"
-                    text
-                    rounded
-                    severity="info"
-                    aria-label="Release Payroll"
-                    :loading="releasingPayrollId === data.payrollId"
-                    @click="releaseOne(data.payrollId)"
-                  />
-                  <Button
                     icon="pi pi-info-circle"
                     text
                     rounded

@@ -283,8 +283,12 @@
                 <p class="text-sm font-semibold text-slate-800">Payslips</p>
                 <p class="text-xs text-slate-500">Latest payroll entries.</p>
               </div>
-              <div class="text-xs text-slate-500" v-if="payslipSummary.total_amount">
-                Total Net: {{ formatCurrency(payslipSummary.total_amount) }}
+              <div class="flex items-center gap-2">
+                <div class="text-xs text-slate-500" v-if="payslipSummary.total_amount">
+                  Total Net: {{ formatCurrency(payslipSummary.total_amount) }}
+                </div>
+                <Button label="Print Rundown" icon="pi pi-print" severity="warning" outlined class="small-pill"
+                  :disabled="!employee?.id" @click="printPayrollRundown" />
               </div>
             </div>
             <div v-if="loadingPayslips" class="mt-4 flex justify-center">
@@ -299,6 +303,14 @@
                 <div class="mt-1 text-xs text-slate-500">
                   Net Pay: {{ formatCurrency(payslip.net_salary || payslip.net_pay || 0) }}
                   <span v-if="payslip.payment_date"> · Paid {{ formatDateShort(payslip.payment_date) }}</span>
+                </div>
+                <div class="mt-3 flex items-center gap-2">
+                  <Button label="View" icon="pi pi-eye" severity="info" text class="small-pill"
+                    @click="openPayslipDetails(payslip)" />
+                  <Button label="Download PDF" icon="pi pi-download" severity="secondary" text class="small-pill"
+                    @click="downloadPayslipPdf(payslip)" />
+                  <Button label="Print" icon="pi pi-print" severity="warning" text class="small-pill"
+                    @click="printPayslipPdf(payslip)" />
                 </div>
               </div>
               <p v-if="!payslips.length" class="text-sm text-slate-400">No payslips available yet.</p>
@@ -543,6 +555,66 @@
         :loading="savingOvertime" @click="submitOvertimeRequest" />
     </template>
   </Dialog>
+
+  <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '760px' }" modal>
+    <div v-if="selectedPayslip" class="space-y-4 text-sm">
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <p><span class="font-semibold text-slate-700">Employee:</span> {{ fullName || '-' }}</p>
+          <p><span class="font-semibold text-slate-700">Employee #:</span> {{ employee?.employee_number || '-' }}</p>
+          <p><span class="font-semibold text-slate-700">Pay Period:</span> {{ getPayPeriodLabel(selectedPayslip) }}</p>
+          <p><span class="font-semibold text-slate-700">Status:</span> {{ String(selectedPayslip.status || '-').toUpperCase() }}</p>
+          <p><span class="font-semibold text-slate-700">Payment Date:</span> {{ formatDateShort(selectedPayslip.payment_date || selectedPayslip.paid_at || null) }}</p>
+          <p><span class="font-semibold text-slate-700">Payment Method:</span> {{ selectedPayslip.payment_method || '-' }}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+          <p class="mb-2 font-semibold text-emerald-800">Earnings</p>
+          <div class="space-y-1">
+            <p class="flex justify-between"><span>Base Salary</span><span>{{ formatCurrency(selectedPayslip.base_salary) }}</span></p>
+            <p class="flex justify-between"><span>Overtime</span><span>{{ formatCurrency(selectedPayslip.overtime_amount) }}</span></p>
+            <p class="flex justify-between"><span>Bonuses</span><span>{{ formatCurrency(selectedPayslip.bonuses_total) }}</span></p>
+            <p class="flex justify-between"><span>Allowances</span><span>{{ formatCurrency(selectedPayslip.allowances_total) }}</span></p>
+            <p class="flex justify-between border-t border-emerald-300 pt-1 font-semibold">
+              <span>Gross Pay</span>
+              <span>{{ formatCurrency(calculateGrossPay(selectedPayslip)) }}</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
+          <p class="mb-2 font-semibold text-rose-800">Deductions</p>
+          <div v-if="getDeductionItems(selectedPayslip).length" class="space-y-1">
+            <p v-for="item in getDeductionItems(selectedPayslip)" :key="`${selectedPayslip.id}-${item.id || item.name}`" class="flex justify-between">
+              <span>{{ item.name }}</span>
+              <span>-{{ formatCurrency(item.amount) }}</span>
+            </p>
+          </div>
+          <p v-else class="text-slate-500">No itemized deductions</p>
+          <p class="mt-1 flex justify-between"><span>Tax</span><span>-{{ formatCurrency(selectedPayslip.tax_amount) }}</span></p>
+          <p class="flex justify-between border-t border-rose-300 pt-1 font-semibold">
+            <span>Total Deductions</span>
+            <span>-{{ formatCurrency(Number(selectedPayslip.deductions_total || 0) + Number(selectedPayslip.tax_amount || 0)) }}</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <p class="flex items-center justify-between text-base font-semibold text-blue-900">
+          <span>Net Pay</span>
+          <span>{{ formatCurrency(selectedPayslip.net_salary || selectedPayslip.net_pay || 0) }}</span>
+        </p>
+      </div>
+    </div>
+
+    <template #footer>
+      <Button label="Close" text @click="showPayslipDialog = false" />
+      <Button label="Download PDF" icon="pi pi-download" severity="secondary" @click="downloadPayslipPdf(selectedPayslip)" />
+      <Button label="Print" icon="pi pi-print" severity="info" @click="printPayslipPdf(selectedPayslip)" />
+    </template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -577,6 +649,7 @@ const showPasswordDialog = ref(false)
 const showLeaveDialog = ref(false)
 const showShiftSwapDialog = ref(false)
 const showOvertimeDialog = ref(false)
+const showPayslipDialog = ref(false)
 
 const user = ref<any | null>(null)
 const employee = ref<any | null>(null)
@@ -659,6 +732,7 @@ const swapRecords = ref<any[]>([])
 const payslips = ref<any[]>([])
 const overtimeRecords = ref<any[]>([])
 const payslipSummary = ref<any>({})
+const selectedPayslip = ref<any | null>(null)
 
 const initials = computed(() => {
   const first = user.value?.fname?.[0] || ''
@@ -1104,6 +1178,100 @@ const loadPayslips = async () => {
   }
 }
 
+const getPayPeriodLabel = (payslip: any) => {
+  return payslip?.pay_period?.name || payslip?.pay_period_name || payslip?.pay_period_label || 'Pay Period'
+}
+
+const calculateGrossPay = (payslip: any) => {
+  const base = Number(payslip?.base_salary || 0)
+  const overtime = Number(payslip?.overtime_amount || 0)
+  const bonuses = Number(payslip?.bonuses_total || 0)
+  const allowances = Number(payslip?.allowances_total || 0)
+  return base + overtime + bonuses + allowances
+}
+
+const getDeductionItems = (payslip: any) => {
+  const items = payslip?.items || payslip?.deduction_items || []
+  if (!Array.isArray(items)) return []
+  return items.filter((item: any) => String(item?.type || '').toLowerCase() === 'deduction')
+}
+
+const openPayslipDetails = async (payslip: any) => {
+  if (!payslip?.id) return
+  try {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip`)
+    selectedPayslip.value = {
+      ...payslip,
+      ...(response?.data?.payslip || {}),
+    }
+  } catch {
+    selectedPayslip.value = payslip
+  }
+  showPayslipDialog.value = true
+}
+
+const downloadPayslipPdf = async (payslip: any) => {
+  if (!payslip?.id) return
+  try {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/pdf`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    const periodLabel = String(getPayPeriodLabel(payslip)).replace(/\s+/g, '_')
+    link.setAttribute('download', `payslip_${periodLabel || payslip.id}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch {
+    toast.add({
+      severity: 'error',
+      summary: 'Download Failed',
+      detail: 'Unable to download payslip PDF.',
+      life: 2500,
+    })
+  }
+}
+
+const printPayslipPdf = async (payslip: any) => {
+  if (!payslip?.id) return
+  try {
+    const response = await hrService.api.get(`/api/payrolls/${payslip.id}/payslip/print`, { responseType: 'blob' })
+    const file = new Blob([response.data], { type: 'application/pdf' })
+    const fileURL = window.URL.createObjectURL(file)
+    window.open(fileURL, '_blank')
+    setTimeout(() => window.URL.revokeObjectURL(fileURL), 60_000)
+  } catch {
+    toast.add({
+      severity: 'error',
+      summary: 'Print Failed',
+      detail: 'Unable to open payslip print preview.',
+      life: 2500,
+    })
+  }
+}
+
+const printPayrollRundown = async () => {
+  if (!employee.value?.id) return
+  try {
+    const response = await hrService.api.get(`/api/payroll/payslip/${employee.value.id}/rundown/print`, {
+      responseType: 'blob',
+    })
+
+    const file = new Blob([response.data], { type: 'application/pdf' })
+    const fileURL = window.URL.createObjectURL(file)
+    window.open(fileURL, '_blank')
+    setTimeout(() => window.URL.revokeObjectURL(fileURL), 60_000)
+  } catch {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to print payroll rundown',
+      life: 3000,
+    })
+  }
+}
+
 const loadOvertime = async () => {
   if (!employee.value?.id) return
   loadingOvertime.value = true
@@ -1125,10 +1293,54 @@ const loadSwapSuggestions = async () => {
   swapCandidates.value = []
   swapForm.receiver_schedule_id = null
   if (!swapForm.requestor_schedule_id) return
-  const response = await hrService.api.get('/api/shift-swaps/suggestions', {
-    params: { requestor_schedule_id: swapForm.requestor_schedule_id },
-  })
-  swapCandidates.value = response?.data?.data || []
+  try {
+    // ensure schedules are loaded before using them (select change may fire early)
+    if (!mySchedules.value || !mySchedules.value.length) {
+      await loadMySchedules()
+    }
+    // call suggestions without duplicating the /api prefix (hrService.api already uses /api)
+    const requestorSchedule = (mySchedules.value || []).find((s: any) => s.id == swapForm.requestor_schedule_id)
+    const params: any = { requestor_schedule_id: swapForm.requestor_schedule_id }
+    if (requestorSchedule?.shift?.id) params.shift_id = requestorSchedule.shift.id
+    if (employee.value?.role_id) params.role_id = employee.value.role_id
+    if (employee.value?.branch_id) params.branch_id = employee.value.branch_id
+    if (employee.value?.store_id) params.store_id = employee.value.store_id
+
+    const response = await hrService.api.get('/api/shift-swaps/suggestions', { params })
+    const list = response?.data?.data || []
+
+    // determine requestor shift id and current employee branch/store
+    const requestorShiftId = requestorSchedule?.shift?.id || null
+    const myBranchId = employee.value?.branch_id || null
+    const myStoreId = employee.value?.store_id || null
+
+    // filter candidates: same shift id AND same branch (fallback to same store)
+    swapCandidates.value = Array.isArray(list)
+      ? list.filter((c: any) => {
+          const candidateShiftId = c?.schedule?.shift?.id || c?.schedule?.shift_id || null
+          const candidateBranchId = c?.employee?.branch_id || null
+          const candidateStoreId = c?.employee?.store_id || null
+          const candidateRoleId = c?.employee?.role_id || c?.employee?.role?.id || null
+          const requestorRoleId = requestorSchedule?.role_id || requestorSchedule?.role?.id || employee.value?.role_id || null
+
+          if (requestorShiftId && candidateShiftId !== requestorShiftId) return false
+          // require same role id as well
+          if (requestorRoleId && candidateRoleId !== requestorRoleId) return false
+
+          if (myBranchId) return candidateBranchId === myBranchId
+          if (myStoreId) return candidateStoreId === myStoreId
+          return true
+        })
+      : []
+  } catch (err: any) {
+    swapCandidates.value = []
+    toast.add({
+      severity: 'error',
+      summary: 'Failed',
+      detail: err?.response?.data?.message || 'Unable to load swap suggestions.',
+      life: 3000,
+    })
+  }
 }
 
 const submitShiftSwap = async () => {
@@ -1267,12 +1479,12 @@ const addDays = (date: Date, days: number) => {
 }
 
 const formatScheduleLabel = (schedule: any) => {
-  const date = schedule?.schedule_date || '—'
-  const shift = schedule?.shift?.name || 'Shift'
-  const start = schedule?.shift?.start_time || ''
-  const end = schedule?.shift?.end_time || ''
-  const time = start && end ? `${start} - ${end}` : ''
-  return `${date} · ${shift}${time ? ` (${time})` : ''}`
+  const shift = schedule?.shift || schedule?.shift || {}
+  const name = shift?.name || 'Shift'
+  const start = shift?.start_time || ''
+  const end = shift?.end_time || ''
+  const time = start && end ? `${start} - ${end}` : start || end || ''
+  return `${name}${time ? ` (${time})` : ''}`
 }
 
 const formatCandidateLabel = (candidate: any) => {

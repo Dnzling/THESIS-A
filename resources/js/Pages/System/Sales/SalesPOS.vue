@@ -1,5 +1,6 @@
 <template>
   <div class="pos-container">
+    <ConfirmDialog />
 
     <!-- Main Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -29,7 +30,7 @@
               <template #body="{ data }">
                 <div>
                   <div class="font-medium">{{ data.product?.product_name }}</div>
-                  <div class="text-xs text-gray-500">{{ data.product?.sku }}</div>
+                  <div class="truncate text-xs text-slate-500">Variant: {{ data.variation?.variation_name || data.product?.sku || 'Standard' }}</div>
                 </div>
               </template>
             </Column>
@@ -87,7 +88,7 @@
                   severity="danger" 
                   icon="pi pi-trash" 
                   :disabled="!canManagePos" 
-                  @click="removeCart(item.branch_inventory_id)"
+                  @click="removeCart(item)"
                   size="small"
                 />
               </div>
@@ -247,6 +248,10 @@
         </div>
         <div class="md:col-span-2">
           <label class="text-sm font-medium text-gray-700 block mb-1">Pin Location</label>
+          <div class="flex gap-2 mb-2">
+            <InputText v-model="addressSearchText" placeholder="Search address to pin" fluid />
+            <Button text icon="pi pi-search" @click="geocodeCustomerAddress" />
+          </div>
           <div ref="mapEl" class="h-64 w-full rounded-lg border border-gray-200"></div>
           <div class="text-xs text-gray-500 mt-2">
             Lat: {{ customerForm.latitude?.toFixed(6) || '-' }} · Lng: {{ customerForm.longitude?.toFixed(6) || '-' }}
@@ -282,7 +287,9 @@ import Dialog from 'primevue/dialog'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import Message from 'primevue/message'
+import ConfirmDialog from 'primevue/confirmdialog'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
 import { onBeforeUnmount, nextTick } from 'vue'
 import L from 'leaflet'
@@ -292,6 +299,7 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
 const toast = useToast()
+const confirm = useConfirm()
 const authStore = useAuthStore()
 const search = ref('')
 const products = ref<any[]>([])
@@ -311,6 +319,7 @@ const customerForm = ref({
   longitude: null as number | null,
   deliveryNotes: '',
 })
+const addressSearchText = ref('')
 const addressSelection = ref({
   provinceId: null as string | null,
   cityId: null as string | null,
@@ -376,9 +385,23 @@ const addToCart = (row: any) => {
   })
 }
 
-const removeCart = (id: number) => { 
-  cart.value = cart.value.filter((i) => i.branch_inventory_id !== id)
-  updateCartTotal()
+const removeCart = (item: any) => {
+  if (!item) return
+  const id = Number(item.branch_inventory_id || 0)
+  if (!id) return
+
+  confirm.require({
+    header: 'Remove Item',
+    message: `Remove ${item.product_name || 'this item'} from the cart?`,
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Remove',
+    rejectLabel: 'Cancel',
+    acceptClass: 'p-button-danger',
+    accept: () => {
+      cart.value = cart.value.filter((i) => i.branch_inventory_id !== id)
+      updateCartTotal()
+    },
+  })
 }
 
 const subtotal = computed(() => cart.value.reduce((s, i) => s + (Number(i.unit_price) * Number(i.quantity || 0)), 0))
@@ -504,6 +527,46 @@ function initMap() {
     customerForm.value.latitude = e.latlng.lat
     customerForm.value.longitude = e.latlng.lng
   })
+}
+
+const geocodeAddressText = async (addressText: string): Promise<{ latitude: number; longitude: number } | null> => {
+  const query = String(addressText || '').trim()
+  if (!query) return null
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`,
+      {
+        headers: { Accept: 'application/json' },
+      },
+    )
+
+    if (!response.ok) return null
+    const results = await response.json()
+    if (!Array.isArray(results) || results.length === 0) return null
+
+    const first = results[0]
+    const latitude = Number(first?.lat)
+    const longitude = Number(first?.lon)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+    return { latitude, longitude }
+  } catch {
+    return null
+  }
+}
+
+async function geocodeCustomerAddress() {
+  const built = `${customerForm.value.addressLine || ''}, ${barangayOptions.value.find(b => b.value === addressSelection.value.barangayCode)?.label || ''}, ${cityOptions.value.find(c => c.value === addressSelection.value.cityId)?.label || ''}, ${provinceOptions.value.find(p => p.value === addressSelection.value.provinceId)?.label || ''}, Philippines ${addressSearchText.value ? ` ${addressSearchText.value}` : ''}`
+  const geocoded = await geocodeAddressText(built)
+  if (!geocoded) {
+    toast.add({ severity: 'warn', summary: 'Not Found', detail: 'Unable to find location for that address.' })
+    return
+  }
+  customerForm.value.latitude = geocoded.latitude
+  customerForm.value.longitude = geocoded.longitude
+  if (marker) marker.setLatLng([geocoded.latitude, geocoded.longitude])
+  if (map) map.setView([geocoded.latitude, geocoded.longitude], 14)
 }
 
 async function fetchProvinces() {

@@ -69,54 +69,6 @@
             <DatePicker v-model="form.estimated_delivery_at" showTime hourFormat="12" fluid />
           </div>
 
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Distance (KM)</label>
-            <InputNumber v-model="form.distance_km" :min="0" :minFractionDigits="2" :maxFractionDigits="2" fluid />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Per KM Charge</label>
-            <InputNumber v-model="form.per_km_charge" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Base Fee</label>
-            <InputNumber v-model="form.base_fee" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Per KG Fee</label>
-            <InputNumber v-model="form.per_kg_fee" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Estimated Weight (kg)</label>
-            <InputNumber v-model="form.weight_kg" :min="0" :minFractionDigits="2" :maxFractionDigits="2" fluid />
-          </div>
-
-          <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="font-medium text-slate-800">Zone Match</p>
-                <p class="text-xs text-slate-500">{{ selectedZoneLabel || 'No matching zone yet' }}</p>
-              </div>
-              <div class="text-xs text-slate-500">
-                <span v-if="selectedRateLabel">{{ selectedRateLabel }}</span>
-                <span v-else>Adjust distance/weight to match a rate.</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="md:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p class="font-medium">Estimated Delivery Fee</p>
-                <p class="text-xs">Base + (Distance × Per KM) + (Weight × Per KG)</p>
-              </div>
-              <p class="text-xl font-semibold">₱ {{ estimatedFee }}</p>
-            </div>
-          </div>
-
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Notes</label>
             <Textarea v-model="form.notes" rows="3" fluid placeholder="Optional logistics notes" />

@@ -65,7 +65,6 @@
               <template #body="{ data }">
                 <div>
                   <p class="text-sm font-semibold text-gray-900">{{ data.payPeriodName }}</p>
-                  <p class="text-xs text-gray-500">ID: {{ data.pay_period_id }}</p>
                 </div>
               </template>
             </Column>

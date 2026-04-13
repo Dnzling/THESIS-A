@@ -151,7 +151,9 @@
               <div class="flex flex-wrap gap-2">
                 <Button v-for="variation in product.variations" :key="variation.id" size="small"
                   :severity="selectedVariationId === variation.id ? 'info' : 'secondary'"
-                  :outlined="selectedVariationId !== variation.id" @click="selectVariation(variation.id)">
+                  :outlined="selectedVariationId !== variation.id"
+                  :disabled="!isVariationSelectable(variation)"
+                  @click="selectVariation(variation.id)">
                   {{ variationLabel(variation) }}
                 </Button>
               </div>
@@ -161,15 +163,15 @@
                 <span v-if="selectedModel3D" class="ml-2 text-xs text-emerald-600">(Has 3D model)</span>
               </p>
             </div>
-  
+
             <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-3">
-              <InputNumber v-model="quantity" :min="1" :max="Math.max(1, Number(product.quantity_available || 1))"
+              <InputNumber v-model="quantity" :min="1" :max="maxPurchasableQty"
                 showButtons class="w-full sm:w-auto" />
               <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
                 <Button label="Add to Cart" severity="info" class="w-full"
-                  :disabled="Number(product.quantity_available || 0) <= 0" @click="addToCart" />
+                  :disabled="!canPurchase" @click="addToCart" />
                 <Button label="Buy Now" severity="success" class="w-full"
-                  :disabled="Number(product.quantity_available || 0) <= 0" @click="buyNow" />
+                  :disabled="!canPurchase" @click="buyNow" />
               </div>
             </div>
           </div>
@@ -370,6 +372,27 @@ const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
 const productHasVariations = computed(() => Array.isArray(product.value?.variations) && product.value.variations.length > 0)
+
+function isVariationSelectable(variation: any): boolean {
+  if (!variation) return false
+  if (typeof variation.is_selectable === 'boolean') return variation.is_selectable
+  const qty = Number(variation.quantity_available || 0)
+  const status = String(variation.stock_status || 'out_of_stock')
+  return qty > 0 && status !== 'out_of_stock'
+}
+
+const purchasableQty = computed(() => {
+  if (!product.value) return 0
+  if (productHasVariations.value) {
+    if (!selectedVariation.value) return 0
+    if (!isVariationSelectable(selectedVariation.value)) return 0
+    return Math.max(0, Number(selectedVariation.value.quantity_available || 0))
+  }
+  return Math.max(0, Number(product.value.quantity_available || 0))
+})
+
+const maxPurchasableQty = computed(() => Math.max(1, purchasableQty.value || 1))
+const canPurchase = computed(() => purchasableQty.value > 0)
 const selectedModel3D = computed(() => {
   const v: any = selectedVariation.value
   // Only fall back to parent when the selected variation has no own media/specs.
@@ -521,12 +544,20 @@ function variationLabel(variation: any) {
 }
 
 function selectVariation(variationId: number) {
+  const v = (product.value?.variations || []).find((vv: any) => Number(vv.id) === Number(variationId)) || null
+  if (!isVariationSelectable(v)) {
+    showAlert({ severity: 'warn', summary: 'Out of stock', detail: 'This variation is out of stock.' })
+    return
+  }
   selectedVariationId.value = Number(variationId)
 }
 
 watch(selectedVariationId, () => {
   selectedImage.value = null
   show3DViewer.value = false
+  if (Number(quantity.value || 1) > maxPurchasableQty.value) {
+    quantity.value = maxPurchasableQty.value
+  }
 })
 
 async function loadProduct() {
@@ -587,6 +618,10 @@ async function addToCart() {
     showAlert({ severity: 'warn', summary: 'Variation required', detail: 'Please select a variation first.' })
     return
   }
+  if (!canPurchase.value) {
+    showAlert({ severity: 'warn', summary: 'Out of stock', detail: 'This item is out of stock.' })
+    return
+  }
   try {
     await ecommerceService.addToCart({
       product_id: Number(product.value.id),
@@ -605,6 +640,10 @@ async function buyNow() {
   if (!product.value?.id) return
   if (productHasVariations.value && !selectedVariationId.value) {
     showAlert({ severity: 'warn', summary: 'Variation required', detail: 'Please select a variation first.' })
+    return
+  }
+  if (!canPurchase.value) {
+    showAlert({ severity: 'warn', summary: 'Out of stock', detail: 'This item is out of stock.' })
     return
   }
   try {

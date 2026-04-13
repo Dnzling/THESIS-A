@@ -402,5 +402,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
                 'test' => 'working'
             ]);
         });
+        // Debug: shift assignments for today (temporary)
+        Route::get('_debug/shifts-today', [\App\Http\Controllers\Api\DebugController::class, 'shiftsToday']);
     });
 }); // ✅ Also add a public route (if you want unauthenticated access)

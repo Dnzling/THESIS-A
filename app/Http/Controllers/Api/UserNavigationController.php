@@ -18,6 +18,7 @@ class UserNavigationController extends Controller
         'procurement',
         'sales',
         'hr',
+        'merchandising',
         'logistics',
         'finance',
         'supplier',
@@ -151,9 +152,7 @@ class UserNavigationController extends Controller
     private function getUserNavigationItems($user, array $permissions): array
     {
         $roleName = strtolower($user->role->name ?? '');
-        $isSupplierRole = str_contains($roleName, 'supplier');
         $allowedModules = $this->getStoreAdminAllowedModules($user);
-        $tier = $this->getStoreAdminTier($user);
 
         // Get all active navigation items
         $navigationItems = NavigationItem::where('is_active', true)
@@ -165,29 +164,6 @@ class UserNavigationController extends Controller
         $accessibleNavigation = [];
 
         foreach ($navigationItems as $navItem) {
-            // Module-level gating to avoid showing routes for unrelated roles
-            if ($navItem->module === 'hr' && ($navItem->section === 'job_hiring')) {
-                if (!in_array($roleName, ['hr_manager', 'hr_admin', 'hr'])) {
-                    continue;
-                }
-            }
-
-            if ($navItem->module === 'merchandising') {
-                $allowedRoles = [
-                    'super_admin',
-                    'owner',
-                    'store_admin',
-                    'store_manager',
-                    'warehouse_manager',
-                    'inventory_staff',
-                    'sales_staff',
-                    'supplier_coordinator',
-                ];
-                if (!in_array($roleName, $allowedRoles)) {
-                    continue;
-                }
-            }
-
             if ($roleName === 'store_admin' && !empty($allowedModules)) {
                 $whitelist = ['store_admin', 'store', 'system', 'admin'];
                 if (!in_array($navItem->module, $allowedModules, true) && !in_array($navItem->module, $whitelist, true)) {
@@ -264,71 +240,6 @@ class UserNavigationController extends Controller
 
             return false;
         }));
-    }
-
-    private function filterPermissionsByTier($user, array $permissions): array
-    {
-        $tier = $this->getStoreAdminTier($user);
-
-        if ($tier === 'enterprise') {
-            return $permissions;
-        }
-
-        $modulePrefixes = ['inventory.', 'procurement.', 'sales.', 'finance.', 'hr.'];
-        $alwaysAllowPrefixes = ['store.', 'store_admin.', 'system.', 'profile.', 'auth.'];
-
-        $smallDeny = [
-            '.approve', '.reject', '.export', '.import', '.delete', '.manage',
-            '.reports', '.analytics', '.settings', '.roles', '.permissions',
-            '.budget', '.price', '.audit',
-        ];
-
-        $midDeny = [
-            '.export', '.import', '.settings', '.roles', '.permissions',
-            '.audit',
-        ];
-
-        $denyList = $tier === 'small' ? $smallDeny : $midDeny;
-
-        return array_values(array_filter($permissions, function ($permission) use ($modulePrefixes, $alwaysAllowPrefixes, $denyList) {
-            foreach ($alwaysAllowPrefixes as $prefix) {
-                if (str_starts_with($permission, $prefix)) {
-                    return true;
-                }
-            }
-
-            $matchesModule = false;
-            foreach ($modulePrefixes as $prefix) {
-                if (str_starts_with($permission, $prefix)) {
-                    $matchesModule = true;
-                    break;
-                }
-            }
-
-            if (!$matchesModule) {
-                return false;
-            }
-
-            foreach ($denyList as $fragment) {
-                if (str_contains($permission, $fragment)) {
-                    return false;
-                }
-            }
-
-            return true;
-        }));
-    }
-
-    private function getStoreAdminTier($user): string
-    {
-        if (!$user || strtolower($user->role?->name ?? '') !== 'store_admin') {
-            return 'enterprise';
-        }
-
-        $range = $user->trialOnboardingProfile?->employee_range ?? '';
-        if ($range === '1-5') return 'small';
-        if (in_array($range, ['6-20', '21-50'], true)) return 'mid';
-        return 'enterprise';
     }
 
     /**

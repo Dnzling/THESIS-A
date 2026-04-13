@@ -26,7 +26,7 @@ class AttendanceController extends Controller
         $user = Auth::user();
         $storeId = $user->store_id;
 
-        $query = Attendance::with(['employee', 'shift', 'schedule'])
+        $query = Attendance::with(['employee.user.role', 'employee.branch', 'shift', 'schedule'])
             ->whereHas('employee', function ($q) use ($storeId) {
                 $q->where('store_id', $storeId);
             });

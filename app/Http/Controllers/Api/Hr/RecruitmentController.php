@@ -117,6 +117,7 @@ class RecruitmentController extends Controller
             'department_id' => 'required|exists:departments,id',
             'role_id' => 'required|exists:roles,id',
             'hire_date' => 'required|date',
+            'pay_type' => 'nullable|in:monthly,hourly,hybrid',
             'employment_type' => 'required|in:full_time,part_time,contract,intern',
             'salary' => 'required|numeric|min:0',
             'position' => 'required|string|max:255',
@@ -179,6 +180,8 @@ class RecruitmentController extends Controller
                 'department' => $department->name,
                 'employment_type' => $validated['employment_type'],
                 'salary' => $validated['salary'],
+                'pay_type' => $validated['pay_type'] ?? 'monthly',
+                'hourly_rate' => isset($validated['pay_type']) && $validated['pay_type'] === 'hourly' ? $validated['salary'] / 160 : null,
                 'status' => 'active',
             ]);
 

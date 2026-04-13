@@ -7,6 +7,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderItem;
 use App\Models\Sales\SalesPayment;
+use App\Models\Hr\Employee;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
 use Illuminate\Http\JsonResponse;
@@ -81,10 +82,20 @@ class SalesPosController extends Controller
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
         }
 
-        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user) {
+        // Resolve employee id for created_by (InventoryTransaction.created_by references employees.id)
+        $creatorEmployeeId = $user->employee?->id
+            ?? Employee::where('user_id', $user->id)->value('id')
+            ?? config('app.system_employee_id', 1);
+
+        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $creatorEmployeeId) {
             $subtotal = 0.0;
             $tax = 0.0;
             $discount = (float) ($validated['discount_amount'] ?? 0);
+
+            // Resolve employee id for created_by (InventoryTransaction.created_by references employees.id)
+            $creatorEmployeeId = $user->employee?->id
+                ?? Employee::where('user_id', $user->id)->value('id')
+                ?? config('app.system_employee_id', 1);
 
             $order = SalesOrder::create([
                 'store_id' => $storeId,
@@ -112,12 +123,12 @@ class SalesPosController extends Controller
                 'delivery_latitude' => $validated['delivery_latitude'] ?? null,
                 'delivery_longitude' => $validated['delivery_longitude'] ?? null,
                 'delivery_email' => $validated['delivery_email'] ?? null,
-                'created_by' => $user->id,
+                'created_by' => $creatorEmployeeId,
             ]);
 
             foreach ($validated['items'] as $itemRow) {
                 $inv = BranchInventory::query()
-                    ->with(['product:id,product_name,sku,base_price,discounted_price,tax_rate'])
+                    ->with(['product:id,product_name,sku,base_price,discounted_price'])
                     ->lockForUpdate()
                     ->findOrFail((int) $itemRow['branch_inventory_id']);
 
@@ -204,7 +215,7 @@ class SalesPosController extends Controller
                 'provider_reference' => 'MANUAL-' . strtoupper($validated['payment_method']) . '-' . now()->format('YmdHis'),
                 'paid_at' => now(),
                 'metadata' => ['source' => 'sales_pos'],
-                'created_by' => $user->id,
+                'created_by' => $creatorEmployeeId,
             ]);
 
             $settled = $this->settlementService->settlePaid(
@@ -231,7 +242,7 @@ class SalesPosController extends Controller
             'amount' => (float) ($order->total_amount ?? 0),
             'status' => 'pending',
             'metadata' => ['source' => 'sales_pos'],
-            'created_by' => $user->id,
+            'created_by' => $creatorEmployeeId,
         ]);
 
         $amount = (int) round(((float) $order->total_amount) * 100);

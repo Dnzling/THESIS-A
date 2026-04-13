@@ -26,7 +26,6 @@ class DepartmentController extends Controller
         if ($request->has('search')) {
             $query->where(function($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('code', 'like', '%' . $request->search . '%')
                   ->orWhere('location', 'like', '%' . $request->search . '%');
             });
         }
@@ -72,7 +71,6 @@ class DepartmentController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'code' => 'nullable|string|max:50|unique:departments,code,NULL,id,store_id,' . $storeId,
             'location' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'status' => 'nullable|string|in:active,inactive',
@@ -87,15 +85,9 @@ class DepartmentController extends Controller
             ], 422);
         }
 
-        $departmentCode = $request->code;
-        if (empty($departmentCode)) {
-            $departmentCode = $this->generateDepartmentCode((string) $request->name, (int) $storeId);
-        }
-
         $department = Department::create([
             'store_id' => $storeId,
             'name' => $request->name,
-            'code' => $departmentCode,
             'location' => $request->location,
             'description' => $request->description,
             'created_by' => $user->id,
@@ -164,7 +156,6 @@ class DepartmentController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
-            'code' => 'nullable|string|max:50|unique:departments,code,' . $id . ',id,store_id,' . $storeId,
             'location' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'status' => 'nullable|string|in:active,inactive',
@@ -180,7 +171,7 @@ class DepartmentController extends Controller
         }
 
         $department->update($request->only([
-            'name', 'code', 'location', 'description', 'status'
+            'name', 'location', 'description', 'status'
         ]));
 
         if (is_array($request->role_ids)) {
@@ -267,7 +258,7 @@ class DepartmentController extends Controller
         $storeId = $user->store_id;
 
         $departments = Department::where('store_id', $storeId)
-            ->select('id', 'name', 'code')
+            ->select('id', 'name')
             ->orderBy('name')
             ->get();
 
@@ -349,43 +340,5 @@ class DepartmentController extends Controller
         return strtolower($status);
     }
 
-    private function generateDepartmentCode(string $name, int $storeId): string
-    {
-        $prefix = $this->departmentCodePrefixFromName($name);
-        $code = $prefix;
-        $counter = 1;
 
-        while (
-            Department::where('store_id', $storeId)
-                ->where('code', $code)
-                ->exists()
-        ) {
-            $code = "{$prefix}-{$counter}";
-            $counter++;
-        }
-
-        return substr($code, 0, 50);
-    }
-
-    private function departmentCodePrefixFromName(string $name): string
-    {
-        $clean = preg_replace('/[^A-Za-z0-9 ]/', ' ', strtoupper(trim($name))) ?? '';
-        $words = array_values(array_filter(preg_split('/\s+/', $clean) ?: []));
-
-        if (empty($words)) {
-            return 'DEPT';
-        }
-
-        $initials = '';
-        foreach ($words as $word) {
-            $initials .= substr($word, 0, 1);
-        }
-
-        if (strlen($initials) < 3) {
-            $joined = implode('', $words);
-            $initials = substr($joined, 0, 6);
-        }
-
-        return substr($initials, 0, 8);
-    }
 }

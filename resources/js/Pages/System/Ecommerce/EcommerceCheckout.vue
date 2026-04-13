@@ -98,7 +98,7 @@
               <Button label="View all payment methods" size="small" link severity="warn" @click="paymentDrawerVisible = true" />
             </div>
 
-            <div class="rounded-lg border border-slate-200 p-3">
+            <!-- <div class="rounded-lg border border-slate-200 p-3">
               <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Voucher</label>
               <div class="flex flex-col gap-2 sm:flex-row">
                 <InputText v-model="voucherCode" fluid placeholder="Enter voucher code" />
@@ -107,7 +107,7 @@
               <p v-if="appliedVoucher" class="mt-1 text-xs text-emerald-600">
                 Applied: {{ appliedVoucher.code }} ({{ voucherLabel }})
               </p>
-            </div>
+            </div> -->
 
             <Divider />
             <div class="flex justify-between"><span>Items</span><span>{{ itemsCount }}</span></div>
@@ -389,6 +389,9 @@ import InputMask from 'primevue/inputmask'
 import { showAlert } from '@/utils/swal'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -478,6 +481,19 @@ let coordsLeafletMap: L.Map | null = null
 let coordsLeafletMarker: L.Marker | null = null
 let coordsMapReady = false
 
+const setupLeafletDefaults = () => {
+  const icon = L.icon({
+    iconRetinaUrl: markerIcon2x,
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  })
+  L.Marker.prototype.options.icon = icon
+}
+
 const initCoordsMap = () => {
   const container = document.getElementById('checkout-coords-map')
   if (!container) return
@@ -488,6 +504,7 @@ const initCoordsMap = () => {
   coordsMap.longitude = Number(lng.toFixed(6))
 
   if (!coordsMapReady) {
+    setupLeafletDefaults()
     coordsLeafletMap = L.map(container).setView([lat, lng], 14)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,

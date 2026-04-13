@@ -49,7 +49,7 @@
   
     <!-- Attendance Table -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <DataTable :value="attendanceData" class="w-full text-sm" :loading="loading" paginator :rows="10"
+      <DataTable :value="attendanceData" class="w-full text-sm" :loading="loading" paginator :rows="10" :totalRecords="totalRecords"
         :rowsPerPageOptions="[5, 10, 20, 50]"
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageSelect"
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries" rowHover showGridlines
@@ -80,7 +80,6 @@
           <template #body="{ data }">
             <div v-if="data.clockInRaw">
               <span>{{ data.clockInTime }}</span>
-              <Badge v-if="data.isLate" value="Late" severity="danger" class="ml-2" />
             </div>
             <span v-else class="text-gray-400">--:--</span>
           </template>
@@ -258,9 +257,14 @@
         <!-- Shift Info -->
         <div v-if="selectedAttendance.shift" class="bg-gray-50 p-3 rounded-lg">
           <div class="text-xs text-gray-500 mb-2">Shift Details</div>
-          <div class="flex items-center gap-2">
-            <Tag :value="selectedAttendance.shift.name" severity="info" />
-            <span class="text-sm">{{ selectedAttendance.shift.startTime }} - {{ selectedAttendance.shift.endTime }}</span>
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-2">
+              <Tag :value="selectedAttendance.shift.name" severity="info" />
+              <span v-if="selectedAttendance.shift.code" class="text-xs text-gray-500">({{ selectedAttendance.shift.code }})</span>
+            </div>
+            <span class="text-sm font-medium text-gray-700">
+              {{ selectedAttendance.shift.startTime }} - {{ selectedAttendance.shift.endTime }}
+            </span>
           </div>
         </div>
   
@@ -273,7 +277,6 @@
   
       <template #footer>
         <Button label="Close" severity="secondary" @click="showDetailsDialog = false" />
-        <Button label="Edit" icon="pi pi-pencil" severity="info" @click="editFromDetails" />
       </template>
     </Dialog>
   </div>
@@ -295,6 +298,7 @@ const saving = ref(false)
 const showEditDialog = ref(false)
 const showDetailsDialog = ref(false)
 const attendanceData = ref<any[]>([])
+const totalRecords = ref<number>(0)
 const selectedAttendance = ref<any>(null)
 const editingAttendance = ref<any>(null)
 
@@ -441,6 +445,30 @@ const formatTime24 = (dateTimeString: string | null): string => {
     return ''
   }
 }
+
+const formatShiftTime = (value: string | null): string => {
+  if (!value) return ''
+  const raw = String(value).trim()
+
+  const timePart = raw.includes('T')
+    ? raw.split('T')[1]?.split('.')[0]
+    : raw.includes(' ')
+      ? raw.split(' ')[1]
+      : raw
+
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(timePart || '').trim())
+  if (!match) {
+    // Fall back to existing datetime formatter when it looks like a datetime string.
+    return raw.includes('-') ? formatTime(raw) : raw
+  }
+
+  let hours = Number(match[1])
+  const minutes = match[2]
+  const suffix = hours >= 12 ? 'PM' : 'AM'
+  hours = hours % 12
+  if (hours === 0) hours = 12
+  return `${hours}:${minutes} ${suffix}`
+}
 const minutesToHours = (minutes: number): string => {
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
@@ -493,8 +521,8 @@ const transformAttendance = (item: any): any => {
       id: shift.id,
       name: shift.name || 'N/A',
       code: shift.code || '',
-      startTime: shift.start_time || '',
-      endTime: shift.end_time || ''
+      startTime: formatShiftTime(shift.start_time) || '',
+      endTime: formatShiftTime(shift.end_time) || ''
     } : null
   }
 }
@@ -519,8 +547,18 @@ const fetchAttendance = async () => {
     })
 
     if (response.data.success) {
-      const records = response.data.data.data || response.data.data || []
-      attendanceData.value = records.map(transformAttendance)
+      const payload = response.data.data || response.data || {}
+      const records = payload.data || payload || []
+      attendanceData.value = (Array.isArray(records) ? records : []).map(transformAttendance)
+
+      // Determine totalRecords for paginator when API is paginated
+      if (typeof payload.total === 'number') {
+        totalRecords.value = payload.total
+      } else if (payload.meta && typeof payload.meta.total === 'number') {
+        totalRecords.value = payload.meta.total
+      } else {
+        totalRecords.value = attendanceData.value.length
+      }
 
       // Update summary
       if (response.data.summary) {
@@ -639,4 +677,3 @@ onMounted(() => {
   fetchAttendance()
 })
 </script>
-

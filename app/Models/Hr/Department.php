@@ -17,7 +17,6 @@ class Department extends Model
 
     protected $fillable = [
         'name',
-        'code',
         'location',
         'description',
         'store_id',
@@ -97,9 +96,7 @@ class Department extends Model
      */
     public function getFullNameAttribute(): string
     {
-        return $this->code
-            ? "{$this->name} ({$this->code})"
-            : $this->name;
+        return $this->name;
     }
 
     /**

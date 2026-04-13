@@ -75,6 +75,10 @@
                     <Select v-model="employeeForm.employment_type" :options="employmentTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
                   </div>
                   <div class="space-y-2">
+                    <label class="text-sm font-medium text-slate-700">Pay Type</label>
+                    <Select v-model="employeeForm.pay_type" :options="payTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+                  </div>
+                  <div class="space-y-2">
                     <label class="text-sm font-medium text-slate-700">Hire Date</label>
                     <DatePicker v-model="employeeForm.hire_date" class="w-full" fluid />
                   </div>
@@ -386,6 +390,12 @@ const cardStatusOptions = [
   { label: 'Inactive', value: 'inactive' },
 ]
 
+const payTypeOptions = [
+  { label: 'Monthly (Salary)', value: 'monthly' },
+  { label: 'Hourly', value: 'hourly' },
+  { label: 'Hybrid', value: 'hybrid' },
+]
+
 const employeeForm = reactive({
   first_name: '',
   last_name: '',
@@ -399,6 +409,7 @@ const employeeForm = reactive({
   role_id: null as number | null,
   hire_date: new Date(),
   employment_type: 'full_time',
+  pay_type: 'monthly',
   salary: 0,
   position: '',
 })
@@ -856,6 +867,7 @@ const submitOnboarding = async () => {
       role_id: employeeForm.role_id as number,
       hire_date: toIsoDate(employeeForm.hire_date),
       employment_type: employeeForm.employment_type as any,
+      pay_type: employeeForm.pay_type as any,
       salary: Number(employeeForm.salary),
       position: employeeForm.position,
       phone: employeeForm.phone || undefined,
