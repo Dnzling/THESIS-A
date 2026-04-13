@@ -70,9 +70,59 @@ class SupplierController extends Controller
             });
         }
 
+        $store = Auth::user()->store;
+        $isFreePlan = strtolower((string) ($store?->subscription_tier ?? '')) === 'free';
+
         $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails, $linkedSupplierIdsByEmail) {
             return $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
         })->values();
+
+        // For free-plan stores, hide marketplace suppliers and return two ready-made placeholders
+        if ($isFreePlan) {
+            $placeholders = [
+                [
+                    'supplier_portal_id' => null,
+                    'supplier_id' => null,
+                    'linked_supplier_id' => null,
+                    'supplier_name' => 'Starter Supplier A',
+                    'company_name' => 'Starter Supplier A Co.',
+                    'contact_person' => 'Supplier Rep A',
+                    'email' => 'starter-a@example.com',
+                    'phone' => '',
+                    'address' => null,
+                    'city' => null,
+                    'province' => null,
+                    'country' => 'Philippines',
+                    'payment_terms' => 'net_30',
+                    'supplier_type' => 'verified_placeholder',
+                    'verified_at' => now()->toDateTimeString(),
+                    'already_linked' => false,
+                ],
+                [
+                    'supplier_portal_id' => null,
+                    'supplier_id' => null,
+                    'linked_supplier_id' => null,
+                    'supplier_name' => 'Starter Supplier B',
+                    'company_name' => 'Starter Supplier B Co.',
+                    'contact_person' => 'Supplier Rep B',
+                    'email' => 'starter-b@example.com',
+                    'phone' => '',
+                    'address' => null,
+                    'city' => null,
+                    'province' => null,
+                    'country' => 'Philippines',
+                    'payment_terms' => 'net_30',
+                    'supplier_type' => 'verified_placeholder',
+                    'verified_at' => now()->toDateTimeString(),
+                    'already_linked' => false,
+                ],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => collect($placeholders)->take($limit)->values(),
+            ]);
+        }
 
         if ($request->boolean('available_only', true)) {
             $rows = $rows->where('already_linked', false)->values();

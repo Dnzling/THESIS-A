@@ -596,6 +596,20 @@ class RequestForQuotationController extends Controller
 
             // Invite suppliers
             foreach ($validated['supplier_ids'] as $supplierId) {
+                // Only invite suppliers that have an active contract with this store
+                $hasActiveContract = SupplierContract::where('store_id', auth()->user()->store_id)
+                    ->where('supplier_id', $supplierId)
+                    ->active()
+                    ->exists();
+
+                if (!$hasActiveContract) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot invite supplier (ID: ' . $supplierId . ') to RFQ: no active contract exists with this store.',
+                    ], 422);
+                }
+
                 $rfq->inviteSupplier($supplierId);
             }
 

@@ -459,6 +459,45 @@ class ProductController extends BaseController
 
                 $product->update($data);
 
+                // If the acting user can approve pricing, auto-approve immediately
+                if ($this->isFinancePriceApprover()) {
+                    DB::beginTransaction();
+                    try {
+                        $oldPrice = $product->base_price;
+
+                        $product->update([
+                            'base_price' => $product->pending_base_price ?? $product->base_price,
+                            'discounted_price' => $product->pending_discounted_price,
+                            'price_approval_status' => 'approved',
+                            'price_approved_by' => $this->getUserId(),
+                            'price_approved_at' => now(),
+                            'price_rejected_by' => null,
+                            'price_rejected_at' => null,
+                            'price_approval_notes' => $data['price_approval_notes'] ?? $product->price_approval_notes,
+                            'pending_base_price' => null,
+                            'pending_discounted_price' => null,
+                        ]);
+
+                        if (!is_null($product->base_price) && $oldPrice != $product->base_price) {
+                            \App\Models\ProductCatalog\PricingHistory::create([
+                                'store_id' => $this->getStoreId(),
+                                'product_id' => $product->id,
+                                'old_price' => $oldPrice ?? 0,
+                                'new_price' => $product->base_price,
+                                'price_type' => 'Base',
+                                'reason' => $data['price_approval_notes'] ?? 'Auto-approved by finance permission',
+                                'effective_date' => now(),
+                                'created_by' => $this->getActorEmployeeId()
+                            ]);
+                        }
+
+                        DB::commit();
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+                        throw $e;
+                    }
+                }
+
                 DB::commit();
 
                 $fresh = $product->fresh(['category', 'subcategory']);
@@ -807,6 +846,8 @@ class ProductController extends BaseController
             'finance.settings.approve.store',
             'finance.settings.approve.all',
             'finance.purchase-orders.approve',
+            'finance.pricing.approve',
+            'finance.price-approvals.approve',
         ]);
     }
 

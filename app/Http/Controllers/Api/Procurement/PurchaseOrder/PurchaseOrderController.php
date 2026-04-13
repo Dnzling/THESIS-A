@@ -234,6 +234,12 @@ class PurchaseOrderController extends Controller
                 ->active()
                 ->orderBy('end_date', 'desc')
                 ->first();
+            if (!$contract) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot create purchase order: no active contract exists with the selected supplier.',
+                ], 422);
+            }
             $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
 
             if ($hasStockRequests) {
