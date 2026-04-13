@@ -515,10 +515,25 @@ class SupplierController extends Controller
             'business_registration' => 'nullable|string|max:100',
             'supplier_type' => 'nullable|in:manufacturer,wholesaler,distributor,importer,local_artisan',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
+            'bank_name' => 'nullable|string|max:120',
+            'bank_account_name' => 'nullable|string|max:160',
+            'bank_account_number' => 'nullable|string|max:80',
+            'bank_account_type' => 'nullable|in:savings,checking,current,other',
+            'bank_branch' => 'nullable|string|max:120',
             'credit_limit' => 'nullable|numeric|min:0',
             'status' => 'nullable|in:active,inactive,blacklisted',
             'notes' => 'nullable|string',
         ]);
+
+        if (
+            array_key_exists('bank_name', $validated) ||
+            array_key_exists('bank_account_name', $validated) ||
+            array_key_exists('bank_account_number', $validated) ||
+            array_key_exists('bank_account_type', $validated) ||
+            array_key_exists('bank_branch', $validated)
+        ) {
+            $validated['payment_account_updated_at'] = now();
+        }
 
         $supplier->update($validated);
 

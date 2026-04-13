@@ -318,6 +318,7 @@ import { reactive, ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import inventoryService from '../../../../services/inventory.service'
 
 const router = useRouter()
 const route = useRoute()
@@ -383,13 +384,90 @@ const completionPercent = computed(() => {
 onMounted(async () => {
   await loadApprovedPOs()
 
-  // If PO ID provided in query, auto-select
-  const poIdFromQuery = route.query.po_id
-  if (poIdFromQuery) {
-    form.purchase_order_id = Number(poIdFromQuery)
-    await onPoSelected()
+  // If PO ID provided in query, auto-select and prefill
+  const poIdFromQuery = Number(route.query.po_id || 0)
+  if (poIdFromQuery > 0) {
+    await prefillFromPurchaseOrder(poIdFromQuery)
+    if (selectedPO.value) return
+  }
+
+  // Fallback: if PR ID provided, resolve linked PO then prefill
+  const prIdFromQuery = Number(route.query.pr_id || 0)
+  if (prIdFromQuery > 0) {
+    await prefillFromRequisition(prIdFromQuery)
   }
 })
+
+const hydrateReceiptFromPO = (po: any) => {
+  selectedPO.value = po
+  form.branch_id = po?.branch_id ?? null
+  receivedItems.value = (po?.items || []).map((item: any) => ({
+    id: item.id,
+    purchase_order_item_id: item.id,
+    product_id: item.product_id,
+    product: item.product,
+    variation_id: item.variation_id,
+    quantity_ordered: item.quantity_ordered,
+    quantity_expected: item.quantity_ordered,
+    quantity_received: item.quantity_ordered,
+    quantity_damaged: 0,
+    variance: 0,
+    variance_percent: 0,
+    status: 'complete',
+    remarks: ''
+  }))
+}
+
+const prefillFromPurchaseOrder = async (poId: number) => {
+  try {
+    const response = await procurementService.getPurchaseOrder(poId)
+    const payload = response?.data ?? response
+    const po = payload?.data ?? payload ?? null
+    if (!po?.id) return
+
+    // Ensure selected value exists in options so Select can display it.
+    const existing = approvedPOs.value.find((o: any) => String(o?.id) === String(po.id))
+    if (!existing) {
+      approvedPOs.value = [po, ...approvedPOs.value]
+    }
+    form.purchase_order_id = po.id
+    hydrateReceiptFromPO(po)
+  } catch (error) {
+    console.error('Failed to prefill from purchase order', error)
+  }
+}
+
+const prefillFromRequisition = async (prId: number) => {
+  try {
+    const response = await inventoryService.getPurchaseRequisition(prId)
+    const requisition = response?.data ?? response
+    const data = requisition?.data ?? requisition
+    const purchaseOrders = Array.isArray(data?.purchase_orders)
+      ? data.purchase_orders
+      : (Array.isArray(data?.purchaseOrders) ? data.purchaseOrders : [])
+    const poId = Number(purchaseOrders?.[0]?.id || 0)
+
+    if (poId > 0) {
+      await prefillFromPurchaseOrder(poId)
+      return
+    }
+
+    toast.add({
+      severity: 'warn',
+      summary: 'No Linked PO',
+      detail: 'This requisition has no linked purchase order yet.',
+      life: 3000
+    })
+  } catch (error) {
+    console.error('Failed to prefill from requisition', error)
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to prefill goods receipt from requisition',
+      life: 3000
+    })
+  }
+}
 
 const loadApprovedPOs = async () => {
   loadingPOs.value = true
@@ -418,27 +496,10 @@ const onPoSelected = async () => {
   }
 
   try {
-      const response = await procurementService.getPurchaseOrder(form.purchase_order_id)
+      const response = await procurementService.getPurchaseOrder(Number(form.purchase_order_id))
       const payload = response?.data ?? response
-      selectedPO.value = payload?.data ?? payload ?? null
-      form.branch_id = selectedPO.value?.branch_id
-
-    // Initialize received items from PO items
-      receivedItems.value = (selectedPO.value?.items || []).map((item: any) => ({
-        id: item.id,
-        purchase_order_item_id: item.id,
-        product_id: item.product_id,
-        product: item.product,
-        variation_id: item.variation_id,
-        quantity_ordered: item.quantity_ordered,
-        quantity_expected: item.quantity_ordered,
-        quantity_received: item.quantity_ordered,
-        quantity_damaged: 0,
-        variance: 0,
-        variance_percent: 0,
-        status: 'complete',
-        remarks: ''
-      }))
+      const po = payload?.data ?? payload ?? null
+      hydrateReceiptFromPO(po)
   } catch (error) {
     console.error('Failed to load PO details', error)
     toast.add({

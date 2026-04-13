@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Invoice\Invoice;
 use App\Models\Procurement\Invoice\InvoiceItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\Supplier\SupplierContract;
 use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
@@ -268,6 +269,7 @@ class InvoiceController extends Controller
             $validated = $request->validate([
                 'purchase_order_id' => 'required|exists:purchase_orders,id',
                 'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
+                'submitted_by_supplier' => 'nullable|boolean',
             ]);
 
             DB::beginTransaction();
@@ -284,10 +286,10 @@ class InvoiceController extends Controller
                 ], 422);
             }
 
-            if ($po->status !== 'goods_received') {
+            if (!in_array((string) $po->status, ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered', 'goods_received'], true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invoice can only be generated after goods are received',
+                    'message' => 'Invoice can only be generated for approved or active supplier purchase orders.',
                 ], 422);
             }
 
@@ -378,7 +380,7 @@ class InvoiceController extends Controller
                 'discount_amount' => $discountAmount,
                 'net_amount' => $netAmount,
                 'currency' => $po->currency ?? 'PHP',
-                'status' => 'draft',
+                'status' => !empty($validated['submitted_by_supplier']) ? 'pending_approval' : 'draft',
                 'match_status' => 'pending',
                 'payment_status' => 'pending',
                 'remarks' => $grn
@@ -392,11 +394,49 @@ class InvoiceController extends Controller
 
             $invoice->performThreeWayMatch();
 
+            // Supplier balance is recognized when Finance actually pays the invoice.
+
             DB::commit();
+
+            if (!empty($validated['submitted_by_supplier'])) {
+                $notificationPayload = [
+                    'store_id' => (int) $po->store_id,
+                    'branch_id' => (int) $po->branch_id,
+                    'module' => 'finance',
+                    'entity_type' => 'invoice',
+                    'entity_id' => (int) $invoice->id,
+                    'action' => 'supplier_invoice_submitted',
+                    'title' => 'Supplier Invoice Submitted',
+                    'message' => "Supplier submitted invoice {$invoice->invoice_number} for PO {$po->po_number}.",
+                    'severity' => 'info',
+                    'link' => "/finance/invoices/{$invoice->id}",
+                    'data' => [
+                        'invoice_id' => (int) $invoice->id,
+                        'invoice_number' => (string) $invoice->invoice_number,
+                        'purchase_order_id' => (int) $po->id,
+                        'purchase_order_number' => (string) ($po->po_number ?? ''),
+                    ],
+                ];
+
+                $this->notifyUsersByPermissions(
+                    (int) $po->store_id,
+                    [
+                        'finance.invoices.view',
+                        'finance.invoices.manage',
+                        'finance.invoices.approve',
+                        'finance.payables.view',
+                        'finance.payables.manage',
+                        'finance.payables.approve',
+                    ],
+                    $notificationPayload
+                );
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Invoice draft created from GRN',
+                'message' => !empty($validated['submitted_by_supplier'])
+                    ? 'Invoice submitted to finance successfully'
+                    : 'Invoice draft created from GRN',
                 'data' => $invoice->load('items'),
             ], 201);
         } catch (\Exception $e) {
@@ -621,6 +661,13 @@ class InvoiceController extends Controller
         try {
             $invoice = Invoice::findOrFail($id);
 
+            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
+                ], 422);
+            }
+
             $validated = $request->validate([
                 'payment_method' => 'required|in:cash,check,bank_transfer,credit_card,paymongo_gcash,gcash',
                 'payment_amount' => 'required|numeric|min:0',
@@ -787,5 +834,21 @@ class InvoiceController extends Controller
             ->active()
             ->orderBy('end_date', 'desc')
             ->first();
+    }
+
+    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
+    {
+        if ($supplierId <= 0) {
+            return false;
+        }
+
+        $supplier = Supplier::query()->find($supplierId);
+        if (!$supplier) {
+            return false;
+        }
+
+        return filled($supplier->bank_name)
+            && filled($supplier->bank_account_name)
+            && filled($supplier->bank_account_number);
     }
 }

@@ -9,6 +9,8 @@ use App\Models\Finance\FinanceCashflowTransaction;
 use App\Models\PlatformRevenue;
 use App\Models\PaymongoIntent;
 use App\Models\Procurement\Invoice\Invoice;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Sales\SalesPayment;
@@ -80,6 +82,30 @@ class PaymongoController extends Controller
             return response()->json([
                 'message' => 'Payable id is required.',
             ], 422);
+        }
+
+        if (($data['payable_type'] ?? '') === 'invoice') {
+            $invoice = Invoice::query()
+                ->where('store_id', $resolvedStoreId)
+                ->find($data['payable_id']);
+
+            if (!$invoice) {
+                return response()->json([
+                    'message' => 'Invoice not found for this store.',
+                ], 422);
+            }
+
+            if ((string) $invoice->status !== 'approved') {
+                return response()->json([
+                    'message' => 'PayMongo payment can only be created after invoice is approved.',
+                ], 422);
+            }
+
+            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
+                return response()->json([
+                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
+                ], 422);
+            }
         }
 
         $store = Store::query()->find($resolvedStoreId);
@@ -189,6 +215,30 @@ class PaymongoController extends Controller
             return response()->json([
                 'message' => 'Payable id is required.',
             ], 422);
+        }
+
+        if (($data['payable_type'] ?? '') === 'invoice') {
+            $invoice = Invoice::query()
+                ->where('store_id', $resolvedStoreId)
+                ->find($data['payable_id']);
+
+            if (!$invoice) {
+                return response()->json([
+                    'message' => 'Invoice not found for this store.',
+                ], 422);
+            }
+
+            if ((string) $invoice->status !== 'approved') {
+                return response()->json([
+                    'message' => 'PayMongo payment can only be created after invoice is approved.',
+                ], 422);
+            }
+
+            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
+                return response()->json([
+                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
+                ], 422);
+            }
         }
 
         $store = Store::query()->find($resolvedStoreId);
@@ -911,6 +961,11 @@ class PaymongoController extends Controller
             return;
         }
 
+        // Prevent duplicate accounting updates when invoice was already settled manually.
+        if (strtolower((string) $invoice->payment_status) === 'paid') {
+            return;
+        }
+
         $paymentAmount = (float) ($invoice->net_amount ?: $invoice->invoice_amount ?: 0);
 
         DB::transaction(function () use ($invoice, $intent, $paymentAmount) {
@@ -921,10 +976,22 @@ class PaymongoController extends Controller
                 'payment_amount' => $paymentAmount,
                 'payment_date' => now()->toDateString(),
                 'status' => 'paid',
+                'paid_to_bank_name' => $invoice->supplier?->bank_name,
+                'paid_to_account_name' => $invoice->supplier?->bank_account_name,
+                'paid_to_account_number_masked' => $this->maskAccountNumber($invoice->supplier?->bank_account_number),
+                'paid_to_account_type' => $invoice->supplier?->bank_account_type,
+                'paid_to_bank_branch' => $invoice->supplier?->bank_branch,
             ]);
 
             if ($invoice->purchaseOrder) {
                 $invoice->purchaseOrder->update(['payment_status' => 'paid']);
+            }
+
+            if ($invoice->supplier_id) {
+                \App\Models\Procurement\Supplier\Supplier::where('id', (int) $invoice->supplier_id)
+                    ->update([
+                        'current_balance' => DB::raw('GREATEST(COALESCE(current_balance, 0), 0) + ' . ((float) $paymentAmount))
+                    ]);
             }
 
             // Ensure linked finance expense also reflects paid state.
@@ -979,6 +1046,41 @@ class PaymongoController extends Controller
                 );
             }
         });
+
+        $supplier = $invoice->supplier;
+        $supplierEmail = strtolower(trim((string) ($supplier?->email ?? '')));
+        if ($supplierEmail !== '') {
+            $portalUserIds = SupplierPortal::query()
+                ->whereHas('supplier', function ($q) use ($supplierEmail) {
+                    $q->whereRaw('LOWER(email) = ?', [$supplierEmail]);
+                })
+                ->pluck('user_id')
+                ->filter()
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+
+            foreach ($portalUserIds as $userId) {
+                $this->notify((int) $userId, [
+                    'store_id' => (int) $invoice->store_id,
+                    'module' => 'supplier',
+                    'entity_type' => 'invoice',
+                    'entity_id' => (int) $invoice->id,
+                    'action' => 'invoice_paid',
+                    'title' => 'Invoice Paid',
+                    'message' => "Your invoice {$invoice->invoice_number} has been paid by Finance.",
+                    'severity' => 'success',
+                    'link' => "/supplier-portal/pos/{$invoice->purchase_order_id}/invoice-view",
+                    'data' => [
+                        'invoice_id' => (int) $invoice->id,
+                        'invoice_number' => (string) $invoice->invoice_number,
+                        'payment_amount' => $paymentAmount,
+                        'payment_date' => now()->toDateString(),
+                    ],
+                ]);
+            }
+        }
     }
 
     private function syncCashflowTopUpFromIntent(PaymongoIntent $intent, string $paymongoStatus): void
@@ -1092,5 +1194,34 @@ class PaymongoController extends Controller
         }
 
         return 0;
+    }
+
+    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
+    {
+        if ($supplierId <= 0) {
+            return false;
+        }
+
+        $supplier = Supplier::query()->find($supplierId);
+        if (!$supplier) {
+            return false;
+        }
+
+        return filled($supplier->bank_name)
+            && filled($supplier->bank_account_name)
+            && filled($supplier->bank_account_number);
+    }
+
+    private function maskAccountNumber(?string $accountNumber): ?string
+    {
+        $raw = trim((string) $accountNumber);
+        if ($raw === '') {
+            return null;
+        }
+        $len = strlen($raw);
+        if ($len <= 4) {
+            return str_repeat('*', max(0, $len - 1)) . substr($raw, -1);
+        }
+        return str_repeat('*', $len - 4) . substr($raw, -4);
     }
 }

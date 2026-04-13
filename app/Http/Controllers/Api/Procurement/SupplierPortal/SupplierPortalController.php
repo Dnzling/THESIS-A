@@ -303,6 +303,49 @@ class SupplierPortalController extends Controller
     }
 
     /**
+     * Update supplier payment account (bank details)
+     * PUT /api/supplier-portal/payment-account
+     */
+    public function updatePaymentAccount(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'bank_name' => 'required|string|max:120',
+            'bank_account_name' => 'required|string|max:160',
+            'bank_account_number' => 'required|string|max:80',
+            'bank_account_type' => 'nullable|in:savings,checking,current,other',
+            'bank_branch' => 'nullable|string|max:120',
+        ]);
+
+        $user = auth()->user();
+        $portal = SupplierPortal::with('supplier')->where('user_id', $user->id)->firstOrFail();
+        $supplier = $portal->supplier;
+
+        if (!$supplier) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No supplier record is linked to this portal.',
+            ], 422);
+        }
+
+        $supplier->update([
+            'bank_name' => $validated['bank_name'],
+            'bank_account_name' => $validated['bank_account_name'],
+            'bank_account_number' => $validated['bank_account_number'],
+            'bank_account_type' => $validated['bank_account_type'] ?? null,
+            'bank_branch' => $validated['bank_branch'] ?? null,
+            'payment_account_updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment account updated.',
+            'data' => [
+                'supplier' => $supplier->fresh(),
+            ],
+        ]);
+    }
+
+    /**
      * Register as a supplier
      * POST /api/supplier-portal/register
      */

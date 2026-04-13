@@ -235,7 +235,10 @@ class SupplierPaymentController extends Controller
             ]);
 
             // Update supplier balance
-            $payment->supplier->decrement('current_balance', $payment->payment_amount);
+            \App\Models\Procurement\Supplier\Supplier::where('id', (int) $payment->supplier_id)
+                ->update([
+                    'current_balance' => DB::raw('GREATEST(COALESCE(current_balance, 0), 0) + ' . ((float) $payment->payment_amount))
+                ]);
 
             if ($expense->status !== 'paid') {
                 $expense->update([

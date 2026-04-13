@@ -31,7 +31,7 @@
           icon="pi pi-eye"
           severity="info"
           text
-          @click="router.push({ name: 'supplier.pos.invoice-view', params: { id: existingInvoice.id } })"
+          @click="router.push({ name: 'supplier.pos.invoice-view', params: { id: po?.id } })"
         />
         <Tag 
           v-if="po" 
@@ -381,6 +381,29 @@
             </div>
           </template>
         </Card>
+
+        <Card v-if="existingInvoice" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="px-6 pt-6">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center">
+                  <i class="pi pi-file text-sky-600 text-sm"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900">Invoice Payment</h3>
+              </div>
+            </div>
+          </template>
+          <template #content>
+            <div class="p-6 pt-0 space-y-2 text-sm text-gray-700">
+              <p>Invoice #: <span class="font-semibold text-gray-900">{{ existingInvoice?.invoice_number || '-' }}</span></p>
+              <p>Status: <span class="font-semibold text-gray-900">{{ formatStatus(existingInvoice?.status) }}</span></p>
+              <p>Payment Status: <span class="font-semibold text-gray-900">{{ formatStatus(existingInvoice?.payment_status || 'pending') }}</span></p>
+              <p>Total Paid: <span class="font-semibold text-emerald-600">PHP {{ formatMoney(existingInvoice?.payment_amount || 0) }}</span></p>
+              <p>Payment Date: <span class="font-semibold text-gray-900">{{ formatDate(existingInvoice?.payment_date) }}</span></p>
+              <p>Account Balance: <span class="font-semibold text-gray-900">PHP {{ formatMoney(po?.supplier?.current_balance || 0) }}</span></p>
+            </div>
+          </template>
+        </Card>
       </div>
     </div>
   </div>
@@ -420,9 +443,9 @@ const isDeclined = computed(() => {
 })
 
 const canCreateInvoice = computed(() => {
+  const eligibleStatuses = ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered', 'goods_received']
   return (
-    po.value?.status === 'goods_received' &&
-    goodsReceipt.value &&
+    eligibleStatuses.includes(String(po.value?.status || '')) &&
     !existingInvoice.value
   )
 })
@@ -571,12 +594,13 @@ const goToInvoice = () => {
   }
 
   const createInvoiceFromReceipt = async () => {
-    if (!po.value?.id || !goodsReceipt.value?.id) return
+    if (!po.value?.id) return
     invoiceCreating.value = true
     try {
       const response = await supplierService.createInvoiceFromGoodsReceipt({
         purchase_order_id: po.value.id,
-        goods_receipt_id: goodsReceipt.value.id,
+        goods_receipt_id: goodsReceipt.value?.id || null,
+        submitted_by_supplier: true,
       })
 
       const invoicePayload = response?.data || response
@@ -584,19 +608,19 @@ const goToInvoice = () => {
 
       toast.add({
         severity: 'success',
-        summary: 'Invoice Draft Created',
-        detail: 'A draft invoice has been generated and sent to finance.',
+        summary: 'Invoice Submitted',
+        detail: 'Invoice has been submitted to finance accounts payable.',
         life: 4000,
       })
 
       if (existingInvoice.value?.id) {
-        router.push({ name: 'supplier.pos.invoice-view', params: { id: existingInvoice.value.id } })
+        router.push({ name: 'supplier.pos.invoice-view', params: { id: po.value.id } })
       }
     } catch (error: any) {
       toast.add({
         severity: 'error',
         summary: 'Invoice Error',
-        detail: error.response?.data?.message || 'Failed to create invoice from receipt.',
+        detail: error.response?.data?.message || 'Failed to create invoice.',
         life: 4000,
       })
     } finally {

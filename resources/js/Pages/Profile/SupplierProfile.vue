@@ -19,7 +19,7 @@
   
       <template v-else>
         <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-lg font-semibold text-slate-900">{{ supplierName }}</p>
@@ -28,12 +28,31 @@
               <Tag :value="statusLabel" :severity="statusSeverity" rounded />
             </div>
   
-            <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <InfoRow label="Company Name" :value="supplier?.company_name || supplier?.supplier_name || '-'" />
-              <InfoRow label="Contact Person" :value="supplier?.contact_person || '-'" />
-              <InfoRow label="Email" :value="supplier?.email || user?.email || '-'" />
-              <InfoRow label="Phone" :value="supplier?.phone || '-'" />
-              <InfoRow label="Address" :value="fullAddress" />
+            <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  <tr class="bg-white">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Company Name</th>
+                    <td class="px-4 py-3 text-slate-800">{{ supplier?.company_name || supplier?.supplier_name || '-' }}</td>
+                  </tr>
+                  <tr class="bg-slate-50/70">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Contact Person</th>
+                    <td class="px-4 py-3 text-slate-800">{{ supplier?.contact_person || '-' }}</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
+                    <td class="px-4 py-3 text-slate-800">{{ supplier?.email || user?.email || '-' }}</td>
+                  </tr>
+                  <tr class="bg-slate-50/70">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</th>
+                    <td class="px-4 py-3 text-slate-800">{{ supplier?.phone || '-' }}</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Address</th>
+                    <td class="px-4 py-3 text-slate-800">{{ fullAddress }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
   
             <div v-if="portal?.rejection_reason"
@@ -43,61 +62,96 @@
             </div>
           </section>
   
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4">
+          <section v-if="!isPaymentAccountView" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4">
             <div>
               <p class="text-sm font-semibold text-slate-800">Verification Status</p>
               <p class="text-xs text-slate-500">Upload or update documents to verify your account.</p>
             </div>
   
-            <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-semibold text-slate-700">Account Status</p>
-                  <p class="text-xs text-slate-500">{{ statusHint }}</p>
-                </div>
-                <Tag :value="statusLabel" :severity="statusSeverity" rounded />
-              </div>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="min-w-full text-sm">
+                <tbody class="divide-y divide-slate-200">
+                  <tr class="bg-white">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Account Status</th>
+                    <td class="px-4 py-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-700">{{ statusHint }}</span>
+                        <Tag :value="statusLabel" :severity="statusSeverity" rounded />
+                      </div>
+                    </td>
+                  </tr>
+                  <tr class="bg-slate-50/70">
+                    <th class="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Verification</th>
+                    <td class="px-4 py-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-slate-700">{{ verificationLabel }}</span>
+                        <Button :label="verificationLabel" severity="info" class="small-pill" :disabled="isVerified" @click="goToVerification" />
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-  
+          </section>
+
+          <section v-if="isPaymentAccountView" ref="paymentAccountSectionEl" class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4 lg:col-span-2">
+            <div>
+              <p class="text-lg font-semibold text-slate-900">Payment Account Records</p>
+              <p class="text-xs text-slate-500">Payment history only.</p>
+            </div>
+
             <div class="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-semibold text-slate-700">Verification</p>
-                  <p class="text-xs text-slate-500">{{ verificationLabel }}</p>
+              <div class="text-xs text-slate-500">Supplier Balance (Total)</div>
+              <div class="mt-1 text-lg font-semibold text-slate-900">PHP {{ formatMoney(supplier?.current_balance || 0) }}</div>
+            </div>
+
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
+              <div class="flex items-center justify-between mb-3">
+                <p class="text-sm font-semibold text-slate-800">Payment History</p>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-slate-500">Latest payments from finance and other payers</span>
+                  <Button
+                    label="Refresh"
+                    size="small"
+                    text
+                    :loading="loadingPaymentHistory"
+                    @click="loadPaymentHistory"
+                  />
                 </div>
-                <Button :label="verificationLabel" severity="info" class="small-pill" :disabled="isVerified"
-                  @click="goToVerification" />
               </div>
+              <DataTable
+                :value="paymentHistoryRows"
+                :loading="loadingPaymentHistory"
+                responsiveLayout="scroll"
+                stripedRows
+                size="small"
+                class="text-sm"
+              >
+                <Column field="payer" header="Store Name" style="min-width: 180px" />
+                <Column field="invoice" header="Invoice" style="min-width: 130px" />
+                <Column field="method" header="Method" style="min-width: 120px" />
+                <Column header="Amount" style="min-width: 120px">
+                  <template #body="{ data }">
+                    <span class="font-semibold text-slate-800">PHP {{ formatMoney(data.amount) }}</span>
+                  </template>
+                </Column>
+                <Column header="Status" style="min-width: 120px">
+                  <template #body="{ data }">
+                    <Tag :value="String(data.status || 'pending').toUpperCase()" :severity="paymentStatusSeverity(data.status)" rounded />
+                  </template>
+                </Column>
+                <Column header="Date" style="min-width: 150px">
+                  <template #body="{ data }">
+                    {{ formatDateTime(data.created_at) }}
+                  </template>
+                </Column>
+                <template #empty>
+                  <div class="py-4 text-center text-slate-500 text-xs">No payment records yet.</div>
+                </template>
+              </DataTable>
             </div>
           </section>
   
-          <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm space-y-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-lg font-semibold text-slate-900">Location / Coordinates</p>
-                <p class="text-xs text-slate-500">Keep your pickup point accurate for delivery distance.</p>
-              </div>
-              <Button label="Save" rounded size="small" severity="info" :loading="savingCoords"
-                :disabled="!coords.latitude || !coords.longitude || savingCoords" @click="saveCoordinates" />
-            </div>
-  
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-              <div class="space-y-2 md:col-span-2">
-                <label class="text-xs font-semibold text-slate-600">Search Place</label>
-                <InputText v-model="coords.query" placeholder="Search address to preview on map"
-                  @keyup.enter="searchOnMap" fluid />
-                <p class="text-[11px] text-slate-500">Click on the map to set your coordinates, or search above.</p>
-                <div class="flex gap-4 text-xs text-slate-500 mt-2">
-                  <span>Lat: <span class="font-semibold text-slate-700">{{ coords.latitude || '—' }}</span></span>
-                  <span>Lng: <span class="font-semibold text-slate-700">{{ coords.longitude || '—' }}</span></span>
-                </div>
-              </div>
-            </div>
-  
-            <div class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden h-64 relative">
-              <div ref="mapEl" class="absolute inset-0"></div>
-            </div>
-          </section>
         </div>
       </template>
     </div>
@@ -105,17 +159,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, nextTick, defineComponent, h } from 'vue'
+import { computed, onMounted, ref, nextTick, onBeforeUnmount, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useAuthStore } from '@/stores/auth'
 import supplierService from '@/services/supplier.service'
 import SystemLayout from '@/Layouts/SystemLayout.vue'
-import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
-import Card from 'primevue/card'
-import { onBeforeUnmount, shallowRef } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 
 defineOptions({ layout: SystemLayout })
 
@@ -123,15 +174,20 @@ const authStore = useAuthStore()
 const loading = ref(true)
 const portal = ref<any | null>(null)
 const supplier = ref<any | null>(null)
-const coords = ref<{ latitude: string; longitude: string; query: string }>({ latitude: '', longitude: '', query: '' })
-const savingCoords = ref(false)
-const mapEl = shallowRef<HTMLDivElement | null>(null)
-const mapRef = shallowRef<any>(null)
-const markerRef = shallowRef<any>(null)
-const mapReady = ref(false)
+const paymentAccountSectionEl = ref<HTMLElement | null>(null)
+const loadingPaymentHistory = ref(false)
+const paymentHistoryRows = ref<any[]>([])
+const paymentHistoryPolling = ref<ReturnType<typeof setInterval> | null>(null)
 const user = computed(() => authStore.user)
 
 const isSupplier = computed(() => String(authStore.user?.role || '').toLowerCase().includes('supplier'))
+const isPaymentAccountView = computed(() => {
+  if (typeof window === 'undefined') return false
+  const pathname = window.location.pathname || ''
+  const params = new URLSearchParams(window.location.search || '')
+  const section = (params.get('section') || '').toLowerCase()
+  return pathname === '/supplier-portal/payment-account' || section === 'payment-account'
+})
 
 const supplierName = computed(() => supplier.value?.company_name || supplier.value?.supplier_name || 'Supplier')
 const supplierTypeLabel = computed(() => {
@@ -190,32 +246,51 @@ const loadPortal = async () => {
     }
     portal.value = response.data
     supplier.value = response.data?.supplier || null
-    coords.value.latitude = response.data?.latitude ? String(response.data.latitude) : ''
-    coords.value.longitude = response.data?.longitude ? String(response.data.longitude) : ''
-    coords.value.query = [supplier.value?.address, supplier.value?.city].filter(Boolean).join(', ')
+    await loadPaymentHistory()
   } catch (error) {
     router.visit('/supplier-portal/registration')
   } finally {
     loading.value = false
     await nextTick()
-    await initMap()
   }
 }
 
-const saveCoordinates = async () => {
-  if (!coords.value.latitude || !coords.value.longitude) return
-  savingCoords.value = true
+const loadPaymentHistory = async () => {
+  const supplierId = Number(supplier.value?.id || portal.value?.supplier_id || 0)
+  if (!supplierId) {
+    paymentHistoryRows.value = []
+    return
+  }
+
+  loadingPaymentHistory.value = true
   try {
-    const res = await supplierService.updatePortalCoordinates({
-      latitude: Number(coords.value.latitude),
-      longitude: Number(coords.value.longitude),
+    const res = await supplierService.getPaymentHistory(supplierId, {
+      page: 1,
+      per_page: 20,
+      sort_by: 'created_at',
+      sort_order: 'desc',
     })
-    portal.value = res.data || portal.value
-    toastSuccess('Location updated')
-  } catch (error: any) {
-    toastError(error.response?.data?.message || 'Failed to update location')
+    const root = res?.data ?? res
+    const rows = Array.isArray(root)
+      ? root
+      : Array.isArray(root?.data)
+        ? root.data
+        : Array.isArray(res?.payments)
+          ? res.payments
+          : []
+
+    paymentHistoryRows.value = rows.map((row: any) => ({
+      payer: row?.payer_name || row?.store_name || row?.paid_by_name || row?.created_by_name || 'Store',
+      invoice: row?.invoice_number || row?.invoice?.invoice_number || `INV-${row?.invoice_id ?? '-'}`,
+      method: row?.payment_method || '-',
+      amount: Number(row?.payment_amount ?? row?.amount ?? 0),
+      status: row?.status || 'pending',
+      created_at: row?.created_at || row?.payment_date || null,
+    }))
+  } catch (error) {
+    paymentHistoryRows.value = []
   } finally {
-    savingCoords.value = false
+    loadingPaymentHistory.value = false
   }
 }
 
@@ -227,82 +302,30 @@ const toastError = (msg: string) => {
   console.warn(msg)
 }
 
-const setupLeafletDefaults = () => {
-  // Fix default icon URLs in Vite context
-  const iconRetinaUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png'
-  const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png'
-  const shadowUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
-  // @ts-ignore
-  delete L.Icon.Default.prototype._getIconUrl
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl,
-    iconUrl,
-    shadowUrl,
+const formatMoney = (value: number | string) => {
+  return new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))
+}
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
-const forwardGeocode = async (query: string) => {
-  const trimmed = query.trim()
-  if (!trimmed) return null
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(trimmed)}&limit=1`
-  const response = await fetch(url, { headers: { Accept: 'application/json' } })
-  if (!response.ok) return null
-  const results = await response.json()
-  if (!Array.isArray(results) || !results.length) return null
-  const hit = results[0]
-  return {
-    lat: parseFloat(hit.lat),
-    lng: parseFloat(hit.lon),
-  }
+const paymentStatusSeverity = (status: string) => {
+  const normalized = String(status || '').toLowerCase()
+  if (normalized === 'paid' || normalized === 'processed' || normalized === 'completed') return 'success'
+  if (normalized === 'cancelled' || normalized === 'failed' || normalized === 'rejected') return 'danger'
+  if (normalized === 'pending' || normalized === 'pending_approval') return 'warning'
+  return 'info'
 }
-
-const initMap = async () => {
-  if (mapReady.value || !mapEl.value) return
-  setupLeafletDefaults()
-
-  const center: [number, number] = [
-    coords.value.latitude ? Number(coords.value.latitude) : 14.5995,
-    coords.value.longitude ? Number(coords.value.longitude) : 120.9842,
-  ]
-
-  const map = L.map(mapEl.value).setView(center, coords.value.latitude ? 15 : 12)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map)
-
-  const marker = L.marker(center, { draggable: true }).addTo(map)
-
-  marker.on('dragend', () => {
-    const pos = marker.getLatLng()
-    coords.value.latitude = pos.lat.toFixed(7)
-    coords.value.longitude = pos.lng.toFixed(7)
-  })
-
-  map.on('click', (event: any) => {
-    marker.setLatLng(event.latlng)
-    coords.value.latitude = event.latlng.lat.toFixed(7)
-    coords.value.longitude = event.latlng.lng.toFixed(7)
-  })
-
-  mapRef.value = map
-  markerRef.value = marker
-  mapReady.value = true
-}
-
-const searchOnMap = async () => {
-  const result = await forwardGeocode(coords.value.query || '')
-  if (!result || !mapRef.value || !markerRef.value) return
-  mapRef.value.setView([result.lat, result.lng], 15)
-  markerRef.value.setLatLng([result.lat, result.lng])
-  coords.value.latitude = result.lat.toFixed(7)
-  coords.value.longitude = result.lng.toFixed(7)
-}
-
-onBeforeUnmount(() => {
-  if (mapRef.value) {
-    mapRef.value.remove()
-  }
-})
 
 onMounted(async () => {
   if (!isSupplier.value) {
@@ -310,24 +333,30 @@ onMounted(async () => {
     return
   }
   await loadPortal()
+
+  if (isPaymentAccountView.value) {
+    await nextTick()
+    paymentAccountSectionEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    await loadPaymentHistory()
+    if (!paymentHistoryPolling.value) {
+      paymentHistoryPolling.value = setInterval(() => {
+        loadPaymentHistory()
+      }, 12000)
+    }
+  }
 })
-const InfoRow = defineComponent({
-  name: 'InfoRow',
-  props: {
-    label: { type: String, required: true },
-    value: { type: [String, Number], required: true },
-  },
-  setup(props) {
-    return () =>
-      h('div', { class: 'rounded-xl border border-slate-100 bg-slate-50/80 p-4' }, [
-        h('div', { class: 'text-xs text-slate-500' }, props.label),
-        h(
-          'div',
-          { class: 'mt-1 text-sm font-semibold text-slate-900' },
-          props.value ?? '-'
-        ),
-      ])
-  },
+
+watch(isPaymentAccountView, async (isActive) => {
+  if (!isActive) return
+  await nextTick()
+  await loadPaymentHistory()
+})
+
+onBeforeUnmount(() => {
+  if (paymentHistoryPolling.value) {
+    clearInterval(paymentHistoryPolling.value)
+    paymentHistoryPolling.value = null
+  }
 })
 </script>
 

@@ -25,13 +25,16 @@ class StockCountController extends Controller
     ) {
     }
 
-    private function userHasAnyPermission($user, array $permissionNames, int $storeId): bool
+    protected function userHasAnyPermission(array $permissions, $user = null): bool
     {
-        if (!$user) {
+        $authUser = $user ?? auth()->user();
+        if (!$authUser) {
             return false;
         }
 
-        foreach ($permissionNames as $permission) {
+        $storeId = (int) ($authUser->store_id ?? 0);
+
+        foreach ($permissions as $permission) {
             $normalized = (string) $permission;
             $aliases = array_values(array_unique([
                 $normalized,
@@ -40,7 +43,7 @@ class StockCountController extends Controller
             ]));
 
             foreach ($aliases as $candidate) {
-                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                if ($candidate && $authUser->hasPermissionTo($candidate, $storeId)) {
                     return true;
                 }
             }
@@ -506,7 +509,7 @@ class StockCountController extends Controller
                 $count
             );
 
-            if ($this->userHasAnyPermission($user, ['inventory.stock_counts.approve'], (int) $context['store_id'])) {
+            if ($this->userHasAnyPermission(['inventory.stock_counts.approve'], $user)) {
                 $count = $this->stockCountService->approveStockCount($count, [
                     'approved_by' => EmployeeContext::currentEmployeeId(),
                     'approval_notes' => 'Auto-approved on completion.',
@@ -540,7 +543,7 @@ class StockCountController extends Controller
     {
         try {
             $user = auth()->user();
-            if (!$this->userHasAnyPermission($user, ['inventory.stock_counts.approve'], (int) $user->store_id)) {
+            if (!$this->userHasAnyPermission(['inventory.stock_counts.approve'], $user)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized. Approval permission is required.',

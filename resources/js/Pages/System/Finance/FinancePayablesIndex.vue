@@ -124,9 +124,9 @@
                     <span class="text-sm font-semibold text-green-600">₱ {{ formatMoney(data.amount) }}</span>
                   </template>
                 </Column>
-                <Column field="due_date" header="Due Date" style="width: 120px">
+                <Column field="invoice_created_at" header="Invoice Created" style="width: 150px">
                   <template #body="{ data }">
-                    <span class="text-sm">{{ formatDate(data.due_date) }}</span>
+                    <span class="text-sm">{{ formatDate(data.invoice_created_at) }}</span>
                   </template>
                 </Column>
                 <Column field="status" header="Status" style="width: 130px">
@@ -138,8 +138,7 @@
                   <template #body="{ data }">
                     <div class="flex justify-center gap-1">
                       <Button icon="pi pi-eye" text rounded size="small" @click="viewInvoice(data)" />
-                      <Button v-if="data.status === 'pending_approval'" icon="pi pi-check" text rounded severity="success"
-                        size="small" @click="approveInvoice(data.id)" />
+                     
                     </div>
                   </template>
                 </Column>

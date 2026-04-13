@@ -500,6 +500,21 @@ const supplierFallbackNavigation = [
     is_active: true,
     badge_count: 0,
   },
+  {
+    id: -105,
+    name: 'supplier.payment_account',
+    display_name: 'Payment Account',
+    module: 'supplier',
+    route_name: 'supplier.payment-account',
+    route_path: '/supplier-portal/payment-account',
+    icon: 'pi pi-wallet',
+    parent_id: null,
+    display_order: 5,
+    section: 'General',
+    meta: null,
+    is_active: true,
+    badge_count: 0,
+  },
 ]
 
 // const storeFallbackNavigation = [
@@ -593,6 +608,29 @@ const groupedNavigation = computed(() => {
     }
   }
 
+  if (isSupplierRole) {
+    const supplierPaymentItem = {
+      id: -902,
+      name: 'supplier.payment_account',
+      display_name: 'Payment Account',
+      module: 'supplier',
+      route_name: 'supplier.payment-account',
+      route_path: '/supplier-portal/payment-account',
+      icon: 'pi pi-wallet',
+      parent_id: null,
+      display_order: 998,
+      section: 'General',
+      meta: null,
+      is_active: true,
+      badge_count: 0,
+    }
+
+    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
+    if (!existingPaths.has(supplierPaymentItem.route_path)) {
+      baseNavigation = [...baseNavigation, supplierPaymentItem]
+    }
+  }
+
   // if (isStoreRole) {
   //   const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
   //   const missingStoreItems = storeFallbackNavigation.filter((item) => !existingPaths.has(item.route_path))
@@ -602,6 +640,18 @@ const groupedNavigation = computed(() => {
   // }
 
   let activeItems = baseNavigation.filter((item: any) => item.is_active)
+
+  if (isSupplierRole) {
+    activeItems = activeItems.map((item: any) => {
+      if (item?.name === 'supplier.payment_account' || item?.route_name === 'supplier.payment-account') {
+        return {
+          ...item,
+          route_path: '/supplier-portal/payment-account',
+        }
+      }
+      return item
+    })
+  }
 
   // For store roles, hide nav items for modules that are not enabled for their store
   if (isStoreRole && Array.isArray(enabledModules.value)) {

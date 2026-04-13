@@ -147,11 +147,9 @@ const loadInvoice = async () => {
     const id = Number(route.params.id)
     const poRes = await supplierService.getSupplierPODetail(id)
     const poPayload = poRes.data || poRes
-    po.value = poPayload?.data?.po || poPayload?.po || null
-
-    const invoiceRes = await supplierService.getPOInvoice(id)
-    const invoicePayload = invoiceRes.data || invoiceRes
-    invoice.value = invoicePayload?.data || invoicePayload || null
+    const detail = poPayload?.data || poPayload
+    po.value = detail?.po || null
+    invoice.value = detail?.invoice || null
   } catch (error: any) {
     toast.add({
       severity: 'error',

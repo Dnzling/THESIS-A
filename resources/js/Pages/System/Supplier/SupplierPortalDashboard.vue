@@ -167,9 +167,16 @@
       />
       <Button
         v-if="portal?.status === 'approved'"
-        label="Linked Stores"
-        icon="pi pi-building"
-        @click="router.push('/supplier-portal/stores')"
+          label="Linked Stores"
+          icon="pi pi-building"
+          @click="router.push('/supplier-portal/stores')"
+          class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
+        />
+        <Button
+          v-if="portal?.status === 'approved'"
+          label="Payment Account"
+          icon="pi pi-credit-card"
+          @click="openPaymentDialog"
         class="bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg px-4 py-2 border border-gray-200 shadow-sm text-sm"
       />
     </div>
@@ -307,6 +314,38 @@
     </div>
 
   </div>
+
+  <Dialog v-model:visible="showPaymentDialog" header="Payment Account" :modal="true" :style="{ width: '32rem' }">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium mb-1">Bank Name</label>
+        <InputText v-model="payment.bank_name" class="w-full" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Account Name</label>
+        <InputText v-model="payment.bank_account_name" class="w-full" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Account Number</label>
+        <InputMask v-model="payment.bank_account_number" mask="9999-9999-9999-9999" class="w-full" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Account Type</label>
+        <Dropdown v-model="payment.bank_account_type" :options="[{label:'savings',value:'savings'},{label:'checking',value:'checking'},{label:'current',value:'current'},{label:'other',value:'other'}]" class="w-full" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Branch (optional)</label>
+        <InputText v-model="payment.bank_branch" class="w-full" />
+      </div>
+    </div>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <button class="px-4 py-2 bg-gray-100 rounded" @click="showPaymentDialog = false">Cancel</button>
+        <button class="px-4 py-2 bg-blue-600 text-white rounded" :disabled="submittingPayment" @click="submitPayment">Save</button>
+      </div>
+    </template>
+  </Dialog>
+
 </template>
 
 <script setup lang="ts">
@@ -318,6 +357,9 @@ import Button from 'primevue/button'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import supplierService from '../../../services/supplier.service'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
+import Dropdown from 'primevue/dropdown'
 
 const router = useRouter()
 const loading = ref(false)
@@ -325,6 +367,9 @@ const portal = ref<any>(null)
 const stats = ref<any>(null)
 const recentRFQs = ref<any[]>([])
 const recentPOs = ref<any[]>([])
+const showPaymentDialog = ref(false)
+const submittingPayment = ref(false)
+const payment = ref({ bank_name: '', bank_account_name: '', bank_account_number: '', bank_account_type: null as any, bank_branch: '' })
 
 const fetchPortalData = async () => {
   try {
@@ -362,6 +407,36 @@ const formatMoney = (value: number) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value || 0)
+}
+
+const openPaymentDialog = () => {
+  // prefill from loaded portal supplier if available
+  const s = portal.value?.supplier || portal.value
+  payment.value.bank_name = s?.bank_name || ''
+  payment.value.bank_account_name = s?.bank_account_name || ''
+  payment.value.bank_account_number = s?.bank_account_number || ''
+  payment.value.bank_account_type = s?.bank_account_type || null
+  payment.value.bank_branch = s?.bank_branch || ''
+  showPaymentDialog.value = true
+}
+
+const submitPayment = async () => {
+  submittingPayment.value = true
+  try {
+    await supplierService.updatePaymentAccount({
+      bank_name: payment.value.bank_name,
+      bank_account_name: payment.value.bank_account_name,
+      bank_account_number: payment.value.bank_account_number,
+      bank_account_type: payment.value.bank_account_type,
+      bank_branch: payment.value.bank_branch,
+    })
+    await fetchPortalData()
+    showPaymentDialog.value = false
+  } catch (err) {
+    console.error('Failed to update payment account', err)
+  } finally {
+    submittingPayment.value = false
+  }
 }
 
 onMounted(() => {

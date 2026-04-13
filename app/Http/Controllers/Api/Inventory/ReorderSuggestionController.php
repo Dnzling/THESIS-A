@@ -20,13 +20,16 @@ class ReorderSuggestionController extends Controller
 {
     protected ReorderSuggestionService $suggestionService;
 
-    private function userHasAnyPermission($user, array $permissionNames, int $storeId): bool
+    protected function userHasAnyPermission(array $permissions, $user = null): bool
     {
-        if (!$user) {
+        $authUser = $user ?? auth()->user();
+        if (!$authUser) {
             return false;
         }
 
-        foreach ($permissionNames as $permission) {
+        $storeId = (int) ($authUser->store_id ?? 0);
+
+        foreach ($permissions as $permission) {
             $normalized = (string) $permission;
             $aliases = array_values(array_unique([
                 $normalized,
@@ -35,7 +38,7 @@ class ReorderSuggestionController extends Controller
             ]));
 
             foreach ($aliases as $candidate) {
-                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                if ($candidate && $authUser->hasPermissionTo($candidate, $storeId)) {
                     return true;
                 }
             }
@@ -171,7 +174,7 @@ class ReorderSuggestionController extends Controller
 
             $suggestion = $this->suggestionService->createSuggestion($payload);
 
-            if ($this->userHasAnyPermission($user, ['inventory.reorder_suggestions.approve'], $storeId) && $suggestion->isPending()) {
+            if ($this->userHasAnyPermission(['inventory.reorder_suggestions.approve'], $user) && $suggestion->isPending()) {
                 $approvedBy = EmployeeContext::currentEmployeeId();
                 $this->suggestionService->approveSuggestion($suggestion, $approvedBy, 'Auto-approved on creation.');
                 $suggestion = $suggestion->fresh(['reorderRule', 'product', 'branch', 'approver']);

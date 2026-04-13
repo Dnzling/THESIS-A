@@ -302,14 +302,7 @@
         </div>
       </div>
 
-      <div class="flex justify-end">
-        <Button
-          label="Create Goods Receipt"
-          icon="pi pi-plus-circle"
-          severity="success"
-          @click="createGoodsReceipt"
-        />
-      </div>
+     
     </div>
     <!-- Not Found State -->
     <div v-else class="text-center py-12 bg-white rounded-lg border border-gray-200">

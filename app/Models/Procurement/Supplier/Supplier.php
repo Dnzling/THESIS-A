@@ -41,6 +41,12 @@ class Supplier extends Model
         'business_registration',
         'supplier_type',
         'payment_terms',
+        'bank_name',
+        'bank_account_name',
+        'bank_account_number',
+        'bank_account_type',
+        'bank_branch',
+        'payment_account_updated_at',
         'credit_limit',
         'current_balance',
         'rating',
@@ -62,6 +68,7 @@ class Supplier extends Model
         'late_deliveries' => 'integer',
         'is_tax_exempt' => 'boolean',
         'default_tax_rate' => 'decimal:2',
+        'payment_account_updated_at' => 'datetime',
     ];
 
     // Relationships

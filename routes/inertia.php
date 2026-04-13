@@ -331,6 +331,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/supplier-portal/contracts/create', 'System/Supplier/SupplierContractCreate', 'supplier.contracts.create', 'Create Contract');
     $inertia('/supplier-portal/contracts/{id}', 'System/Supplier/SupplierContractShow', 'supplier.contracts.show', 'Contract Details');
     $inertia('/supplier-portal/profile', 'Profile/SupplierProfile', 'supplier.profile', 'Supplier Profile');
+    $inertia('/supplier-portal/payment-account', 'Profile/SupplierProfile', 'supplier.payment-account', 'Supplier Payment Account');
 });
 
 // Job Portal (public portal)

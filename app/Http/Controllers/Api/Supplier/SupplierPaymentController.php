@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class SupplierPaymentController extends Controller
 {
@@ -13,25 +16,213 @@ class SupplierPaymentController extends Controller
     {
         try {
             $supplier = Supplier::findOrFail($id);
+            $supplierEmail = strtolower(trim((string) ($supplier->email ?? '')));
+            $relatedSupplierIds = Supplier::query()
+                ->when($supplierEmail !== '', function ($q) use ($supplierEmail) {
+                    $q->whereRaw('LOWER(email) = ?', [$supplierEmail]);
+                }, function ($q) use ($id) {
+                    $q->where('id', $id);
+                })
+                ->pluck('id')
+                ->map(fn ($sid) => (int) $sid)
+                ->push((int) $id)
+                ->unique()
+                ->values()
+                ->all();
 
-            $query = DB::table('supplier_payments')
-                ->where('supplier_id', $id);
+            $this->reconcileSucceededPaymongoInvoices($relatedSupplierIds);
 
-            // Filter by status
-            if ($request->has('status') && $request->status !== 'all') {
-                $query->where('status', $request->status);
+            $statusFilter = strtolower((string) $request->get('status', 'all'));
+            $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+            $page = max(1, (int) $request->get('page', 1));
+
+            $supplierPaymentsHasStoreId = Schema::hasColumn('supplier_payments', 'store_id');
+            $invoicesHasStoreId = Schema::hasColumn('invoices', 'store_id');
+
+            $supplierPaymentInvoiceExpr = Schema::hasColumn('supplier_payments', 'invoice_number')
+                ? "COALESCE(supplier_payments.invoice_number, '-')"
+                : "'-'";
+            $supplierPayerExpr = $supplierPaymentsHasStoreId
+                ? "COALESCE(stores.name, 'Finance')"
+                : "'Finance'";
+
+            $supplierPaymentsQuery = DB::table('supplier_payments');
+            if ($supplierPaymentsHasStoreId) {
+                $supplierPaymentsQuery->leftJoin('stores', 'stores.id', '=', 'supplier_payments.store_id');
             }
 
-            $payments = $query
-                ->orderBy('due_date', 'desc')
-                ->paginate($request->get('per_page', 15));
+            $supplierPayments = $supplierPaymentsQuery
+                ->whereIn('supplier_id', $relatedSupplierIds)
+                ->when($statusFilter !== 'all', function ($q) use ($statusFilter) {
+                    $q->whereRaw('LOWER(supplier_payments.status) = ?', [$statusFilter]);
+                })
+                ->selectRaw("
+                    supplier_payments.id,
+                    supplier_payments.supplier_id,
+                    {$supplierPaymentInvoiceExpr} as invoice_number,
+                    supplier_payments.payment_method,
+                    supplier_payments.payment_amount as amount,
+                    supplier_payments.status,
+                    supplier_payments.payment_date,
+                    supplier_payments.created_at,
+                    supplier_payments.updated_at,
+                    'supplier_payment' as source,
+                    {$supplierPayerExpr} as payer_name
+                ")
+                ->get()
+                ->map(function ($row) {
+                    $row->effective_date = $row->created_at ?: $row->updated_at ?: $row->payment_date;
+                    return $row;
+                });
 
-            return response()->json($payments);
+            $invoiceStatuses = ['paid', 'completed'];
+            if ($statusFilter === 'pending' || $statusFilter === 'pending_approval') {
+                $invoiceStatuses = ['pending'];
+            } elseif ($statusFilter === 'cancelled' || $statusFilter === 'failed' || $statusFilter === 'rejected') {
+                $invoiceStatuses = [$statusFilter];
+            }
+
+            $invoicePayerExpr = $invoicesHasStoreId
+                ? "COALESCE(stores.name, 'Finance')"
+                : "'Finance'";
+
+            $financeInvoicePaymentsQuery = DB::table('invoices');
+            if ($invoicesHasStoreId) {
+                $financeInvoicePaymentsQuery->leftJoin('stores', 'stores.id', '=', 'invoices.store_id');
+            }
+
+            $financeInvoicePayments = $financeInvoicePaymentsQuery
+                ->whereIn('supplier_id', $relatedSupplierIds)
+                ->whereNotNull('payment_date')
+                ->whereIn(DB::raw('LOWER(COALESCE(invoices.payment_status, invoices.status))'), $invoiceStatuses)
+                ->selectRaw("
+                    invoices.id,
+                    invoices.supplier_id,
+                    COALESCE(invoices.invoice_number, '-') as invoice_number,
+                    invoices.payment_method,
+                    COALESCE(invoices.payment_amount, invoices.net_amount, invoices.invoice_amount, 0) as amount,
+                    COALESCE(invoices.payment_status, invoices.status, 'paid') as status,
+                    invoices.payment_date,
+                    invoices.created_at,
+                    invoices.updated_at,
+                    'invoice_payment' as source,
+                    {$invoicePayerExpr} as payer_name
+                ")
+                ->get()
+                ->map(function ($row) {
+                    $row->effective_date = $row->updated_at ?: $row->created_at ?: $row->payment_date;
+                    return $row;
+                });
+
+            $merged = $supplierPayments
+                ->concat($financeInvoicePayments)
+                ->sortByDesc(function ($row) {
+                    return strtotime((string) ($row->effective_date ?: $row->payment_date ?: $row->created_at ?: '1970-01-01 00:00:00'));
+                })
+                ->values();
+
+            $total = $merged->count();
+            $items = $merged->forPage($page, $perPage)->values();
+
+            $paginator = new LengthAwarePaginator(
+                $items,
+                $total,
+                $perPage,
+                $page,
+                [
+                    'path' => $request->url(),
+                    'query' => $request->query(),
+                ]
+            );
+
+            return response()->json($paginator);
         } catch (\Exception $e) {
+            Log::error('Supplier payment history fetch failed', [
+                'supplier_id' => $id,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Supplier not found'
-            ], 404);
+                'message' => 'Failed to retrieve payment history',
+                'error' => app()->environment('local') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    private function reconcileSucceededPaymongoInvoices(array $supplierIds): void
+    {
+        if (empty($supplierIds)) {
+            return;
+        }
+
+        $invoiceIds = DB::table('invoices')
+            ->whereIn('supplier_id', $supplierIds)
+            ->whereRaw("LOWER(COALESCE(payment_status, status, 'pending')) NOT IN ('paid','completed')")
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        if (empty($invoiceIds)) {
+            return;
+        }
+
+        $paidIntents = DB::table('paymongo_intents')
+            ->where('payable_type', 'invoice')
+            ->whereIn('payable_id', $invoiceIds)
+            ->whereIn(DB::raw('LOWER(status)'), ['succeeded', 'paid'])
+            ->orderByDesc('id')
+            ->get(['payable_id', 'amount'])
+            ->groupBy('payable_id');
+
+        if ($paidIntents->isEmpty()) {
+            return;
+        }
+
+        foreach ($paidIntents as $invoiceId => $intents) {
+            $invoice = DB::table('invoices')->where('id', (int) $invoiceId)->first([
+                'id', 'supplier_id', 'payment_status', 'status', 'payment_amount', 'invoice_amount', 'net_amount'
+            ]);
+
+            if (!$invoice) {
+                continue;
+            }
+
+            $alreadyPaid = in_array(strtolower((string) ($invoice->payment_status ?: $invoice->status)), ['paid', 'completed'], true);
+            if ($alreadyPaid) {
+                continue;
+            }
+
+            $latestIntent = $intents->first();
+            $computedAmount = (float) ($latestIntent->amount ?? 0) / 100;
+            $paymentAmount = $computedAmount > 0
+                ? $computedAmount
+                : (float) ($invoice->payment_amount ?: $invoice->net_amount ?: $invoice->invoice_amount ?: 0);
+
+            DB::transaction(function () use ($invoice, $paymentAmount) {
+                DB::table('invoices')
+                    ->where('id', (int) $invoice->id)
+                    ->update([
+                        'payment_status' => 'paid',
+                        'payment_method' => 'paymongo_gcash',
+                        'payment_amount' => $paymentAmount,
+                        'payment_date' => now()->toDateString(),
+                        'status' => 'paid',
+                        'updated_at' => now(),
+                    ]);
+
+                if ((int) ($invoice->supplier_id ?? 0) > 0 && $paymentAmount > 0) {
+                    DB::table('suppliers')
+                        ->where('id', (int) $invoice->supplier_id)
+                        ->update([
+                            'current_balance' => DB::raw('GREATEST(COALESCE(current_balance, 0), 0) + ' . $paymentAmount),
+                            'updated_at' => now(),
+                        ]);
+                }
+            });
         }
     }
 

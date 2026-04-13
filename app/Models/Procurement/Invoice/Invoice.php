@@ -38,6 +38,11 @@ class Invoice extends Model
         'payment_date',
         'payment_amount',
         'payment_method',
+        'paid_to_bank_name',
+        'paid_to_account_name',
+        'paid_to_account_number_masked',
+        'paid_to_account_type',
+        'paid_to_bank_branch',
         'remarks',
     ];
 

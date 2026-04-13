@@ -254,6 +254,17 @@ class SupplierService {
     return response.data
   }
 
+  async updatePaymentAccount(data: {
+    bank_name: string
+    bank_account_name: string
+    bank_account_number: string
+    bank_account_type?: 'savings' | 'checking' | 'current' | 'other'
+    bank_branch?: string
+  }) {
+    const response = await axiosClient.put(`${this.portalBaseUrl}/payment-account`, data)
+    return response.data
+  }
+
   async getPortalStats(): Promise<{ success: boolean; data: any }> {
     const response = await axiosClient.get(`${this.portalBaseUrl}/stats`)
     return response.data
@@ -350,7 +361,7 @@ class SupplierService {
     return response.data
   }
 
-  async createInvoiceFromGoodsReceipt(data: { purchase_order_id: number; goods_receipt_id: number }) {
+  async createInvoiceFromGoodsReceipt(data: { purchase_order_id: number; goods_receipt_id?: number | null; submitted_by_supplier?: boolean }) {
     const response = await axiosClient.post(`/api/procurement/invoices/from-grn`, data)
     return response.data
   }

@@ -5,8 +5,6 @@
         <h1 class="text-lg font-bold text-gray-800">Purchase Requisitions</h1>
         <p class="text-xs text-gray-600 mt-1">Create, track and process PR requests for procurement</p>
       </div>
-      <Button v-if="canManageRequisitions" label="Create Requisition" icon="pi pi-plus" severity="success"
-        @click="router.push({ name: 'procurement.purchase-requisitions.create' })" size="small" />
     </div>
   
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -239,15 +237,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive, computed } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
-import { useAuthStore } from '../../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()
-const authStore = useAuthStore()
 const loading = ref(false)
 const requisitions = ref<any[]>([])
 const expandedRows = ref<any[]>([])
@@ -281,7 +277,6 @@ const requisitionTypeOptions = [
 ]
 
 const approvedStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
-const canManageRequisitions = computed(() => authStore.hasPermission('procurement.requisitions.manage'))
 
 const summary = computed(() => ({
   total: total.value,

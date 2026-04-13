@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
 
 class PurchaseOrderController extends Controller
 {
-    private function userHasAnyPermission(array $permissionNames, $user = null): bool
+    protected function userHasAnyPermission(array $permissions, $user = null): bool
     {
         $user = $user ?? Auth::user();
         if (!$user) {
@@ -33,7 +33,7 @@ class PurchaseOrderController extends Controller
         }
 
         $storeId = (int) ($user->store_id ?? 0);
-        foreach ($permissionNames as $permission) {
+        foreach ($permissions as $permission) {
             $normalized = (string) $permission;
             $aliases = array_values(array_unique([
                 $normalized,

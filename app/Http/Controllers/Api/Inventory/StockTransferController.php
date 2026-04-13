@@ -22,14 +22,18 @@ use Illuminate\Support\Str;
 
 class StockTransferController extends Controller
 {
-    private function userHasAnyPermission(array $permissionNames, int $storeId): bool
+    protected function userHasAnyPermission(array $permissions, $user = null): bool
     {
-        $user = Auth::user();
-        if (!$user) {
+        $authUser = Auth::user();
+        if (!$authUser) {
             return false;
         }
 
-        foreach ($permissionNames as $permission) {
+        $storeId = is_int($user)
+            ? $user
+            : (int) ($authUser->store_id ?? 0);
+
+        foreach ($permissions as $permission) {
             $normalized = (string) $permission;
             $aliases = array_values(array_unique([
                 $normalized,
@@ -38,7 +42,7 @@ class StockTransferController extends Controller
             ]));
 
             foreach ($aliases as $candidate) {
-                if ($candidate && $user->hasPermissionTo($candidate, $storeId)) {
+                if ($candidate && $authUser->hasPermissionTo($candidate, $storeId)) {
                     return true;
                 }
             }

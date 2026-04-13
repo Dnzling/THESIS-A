@@ -1,5 +1,6 @@
 <template>
   <div class="space-y-4">
+    <ConfirmDialog />
     <div class="rounded-3xl border border-slate-200 bg-white/80">
       <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr]">
         <aside class="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
@@ -30,6 +31,18 @@
                   :severity="activeSection === 'cancellations' ? 'info' : 'secondary'" class="justify-start"
                   @click="activeSection = 'cancellations'" />
               </div>
+            </div>
+
+            <div class="pt-2 lg:hidden">
+              <Button
+                label="Logout"
+                text
+                fluid
+                severity="danger"
+                class="justify-start"
+                :loading="loggingOut"
+                @click="logoutCustomer"
+              />
             </div>
           </div>
         </aside>
@@ -277,7 +290,7 @@
     <Dialog v-model:visible="addAddressDialogVisible" modal header="Add Address Preset" :style="{ width: '32rem' }">
       <div class="space-y-3">
         <InputText v-model="addAddressForm.full_name" fluid placeholder="Full name" />
-        <InputMask mask="9999-999-9999" v-model="addressEditForm.contact_number" fluid placeholder="Contact number" />
+        <InputMask mask="9999-999-9999" v-model="addAddressForm.contact_number" fluid placeholder="Contact number" />
         <Select v-model="addAddressSelection.provinceId" :options="provinceOptions" optionLabel="label"
           optionValue="value" filter fluid placeholder="Select Province" @change="onAddProvinceChange" />
         <Select v-model="addAddressSelection.cityId" :options="cityOptions" optionLabel="label" optionValue="value" filter
@@ -320,12 +333,15 @@ import axios from 'axios'
 import axiosClient from '@/axios'
 import ecommerceService from '@/services/ecommerce.service'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Password from 'primevue/password'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -348,6 +364,8 @@ const loading = ref(false)
 const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'verification' | 'returns' | 'cancellations'>('basic')
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const confirm = useConfirm()
 const myOrders = ref<any[]>([])
 const profileUser = ref<any>({})
 const profileEmployee = ref<any>(null)
@@ -368,6 +386,7 @@ const changingPassword = ref(false)
 const sendingOtp = ref(false)
 const savingContactChange = ref(false)
 const savingNewAddress = ref(false)
+const loggingOut = ref(false)
 const submittingVerification = ref(false)
 const notificationsLoading = ref(false)
 const documentPreviewVisible = ref(false)
@@ -914,6 +933,33 @@ async function createAddressTemplate() {
   } finally {
     savingNewAddress.value = false
   }
+}
+
+async function logoutCustomer() {
+  confirm.require({
+    message: 'Are you sure you want to log out?',
+    header: 'Confirm Logout',
+    icon: 'pi pi-sign-out',
+    rejectProps: {
+      label: 'Cancel',
+      severity: 'secondary',
+      outlined: true,
+    },
+    acceptProps: {
+      label: 'Log out',
+      severity: 'danger',
+    },
+    accept: async () => {
+      loggingOut.value = true
+      try {
+        await authStore.logout({ redirect: false })
+        showAlert({ severity: 'success', summary: 'Logged out', detail: 'See you again soon!' })
+        router.push({ name: 'ecommerce.products' })
+      } finally {
+        loggingOut.value = false
+      }
+    },
+  })
 }
 
 onMounted(async () => {

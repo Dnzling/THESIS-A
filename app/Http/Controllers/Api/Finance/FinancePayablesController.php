@@ -16,7 +16,7 @@ class FinancePayablesController extends Controller
         $invoices = Invoice::with('supplier')
             ->where('store_id', $storeId)
             ->whereIn('status', ['pending_approval', 'approved'])
-            ->orderBy('due_date')
+            ->orderByDesc('created_at')
             ->get()
             ->map(function ($inv) {
                 return [
@@ -25,6 +25,7 @@ class FinancePayablesController extends Controller
                     'reference' => $inv->invoice_number ?? $inv->id,
                     'supplier' => $inv->supplier?->supplier_name ?? 'Supplier',
                     'amount' => $inv->net_amount ?? $inv->invoice_amount ?? 0,
+                    'invoice_created_at' => $inv->created_at ?? null,
                     'due_date' => $inv->due_date ?? null,
                     'status' => $inv->status ?? 'pending',
                 ];

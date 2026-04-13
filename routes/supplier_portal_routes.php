@@ -24,6 +24,7 @@ Route::prefix('supplier-portal')->group(function () {
         // Supplier Portal Management
         Route::get('/my-portal', [SupplierPortalController::class, 'getMyPortal']);
         Route::put('/coordinates', [SupplierPortalController::class, 'updateCoordinates']);
+        Route::put('/payment-account', [SupplierPortalController::class, 'updatePaymentAccount']);
         Route::get('/stats', [SupplierPortalController::class, 'getStats']);
         Route::get('/stores/linked', [SupplierPortalController::class, 'getLinkedStores']);
         Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);

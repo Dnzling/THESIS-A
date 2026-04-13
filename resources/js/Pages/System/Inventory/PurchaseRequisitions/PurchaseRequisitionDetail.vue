@@ -9,7 +9,28 @@
             <p class="text-xs text-gray-500 mt-0.5">{{ headerSubtitle }}</p>
           </div>
         </div>
-        <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
+        <div class="flex items-center gap-2">
+          <Button
+            v-if="canApprove && canShowApprovalActions"
+            label="Reject"
+            icon="pi pi-times"
+            severity="danger"
+            outlined
+            size="small"
+            :loading="rejecting"
+            @click="openReject"
+          />
+          <Button
+            v-if="canApprove && canShowApprovalActions"
+            label="Approve"
+            icon="pi pi-check"
+            severity="success"
+            size="small"
+            :loading="approving"
+            @click="confirmApprove"
+          />
+          <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
+        </div>
       </div>
   
       <div v-if="loading">
@@ -95,6 +116,16 @@
             </DataTable>
           </template>
         </Card>
+
+        <div v-if="canGenerateReceipt" class="flex justify-end">
+          <Button
+            label="Generate Receipt"
+            icon="pi pi-receipt"
+            severity="success"
+            size="small"
+            @click="generateReceipt"
+          />
+        </div>
       </template>
     </div>
   </div>
@@ -132,7 +163,22 @@ const cancelReason = ref('')
 const cancelError = ref('')
 
 const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
-const canApprove = computed(() => authStore.hasPermission('inventory.requisites.approve'))
+const canApprove = computed(() =>
+  authStore.hasPermission('inventory.requisitions.approve') ||
+  authStore.hasPermission('inventory.requisites.approve')
+)
+const canShowApprovalActions = computed(() => {
+  const s = String(detail.value?.status || '').toLowerCase()
+  return ['draft', 'pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
+})
+const canGenerateReceipt = computed(() => {
+  const s = String(detail.value?.status || '').toLowerCase()
+  if (s !== 'delivered') return false
+  const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
+    ? detail.value.purchase_orders
+    : (Array.isArray(detail.value?.purchaseOrders) ? detail.value.purchaseOrders : [])
+  return purchaseOrders.length > 0
+})
 
 const id = computed(() => String(route.params.id || ''))
 
@@ -180,6 +226,21 @@ const formatStatus = (status: any) => {
 }
 
 const goBack = () => router.push({ name: 'inventory.requisites.index' })
+const generateReceipt = () => {
+  const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
+    ? detail.value.purchase_orders
+    : (Array.isArray(detail.value?.purchaseOrders) ? detail.value.purchaseOrders : [])
+  const po = purchaseOrders[0]
+  if (!po?.id) {
+    toast.add({ severity: 'warn', summary: 'Missing PO', detail: 'No linked purchase order found for this PR.', life: 2500 })
+    return
+  }
+
+  router.push({
+    name: 'inventory.goods-receipts.create',
+    query: { po_id: String(po.id), pr_id: id.value }
+  })
+}
 
 const load = async () => {
   if (!id.value) return
@@ -248,9 +309,10 @@ const submit = async () => {
 }
 
 const openReject = () => {
-  rejectReason.value = ''
-  rejectError.value = ''
-  rejectDialogVisible.value = true
+  if (!canApprove.value) return
+  const reason = window.prompt('Enter rejection reason:') || ''
+  rejectReason.value = reason
+  submitReject()
 }
 
 const submitReject = async () => {
@@ -259,6 +321,7 @@ const submitReject = async () => {
   const reason = String(rejectReason.value || '').trim()
   if (!reason) {
     rejectError.value = 'Reason is required.'
+    toast.add({ severity: 'warn', summary: 'Reason required', detail: 'Please provide a rejection reason.', life: 2500 })
     return
   }
 

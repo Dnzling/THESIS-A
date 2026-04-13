@@ -10,10 +10,15 @@ use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
+use App\Models\Procurement\Invoice\Invoice;
+use App\Models\Procurement\Invoice\InvoiceItem;
+use App\Models\Procurement\Supplier\SupplierContract;
 use App\Services\Logistics\DistanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SupplierShipmentController extends Controller
 {
@@ -287,6 +292,8 @@ class SupplierShipmentController extends Controller
 
         $this->updatePurchaseRequisitionStatus($shipment->purchaseOrder?->purchase_requisition_id, 'delivered');
 
+        $createdInvoice = $this->autoCreateInvoiceForDeliveredPurchaseOrder($shipment);
+
         ActivityLog::record(
             'po_shipment_delivered',
             "Shipment {$shipment->id} confirmed delivered for PO {$shipment->purchaseOrder?->po_number}.",
@@ -305,6 +312,7 @@ class SupplierShipmentController extends Controller
             'data' => [
                 'shipment' => $shipment->load(['purchaseOrder', 'supplier', 'branch']),
                 'delivery_log' => $log->load(['creator', 'attachments']),
+                'invoice' => $createdInvoice,
             ],
         ]);
     }
@@ -335,7 +343,49 @@ class SupplierShipmentController extends Controller
             return;
         }
 
+        $previousStatus = (string) $pr->status;
         $pr->update(['status' => $status]);
+
+        if ($status === 'delivered') {
+            $pr->loadMissing(['requestedBy']);
+            $requesterUserId = (int) ($pr->requestedBy?->user_id ?? 0);
+            $notificationPayload = [
+                'store_id' => (int) $pr->store_id,
+                'branch_id' => (int) $pr->branch_id,
+                'module' => 'inventory',
+                'entity_type' => 'purchase_requisition',
+                'entity_id' => (int) $pr->id,
+                'action' => 'delivered',
+                'title' => 'Purchase Requisition Delivered',
+                'message' => "PR {$pr->pr_number} has been marked as delivered.",
+                'severity' => 'success',
+                'link' => "/inventory/requisites/{$pr->id}",
+                'data' => [
+                    'pr_id' => (int) $pr->id,
+                    'pr_number' => (string) $pr->pr_number,
+                    'status_from' => $previousStatus,
+                    'status_to' => 'delivered',
+                ],
+            ];
+
+            if ($requesterUserId > 0) {
+                $this->notify($requesterUserId, $notificationPayload);
+            }
+
+            $this->notifyUsersByPermissions(
+                (int) $pr->store_id,
+                [
+                    'inventory.requisites.view',
+                    'inventory.requisites.manage',
+                    'inventory.requisites.approve',
+                    'inventory.requisitions.view',
+                    'inventory.requisitions.manage',
+                    'inventory.requisitions.approve',
+                ],
+                $notificationPayload,
+                $requesterUserId > 0 ? [$requesterUserId] : []
+            );
+        }
     }
 
     protected function guardedShipment(int $shipmentId): PurchaseOrderShipment
@@ -347,5 +397,162 @@ class SupplierShipmentController extends Controller
         abort_if($portal->supplier_id !== $shipment->supplier_id, 403, 'Shipment does not belong to your supplier.');
 
         return $shipment;
+    }
+
+    private function autoCreateInvoiceForDeliveredPurchaseOrder(PurchaseOrderShipment $shipment): ?Invoice
+    {
+        $po = $shipment->purchaseOrder;
+        if (!$po) {
+            return null;
+        }
+
+        $storeId = (int) ($po->store_id ?? 0);
+        $supplierId = (int) ($po->supplier_id ?? 0);
+        if ($storeId <= 0 || $supplierId <= 0) {
+            return null;
+        }
+
+        $existing = Invoice::where('store_id', $storeId)
+            ->where('purchase_order_id', (int) $po->id)
+            ->latest('id')
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $po->loadMissing(['items']);
+
+        $invoice = null;
+        DB::beginTransaction();
+        try {
+            $contract = SupplierContract::where('store_id', $storeId)
+                ->where('supplier_id', $supplierId)
+                ->active()
+                ->orderBy('end_date', 'desc')
+                ->first();
+
+            $invoiceNumber = 'INV-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+            $invoiceDate = now()->toDateString();
+            $dueDate = now()->addDays($this->getPaymentDays((string) $po->payment_terms))->toDateString();
+
+            $itemsPayload = [];
+            $invoiceAmount = 0.0;
+
+            foreach (($po->items ?? []) as $poItem) {
+                $qty = (int) ($poItem->quantity_ordered ?? 0);
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $unitPrice = (float) ($poItem->unit_cost ?? 0);
+                $lineAmount = round($unitPrice * $qty, 2);
+                $itemsPayload[] = [
+                    'product_id' => (int) $poItem->product_id,
+                    'quantity_invoiced' => $qty,
+                    'unit_price' => $unitPrice,
+                    'line_amount' => $lineAmount,
+                ];
+                $invoiceAmount += $lineAmount;
+            }
+
+            if (empty($itemsPayload)) {
+                DB::rollBack();
+                return null;
+            }
+
+            $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
+            $discountRate = $contract ? (float) ($contract->discount_percentage ?? 0) : 0.0;
+            $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
+            $shippingCost = (float) ($po->shipping_cost ?? 0);
+            $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
+            $netAmount = $invoiceAmount + $taxAmount + $shippingCost - $discountAmount;
+
+            $invoice = Invoice::create([
+                'store_id' => $storeId,
+                'invoice_number' => $invoiceNumber,
+                'supplier_id' => $supplierId,
+                'purchase_order_id' => (int) $po->id,
+                'goods_receipt_id' => null,
+                'invoice_date' => $invoiceDate,
+                'due_date' => $dueDate,
+                'invoice_amount' => $invoiceAmount,
+                'tax_amount' => $taxAmount,
+                'shipping_cost' => $shippingCost,
+                'discount_amount' => $discountAmount,
+                'net_amount' => $netAmount,
+                'currency' => (string) ($po->currency ?? 'PHP'),
+                'status' => 'pending_approval',
+                'match_status' => 'pending',
+                'payment_status' => 'pending',
+                'remarks' => 'Auto-created from supplier delivered shipment',
+            ]);
+
+            foreach ($itemsPayload as $item) {
+                InvoiceItem::create(array_merge($item, ['invoice_id' => (int) $invoice->id]));
+            }
+
+            $invoice->performThreeWayMatch();
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Failed auto-creating invoice from delivered shipment', [
+                'shipment_id' => (int) $shipment->id,
+                'purchase_order_id' => (int) $po->id,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+
+        if ($invoice) {
+            $notificationPayload = [
+                'store_id' => $storeId,
+                'branch_id' => (int) ($po->branch_id ?? 0),
+                'module' => 'finance',
+                'entity_type' => 'invoice',
+                'entity_id' => (int) $invoice->id,
+                'action' => 'supplier_invoice_submitted',
+                'title' => 'Supplier Invoice Submitted',
+                'message' => "Supplier invoice {$invoice->invoice_number} was auto-submitted after PO {$po->po_number} delivery.",
+                'severity' => 'info',
+                'link' => "/finance/invoices/{$invoice->id}",
+                'data' => [
+                    'invoice_id' => (int) $invoice->id,
+                    'invoice_number' => (string) $invoice->invoice_number,
+                    'purchase_order_id' => (int) $po->id,
+                    'purchase_order_number' => (string) ($po->po_number ?? ''),
+                    'trigger' => 'shipment_delivered',
+                ],
+            ];
+
+            $this->notifyUsersByPermissions(
+                $storeId,
+                [
+                    'finance.invoices.view',
+                    'finance.invoices.manage',
+                    'finance.invoices.approve',
+                    'finance.payables.view',
+                    'finance.payables.manage',
+                    'finance.payables.approve',
+                ],
+                $notificationPayload
+            );
+        }
+
+        return $invoice?->load('items');
+    }
+
+    private function getPaymentDays(string $term): int
+    {
+        return match ($term) {
+            'net_7' => 7,
+            'net_15' => 15,
+            'net_30' => 30,
+            'net_60' => 60,
+            'advance_payment' => 0,
+            'cash_on_delivery' => 0,
+            default => 30,
+        };
     }
 }

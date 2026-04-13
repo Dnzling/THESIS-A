@@ -212,16 +212,7 @@
                     <span>{{ getActionLabel(getPurchaseOrderStatus(data)) }}</span>
                   </button>
                   
-                  <button
-                    v-if="getPurchaseOrderStatus(data) === 'goods_received'"
-                    @click.stop="createInvoiceFromReceipt(data.id)"
-                    :disabled="invoiceCreatingId === data.id"
-                    class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                  >
-                    <i class="pi pi-file text-xs"></i>
-                    <span v-if="invoiceCreatingId === data.id">Creating...</span>
-                    <span v-else>Create Invoice</span>
-                  </button>
+                  
                   
                   <button
                     v-if="getPurchaseOrderStatus(data) === 'supplier_accepted'"
@@ -390,24 +381,15 @@ const createInvoiceFromReceipt = async (poId: number) => {
       })
       return
     }
-    const goodsReceipt = detail?.goods_receipt
-    if (!goodsReceipt?.id) {
-      toast.add({
-        severity: 'warn',
-        summary: 'Cannot Create Invoice',
-        detail: 'No goods receipt is linked to this PO yet.',
-        life: 4000,
-      })
-      return
-    }
     await supplierService.createInvoiceFromGoodsReceipt({
       purchase_order_id: poId,
-      goods_receipt_id: goodsReceipt.id,
+      goods_receipt_id: detail?.goods_receipt?.id || null,
+      submitted_by_supplier: true,
     })
     toast.add({
       severity: 'success',
-      summary: 'Invoice Draft Created',
-      detail: 'A draft invoice has been created and sent to finance.',
+      summary: 'Invoice Submitted',
+      detail: 'Invoice has been submitted to finance accounts payable.',
       life: 4000,
     })
     loadPOs()

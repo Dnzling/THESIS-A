@@ -3,7 +3,11 @@
 namespace App\Http\Controllers\Api\Finance;
 
 use App\Http\Controllers\Controller;
+use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Procurement\Invoice\Invoice;
+use App\Models\Procurement\Receiving\GoodsReceipt;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
 use Illuminate\Http\JsonResponse;
@@ -81,7 +85,7 @@ class FinanceInvoiceController extends Controller
             $storeId = auth()->user()->store_id;
 
             $invoice = Invoice::with([
-                'supplier:id,supplier_name,contact_person,email,phone',
+                'supplier:id,supplier_name,contact_person,email,phone,bank_name,bank_account_name,bank_account_number,bank_account_type,bank_branch',
                 'purchaseOrder.items.product:id,product_name,sku',
                 'goodsReceipt.items',
                 'items.product:id,product_name,sku',
@@ -89,9 +93,62 @@ class FinanceInvoiceController extends Controller
                 ->where('store_id', $storeId)
                 ->findOrFail($id);
 
+            // Fallback for supplier-submitted invoices that were created without direct goods_receipt_id.
+            // Attach latest GRN for the same PO so 3-way match UI can display GRN details.
+            if (!$invoice->relationLoaded('goodsReceipt') || !$invoice->goodsReceipt) {
+                $fallbackReceipt = GoodsReceipt::with('items')
+                    ->where('purchase_order_id', (int) $invoice->purchase_order_id)
+                    ->latest('id')
+                    ->first();
+
+                if ($fallbackReceipt) {
+                    $invoice->setRelation('goodsReceipt', $fallbackReceipt);
+                    if (!$invoice->goods_receipt_id) {
+                        $invoice->goods_receipt_id = (int) $fallbackReceipt->id;
+                        $invoice->saveQuietly();
+                    }
+                }
+            }
+
+            $payload = $invoice->toArray();
+            if (empty($payload['goods_receipt']) && $invoice->goodsReceipt) {
+                $payload['goods_receipt'] = $invoice->goodsReceipt->toArray();
+                $payload['goods_receipt_id'] = (int) ($invoice->goods_receipt_id ?: $invoice->goodsReceipt->id);
+            }
+
+            // Last-resort display fallback: if no GRN exists yet, surface delivered shipment as receipt-like context
+            // so Finance 3-way tab does not show an empty Goods Receipt card.
+            if (empty($payload['goods_receipt'])) {
+                $shipment = PurchaseOrderShipment::where('purchase_order_id', (int) $invoice->purchase_order_id)
+                    ->whereIn('status', ['delivered', 'in_transit'])
+                    ->latest('id')
+                    ->first();
+
+                if ($shipment) {
+                    $poItems = $invoice->purchaseOrder?->items ?? collect();
+                    $payload['goods_receipt'] = [
+                        'id' => null,
+                        'grn_number' => 'From Shipment #' . $shipment->id,
+                        'receipt_date' => $shipment->delivered_at ?: $shipment->dispatched_at ?: $shipment->created_at,
+                        'receipt_status' => (string) $shipment->status,
+                        'items' => $poItems->map(function ($item) {
+                            $qty = (int) ($item->quantity_ordered ?? 0);
+                            return [
+                                'id' => null,
+                                'product_id' => (int) ($item->product_id ?? 0),
+                                'quantity_expected' => $qty,
+                                'quantity_received' => $qty,
+                                'quantity_damaged' => 0,
+                            ];
+                        })->values()->all(),
+                    ];
+                    $payload['goods_receipt_id'] = null;
+                }
+            }
+
             return response()->json([
                 'success' => true,
-                'data' => $invoice,
+                'data' => $payload,
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to retrieve finance invoice', ['error' => $e->getMessage()]);
@@ -220,13 +277,21 @@ class FinanceInvoiceController extends Controller
                 ], 422);
             }
 
+            if (!$this->hasCompleteSupplierPaymentAccount((int) $invoice->supplier_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier payment account is incomplete. Please ask supplier to set bank details before payment.',
+                ], 422);
+            }
+
             $validated = $request->validate([
                 'payment_method' => 'required|in:cash,check,bank_transfer,credit_card,paymongo_gcash,gcash',
                 'payment_amount' => 'required|numeric|min:0',
             ]);
+            $supplier = $invoice->supplier_id ? Supplier::query()->find((int) $invoice->supplier_id) : null;
 
             try {
-                DB::transaction(function () use ($invoice, $validated) {
+                DB::transaction(function () use ($invoice, $validated, $supplier) {
                     $cashflow = new CashflowService();
                     $cashflow->debit(
                         (int) $invoice->store_id,
@@ -245,6 +310,11 @@ class FinanceInvoiceController extends Controller
                     $invoice->update([
                         'status' => 'paid',
                         'payment_date' => now()->toDateString(),
+                        'paid_to_bank_name' => $supplier?->bank_name,
+                        'paid_to_account_name' => $supplier?->bank_account_name,
+                        'paid_to_account_number_masked' => $this->maskAccountNumber($supplier?->bank_account_number),
+                        'paid_to_account_type' => $supplier?->bank_account_type,
+                        'paid_to_bank_branch' => $supplier?->bank_branch,
                     ]);
 
                     $financeService = new FinanceExpenseService();
@@ -277,6 +347,13 @@ class FinanceInvoiceController extends Controller
                     if ($invoice->purchaseOrder) {
                         $invoice->purchaseOrder->update(['payment_status' => 'paid']);
                     }
+
+                    if ($invoice->supplier_id) {
+                        \App\Models\Procurement\Supplier\Supplier::where('id', (int) $invoice->supplier_id)
+                            ->update([
+                                'current_balance' => DB::raw('GREATEST(COALESCE(current_balance, 0), 0) + ' . ((float) $validated['payment_amount']))
+                            ]);
+                    }
                 });
             } catch (\RuntimeException $e) {
                 return response()->json([
@@ -284,6 +361,8 @@ class FinanceInvoiceController extends Controller
                     'message' => $e->getMessage(),
                 ], 422);
             }
+
+            $this->notifySupplierUsersInvoicePaid($invoice->fresh() ?? $invoice);
 
             return response()->json([
                 'success' => true,
@@ -297,5 +376,80 @@ class FinanceInvoiceController extends Controller
                 'message' => 'Failed to mark invoice as paid',
             ], 500);
         }
+    }
+
+    private function notifySupplierUsersInvoicePaid(Invoice $invoice): void
+    {
+        $supplier = $invoice->supplier;
+        $supplierEmail = strtolower(trim((string) ($supplier?->email ?? '')));
+        if ($supplierEmail === '') {
+            return;
+        }
+
+        $portalUserIds = SupplierPortal::query()
+            ->whereHas('supplier', function ($q) use ($supplierEmail) {
+                $q->whereRaw('LOWER(email) = ?', [$supplierEmail]);
+            })
+            ->pluck('user_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($portalUserIds)) {
+            return;
+        }
+
+        $payload = [
+            'store_id' => (int) $invoice->store_id,
+            'module' => 'supplier',
+            'entity_type' => 'invoice',
+            'entity_id' => (int) $invoice->id,
+            'action' => 'invoice_paid',
+            'title' => 'Invoice Paid',
+            'message' => "Your invoice {$invoice->invoice_number} has been paid by Finance.",
+            'severity' => 'success',
+            'link' => "/supplier-portal/pos/{$invoice->purchase_order_id}/invoice-view",
+            'data' => [
+                'invoice_id' => (int) $invoice->id,
+                'invoice_number' => (string) $invoice->invoice_number,
+                'payment_amount' => (float) ($invoice->payment_amount ?? $invoice->net_amount ?? 0),
+                'payment_date' => (string) ($invoice->payment_date ?? now()->toDateString()),
+            ],
+        ];
+
+        foreach ($portalUserIds as $userId) {
+            $this->notify($userId, $payload);
+        }
+    }
+
+    private function hasCompleteSupplierPaymentAccount(int $supplierId): bool
+    {
+        if ($supplierId <= 0) {
+            return false;
+        }
+
+        $supplier = Supplier::query()->find($supplierId);
+        if (!$supplier) {
+            return false;
+        }
+
+        return filled($supplier->bank_name)
+            && filled($supplier->bank_account_name)
+            && filled($supplier->bank_account_number);
+    }
+
+    private function maskAccountNumber(?string $accountNumber): ?string
+    {
+        $raw = trim((string) $accountNumber);
+        if ($raw === '') {
+            return null;
+        }
+        $len = strlen($raw);
+        if ($len <= 4) {
+            return str_repeat('*', max(0, $len - 1)) . substr($raw, -1);
+        }
+        return str_repeat('*', $len - 4) . substr($raw, -4);
     }
 }

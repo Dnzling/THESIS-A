@@ -597,6 +597,48 @@ class PurchaseRequisitionController extends Controller
 
                     $automation = $this->runPostApprovalAutomation($pr);
 
+                    $pr->loadMissing(['requestedBy']);
+                    $requesterUserId = (int) ($pr->requestedBy?->user_id ?? 0);
+                    $payload = [
+                        'store_id' => (int) $pr->store_id,
+                        'branch_id' => (int) $pr->branch_id,
+                        'module' => 'inventory',
+                        'entity_type' => 'purchase_requisition',
+                        'entity_id' => (int) $pr->id,
+                        'action' => 'approved',
+                        'title' => 'Purchase Requisition Approved',
+                        'message' => "PR {$pr->pr_number} has been approved by procurement.",
+                        'severity' => 'success',
+                        'link' => "/inventory/requisites/{$pr->id}",
+                        'data' => [
+                            'pr_id' => (int) $pr->id,
+                            'pr_number' => (string) $pr->pr_number,
+                            'status' => 'procurement_processing',
+                        ],
+                    ];
+                    if ($requesterUserId > 0) {
+                        $this->notify($requesterUserId, $payload);
+                    }
+                    if (Auth::id()) {
+                        $this->notify((int) Auth::id(), $payload);
+                    }
+                    $this->notifyUsersByPermissions(
+                        (int) $pr->store_id,
+                        [
+                            'inventory.requisites.view',
+                            'inventory.requisites.manage',
+                            'inventory.requisites.approve',
+                            'inventory.requisitions.view',
+                            'inventory.requisitions.manage',
+                            'inventory.requisitions.approve',
+                        ],
+                        $payload,
+                        array_values(array_unique(array_filter([
+                            $requesterUserId > 0 ? (int) $requesterUserId : null,
+                            Auth::id() ? (int) Auth::id() : null,
+                        ])))
+                    );
+
                     DB::commit();
 
                     $message = $this->buildAutomationMessage($automation);
@@ -652,6 +694,48 @@ class PurchaseRequisitionController extends Controller
                 ]
             ]),
         ]);
+
+        $pr->loadMissing(['requestedBy']);
+        $requesterUserId = (int) ($pr->requestedBy?->user_id ?? 0);
+        $payload = [
+            'store_id' => (int) $pr->store_id,
+            'branch_id' => (int) $pr->branch_id,
+            'module' => 'inventory',
+            'entity_type' => 'purchase_requisition',
+            'entity_id' => (int) $pr->id,
+            'action' => 'rejected',
+            'title' => 'Purchase Requisition Rejected',
+            'message' => "PR {$pr->pr_number} has been rejected by procurement.",
+            'severity' => 'warn',
+            'link' => "/inventory/requisites/{$pr->id}",
+            'data' => [
+                'pr_id' => (int) $pr->id,
+                'pr_number' => (string) $pr->pr_number,
+                'status' => 'rejected',
+            ],
+        ];
+        if ($requesterUserId > 0) {
+            $this->notify($requesterUserId, $payload);
+        }
+        if (Auth::id()) {
+            $this->notify((int) Auth::id(), $payload);
+        }
+        $this->notifyUsersByPermissions(
+            (int) $pr->store_id,
+            [
+                'inventory.requisites.view',
+                'inventory.requisites.manage',
+                'inventory.requisites.approve',
+                'inventory.requisitions.view',
+                'inventory.requisitions.manage',
+                'inventory.requisitions.approve',
+            ],
+            $payload,
+            array_values(array_unique(array_filter([
+                $requesterUserId > 0 ? (int) $requesterUserId : null,
+                Auth::id() ? (int) Auth::id() : null,
+            ])))
+        );
 
         return response()->json([
             'success' => true,
