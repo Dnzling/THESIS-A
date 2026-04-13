@@ -573,6 +573,7 @@ const groupedNavigation = computed(() => {
   const isSupplierRole = (authStore.userRole || '').toLowerCase().includes('supplier')
   const isStoreRole = (authStore.userRole || '').toLowerCase().includes('store')
   const isCustomerRole = (authStore.userRole || '').toLowerCase().includes('customer')
+  const isSuperAdminRole = (authStore.userRole || '').toLowerCase() === 'super_admin'
   let baseNavigation = authStore.navigation.length > 0
     ? [...authStore.navigation]
     : []
@@ -605,6 +606,29 @@ const groupedNavigation = computed(() => {
     const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
     if (!existingPaths.has(profileItem.route_path)) {
       baseNavigation = [...baseNavigation, profileItem]
+    }
+  }
+
+  if (isSuperAdminRole) {
+    const superAdminUsersItem = {
+      id: -903,
+      name: 'admin.users',
+      display_name: 'Users',
+      module: 'admin',
+      route_name: 'admin.users',
+      route_path: '/admin/users',
+      icon: 'pi pi-users',
+      parent_id: null,
+      display_order: 50,
+      section: 'General',
+      meta: null,
+      is_active: true,
+      badge_count: 0,
+    }
+
+    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
+    if (!existingPaths.has(superAdminUsersItem.route_path)) {
+      baseNavigation = [...baseNavigation, superAdminUsersItem]
     }
   }
 

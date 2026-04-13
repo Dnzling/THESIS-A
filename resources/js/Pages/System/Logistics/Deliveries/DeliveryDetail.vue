@@ -223,6 +223,27 @@
         />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="mediaPreviewVisible" modal :header="mediaPreviewTitle" class="w-full max-w-4xl">
+      <div class="max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+        <div v-if="mediaLoading" class="flex h-[50vh] items-center justify-center text-slate-500">Loading proof...</div>
+        <div v-else-if="mediaError" class="flex h-[50vh] items-center justify-center text-red-500">{{ mediaError }}</div>
+        <img
+          v-else-if="mediaIsImage && mediaPreviewObjectUrl"
+          :src="mediaPreviewObjectUrl"
+          alt="Proof preview"
+          class="mx-auto max-h-[70vh] w-auto rounded-lg object-contain"
+        />
+        <iframe
+          v-else
+          :src="mediaPreviewObjectUrl || mediaPreviewUrl"
+          class="h-[70vh] w-full rounded-lg border-0 bg-white"
+        />
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined @click="closeMediaPreview" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -261,6 +282,12 @@ const loading = ref(false)
 const statusUpdating = ref(false)
 const delivering = ref(false)
 const deliveredDialogVisible = ref(false)
+const mediaPreviewVisible = ref(false)
+const mediaPreviewUrl = ref('')
+const mediaPreviewObjectUrl = ref('')
+const mediaPreviewTitle = ref('Proof Preview')
+const mediaLoading = ref(false)
+const mediaError = ref('')
 const recordLogDialogVisible = ref(false)
 const recordLogMessage = ref('')
 const savingLog = ref(false)
@@ -495,10 +522,62 @@ const normalizeMediaUrl = (raw: string) => {
   return `/storage/${raw.replace(/^\//, '')}`
 }
 
-const openMedia = (url: string) => {
+const openMedia = async (url: string) => {
   const targetUrl = normalizeMediaUrl(url)
   if (!targetUrl) return
-  window.open(targetUrl, '_blank')
+
+  // cleanup previous object URL
+  if (mediaPreviewObjectUrl.value) {
+    URL.revokeObjectURL(mediaPreviewObjectUrl.value)
+    mediaPreviewObjectUrl.value = ''
+  }
+
+  mediaPreviewUrl.value = targetUrl
+  mediaPreviewTitle.value = targetUrl.includes('/signature') ? 'Signature Preview' : 'Proof Photo Preview'
+  mediaPreviewVisible.value = true
+  mediaLoading.value = true
+  mediaError.value = ''
+
+  try {
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('access_token') || ''
+    const response = await fetch(targetUrl, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      throw new Error('Unable to load attached proof file.')
+    }
+
+    const blob = await response.blob()
+    mediaPreviewObjectUrl.value = URL.createObjectURL(blob)
+  } catch (error: any) {
+    mediaError.value = error?.message || 'Unable to load attached proof file.'
+  } finally {
+    mediaLoading.value = false
+  }
+}
+
+const mediaIsImage = computed(() => {
+  const value = String(mediaPreviewUrl.value || '').toLowerCase()
+  return value.includes('.jpg')
+    || value.includes('.jpeg')
+    || value.includes('.png')
+    || value.includes('.webp')
+    || value.includes('.gif')
+    || value.includes('/proof/photo')
+    || value.includes('/proof/signature')
+})
+
+const closeMediaPreview = () => {
+  mediaPreviewVisible.value = false
+  mediaLoading.value = false
+  mediaError.value = ''
+  mediaPreviewUrl.value = ''
+  if (mediaPreviewObjectUrl.value) {
+    URL.revokeObjectURL(mediaPreviewObjectUrl.value)
+    mediaPreviewObjectUrl.value = ''
+  }
 }
 
 const openTrip = (tripId: number) => {

@@ -52,7 +52,21 @@
                 class="max-w-[80%] rounded-lg px-3 py-2 text-sm"
                 :class="msg.sender_role === 'customer' ? 'ml-auto bg-blue-600 text-white' : 'bg-white text-slate-800'"
               >
-                <p>{{ msg.message }}</p>
+                <template v-if="editingMessageId === msg.id">
+                  <Textarea v-model="editDraftMessage" rows="2" autoResize class="w-full mb-2" />
+                  <div class="flex items-center justify-end gap-2">
+                    <Button label="Cancel" size="small" severity="secondary" text @click="cancelEditMessage" />
+                    <Button label="Save" size="small" severity="info" :loading="editingLoading" @click="saveEditMessage(msg)" />
+                  </div>
+                </template>
+                <p v-else>{{ msg.message }}</p>
+                <div
+                  v-if="msg.sender_role === 'customer' && Number(msg.id) > 0 && msg.message !== '[Message unsent]' && editingMessageId !== msg.id"
+                  class="mt-1 flex items-center justify-end gap-2"
+                >
+                  <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="startEditMessage(msg)">Edit</button>
+                  <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="unsendMessage(msg)">Unsend</button>
+                </div>
                 <p class="mt-1 text-[11px]" :class="msg.sender_role === 'customer' ? 'text-blue-100' : 'text-slate-400'">
                   {{ formatDateTime(msg.created_at) }}
                 </p>
@@ -74,7 +88,7 @@ import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
-import { showAlert } from '@/utils/swal'
+import { confirmAlert, showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -87,6 +101,9 @@ const threadsLoading = ref(false)
 const messagesLoading = ref(false)
 const sending = ref(false)
 const draftMessage = ref('')
+const editingMessageId = ref<number | string | null>(null)
+const editDraftMessage = ref('')
+const editingLoading = ref(false)
 const activeStoreId = ref<number | null>(null)
 const activeStoreName = ref('')
 const lockedStoreId = computed(() => Number(route.query.store_id || 0))
@@ -155,6 +172,62 @@ async function sendMessage() {
   }
 }
 
+function startEditMessage(msg: any) {
+  editingMessageId.value = msg.id
+  editDraftMessage.value = String(msg?.message || '')
+}
+
+function cancelEditMessage() {
+  editingMessageId.value = null
+  editDraftMessage.value = ''
+}
+
+async function saveEditMessage(msg: any) {
+  if (!activeStoreId.value) return
+  const message = String(editDraftMessage.value || '').trim()
+  if (!message) {
+    showAlert({ severity: 'warn', summary: 'Chat', detail: 'Message cannot be empty.' })
+    return
+  }
+
+  editingLoading.value = true
+  try {
+    await ecommerceService.updateStoreChatMessage(activeStoreId.value, msg.id, { message })
+    const idx = messages.value.findIndex((m: any) => m.id === msg.id)
+    if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], message }
+    }
+    cancelEditMessage()
+    await loadThreads()
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Edit Failed', detail: error?.response?.data?.message || 'Unable to edit message' })
+  } finally {
+    editingLoading.value = false
+  }
+}
+
+async function unsendMessage(msg: any) {
+  if (!activeStoreId.value) return
+  const confirmed = await confirmAlert({
+    title: 'Unsend Message?',
+    text: 'This will remove the message content for everyone in this chat.',
+    confirmText: 'Unsend',
+    cancelText: 'Cancel',
+  })
+  if (!confirmed) return
+
+  try {
+    await ecommerceService.unsendStoreChatMessage(activeStoreId.value, msg.id)
+    const idx = messages.value.findIndex((m: any) => m.id === msg.id)
+    if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], message: '[Message unsent]' }
+    }
+    await loadThreads()
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Unsend Failed', detail: error?.response?.data?.message || 'Unable to unsend message' })
+  }
+}
+
 onMounted(loadThreads)
 
 watch(lockedStoreId, async (storeId) => {
@@ -165,4 +238,3 @@ watch(lockedStoreId, async (storeId) => {
   }
 })
 </script>
-

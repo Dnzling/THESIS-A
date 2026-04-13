@@ -34,4 +34,6 @@ Route::prefix('ecommerce')->group(function () {
     Route::get('/chat/threads', [EcommerceController::class, 'chatThreads']);
     Route::get('/chat/stores/{storeId}/messages', [EcommerceController::class, 'chatMessages']);
     Route::post('/chat/stores/{storeId}/messages', [EcommerceController::class, 'sendChatMessage']);
+    Route::put('/chat/stores/{storeId}/messages/{messageId}', [EcommerceController::class, 'updateChatMessage']);
+    Route::delete('/chat/stores/{storeId}/messages/{messageId}', [EcommerceController::class, 'unsendChatMessage']);
 });

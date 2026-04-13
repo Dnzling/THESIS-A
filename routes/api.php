@@ -167,6 +167,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Store Management
         Route::get('/stores', [StoreManagementController::class, 'index']);
         Route::get('/stores/{store}', [StoreManagementController::class, 'show']);
+        Route::get('/users', [StoreManagementController::class, 'usersIndex']);
 
         // Violation Reports
         Route::middleware('role:super_admin')->group(function () {

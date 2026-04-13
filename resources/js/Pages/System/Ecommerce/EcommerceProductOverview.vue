@@ -664,6 +664,7 @@ async function buyNow() {
       text: 'Are you sure you want to buy this item now? This will add it to your cart and take you to checkout.',
       cancelText: 'No, go back to shop',
       confirmText: 'Yes, buy now',
+      reverseButtons: true,
     })
 
     if (!confirmed) {

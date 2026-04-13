@@ -186,6 +186,16 @@ class SalesService {
     return res.data
   }
 
+  async updateChatMessage(threadId: number | string, messageId: number | string, payload: { message: string }) {
+    const res = await axiosClient.put(`/api/sales/chats/threads/${threadId}/messages/${messageId}`, payload)
+    return res.data
+  }
+
+  async unsendChatMessage(threadId: number | string, messageId: number | string) {
+    const res = await axiosClient.delete(`/api/sales/chats/threads/${threadId}/messages/${messageId}`)
+    return res.data
+  }
+
   async getReviews(params?: any) {
     const res = await axiosClient.get('/api/sales/reviews', { params })
     return res.data

@@ -16,6 +16,7 @@ Route::prefix('logistics')->group(function () {
         Route::post('/assign', [UnifiedDeliveryController::class, 'assign'])->middleware('can:logistics.deliveries.manage');
         Route::get('/', [UnifiedDeliveryController::class, 'orders'])->middleware('can:logistics.deliveries.view');
         Route::get('/{source}/{orderId}', [UnifiedDeliveryController::class, 'orderDetail'])->middleware('can:logistics.deliveries.view');
+        Route::get('/{source}/{orderId}/proof/{kind}', [UnifiedDeliveryController::class, 'serveProof'])->middleware('can:logistics.deliveries.view');
         Route::get('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'logs'])->middleware('can:logistics.deliveries.view');
         Route::post('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'addLog'])->middleware('can:logistics.deliveries.manage');
         Route::put('/{source}/{orderId}/status', [UnifiedDeliveryController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');

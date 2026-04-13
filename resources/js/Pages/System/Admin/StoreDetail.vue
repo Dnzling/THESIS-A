@@ -59,7 +59,7 @@
       </template>
     </Card>
 
-    <div v-if="!loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div v-if="!loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <p class="text-xs uppercase tracking-wide text-slate-500">Total Users</p>
@@ -82,6 +82,12 @@
         <template #content>
           <p class="text-xs uppercase tracking-wide text-slate-500">Active Products</p>
           <p class="text-2xl font-semibold text-slate-900">{{ performance.products_active }}</p>
+        </template>
+      </Card>
+      <Card class="border border-slate-200 shadow-none">
+        <template #content>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Total Customers</p>
+          <p class="text-2xl font-semibold text-slate-900">{{ performance.customers_total }}</p>
         </template>
       </Card>
       <Card class="border border-slate-200 shadow-none">
@@ -136,6 +142,25 @@
       </template>
     </Card>
 
+    <Card class="border border-slate-200 shadow-none">
+      <template #title>Customers</template>
+      <template #content>
+        <DataTable :value="customers" :loading="loading" dataKey="id" stripedRows paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+          <Column field="name" header="Name" />
+          <Column field="email" header="Email" />
+          <Column field="verification_status" header="Verification">
+            <template #body="{ data }">
+              <Tag :value="toTitle(data.verification_status)" :severity="statusSeverity(data.verification_status)" />
+            </template>
+          </Column>
+          <Column field="orders_count" header="Orders" />
+          <Column field="last_order_at" header="Last Order">
+            <template #body="{ data }">{{ formatDateTime(data.last_order_at) }}</template>
+          </Column>
+        </DataTable>
+      </template>
+    </Card>
+
     <StoreModulesDialog
       v-model:modelValue="showModulesDialog"
       :store-id="store.id"
@@ -164,11 +189,13 @@ const showModulesDialog = ref(false)
 const store = ref<any>({})
 const users = ref<any[]>([])
 const products = ref<any[]>([])
+const customers = ref<any[]>([])
 const performance = ref({
   users_total: 0,
   users_active: 0,
   products_total: 0,
   products_active: 0,
+  customers_total: 0,
   age_days: 0,
 })
 
@@ -231,6 +258,7 @@ const loadStoreDetail = async () => {
     store.value = payload.store || {}
     users.value = payload.users || []
     products.value = payload.products || []
+    customers.value = payload.customers || []
     performance.value = payload.performance || performance.value
   } catch (error: any) {
     toast.add({

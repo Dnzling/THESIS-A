@@ -49,7 +49,32 @@
                 class="max-w-[85%] rounded-lg px-3 py-2 text-sm"
                 :class="message.sender_role === 'store' ? 'ml-auto bg-blue-600 text-white' : 'bg-white text-gray-900'"
               >
-                <p>{{ message.message }}</p>
+                <template v-if="editingMessageId === message.id">
+                  <Textarea v-model="editDraft" rows="2" fluid class="mb-2" />
+                  <div class="flex items-center justify-end gap-2">
+                    <Button label="Cancel" size="small" severity="secondary" text @click="cancelEditMessage" />
+                    <Button label="Save" size="small" severity="info" :loading="editingMessageLoading" @click="saveEditMessage(message)" />
+                  </div>
+                </template>
+                <p v-else>{{ message.message }}</p>
+                <div v-if="message._send_state === 'failed'" class="mt-1 flex items-center gap-2">
+                  <span class="text-[11px] font-semibold text-amber-200">Unsent message</span>
+                  <button
+                    type="button"
+                    class="text-[11px] underline text-white/90 hover:text-white"
+                    @click="retryMessage(message)"
+                  >
+                    Retry
+                  </button>
+                </div>
+                <p v-else-if="message._send_state === 'sending'" class="mt-1 text-[11px] text-blue-100">Sending...</p>
+                <div
+                  v-else-if="message.sender_role === 'store' && Number(message.id) > 0 && message.message !== '[Message unsent]'"
+                  class="mt-1 flex items-center justify-end gap-2"
+                >
+                  <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="startEditMessage(message)">Edit</button>
+                  <button type="button" class="text-[11px] underline text-blue-100 hover:text-white" @click="unsendMessage(message)">Unsend</button>
+                </div>
                 <p class="mt-1 text-[11px]" :class="message.sender_role === 'store' ? 'text-blue-100' : 'text-gray-400'">{{ dt(message.created_at) }}</p>
               </div>
               <p v-if="!messages.length" class="text-sm text-gray-500">No messages yet.</p>
@@ -77,6 +102,7 @@ import { useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import salesService from '@/services/sales.service'
+import { confirmAlert } from '@/utils/swal'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -95,6 +121,10 @@ const selectedOrderId = ref<number | null>(Number(route.query.order_id || 0) || 
 const messages = ref<any[]>([])
 const draft = ref('')
 const sending = ref(false)
+const editingMessageId = ref<number | string | null>(null)
+const editDraft = ref('')
+const editingMessageLoading = ref(false)
+let tempMessageSeed = 0
 
 const extractRows = (payload: any) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
 
@@ -160,22 +190,137 @@ const sendMessage = async () => {
     return
   }
   sending.value = true
+  const outgoingText = draft.value.trim()
+  const tempId = `tmp-${Date.now()}-${tempMessageSeed++}`
+  const tempMessage = {
+    id: tempId,
+    sender_role: 'store',
+    message: outgoingText,
+    created_at: new Date().toISOString(),
+    _send_state: 'sending',
+    _thread_id: selectedThreadId.value,
+    _order_id: selectedOrderId.value || undefined,
+  }
+  messages.value.push(tempMessage)
+  draft.value = ''
   try {
-    await salesService.sendChatMessage(selectedThreadId.value, {
-      message: draft.value.trim(),
+    const response = await salesService.sendChatMessage(selectedThreadId.value, {
+      message: outgoingText,
       order_id: selectedOrderId.value || undefined,
     })
-    draft.value = ''
+    const saved = response?.data?.data || response?.data || null
+    if (saved?.id) {
+      const idx = messages.value.findIndex((m: any) => m.id === tempId)
+      if (idx >= 0) {
+        messages.value[idx] = { ...saved, _send_state: 'sent' }
+      }
+    }
     await loadMessages()
     await loadThreads()
   } catch (error: any) {
+    const idx = messages.value.findIndex((m: any) => m.id === tempId)
+    if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], _send_state: 'failed' }
+    }
     toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to send message', life: 2800 })
   } finally {
     sending.value = false
   }
 }
 
+const retryMessage = async (message: any) => {
+  if (!selectedThreadId.value || sending.value) return
+  const text = String(message?.message || '').trim()
+  if (!text) return
+
+  sending.value = true
+  const idx = messages.value.findIndex((m: any) => m.id === message.id)
+  if (idx >= 0) {
+    messages.value[idx] = { ...messages.value[idx], _send_state: 'sending' }
+  }
+
+  try {
+    const response = await salesService.sendChatMessage(selectedThreadId.value, {
+      message: text,
+      order_id: message?._order_id || selectedOrderId.value || undefined,
+    })
+    const saved = response?.data?.data || response?.data || null
+    if (saved?.id) {
+      if (idx >= 0) {
+        messages.value[idx] = { ...saved, _send_state: 'sent' }
+      }
+    } else if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], _send_state: 'sent' }
+    }
+    await loadMessages()
+    await loadThreads()
+  } catch (error: any) {
+    if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], _send_state: 'failed' }
+    }
+    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Retry failed', life: 2800 })
+  } finally {
+    sending.value = false
+  }
+}
+
 const dt = (value: string) => value ? new Date(value).toLocaleString('en-PH') : '-'
+
+const startEditMessage = (message: any) => {
+  editingMessageId.value = message.id
+  editDraft.value = String(message?.message || '')
+}
+
+const cancelEditMessage = () => {
+  editingMessageId.value = null
+  editDraft.value = ''
+}
+
+const saveEditMessage = async (message: any) => {
+  if (!selectedThreadId.value) return
+  const nextValue = String(editDraft.value || '').trim()
+  if (!nextValue) {
+    toast.add({ severity: 'warn', summary: 'Chat', detail: 'Message cannot be empty.', life: 2200 })
+    return
+  }
+
+  editingMessageLoading.value = true
+  try {
+    await salesService.updateChatMessage(selectedThreadId.value, message.id, { message: nextValue })
+    const idx = messages.value.findIndex((m: any) => m.id === message.id)
+    if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], message: nextValue }
+    }
+    cancelEditMessage()
+    await loadThreads()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to edit message', life: 2600 })
+  } finally {
+    editingMessageLoading.value = false
+  }
+}
+
+const unsendMessage = async (message: any) => {
+  if (!selectedThreadId.value) return
+  const confirmed = await confirmAlert({
+    title: 'Unsend Message?',
+    text: 'This will remove the message content for everyone in this chat.',
+    confirmText: 'Unsend',
+    cancelText: 'Cancel',
+  })
+  if (!confirmed) return
+
+  try {
+    await salesService.unsendChatMessage(selectedThreadId.value, message.id)
+    const idx = messages.value.findIndex((m: any) => m.id === message.id)
+    if (idx >= 0) {
+      messages.value[idx] = { ...messages.value[idx], message: '[Message unsent]' }
+    }
+    await loadThreads()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Chat', detail: error?.response?.data?.message || 'Failed to unsend message', life: 2600 })
+  }
+}
 
 watch(search, () => loadThreads())
 onMounted(loadThreads)

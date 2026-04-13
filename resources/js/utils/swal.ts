@@ -26,7 +26,13 @@ export function showAlert(payload: AlertPayload) {
   })
 }
 
-export async function confirmAlert(payload: { title: string; text: string; confirmText?: string; cancelText?: string }) {
+export async function confirmAlert(payload: {
+  title: string
+  text: string
+  confirmText?: string
+  cancelText?: string
+  reverseButtons?: boolean
+}) {
   const result = await Swal.fire({
     icon: 'warning',
     title: payload.title,
@@ -34,6 +40,7 @@ export async function confirmAlert(payload: { title: string; text: string; confi
     showCancelButton: true,
     confirmButtonText: payload.confirmText || 'Confirm',
     cancelButtonText: payload.cancelText || 'Cancel',
+    reverseButtons: Boolean(payload.reverseButtons),
     heightAuto: false,
   })
 

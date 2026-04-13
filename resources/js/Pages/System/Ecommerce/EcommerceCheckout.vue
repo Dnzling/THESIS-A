@@ -691,6 +691,11 @@ const shippingFeePerItem = computed(() => {
 const discountAmount = computed(() => validatedDiscountAmount.value)
 const totalAmount = computed(() => Math.max(0, subtotal.value + shippingFeeTotal.value - discountAmount.value))
 const codBlocked = computed(() => totalAmount.value > COD_LIMIT)
+const checkoutItemIds = computed(() =>
+  checkoutItems.value
+    .map((item: any) => Number(item?.id))
+    .filter((id: number) => Number.isInteger(id) && id > 0),
+)
 
 function paymentMethodLabel(method: 'cod' | 'gcash' | 'card') {
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
@@ -869,7 +874,7 @@ async function estimateShippingFee() {
       shipping_address: address || undefined,
       customer_latitude: latitude,
       customer_longitude: longitude,
-      item_ids: selectedItemIds.value.length ? selectedItemIds.value : undefined,
+      item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
       bulk_trip: bulkTripEnabled.value,
     })
     const fee = Number(response?.data?.data?.shipping_fee || 0)
@@ -1089,7 +1094,7 @@ async function placeOrder() {
       discount_amount: discountAmount.value,
       voucher_code: appliedVoucher.value?.code,
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
-      item_ids: selectedItemIds.value.length ? selectedItemIds.value : undefined,
+      item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
       customer_latitude: customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined,
       customer_longitude: customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined,
       bulk_trip: bulkTripEnabled.value,

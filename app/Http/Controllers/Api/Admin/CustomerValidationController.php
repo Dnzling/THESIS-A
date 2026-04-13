@@ -14,6 +14,26 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerValidationController extends Controller
 {
+    /**
+     * Base scope for customer verification users.
+     * Includes:
+     * - users with known customer-like roles
+     * - users with a customer profile row
+     * - users with uploaded customer verification documents
+     */
+    private function customerVerificationUsersQuery()
+    {
+        return User::query()
+            ->with(['role', 'customerVerificationDocuments', 'customer'])
+            ->where(function ($q) {
+                $q->whereHas('role', function ($rq) {
+                    $rq->whereIn('name', ['customer', 'customer_user', 'client', 'ecommerce_customer']);
+                })
+                    ->orWhereHas('customer')
+                    ->orWhereHas('customerVerificationDocuments');
+            });
+    }
+
     public function index(Request $request): JsonResponse
     {
         if (!auth()->user()->hasRole('super_admin')) {
@@ -22,18 +42,23 @@ class CustomerValidationController extends Controller
 
         $status = $request->get('status', 'pending');
 
-        $query = User::with(['role', 'customerVerificationDocuments'])
-            ->whereHas('role', function ($q) {
-                $q->whereIn('name', ['customer', 'customer_user', 'client']);
-            })
-            ->with('customer');
+        $query = $this->customerVerificationUsersQuery();
 
         if ($status === 'pending') {
-            $query->whereHas('customer', fn($q) => $q->where('verification_status', 'pending'));
+            $query->where(function ($q) {
+                $q->whereHas('customer', fn($sq) => $sq->where('verification_status', 'pending'))
+                    ->orWhereHas('customerVerificationDocuments', fn($sq) => $sq->where('status', 'pending'));
+            });
         } elseif ($status === 'verified') {
-            $query->whereHas('customer', fn($q) => $q->where('verification_status', 'verified'));
+            $query->where(function ($q) {
+                $q->whereHas('customer', fn($sq) => $sq->where('verification_status', 'verified'))
+                    ->orWhereHas('customerVerificationDocuments', fn($sq) => $sq->where('status', 'approved'));
+            });
         } elseif ($status === 'rejected') {
-            $query->whereHas('customer', fn($q) => $q->where('verification_status', 'rejected'));
+            $query->where(function ($q) {
+                $q->whereHas('customer', fn($sq) => $sq->where('verification_status', 'rejected'))
+                    ->orWhereHas('customerVerificationDocuments', fn($sq) => $sq->where('status', 'rejected'));
+            });
         } elseif ($status === 'unverified') {
             $query->where(function ($q) {
                 $q->whereDoesntHave('customer')
@@ -58,11 +83,7 @@ class CustomerValidationController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $user = User::with(['role', 'customerVerificationDocuments', 'customer'])
-            ->whereHas('role', function ($q) {
-                $q->whereIn('name', ['customer', 'customer_user', 'client']);
-            })
-            ->findOrFail($id);
+        $user = $this->customerVerificationUsersQuery()->findOrFail($id);
 
         $user->documents = $this->mapDocuments($user);
 
@@ -117,6 +138,8 @@ class CustomerValidationController extends Controller
                     ]);
 
                 $this->notify((int) $user->id, [
+                    'store_id' => $user->store_id,
+                    'branch_id' => $user->branch_id,
                     'module' => 'ecommerce',
                     'entity_type' => 'customer_verification',
                     'action' => 'approved',
@@ -151,6 +174,8 @@ class CustomerValidationController extends Controller
                     ]);
 
                 $this->notify((int) $user->id, [
+                    'store_id' => $user->store_id,
+                    'branch_id' => $user->branch_id,
                     'module' => 'ecommerce',
                     'entity_type' => 'customer_verification',
                     'action' => 'rejected',

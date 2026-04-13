@@ -459,28 +459,105 @@ class SalesPosController extends Controller
 
     public function dashboard(Request $request): JsonResponse
     {
+        $todayDate = now()->toDateString();
+        $monthNow = now()->month;
+        $yearNow = now()->year;
+
         $query = SalesOrder::query();
         $this->applyStoreScope($request, $query);
-
-        $today = (clone $query)->whereDate('created_at', now()->toDateString());
-        $month = (clone $query)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year);
+        $todaySalesOrders = (clone $query)->whereDate('created_at', $todayDate);
+        $monthSalesOrders = (clone $query)->whereMonth('created_at', $monthNow)->whereYear('created_at', $yearNow);
 
         $paymentQuery = SalesPayment::query();
         $this->applyStoreScope($request, $paymentQuery);
 
+        $todayPosOrdersCount = (clone $todaySalesOrders)->count();
+        $monthPosOrdersCount = (clone $monthSalesOrders)->count();
+        $todayPosSales = (float) (clone $todaySalesOrders)->whereIn('payment_status', ['paid', 'succeeded', 'completed'])->sum('total_amount');
+        $monthPosSales = (float) (clone $monthSalesOrders)->whereIn('payment_status', ['paid', 'succeeded', 'completed'])->sum('total_amount');
+
+        $todayEcomOrdersCount = 0;
+        $monthEcomOrdersCount = 0;
+        $todayEcomSales = 0.0;
+        $monthEcomSales = 0.0;
+        $ecomMethods = collect();
+        $ecomPendingPayments = 0;
+
+        if (DB::getSchemaBuilder()->hasTable('ecommerce_orders')) {
+            $ecomQuery = DB::table('ecommerce_orders');
+            $this->applyStoreScope($request, $ecomQuery);
+
+            $todayEcomOrdersCount = (clone $ecomQuery)->whereDate('created_at', $todayDate)->count();
+            $monthEcomOrdersCount = (clone $ecomQuery)->whereMonth('created_at', $monthNow)->whereYear('created_at', $yearNow)->count();
+
+            $todayEcomSales = (float) (clone $ecomQuery)
+                ->whereDate('created_at', $todayDate)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->sum('total_amount');
+
+            $monthEcomSales = (float) (clone $ecomQuery)
+                ->whereMonth('created_at', $monthNow)
+                ->whereYear('created_at', $yearNow)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->sum('total_amount');
+
+            $ecomPendingPayments = (int) (clone $ecomQuery)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['pending', 'processing', 'awaiting_payment_method'])
+                ->count();
+
+            $ecomMethods = (clone $ecomQuery)
+                ->select('payment_method', DB::raw('COUNT(*) as total'))
+                ->whereNotNull('payment_method')
+                ->groupBy('payment_method')
+                ->get();
+        }
+
+        $posMethods = (clone $paymentQuery)
+            ->select('payment_method', DB::raw('COUNT(*) as total'))
+            ->groupBy('payment_method')
+            ->get();
+
+        $paymentsByMethod = $posMethods
+            ->concat($ecomMethods)
+            ->groupBy('payment_method')
+            ->map(function ($rows, $method) {
+                return [
+                    'payment_method' => $method,
+                    'total' => (int) collect($rows)->sum('total'),
+                ];
+            })
+            ->values();
+
+        $todayPaid = (float) (clone $paymentQuery)
+            ->whereDate(DB::raw('COALESCE(paid_at, created_at)'), $todayDate)
+            ->where('status', 'paid')
+            ->sum('amount');
+
+        if (DB::getSchemaBuilder()->hasTable('ecommerce_orders')) {
+            $ecomTodayPaid = (float) DB::table('ecommerce_orders')
+                ->when(
+                    !$request->user()->hasRole('super_admin'),
+                    fn($q) => $q->where('store_id', $request->user()->store_id),
+                    fn($q) => $request->filled('store_id')
+                        ? $q->where('store_id', (int) $request->input('store_id'))
+                        : $q
+                )
+                ->whereDate('created_at', $todayDate)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->sum('total_amount');
+            $todayPaid += $ecomTodayPaid;
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
-                'today_orders' => (clone $today)->count(),
-                'today_sales' => (float) (clone $today)->sum('total_amount'),
-                'month_orders' => (clone $month)->count(),
-                'month_sales' => (float) (clone $month)->sum('total_amount'),
-                'today_paid' => (float) (clone $paymentQuery)->whereDate('paid_at', now()->toDateString())->where('status', 'paid')->sum('amount'),
-                'pending_payments' => (clone $paymentQuery)->whereIn('status', ['pending', 'processing', 'awaiting_payment_method'])->count(),
-                'payments_by_method' => (clone $paymentQuery)
-                    ->select('payment_method', DB::raw('COUNT(*) as total'))
-                    ->groupBy('payment_method')
-                    ->get(),
+                'today_orders' => $todayPosOrdersCount + $todayEcomOrdersCount,
+                'today_sales' => $todayPosSales + $todayEcomSales,
+                'month_orders' => $monthPosOrdersCount + $monthEcomOrdersCount,
+                'month_sales' => $monthPosSales + $monthEcomSales,
+                'today_paid' => $todayPaid,
+                'pending_payments' => (clone $paymentQuery)->whereIn('status', ['pending', 'processing', 'awaiting_payment_method'])->count() + $ecomPendingPayments,
+                'payments_by_method' => $paymentsByMethod,
                 'recent_orders' => (clone $query)->with('branch:id,name')->orderByDesc('created_at')->limit(8)->get(),
             ],
         ]);

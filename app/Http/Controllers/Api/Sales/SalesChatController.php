@@ -131,6 +131,65 @@ class SalesChatController extends Controller
         ], 201);
     }
 
+    public function updateMessage(Request $request, int $threadId, int $messageId): JsonResponse
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $thread = $this->resolveThread($request, $threadId);
+        $user = $request->user();
+
+        $message = EcommerceChatMessage::query()
+            ->where('thread_id', $thread->id)
+            ->where('id', $messageId)
+            ->firstOrFail();
+
+        if ((int) $message->sender_user_id !== (int) $user->id || (string) $message->sender_role !== 'store') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only edit your own sent messages.',
+            ], 403);
+        }
+
+        $message->update([
+            'message' => trim((string) $validated['message']),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $message->fresh(),
+        ]);
+    }
+
+    public function unsendMessage(Request $request, int $threadId, int $messageId): JsonResponse
+    {
+        $thread = $this->resolveThread($request, $threadId);
+        $user = $request->user();
+
+        $message = EcommerceChatMessage::query()
+            ->where('thread_id', $thread->id)
+            ->where('id', $messageId)
+            ->firstOrFail();
+
+        if ((int) $message->sender_user_id !== (int) $user->id || (string) $message->sender_role !== 'store') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only unsend your own sent messages.',
+            ], 403);
+        }
+
+        $message->update([
+            'message' => '[Message unsent]',
+            'order_id' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $message->fresh(),
+        ]);
+    }
+
     private function resolveThread(Request $request, int $threadId): EcommerceChatThread
     {
         $query = EcommerceChatThread::query()->where('id', $threadId);

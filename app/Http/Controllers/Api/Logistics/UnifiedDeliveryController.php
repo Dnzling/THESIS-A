@@ -16,7 +16,9 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UnifiedDeliveryController extends Controller
 {
@@ -125,8 +127,8 @@ class UnifiedDeliveryController extends Controller
                     'source_type' => 'ecommerce',
                     'order' => $order,
                     'delivery' => $delivery ? array_merge($delivery->toArray(), [
-                        'proof_photo_url' => $this->publicUrl($delivery->proof_of_delivery_path),
-                        'proof_signature_url' => $this->publicUrl($delivery->proof_signature_path),
+                        'proof_photo_url' => url("/api/logistics/delivery-orders/ecommerce/{$order->id}/proof/photo"),
+                        'proof_signature_url' => url("/api/logistics/delivery-orders/ecommerce/{$order->id}/proof/signature"),
                     ]) : null,
                     'logs' => $logs,
                 ],
@@ -149,12 +151,49 @@ class UnifiedDeliveryController extends Controller
                 'source_type' => 'sales',
                 'order' => $order,
                 'delivery' => $delivery ? array_merge($delivery->toArray(), [
-                    'proof_photo_url' => $this->publicUrl($delivery->proof_of_delivery_path),
-                    'proof_signature_url' => $this->publicUrl($delivery->proof_signature_path),
+                    'proof_photo_url' => url("/api/logistics/delivery-orders/sales/{$order->id}/proof/photo"),
+                    'proof_signature_url' => url("/api/logistics/delivery-orders/sales/{$order->id}/proof/signature"),
                 ]) : null,
                 'logs' => $logs,
             ],
         ]);
+    }
+
+    public function serveProof(Request $request, string $source, int $orderId, string $kind): StreamedResponse|JsonResponse
+    {
+        $source = strtolower($source);
+        $kind = strtolower($kind);
+        if (!in_array($source, self::ORDER_SOURCES, true) || !in_array($kind, ['photo', 'signature'], true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid proof request.'], 422);
+        }
+
+        if ($source === 'ecommerce') {
+            $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
+            $delivery = $order->delivery;
+        } else {
+            $order = $this->resolveSalesOrder($request, $orderId, withDelivery: true);
+            $delivery = $order->delivery;
+        }
+
+        if (!$delivery) {
+            return response()->json(['success' => false, 'message' => 'Delivery not found.'], 404);
+        }
+
+        $rawPath = $kind === 'photo'
+            ? (string) ($delivery->proof_of_delivery_path ?? '')
+            : (string) ($delivery->proof_signature_path ?? '');
+
+        $resolved = $this->resolveReadableDocumentPath($rawPath);
+        if (!$resolved) {
+            return response()->json(['success' => false, 'message' => 'Proof file not found.'], 404);
+        }
+
+        [$driver, $path] = $resolved;
+        if ($driver === 'absolute') {
+            return response()->file($path);
+        }
+
+        return Storage::disk($driver)->response($path, basename($path));
     }
 
     public function logisticsEmployees(Request $request): JsonResponse
@@ -1046,5 +1085,44 @@ class UnifiedDeliveryController extends Controller
         }
 
         return asset('storage/' . ltrim($path, '/'));
+    }
+
+    private function resolveReadableDocumentPath(string $rawPath): ?array
+    {
+        $rawPath = trim($rawPath);
+        if ($rawPath === '') {
+            return null;
+        }
+
+        $candidates = [
+            ltrim($rawPath, '/'),
+            preg_replace('#^storage/#', '', ltrim($rawPath, '/')),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (!$candidate) {
+                continue;
+            }
+
+            if (Storage::disk('public')->exists($candidate)) {
+                return ['public', $candidate];
+            }
+
+            if (Storage::disk('local')->exists($candidate)) {
+                return ['local', $candidate];
+            }
+
+            $publicStoragePath = public_path('storage/' . $candidate);
+            if (is_file($publicStoragePath)) {
+                return ['absolute', $publicStoragePath];
+            }
+
+            $publicDirectPath = public_path($candidate);
+            if (is_file($publicDirectPath)) {
+                return ['absolute', $publicDirectPath];
+            }
+        }
+
+        return null;
     }
 }

@@ -284,6 +284,14 @@ const ecommerceService = {
   sendStoreChatMessage(storeId: number | string, payload: { message: string; order_id?: number }) {
     return ecommerceClient.post(`/api/ecommerce/chat/stores/${storeId}/messages`, payload)
   },
+
+  updateStoreChatMessage(storeId: number | string, messageId: number | string, payload: { message: string }) {
+    return ecommerceClient.put(`/api/ecommerce/chat/stores/${storeId}/messages/${messageId}`, payload)
+  },
+
+  unsendStoreChatMessage(storeId: number | string, messageId: number | string) {
+    return ecommerceClient.delete(`/api/ecommerce/chat/stores/${storeId}/messages/${messageId}`)
+  },
 }
 
 export default ecommerceService

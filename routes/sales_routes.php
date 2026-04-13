@@ -29,6 +29,8 @@ Route::prefix('sales')->group(function () {
         Route::get('/threads', [SalesChatController::class, 'threads'])->middleware('can:sales.chats.view');
         Route::get('/threads/{id}/messages', [SalesChatController::class, 'messages'])->middleware('can:sales.chats.view');
         Route::post('/threads/{id}/messages', [SalesChatController::class, 'sendMessage'])->middleware('can:sales.chats.manage');
+        Route::put('/threads/{id}/messages/{messageId}', [SalesChatController::class, 'updateMessage'])->middleware('can:sales.chats.manage');
+        Route::delete('/threads/{id}/messages/{messageId}', [SalesChatController::class, 'unsendMessage'])->middleware('can:sales.chats.manage');
     });
 
     Route::prefix('pos')->group(function () {

@@ -26,6 +26,7 @@ use App\Models\Store\Branch;
 use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Models\Logistics\DeliveryZone;
 use App\Models\Logistics\DeliveryZoneRate;
+use App\Models\Sales\SalesReview;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -1190,10 +1191,10 @@ class EcommerceController extends Controller
                 ->with(['cart', 'product', 'variation'])
                 ->get();
 
-            if ($itemsForCheckout->count() !== $requestedItemIds->count()) {
+            if ($itemsForCheckout->isEmpty()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Some selected cart items are invalid.',
+                    'message' => 'Selected cart items are no longer available. Please refresh your cart.',
                 ], 422);
             }
 
@@ -1840,7 +1841,6 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-
         $orderItem = \App\Models\Ecommerce\EcommerceOrderItem::query()
             ->with('order')
             ->whereHas('order', function ($query) use ($user) {
@@ -1987,31 +1987,34 @@ class EcommerceController extends Controller
             ]
         );
 
-        // Keep Sales Reviews in sync so the Sales module can manage/answer reviews.
-        try {
-            $customerName = (string) ($user?->full_name ?: trim((string) ($user?->fname . ' ' . $user?->lname)));
-            $customerContact = (string) ($user?->phone_number ?: $user?->email ?: '');
+        // Keep Sales > Reviews in sync with ecommerce customer reviews.
+        $existingSalesReview = SalesReview::query()
+            ->where('store_id', (int) $orderItem->order->store_id)
+            ->where('order_type', 'ecommerce_order')
+            ->where('order_id', (int) $orderItem->order_id)
+            ->where('product_id', (int) $orderItem->product_id)
+            ->where('created_by', (int) $user->id)
+            ->first();
 
-            \App\Models\Sales\SalesReview::query()->updateOrCreate(
-                [
-                    'order_type' => 'ecommerce',
-                    'order_id' => (int) $orderItem->order_id,
-                    'product_id' => (int) $orderItem->product_id,
-                    'created_by' => (int) $user->id,
-                ],
-                [
-                    'store_id' => (int) $orderItem->order->store_id,
-                    'branch_id' => $orderItem->order->branch_id ?? null,
-                    'customer_name' => $customerName ?: null,
-                    'customer_contact' => $customerContact ?: null,
-                    'rating' => (int) $validated['rating'],
-                    'message' => $validated['review_text'] ?? null,
-                    'status' => 'pending',
-                ]
-            );
-        } catch (\Throwable $exception) {
-            report($exception);
-        }
+        $hasReply = !empty($existingSalesReview?->reply);
+        SalesReview::query()->updateOrCreate(
+            [
+                'store_id' => (int) $orderItem->order->store_id,
+                'order_type' => 'ecommerce_order',
+                'order_id' => (int) $orderItem->order_id,
+                'product_id' => (int) $orderItem->product_id,
+                'created_by' => (int) $user->id,
+            ],
+            [
+                'branch_id' => $orderItem->order->assigned_branch_id ?? null,
+                'customer_name' => trim(($user->fname ?? '') . ' ' . ($user->lname ?? '')) ?: ($orderItem->order->shipping_name ?? 'Customer'),
+                'customer_contact' => $orderItem->order->shipping_phone ?? ($user->phone_number ?? null),
+                'rating' => (int) $validated['rating'],
+                'message' => $validated['review_text'] ?? null,
+                // preserve replied status if sales already replied
+                'status' => $hasReply ? 'replied' : 'pending',
+            ]
+        );
 
         return response()->json([
             'success' => true,
@@ -2374,6 +2377,81 @@ class EcommerceController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $message], 201);
+    }
+
+    public function updateChatMessage(Request $request, int $storeId, int $messageId)
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $user = Auth::user();
+        Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
+
+        $thread = EcommerceChatThread::query()->firstOrCreate([
+            'store_id' => $storeId,
+            'customer_user_id' => $user->id,
+        ]);
+
+        $message = EcommerceChatMessage::query()
+            ->where('thread_id', $thread->id)
+            ->where('id', $messageId)
+            ->firstOrFail();
+
+        if ((int) $message->sender_user_id !== (int) $user->id || (string) $message->sender_role !== 'customer') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only edit your own sent messages.',
+            ], 403);
+        }
+
+        $messageBody = trim((string) $validated['message']);
+        if ($this->containsProfanity($messageBody)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please avoid profanity in chat messages.',
+            ], 422);
+        }
+
+        $message->update(['message' => $messageBody]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $message->fresh(),
+        ]);
+    }
+
+    public function unsendChatMessage(Request $request, int $storeId, int $messageId)
+    {
+        $user = Auth::user();
+        Store::query()->whereIn('status', ['active', 'verified'])->findOrFail($storeId);
+
+        $thread = EcommerceChatThread::query()->firstOrCreate([
+            'store_id' => $storeId,
+            'customer_user_id' => $user->id,
+        ]);
+
+        $message = EcommerceChatMessage::query()
+            ->where('thread_id', $thread->id)
+            ->where('id', $messageId)
+            ->firstOrFail();
+
+        if ((int) $message->sender_user_id !== (int) $user->id || (string) $message->sender_role !== 'customer') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only unsend your own sent messages.',
+            ], 403);
+        }
+
+        $message->update([
+            'message' => '[Message unsent]',
+            'order_id' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $message->fresh(),
+        ]);
     }
 
     public function reportViolation(Request $request): JsonResponse

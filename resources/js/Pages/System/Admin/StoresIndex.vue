@@ -73,9 +73,9 @@
               <Tag :value="toTitle(data.subscription_tier)" :severity="tierSeverity(data.subscription_tier)" />
             </template>
           </Column>
-          <Column header="Users/Products">
+          <Column header="Users/Customers/Products">
             <template #body="{ data }">
-              <p class="text-xs text-slate-500">{{ data.users_count }} / {{ data.products_count }}</p>
+              <p class="text-xs text-slate-500">{{ data.users_count }} / {{ data.customers_count || 0 }} / {{ data.products_count }}</p>
             </template>
           </Column>
           <Column header="Actions" style="width: 120px">
@@ -185,4 +185,3 @@ watch(() => [filters.search, filters.status], () => {
 
 onMounted(loadStores)
 </script>
-

@@ -62,16 +62,6 @@
                 </div>
               </template>
             </Column>
-            <Column field="message" header="Review" style="min-width: 280px">
-              <template #body="{ data }">
-                <p class="line-clamp-2 text-sm text-gray-700">{{ data.message || '-' }}</p>
-              </template>
-            </Column>
-            <Column field="status" header="Status" style="width: 120px">
-              <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="data.status === 'replied' ? 'success' : 'warning'" />
-              </template>
-            </Column>
             <Column header="Actions" style="width: 180px">
               <template #body="{ data }">
                 <div class="flex items-center gap-1">
@@ -114,7 +104,6 @@ import DataTable from 'primevue/datatable'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
 const authStore = useAuthStore()
@@ -157,8 +146,6 @@ const showReply = ref(false)
 const replyText = ref('')
 const activeReview = ref<any>(null)
 
-const formatStatus = (status: string) => (status || '').replace(/_/g, ' ').replace(/\b\w/g, (s) => s.toUpperCase()) || 'Pending'
-
 const openReply = (review: any) => {
   activeReview.value = review
   replyText.value = review?.reply || ''
@@ -180,7 +167,7 @@ const loadReviews = async () => {
       rating: filters.value.rating ?? undefined,
       per_page: 50,
     })
-    reviews.value = res?.data?.data || []
+    reviews.value = Array.isArray(res?.data?.data) ? res.data.data : (Array.isArray(res?.data) ? res.data : [])
     summary.value = res?.summary || summary.value
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load reviews', life: 3000 })

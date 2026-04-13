@@ -140,7 +140,7 @@ const formatDateTime = (value: string | null | undefined) => {
 const loadUsers = async () => {
   loading.value = true
   try {
-    const response = await axiosClient.get('/api/users', {
+    const response = await axiosClient.get('/api/admin/users', {
       params: {
         search: filters.search || undefined,
         is_active: filters.is_active === null ? undefined : filters.is_active,
