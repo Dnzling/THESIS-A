@@ -8,6 +8,7 @@ use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\Modules\ModuleAccessService;
 
 class TrialOnboardingController extends Controller
 {
@@ -85,11 +86,7 @@ class TrialOnboardingController extends Controller
                     'store_code' => $storeCode,
                     'type' => 'trial',
                     'status' => 'pending',
-                    'subscription_tier' => 'free',
-                    'settings' => [
-                        'trial' => true,
-                        'enabled_modules' => $fixedModules,
-                    ],
+                    'subscription_tier' => strtolower((string) $validated['plan']),
                 ]);
 
                 $branchCode = $storeCode . '-MAIN';
@@ -106,14 +103,14 @@ class TrialOnboardingController extends Controller
                     'store_id' => $store->id,
                     'branch_id' => $branch->id,
                 ]);
+
+                app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
             } else {
                 $store = $user->store;
                 if ($store) {
-                    $settings = is_array($store->settings) ? $store->settings : [];
-                    $settings['trial'] = true;
-                    $settings['enabled_modules'] = $fixedModules;
-                    $store->settings = $settings;
+                    $store->subscription_tier = strtolower((string) $validated['plan']);
                     $store->save();
+                    app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
                 }
             }
         });

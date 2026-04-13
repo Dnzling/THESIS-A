@@ -10,8 +10,10 @@ use App\Models\Admin\SubscriptionPlan;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use App\Models\Store\Branch;
+use App\Services\Modules\ModuleAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class StoreSettingsController extends Controller
 {
@@ -20,6 +22,22 @@ class StoreSettingsController extends Controller
         $user = $request->user();
         $store = $this->resolveStoreForUser($user);
         $profile = $user?->trialOnboardingProfile;
+        $storeId = (int) ($store?->id ?? 0);
+
+        $enabledModuleKeys = $storeId > 0
+            ? app(ModuleAccessService::class)->enabledModuleKeysForStore($storeId)
+            : [];
+
+        $enabledModules = empty($enabledModuleKeys)
+            ? []
+            : DB::table('modules')
+                ->whereIn('key', $enabledModuleKeys)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['key', 'name'])
+                ->map(fn($row) => ['key' => (string) $row->key, 'name' => (string) $row->name])
+                ->values()
+                ->all();
         $availablePlans = SubscriptionPlan::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
@@ -97,6 +115,7 @@ class StoreSettingsController extends Controller
                     'ends_at' => $endsAt?->toDateString(),
                     'days_remaining' => $daysRemaining,
                     'status' => $status,
+                    'modules' => $enabledModules,
                 ],
                 'available_plans' => $availablePlans,
                 'verification' => $this->resolveVerificationStatus($store),

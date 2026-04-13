@@ -22,16 +22,8 @@ class EnsureTrialSetupComplete
             return $next($request);
         }
 
-        $profile = TrialOnboardingProfile::where('user_id', $user->id)->first();
-        $isComplete = $profile && $profile->completed_at !== null;
-
-        if (!$isComplete) {
-            return redirect('/trial-onboarding');
-        }
-
         $allowedModules = $this->getAllowedModules($user);
         $moduleFromPath = $this->resolveModuleFromPath($path);
-        $tier = $this->resolveTier($profile);
 
         if ($moduleFromPath && !empty($allowedModules) && !in_array($moduleFromPath, $allowedModules, true)) {
             return redirect('/store/setup-required?module=' . $moduleFromPath);
@@ -95,14 +87,6 @@ class EnsureTrialSetupComplete
         }
 
         return null;
-    }
-
-    private function resolveTier(?TrialOnboardingProfile $profile): string
-    {
-        $range = $profile?->employee_range ?? '';
-        if ($range === '1-5') return 'small';
-        if (in_array($range, ['6-20', '21-50'], true)) return 'mid';
-        return 'enterprise';
     }
 
     private function isLitePath(string $path, string $litePath): bool

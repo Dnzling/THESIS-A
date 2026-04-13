@@ -21,13 +21,12 @@
               <Button 
                 as="router-link" 
                 severity="warn"
-                to="/register?plan=simple&trial=1" 
+                to="/register?plan=simple&trial=0" 
                 raised
                 class="font-semibold"
                 size="medium"
-                @click="setTrialPlan('simple')"
               >
-            Start Free Trial
+            Get Started
               </Button>
               <Button 
                 @click="scrollToOverview"
@@ -174,7 +173,7 @@
                   <p class="text-orange-500">Start a guided trial and see how fast your teams can switch to a smarter, unified workflow.</p>
                 </div>
                 <div class="flex gap-3">
-                  <Button @click="setTrialPlan('simple')" severity="warn">Start Free Trial</Button>
+                  <Button as="router-link" to="/register?plan=simple&trial=0" severity="warn">Get Started</Button>
                   <Button as="router-link" to="/pricing" severity="secondary" class="">Compare Plans</Button>
                 </div>
               </div>
@@ -202,11 +201,6 @@ const overviewSection = ref<HTMLElement | null>(null)
 
 const scrollToOverview = () => {
   overviewSection.value?.scrollIntoView({ behavior: 'smooth' })
-}
-
-const setTrialPlan = (plan: 'simple' | 'unlimited') => {
-  localStorage.setItem('trial_plan', plan)
-  localStorage.setItem('trial_entry', 'marketing')
 }
 
 const getTagSeverity = (tone: string) => {

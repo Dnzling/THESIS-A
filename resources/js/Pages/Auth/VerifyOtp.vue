@@ -241,7 +241,8 @@ const verifyOtp = async () => { // Add async here
         }, 1200)
       } else {
         setTimeout(() => {
-          router.visit('/trial-onboarding')
+          localStorage.removeItem('register_token')
+          router.get('/login', { registered: 'true' })
         }, 1200)
       }
     } else {

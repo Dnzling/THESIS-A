@@ -53,7 +53,7 @@
               </div>
             </div>
             <button class="btn primary" @click="selectPlan(plan.plan_key, isUnlimitedPlan(plan))">
-              {{ isUnlimitedPlan(plan) ? 'Proceed to Payment' : 'Start Free Trial' }}
+              {{ isUnlimitedPlan(plan) ? 'Proceed to Payment' : 'Get Started' }}
             </button>
           </div>
         </div>
@@ -103,7 +103,7 @@
             <p>Start your trial today and let our team tailor FurniSync to your workflow.</p>
           </div>
           <div class="cta-actions">
-            <button class="btn primary" @click="startFreeTrial">Start Free Trial</button>
+            <button class="btn primary" @click="startFreeTrial">Get Started</button>
             <button class="btn ghost" @click="scheduleDemo">Schedule a Demo</button>
           </div>
         </div>
@@ -195,30 +195,18 @@ const yearlySavings = (plan: any) => {
   return savings > 0 ? savings.toFixed(2) : '0.00'
 }
 
-const setTrialPlan = (plan: string, directPayment = false) => {
-  localStorage.setItem('trial_plan', plan)
-  localStorage.setItem('trial_entry', 'pricing')
-  if (directPayment) {
-    localStorage.setItem('direct_payment', '1')
-  } else {
-    localStorage.removeItem('direct_payment')
-  }
-}
-
 const selectPlan = (plan: string, directPayment = false) => {
   const normalized = String(plan || 'simple')
-  setTrialPlan(normalized, directPayment)
   router.get(
     '/register',
-    { plan: normalized, trial: directPayment ? '0' : '1', direct_payment: directPayment ? '1' : '0' },
+    { plan: normalized, trial: '0', direct_payment: directPayment ? '1' : '0' },
     { preserveState: true }
   )
 }
 
 const startFreeTrial = () => {
   const fallback = visiblePlans.value[0]?.plan_key || 'simple'
-  setTrialPlan(fallback, false)
-  router.get('/register', { plan: fallback, trial: '1' }, { preserveState: true })
+  router.get('/register', { plan: fallback, trial: '0' }, { preserveState: true })
 }
 
 const isUnlimitedPlan = (plan: any) => {

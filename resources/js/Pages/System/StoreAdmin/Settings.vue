@@ -4,39 +4,26 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Store Settings</h1>
-        <p class="text-sm text-slate-600">Manage trial setup, modules, and system configuration.</p>
+        <p class="text-sm text-slate-600">Manage your store profile, plan, and system configuration.</p>
       </div>
-      <Button v-if="!isActiveSubscription" label="Go to Trial Setup" severity="secondary" outlined @click="goToOnboarding" />
     </div>
 
     <div :class="isActiveSubscription ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6 lg:grid-cols-3'">
       <Card v-if="!isActiveSubscription" class="lg:col-span-2">
-        <template #title>Trial Modules</template>
+        <template #title>Included Modules</template>
         <template #content>
           <p class="text-sm text-slate-600 mb-4">
-            Choose which modules are enabled for your store. Disabled modules will be hidden from the sidebar and blocked.
+            Modules are enabled automatically based on your current plan.
           </p>
-          <MultiSelect
-            v-model="form.modules"
-            :options="moduleOptions"
-            optionLabel="label"
-            optionValue="value"
-            display="chip"
-            filter
-            class="w-full"
-            placeholder="Select modules"
-          />
-          <div class="mt-4 flex items-center justify-between">
-            <p class="text-xs text-slate-500">
-              You can update these anytime during the trial.
-            </p>
-            <Button
-              label="Save Modules"
-              icon="pi pi-check"
-              :loading="saving"
-              :disabled="form.modules.length === 0 || saving"
-              @click="saveModules"
-            />
+          <div class="flex flex-wrap gap-2">
+            <span
+              v-for="module in subscription.modules || []"
+              :key="module.key"
+              class="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 border border-slate-200"
+            >
+              {{ module.name }}
+            </span>
+            <span v-if="!(subscription.modules || []).length" class="text-xs text-slate-500">No modules assigned.</span>
           </div>
         </template>
       </Card>
@@ -448,7 +435,6 @@ type UpgradePlan = {
   isFeatured?: boolean
 }
 
-const saving = ref(false)
 const savingAttendance = ref(false)
 const savingProfile = ref(false)
 const upgrading = ref(false)
@@ -538,6 +524,7 @@ const subscription = reactive({
   status: 'trial',
   ends_at: '',
   days_remaining: null as number | null,
+  modules: [] as { key: string; name: string }[],
 })
 
 const verification = reactive({
@@ -556,7 +543,6 @@ const branches = ref<any[]>([])
 
 const onboarding = reactive({
   plan: 'simple',
-  modules: [] as string[],
 })
 
 const gcashForm = reactive({
@@ -572,30 +558,14 @@ const selectedPlan = reactive({
   label: fallbackPlans[0].label,
 })
 
-const form = reactive({
-  modules: [] as string[],
-})
-
-const moduleOptions = [
-  { label: 'Inventory', value: 'inventory' },
-  { label: 'Procurement', value: 'procurement' },
-  { label: 'Sales / POS', value: 'sales' },
-  { label: 'HR / Payroll', value: 'hr' },
-  { label: 'Logistics / Delivery', value: 'logistics' },
-  { label: 'Finance', value: 'finance' },
-  { label: 'Supplier Portal', value: 'supplier' },
-  { label: 'E-commerce', value: 'ecommerce' },
-]
-
 usePermissions()
 
-const trialPlanLabel = computed(() => onboarding.plan === 'unlimited' ? 'Unlimited Trial' : 'Simple Trial')
 const isActiveSubscription = computed(() => subscription.status === 'active')
 const currentPlanLabel = computed(() => {
   if (isActiveSubscription.value) {
     return String(subscription.tier || 'paid').toUpperCase()
   }
-  return trialPlanLabel.value
+  return String(subscription.tier || 'free').toUpperCase()
 })
 
 const subscriptionStatusLabel = computed(() => {
@@ -768,6 +738,7 @@ const fetchSettings = async () => {
     subscription.status = data.subscription?.status || 'trial'
     subscription.ends_at = data.subscription?.ends_at || ''
     subscription.days_remaining = data.subscription?.days_remaining ?? null
+    subscription.modules = Array.isArray(data.subscription?.modules) ? data.subscription.modules : []
 
     verification.store_status = data.verification?.store_status || 'pending'
     verification.submitted_at = data.verification?.submitted_at || null
@@ -778,8 +749,6 @@ const fetchSettings = async () => {
     branches.value = Array.isArray(data.branches) ? data.branches : []
 
     onboarding.plan = data.onboarding?.plan || 'simple'
-    onboarding.modules = data.onboarding?.modules || []
-    form.modules = [...onboarding.modules]
 
     attendance.branch_id = data.attendance?.branch_id ?? null
     attendance.address = data.attendance?.address || ''
@@ -820,20 +789,6 @@ const savePaymentSettings = async () => {
     })
   } finally {
     savingPayments.value = false
-  }
-}
-
-const saveModules = async () => {
-  saving.value = true
-  try {
-    await axiosClient.put('/api/store/settings/modules', {
-      modules: form.modules,
-    })
-    onboarding.modules = [...form.modules]
-  } catch (error) {
-    console.error('Failed to update modules', error)
-  } finally {
-    saving.value = false
   }
 }
 
@@ -1032,10 +987,6 @@ const searchAddress = async () => {
     circleRef.value.setLatLng([result.lat, result.lng])
   }
   await syncLocation(result.lat, result.lng)
-}
-
-const goToOnboarding = () => {
-  router.visit('/trial-onboarding')
 }
 
 const goToUpgrade = () => {

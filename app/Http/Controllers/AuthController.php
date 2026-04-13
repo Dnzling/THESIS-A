@@ -21,6 +21,7 @@ use App\Models\Hr\ShiftSchedule;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Core\Role;
+use App\Services\Modules\ModuleAccessService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -170,6 +171,7 @@ class AuthController extends Controller
                 'password' => 'required|string|min:8|max:255',
                 'role_id' => 'nullable|integer|exists:roles,id',
                 'birthday' => 'nullable|date|before_or_equal:today',
+                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
             $targetRoleId = (int) ($validated['role_id'] ?? 2);
@@ -204,6 +206,7 @@ class AuthController extends Controller
                 // Auto-assign trial store/branch for store_admin registrations
                 $user->loadMissing('role');
                 if ($user->role?->name === 'store_admin' && !$user->store_id) {
+                    $requestedPlan = strtolower((string) ($validated['plan'] ?? 'simple'));
                     $storeCode = 'TRIAL-' . str_pad((string) $user->id, 6, '0', STR_PAD_LEFT);
                     $storeName = 'Trial Store ' . $user->id;
 
@@ -212,10 +215,7 @@ class AuthController extends Controller
                         'store_code' => $storeCode,
                         'type' => 'trial',
                         'status' => 'pending',
-                        'subscription_tier' => 'free',
-                        'settings' => [
-                            'trial' => true,
-                        ],
+                        'subscription_tier' => $requestedPlan,
                     ]);
 
                     $branchCode = $storeCode . '-MAIN';
@@ -236,6 +236,8 @@ class AuthController extends Controller
                         'store_id' => $store->id,
                         'branch_id' => $branch->id,
                     ]);
+
+                    app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
                 }
 
                 if ($user->role?->name === 'store_admin') {

@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
-use App\Models\Store\TrialOnboardingProfile;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use App\Services\Modules\ModuleAccessService;
 
 class StoreController extends Controller
 {
@@ -72,6 +72,7 @@ class StoreController extends Controller
                 'address' => 'required|string|max:200',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
+                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
             $payload = [
@@ -86,26 +87,14 @@ class StoreController extends Controller
                 'longitude' => $validated['longitude'] ?? null,
             ];
 
-            $onboarding = TrialOnboardingProfile::where('user_id', optional($request->user())->id)->first();
             $storeSettings = [
                 'contact_person' => $validated['contact_person'],
             ];
 
-            if ($onboarding) {
-                $storeSettings = array_merge($storeSettings, [
-                    'enabled_modules' => $onboarding->modules ?? [],
-                    'trial_onboarding' => [
-                        'plan' => $onboarding->plan,
-                        'employee_range' => $onboarding->employee_range,
-                        'branch_range' => $onboarding->branch_range,
-                        'primary_goal' => $onboarding->primary_goal,
-                        'first_team' => $onboarding->first_team,
-                        'completed_at' => optional($onboarding->completed_at)->toDateTimeString(),
-                    ],
-                ]);
-            }
-
             $payload['settings'] = $storeSettings;
+            if (!empty($validated['plan'])) {
+                $payload['subscription_tier'] = strtolower((string) $validated['plan']);
+            }
 
             $store = Store::create($payload);
 
@@ -135,6 +124,8 @@ class StoreController extends Controller
                 'status' => 'active',
                 'branch_type' => 'storefront',
             ]);
+
+            app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
 
             return response()->json([
                 'success' => true,

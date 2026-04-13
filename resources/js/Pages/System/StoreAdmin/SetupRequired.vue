@@ -18,9 +18,9 @@
 
       <div class="mt-6 grid gap-3 md:grid-cols-2">
         <Button
-          label="Review Trial Setup"
+          label="View Plan & Modules"
           icon="pi pi-arrow-right"
-          @click="goToOnboarding"
+          @click="goToSettings"
         />
         <Button
           label="Upgrade Plan"
@@ -45,10 +45,6 @@ const moduleLabel = computed(() => {
   const value = new URLSearchParams(query).get('module') || 'Unknown'
   return value.charAt(0).toUpperCase() + value.slice(1)
 })
-
-const goToOnboarding = () => {
-  router.visit('/trial-onboarding')
-}
 
 const goToSettings = () => {
   router.visit('/system/settings')
