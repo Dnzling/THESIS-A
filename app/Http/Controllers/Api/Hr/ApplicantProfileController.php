@@ -134,6 +134,21 @@ class ApplicantProfileController extends Controller
         ]);
     }
 
+    public function downloadDocument(Request $request, ApplicantProfileDocument $document)
+    {
+        $profile = $document->profile;
+        abort_unless($profile && $profile->user_id === $request->user()->id, 403);
+
+        if (!$document->file_path || !Storage::disk('public')->exists($document->file_path)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Document not found.',
+            ], 404);
+        }
+
+        return Storage::disk('public')->download($document->file_path, $document->file_name);
+    }
+
     public function requestEmailChange(Request $request): JsonResponse
     {
         $validated = $request->validate([

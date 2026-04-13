@@ -478,6 +478,13 @@ const hrService = {
     return response.data
   },
 
+  async downloadApplicantProfileDocument(documentId: number | string) {
+    const response = await portalClient.get(`/api/job-portal/profile/documents/${documentId}/download`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
   async requestApplicantEmailChange(email: string) {
     const response = await portalClient.post('/api/job-portal/profile/email-change', { email })
     return response.data

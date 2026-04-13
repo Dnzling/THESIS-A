@@ -72,7 +72,7 @@ import InfoItem from '../shared/InfoItem.vue'
 import FilePreview from '../shared/FilePreview.vue'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
-import axios from 'axios'
+import axiosClient from '@/axios'
 
 const toast = useToast()
 const authStore = useAuthStore()
@@ -224,12 +224,7 @@ const submitRegistration = async () => {
       contact_person: getContactPersonName()
     }
 
-    const storeResponse = await axios.post('/api/stores/register', payload, {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`,
-        'Content-Type': 'application/json'
-      }
-    })
+    const storeResponse = await axiosClient.post('/api/stores/register', payload)
 
     const createdStoreId = Number(storeResponse?.data?.store?.store_id || storeResponse?.data?.store?.id)
     if (!Number.isFinite(createdStoreId) || createdStoreId <= 0) {
@@ -239,7 +234,7 @@ const submitRegistration = async () => {
     storeId.value = createdStoreId
 
     // Make API call
-    const verifyResponse = await axios.post(
+    const verifyResponse = await axiosClient.post(
       `/api/stores/${storeId.value}/verification/submit`,
       formData,
       {
@@ -265,11 +260,7 @@ const submitRegistration = async () => {
 
     try {
       if (storeId.value) {
-        await axios.delete(`/api/stores/${storeId.value}`, {
-          headers: {
-            'Authorization': `Bearer ${authStore.token}`
-          }
-        })
+        await axiosClient.delete(`/api/stores/${storeId.value}`)
       }
     } catch (rollbackError) {
       console.error('Failed to rollback store creation:', rollbackError)
@@ -311,6 +302,5 @@ const submitRegistration = async () => {
   }
 }
 </script>
-
 
 

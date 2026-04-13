@@ -248,6 +248,7 @@ const viewerOpen = ref(false)
 const viewerUrl = ref('')
 const viewerLabel = ref('')
 const viewerKind = ref<'image' | 'pdf' | 'other'>('other')
+const viewerObjectUrl = ref('')
 
 const loadProfile = async () => {
   const response = await hrService.getApplicantProfile()
@@ -448,13 +449,42 @@ const handleEmailChange = async () => {
 
 const openDocumentViewer = (doc: any) => {
   viewerLabel.value = doc.file_name || doc.document_type || 'Document'
-  viewerUrl.value = doc.file_path ? `/storage/${doc.file_path}` : ''
   const mime = String(doc.mime_type || '').toLowerCase()
   if (mime.startsWith('image/')) viewerKind.value = 'image'
   else if (mime === 'application/pdf') viewerKind.value = 'pdf'
   else viewerKind.value = 'other'
   viewerOpen.value = true
+  viewerUrl.value = ''
+
+  void (async () => {
+    try {
+      if (viewerObjectUrl.value) {
+        URL.revokeObjectURL(viewerObjectUrl.value)
+        viewerObjectUrl.value = ''
+      }
+
+      const blob = await hrService.downloadApplicantProfileDocument(doc.id)
+      viewerObjectUrl.value = URL.createObjectURL(blob)
+      viewerUrl.value = viewerObjectUrl.value
+    } catch (error: any) {
+      viewerOpen.value = false
+      toast.add({
+        severity: 'error',
+        summary: 'Unable to load document',
+        detail: error?.response?.data?.message || 'File not found.',
+        life: 3000,
+      })
+    }
+  })()
 }
+
+watch(viewerOpen, (value) => {
+  if (!value && viewerObjectUrl.value) {
+    URL.revokeObjectURL(viewerObjectUrl.value)
+    viewerObjectUrl.value = ''
+    viewerUrl.value = ''
+  }
+})
 
 watch(editProvinceId, async (value) => {
   if (!value) {

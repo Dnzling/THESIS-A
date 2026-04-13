@@ -35,6 +35,7 @@ Route::middleware('auth:sanctum')->prefix('job-portal')->group(function () {
     Route::put('/profile', [ApplicantProfileController::class, 'upsert']);
     Route::post('/profile/documents', [ApplicantProfileController::class, 'uploadDocument']);
     Route::delete('/profile/documents/{document}', [ApplicantProfileController::class, 'deleteDocument']);
+    Route::get('/profile/documents/{document}/download', [ApplicantProfileController::class, 'downloadDocument']);
     Route::post('/profile/email-change', [ApplicantProfileController::class, 'requestEmailChange']);
     Route::post('/profile/email-verify', [ApplicantProfileController::class, 'verifyEmailChange']);
 

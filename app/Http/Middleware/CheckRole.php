@@ -10,6 +10,12 @@ class CheckRole
 {
     public function handle(Request $request, Closure $next, ...$roles)
     {
+        // Requested behavior: remove RBAC for "view" endpoints across the API.
+        // Treat GET/HEAD as view-only and allow them through for `/api/*` routes.
+        if (($request->isMethod('GET') || $request->isMethod('HEAD')) && $request->is('api/*')) {
+            return $next($request);
+        }
+
         $user = $request->user();
         
         if (!$user) {

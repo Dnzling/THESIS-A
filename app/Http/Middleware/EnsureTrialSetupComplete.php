@@ -37,6 +37,7 @@ class EnsureTrialSetupComplete
         $allow = [
             '/trial-onboarding',
             '/store/setup-required',
+            '/store/settings',
             '/system/settings',
             '/system/store/verification',
             '/hr/employees',

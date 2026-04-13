@@ -11,6 +11,11 @@ class CheckStoreManager
 {
     public function handle(Request $request, Closure $next)
     {
+        // Requested behavior: remove RBAC for "view" endpoints across the API.
+        if (($request->isMethod('GET') || $request->isMethod('HEAD')) && $request->is('api/*')) {
+            return $next($request);
+        }
+
         $user = $request->user();
         $storeId = $request->route('store');
         
