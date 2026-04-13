@@ -70,35 +70,9 @@
         </template>
       </Card>
 
-      <Card>
-        <template #title>PayMongo Methods</template>
-        <template #content>
-          <p class="text-sm text-slate-600 mb-3">
-            Choose which e-wallet methods your store will accept for PayMongo payments.
-          </p>
-          <MultiSelect
-            v-model="paymongoPaymentMethods"
-            :options="paymongoMethodOptions"
-            optionLabel="label"
-            optionValue="value"
-            display="chip"
-            class="w-full"
-            placeholder="Select payment methods"
-          />
-          <div class="mt-3 flex items-center justify-between">
-            <p class="text-xs text-slate-500">At least one method is required.</p>
-            <Button
-              label="Save"
-              icon="pi pi-save"
-              :loading="savingPayments"
-              :disabled="savingPayments || paymongoPaymentMethods.length === 0"
-              @click="savePaymentSettings"
-            />
-          </div>
-        </template>
-      </Card>
+      <!-- PayMongo methods moved to Upgrade flow; card removed -->
 
-      <Card v-if="isActiveSubscription && store.status !== 'trial'">
+      <Card v-if="isActiveSubscription && store.type !== 'trial'">
         <template #title>Store Verification</template>
         <template #content>
           <div class="space-y-3 text-sm text-slate-700">
@@ -150,7 +124,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="planDialogVisible = false" />
-        <Button label="Continue" @click="openGcashDialogForSelectedPlan" />
+        <Button label="Continue" @click="openPaymentMethodDialogForSelectedPlan" />
       </template>
     </Dialog>
 
@@ -174,6 +148,26 @@
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="gcashDialogVisible = false" />
         <Button :label="`Continue to ${selectedWalletLabel}`" :loading="upgrading" @click="submitUpgradeCheckout" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="paymentMethodDialogVisible" modal header="Choose Payment Method" :style="{ width: '28rem' }">
+      <div class="space-y-3">
+        <p class="text-sm text-slate-600">Select which payment method you'd like to use for this upgrade.</p>
+        <div class="grid gap-3">
+          <label class="flex items-center gap-3">
+            <input type="radio" v-model="selectedPaymentMethod" value="card" />
+            <span>Credit / Debit Card</span>
+          </label>
+          <label class="flex items-center gap-3">
+            <input type="radio" v-model="selectedPaymentMethod" value="gcash" />
+            <span>GCash / E-Wallet</span>
+          </label>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="paymentMethodDialogVisible = false" />
+        <Button :disabled="!selectedPaymentMethod" @click="continueToPaymentCredentials" />
       </template>
     </Dialog>
 
@@ -207,7 +201,7 @@
       </template>
     </Dialog>
 
-    <Card v-if="!isActiveSubscription && store.status !== 'trial'">
+    <Card v-if="!isActiveSubscription && store.type !== 'trial'">
       <template #title>Store Verification</template>
       <template #content>
         <div class="space-y-3 text-sm text-slate-700">
@@ -440,6 +434,8 @@ const savingProfile = ref(false)
 const upgrading = ref(false)
 const planDialogVisible = ref(false)
 const gcashDialogVisible = ref(false)
+const paymentMethodDialogVisible = ref(false)
+const selectedPaymentMethod = ref<'card' | 'gcash' | ''>('')
 const savingPayments = ref(false)
 const paymongoMethodOptions = [
   { label: 'Credit/Debit Card', value: 'card' },
@@ -1009,6 +1005,31 @@ const openGcashDialogForSelectedPlan = () => {
   gcashForm.phone = ''
   const first = walletTypeOptions.value[0]?.value
   selectedWalletType.value = (first as any) || 'gcash'
+  gcashDialogVisible.value = true
+}
+
+const openPaymentMethodDialogForSelectedPlan = () => {
+  planDialogVisible.value = false
+  selectedPaymentMethod.value = ''
+  paymentMethodDialogVisible.value = true
+}
+
+const continueToPaymentCredentials = () => {
+  paymentMethodDialogVisible.value = false
+  // map selected payment method to wallet/credential dialog
+  if (selectedPaymentMethod.value === 'gcash') {
+    const first = walletTypeOptions.value[0]?.value
+    selectedWalletType.value = (first as any) || 'gcash'
+    gcashForm.name = ''
+    gcashForm.phone = ''
+    gcashDialogVisible.value = true
+    return
+  }
+
+  // card or others: reuse credential dialog (collect account name/email) and treat as card flow
+  selectedWalletType.value = 'card'
+  gcashForm.name = ''
+  gcashForm.phone = ''
   gcashDialogVisible.value = true
 }
 
