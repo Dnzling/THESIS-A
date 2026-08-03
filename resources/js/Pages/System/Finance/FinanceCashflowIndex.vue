@@ -241,7 +241,7 @@ const referenceTypeOptions = [
 
 const paymentMethodOptions = computed(() => {
   if (adjustForm.value.direction === 'in') {
-    return [{ label: 'PayMongo GCash', value: 'paymongo_gcash' }]
+    return [{ label: 'GCash', value: 'paymongo_gcash' }]
   }
   return [
     { label: 'Cash', value: 'cash' },

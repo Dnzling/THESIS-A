@@ -16,12 +16,7 @@
             <div class="font-medium text-slate-900">{{ branch?.address || '—' }}</div>
             <div class="text-slate-500">{{ branch?.city }}</div>
           </div>
-          <div>
-            <div class="text-xs text-slate-500 uppercase">Coordinates</div>
-            <div class="font-medium text-slate-900">
-              {{ branch?.latitude ?? '—' }}, {{ branch?.longitude ?? '—' }}
-            </div>
-          </div>
+        
           <div>
             <div class="text-xs text-slate-500 uppercase">Geofence Radius</div>
             <Tag :value="branch?.geofence_radius_m ? branch.geofence_radius_m + ' m' : 'Not set'" severity="info" />

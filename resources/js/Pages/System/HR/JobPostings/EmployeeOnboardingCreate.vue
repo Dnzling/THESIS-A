@@ -8,7 +8,7 @@
       <div class="mt-5 rounded-[2rem] border border-blue-100 bg-white/95 p-6 shadow-sm">
         <div class="space-y-2">
           <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Employee Onboarding</p>
-          <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Create employee and assign the first shift plan</h1>
+          <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Create employee and build a weekly shift plan</h1>
           <p class="text-sm leading-6 text-slate-500">This guided flow keeps hiring and shift planning together, with a final preview before anything is committed.</p>
         </div>
 
@@ -109,107 +109,78 @@
                 <span>Shift Planner</span>
               </template>
               <template #content>
-                <div class="mb-4 grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div class="mb-4 grid gap-4 lg:grid-cols-2">
                   <div class="space-y-2">
                     <label class="text-sm font-medium text-slate-700">Schedule Week Start</label>
                     <DatePicker v-model="shiftForm.week_start" class="w-full" />
                   </div>
-                  <div class="space-y-2">
-                    <label class="text-sm font-medium text-slate-700">Shift Template</label>
-                    <Select
-                      v-model="selectedTemplateId"
-                      :options="templateOptions"
-                      optionLabel="label"
-                      optionValue="value"
-                      placeholder="Select template"
-                      class="w-full"
-                    />
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    Fill each day manually. Use 12-hour time like `08:00 AM`.
                   </div>
                 </div>
 
-                <div v-if="templatesLoading" class="mt-4 grid gap-3">
-                  <Skeleton v-for="item in 3" :key="item" width="100%" height="70px" />
+                <div class="overflow-x-auto">
+                  <table class="min-w-full border-separate border-spacing-0">
+                    <thead>
+                      <tr class="text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th class="border-b border-slate-200 px-3 py-2">Day</th>
+                        <th class="border-b border-slate-200 px-3 py-2">Working</th>
+                        <th class="border-b border-slate-200 px-3 py-2">Start</th>
+                        <th class="border-b border-slate-200 px-3 py-2">End</th>
+                        <th class="border-b border-slate-200 px-3 py-2">Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in weeklyPlanner" :key="row.day" class="align-top">
+                        <td class="border-b border-slate-100 px-3 py-3 font-medium text-slate-800">{{ formatDayLabel(row.day) }}</td>
+                        <td class="border-b border-slate-100 px-3 py-3">
+                          <label class="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              :checked="row.is_working"
+                              type="checkbox"
+                              class="h-4 w-4"
+                              @change="(event) => onPlannerWorkingToggle(row, (event.target as HTMLInputElement).checked)"
+                            />
+                            Working
+                          </label>
+                        </td>
+                        <td class="border-b border-slate-100 px-3 py-3">
+                          <InputText
+                            :model-value="row.start_time"
+                            placeholder="08:00 AM"
+                            class="w-full"
+                            :disabled="!row.is_working"
+                            @update:model-value="(value) => onPlannerStartTimeChange(row, String(value || ''))"
+                          />
+                        </td>
+                        <td class="border-b border-slate-100 px-3 py-3">
+                          <InputText
+                            :model-value="row.end_time"
+                            placeholder="05:00 PM"
+                            class="w-full"
+                            :disabled="!row.is_working"
+                            @update:model-value="(value) => onPlannerEndTimeChange(row, String(value || ''))"
+                          />
+                        </td>
+                        <td class="border-b border-slate-100 px-3 py-3 text-sm text-slate-700">
+                          {{ row.is_working ? (row.hours || '0') + ' hrs' : 'Off' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-
-                <div v-else-if="!shiftTemplates.length" class="mt-4">
-                  <Message severity="warn" text>
-                    No active shift templates yet. Create one under the HR shifts module before continuing.
-                  </Message>
-                </div>
-
-                <div v-else class="mt-4 space-y-3">
-                  <p class="text-sm font-semibold text-slate-600">Preview</p>
-                  <div class="rounded-2xl border border-blue-100 bg-blue-50/30 p-4">
-                    <div class="flex items-center justify-between text-sm text-slate-600">
-                      <span class="font-semibold text-slate-900">{{ selectedTemplate?.name || 'Template' }}</span>
-                      <span>{{ formatDateOnly(shiftForm.week_start) }}</span>
-                    </div>
-                    <div v-if="selectedTemplate" class="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span class="rounded-full bg-white px-3 py-1 text-slate-600">
-                        {{ currentTemplateDays.length }} working day{{ currentTemplateDays.length === 1 ? '' : 's' }}
-                      </span>
-                      <span class="rounded-full bg-white px-3 py-1 text-slate-600">
-                        {{ 7 - currentTemplateDays.length }} rest day{{ 7 - currentTemplateDays.length === 1 ? '' : 's' }}
-                      </span>
-                    </div>
-                    <div v-if="!currentTemplateDays.length" class="mt-3 text-sm text-slate-500">
-                      The selected template does not define any working days.
-                    </div>
-                    <div v-else class="mt-3 space-y-2">
-                      <div
-                        v-for="day in currentTemplateDays"
-                        :key="`${selectedTemplate?.id}-${day.day}`"
-                        class="rounded-2xl bg-white/70 px-4 py-3 shadow-sm"
-                      >
-                        <div class="flex items-center justify-between text-sm text-slate-800">
-                          <span>{{ formatDayLabel(day.day) }}</span>
-                          <span>{{ formatTimeLabel(day.start_time) }} - {{ formatTimeLabel(day.end_time) }}</span>
-                        </div>
-                      </div>
-                    </div>
+                <div class="mt-4 grid gap-3 md:grid-cols-3">
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">Total Weekly Hours</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ totalWeeklyHours.toFixed(2) }} hrs</p>
                   </div>
-                </div>
-
-                <div class="mt-6">
-                  <p class="text-sm font-semibold text-slate-600">Template Library</p>
-                  <div v-if="shiftTemplates.length" class="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div
-                      v-for="template in shiftTemplates"
-                      :key="template.id"
-                      :class="[
-                        'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition',
-                        selectedTemplateId === template.id ? 'border-blue-500 shadow-lg' : 'hover:border-slate-300'
-                      ]"
-                    >
-                      <div class="flex items-center justify-between">
-                        <div>
-                          <p class="text-sm font-semibold text-slate-900">{{ template.name }}</p>
-                          <p class="text-xs text-slate-500">Valid {{ formatDateOnly(template.valid_from ?? null) }} - {{ template.valid_to ? formatDateOnly(template.valid_to ?? null) : 'ongoing' }}</p>
-                        </div>
-                        <Button
-                          size="small"
-                          label="Select"
-                          severity="info"
-                          text
-                          @click="selectedTemplateId = template.id"
-                        />
-                      </div>
-                      <div class="mt-2 text-xs text-slate-500">
-                        {{ templateWorkingDaysFor(template).length }} working day{{ templateWorkingDaysFor(template).length === 1 ? '' : 's' }}
-                      </div>
-                      <div class="mt-3 space-y-2 text-xs text-slate-600">
-                        <div v-for="day in templateWorkingDaysFor(template)" :key="`${template.id}-${day.day}`" class="flex items-center justify-between">
-                          <span>{{ formatDayLabel(day.day) }}</span>
-                          <span>{{ formatTimeLabel(day.start_time) }} - {{ formatTimeLabel(day.end_time) }}</span>
-                        </div>
-                        <div v-if="!templateWorkingDaysFor(template).length" class="text-slate-500">
-                          No working days defined for this template.
-                        </div>
-                      </div>
-                    </div>
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">Max Daily</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">12 hrs</p>
                   </div>
-                  <div v-else class="mt-3 text-sm text-slate-500">
-                    No templates are available.
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">Max Weekly</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">48 hrs</p>
                   </div>
                 </div>
               </template>
@@ -231,47 +202,25 @@
                   </div>
 
                   <div>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Shift Template</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Shift Plan</p>
                     <div class="mt-3 space-y-3">
-                      <div v-if="selectedTemplate" class="rounded-2xl bg-blue-50/70 p-4 space-y-2">
+                      <div class="rounded-2xl bg-blue-50/70 p-4 space-y-2">
                         <div class="flex items-center justify-between">
-                          <p class="font-semibold text-slate-900">{{ selectedTemplate.name }}</p>
+                          <p class="font-semibold text-slate-900">Weekly table schedule</p>
                           <span class="text-xs text-slate-500">Week of {{ formatDateOnly(shiftForm.week_start) }}</span>
                         </div>
-                        <div v-if="currentTemplateDays.length" class="space-y-2">
-                          <div v-for="day in currentTemplateDays" :key="`${selectedTemplate.id}-${day.day}`" class="flex items-center justify-between text-sm text-slate-700">
+                        <div class="space-y-2">
+                          <div v-for="day in weeklyPlanner" :key="`preview-${day.day}`" class="flex items-center justify-between text-sm text-slate-700">
                             <span>{{ formatDayLabel(day.day) }}</span>
-                            <span>{{ formatTimeLabel(day.start_time) }} - {{ formatTimeLabel(day.end_time) }}</span>
+                            <span>{{ day.is_working ? `${day.start_time || '--:--'} - ${day.end_time || '--:--'}` : 'Off' }}</span>
                           </div>
                         </div>
-                        <div v-else class="text-sm text-slate-500">
-                          This template does not define any working days.
-                        </div>
-                      </div>
-                      <div v-else class="rounded-2xl bg-blue-50/70 p-4 text-sm text-slate-500">
-                        No shift template has been selected.
                       </div>
                     </div>
                   </div>
 
-                  <div>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Payroll Card</p>
-                    <div class="mt-3 rounded-2xl bg-slate-50 p-4 space-y-2">
-                      <div class="flex items-center justify-between">
-                        <span class="text-slate-600">Card Type</span>
-                        <span class="font-semibold text-slate-900">{{ cardForm.card_type }}</span>
-                      </div>
-                      <div class="flex items-center justify-between">
-                        <span class="text-slate-600">Status</span>
-                        <span class="font-semibold text-slate-900">{{ cardForm.status }}</span>
-                      </div>
-                      <div class="flex items-center justify-between">
-                        <span class="text-slate-600">Card Number</span>
-                        <span class="font-semibold text-slate-900">
-                          {{ cardForm.card_number || 'Auto-generate on submit' }}
-                        </span>
-                      </div>
-                    </div>
+                  <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                    Payroll card will be assigned later from the employee profile.
                   </div>
                 </div>
               </template>
@@ -282,34 +231,11 @@
               <template #content>
                 <div class="space-y-4 text-sm">
                   <p class="leading-6 text-slate-600">
-                    We will create the employee account, attach the selected shift template for the week, and provision the payroll credit card automatically.
+                    We will create the employee account and attach the selected shift template for the week.
                   </p>
                   <Message severity="info" :closable="false">
                     Review everything carefully. This final action commits the hire and onboarding setup.
                   </Message>
-                  <div class="rounded-2xl border border-blue-200 bg-white/80 p-4 space-y-3">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Card Setup</p>
-                    <div class="grid gap-3 sm:grid-cols-2">
-                      <div class="space-y-2">
-                        <label class="text-sm font-medium text-slate-700">Card Number (Optional)</label>
-                        <InputText
-                          v-model="cardForm.card_number"
-                          class="w-full"
-                          placeholder="Leave blank to auto-generate"
-                        />
-                      </div>
-                      <div class="space-y-2">
-                        <label class="text-sm font-medium text-slate-700">Card Status</label>
-                        <Select
-                          v-model="cardForm.status"
-                          :options="cardStatusOptions"
-                          optionLabel="label"
-                          optionValue="value"
-                          class="w-full"
-                        />
-                      </div>
-                    </div>
-                  </div>
                   <Button label="Create Employee and Assign Template" icon="pi pi-check-circle" severity="info" fluid :loading="submitting" :disabled="submitting || hasBlockingError" @click="submitOnboarding" />
                 </div>
               </template>
@@ -319,7 +245,7 @@
 
         <div v-if="!loading" class="mt-8 flex items-center justify-between gap-3">
           <Button label="Previous" severity="secondary" outlined :disabled="activeStep === 0 || submitting" @click="activeStep -= 1" />
-          <Button v-if="activeStep < 2" :label="activeStep === 1 ? 'Preview' : 'Next'" severity="info" :disabled="submitting || hasBlockingError" @click="goNextStep" />
+          <Button v-if="activeStep < 2" :label="activeStep === 1 ? 'Preview' : 'Next'" severity="info" @click="goNextStep" />
         </div>
       </div>
     </div>
@@ -366,7 +292,7 @@ const selectedTemplateId = ref<number | string | null>(null)
 
 const stepItems = [
   { label: 'Create Employee' },
-  { label: 'Assign Shift' },
+  { label: 'Shift Planner' },
   { label: 'Preview' },
 ]
 
@@ -418,6 +344,16 @@ const shiftForm = reactive({
   week_start: new Date(),
 })
 
+const weeklyPlanner = reactive([
+  { day: 'monday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+  { day: 'tuesday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+  { day: 'wednesday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+  { day: 'thursday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+  { day: 'friday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+  { day: 'saturday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+  { day: 'sunday', is_working: false, shift_id: null as number | null, start_time: '08:00 AM', end_time: '05:00 PM', hours: 0 },
+])
+
 const cardForm = reactive({
   card_type: 'payroll',
   status: 'active',
@@ -425,6 +361,7 @@ const cardForm = reactive({
 })
 
 const applicantName = computed(() => application.value?.full_name || `${application.value?.first_name || ''} ${application.value?.last_name || ''}`.trim())
+const totalWeeklyHours = computed(() => weeklyPlanner.reduce((sum, row) => sum + Number(row.hours || 0), 0))
 
 const salaryRangeMin = computed<number | null>(() => {
   const raw = application.value?.jobPosting?.salary_min
@@ -506,7 +443,7 @@ const formatDayLabel = (value?: string) => {
   return dayLabelMap[value.toLowerCase()] || value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-const formatTimeLabel = (value?: string) => (value ? value : 'Not set')
+const formatTimeLabel = (value?: string) => formatTime12h(value)
 
 const formatDateOnly = (value: Date | string | null) => {
   if (!value) return 'N/A'
@@ -516,6 +453,107 @@ const formatDateOnly = (value: Date | string | null) => {
 
 const formatCurrency = (value?: number | string) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 }).format(Number(value || 0))
+
+const formatTime12h = (value?: string) => {
+  if (!value) return 'Not set'
+  const parsed = parseTimeToMinutes(value)
+  if (parsed === null) return value
+  const hours24 = Math.floor(parsed / 60)
+  const minutes = parsed % 60
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = ((hours24 + 11) % 12) + 1
+  return `${String(hours12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+const parseTimeToMinutes = (value?: string) => {
+  if (!value) return null
+  const raw = String(value).trim().toUpperCase()
+  const match = raw.match(/^(\d{1,2}):(\d{2})\s*([AP]M)?$/)
+  if (!match) return null
+  let hours = Number(match[1])
+  const minutes = Number(match[2])
+  const meridiem = match[3]
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || minutes > 59) return null
+
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return null
+    if (meridiem === 'AM') hours = hours === 12 ? 0 : hours
+    if (meridiem === 'PM') hours = hours === 12 ? 12 : hours + 12
+  } else if (hours > 23) {
+    return null
+  }
+
+  return hours * 60 + minutes
+}
+
+const calculateHours = (start?: string, end?: string) => {
+  const startMinutes = parseTimeToMinutes(start)
+  const endMinutes = parseTimeToMinutes(end)
+  if (startMinutes === null || endMinutes === null) return 0
+  const diff = endMinutes - startMinutes
+  return diff > 0 ? diff / 60 : 0
+}
+
+const detectMatchingShift = (start?: string, end?: string) => {
+  const normalizedStart = String(start || '').trim()
+  const normalizedEnd = String(end || '').trim()
+  if (!normalizedStart || !normalizedEnd) return null
+
+  return shiftOptions.value.find((shift: any) => {
+    const shiftStart = formatTime12h(shift.start_time)
+    const shiftEnd = formatTime12h(shift.end_time)
+    return shiftStart === normalizedStart && shiftEnd === normalizedEnd
+  }) || null
+}
+
+const formatMinutesToTime12h = (minutesTotal: number) => {
+  const normalized = ((minutesTotal % 1440) + 1440) % 1440
+  const hours24 = Math.floor(normalized / 60)
+  const minutes = normalized % 60
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = ((hours24 + 11) % 12) + 1
+  return `${String(hours12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+const onPlannerStartTimeChange = (row: any, value: string) => {
+  row.start_time = value
+
+  const startMinutes = parseTimeToMinutes(value)
+  if (startMinutes === null) {
+    row.end_time = ''
+    row.hours = 0
+    return
+  }
+
+  const endMinutes = startMinutes + 9 * 60
+  row.end_time = formatMinutesToTime12h(endMinutes)
+  row.hours = 9
+  row.is_working = true
+  row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || row.shift_id
+}
+
+const onPlannerEndTimeChange = (row: any, value: string) => {
+  row.end_time = value
+  row.hours = row.is_working ? calculateHours(row.start_time, row.end_time) : 0
+  row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || row.shift_id
+}
+
+const onPlannerWorkingToggle = (row: any, checked: boolean) => {
+  row.is_working = checked
+
+  if (checked) {
+    const defaultStart = row.start_time || '09:00 AM'
+    row.start_time = defaultStart
+    const startMinutes = parseTimeToMinutes(defaultStart)
+    row.end_time = startMinutes === null ? '06:00 PM' : formatMinutesToTime12h(startMinutes + 9 * 60)
+    row.hours = calculateHours(row.start_time, row.end_time) || 9
+    row.shift_id = detectMatchingShift(row.start_time, row.end_time)?.value || row.shift_id
+    return
+  }
+
+  row.shift_id = null
+  row.hours = 0
+}
 
 const toIsoDate = (value: Date | string) => {
   if (!value) return ''
@@ -680,6 +718,29 @@ const validateSalaryRange = async (): Promise<boolean> => {
   return true
 }
 
+const validateWeeklyPlanner = async (): Promise<boolean> => {
+  for (const row of weeklyPlanner) {
+    row.hours = row.is_working ? calculateHours(row.start_time, row.end_time) : 0
+
+    if (row.is_working && row.hours <= 0) {
+      await setError(`Provide a valid start and end time for ${formatDayLabel(row.day)}.`)
+      return false
+    }
+
+    if (row.hours > 9) {
+      await setError(`Working hours for ${formatDayLabel(row.day)} cannot exceed 9 hours.`)
+      return false
+    }
+  }
+
+  if (totalWeeklyHours.value > 54) {
+    await setError('Total weekly working hours cannot exceed 54 hours.')
+    return false
+  }
+
+  return true
+}
+
 const loadPage = async () => {
   loading.value = true
   try {
@@ -820,7 +881,7 @@ const onCityChange = async () => {
   }
 }
 
-const goNextStep = () => {
+const goNextStep = async () => {
   errorMessage.value = ''
 
   if (activeStep.value === 0) {
@@ -829,20 +890,15 @@ const goNextStep = () => {
       return
     }
 
-    void validateSalaryRange().then((isValid) => {
-      if (!isValid) return
-      activeStep.value += 1
-    })
+    const isValid = await validateSalaryRange()
+    if (!isValid) return
+    activeStep.value += 1
     return
   }
 
   if (activeStep.value === 1) {
-    if (!selectedTemplateId.value) {
-      void setError('Select a shift template before continuing.')
-      return
-    }
-    if (!currentTemplateDays.value.length) {
-      void setError('Selected template must include at least one working day.')
+    const weeklyValid = await validateWeeklyPlanner()
+    if (!weeklyValid) {
       return
     }
   }
@@ -880,19 +936,6 @@ const submitOnboarding = async () => {
       throw new Error('Employee record was not created.')
     }
 
-    if (!selectedTemplate.value) {
-      await setError('Select a shift template before submitting.')
-      submitting.value = false
-      return
-    }
-
-    const shiftEntry = currentTemplateDays.value.find((entry) => typeof entry.shift_id === 'number')
-    if (!shiftEntry?.shift_id) {
-      await setError('Selected template does not have any defined shift.')
-      submitting.value = false
-      return
-    }
-
     const startDateStr = toIsoDate(shiftForm.week_start)
     if (!startDateStr) {
       await setError('Provide a valid week start date.')
@@ -900,46 +943,39 @@ const submitOnboarding = async () => {
       return
     }
 
-    const assignmentPayload: {
-      employee_id: number
-      shift_id: number
-      start_date: string
-      assignment_type: 'permanent'
-      template_id?: number
-    } = {
-      employee_id: employee.id,
-      shift_id: shiftEntry.shift_id,
-      start_date: startDateStr,
-      assignment_type: 'permanent',
+    const dayOffsets: Record<string, number> = {
+      monday: 0,
+      tuesday: 1,
+      wednesday: 2,
+      thursday: 3,
+      friday: 4,
+      saturday: 5,
+      sunday: 6,
     }
 
-    const scheduleTemplateId = selectedScheduleTemplateId.value
-    if (scheduleTemplateId) {
-      assignmentPayload.template_id = scheduleTemplateId
-    }
-
-    await hrService.assignShift(assignmentPayload)
-
-    const scheduleEndDate = addDays(shiftForm.week_start, 27)
-    const scheduleEndStr = toIsoDate(scheduleEndDate)
-    if (scheduleEndStr && selectedScheduleTemplateId.value) {
-      await hrService.generateScheduleFromTemplate(selectedScheduleTemplateId.value, {
-        employee_ids: [employee.id],
-        start_date: startDateStr,
-        end_date: scheduleEndStr,
+    const startDate = new Date(shiftForm.week_start)
+    for (const row of weeklyPlanner) {
+      if (!row.is_working) continue
+      const matchedShift = detectMatchingShift(row.start_time, row.end_time)
+      const resolvedShiftId = Number(row.shift_id || matchedShift?.value || 0)
+      if (!resolvedShiftId) {
+        throw new Error(`No matching shift found for ${formatDayLabel(row.day)}. Please adjust the time range.`)
+      }
+      const scheduleDate = new Date(startDate)
+      scheduleDate.setDate(startDate.getDate() + dayOffsets[row.day])
+      await hrService.api.post('/api/shift-schedules', {
+        employee_id: employee.id,
+        shift_id: resolvedShiftId,
+        schedule_date: toIsoDate(scheduleDate),
+        status: 'scheduled',
+        notes: `Onboarding schedule: ${formatDayLabel(row.day)} ${formatTime12h(row.start_time)} - ${formatTime12h(row.end_time)}`,
       })
     }
-
-    await hrService.assignCreditCard(employee.id, {
-      card_type: cardForm.card_type,
-      status: cardForm.status as 'active' | 'inactive' | 'pending',
-      card_number: cardForm.card_number || undefined,
-    })
 
     toast.add({
       severity: 'success',
       summary: 'Onboarding completed',
-      detail: 'Employee profile, shift template assignment, and payroll card were created successfully.',
+      detail: 'Employee profile and weekly schedule were created successfully.',
       life: 3000,
     })
     router.push({ name: 'hr.employees.view', params: { id: createdEmployeeId.value } })

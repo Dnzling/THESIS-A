@@ -6,8 +6,23 @@
         <h1 class="text-3xl font-bold text-gray-800">Products</h1>
         <p class="text-gray-600 mt-1">Manage your product catalog</p>
       </div>
-      <Button @click="$router.push({ name: 'inventory.products.create' })" icon="pi pi-plus" label="Add Product"
-        severity="success" />
+      <div class="flex">
+        <!-- Add Product stays as-is -->
+        <Button @click="$router.push({ name: 'inventory.products.create' })" label="Add Product" severity="success" />
+  
+        <!-- Add Item button triggers the popover -->
+        <Button icon="pi pi-angle-down" severity="info" @click="toggleAddPopover" aria-haspopup="true"
+          aria-controls="add-item-popover" />
+  
+        <Popover id="add-item-popover" ref="addPopoverRef">
+          <div class="flex flex-col gap-2 p-1 justify-start">
+            <Button @click="() => { addPopoverRef.hide(); $router.push({ name: 'inventory.raw-materials.create' }); }"
+              label="Add Raw Materials" severity="secondary" text  />
+            <Button @click="() => { addPopoverRef.hide(); $router.push({ name: 'inventory.supplies.create' }); }"
+              label="Add Supply" severity="secondary" text />
+          </div>
+        </Popover>
+      </div>
     </div>
   
     <!-- Filters Card -->
@@ -21,20 +36,21 @@
   
           <Select v-model="filters.category_id" :options="categories" optionLabel="category_name" optionValue="id"
             placeholder="All Categories" class="w-full" showClear @change="onFilterChange" />
-
-          <Select
-            v-model="filters.product_type"
-            :options="productTypeOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Product Type"
-            class="w-full"
-            showClear
-            @change="onFilterChange"
-          />
   
           <Select v-model="filters.is_active" :options="activeStatuses" optionLabel="label" optionValue="value"
             placeholder="Status" class="w-full" showClear @change="onFilterChange" />
+  
+          <div class="flex items-center justify-end gap-2">
+            <Button :label="showBranchOnly ? 'Branch Available' : 'All Products'"
+              :severity="showBranchOnly ? 'info' : 'secondary'" :outlined="!showBranchOnly" size="small"
+              @click="toggleBranchOnly" />
+          </div>
+        </div>
+  
+        <div class="mt-4 flex flex-wrap gap-2">
+          <Button v-for="option in productTypeToggleOptions" :key="option.value ?? 'all'" :label="option.label"
+            :severity="selectedProductType === option.value ? 'info' : 'secondary'"
+            :outlined="selectedProductType !== option.value" size="small" @click="toggleProductType(option.value)" />
         </div>
   
         <div class="mt-4 flex gap-2">
@@ -100,6 +116,15 @@
             </template>
           </Column>
   
+          <Column header="Branch Availability">
+            <template #body="{ data }">
+              <div>
+                <p class="font-semibold text-gray-900">{{ getBranchAvailability(data) }}</p>
+                <p class="text-xs text-gray-500">{{ getBranchAvailabilityStatus(data) }}</p>
+              </div>
+            </template>
+          </Column>
+  
           <Column field="is_active" header="Status">
             <template #body="{ data }">
               <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
@@ -148,7 +173,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import merchandisingService from '../../../../services/merchandising.service'
+import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -157,23 +182,30 @@ const router = useRouter()
 const toast = useToast()
 
 // State
-const products = ref([])
-const categories = ref([])
-const tags = ref([])
-const attributes = ref([])
-const selectedProducts = ref([])
+const products = ref<any[]>([])
+const categories = ref<any[]>([])
+const selectedProducts = ref<any[]>([])
 const loading = ref(false)
 const totalRecords = ref(0)
 const dialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
 const deleting = ref(false)
-const currentProduct = ref(null)
+const currentProduct = ref<any>(null)
+const showBranchOnly = ref(false)
+const selectedProductType = ref<string | null>(null)
+
+const addPopoverRef = ref()
+
+function toggleAddPopover(event) {
+  addPopoverRef.value.toggle(event)
+}
 
 const filters = reactive({
   search: '',
   category_id: null,
   product_type: null,
   is_active: null,
+  available_only: true,
   page: 1,
   per_page: 15,
   sort_by: 'created_at',
@@ -183,16 +215,18 @@ const activeStatuses = [
   { label: 'Active', value: true },
   { label: 'Inactive', value: false }
 ]
-const productTypeOptions = [
+const productTypeToggleOptions = [
+  { label: 'All', value: null },
   { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' }
+  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Supply', value: 'supply' }
 ]
 
 // Methods
 const loadProducts = async () => {
   loading.value = true
   try {
-    const response = await merchandisingService.getProducts(filters)
+    const response = await inventoryService.getProducts(filters)
     products.value = response.data.data
     totalRecords.value = response.data.total
   } catch (error) {
@@ -204,28 +238,10 @@ const loadProducts = async () => {
 
 const loadCategories = async () => {
   try {
-    const response = await merchandisingService.getCategories({ active_only: true })
+    const response = await inventoryService.getCategories({ active_only: true })
     categories.value = response.data.data
   } catch (error) {
     console.error('Failed to load categories')
-  }
-}
-
-const loadTags = async () => {
-  try {
-    const response = await merchandisingService.getTags({ active_only: true })
-    tags.value = response.data.data
-  } catch (error) {
-    console.error('Failed to load tags')
-  }
-}
-
-const loadAttributes = async () => {
-  try {
-    const response = await merchandisingService.getAttributes({ filterable_only: true })
-    attributes.value = response.data.data
-  } catch (error) {
-    console.error('Failed to load attributes')
   }
 }
 
@@ -243,7 +259,20 @@ const onSort = (event: any) => {
 
 const onFilterChange = () => {
   filters.page = 1
+  filters.available_only = showBranchOnly.value
   loadProducts()
+}
+
+const toggleBranchOnly = () => {
+  showBranchOnly.value = !showBranchOnly.value
+  filters.available_only = showBranchOnly.value
+  onFilterChange()
+}
+
+const toggleProductType = (value: string | null) => {
+  selectedProductType.value = selectedProductType.value === value ? null : value
+  filters.product_type = selectedProductType.value
+  onFilterChange()
 }
 
 const resetFilters = () => {
@@ -251,6 +280,9 @@ const resetFilters = () => {
   filters.category_id = null
   filters.product_type = null
   filters.is_active = null
+  filters.available_only = false
+  showBranchOnly.value = false
+  selectedProductType.value = null
   loadProducts()
 }
 
@@ -259,27 +291,27 @@ const resetFilters = () => {
 
 const viewProduct = (productId: number) => {
   router.push({
-    name: 'merchandising.products.view',
+    name: 'inventory.products.detail',
     params: { id: productId }
   })
 }
 
 const editProduct = (productId: number) => {
   router.push({
-    name: 'merchandising.products.edit',
+    name: 'inventory.products.edit',
     params: { id: productId }
   })
 }
 
 const confirmDelete = (product: any) => {
-  selectedProducts.value = product
+  currentProduct.value = product
   deleteDialogVisible.value = true
 }
 
 const deleteProduct = async () => {
   deleting.value = true
   try {
-    await merchandisingService.deleteProduct(currentProduct.value.id)
+    await inventoryService.deleteProduct(currentProduct.value.id)
     toast.add({ severity: 'success', summary: 'Success', detail: 'Product deleted', life: 3000 })
     deleteDialogVisible.value = false
     loadProducts()
@@ -293,7 +325,7 @@ const deleteProduct = async () => {
 const bulkActivate = async () => {
   try {
     const ids = selectedProducts.value.map((p: any) => p.id)
-    await merchandisingService.bulkStatusUpdate(ids, true)
+    await inventoryService.bulkStatusUpdate(ids, true)
     toast.add({ severity: 'success', summary: 'Success', detail: 'Products activated', life: 3000 })
     selectedProducts.value = []
     loadProducts()
@@ -305,13 +337,26 @@ const bulkActivate = async () => {
 const bulkDeactivate = async () => {
   try {
     const ids = selectedProducts.value.map((p: any) => p.id)
-    await merchandisingService.bulkStatusUpdate(ids, false)
+    await inventoryService.bulkStatusUpdate(ids, false)
     toast.add({ severity: 'success', summary: 'Success', detail: 'Products deactivated', life: 3000 })
     selectedProducts.value = []
     loadProducts()
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to deactivate products', life: 3000 })
   }
+}
+
+const getBranchAvailability = (product: any) => {
+  const inventory = Array.isArray(product.inventory) ? product.inventory[0] : null
+  return inventory ? `${inventory.quantity_available ?? 0}` : '0'
+}
+
+const getBranchAvailabilityStatus = (product: any) => {
+  const inventory = Array.isArray(product.inventory) ? product.inventory[0] : null
+  if (!inventory) return 'Not stocked in your branch'
+  if ((inventory.quantity_available ?? 0) <= 0) return 'Out of stock'
+  if ((inventory.quantity_available ?? 0) <= (inventory.reorder_point ?? 0)) return 'Low stock'
+  return 'In stock'
 }
 
 const formatPrice = (price: number) => {
@@ -321,7 +366,5 @@ const formatPrice = (price: number) => {
 onMounted(() => {
   loadProducts()
   loadCategories()
-  loadTags()
-  loadAttributes()
 })
 </script>

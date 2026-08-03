@@ -36,6 +36,13 @@ const attachInterceptors = (client: AxiosInstance) => {
                 config.headers.Authorization = `Bearer ${token}`
             }
 
+            if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+                if (config.headers) {
+                    delete config.headers['Content-Type']
+                    delete config.headers['content-type']
+                }
+            }
+
             const key = getRequestKey(config)
             if (!key) return config
 

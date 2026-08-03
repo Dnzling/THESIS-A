@@ -154,6 +154,42 @@ class DocumentAutoValidationService
         ];
     }
 
+    public function extractTextFromDocument(string $path, string $diskName = 'public'): string
+    {
+        $disk = Storage::disk($diskName);
+        if (!$disk->exists($path)) {
+            return '';
+        }
+
+        $absolutePath = $disk->path($path);
+        $mime = strtolower((string) ($disk->mimeType($path) ?: ''));
+
+        return $this->extractText($absolutePath, $mime);
+    }
+
+    public function extractLikelyIdNumber(string $text): ?string
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', ' ', $text));
+        $patterns = [
+            '/\b\d{2}-\d{7}-\d{1}\b/',
+            '/\b\d{3}-\d{2}-\d{4}\b/',
+            '/\b\d{4}-\d{4}-\d{4}-\d{4}\b/',
+            '/\b[A-Z0-9]{8,20}\b/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $normalized, $matches)) {
+                return $matches[0];
+            }
+        }
+
+        if (preg_match('/\b\d[\d\-\s]{6,20}\d\b/', $normalized, $matches)) {
+            return trim(preg_replace('/\s+/', '', $matches[0]));
+        }
+
+        return null;
+    }
+
     private function extractText(string $absolutePath, string $mime): string
     {
         if (str_contains($mime, 'pdf')) {

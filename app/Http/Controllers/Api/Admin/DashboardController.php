@@ -139,6 +139,8 @@ class DashboardController extends Controller
 
             $data['recent_activities'] = $recentActivities;
 
+            $data['recent_payments'] = $this->buildRecentPayments();
+
             return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -291,5 +293,56 @@ class DashboardController extends Controller
             'newStores' => $newStores,
             'activeStores' => $activeStores,
         ];
+    }
+
+    private function buildRecentPayments(): array
+    {
+        if (!Schema::hasTable('paymongo_intents')) {
+            return [];
+        }
+
+        $query = DB::table('paymongo_intents as pi')
+            ->leftJoin('stores as s', 's.id', '=', 'pi.store_id')
+            ->select([
+                'pi.payment_intent_id',
+                'pi.amount',
+                'pi.currency',
+                'pi.status',
+                'pi.payable_type',
+                'pi.payable_id',
+                'pi.created_at',
+                DB::raw("COALESCE(s.name, 'Unknown Store') as store_name"),
+                DB::raw("COALESCE(s.status, 'unknown') as store_status"),
+            ])
+            ->orderByDesc('pi.created_at')
+            ->limit(10);
+
+        return $query->get()->map(function ($row) {
+            $status = strtolower((string) ($row->status ?? 'unknown'));
+            $payableType = (string) ($row->payable_type ?? '');
+
+            return [
+                'store' => $row->store_name,
+                'store_status' => $row->store_status,
+                'amount' => ((float) ($row->amount ?? 0)) / 100,
+                'currency' => $row->currency ?: 'PHP',
+                'status' => $status,
+                'date' => $row->created_at,
+                'payment_intent_id' => $row->payment_intent_id,
+                'type' => $this->humanizePaymentType($payableType),
+            ];
+        })->toArray();
+    }
+
+    private function humanizePaymentType(string $type): string
+    {
+        return match ($type) {
+            'subscription_upgrade' => 'Subscription',
+            'invoice' => 'Invoice',
+            'sales_order' => 'Sales Order',
+            'ecommerce_order' => 'Ecommerce Order',
+            'cashflow_topup' => 'Cashflow Top-up',
+            default => $type !== '' ? str_replace('_', ' ', ucwords($type, '_')) : 'Payment',
+        };
     }
 }

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\System\StoreAdmin\StoreSettingsController as WebStoreSettingsController;
 
 $render = function (string $page, array $props = []) {
     return Inertia::render($page, array_filter($props, fn($value) => $value !== null));
@@ -54,7 +55,14 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // System (Store Admin)u
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
-        $inertia('/store/settings', 'System/StoreAdmin/Settings', 'store.settings', 'Settings', 'Trial & Configuration');
+        Route::get('/store/settings', [WebStoreSettingsController::class, 'show'])
+            ->name('store.settings');
+        Route::put('/store/settings/profile', [WebStoreSettingsController::class, 'updateProfile'])
+            ->name('store.settings.profile');
+        Route::put('/store/settings/payments', [WebStoreSettingsController::class, 'updatePaymentSettings'])
+            ->name('store.settings.payments');
+        Route::put('/store/settings/attendance', [WebStoreSettingsController::class, 'updateAttendanceSettings'])
+            ->name('store.settings.attendance');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
@@ -112,9 +120,13 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/items/create', 'System/Inventory/Stocks/ItemsCreate', 'inventory.items.create', 'Add Inventory Item');
     $inertia('/inventory/items/{id}', 'System/Inventory/Stocks/StockShow', 'inventory.items.show', 'Stock Details');
     $inertia('/inventory/items/{id}/edit', 'System/Inventory/Stocks/ItemsEdit', 'inventory.items.edit', 'Edit Inventory Item');
-    $inertia('/inventory/products', 'System/Inventory/Products/ProductIndex', 'inventory.products.index', 'Product Catalog');
-    $inertia('/inventory/products/create', 'System/Merchandising/products/ProductForm', 'inventory.products.create', 'Add Product', 'Create a new product');
-    $inertia('/inventory/products/{id}', 'System/Inventory/Products/ProductDetail', 'inventory.products.detail', 'Product Details');
+    $inertia('/inventory/products/index', 'System/Inventory/Products/ProductIndex', 'inventory.products.index', 'Product Catalog');
+    $inertia('/inventory/products/create', 'System/Inventory/Products/ProductForm', 'inventory.products.create', 'Add Product', 'Create a new product');
+    $inertia('/inventory/products/{id}/edit', 'System/Inventory/Products/ProductForm', 'inventory.products.edit', 'Edit Product', 'Update product information');
+    $inertia('/inventory/products/{id}', 'System/Inventory/Products/ProductView', 'inventory.products.detail', 'Product Details');
+    $inertia('/inventory/raw-materials/create', 'System/Inventory/Products/RawMaterialForm', 'inventory.raw-materials.create', 'Add Raw Material', 'Create a new raw material');
+    $inertia('/inventory/supplies/create', 'System/Inventory/Products/SupplyForm', 'inventory.supplies.create', 'Add Supply', 'Create a new supply');
+    $inertia('/inventory/supplies/{id}/edit', 'System/Inventory/Products/SupplyForm', 'inventory.supplies.edit', 'Edit Supply', 'Update supply information');
     $inertia('/inventory/categories', 'System/Inventory/Categories/CategoryIndex', 'inventory.categories', 'Categories');
     $inertia('/inventory/categories/{id}', 'System/Inventory/Categories/CategoryDetail', 'inventory.categories.detail', 'Category Details');
     $inertia('/inventory/units', 'System/Inventory/Units/UnitIndex', 'inventory.units', 'Units');

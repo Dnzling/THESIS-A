@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('suppliers')) {
+            return;
+        }
+
         // Create supplier_performance_metrics table
         if (!Schema::hasTable('supplier_performance_metrics')) {
             Schema::create('supplier_performance_metrics', function (Blueprint $table) {
@@ -30,6 +34,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasTable('supplier_performance_metrics')) {
+            return;
+        }
+
         Schema::dropIfExists('supplier_performance_metrics');
     }
 };

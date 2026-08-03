@@ -10,6 +10,7 @@
           </div>
           <div class="flex items-center gap-2">
             <Button label="Back" icon="pi pi-arrow-left" text @click="goBack" />
+            <Button label="Delete" icon="pi pi-trash" severity="danger" :loading="deleting" @click="confirmDelete" />
             <Button label="Save Changes" icon="pi pi-check" severity="info" :loading="saving" @click="confirmSave" />
           </div>
         </div>
@@ -148,6 +149,7 @@ const planId = computed(() => {
 
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const modules = ref<any[]>([])
 const permissions = ref<any[]>([])
 const loadingPermissions = ref(false)
@@ -319,6 +321,15 @@ const confirmSave = () => {
   })
 }
 
+const confirmDelete = () => {
+  confirm.require({
+    message: 'Delete this subscription plan? This action can be undone by restoring the record from the database.',
+    header: 'Delete Plan',
+    icon: 'pi pi-exclamation-triangle',
+    accept: deletePlan,
+  })
+}
+
 const save = async () => {
   if (!planId.value) return
   saving.value = true
@@ -349,6 +360,20 @@ const save = async () => {
     toast.add({ severity: 'error', summary: 'Error', detail: validationMessage || e?.response?.data?.message || 'Failed to save', life: 3000 })
   } finally {
     saving.value = false
+  }
+}
+
+const deletePlan = async () => {
+  if (!planId.value) return
+  deleting.value = true
+  try {
+    const response = await axiosClient.delete(`/api/admin/subscription-plans/${planId.value}`)
+    toast.add({ severity: 'success', summary: 'Deleted', detail: response?.data?.message || 'Plan deleted', life: 2000 })
+    router.visit('/admin/subscription')
+  } catch (e: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.message || 'Failed to delete plan', life: 3000 })
+  } finally {
+    deleting.value = false
   }
 }
 

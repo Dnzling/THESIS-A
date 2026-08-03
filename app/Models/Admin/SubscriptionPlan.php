@@ -3,9 +3,11 @@
 namespace App\Models\Admin;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SubscriptionPlan extends Model
 {
+    use SoftDeletes;
     protected $table = 'subscription_plans';
 
     protected $fillable = [
@@ -26,5 +28,6 @@ class SubscriptionPlan extends Model
         'features' => 'array',
         'is_featured' => 'boolean',
         'is_active' => 'boolean',
+        'deleted_at' => 'datetime',
     ];
 }

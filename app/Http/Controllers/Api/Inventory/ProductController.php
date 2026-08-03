@@ -3,13 +3,15 @@
 namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProductCatalog\Product;
-use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
-use Illuminate\Http\Request;
+use App\Models\ProductCatalog\Category;
+use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -24,6 +26,57 @@ class ProductController extends Controller
         ];
     }
 
+    private function resolveDefaultCategoryId(int $storeId): ?int
+    {
+        return Category::query()
+            ->where('store_id', $storeId)
+            ->value('id');
+    }
+
+    private function generateSku(string $productType, int $storeId): string
+    {
+        $prefix = match ($productType) {
+            'raw_material' => 'RM',
+            'supply' => 'SP',
+            default => 'FG',
+        };
+
+        return $prefix . '-' . strtoupper(Str::random(4)) . '-' . now()->format('YmdHis') . '-' . $storeId;
+    }
+
+    private function buildProductPayload(array $data, int $storeId): array
+    {
+        $productType = $data['product_type'] ?? 'finished_good';
+        $basePrice = $data['base_price'] ?? $data['unit_cost'] ?? 0;
+        $costPrice = $data['cost_price'] ?? $data['unit_cost'] ?? null;
+
+        $payload = [
+            'store_id' => $storeId,
+            'product_name' => trim((string) ($data['product_name'] ?? '')),
+            'sku' => $data['sku'] ?? $this->generateSku($productType, $storeId),
+            'description' => $data['description'] ?? null,
+            'product_type' => $productType,
+            'base_price' => (float) $basePrice,
+            'cost_price' => $costPrice !== null ? (float) $costPrice : null,
+            'is_active' => $data['is_active'] ?? true,
+            'unit_of_measurement' => $data['unit_of_measurement'] ?? null,
+            'supplier_name' => $data['supplier_name'] ?? null,
+            'initial_stock' => $data['initial_stock'] ?? null,
+            'created_by' => auth()->id(),
+        ];
+
+        if (!empty($data['category_id'])) {
+            $payload['category_id'] = $data['category_id'];
+        } else {
+            $defaultCategoryId = $this->resolveDefaultCategoryId($storeId);
+            if ($defaultCategoryId) {
+                $payload['category_id'] = $defaultCategoryId;
+            }
+        }
+
+        return $payload;
+    }
+
     /**
      * Display products available in inventory
      * GET /api/inventory/products
@@ -33,23 +86,31 @@ class ProductController extends Controller
         try {
             $context = $this->getUserContext();
 
-            $query = Product::with(['category', 'variations', 'assets'])
+            $query = Product::with([
+                    'category',
+                    'variations',
+                    'assets',
+                    'inventory' => function ($q) use ($context) {
+                        if (!empty($context['branch_id'])) {
+                            $q->where('branch_id', $context['branch_id']);
+                        }
+                    },
+                ])
+                ->withCount('variations')
                 ->where('store_id', $context['store_id'])
                 ->where('is_active', true);
-
-            if (!empty($context['branch_id'])) {
-                $query->whereHas('inventory', function ($q) use ($context) {
-                    $q->where('branch_id', $context['branch_id']);
-                });
-            }
 
             // Filters
             if ($request->has('category_id')) {
                 $query->where('category_id', $request->category_id);
             }
 
-            if ($request->has('product_type')) {
-                $query->where('product_type', $request->product_type);
+            if ($request->filled('product_type')) {
+                $query->byProductType($request->product_type);
+            }
+
+            if ($request->boolean('available_only', false)) {
+                $query->availableInBranch($context['branch_id']);
             }
 
             if ($request->has('search')) {
@@ -128,12 +189,16 @@ class ProductController extends Controller
 
             $validated = $request->validate([
                 'product_name' => 'required|string|max:255',
-                'sku' => 'required|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
+                'sku' => 'nullable|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
-                'category_id' => 'required|exists:product_categories,id',
-                'product_type' => 'nullable|in:raw_material,finished_good',
-                'base_price' => 'required|numeric|min:0',
+                'category_id' => 'nullable|exists:product_categories,id',
+                'product_type' => 'nullable|in:raw_material,finished_good,supply',
+                'base_price' => 'nullable|numeric|min:0',
+                'unit_cost' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
+                'unit_of_measurement' => 'nullable|string|max:50',
+                'supplier_name' => 'nullable|string|max:255',
+                'initial_stock' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean',
                 'variations' => 'nullable|array',
                 'variations.*.variation_name' => 'required|string|max:255',
@@ -143,18 +208,7 @@ class ProductController extends Controller
 
             DB::beginTransaction();
 
-            $product = Product::create([
-                'store_id' => $context['store_id'],
-                'product_name' => $validated['product_name'],
-                'sku' => $validated['sku'],
-                'description' => $validated['description'] ?? null,
-                'category_id' => $validated['category_id'],
-                'product_type' => $validated['product_type'] ?? 'finished_good',
-                'base_price' => $validated['base_price'],
-                'cost_price' => $validated['cost_price'] ?? null,
-                'is_active' => $validated['is_active'] ?? true,
-                'created_by' => auth()->id(),
-            ]);
+            $product = Product::create($this->buildProductPayload($validated, $context['store_id']));
 
             // Create variations if provided
             if (!empty($validated['variations'])) {
@@ -199,29 +253,37 @@ class ProductController extends Controller
 
             $validated = $request->validate([
                 'product_name' => 'required|string|max:255',
-                'sku' => 'required|string|max:100|unique:products,sku,' . $id . ',id,store_id,' . $context['store_id'],
+                'sku' => 'nullable|string|max:100|unique:products,sku,' . $id . ',id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
-                'category_id' => 'required|exists:product_categories,id',
-                'product_type' => 'nullable|in:raw_material,finished_good',
-                'base_price' => 'required|numeric|min:0',
+                'category_id' => 'nullable|exists:product_categories,id',
+                'product_type' => 'nullable|in:raw_material,finished_good,supply',
+                'base_price' => 'nullable|numeric|min:0',
+                'unit_cost' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
+                'unit_of_measurement' => 'nullable|string|max:50',
+                'supplier_name' => 'nullable|string|max:255',
+                'initial_stock' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean',
             ]);
 
             DB::beginTransaction();
 
-            $incomingBasePrice = (float) $validated['base_price'];
+            $incomingBasePrice = (float) ($validated['base_price'] ?? $validated['unit_cost'] ?? $product->base_price ?? 0);
             $currentBasePrice = (float) $product->base_price;
             $isPriceChanged = bccomp((string) $incomingBasePrice, (string) $currentBasePrice, 2) !== 0;
 
             $updates = [
                 'product_name' => $validated['product_name'],
-                'sku' => $validated['sku'],
+                'sku' => $validated['sku'] ?? $product->sku,
                 'description' => $validated['description'] ?? null,
-                'category_id' => $validated['category_id'],
+                'category_id' => $validated['category_id'] ?? $product->category_id,
                 'product_type' => $validated['product_type'] ?? $product->product_type ?? 'finished_good',
-                'cost_price' => $validated['cost_price'] ?? null,
+                'base_price' => (float) ($validated['base_price'] ?? $validated['unit_cost'] ?? $product->base_price ?? 0),
+                'cost_price' => $validated['cost_price'] ?? $validated['unit_cost'] ?? $product->cost_price,
                 'is_active' => $validated['is_active'] ?? $product->is_active,
+                'unit_of_measurement' => $validated['unit_of_measurement'] ?? $product->unit_of_measurement,
+                'supplier_name' => $validated['supplier_name'] ?? $product->supplier_name,
+                'initial_stock' => $validated['initial_stock'] ?? $product->initial_stock,
                 'updated_by' => auth()->id(),
             ];
 

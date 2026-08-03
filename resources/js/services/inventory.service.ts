@@ -98,6 +98,21 @@ export interface StockAlert {
   resolved_at?: string | null
 }
 
+export interface InventoryProductPayload {
+  product_name: string
+  sku?: string
+  description?: string
+  category_id?: number | null
+  product_type?: 'raw_material' | 'finished_good' | 'supply'
+  base_price?: number
+  cost_price?: number | null
+  unit_of_measurement?: string | null
+  supplier_name?: string | null
+  initial_stock?: number | null
+  unit_cost?: number
+  is_active?: boolean
+}
+
 class InventoryService {
   // Use explicit API prefix so requests hit Laravel api routes and CORS paths.
   private baseUrl = '/api/inventory'
@@ -425,6 +440,31 @@ class InventoryService {
 
   async getProductTypes() {
     const response = await axiosClient.get(`${this.baseUrl}/products/types`)
+    return response.data
+  }
+
+  async getSupply(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/supplies/${id}`)
+    return response.data
+  }
+
+  async createSupply(data: InventoryProductPayload) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplies`, data)
+    return response.data
+  }
+
+  async bulkStatusUpdate(product_ids: number[], is_active: boolean) {
+    const response = await axiosClient.post(`${this.baseUrl}/products/bulk/status`, { product_ids, is_active })
+    return response.data
+  }
+
+  async updateSupply(id: number, data: Partial<InventoryProductPayload>) {
+    const response = await axiosClient.put(`${this.baseUrl}/supplies/${id}`, data)
+    return response.data
+  }
+
+  async deleteSupply(id: number) {
+    const response = await axiosClient.delete(`${this.baseUrl}/supplies/${id}`)
     return response.data
   }
 

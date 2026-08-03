@@ -1,184 +1,203 @@
-﻿<template>
-  <Head title="Home"/>
-  <div class="bg-gradient-to-b from-white to-orange-50/30">
+<template>
+  <Head title="Home" />
+  <div class="min-h-screen bg-[#fff7ed] text-slate-900">
     <TopNav />
 
     <main>
-      <!-- Hero Section -->
-      <section class="relative overflow-hidden py-20 lg:py-32">
-        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,107,0.12),transparent_55%)]"></div>
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <div class="text-center max-w-5xl mx-auto">
-            <h1 class="text-4xl lg:text-5xl font-bold leading-tight mb-6">
-              A modern platform to run every store,
-              <span class="text-orange-500 block mt-2">sell smarter, and showcase in 3D.</span>
+      <section class="relative overflow-hidden bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500 text-white">
+        <div class="absolute inset-0 opacity-30">
+          <div class="absolute -left-24 top-12 h-72 w-72 rounded-full bg-white/20 blur-3xl"></div>
+          <div class="absolute right-0 top-24 h-80 w-80 rounded-full bg-amber-200/20 blur-3xl"></div>
+          <div class="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-orange-200/20 blur-3xl"></div>
+        </div>
+
+        <div class="relative mx-auto grid max-w-7xl gap-16 px-4 py-20 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-28">
+          <div class="max-w-2xl">
+           
+
+            <h1 class="mt-6 text-5xl font-black leading-none tracking-tight sm:text-6xl lg:text-7xl">
+              Turn visitors into
+              <span class="block text-amber-100">buyers faster.</span>
             </h1>
-            <p class="text-gray-600 text-lg lg:text-xl mb-10 max-w-3xl mx-auto">
-              FurniSync brings integrated management, decision support system into one clean workspace.
-              Built for high-value catalogs, multi-branch teams, and confident customer experiences.
+
+            <p class="mt-6 max-w-xl text-lg leading-8 text-orange-50/95 sm:text-xl">
+              Showcase products beautifully, guide buyers to the right plan, and keep store operations moving in one simple platform.
+              More clicks, more store sign-ups, and a clearer path to checkout.
             </p>
-            <div class="flex flex-wrap gap-4 justify-center mb-12">
-              <Button 
-                as="router-link" 
-                severity="warn"
-                to="/register?plan=simple&trial=0" 
-                raised
-                class="font-semibold"
-                size="medium"
+
+            <div class="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
+              <Button
+                as="router-link"
+                to="/register"
+                severity="warning" rounded
+                class="!border-0 !bg-white !px-7 !py-4 !text-lg !font-bold !text-orange-600 !shadow-xl hover:!bg-orange-50"
               >
-            Get Started
+                Get Started Free
               </Button>
-              <Button 
-                @click="scrollToOverview"
-                severity="secondary"
-                size="medium"
-                class="font-bold"
-                label="Watch Demo"
-              />
+              <Button
+                as="router-link"
+                to="/pricing"
+                severity="secondary" rounded
+                class="!border-white/25 !bg-transparent !px-7 !py-4 !text-lg !font-bold !text-white hover:!bg-white/10"
+              >
+                View Plans
+              </Button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto mt-10">
-              <div v-for="item in proofItems" :key="item.title" class="text-center">
-                <p class="font-bold text-gray-900 mb-1">{{ item.title }}</p>
-                <p class="text-sm text-gray-500">{{ item.sub }}</p>
+
+            <div class="mt-10 flex flex-wrap gap-6 text-sm text-orange-50/90">
+              <div v-for="item in proofItems" :key="item.title" class="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur">
+                <p class="font-semibold text-white">{{ item.title }}</p>
+                <p>{{ item.sub }}</p>
               </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      <!-- Stats Section -->
-      <section class="py-16">
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card v-for="stat in stats" :key="stat.title" class="text-center">
-              <template #content>
-                <p class="text-3xl lg:text-4xl font-bold text-orange-500 mb-2">{{ stat.value }}</p>
-                <p class="font-semibold text-gray-900 mb-1">{{ stat.title }}</p>
-                <p class="text-sm text-gray-500">{{ stat.sub }}</p>
-              </template>
-            </Card>
-          </div>
-        </div>
-      </section>
-  
-      <!-- Solutions Section -->
-      <section ref="overviewSection" class="py-20">
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <div class="text-center max-w-3xl mx-auto mb-12">
-            <span class="text-orange-500 text-sm uppercase tracking-wider">Platform Overview</span>
-            <h2 class="text-3xl lg:text-4xl font-bold mt-2 mb-4">Everything you need for modern furniture operations.</h2>
-            <p class="text-gray-500">Run merchandising, supply, and sales execution from one intelligent workspace with shared data and live reporting.</p>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card v-for="feature in features" :key="feature.title" class="hover:shadow-lg transition-shadow">
-              <template #content>
-                <div class="w-12 h-12 rounded-xl bg-orange-100 text-orange-500 flex items-center justify-center mb-4" v-html="feature.icon"></div>
-                <h3 class="font-bold text-lg mb-2">{{ feature.title }}</h3>
-                <p class="text-gray-500 text-sm">{{ feature.description }}</p>
-              </template>
-            </Card>
-          </div>
-        </div>
-      </section>
+          <div class="relative">
+            <div class="absolute -left-8 top-10 h-28 w-28 rounded-full bg-white/15 blur-2xl"></div>
+            <div class="absolute right-8 top-0 h-36 w-36 rounded-full bg-amber-200/20 blur-3xl"></div>
 
-      <!-- Workflow Section -->
-      <section class="py-20 bg-gradient-to-br from-orange-50/50 to-transparent">
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <div class="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <span class="text-orange-500 text-sm uppercase tracking-wider">Workflow</span>
-              <h2 class="text-3xl lg:text-4xl font-bold mt-2 mb-4">From warehouse to showroom in one flow.</h2>
-              <p class="text-gray-500 mb-8">Connect demand planning, supplier coordination, and showroom experiences without chasing spreadsheets.</p>
-              <div class="space-y-3">
-                <div v-for="step in steps" :key="step.title" class="flex gap-4 p-4 bg-white rounded-xl shadow-sm">
-                  <div class="w-10 h-10 rounded-lg bg-orange-100 text-orange-600 font-bold flex items-center justify-center">{{ step.index }}</div>
-                  <div>
-                    <p class="font-semibold mb-1">{{ step.title }}</p>
-                    <p class="text-sm text-gray-500">{{ step.sub }}</p>
+            <div class="rounded-[1.5rem] border border-white/20 bg-white/95 p-3 shadow-[0_30px_90px_rgba(69,26,0,0.28)]">
+              <div class="grid gap-0 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white lg:grid-cols-[0.92fr_1.08fr]">
+                <div class="border-b border-slate-200 bg-slate-50 p-3 lg:border-b-0 lg:border-r">
+                  <div class="flex items-center justify-between">
+                    <span class="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700">New</span>
+                    <Button
+                      label="Show Photo"
+                      size="small"
+                      class="!rounded-xl !border-0 !bg-sky-500 !px-4 !py-2 !font-semibold !text-white !shadow-lg hover:!bg-sky-600"
+                    />
+                  </div>
+
+                  <div class="mt-3 overflow-hidden rounded-[1rem] border border-slate-200 bg-white">
+                    <div class="flex aspect-[4/5] items-center justify-center bg-slate-50 p-3">
+                      <div class="h-full w-full">
+                        <Model3DPreview
+                          model-url="/storage/platform/sofa.glb"
+                          model-format="glb"
+                          :camera-y="12"
+                          :zoom="1.95"
+                          height="100%"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="p-4 sm:p-5 lg:p-6">
+                  <span class="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">In Stock</span>
+                  <h2 class="mt-4 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Luna 3-Seater Sofa</h2>
+                  <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                    <span>Furniture</span>
+                    <span class="text-slate-300">•</span>
+                    <span>Drift</span>
+                    <span class="text-slate-300">•</span>
+                    <span>Living Room</span>
+                  </div>
+           
+
+                  <div class="mt-5">
+                    <p class="text-3xl font-black tracking-tight text-slate-900">₱24,900</p>
+             
+                  </div>
+
+                  <div class="mt-5">
+
+                    <p class="mt-2 text-sm leading-6 text-slate-600">
+                      Modern 3D sofa preview with smooth rotation, clear pricing, and trust details that help shoppers move from browsing to buying.
+                    </p>
+                  </div>
+                  <div class="mt-5 flex flex-wrap items-center gap-2">
+                  
+                    <Button
+                      label="Add to Cart"
+                      class="!rounded-xl !border-0 !bg-sky-500 !px-4 !py-2.5 !text-sm !font-semibold !text-white !shadow-lg hover:!bg-sky-600"
+                    />
+                    <Button
+                      label="Buy Now"
+                      class="!rounded-xl !border-0 !bg-emerald-500 !px-4 !py-2.5 !text-sm !font-semibold !text-white !shadow-lg hover:!bg-emerald-600"
+                    />
+                  </div>
+
+                  <div class="mt-4 flex items-center gap-3 text-sm text-slate-500">
+                    <div class="flex items-center gap-1 text-amber-400">
+                      <span v-for="star in 5" :key="star">★</span>
+                    </div>
+                    <span>4.8</span>
+                    <span class="text-slate-300">•</span>
+                    <span>1,284 ratings</span>
                   </div>
                 </div>
               </div>
             </div>
-            <div class="bg-gray-900 rounded-2xl p-6 shadow-xl">
-              <p class="text-white font-semibold mb-4">Live Branch View</p>
-              <div v-for="highlight in highlights" :key="highlight.label" class="flex justify-between items-center py-3 border-b border-gray-700">
-                <div>
-                  <p class="text-gray-400 text-sm">{{ highlight.label }}</p>
-                  <p class="text-white font-medium">{{ highlight.value }}</p>
-                </div>
-                <Tag :severity="getTagSeverity(highlight.tone)" :value="highlight.badge" />
-              </div>
-              <p class="text-gray-500 text-xs mt-4">Updated just now</p>
-            </div>
           </div>
         </div>
       </section>
 
-      <!-- Showcase Section -->
-      <section class="py-20">
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <div class="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <span class="text-orange-500 text-sm uppercase tracking-wider">3D Experience</span>
-              <h2 class="text-3xl lg:text-4xl font-bold mt-2 mb-4">Sell premium pieces with immersive previews.</h2>
-              <p class="text-gray-500 mb-6">Launch photoreal 3D viewers, configure materials, and give your teams the confidence to close higher-ticket orders.</p>
-              <Button as="router-link" to="/pricing" severity="primary" class="!bg-orange-500 !border-none">See Pricing</Button>
-            </div>
-            <div class="space-y-4">
-              <Card v-for="card in showcaseCards" :key="card.title" :class="['hover:shadow-lg transition-all', card.glow && 'border-orange-200 bg-gradient-to-r from-orange-50/50 to-transparent']">
-                <template #content>
-                  <p class="font-semibold text-lg mb-1">{{ card.title }}</p>
-                  <p class="text-gray-500 text-sm">{{ card.sub }}</p>
-                </template>
-              </Card>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <!-- Testimonial Section -->
-      <section class="py-20 bg-white">
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <div class="grid lg:grid-cols-2 gap-8 items-center">
-            <Card class="bg-gradient-to-br from-orange-50 to-transparent border-orange-100">
+      <section ref="overviewSection" class="bg-[#fff7ed] py-20">
+        <div class="mx-auto max-w-7xl px-4 lg:px-8">
+          <div class="mx-auto max-w-3xl text-center">
+         
+            <h2 class="mt-5 text-3xl font-black tracking-tight sm:text-4xl">A sharper funnel from interest to store registration</h2>
+            <p class="mt-4 text-lg text-slate-600">
+              Keep the experience simple: get attention, capture sign-up, route users to store registration, then let them choose a plan with confidence.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-6 lg:grid-cols-3">
+            <Card v-for="feature in features" :key="feature.title" class="h-full border border-orange-100 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
               <template #content>
-                <p class=" text-xl lg:text-2xl mb-6">“FurniSync replaced six disconnected tools. Our store managers finally share the same data and our 3D catalog closes deals faster.”</p>
-                <div class="flex justify-between items-center">
-                  <div>
-                    <p class="font-semibold">Rhea Valdez</p>
-                    <p class="text-sm text-gray-500">VP Operations, Lumina Living</p>
-                  </div>
-                  <Tag value="Multi-branch" severity="info" class="!bg-orange-100 !text-orange-600" />
-                </div>
+                <div class="flex h-14 w-14 items-center justify-center rounded-xl text-orange-600" v-html="feature.icon"></div>
+                <h3 class="mt-5 text-xl font-bold">{{ feature.title }}</h3>
+                <p class="mt-3 text-sm leading-6 text-slate-600">{{ feature.description }}</p>
               </template>
             </Card>
-            <div class="grid grid-cols-1 gap-6">
-              <div v-for="metric in metrics" :key="metric.label" class="text-center p-6 bg-orange-50/50 rounded-xl">
-                <p class="text-3xl lg:text-4xl font-bold text-orange-500 mb-1">{{ metric.value }}</p>
-                <p class="text-gray-600">{{ metric.label }}</p>
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
-      <!-- CTA Section -->
-      <section class="py-20">
-        <div class="container mx-auto px-4 lg:px-8 max-w-7xl">
-          <Card class="">
-            <template #content>
-              <div class="lg:flex lg:items-center lg:justify-between gap-8">
-                <div class="mb-6 lg:mb-0">
-                  <h2 class="text-2xl lg:text-3xl font-bold mb-2">Ready to modernize your furniture business?</h2>
-                  <p class="text-orange-500">Start a guided trial and see how fast your teams can switch to a smarter, unified workflow.</p>
-                </div>
-                <div class="flex gap-3">
-                  <Button as="router-link" to="/register?plan=simple&trial=0" severity="warn">Get Started</Button>
-                  <Button as="router-link" to="/pricing" severity="secondary" class="">Compare Plans</Button>
-                </div>
+      <section class="bg-white py-20">
+        <div class="mx-auto max-w-7xl px-4 lg:px-8">
+          <div class="mx-auto max-w-3xl text-center">
+            <span class="inline-flex rounded-full bg-orange-100 px-4 py-2 text-sm font-semibold text-orange-700">
+              What You Get
+            </span>
+            <h2 class="mt-5 text-3xl font-black tracking-tight sm:text-4xl">
+              Deliverables that make this system worth buying
+            </h2>
+            <p class="mt-4 text-lg text-slate-600">
+              Instead of selling generic software, we deliver a complete furniture selling workflow that helps stores attract shoppers, improve buying confidence, and move faster to revenue.
+            </p>
+          </div>
+
+          <div class="mt-12 overflow-hidden rounded-[2rem] border border-slate-200 shadow-sm">
+            <div class="grid grid-cols-12 bg-slate-900 px-5 py-4 text-sm font-semibold text-white">
+              <div class="col-span-12 md:col-span-4">Deliverable</div>
+              <div class="col-span-12 md:col-span-4 md:text-center">Common Furniture Management System</div>
+              <div class="col-span-12 md:col-span-4 md:text-center porta">Furnisync</div>
+            </div>
+
+            <div v-for="row in comparisonRows" :key="row.feature" class="grid grid-cols-12 border-t border-slate-200 bg-white px-5 py-4 text-sm">
+              <div class="col-span-12 md:col-span-4">
+                <p class="font-semibold text-slate-900">{{ row.feature }}</p>
               </div>
-            </template>
-          </Card>
+              <div class="col-span-12 mt-2 md:col-span-4 md:mt-0 md:text-center">
+                <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
+                  {{ row.typical }}
+                </span>
+              </div>
+              <div class="col-span-12 mt-2 md:col-span-4 md:mt-0 md:text-center">
+                <span
+                  class="inline-flex rounded-full px-3 py-1 font-semibold"
+                  :class="row.highlight ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'"
+                >
+                  {{ row.advanced }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          
         </div>
       </section>
     </main>
@@ -189,107 +208,75 @@
 
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3'
-import TopNav from '@/Components/MarketingHeader.vue'
-import MarketingFooter from '@/Components/MarketingFooter.vue'
 import { ref } from 'vue'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
-import Chip from 'primevue/chip'
-import Tag from 'primevue/tag'
+import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
+import TopNav from '@/Components/MarketingHeader.vue'
+import MarketingFooter from '@/Components/MarketingFooter.vue'
 
 const overviewSection = ref<HTMLElement | null>(null)
 
-const scrollToOverview = () => {
-  overviewSection.value?.scrollIntoView({ behavior: 'smooth' })
-}
-
-const getTagSeverity = (tone: string) => {
-  switch(tone) {
-    case 'tone-ok': return 'success'
-    case 'tone-warn': return 'warning'
-    default: return 'info'
-  }
-}
-
-const proofItems = [
-  { title: '14-day trial', sub: 'No credit card needed' },
-  { title: 'Dedicated onboarding', sub: 'White-glove support' },
-  { title: 'Enterprise ready', sub: 'SOC-friendly stack' }
-]
-
 const stats = [
-  { value: '45%', title: 'Fewer stockouts', sub: 'Live inventory orchestration' },
-  { value: '3.2x', title: 'Faster purchasing', sub: 'Automated procurement flows' },
-  { value: '28%', title: 'Higher sell-through', sub: '3D-driven conversion lifts' }
+  { value: '1 path', title: 'Less user confusion', sub: 'Register, verify, set up store, then subscribe' },
+  { value: '2 options', title: 'Plan clarity', sub: 'Free Trial or paid confirmation flow' },
+  { value: 'CTA-first', title: 'Higher intent clicks', sub: 'Primary action is visible right away' },
 ]
-
-const logos = ['CasaPro', 'Nordline', 'Haven & Co', 'Oakridge', 'StudioOne', 'UrbanCraft']
 
 const features = [
   {
-    title: '3D Catalog Studio',
-    description: 'Spin, zoom, and configure product materials with photoreal control.',
-    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 11l8 4 8-4"/><path d="M4 19l8 4 8-4"/></svg>'
+    title: 'Sales-ready storefront',
+    description: 'A polished home page, clear CTA path, and strong product presentation that turn visitors into store sign-ups.',
+    icon: '<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19h16"/><path d="M7 16V8l5-4 5 4v8"/><path d="M10 19V11h4v8"/></svg>',
   },
   {
-    title: 'Inventory Command Center',
-    description: 'Real-time stock, branch availability, and demand insights in one dashboard.',
-    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h18"/><path d="M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7"/><path d="M9 11h6"/></svg>'
+    title: 'Store setup workflow',
+    description: 'Guided registration, OTP verification, store details, and subscription selection without confusing extra steps.',
+    icon: '<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10v16H7z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>',
   },
   {
-    title: 'Smart Procurement',
-    description: 'Automate POs, supplier selection, and lead-time tracking with AI guidance.',
-    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h12l3 6H3l3-6z"/><path d="M4 9v10a2 2 0 002 2h12a2 2 0 002-2V9"/></svg>'
+    title: 'DSS + 3D viewer package',
+    description: 'Built-in decision support and a 3D sofa preview that help customers buy faster and help stores sell smarter.',
+    icon: '<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 5l7 7-7 7"/><path d="M20 12H4"/></svg>',
   },
-  {
-    title: 'Sales Enablement',
-    description: 'Give teams instant product knowledge, bundles, and showroom scripts.',
-    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h18"/><path d="M12 3v18"/></svg>'
-  },
-  {
-    title: 'Logistics Control',
-    description: 'Track deliveries, routing, and customer updates in real time.',
-    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h13v10H3z"/><path d="M16 9h5l-2 5h-3z"/><circle cx="7" cy="19" r="2"/><circle cx="17" cy="19" r="2"/></svg>'
-  },
-  {
-    title: 'Decision Support',
-    description: 'AI-driven guidance for markdowns, replenishment, and promo timing.',
-    icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg>'
-  }
 ]
 
 const steps = [
-  { index: '01', title: 'Connect your catalog', sub: 'Import SKUs, materials, and inventory across branches.' },
-  { index: '02', title: 'Activate 3D experiences', sub: 'Launch immersive viewers and material configurators.' },
-  { index: '03', title: 'Automate procurement', sub: 'AI recommends POs and supplier timing.' },
-  { index: '04', title: 'Deliver confidently', sub: 'Real-time logistics visibility for every order.' }
+  { index: '01', title: 'Get attention fast', sub: 'A strong headline and a single primary CTA keep visitors moving.' },
+  { index: '02', title: 'Register without friction', sub: 'No trial or subscription is forced during the sign-up step.' },
+  { index: '03', title: 'Guide the next action', sub: 'Store registration comes first, then the plan selection screen.' },
 ]
 
-const highlights = [
-  { label: 'Cebu Showroom', value: '412 active SKUs', badge: 'Healthy', tone: 'tone-ok' },
-  { label: 'Manila Warehouse', value: 'Reorder queue 28', badge: 'Action', tone: 'tone-warn' },
-  { label: 'Davao Outlet', value: 'Sell-through 82%', badge: 'On track', tone: 'tone-ok' }
-]
-
-const showcaseCards = [
-  { title: 'Material Lab', sub: 'Toggle upholstery, wood, and finish in seconds.', glow: false },
-  { title: 'Sales Assist', sub: 'Guided bundles and smart add-ons.', glow: true },
-  { title: 'Executive Reporting', sub: 'Executive views for revenue, demand, and inventory health.', glow: false }
-]
-
-const metrics = [
-  { value: '32%', label: 'Faster approvals' },
-  { value: '2.8x', label: 'Showroom engagement' },
-  { value: '$1.4M', label: 'Recovered margin' }
+const comparisonRows = [
+  {
+    feature: 'Furniture visualization',
+    typical: 'Static product photos',
+    advanced: 'Interactive 3D sofa preview customers can rotate',
+    highlight: true,
+  },
+  {
+    feature: 'Buying confidence',
+    typical: 'Customers still guess before ordering',
+    advanced: 'Price, rating, specs, and stock shown clearly',
+    highlight: false,
+  },
+  {
+    feature: 'Decision support',
+    typical: 'Generic reports only',
+    advanced: 'DSS insights that guide better store decisions',
+    highlight: true,
+  },
+  {
+    feature: 'Sales conversion',
+    typical: 'Browse and hope',
+    advanced: 'Browse, compare, preview, and buy with confidence',
+    highlight: false,
+  },
+  {
+    feature: 'Business fit',
+    typical: 'One-size-fits-all software',
+    advanced: 'Built for furniture stores that need to sell faster',
+    highlight: true,
+  },
 ]
 </script>
-
-<style>
-
-@import url('https://fonts.bunny.net/css?family=manrope:400,500,600,700&family=plus-jakarta-sans:600,700,800');
-
-* {
-  font-family: 'Manrope', sans-serif;
-}
-
-</style>

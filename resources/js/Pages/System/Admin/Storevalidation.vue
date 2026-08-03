@@ -181,7 +181,7 @@
                                     class="rounded-full border px-3 py-1 text-xs font-semibold"
                                     :class="getStoreStatusColor(store.status)"
                                 >
-                                    {{ store.status }}
+                                    {{ displayStoreStatus(store.status) }}
                                 </span>
                             </div>
                             <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
@@ -264,7 +264,7 @@
                                 <span
                                     class="rounded-full border px-3 py-1 text-xs font-semibold text-slate-600 bg-green-50 border-green-100"
                                 >
-                                    {{ store.status }}
+                                    {{ displayStoreStatus(store.status) }}
                                 </span>
                             </div>
                             <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
@@ -347,7 +347,7 @@
                                 <span
                                     class="rounded-full border px-3 py-1 text-xs font-semibold text-slate-600 bg-red-50 border-red-100"
                                 >
-                                    {{ store.status }}
+                                    {{ displayStoreStatus(store.status) }}
                                 </span>
                             </div>
                             <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
@@ -430,7 +430,7 @@
                                     class="rounded-full border px-3 py-1 text-xs font-semibold text-slate-600"
                                     :class="getStoreStatusColor(store.status)"
                                 >
-                                    {{ store.status }}
+                                    {{ displayStoreStatus(store.status) }}
                                 </span>
                             </div>
                             <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
@@ -1186,13 +1186,19 @@ const getStoreStatusIcon = (status: string | undefined | null) => {
 const getStoreStatusColor = (status: string | undefined | null) => {
   const normalized = String(status || '').toLowerCase()
   switch (normalized) {
-    case 'pending': return 'bg-yellow-100 text-yellow-600'
+    case 'pending':
+    case 'unverified': return 'bg-yellow-100 text-yellow-600'
     case 'approved':
     case 'active': return 'bg-green-100 text-green-600'
     case 'rejected': return 'bg-red-100 text-red-600'
     case 'suspended': return 'bg-gray-100 text-gray-600'
     default: return 'bg-blue-100 text-blue-600'
   }
+}
+
+const displayStoreStatus = (status: string | undefined | null) => {
+  const normalized = String(status || '').toLowerCase()
+  return normalized === 'pending' ? 'Unverified' : String(status || '-')
 }
 
 const getDocumentIcon = (status: string) => {

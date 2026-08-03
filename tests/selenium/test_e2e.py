@@ -12,7 +12,6 @@ Run with: python -m pytest tests/selenium/test_e2e.py
 """
 
 import os
-import time
 
 import pytest
 from selenium import webdriver
@@ -53,6 +52,19 @@ def wait_for_heading(driver, text, timeout=15):
     return WebDriverWait(driver, timeout).until(
         EC.visibility_of_element_located((By.XPATH, f"//*[self::h1 or self::h2][contains(., '{text}')]"))
     )
+
+
+def click_first_visible(driver, selectors):
+    for selector in selectors:
+        element = None
+        try:
+            element = driver.find_element(By.CSS_SELECTOR, selector)
+        except Exception:
+            continue
+        if element and element.is_displayed():
+            element.click()
+            return element
+    raise AssertionError(f"Could not find a visible element for selectors: {selectors}")
 
 
 def login(driver):
@@ -112,4 +124,55 @@ def test_merchandising_dashboard_loads(driver, authenticated):
         EC.presence_of_element_located(
             (By.XPATH, "//*[contains(@class,'card') or contains(., 'KPI') or contains(., 'Summary')]")
         )
+    )
+
+
+def test_browser_smoke_free_trial_onboarding(driver, authenticated):
+    driver.get(f"{BASE_URL}/store/registration")
+    wait_for_heading(driver, "Create your store")
+
+    WebDriverWait(driver, 15).until(EC.visibility_of_element_located((By.CSS_SELECTOR, "[data-testid='store-name']"))).send_keys("Smoke Free Trial Store")
+    driver.find_element(By.CSS_SELECTOR, "[data-testid='barangay']").send_keys("San Dionisio")
+    driver.find_element(By.CSS_SELECTOR, "[data-testid='address']").send_keys("123 Smoke Street")
+
+    click_first_visible(driver, [
+        "[data-testid='business-type'] [role='combobox']",
+        "[data-testid='business-type'] input",
+    ])
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.XPATH, "//*[self::li or self::div][contains(., 'Retail')]"))
+    ).click()
+
+    click_first_visible(driver, [
+        "[data-testid='city-select'] [role='combobox']",
+        "[data-testid='city-select'] input",
+    ])
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.XPATH, "//*[self::li or self::div][contains(., 'Cavite') or contains(., 'Dasm')]"))
+    ).click()
+
+    driver.find_element(By.CSS_SELECTOR, "[data-testid='save-store']").click()
+    WebDriverWait(driver, 20).until(lambda d: "/subscription-plans" in d.current_url)
+    wait_for_heading(driver, "Choose your plan")
+
+    driver.find_element(By.CSS_SELECTOR, "[data-testid='free-trial']").click()
+    WebDriverWait(driver, 20).until(lambda d: "/store/index" in d.current_url)
+    wait_for_heading(driver, "Dashboard", timeout=20)
+
+
+def test_browser_smoke_paid_plan_confirmation(driver, authenticated):
+    driver.get(f"{BASE_URL}/subscription-plans")
+    wait_for_heading(driver, "Choose your plan")
+
+    paid_button = WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-testid='paid-plan']"))
+    )
+    paid_button.click()
+
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.XPATH, "//*[contains(., 'Confirm Subscription')]"))
+    )
+
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.XPATH, "//*[contains(., 'Proceed to Checkout')]"))
     )

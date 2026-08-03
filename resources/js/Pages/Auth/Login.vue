@@ -69,6 +69,7 @@ const handleLogin = async (formData: LoginFormData) => {
   try {
     // Let authStore handle the entire login process
     await authStore.login(formData.login, formData.password)
+    await authStore.fetchCurrentUser({ reloadPermissions: true })
 
     // console.log('✅ Login successful')
     // console.log('User role:', authStore.user?.role)
@@ -82,18 +83,22 @@ const handleLogin = async (formData: LoginFormData) => {
       life: 2000
     })
 
-    // ✅ Default routing (SystemLayout)
-    let redirectTo = getFirstAvailableRoute()
-
-    // Override with query redirect if available
+    const hasStore = Boolean(
+      authStore.currentUser?.store_id ||
+      (authStore.currentUser as any)?.store?.id ||
+      authStore.user?.store_id ||
+      (authStore.user as any)?.store?.id
+    )
     const redirectParam = getQueryParam('redirect')
     const isCustomerRole =
       String(authStore.user?.role || '').toLowerCase().includes('customer') ||
       String((authStore.user as any)?.display_role || '').toLowerCase().includes('customer')
 
-    // For customer logins, always land on /shop first to avoid auth loop back to /customer/login.
-    if (!isCustomerRole && redirectParam) {
-      redirectTo = redirectParam
+    let redirectTo = '/store/registration'
+
+    if (hasStore) {
+      // Users with a store continue into the system; others complete store registration first.
+      redirectTo = !isCustomerRole && redirectParam ? redirectParam : getFirstAvailableRoute()
     }
 
     // ✅ Single redirect with delay (for toast to show)
@@ -108,11 +113,12 @@ const handleLogin = async (formData: LoginFormData) => {
     if (requiresVerification) {
       const verificationToken = error?.response?.data?.access_token
       const verificationEmail = error?.response?.data?.email || formData.login
+      const verificationRole = String(error?.response?.data?.role || '').toLowerCase()
 
       if (verificationToken) {
         localStorage.setItem('register_token', verificationToken)
       }
-      localStorage.setItem('otp_context', 'saas')
+      localStorage.setItem('otp_context', verificationRole || 'saas')
 
       toast.add({
         severity: 'info',

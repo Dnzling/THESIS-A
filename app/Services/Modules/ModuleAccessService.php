@@ -8,6 +8,28 @@ use Illuminate\Support\Facades\DB;
 class ModuleAccessService
 {
     /**
+     * Return included (enabled) module keys for a given subscription plan key.
+     */
+    public function enabledModuleKeysForPlan(string $planKey): array
+    {
+        $planKey = strtolower(trim($planKey));
+        if ($planKey === '') {
+            return [];
+        }
+
+        return DB::table('subscription_plans')
+            ->join('plan_modules', 'plan_modules.plan_id', '=', 'subscription_plans.id')
+            ->join('modules', 'modules.id', '=', 'plan_modules.module_id')
+            ->where('subscription_plans.plan_key', $planKey)
+            ->where('plan_modules.included', true)
+            ->where('modules.is_active', true)
+            ->orderBy('modules.name')
+            ->pluck('modules.key')
+            ->map(fn ($k) => (string) $k)
+            ->all();
+    }
+
+    /**
     * Determine if a module is enabled for a store, applying override -> store -> plan precedence.
     */
     public function isEnabledForStore(int $storeId, string $moduleKey): bool
@@ -43,7 +65,7 @@ class ModuleAccessService
 
         // 3) plan_modules via store plan (fallback)
         $planIncluded = DB::table('stores')
-            ->join('subscription_plans', 'subscription_plans.plan_key', '=', 'stores.subscription_tier')
+            ->join('subscription_plans', 'subscription_plans.id', '=', 'stores.subscription_tier')
             ->join('plan_modules', 'plan_modules.plan_id', '=', 'subscription_plans.id')
             ->join('modules', 'modules.id', '=', 'plan_modules.module_id')
             ->where('stores.id', $storeId)
@@ -59,7 +81,7 @@ class ModuleAccessService
     public function syncStoreModulesFromPlan(int $storeId): void
     {
         $planModules = DB::table('stores')
-            ->join('subscription_plans', 'subscription_plans.plan_key', '=', 'stores.subscription_tier')
+            ->join('subscription_plans', 'subscription_plans.id', '=', 'stores.subscription_tier')
             ->join('plan_modules', 'plan_modules.plan_id', '=', 'subscription_plans.id')
             ->where('stores.id', $storeId)
             ->select('plan_modules.module_id', 'plan_modules.included')

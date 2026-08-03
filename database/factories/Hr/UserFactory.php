@@ -2,6 +2,7 @@
 
 namespace Database\Factories\Hr;
 
+use App\Models\Core\Role;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -12,12 +13,30 @@ use Illuminate\Support\Str;
 class UserFactory extends Factory
 {
     /**
+     * The name of the factory's corresponding model.
+     *
+     * @var class-string<\App\Models\Core\User>
+     */
+    protected $model = \App\Models\Core\User::class;
+
+    /**
      * Define the model's default state.
      *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
+        $roleId = Role::query()->where('name', 'employee')->value('id')
+            ?? Role::query()->firstOrCreate(
+                ['name' => 'employee'],
+                [
+                    'display_name' => 'Employee',
+                    'code' => 'EMPLOYEE',
+                    'description' => 'Default employee role for factory-generated users.',
+                    'is_active' => true,
+                ]
+            )->id;
+
         return [
             'fname' => $this->faker->firstName(),
             'lname' => $this->faker->lastName(),
@@ -25,15 +44,13 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => Hash::make('password123'), // Default password
             'remember_token' => Str::random(10),
-            'role_id' => 4, // Default employee role - adjust as needed
-            'store_id' => $this->faker->numberBetween(1, 5),
-            'branch_id' => $this->faker->numberBetween(1, 3),
-            'is_active' => $this->faker->randomElement(['active', 'inactive']),
+            'role_id' => $roleId,
+            'store_id' => null,
+            'branch_id' => null,
+            'is_active' => true,
             'otp_code' => $this->faker->randomElement([null, Str::random(6)]),
             'otp_expires_at' => $this->faker->randomElement([null, now()->addMinutes(10)]),
             'registered_by' => $this->faker->randomElement([null, 1, 2, 3]),
-            'deleted_by' => null,
-            'deleted_at' => null,
             'last_login_at' => $this->faker->randomElement([null, now()->subDays($this->faker->numberBetween(1, 30))]),
             'created_at' => now(),
             'updated_at' => now(),
@@ -46,7 +63,16 @@ class UserFactory extends Factory
     public function storeAdmin(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role_id' => 2, // Store admin role
+            'role_id' => Role::query()->where('name', 'store_admin')->value('id')
+                ?? Role::query()->firstOrCreate(
+                    ['name' => 'store_admin'],
+                    [
+                        'display_name' => 'Store Admin',
+                        'code' => 'STORE_ADMIN',
+                        'description' => 'Store administrator role for factory-generated users.',
+                        'is_active' => true,
+                    ]
+                )->id,
         ]);
     }
 
@@ -56,7 +82,16 @@ class UserFactory extends Factory
     public function hrManager(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role_id' => 3, // HR manager role
+            'role_id' => Role::query()->where('name', 'hr_manager')->value('id')
+                ?? Role::query()->firstOrCreate(
+                    ['name' => 'hr_manager'],
+                    [
+                        'display_name' => 'HR Manager',
+                        'code' => 'HR_MANAGER',
+                        'description' => 'HR manager role for factory-generated users.',
+                        'is_active' => true,
+                    ]
+                )->id,
         ]);
     }
 
@@ -66,7 +101,16 @@ class UserFactory extends Factory
     public function employee(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role_id' => 4, // Employee role
+            'role_id' => Role::query()->where('name', 'employee')->value('id')
+                ?? Role::query()->firstOrCreate(
+                    ['name' => 'employee'],
+                    [
+                        'display_name' => 'Employee',
+                        'code' => 'EMPLOYEE',
+                        'description' => 'Default employee role for factory-generated users.',
+                        'is_active' => true,
+                    ]
+                )->id,
         ]);
     }
 
@@ -76,7 +120,7 @@ class UserFactory extends Factory
     public function active(): static
     {
         return $this->state(fn (array $attributes) => [
-            'is_active' => 'active',
+            'is_active' => true,
         ]);
     }
 
@@ -86,7 +130,7 @@ class UserFactory extends Factory
     public function inactive(): static
     {
         return $this->state(fn (array $attributes) => [
-            'is_active' => 'inactive',
+            'is_active' => false,
         ]);
     }
 

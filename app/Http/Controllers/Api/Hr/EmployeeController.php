@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\EmployeeDeduction;
+use App\Models\Hr\EmployeeGovernmentId;
+use App\Models\Hr\EmployeeWeeklySchedule;
+use App\Models\Hr\DeductionType;
 use App\Models\Hr\Employee;
 use App\Models\Hr\EmployeeCreditCard;
 use App\Models\Hr\Leave;
@@ -15,6 +18,7 @@ use App\Models\Hr\Payroll;
 use App\Models\Hr\Shift;
 use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\ShiftSchedule;
+use App\Services\Store\DocumentAutoValidationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -28,6 +32,11 @@ use App\Mail\ApplicantEmployeeCredentialsMail;
 
 class EmployeeController extends Controller
 {
+    public function __construct(
+        private readonly DocumentAutoValidationService $documentAutoValidationService
+    ) {
+    }
+
     /**
      * List employees
      */
@@ -67,6 +76,10 @@ class EmployeeController extends Controller
 
             // Always scope employee listing to the authenticated user's store.
             $query = Employee::with('user')->where('store_id', $storeId);
+
+            if ($request->filled('branch_id')) {
+                $query->where('branch_id', (int) $request->input('branch_id'));
+            }
 
             // Add filters
             if ($request->has('department')) {
@@ -153,6 +166,37 @@ class EmployeeController extends Controller
             'success' => true,
             'data' => $employee
         ]);
+    }
+
+    /**
+     * Preview OCR for a government ID before saving.
+     */
+    public function previewGovernmentId(Request $request)
+    {
+        $validated = $request->validate([
+            'id_document' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ]);
+
+        try {
+            $uploadedFile = $validated['id_document'];
+            $path = $uploadedFile->store('tmp/gov-id-previews', 'public');
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $likelyIdNumber = $this->documentAutoValidationService->extractLikelyIdNumber($text);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'extracted_text' => $text,
+                    'likely_id_number' => $likelyIdNumber,
+                    'matched' => (bool) $likelyIdNumber,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to preview government ID: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
 
@@ -310,6 +354,7 @@ class EmployeeController extends Controller
                 'email' => 'sometimes|email|unique:users,email,' . $employee->user_id,
                 'is_active' => 'sometimes|string|max:255',
                 'role_id' => 'sometimes|exists:roles,id',
+                'branch_id' => 'sometimes|nullable|exists:branches,id',
 
                 // Employee fields
                 'employee_number' => 'sometimes|string|unique:employees,employee_number,' . $id,
@@ -323,7 +368,11 @@ class EmployeeController extends Controller
                 'hire_date' => 'sometimes|date',
                 'department' => 'sometimes|string|max:255',
                 'employment_type' => 'sometimes|in:full_time,part_time,contract,intern',
+                'pay_type' => 'sometimes|in:monthly,hourly,hybrid',
                 'salary' => 'sometimes|numeric|min:0',
+                'deduction_type_id' => 'sometimes|nullable|exists:deduction_types,id',
+                'government_id_number' => 'sometimes|nullable|string|max:100',
+                'id_document' => 'sometimes|file|mimes:jpg,jpeg,png,pdf|max:5120',
                 'status' => 'sometimes|in:active,on_leave,suspended,terminated',
                 'termination_date' => 'nullable|date',
                 'termination_reason' => 'nullable|string',
@@ -341,6 +390,7 @@ class EmployeeController extends Controller
             if ($request->has('email')) $user->email = $validated['email'];
             if ($request->has('is_active')) $user->is_active = $validated['is_active'];
             if ($request->has('role_id')) $user->role_id = $validated['role_id'];
+            if ($request->has('branch_id')) $user->branch_id = $validated['branch_id'];
             $user->save();
 
             // Update Employee
@@ -348,9 +398,42 @@ class EmployeeController extends Controller
                 'shift_id',
                 'shift_effective_date',
                 'shift_change_reason',
+                'id_document',
+                'deduction_type_id',
+                'government_id_type',
+                'government_id_status',
             ])->toArray();
             if (!empty($employeeData)) {
                 $employee->update($employeeData);
+            }
+
+            if ($request->hasFile('id_document')) {
+                $storedPath = $request->file('id_document')->store("hr/employee-ids/{$employee->id}", 'public');
+                $extractedText = $this->documentAutoValidationService->extractTextFromDocument($storedPath);
+                $likelyIdNumber = $this->documentAutoValidationService->extractLikelyIdNumber($extractedText);
+                $idNumber = $validated['government_id_number'] ?? null;
+                if (!$idNumber && $likelyIdNumber) {
+                    $idNumber = $likelyIdNumber;
+                }
+
+                $deductionType = DeductionType::find($validated['deduction_type_id'] ?? null);
+                $isHrVerifiedUpload = $authUser?->hasRole('hr_manager') || $authUser?->hasRole('store_admin') || $authUser?->hasRole('super_admin');
+
+                $governmentId = EmployeeGovernmentId::updateOrCreate(
+                    [
+                        'employee_id' => $employee->id,
+                        'deduction_type_id' => $validated['deduction_type_id'] ?? null,
+                    ],
+                    [
+                        'id_type' => $deductionType?->name ?? 'Government ID',
+                        'id_number' => $idNumber,
+                        'id_file_path' => $storedPath,
+                        'status' => $isHrVerifiedUpload ? 'verified' : 'pending',
+                        'verified_at' => $isHrVerifiedUpload ? now() : null,
+                    ]
+                );
+
+                $employee->save();
             }
 
             $shiftChanged = false;
@@ -465,6 +548,65 @@ class EmployeeController extends Controller
                 'success' => false,
                 'message' => 'Failed to update employee',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function verifyGovernmentId(Request $request, int $employeeId, int $governmentIdId)
+    {
+        try {
+            $authUser = Auth::user();
+            if (!$authUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthenticated',
+                ], 401);
+            }
+
+            if (!$authUser->hasAnyRole(['hr_manager', 'store_admin', 'super_admin'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not allowed to verify government IDs.',
+                ], 403);
+            }
+
+            $employee = Employee::where('id', $employeeId)
+                ->where('store_id', $authUser->store_id)
+                ->firstOrFail();
+
+            $governmentId = EmployeeGovernmentId::where('id', $governmentIdId)
+                ->where('employee_id', $employee->id)
+                ->firstOrFail();
+
+            $governmentId->update([
+                'status' => 'verified',
+                'verified_at' => now(),
+            ]);
+
+            $today = now()->format('Y-m-d');
+            $year = now()->year;
+            Cache::forget("employee_details_{$employeeId}_{$year}_{$today}");
+            Cache::forget("employee_details_{$employeeId}__{$today}");
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Government ID verified successfully.',
+                'data' => [
+                    'id' => $governmentId->id,
+                    'status' => $governmentId->status,
+                    'verified_at' => optional($governmentId->verified_at)->toDateTimeString(),
+                ],
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Government ID record not found.',
+            ], 404);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to verify government ID.',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -606,7 +748,6 @@ class EmployeeController extends Controller
             'emergency_contact_name',
             'emergency_contact_phone',
             'emergency_contact_relationship',
-            'id_document_path',
             'contract_path',
         ])
             ->with([
@@ -631,8 +772,10 @@ class EmployeeController extends Controller
             'payrollSummary' => $this->getPayrollSummaryOptimized($employee->id, $currentYear),
             'recentPayslips' => $this->getRecentPayslipsOptimized($employee->id),
             'deductions' => $this->getDeductionsOptimized($employee->id),
+            'governmentIds' => $this->getGovernmentIdsOptimized($employee->id),
             'creditCard' => $this->getLatestCreditCardOptimized($employee->id),
             'currentShift' => $this->getCurrentShiftAssignmentOptimized($employee->id),
+            'weeklySchedule' => $this->getWeeklyScheduleOptimized($employee->id),
         ];
 
         // 3. Combine results
@@ -656,7 +799,9 @@ class EmployeeController extends Controller
             ],
             'credit_card' => $queries['creditCard'],
             'current_shift' => $queries['currentShift'],
+            'weekly_schedule' => $queries['weeklySchedule'],
             'deductions' => $queries['deductions'],
+            'governmentIds' => $queries['governmentIds'],
             'quick_stats' => $this->calculateQuickStats($employee, $queries)
         ];
     }
@@ -747,7 +892,7 @@ class EmployeeController extends Controller
 
     private function getLatestCreditCardOptimized($employeeId)
     {
-        $card = EmployeeCreditCard::select('card_number', 'card_type', 'status', 'assigned_at')
+        $card = EmployeeCreditCard::select('card_number', 'card_type', 'expiration_month', 'expiration_year', 'security_code', 'status', 'assigned_at')
             ->where('employee_id', $employeeId)
             ->latest('assigned_at')
             ->latest('id')
@@ -761,9 +906,130 @@ class EmployeeController extends Controller
             'card_number' => $card->card_number,
             'masked_card_number' => $this->maskCardNumber($card->card_number),
             'card_type' => $card->card_type,
+            'expiration_month' => $card->expiration_month,
+            'expiration_year' => $card->expiration_year,
+            'expiry_label' => $card->expiration_month && $card->expiration_year
+                ? $card->expiration_month . '/' . $card->expiration_year
+                : null,
+            'security_code' => $card->security_code,
             'status' => $card->status,
             'assigned_at' => optional($card->assigned_at)->toISOString(),
         ];
+    }
+
+    private function getWeeklyScheduleOptimized($employeeId)
+    {
+        $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        $labels = [
+            'monday' => 'Monday',
+            'tuesday' => 'Tuesday',
+            'wednesday' => 'Wednesday',
+            'thursday' => 'Thursday',
+            'friday' => 'Friday',
+            'saturday' => 'Saturday',
+            'sunday' => 'Sunday',
+        ];
+
+        $records = EmployeeWeeklySchedule::query()
+            ->with(['shift:id,name,start_time,end_time'])
+            ->where('employee_id', $employeeId)
+            ->orderBy('effective_from', 'desc')
+            ->orderBy('id', 'desc')
+            ->get()
+            ->groupBy('day_of_week');
+
+        return collect($days)->map(function ($day) use ($records, $labels) {
+            $record = $records->get($day)?->first();
+            return [
+                'day_of_week' => $day,
+                'day_label' => $labels[$day],
+                'id' => $record?->id,
+                'shift_id' => $record?->shift_id,
+                'shift_name' => $record?->shift?->name,
+                'start_time' => $record?->start_time ?: $record?->shift?->start_time,
+                'end_time' => $record?->end_time ?: $record?->shift?->end_time,
+                'is_off' => (bool) ($record?->is_off ?? true),
+                'effective_from' => optional($record?->effective_from)->toDateString(),
+                'effective_to' => optional($record?->effective_to)->toDateString(),
+                'notes' => $record?->notes,
+            ];
+        })->values();
+    }
+
+    public function saveWeeklySchedule(Request $request, int $employeeId)
+    {
+        $user = Auth::user();
+        if (!$user?->store_id) {
+            return response()->json(['success' => false, 'message' => 'User is not associated with any store'], 403);
+        }
+
+        $employee = Employee::where('id', $employeeId)->where('store_id', $user->store_id)->firstOrFail();
+
+        $validated = $request->validate([
+            'schedules' => 'required|array|size:7',
+            'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'schedules.*.shift_id' => 'nullable|exists:shifts,id',
+            'schedules.*.start_time' => 'nullable|string|max:20',
+            'schedules.*.end_time' => 'nullable|string|max:20',
+            'schedules.*.is_off' => 'boolean',
+            'schedules.*.effective_from' => 'nullable|date',
+            'schedules.*.effective_to' => 'nullable|date',
+            'schedules.*.notes' => 'nullable|string|max:1000',
+        ]);
+
+        DB::transaction(function () use ($employee, $validated, $user) {
+            foreach ($validated['schedules'] as $schedule) {
+                $startTime = $schedule['is_off'] ? null : $this->normalizeTimeValue($schedule['start_time'] ?? null);
+                $endTime = $schedule['is_off'] ? null : $this->normalizeTimeValue($schedule['end_time'] ?? null);
+
+                EmployeeWeeklySchedule::updateOrCreate(
+                    [
+                        'employee_id' => $employee->id,
+                        'day_of_week' => $schedule['day_of_week'],
+                    ],
+                    [
+                        'shift_id' => $schedule['is_off'] ? null : ($schedule['shift_id'] ?? null),
+                        'start_time' => $startTime,
+                        'end_time' => $endTime,
+                        'is_off' => (bool) ($schedule['is_off'] ?? false),
+                        'effective_from' => $schedule['effective_from'] ?? null,
+                        'effective_to' => $schedule['effective_to'] ?? null,
+                        'notes' => $schedule['notes'] ?? null,
+                    ]
+                );
+            }
+        });
+
+        $today = now()->format('Y-m-d');
+        $year = now()->year;
+        Cache::forget("employee_details_{$employee->id}_{$year}_{$today}");
+        Cache::forget("employee_details_{$employee->id}__{$today}");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Weekly schedule saved successfully.',
+            'data' => $this->getWeeklyScheduleOptimized($employee->id),
+        ]);
+    }
+
+    private function normalizeTimeValue(?string $value): ?string
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = strtoupper($raw);
+        $formats = ['g:i A', 'g:iA', 'h:i A', 'h:iA', 'H:i:s', 'H:i'];
+
+        foreach ($formats as $format) {
+            $parsed = \DateTime::createFromFormat($format, $normalized);
+            if ($parsed instanceof \DateTime) {
+                return $parsed->format('H:i:s');
+            }
+        }
+
+        return null;
     }
 
     private function maskCardNumber(?string $value): string
@@ -925,8 +1191,8 @@ class EmployeeController extends Controller
      */
     private function getRecentPayslipsOptimized($employeeId)
     {
-        return Payroll::select('id', 'net_salary', 'status', 'payment_date')
-            ->with('payPeriod:id,name,start_date,end_date')
+        return Payroll::select('id', 'net_salary', 'deductions_total', 'tax_amount', 'status', 'payment_date')
+            ->with(['payPeriod:id,name,start_date,end_date', 'items:id,payroll_id,type,name,amount'])
             ->where('employee_id', $employeeId)
             ->whereIn('status', ['approved', 'paid'])
             ->orderBy('payment_date', 'desc')
@@ -937,7 +1203,16 @@ class EmployeeController extends Controller
                 'period' => $payroll->payPeriod->name ?? 'N/A',
                 'date' => $payroll->payment_date ? Carbon::parse($payroll->payment_date)->format('M d, Y') : null,
                 'net_pay' => round($payroll->net_salary, 2),
-                'net_pay_formatted' => '₱' . number_format($payroll->net_salary, 2)
+                'net_pay_formatted' => '₱' . number_format($payroll->net_salary, 2),
+                'deductions_total' => round((float) ($payroll->deductions_total ?? 0), 2),
+                'tax_amount' => round((float) ($payroll->tax_amount ?? 0), 2),
+                'contribution_total' => round((float) ($payroll->deductions_total ?? 0) + (float) ($payroll->tax_amount ?? 0), 2),
+                'items' => $payroll->items->whereIn('type', ['deduction', 'tax'])->values()->map(fn($item) => [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'type' => $item->type,
+                    'amount' => round((float) $item->amount, 2),
+                ]),
             ]);
     }
 
@@ -946,34 +1221,71 @@ class EmployeeController extends Controller
      */
     private function getDeductionsOptimized($employeeId)
     {
-        $employee = Employee::select('id', 'salary')->find($employeeId);
-        $basicSalary = (float) ($employee?->salary ?? 0);
-        $grossSalary = $basicSalary;
+        $payrolls = Payroll::query()
+            ->select('id', 'employee_id', 'payment_date', 'status', 'pay_period_id')
+            ->with([
+                'payPeriod:id,name,start_date,end_date',
+                'items:id,payroll_id,type,name,amount',
+            ])
+            ->where('employee_id', $employeeId)
+            ->whereIn('status', ['approved', 'paid'])
+            ->orderBy('payment_date', 'desc')
+            ->get();
 
-        $deductions = EmployeeDeduction::query()
-            ->with('deductionType:id,name,code,calculation_type,default_amount,percentage_value,percentage_rate,percentage_basis,min_amount,max_amount,formula_data,is_active')
-            ->forEmployee($employeeId)
-            ->active()
-            ->current()
-            ->get()
-            ->map(function (EmployeeDeduction $deduction) use ($basicSalary, $grossSalary) {
-                $amount = round($deduction->calculateAmount($basicSalary, $grossSalary), 2);
+        $deductions = $payrolls->flatMap(function (Payroll $payroll) {
+            $periodLabel = $payroll->payPeriod->name
+                ?? ($payroll->payment_date ? Carbon::parse($payroll->payment_date)->format('M d, Y') : 'N/A');
 
-                return [
-                    'name' => $deduction->deductionType?->name,
-                    'code' => $deduction->deductionType?->code,
-                    'amount' => $amount,
-                    'formatted' => 'PHP ' . number_format($amount, 2),
-                ];
-            });
+            return $payroll->items
+                ->whereIn('type', ['deduction', 'tax'])
+                ->values()
+                ->map(function ($item) use ($payroll, $periodLabel) {
+                    return [
+                        'id' => $item->id,
+                        'payroll_id' => $payroll->id,
+                        'period' => $periodLabel,
+                        'deduction_type_id' => null,
+                        'name' => $item->name,
+                        'code' => $item->type,
+                        'reference_number' => null,
+                        'amount' => round((float) $item->amount, 2),
+                        'formatted' => 'PHP ' . number_format((float) $item->amount, 2),
+                    ];
+                });
+        });
 
         $total = $deductions->sum('amount');
 
         return [
             'total_monthly' => round($total, 2),
             'total_yearly' => round($total * 12, 2),
-            'items' => $deductions->values()
+            'items' => $deductions->values(),
+            'payroll_count' => $payrolls->count(),
         ];
+    }
+
+    private function getGovernmentIdsOptimized($employeeId)
+    {
+        return EmployeeGovernmentId::query()
+            ->with('deductionType:id,name,code')
+            ->where('employee_id', $employeeId)
+            ->orderByRaw("CASE status WHEN 'verified' THEN 1 WHEN 'pending' THEN 2 WHEN 'rejected' THEN 3 ELSE 4 END")
+            ->orderBy('created_at')
+            ->get()
+            ->map(function (EmployeeGovernmentId $record) {
+                return [
+                    'id' => $record->id,
+                    'deduction_type_id' => $record->deduction_type_id,
+                    'label' => $record->deductionType?->name ?? $record->id_type,
+                    'code' => $record->deductionType?->code ?? null,
+                    'id_type' => $record->id_type,
+                    'id_number' => $record->id_number,
+                    'status' => $record->status,
+                    'id_file_path' => $record->id_file_path,
+                    'verified_at' => $record->verified_at,
+                ];
+            })
+            ->values();
     }
 
     /**
@@ -1010,6 +1322,8 @@ class EmployeeController extends Controller
             'hire_date' => $employee->hire_date ? Carbon::parse($employee->hire_date)->format('M d, Y') : null,
             'tenure' => $yearsEmployed . ' year(s)',
             'monthly_salary' => round($employee->salary, 2),
+            'pay_type' => $employee->pay_type ?? 'monthly',
+            'hourly_rate' => round((float) ($employee->hourly_rate ?? 0), 4),
             'monthly_salary_formatted' => '₱' . number_format($employee->salary, 2)
         ];
     }

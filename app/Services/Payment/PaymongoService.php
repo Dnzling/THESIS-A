@@ -133,19 +133,24 @@ class PaymongoService
             ]);
 
             $status = (int) $response->getStatusCode();
-            $decoded = json_decode($response->getBody()->getContents(), true);
+            $body = (string) $response->getBody()->getContents();
+            $decoded = json_decode($body, true);
 
             if ($status >= 400) {
                 Log::error('PaymongoService: createCheckoutSession failed', [
                     'http_status' => $status,
                     'errors' => data_get($decoded, 'errors', []),
+                    'response_body' => $body,
                     'payload' => $payload,
                 ]);
             }
 
             return $decoded;
         } catch (\Throwable $e) {
-            Log::error('PaymongoService: createCheckoutSession exception', ['error' => $e->getMessage()]);
+            Log::error('PaymongoService: createCheckoutSession exception', [
+                'error' => $e->getMessage(),
+                'payload' => $payload,
+            ]);
             return [
                 'errors' => [[
                     'detail' => 'Unable to connect to PayMongo. Please try again later.',
@@ -159,13 +164,15 @@ class PaymongoService
         try {
             $response = $this->client->get("/checkout_sessions/{$sessionId}");
             $status = (int) $response->getStatusCode();
-            $decoded = json_decode($response->getBody()->getContents(), true);
+            $body = (string) $response->getBody()->getContents();
+            $decoded = json_decode($body, true);
 
             if ($status >= 400) {
                 Log::error('PaymongoService: retrieveCheckoutSession failed', [
                     'http_status' => $status,
                     'session_id' => $sessionId,
                     'errors' => data_get($decoded, 'errors', []),
+                    'response_body' => $body,
                 ]);
             }
 

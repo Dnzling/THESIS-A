@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use \Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -172,6 +173,8 @@ class AuthController extends Controller
                 'role_id' => 'nullable|integer|exists:roles,id',
                 'birthday' => 'nullable|date|before_or_equal:today',
                 'plan' => 'nullable|string|exists:subscription_plans,plan_key',
+                'store_name' => 'nullable|string|max:255',
+                'store_type' => 'nullable|string|max:100',
             ]);
 
             $targetRoleId = (int) ($validated['role_id'] ?? 2);
@@ -203,68 +206,7 @@ class AuthController extends Controller
                     'is_active' => 1,
                 ]);
 
-                // Auto-assign trial store/branch for store_admin registrations
                 $user->loadMissing('role');
-                if ($user->role?->name === 'store_admin' && !$user->store_id) {
-                    $requestedPlan = strtolower((string) ($validated['plan'] ?? 'simple'));
-                    $storeCode = 'TRIAL-' . str_pad((string) $user->id, 6, '0', STR_PAD_LEFT);
-                    $storeName = 'Trial Store ' . $user->id;
-
-                    $store = Store::create([
-                        'name' => $storeName,
-                        'store_code' => $storeCode,
-                        'type' => 'trial',
-                        'status' => 'pending',
-                        'subscription_tier' => $requestedPlan,
-                    ]);
-
-                    $branchCode = $storeCode . '-MAIN';
-                    if (Branch::query()->where('branch_code', $branchCode)->exists()) {
-                        $branchCode = $storeCode . '-MAIN-' . str_pad((string) random_int(1, 999), 3, '0', STR_PAD_LEFT);
-                    }
-
-                    $branch = Branch::create([
-                        'store_id' => $store->id,
-                        'name' => $storeName . ' - Main',
-                        'contact_number' => '0000000000',
-                        'branch_code' => $branchCode,
-                        'is_main_branch' => true,
-                        'status' => 'active',
-                    ]);
-
-                    $user->update([
-                        'store_id' => $store->id,
-                        'branch_id' => $branch->id,
-                    ]);
-
-                    app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
-                }
-
-                if ($user->role?->name === 'store_admin') {
-                    $user->refresh();
-                    $storeId = (int) ($user->store_id ?? 0);
-                    $branchId = (int) ($user->branch_id ?? 0);
-
-                    if ($storeId > 0 && $branchId > 0) {
-                        $storeAdminRoleId = (int) (Role::query()->where('name', 'store_admin')->value('id') ?? $user->role_id);
-
-                        Employee::query()->firstOrCreate(
-                            ['user_id' => $user->id],
-                            [
-                                'store_id' => $storeId,
-                                'branch_id' => $branchId,
-                                'role_id' => $storeAdminRoleId,
-                                'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
-                                'fname' => (string) $user->fname,
-                                'lname' => (string) $user->lname,
-                                'hire_date' => now()->toDateString(),
-                                'department' => 'Management',
-                                'employment_type' => 'full_time',
-                                'status' => 'active',
-                            ]
-                        );
-                    }
-                }
 
                 return $user;
             });
@@ -338,23 +280,24 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
-            if (!$request->filled('login') && $request->filled('email')) {
-                $request->merge(['login' => $request->input('email')]);
+            $loginInput = trim((string) ($request->input('login') ?? $request->input('email') ?? ''));
+            if ($loginInput !== '') {
+                $request->merge(['login' => $loginInput]);
             }
             // Validate input
             $credentials = $request->validate([
                 'login' => 'required|string',
                 'password' => 'required|string|min:6',
-                'device_name' => 'required|string|max:100',
+                'device_name' => 'nullable|string|max:100',
                 'latitude' => 'nullable|numeric|between:-90,90',
                 'longitude' => 'nullable|numeric|between:-180,180',
             ]);
 
-            $identifier = $credentials['login'] ?? $request->input('email');
+            $identifier = trim((string) ($credentials['login'] ?? $request->input('email')));
             $email = null;
 
             if ($identifier && filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
-                $email = $identifier;
+                $email = Str::lower($identifier);
             } else {
                 // Try employee number first
                 $employee = Employee::where('employee_number', $identifier)->first();
@@ -381,17 +324,21 @@ class AuthController extends Controller
                 ]);
             }
 
-            // Attempt authentication
-            if (!Auth::attempt(['email' => $email, 'password' => $credentials['password']])) {
+            $user = User::with(['role', 'store', 'branch'])
+                ->where('email', $email)
+                ->first();
+
+            if (!$user || !Hash::check($credentials['password'], (string) $user->password)) {
                 throw ValidationException::withMessages([
                     'login' => ['Invalid credentials.']
                 ]);
             }
 
-            // Get authenticated user
-            $user = User::with(['role', 'store', 'branch'])
-                ->where('email', $email)
-                ->firstOrFail();
+            Auth::login($user);
+            $deviceName = trim((string) ($credentials['device_name'] ?? 'web_browser'));
+            if ($deviceName === '') {
+                $deviceName = 'web_browser';
+            }
 
             // Check if user is active
             if (!$user->is_active) {
@@ -416,6 +363,7 @@ class AuthController extends Controller
 
                 // Issue a temporary token for OTP verification flow.
                 $tempToken = $user->createToken('otp_verification')->plainTextToken;
+                $user->loadMissing('role');
 
                 return response()->json([
                     'success' => false,
@@ -424,23 +372,24 @@ class AuthController extends Controller
                     'user_id' => $user->id,
                     'email' => $user->email,
                     'access_token' => $tempToken,
+                    'role' => strtolower((string) ($user->role?->name ?? $user->role_name ?? '')),
                 ], 403);
             }
 
             // Revoke existing tokens for this device
-            $user->tokens()->where('name', $credentials['device_name'])->delete();
+            $user->tokens()->where('name', $deviceName)->delete();
 
             // Get abilities based on role
             $abilities = $this->getTokenAbilities($user->role_id);
 
             // Create token
-            $token = $user->createToken($credentials['device_name'], $abilities)->plainTextToken;
+            $token = $user->createToken($deviceName, $abilities)->plainTextToken;
 
             // Update last login
             $user->update(['last_login_at' => now()]);
 
             // Log activity
-            $user->logActivity('login', "Logged in from {$credentials['device_name']}");
+            $user->logActivity('login', "Logged in from {$deviceName}");
 
             // Return using LoginResponseResource
             return new LoginResponseResource([
@@ -902,7 +851,7 @@ class AuthController extends Controller
             'password' => 'required|min:8|confirmed|different:current_password',
         ]);
 
-        $request->user()->update([
+            $request->user()->update([
             'password' => Hash::make($request->password)
         ]);
 

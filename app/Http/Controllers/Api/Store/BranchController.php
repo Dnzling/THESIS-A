@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Store\Branch;
+use App\Models\Store\Store;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class BranchController extends Controller
 {
@@ -41,21 +43,40 @@ class BranchController extends Controller
     public function store(Request $request)
     {
         try {
+            $user = Auth::user();
             $validated = $request->validate([
-                'store_id' => 'required|integer|exists:stores,id',
                 'name' => 'required|string|max:255',
                 'address' => 'required|string|max:255',
+                'city' => 'required|string|max:100',
+                'province' => 'nullable|string|max:50',
+                'barangay' => 'required|string|max:100',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
-                'contact_number' => 'nullable|string|max:20',
-                'branch_code' => 'required|string|max:20|unique:branches,branch_code',
+                'branch_code' => 'nullable|string|max:20|unique:branches,branch_code',
+                'geofence_radius_m' => 'nullable|integer|min:0|max:5000',
+                'geofence_enabled' => 'nullable|boolean',
                 'is_main_branch' => 'nullable|boolean',
                 'branch_type' => 'nullable|in:storefront,warehouse',
             ]);
 
+            $storeId = $user?->store_id;
+            $branchCode = $validated['branch_code'] ?? $this->generateBranchCode($validated['name'], $storeId);
+            $storePhone = Store::query()->where('id', $storeId)->value('phone');
+            $contactNumber = $validated['contact_number'] ?? null;
+            if (!$contactNumber) {
+                $contactNumber = $storePhone ?: '0000000000';
+            }
+
             $branch = Branch::create(array_merge($validated, [
+                'store_id' => $storeId,
+                'branch_code' => $branchCode,
+                'contact_number' => $contactNumber,
                 'status' => 'active',
+                'province' => $validated['province'] ?? 'Cavite',
                 'branch_type' => $validated['branch_type'] ?? 'storefront',
+                'is_main_branch' => $validated['is_main_branch'] ?? false,
+                'geofence_enabled' => $validated['geofence_enabled'] ?? true,
+                'geofence_radius_m' => $validated['geofence_radius_m'] ?? 0,
             ]));
 
             return response()->json([
@@ -74,6 +95,19 @@ class BranchController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    protected function generateBranchCode(string $name, ?int $storeId): string
+    {
+        $prefix = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name) ?: 'BR', 0, 6));
+        $storeSegment = $storeId ? sprintf('%02d', $storeId % 100) : '00';
+
+        do {
+            $suffix = Str::upper(Str::random(3));
+            $code = "{$prefix}-{$storeSegment}-{$suffix}";
+        } while (Branch::where('branch_code', $code)->exists());
+
+        return $code;
     }
 
     public function show($id)

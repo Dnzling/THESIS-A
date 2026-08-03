@@ -35,6 +35,18 @@ Route::get('/pricing', function () {
     return Inertia::render('Marketing/Pricing');
 });
 
+Route::get('/subscription-plans', function () {
+    return Inertia::render('Auth/SubscriptionPlans');
+})->name('subscription.plans');
+
+Route::get('/subscription-checkout', function () {
+    return redirect('/subscription-plans');
+})->name('subscription.checkout');
+
+Route::get('/store/registration', function () {
+    return Inertia::render('Auth/StoreRegistration');
+})->name('store.registration');
+
 Route::get('/customer/login', function () {
     return Inertia::render('Auth/CustomerLogin');
 })->name('customer.login');
@@ -54,10 +66,6 @@ Route::get('/supplier/register', function () {
 Route::get('/verify-otp', function () {
     return Inertia::render('Auth/VerifyOtp');
 })->name('verify-otp');
-
-Route::get('/trial-onboarding', function () {
-    return Inertia::render('Auth/TrialOnboarding');
-})->name('trial-onboarding');
 
 Route::get('/unauthorized', function () {
     return Inertia::render('Auth/Unauthorized');

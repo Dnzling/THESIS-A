@@ -657,8 +657,8 @@ const selectedPaymentMethod = ref<'cod' | 'gcash' | 'card'>('cod')
 const COD_LIMIT = 20000
 const allPaymentMethods = [
   { label: 'Cash on Delivery (COD)', value: 'cod' as const },
-  { label: 'GCash (PayMongo)', value: 'gcash' as const },
-  { label: 'Credit/Debit Card (PayMongo)', value: 'card' as const },
+  { label: 'GCash', value: 'gcash' as const },
+  { label: 'Credit/Debit Card', value: 'card' as const },
 ]
 
 const voucherCode = ref('')

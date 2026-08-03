@@ -331,7 +331,19 @@
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Account Type</label>
-        <Dropdown v-model="payment.bank_account_type" :options="[{label:'savings',value:'savings'},{label:'checking',value:'checking'},{label:'current',value:'current'},{label:'other',value:'other'}]" class="w-full" />
+        <Dropdown
+          v-model="payment.bank_account_type"
+          :options="[
+            { label: 'savings', value: 'savings' },
+            { label: 'checking', value: 'checking' },
+            { label: 'current', value: 'current' },
+            { label: 'other', value: 'other' },
+          ]"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Select account type"
+          class="w-full"
+        />
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Branch (optional)</label>

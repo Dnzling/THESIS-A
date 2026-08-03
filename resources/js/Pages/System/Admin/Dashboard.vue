@@ -20,11 +20,12 @@
         </div>
         <div class="rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 text-left sm:text-right">
           <div class="text-xs font-medium uppercase tracking-wide text-gray-500">Total Platform Revenue</div>
-          <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}</div>
+          <div class="mt-2 text-3xl font-semibold text-gray-900 sm:text-4xl">{{ formatCurrency(totalPlatformRevenue) }}
+          </div>
         </div>
       </div>
     </div>
-
+  
     <!-- Improved KPI Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
@@ -39,7 +40,7 @@
           </div>
         </div>
       </div>
-
+  
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
@@ -52,7 +53,7 @@
           </div>
         </div>
       </div>
-
+  
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
@@ -65,7 +66,7 @@
           </div>
         </div>
       </div>
-
+  
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
@@ -79,7 +80,7 @@
         </div>
       </div>
     </div>
-
+  
     <!-- Charts Section -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Revenue Trend -->
@@ -87,18 +88,12 @@
         <div class="flex justify-between items-center mb-6">
           <h3 class="text-lg font-semibold text-gray-800">Revenue Trend</h3>
           <div class="flex space-x-2">
-            <Button 
-              @click="setRevenueChartView('monthly')" 
-              :severity="revenueChartView === 'monthly' ? 'primary' : 'secondary'"
-              size="small"
-            >
+            <Button @click="setRevenueChartView('monthly')"
+              :severity="revenueChartView === 'monthly' ? 'primary' : 'secondary'" size="small">
               Monthly
             </Button>
-            <Button 
-              @click="setRevenueChartView('yearly')" 
-              :severity="revenueChartView === 'yearly' ? 'primary' : 'secondary'"
-              size="small"
-            >
+            <Button @click="setRevenueChartView('yearly')"
+              :severity="revenueChartView === 'yearly' ? 'primary' : 'secondary'" size="small">
               Yearly
             </Button>
           </div>
@@ -107,25 +102,20 @@
           <canvas ref="revenueChartRef"></canvas>
         </div>
       </div>
-
+  
       <!-- Store Growth -->
       <div class="bg-white shadow rounded-xl p-6">
         <div class="flex justify-between items-center mb-6">
           <h3 class="text-lg font-semibold text-gray-800">Store Growth</h3>
-          <Select 
-            v-model="growthPeriod" 
-            :options="growthPeriodOptions" 
-            optionLabel="name" 
-            placeholder="Last 6 months"
-            class="w-50"
-          />
+          <Select v-model="growthPeriod" :options="growthPeriodOptions" optionLabel="name" placeholder="Last 6 months"
+            class="w-50" />
         </div>
         <div class="h-72">
           <canvas ref="growthChartRef"></canvas>
         </div>
       </div>
     </div>
-
+  
     <!-- Subscription Overview -->
     <div class="bg-white shadow rounded-xl p-6">
       <div class="flex justify-between items-center mb-6">
@@ -134,14 +124,15 @@
           Manage All Plans →
         </router-link>
       </div>
-      
+  
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div v-for="plan in subscriptionPlans" :key="plan.id" 
-             class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+        <div v-for="plan in subscriptionPlans" :key="plan.id"
+          class="border rounded-lg p-4 hover:shadow-md transition-shadow">
           <div class="flex justify-between items-start mb-3">
             <div>
               <h4 class="font-bold text-gray-800">{{ plan.name }}</h4>
-              <p class="text-2xl font-bold mt-2">{{ formatCurrency(plan.price) }}<span class="text-sm text-gray-500">/{{ plan.period }}</span></p>
+              <p class="text-2xl font-bold mt-2">{{ formatCurrency(plan.price) }}<span class="text-sm text-gray-500">/{{
+                  plan.period }}</span></p>
             </div>
             <Tag :value="plan.status" :severity="getPlanStatusSeverity(plan.status)" />
           </div>
@@ -161,17 +152,12 @@
           </div>
           <div class="flex justify-between items-center">
             <span class="text-sm text-gray-500">{{ plan.subscribers }} subscribers</span>
-            <Button 
-              label="Manage" 
-              size="small"
-              severity="secondary"
-              @click="managePlan(plan)"
-            />
+            <Button label="Manage" size="small" severity="secondary" @click="managePlan(plan)" />
           </div>
         </div>
       </div>
     </div>
-
+  
     <!-- Pending Actions -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Pending Store Registrations -->
@@ -181,16 +167,12 @@
             <h3 class="text-lg font-semibold text-gray-800">Pending Store Registrations</h3>
             <p class="text-sm text-gray-500">{{ pendingStores.length }} stores awaiting approval</p>
           </div>
-          <Button 
-            label="Review All" 
-            size="small"
-            @click="goToPendingApprovals"
-          />
+          <Button label="Review All" size="small" @click="goToPendingApprovals" />
         </div>
-        
+  
         <div class="space-y-3">
-          <div v-for="store in pendingStores.slice(0, 3)" :key="store.id" 
-               class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+          <div v-for="store in pendingStores.slice(0, 3)" :key="store.id"
+            class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
             <div class="flex items-center space-x-3">
               <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                 <i class="pi pi-store text-blue-600"></i>
@@ -201,123 +183,71 @@
               </div>
             </div>
             <div class="flex space-x-2">
-              <Button 
-                icon="pi pi-check" 
-                size="small" 
-                severity="success"
-                @click="approveStore(store)"
-              />
-              <Button 
-                icon="pi pi-times" 
-                size="small" 
-                severity="danger"
-                @click="rejectStore(store)"
-              />
+              <Button icon="pi pi-check" size="small" severity="success" @click="approveStore(store)" />
+              <Button icon="pi pi-times" size="small" severity="danger" @click="rejectStore(store)" />
             </div>
           </div>
         </div>
-        
+  
         <div v-if="pendingStores.length > 3" class="mt-4 text-center">
           <span class="text-sm text-gray-500">+{{ pendingStores.length - 3 }} more pending stores</span>
         </div>
       </div>
-
+  
       <!-- Recent Payments -->
       <div class="bg-white shadow rounded-xl p-6">
         <div class="flex justify-between items-center mb-6">
           <div>
             <h3 class="text-lg font-semibold text-gray-800">Recent Payments</h3>
-            <p class="text-sm text-gray-500">Latest subscription payments</p>
+            <p class="text-sm text-gray-500">Latest PayMongo subscription and billing transactions</p>
           </div>
           <router-link to="/finance/receivables" class="text-blue-600 text-sm font-medium hover:text-blue-800">
             View All →
           </router-link>
         </div>
-        
-        <DataTable :value="recentPayments" tableStyle="min-width: 50rem">
+  
+        <DataTable :value="recentPayments" tableStyle="min-width: 60rem">
           <Column field="store" header="Store" style="width: 30%">
             <template #body="slotProps">
-              <div class="flex items-center">
-                <i class="pi pi-store text-gray-400 mr-2"></i>
-                <span class="text-sm">{{ slotProps.data.store }}</span>
+              <div>
+                <div class="flex items-center">
+                  <i class="pi pi-store text-gray-400 mr-2"></i>
+                  <span class="text-sm font-medium">{{ slotProps.data.store }}</span>
+                </div>
+                <div class="mt-1 text-xs text-gray-500">{{ slotProps.data.paymentIntentId }}</div>
               </div>
             </template>
           </Column>
-          
+  
+          <Column field="type" header="Type" style="width: 15%">
+            <template #body="slotProps">
+              <span class="text-sm text-gray-600">{{ slotProps.data.type }}</span>
+            </template>
+          </Column>
+  
           <Column field="amount" header="Amount" style="width: 25%">
             <template #body="slotProps">
-              <span class="font-bold">{{ formatCurrency(slotProps.data.amount) }}</span>
+              <div class="font-bold">{{ formatCurrency(slotProps.data.amount) }}</div>
+              <div class="text-xs text-gray-500">{{ slotProps.data.currency }}</div>
             </template>
           </Column>
-          
+  
           <Column field="date" header="Date" style="width: 25%">
             <template #body="slotProps">
-              <span class="text-sm text-gray-500">{{ slotProps.data.date }}</span>
+              <span class="text-sm text-gray-500">{{ formatDate(slotProps.data.date) }}</span>
             </template>
           </Column>
-          
+  
           <Column field="status" header="Status" style="width: 20%">
             <template #body="slotProps">
-              <Tag 
-                :value="slotProps.data.status" 
-                :severity="getPaymentStatusSeverity(slotProps.data.status)"
-                rounded
-              />
+              <Tag :value="slotProps.data.status" :severity="getPaymentStatusSeverity(slotProps.data.status)" rounded />
+              <div class="mt-1 text-xs text-gray-500">{{ slotProps.data.storeStatus }}</div>
             </template>
           </Column>
         </DataTable>
       </div>
+  
 
-      <!-- Recent Activities -->
-         <!-- Recent Activity -->
-      <div class="lg:col-span-2">
-        <div class="bg-white shadow rounded-xl p-6">
-          <div class="flex justify-between items-center mb-6">
-            <h3 class="text-lg font-semibold text-gray-800">Recent Activity</h3>
-            <Button 
-              label="View All" 
-              text 
-              size="small"
-              @click="goToActivityLog"
-            />
-          </div>
-          
-          <DataTable :value="recentActivities" tableStyle="min-width: 50rem">
-            <Column field="time" header="Time" style="width: 15%">
-              <template #body="slotProps">
-                <span class="text-sm text-gray-500">{{ slotProps.data.time }}</span>
-              </template>
-            </Column>
-            
-            <Column field="action" header="Action" style="width: 25%">
-              <template #body="slotProps">
-                <div class="flex items-center">
-                  <div :class="`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${slotProps.data.iconBg}`">
-                    <i :class="`${slotProps.data.icon} ${slotProps.data.iconColor}`"></i>
-                  </div>
-                  <span>{{ slotProps.data.action }}</span>
-                </div>
-              </template>
-            </Column>
-            
-            <Column field="description" header="Description" style="width: 40%">
-              <template #body="slotProps">
-                <span class="text-sm">{{ slotProps.data.description }}</span>
-              </template>
-            </Column>
-            
-            <Column field="status" header="Status" style="width: 20%">
-              <template #body="slotProps">
-                <Tag 
-                  :value="slotProps.data.status" 
-                  :severity="getStatusSeverity(slotProps.data.status)"
-                  rounded
-                />
-              </template>
-            </Column>
-          </DataTable>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -395,6 +325,19 @@ const formatCurrency = (amount: number) => {
   return '₱' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+const formatDate = (value: any) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 const getStatusSeverity = (status: string) => {
   switch (status.toLowerCase()) {
     case 'completed':
@@ -427,18 +370,18 @@ const getPaymentStatusSeverity = (status: string) => {
 // Chart Functions
 const initRevenueChart = () => {
   if (!revenueChartRef.value) return
-  
+
   if (revenueChart) {
     revenueChart.destroy()
   }
-  
+
   const ctx = revenueChartRef.value.getContext('2d')
   if (!ctx) return
-  
-  const data = revenueChartView.value === 'monthly' 
-    ? revenueSeries.value.monthly 
+
+  const data = revenueChartView.value === 'monthly'
+    ? revenueSeries.value.monthly
     : revenueSeries.value.yearly
-  
+
   revenueChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -476,7 +419,7 @@ const initRevenueChart = () => {
         y: {
           beginAtZero: true,
           ticks: {
-            callback: function(value) {
+            callback: function (value) {
               return '₱' + (Number(value) / 1000).toFixed(0) + 'K'
             }
           }
@@ -488,14 +431,14 @@ const initRevenueChart = () => {
 
 const initGrowthChart = () => {
   if (!growthChartRef.value) return
-  
+
   if (growthChart) {
     growthChart.destroy()
   }
-  
+
   const ctx = growthChartRef.value.getContext('2d')
   if (!ctx) return
-  
+
   const growthData = storeGrowthSeries.value
   growthChart = new Chart(ctx, {
     type: 'bar',
@@ -568,8 +511,8 @@ const loadDashboard = async () => {
       initGrowthChart()
       // recent activities
       if (Array.isArray(d.recent_activities)) {
-        recentActivities.value = d.recent_activities.map((r:any, idx:number)=>({
-          id: idx+1,
+        recentActivities.value = d.recent_activities.map((r: any, idx: number) => ({
+          id: idx + 1,
           time: r.time,
           action: r.action,
           description: r.description,
@@ -577,6 +520,20 @@ const loadDashboard = async () => {
           icon: 'pi pi-info-circle',
           iconColor: 'text-blue-600',
           iconBg: 'bg-blue-100'
+        }))
+      }
+
+      if (Array.isArray(d.recent_payments)) {
+        recentPayments.value = d.recent_payments.map((payment: any, idx: number) => ({
+          id: idx + 1,
+          store: payment.store,
+          storeStatus: payment.store_status,
+          amount: Number(payment.amount || 0),
+          currency: payment.currency || 'PHP',
+          date: payment.date,
+          status: payment.status || 'unknown',
+          type: payment.type || 'Payment',
+          paymentIntentId: payment.payment_intent_id,
         }))
       }
     }
@@ -588,15 +545,15 @@ const loadDashboard = async () => {
 
 const updateDateTime = () => {
   const now = new Date()
-  currentDate.value = now.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  currentDate.value = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   })
-  currentTime.value = now.toLocaleTimeString('en-US', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
+  currentTime.value = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
   })
 }
 
@@ -644,7 +601,7 @@ const rejectStore = (store: any) => {
 onMounted(() => {
   updateDateTime()
   dateInterval = window.setInterval(updateDateTime, 60000)
-  
+
   loadDashboard()
 })
 

@@ -27,14 +27,7 @@
               <div class="rounded-3xl border border-slate-200 bg-white p-5">
                 <h2 class="text-lg font-semibold text-slate-900">Profile Review</h2>
                 <div class="mt-4 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Current Position</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-900">{{ application?.current_position || 'Not provided' }}</p>
-                  </div>
-                  <div>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Current Company</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-900">{{ application?.current_company || 'Not provided' }}</p>
-                  </div>
+                
                 </div>
 
                 <Divider />

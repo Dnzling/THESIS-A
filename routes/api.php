@@ -13,7 +13,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Api\ProfileController as ApiProfileController;
 use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\BranchController;
-use App\Http\Controllers\Api\Store\TrialOnboardingController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\StoreDashboardController;
 
@@ -75,6 +74,7 @@ Route::prefix('ecommerce')->group(function () {
 Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
 Route::post('/payments/paymongo/webhook', [PaymongoController::class, 'webhook']);
 Route::get('/public/subscription-plans', [SubscriptionPlanController::class, 'publicIndex']);
+Route::get('/public/subscription-plans/{planKey}/modules', [SubscriptionPlanController::class, 'publicModules']);
 
 // ========== PROTECTED ROUTES ==========
 
@@ -159,6 +159,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/subscription-plans', [SubscriptionPlanController::class, 'store']);
         Route::get('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'update']);
+        Route::delete('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'destroy']);
 
         // Super Admin Management
         Route::get('/super-admins', [\App\Http\Controllers\Api\Admin\SuperAdminManagementController::class, 'index']);
@@ -167,6 +168,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         // Store Management
         Route::get('/stores', [StoreManagementController::class, 'index']);
         Route::get('/stores/{store}', [StoreManagementController::class, 'show']);
+        Route::patch('/stores/{store}/deactivate', [StoreManagementController::class, 'deactivate']);
+        Route::delete('/stores/{store}', [StoreManagementController::class, 'destroy']);
         Route::get('/users', [StoreManagementController::class, 'usersIndex']);
 
         // Violation Reports
@@ -226,8 +229,6 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
             ->withoutMiddleware([EnsureFrontendRequestsAreStateful::class]);
         Route::post('refresh', [AuthController::class, 'refresh']);
         Route::post('change-password', [AuthController::class, 'changePassword']);
-        Route::get('trial-onboarding', [TrialOnboardingController::class, 'show']);
-        Route::post('trial-onboarding', [TrialOnboardingController::class, 'store']);
 
         // User info
         Route::get('user', fn(Request $request) => response()->json([
@@ -259,6 +260,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);
     Route::get('/employees/{id}/details/{year}', [EmployeeController::class, 'getEmployeeDetails']);
+    Route::post('/employees/id-preview', [EmployeeController::class, 'previewGovernmentId']);
+    Route::post('/employees/{employeeId}/government-ids/{governmentIdId}/verify', [EmployeeController::class, 'verifyGovernmentId']);
+    Route::put('/employees/{employeeId}/weekly-schedule', [EmployeeController::class, 'saveWeeklySchedule']);
 
     // Simplified employee summary (for dashboard/widgets)
     Route::get('/employees/{id}/summary', [EmployeeController::class, 'getEmployeeSummary']);
@@ -355,6 +359,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
             Route::get('/', 'show');
             Route::delete('/', 'destroy');
             Route::put('/', 'update');
+            Route::put('/subscription', 'updateSubscription');
 
             // Store Verification
             Route::prefix('verification')->group(function () {

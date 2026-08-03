@@ -63,22 +63,24 @@ class PaymongoController extends Controller
             'payable_id' => 'nullable|integer',
         ]);
 
+        $isSignupFlow = strtolower((string) ($data['metadata']['checkout_source'] ?? '')) === 'subscription_signup';
         $resolvedStoreId = (int) ($data['store_id'] ?? 0);
-        if ($resolvedStoreId <= 0) {
+        if ($resolvedStoreId <= 0 && !$isSignupFlow) {
             $resolvedStoreId = $this->resolveStoreIdFromAuthUser();
         }
 
-        if ($resolvedStoreId <= 0) {
+        if ($resolvedStoreId <= 0 && !$isSignupFlow) {
             return response()->json([
                 'message' => 'Store not found for this account.',
             ], 422);
         }
 
-        if (($data['payable_type'] ?? '') === 'subscription_upgrade' && empty($data['payable_id'])) {
+        $isSignupFlow = strtolower((string) ($data['metadata']['checkout_source'] ?? '')) === 'subscription_signup';
+        if (($data['payable_type'] ?? '') === 'subscription_upgrade' && empty($data['payable_id']) && !$isSignupFlow) {
             $data['payable_id'] = $resolvedStoreId;
         }
 
-        if (empty($data['payable_id'])) {
+        if (empty($data['payable_id']) && !$isSignupFlow) {
             return response()->json([
                 'message' => 'Payable id is required.',
             ], 422);
@@ -108,8 +110,8 @@ class PaymongoController extends Controller
             }
         }
 
-        $store = Store::query()->find($resolvedStoreId);
-        $storeAllowedMethods = $this->resolveStorePaymongoMethods($store);
+        $store = $resolvedStoreId > 0 ? Store::query()->find($resolvedStoreId) : null;
+        $storeAllowedMethods = $store ? $this->resolveStorePaymongoMethods($store) : ['card', 'gcash'];
         $requestedAllowed = $data['payment_method_allowed'] ?? null;
         if (is_array($requestedAllowed) && count($requestedAllowed) > 0) {
             $normalized = array_values(array_unique(array_map(fn($m) => strtolower(trim((string) $m)), $requestedAllowed)));
@@ -156,7 +158,7 @@ class PaymongoController extends Controller
 
         $attrs = data_get($intentPayload, 'data.attributes', []);
         $intent = $this->service->logIntent([
-            'store_id' => $resolvedStoreId,
+            'store_id' => $resolvedStoreId > 0 ? $resolvedStoreId : null,
             'payment_intent_id' => $intentId,
             'amount' => data_get($attrs, 'amount'),
             'currency' => data_get($attrs, 'currency'),
@@ -207,11 +209,12 @@ class PaymongoController extends Controller
             ], 422);
         }
 
-        if (($data['payable_type'] ?? '') === 'subscription_upgrade' && empty($data['payable_id'])) {
+        $isSignupFlow = strtolower((string) ($data['metadata']['checkout_source'] ?? '')) === 'subscription_signup';
+        if (($data['payable_type'] ?? '') === 'subscription_upgrade' && empty($data['payable_id']) && !$isSignupFlow) {
             $data['payable_id'] = $resolvedStoreId;
         }
 
-        if (empty($data['payable_id'])) {
+        if (empty($data['payable_id']) && !$isSignupFlow) {
             return response()->json([
                 'message' => 'Payable id is required.',
             ], 422);
@@ -262,7 +265,7 @@ class PaymongoController extends Controller
         $metadata = array_merge($normalizedMetadata, [
             'store_id' => $resolvedStoreId,
             'payable_type' => $data['payable_type'],
-            'payable_id' => $data['payable_id'],
+            'payable_id' => $data['payable_id'] ?: null,
         ]);
 
         $payload = [
@@ -320,6 +323,9 @@ class PaymongoController extends Controller
             'store_id' => $resolvedStoreId,
             'payable_type' => $data['payable_type'],
             'payable_id' => $data['payable_id'],
+            'checkout_nonce' => $metadata['checkout_nonce'] ?? null,
+            'success_url' => $data['success_url'],
+            'cancel_url' => $data['cancel_url'],
             'session_id' => $sessionId ?: null,
             'payment_method_types' => $methodTypes,
             'retrieved_status' => $retrievedStatus,
@@ -886,7 +892,15 @@ class PaymongoController extends Controller
         }
 
         $months = max(1, (int) ($metadata['months'] ?? 1));
-        $targetTier = (string) ($metadata['subscription_tier'] ?? 'premium');
+        $targetPlanKey = strtolower(trim((string) ($metadata['subscription_tier'] ?? 'premium')));
+        $targetPlan = \App\Models\Admin\SubscriptionPlan::query()
+            ->where('plan_key', $targetPlanKey)
+            ->where('is_active', true)
+            ->first();
+        if (!$targetPlan) {
+            Log::warning('Paid subscription references an unknown plan.', ['plan_key' => $targetPlanKey]);
+            return;
+        }
 
         $baseDate = $store->subscription_ends_at
             ? Carbon::parse($store->subscription_ends_at)
@@ -897,11 +911,11 @@ class PaymongoController extends Controller
         $newEndsAt = $baseDate->copy()->addMonths($months);
 
         $store->update([
-            'subscription_tier' => $targetTier,
-            'subscription_ends_at' => $newEndsAt,
+            'subscription_tier' => $targetPlan->id,
+            'subscription_ends_at' => $newEndsAt->toDateString(),
         ]);
 
-        if (strtolower($targetTier) === 'unlimited') {
+        if ($targetPlanKey === 'unlimited') {
             $moduleIds = \DB::table('modules')
                 ->whereIn('key', self::ALL_STORE_MODULES)
                 ->pluck('id')

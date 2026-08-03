@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('suppliers')) {
+            return;
+        }
+
         // Add new columns to suppliers table
         Schema::table('suppliers', function (Blueprint $table) {
             if (!Schema::hasColumn('suppliers', 'category')) {
@@ -44,6 +48,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasTable('suppliers')) {
+            return;
+        }
+
         Schema::table('suppliers', function (Blueprint $table) {
             $columns = ['category', 'average_delivery_days', 'recent_delay_percentage', 
                        'quality_score', 'total_orders', 'on_time_deliveries', 'late_deliveries',

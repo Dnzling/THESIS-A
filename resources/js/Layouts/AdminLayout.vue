@@ -15,11 +15,8 @@
           </div>
   
           <!-- Brand Text -->
-          <div class="leading-tight" style="font-family: 'Poppins'">
-            <h1 class="text-lg font-semibold text-gray-900">
-              Furnisync
-            </h1>
-  
+          <div>
+            <span class="portal-brand ">FURNISYNC</span>
           </div>
         </div>
       </div>
@@ -31,9 +28,7 @@
           <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider pl-3 mb-3">Menu</div>
   
           <template v-for="item in adminMenu" :key="item.to">
-            <a
-              href="#"
-              @click.prevent="navigate(item)"
+            <a href="#" @click.prevent="navigate(item)"
               class="text-sm font-medium flex items-center space-x-3 py-3 px-4 rounded-lg text-gray-500 hover:bg-blue-50 transition-colors">
               <i :class="item.icon"></i>
               <span>{{ item.label }}</span>
@@ -68,73 +63,54 @@
   
         <div class="flex items-center space-x-4">
           <!-- Notifications -->
-          <Button 
-            icon="pi pi-bell" 
-            severity="secondary" 
-            text 
-            rounded 
-            :badge="unreadCount > 0 ? unreadCount.toString() : undefined" 
-            badgeSeverity="danger"
-            @click="toggleNotifications"
-          />
+          <Button icon="pi pi-bell" severity="secondary" text rounded
+            :badge="unreadCount > 0 ? unreadCount.toString() : undefined" badgeSeverity="danger"
+            @click="toggleNotifications" />
           <Popover ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
             <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div class="font-semibold text-gray-900">Notifications</div>
-              <Button 
-                label="Mark all as read" 
-                size="small" 
-                text 
-                class="text-xs"
-                :disabled="unreadCount === 0 || notificationsLoading"
-                @click="markAllNotificationsRead"
-              />
+              <Button label="Mark all as read" size="small" text class="text-xs"
+                :disabled="unreadCount === 0 || notificationsLoading" @click="markAllNotificationsRead" />
             </div>
-
+  
             <div class="px-4 pt-3">
               <div class="flex items-center gap-4 text-sm">
-                <button
-                  class="pb-2 border-b-2 transition"
+                <button class="pb-2 border-b-2 transition"
                   :class="activeNotifTab === 'inbox' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
-                  @click="activeNotifTab = 'inbox'"
-                >
-                  Inbox <span v-if="unreadCount" class="ml-1 text-xs bg-green-500 text-white rounded-full px-2 py-0.5">{{ unreadCount }}</span>
+                  @click="activeNotifTab = 'inbox'">
+                  Inbox <span v-if="unreadCount" class="ml-1 text-xs bg-green-500 text-white rounded-full px-2 py-0.5">{{
+                    unreadCount }}</span>
                 </button>
-                <button
-                  class="pb-2 border-b-2 transition"
+                <button class="pb-2 border-b-2 transition"
                   :class="activeNotifTab === 'general' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
-                  @click="activeNotifTab = 'general'"
-                >
+                  @click="activeNotifTab = 'general'">
                   General
                 </button>
-                <button
-                  class="pb-2 border-b-2 transition"
+                <button class="pb-2 border-b-2 transition"
                   :class="activeNotifTab === 'archived' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
-                  @click="activeNotifTab = 'archived'"
-                >
+                  @click="activeNotifTab = 'archived'">
                   Archived
                 </button>
               </div>
             </div>
-
+  
             <div class="max-h-[420px] overflow-y-auto">
               <div v-if="notificationsLoading" class="p-4 space-y-3">
                 <Skeleton height="56px" class="rounded-xl" />
                 <Skeleton height="56px" class="rounded-xl" />
                 <Skeleton height="56px" class="rounded-xl" />
               </div>
-
+  
               <div v-else-if="filteredNotifications.length === 0" class="p-6 text-center text-sm text-gray-500">
                 No notifications here yet.
               </div>
-
-              <button
-                v-for="notif in filteredNotifications"
-                :key="notif.id"
+  
+              <button v-for="notif in filteredNotifications" :key="notif.id"
                 class="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-blue-50/50 transition"
-                @click="openNotification(notif)"
-              >
+                @click="openNotification(notif)">
                 <div class="relative">
-                  <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-blue-700 font-semibold text-xs">
+                  <div
+                    class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-blue-700 font-semibold text-xs">
                     {{ getNotifInitials(notif) }}
                   </div>
                   <span v-if="!notif.is_read" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
@@ -254,7 +230,7 @@ const adminMenu = [
     label: "Users",
     icon: "pi pi-users text-gray-500 w-5"
   },
-    {
+  {
     to: "/admin/roles-permissions",
     label: "Roles & Permissions",
     icon: "pi pi-shield"
@@ -403,6 +379,18 @@ watch(isAuthenticated, (value) => {
 </script>
 
 <style scoped>
+@font-face {
+  font-family: 'Barabara';
+  src: url('/fonts/BARABARA-final.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.portal-brand {
+  font-family: 'Barabara', sans-serif;
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease;

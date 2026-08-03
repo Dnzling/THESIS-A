@@ -21,7 +21,12 @@ class StoreSettingsController extends Controller
     {
         $user = $request->user();
         $store = $this->resolveStoreForUser($user);
-        $profile = $user?->trialOnboardingProfile;
+        if ($store) {
+            $store->load('subscriptionPlan:id,plan_key,name');
+        }
+        $subscriptionPlan = $store
+            ? SubscriptionPlan::query()->find((int) $store->getRawOriginal('subscription_tier'))
+            : null;
         $storeId = (int) ($store?->id ?? 0);
 
         $enabledModuleKeys = $storeId > 0
@@ -66,15 +71,6 @@ class StoreSettingsController extends Controller
             ->values();
 
         $endsAt = $store?->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
-        $daysRemaining = $endsAt ? $endsAt->diffInDays(Carbon::now(), false) * -1 : null;
-
-        $status = 'trial';
-        if ($store?->subscription_tier && $store->subscription_tier !== 'free') {
-            $status = $endsAt && $daysRemaining !== null && $daysRemaining < 0 ? 'expired' : 'active';
-        } elseif ($endsAt && $daysRemaining !== null && $daysRemaining < 0) {
-            $status = 'expired';
-        }
-
         return response()->json([
             'success' => true,
             'data' => [
@@ -111,19 +107,18 @@ class StoreSettingsController extends Controller
                     ]) ?? [],
                 'attendance' => $this->resolveAttendanceSettings($store?->id),
                 'subscription' => [
-                    'tier' => $store?->subscription_tier ?? 'free',
+                    'tier' => $subscriptionPlan?->plan_key ?? 'free',
+                    'plan_label' => $subscriptionPlan?->name ?? 'Free',
                     'ends_at' => $endsAt?->toDateString(),
-                    'days_remaining' => $daysRemaining,
-                    'status' => $status,
                     'modules' => $enabledModules,
                 ],
                 'available_plans' => $availablePlans,
                 'verification' => $this->resolveVerificationStatus($store),
                 'onboarding' => [
-                    'plan' => $profile?->plan ?? 'simple',
-                    'modules' => $profile?->modules ?? [],
-                    'completed_at' => $profile?->completed_at?->toDateTimeString(),
-                    'tier' => $this->resolveTier($profile?->employee_range ?? ''),
+                    'plan' => $store?->subscriptionPlan?->plan_key ?? 'free',
+                    'modules' => $enabledModuleKeys,
+                    'completed_at' => null,
+                    'tier' => $this->resolveTrialTier($store),
                 ],
             ],
         ]);
@@ -366,11 +361,17 @@ class StoreSettingsController extends Controller
         return (bool) ($settings['attendance_geofence_enabled'] ?? true);
     }
 
-    private function resolveTier(string $range): string
+    private function resolveTrialTier(?Store $store): string
     {
-        if ($range === '1-5') return 'small';
-        if (in_array($range, ['6-20', '21-50'], true)) return 'mid';
-        return 'enterprise';
+        if (!$store) {
+            return 'simple';
+        }
+
+        if ($store->subscription_tier && $store->subscription_tier !== 'free') {
+            return (string) $store->subscription_tier;
+        }
+
+        return 'simple';
     }
 
     public function updateModules(Request $request)
@@ -390,15 +391,6 @@ class StoreSettingsController extends Controller
             ], 404);
         }
 
-        $profile = TrialOnboardingProfile::where('user_id', $user->id)->first();
-
-        if (!$profile || !$profile->completed_at) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Complete trial onboarding before updating modules.',
-            ], 422);
-        }
-
         $modules = array_values(array_unique($validated['modules']));
 
         foreach ($modules as $moduleKey) {
@@ -416,9 +408,6 @@ class StoreSettingsController extends Controller
                 ]
             );
         }
-
-        $profile->modules = $modules;
-        $profile->save();
 
         return response()->json([
             'success' => true,

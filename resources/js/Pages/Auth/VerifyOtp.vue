@@ -17,6 +17,7 @@
       <p class="mt-2 text-center text-sm text-gray-600">
         {{ isCustomerOtp ? "We've sent a Furnisync Shop 6-digit code to your email." : "We've sent a 6-digit code to email." }}
         <span class="block text-xs text-gray-500 mt-1">Code expires in 15 minutes.</span>
+        <span v-if="!isCustomerOtp" class="block text-xs text-gray-500 mt-1">After verification, you will continue to store setup.</span>
       </p>
     </div>
   
@@ -221,6 +222,9 @@ const verifyOtp = async () => { // Add async here
       // Remove axios auth header since token is no longer needed
       delete axios.defaults.headers.common['Authorization']
 
+      const nextPath = String(response.data.next_path || '')
+      const requiresLogin = Boolean(response.data.requires_login ?? true)
+
       if (isCustomerOtp.value) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
@@ -242,7 +246,9 @@ const verifyOtp = async () => { // Add async here
       } else {
         setTimeout(() => {
           localStorage.removeItem('register_token')
-          router.get('/login', { registered: 'true' })
+          router.get('/login', {
+            registered: 'true',
+          })
         }, 1200)
       }
     } else {

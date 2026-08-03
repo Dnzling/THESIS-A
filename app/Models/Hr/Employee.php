@@ -5,6 +5,8 @@ namespace App\Models\Hr;
 use App\Models\Core\Role;
 use App\Models\Core\User;
 use App\Models\Hr\EmployeeCreditCard;
+use App\Models\Hr\EmployeeGovernmentId;
+use App\Models\Hr\EmployeeWeeklySchedule;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -54,7 +56,6 @@ class Employee extends Model
         'emergency_contact_name',
         'emergency_contact_phone',
         'emergency_contact_relationship',
-        'id_document_path',
         'contract_path',
         'status',
         'termination_date',
@@ -78,6 +79,11 @@ class Employee extends Model
     public function deductions()
     {
         return $this->hasMany(EmployeeDeduction::class, 'employee_id');
+    }
+
+    public function governmentIds()
+    {
+        return $this->hasMany(EmployeeGovernmentId::class, 'employee_id');
     }
 
   
@@ -121,6 +127,11 @@ class Employee extends Model
     public function creditCards()
     {
         return $this->hasMany(EmployeeCreditCard::class, 'employee_id');
+    }
+
+    public function weeklySchedules()
+    {
+        return $this->hasMany(EmployeeWeeklySchedule::class, 'employee_id');
     }
 
     public function latestCreditCard()

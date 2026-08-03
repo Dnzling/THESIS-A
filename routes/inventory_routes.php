@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\Inventory\AlertController;
 use App\Http\Controllers\Api\Inventory\InventoryConfigurationController;
 use App\Http\Controllers\Api\Inventory\InventoryReportController;
 use App\Http\Controllers\Api\Inventory\ProductController;
+use App\Http\Controllers\Api\Inventory\SupplyController;
 use App\Http\Controllers\Api\Inventory\CategoryController;
 use App\Http\Controllers\Api\Inventory\UnitController;
 use App\Http\Controllers\Api\Inventory\StockIssueController;
@@ -222,6 +223,15 @@ Route::prefix('inventory')->group(function () {
         Route::delete('/{id}', [ProductController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
         Route::get('/{id}/variations', [ProductController::class, 'getVariations'])->middleware('can:inventory.master_data.view');
         Route::get('/{id}/stock-history', [ProductController::class, 'getStockHistory'])->middleware('can:inventory.master_data.view');
+    });
+
+    // Supplies Management
+    Route::prefix('supplies')->group(function () {
+        Route::get('/', [SupplyController::class, 'index'])->middleware('can:inventory.master_data.view');
+        Route::get('/{id}', [SupplyController::class, 'show'])->middleware('can:inventory.master_data.view');
+        Route::post('/', [SupplyController::class, 'store'])->middleware('can:inventory.master_data.manage');
+        Route::put('/{id}', [SupplyController::class, 'update'])->middleware('can:inventory.master_data.manage');
+        Route::delete('/{id}', [SupplyController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
     });
 
     // Categories Management

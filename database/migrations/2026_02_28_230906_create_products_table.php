@@ -49,7 +49,6 @@ return new class extends Migration
             $table->unique(['store_id', 'sku']);
             $table->index(['store_id', 'category_id']);
             $table->index(['store_id', 'is_active']);
-            $table->index(['store_id', 'stock_status']);
             $table->index(['store_id', 'is_featured']);
         });
     }

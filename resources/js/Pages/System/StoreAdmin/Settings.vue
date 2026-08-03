@@ -8,25 +8,8 @@
       </div>
     </div>
 
-    <div :class="isActiveSubscription ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6 lg:grid-cols-3'">
-      <Card v-if="!isActiveSubscription" class="lg:col-span-2">
-        <template #title>Included Modules</template>
-        <template #content>
-          <p class="text-sm text-slate-600 mb-4">
-            Modules are enabled automatically based on your current plan.
-          </p>
-          <div class="flex flex-wrap gap-2">
-            <span
-              v-for="module in subscription.modules || []"
-              :key="module.key"
-              class="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 border border-slate-200"
-            >
-              {{ module.name }}
-            </span>
-            <span v-if="!(subscription.modules || []).length" class="text-xs text-slate-500">No modules assigned.</span>
-          </div>
-        </template>
-      </Card>
+    <div :class="isActiveSubscription ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6 lg:grid-cols-2'">
+      
 
       <Card>
         <template #title>Plan Status</template>
@@ -51,16 +34,8 @@
               <span class="font-semibold">{{ currentPlanLabel }}</span>
             </div>
             <div class="flex items-center justify-between">
-              <span>Status</span>
-              <Tag :value="subscriptionStatusLabel" :severity="subscriptionSeverity" />
-            </div>
-            <div class="flex items-center justify-between">
               <span>Ends On</span>
               <span class="font-semibold">{{ subscriptionEndsAtLabel }}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span>Days Remaining</span>
-              <span class="font-semibold">{{ daysRemainingLabel }}</span>
             </div>
           </div>
           <div class="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
@@ -72,37 +47,7 @@
 
       <!-- PayMongo methods moved to Upgrade flow; card removed -->
 
-      <Card v-if="isActiveSubscription && store.type !== 'trial'">
-        <template #title>Store Verification</template>
-        <template #content>
-          <div class="space-y-3 text-sm text-slate-700">
-            <div class="flex items-center justify-between">
-              <span>Status</span>
-              <Tag :value="verificationStatusLabel" :severity="verificationSeverity" />
-            </div>
-            <div v-if="verification.submitted_at" class="flex items-center justify-between">
-              <span>Submitted</span>
-              <span class="font-semibold">{{ formatDateTime(verification.submitted_at) }}</span>
-            </div>
-            <div v-if="verification.reviewed_at" class="flex items-center justify-between">
-              <span>Reviewed</span>
-              <span class="font-semibold">{{ formatDateTime(verification.reviewed_at) }}</span>
-            </div>
-            <div v-if="verification.rejection_reason" class="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700">
-              <div class="font-semibold mb-1">Feedback</div>
-              <div>{{ verification.rejection_reason }}</div>
-            </div>
-          </div>
-          <Button
-            class="mt-4 w-full"
-            :label="verificationActionLabel"
-            severity="secondary"
-            outlined
-            :loading="loadingVerificationDocuments"
-            @click="handleVerificationAction"
-          />
-        </template>
-      </Card>
+      
     </div>
 
     <Dialog v-model:visible="planDialogVisible" modal header="Available Plans" :style="{ width: '36rem' }">
@@ -201,37 +146,7 @@
       </template>
     </Dialog>
 
-    <Card v-if="!isActiveSubscription && store.type !== 'trial'">
-      <template #title>Store Verification</template>
-      <template #content>
-        <div class="space-y-3 text-sm text-slate-700">
-          <div class="flex items-center justify-between">
-            <span>Status</span>
-            <Tag :value="verificationStatusLabel" :severity="verificationSeverity" />
-          </div>
-          <div v-if="verification.submitted_at" class="flex items-center justify-between">
-            <span>Submitted</span>
-            <span class="font-semibold">{{ formatDateTime(verification.submitted_at) }}</span>
-          </div>
-          <div v-if="verification.reviewed_at" class="flex items-center justify-between">
-            <span>Reviewed</span>
-            <span class="font-semibold">{{ formatDateTime(verification.reviewed_at) }}</span>
-          </div>
-          <div v-if="verification.rejection_reason" class="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700">
-            <div class="font-semibold mb-1">Feedback</div>
-            <div>{{ verification.rejection_reason }}</div>
-          </div>
-        </div>
-        <Button
-          class="mt-4 w-full"
-          :label="verificationActionLabel"
-          severity="secondary"
-          outlined
-          :loading="loadingVerificationDocuments"
-          @click="handleVerificationAction"
-        />
-      </template>
-    </Card>
+  
 
     <Dialog v-model:visible="verificationDocumentsDialogVisible" modal header="Submitted Verification Documents" :style="{ width: '48rem' }">
       <div class="space-y-3">
@@ -429,6 +344,17 @@ type UpgradePlan = {
   isFeatured?: boolean
 }
 
+const props = defineProps<{
+  store: any
+  payments: any
+  branches: any[]
+  attendance: any
+  subscription: any
+  available_plans: any[]
+  verification: any
+  onboarding: any
+}>()
+
 const savingAttendance = ref(false)
 const savingProfile = ref(false)
 const upgrading = ref(false)
@@ -457,7 +383,7 @@ const selectedWalletLabel = computed(() => {
   return opt?.label || 'Wallet'
 })
 const storeStatusDialogVisible = ref(false)
-const loading = ref(true)
+const loading = ref(false)
 const mapEl = ref<HTMLElement | null>(null)
 const mapReady = ref(false)
 const mapRef = ref<any>(null)
@@ -486,7 +412,19 @@ const fallbackPlans: UpgradePlan[] = [
   },
 ]
 
-const availablePlans = ref<UpgradePlan[]>([...fallbackPlans])
+const availablePlans = ref<UpgradePlan[]>(
+  Array.isArray(props.available_plans) && props.available_plans.length
+    ? props.available_plans.map((plan: any) => ({
+        key: String(plan?.key || ''),
+        label: String(plan?.label || ''),
+        amountPhp: Number(plan?.amount_php ?? plan?.amountPhp ?? 0),
+        months: Number(plan?.months ?? 1),
+        tier: String(plan?.tier || plan?.key || ''),
+        description: String(plan?.description || ''),
+        isFeatured: Boolean(plan?.is_featured ?? plan?.isFeatured),
+      }))
+    : [...fallbackPlans]
+)
 
 const store = reactive({
   name: '',
@@ -517,9 +455,8 @@ const attendance = reactive({
 const subscription = reactive({
   store_id: null as number | null,
   tier: 'free',
-  status: 'trial',
+  plan_label: 'Free',
   ends_at: '',
-  days_remaining: null as number | null,
   modules: [] as { key: string; name: string }[],
 })
 
@@ -535,7 +472,7 @@ const verificationDocumentsDialogVisible = ref(false)
 const verificationDocuments = ref<any[]>([])
 const loadingVerificationDocuments = ref(false)
 
-const branches = ref<any[]>([])
+const branches = ref<any[]>(Array.isArray(props.branches) ? props.branches : [])
 
 const onboarding = reactive({
   plan: 'simple',
@@ -556,29 +493,65 @@ const selectedPlan = reactive({
 
 usePermissions()
 
-const isActiveSubscription = computed(() => subscription.status === 'active')
-const currentPlanLabel = computed(() => {
-  if (isActiveSubscription.value) {
-    return String(subscription.tier || 'paid').toUpperCase()
-  }
-  return String(subscription.tier || 'free').toUpperCase()
-})
+// Initialize state from Inertia props (classic Inertia pattern: server provides the page data).
+store.name = props.store?.name || ''
+store.contact_person = props.store?.contact_person || ''
+store.email = props.store?.email || ''
+store.phone = props.store?.phone || ''
+store.address = props.store?.address || ''
+store.city = props.store?.city || ''
+store.province = props.store?.province || ''
+store.type = props.store?.type || ''
+store.store_code = props.store?.store_code || ''
+store.status = props.store?.status || ''
+store.status_details = props.store?.status_details || null
 
-const subscriptionStatusLabel = computed(() => {
-  if (subscription.status === 'expired') return 'Expired'
-  if (subscription.status === 'active') return 'Active'
-  return 'Trial'
+subscription.store_id = props.store?.id ?? null
+subscription.tier = props.subscription?.tier || 'free'
+subscription.plan_label = props.subscription?.plan_label || 'Free'
+subscription.ends_at = props.subscription?.ends_at || ''
+subscription.modules = Array.isArray(props.subscription?.modules) ? props.subscription.modules : []
+
+verification.store_status = props.verification?.store_status || 'pending'
+verification.submitted_at = props.verification?.submitted_at || null
+verification.reviewed_at = props.verification?.reviewed_at || null
+verification.rejection_reason = props.verification?.rejection_reason || null
+verification.documents_submitted = Boolean(props.verification?.documents_submitted)
+
+attendance.branch_id = props.attendance?.branch_id ?? null
+attendance.address = props.attendance?.address || ''
+attendance.barangay = props.attendance?.barangay || ''
+attendance.city = props.attendance?.city || ''
+attendance.province = props.attendance?.province || ''
+attendance.latitude = props.attendance?.latitude ?? null
+attendance.longitude = props.attendance?.longitude ?? null
+attendance.geofence_radius_m = props.attendance?.geofence_radius_m ?? 5
+attendance.geofence_enabled = props.attendance?.geofence_enabled ?? true
+
+const allowedMethods = props.payments?.paymongo?.payment_method_allowed
+paymongoPaymentMethods.value = Array.isArray(allowedMethods) && allowedMethods.length ? allowedMethods : ['gcash']
+
+const isActiveSubscription = computed(() => Boolean(subscription.ends_at))
+const canShowVerificationCard = computed(() => {
+  const tier = String(subscription.tier || '').toLowerCase()
+  return tier === 'unlimited' || tier === 'simple'
+})
+const currentPlanLabel = computed(() => {
+  const planLabel = String(subscription.plan_label || '').trim()
+  if (planLabel) return planLabel
+  return String(subscription.tier || (isActiveSubscription.value ? 'paid' : 'free')).toUpperCase()
 })
 
 const storeStatusLabel = computed(() => {
-  const raw = String(store.status || 'unknown')
+  const raw = String(store.status || 'unknown').toLowerCase()
+  if (raw === 'pending') return 'Unverified'
   return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 })
 
 const storeStatusSeverity = computed(() => {
   const status = String(store.status || '').toLowerCase()
   if (status === 'active' || status === 'approved' || status === 'verified') return 'success'
-  if (status === 'pending') return 'warning'
+  if (status === 'pending' || status === 'unverified') return 'warning'
   if (status === 'suspended' || status === 'banned') return 'danger'
   return 'secondary'
 })
@@ -595,23 +568,7 @@ const formatRemainingDays = (value: number) => {
 }
 
 
-const subscriptionSeverity = computed(() => {
-  if (subscription.status === 'expired') return 'danger'
-  if (subscription.status === 'active') return 'success'
-  return 'info'
-})
-
 const subscriptionEndsAtLabel = computed(() => subscription.ends_at || 'Not set')
-const daysRemainingLabel = computed(() => {
-  if (subscription.days_remaining === null) return '—'
-  const rawDays = Number(subscription.days_remaining)
-  if (Number.isNaN(rawDays)) return '—'
-  const normalized = Math.max(0, rawDays)
-  const formatted = normalized < 10
-    ? normalized.toFixed(1)
-    : Math.round(normalized).toString()
-  return `${formatted} days`
-})
 
 const approvalMatrixRows = [
   {
@@ -689,82 +646,6 @@ const formatDateTime = (value?: string | null) => {
   }).format(parsed)
 }
 
-const fetchSettings = async () => {
-  loading.value = true
-  try {
-    const response = await axiosClient.get('/api/store/settings')
-    const data = response?.data?.data || {}
-    const plansFromApi = Array.isArray(data.available_plans) ? data.available_plans : []
-    const normalizedPlans: UpgradePlan[] = plansFromApi
-      .map((plan: any) => ({
-        key: String(plan?.key || ''),
-        label: String(plan?.label || ''),
-        amountPhp: Number(plan?.amount_php ?? 0),
-        months: Number(plan?.months ?? 1),
-        tier: String(plan?.tier || plan?.key || ''),
-        description: String(plan?.description || ''),
-        isFeatured: Boolean(plan?.is_featured),
-      }))
-      .filter((plan: UpgradePlan) => plan.key && plan.label && plan.amountPhp > 0)
-
-    availablePlans.value = normalizedPlans.length > 0 ? normalizedPlans : [...fallbackPlans]
-    if (!availablePlans.value.some(plan => plan.key === selectedPlan.key)) {
-      const defaultPlan = availablePlans.value[0]
-      selectedPlan.key = defaultPlan.key
-      selectedPlan.amountPhp = defaultPlan.amountPhp
-      selectedPlan.months = defaultPlan.months
-      selectedPlan.tier = defaultPlan.tier
-      selectedPlan.label = defaultPlan.label
-    }
-
-    store.name = data.store?.name || ''
-    subscription.store_id = data.store?.id ?? null
-    store.contact_person = data.store?.contact_person || ''
-    store.email = data.store?.email || ''
-    store.phone = data.store?.phone || ''
-    store.address = data.store?.address || ''
-    store.city = data.store?.city || ''
-    store.province = data.store?.province || ''
-    store.type = data.store?.type || ''
-    store.store_code = data.store?.store_code || ''
-    store.status = data.store?.status || ''
-    store.status_details = data.store?.status_details || null
-
-    subscription.tier = data.subscription?.tier || 'free'
-    subscription.status = data.subscription?.status || 'trial'
-    subscription.ends_at = data.subscription?.ends_at || ''
-    subscription.days_remaining = data.subscription?.days_remaining ?? null
-    subscription.modules = Array.isArray(data.subscription?.modules) ? data.subscription.modules : []
-
-    verification.store_status = data.verification?.store_status || 'pending'
-    verification.submitted_at = data.verification?.submitted_at || null
-    verification.reviewed_at = data.verification?.reviewed_at || null
-    verification.rejection_reason = data.verification?.rejection_reason || null
-    verification.documents_submitted = Boolean(data.verification?.documents_submitted)
-
-    branches.value = Array.isArray(data.branches) ? data.branches : []
-
-    onboarding.plan = data.onboarding?.plan || 'simple'
-
-    attendance.branch_id = data.attendance?.branch_id ?? null
-    attendance.address = data.attendance?.address || ''
-    attendance.barangay = data.attendance?.barangay || ''
-    attendance.city = data.attendance?.city || ''
-    attendance.province = data.attendance?.province || ''
-    attendance.latitude = data.attendance?.latitude ?? null
-    attendance.longitude = data.attendance?.longitude ?? null
-    attendance.geofence_radius_m = data.attendance?.geofence_radius_m ?? 5
-    attendance.geofence_enabled = data.attendance?.geofence_enabled ?? true
-
-    const methods = data?.payments?.paymongo?.payment_method_allowed
-    paymongoPaymentMethods.value = Array.isArray(methods) && methods.length ? methods : ['gcash']
-  } catch (error) {
-    console.error('Failed to load settings', error)
-  } finally {
-    loading.value = false
-  }
-}
-
 const savePaymentSettings = async () => {
   if (paymongoPaymentMethods.value.length === 0) {
     toast.add({ severity: 'warn', summary: 'Select a method', detail: 'Choose at least one payment method.', life: 3000 })
@@ -772,9 +653,11 @@ const savePaymentSettings = async () => {
   }
   savingPayments.value = true
   try {
-    await axiosClient.put('/api/store/settings/payments', {
-      paymongo_payment_methods: paymongoPaymentMethods.value,
-    })
+    router.put(
+      '/store/settings/payments',
+      { paymongo_payment_methods: paymongoPaymentMethods.value },
+      { preserveScroll: true }
+    )
     toast.add({ severity: 'success', summary: 'Saved', detail: 'Payment methods updated.', life: 2500 })
   } catch (error: any) {
     toast.add({
@@ -792,25 +675,24 @@ const saveAttendance = async () => {
   if (attendance.latitude === null || attendance.longitude === null) return
   savingAttendance.value = true
   try {
-    const response = await axiosClient.put('/api/store/settings/attendance', {
-      branch_id: attendance.branch_id,
-      address: attendance.address || null,
-      barangay: attendance.barangay || null,
-      city: attendance.city || null,
-      province: attendance.province || null,
-      latitude: attendance.latitude,
-      longitude: attendance.longitude,
-      geofence_radius_m: attendance.geofence_radius_m || 5,
-      geofence_enabled: attendance.geofence_enabled,
-    })
-    const data = response?.data?.data || {}
-    attendance.address = data.address || attendance.address
-    attendance.barangay = data.barangay || attendance.barangay
-    attendance.city = data.city || attendance.city
-    attendance.province = data.province || attendance.province
-    attendance.latitude = data.latitude ?? attendance.latitude
-    attendance.longitude = data.longitude ?? attendance.longitude
-    attendance.geofence_radius_m = data.geofence_radius_m ?? attendance.geofence_radius_m
+    router.put(
+      '/store/settings/attendance',
+      {
+        branch_id: attendance.branch_id,
+        address: attendance.address || null,
+        barangay: attendance.barangay || null,
+        city: attendance.city || null,
+        province: attendance.province || null,
+        latitude: attendance.latitude,
+        longitude: attendance.longitude,
+        geofence_radius_m: attendance.geofence_radius_m || 5,
+        geofence_enabled: attendance.geofence_enabled,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => toast.add({ severity: 'success', summary: 'Saved', detail: 'Attendance location updated.', life: 2500 }),
+      }
+    )
   } catch (error) {
     console.error('Failed to update attendance location', error)
   } finally {
@@ -821,32 +703,21 @@ const saveAttendance = async () => {
 const saveStoreProfile = async () => {
   savingProfile.value = true
   try {
-    const response = await axiosClient.put('/api/store/settings/profile', {
-      name: store.name || null,
-      contact_person: store.contact_person || null,
-      email: store.email || null,
-      phone: store.phone || null,
-      address: store.address || null,
-      city: store.city || null,
-      province: store.province || null,
-      type: store.type || null,
-      store_code: store.store_code || null,
-      status: store.status || null,
-    })
-    const data = response?.data?.data?.store
-    if (data) {
-      store.name = data.name || store.name
-      store.contact_person = data.contact_person || store.contact_person
-      store.email = data.email || store.email
-      store.phone = data.phone || store.phone
-      store.address = data.address || store.address
-      store.city = data.city || store.city
-      store.province = data.province || store.province
-      store.type = data.type || store.type
-      store.store_code = data.store_code || store.store_code
-      store.status = data.status || store.status
-    }
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Store profile updated.', life: 3000 })
+    router.put(
+      '/store/settings/profile',
+      {
+        contact_person: store.contact_person || null,
+        phone: store.phone || null,
+        address: store.address || null,
+        city: store.city || null,
+        province: store.province || null,
+        type: store.type || null,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => toast.add({ severity: 'success', summary: 'Saved', detail: 'Store profile updated.', life: 3000 }),
+      }
+    )
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -1182,7 +1053,7 @@ const handleUpgradeReturn = async () => {
     const status = String(statusResponse?.data?.data?.attributes?.status || '').toLowerCase()
 
     if (status === 'succeeded') {
-      await fetchSettings()
+      router.reload({ preserveScroll: true })
     } else {
       toast.add({
         severity: 'warn',
@@ -1226,7 +1097,6 @@ const handleUpgradePrompt = () => {
 }
 
 onMounted(async () => {
-  await fetchSettings()
   await handleUpgradeReturn()
   handleUpgradePrompt()
   try {

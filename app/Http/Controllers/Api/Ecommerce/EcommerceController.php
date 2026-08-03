@@ -208,7 +208,9 @@ class EcommerceController extends Controller
             ->whereIn('status', ['active', 'verified'])
             ->where(function ($query) {
                 $query->whereNull('subscription_tier')
-                    ->orWhere('subscription_tier', '!=', 'free');
+                    ->orWhereHas('subscriptionPlan', function ($planQuery) {
+                        $planQuery->where('plan_key', '!=', 'free');
+                    });
             })
             ->firstOrFail();
 
@@ -425,10 +427,13 @@ class EcommerceController extends Controller
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->where(function ($query) {
-                    $query->whereNull('subscription_tier')
-                        ->orWhere('subscription_tier', '!=', 'free');
-                });
+                $storeQuery->whereIn('status', ['active', 'verified'])
+                    ->where(function ($query) {
+                        $query->whereNull('subscription_tier')
+                            ->orWhereHas('subscriptionPlan', function ($planQuery) {
+                                $planQuery->where('plan_key', '!=', 'free');
+                            });
+                    });
             });
 
         // Optimized inventory filter using EXISTS instead of WHERE HAS (faster)
@@ -623,10 +628,13 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->where(function ($query) {
-                    $query->whereNull('subscription_tier')
-                        ->orWhere('subscription_tier', '!=', 'free');
-                });
+                $storeQuery->whereIn('status', ['active', 'verified'])
+                    ->where(function ($query) {
+                        $query->whereNull('subscription_tier')
+                            ->orWhereHas('subscriptionPlan', function ($planQuery) {
+                                $planQuery->where('plan_key', '!=', 'free');
+                            });
+                    });
             })
             ->when($request->filled('store_id'), function ($query) use ($request) {
                 $query->where('store_id', (int) $request->input('store_id'));
@@ -937,7 +945,9 @@ class EcommerceController extends Controller
             ->where('id', $storeId)
             ->where(function ($query) {
                 $query->whereNull('subscription_tier')
-                    ->orWhere('subscription_tier', '!=', 'free');
+                    ->orWhereHas('subscriptionPlan', function ($planQuery) {
+                        $planQuery->where('plan_key', '!=', 'free');
+                    });
             })
             ->exists();
 
@@ -1257,7 +1267,11 @@ class EcommerceController extends Controller
         }
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
-        $storeTier = Store::query()->where('id', $cart->store_id)->value('subscription_tier');
+        $storeTier = Store::query()
+            ->where('id', $cart->store_id)
+            ->whereIn('status', ['active', 'verified'])
+            ->with('subscriptionPlan:id,plan_key')
+            ->first(['id', 'subscription_tier'])?->subscriptionPlan?->plan_key ?? 'free';
         $bulkTrip = $bulkTripRequested && ($storeTier === 'enterprise');
         $bulkDiscountRate = $bulkTrip ? $this->resolveBulkTripDiscountRate($cart->store_id) : 0.0;
 
@@ -1272,7 +1286,10 @@ class EcommerceController extends Controller
         $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
 
         if ($originLatitude === null || $originLongitude === null) {
-            $store = Store::query()->find($cart->store_id);
+            $store = Store::query()
+                ->where('id', $cart->store_id)
+                ->whereIn('status', ['active', 'verified'])
+                ->first();
             if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
                 $originLatitude = (float) $store->latitude;
                 $originLongitude = (float) $store->longitude;
@@ -1485,7 +1502,10 @@ class EcommerceController extends Controller
         $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
 
         if ($canLookupRates && ($originLatitude === null || $originLongitude === null)) {
-            $store = Store::query()->find($cart->store_id);
+            $store = Store::query()
+                ->where('id', $cart->store_id)
+                ->whereIn('status', ['active', 'verified'])
+                ->first();
             if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
                 $originLatitude = (float) $store->latitude;
                 $originLongitude = (float) $store->longitude;
@@ -1523,7 +1543,11 @@ class EcommerceController extends Controller
         }
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
-        $storeTier = Store::query()->where('id', $cart->store_id)->value('subscription_tier');
+        $storeTier = Store::query()
+            ->where('id', $cart->store_id)
+            ->whereIn('status', ['active', 'verified'])
+            ->with('subscriptionPlan:id,plan_key')
+            ->first(['id', 'subscription_tier'])?->subscriptionPlan?->plan_key ?? 'free';
         $bulkTrip = $bulkTripRequested && ($storeTier === 'enterprise');
         if ($bulkTrip) {
             $bulkDiscountRate = $this->resolveBulkTripDiscountRate($cart->store_id);
@@ -2050,6 +2074,9 @@ class EcommerceController extends Controller
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->whereNull('deleted_at')
+            ->whereHas('store', function ($storeQuery) {
+                $storeQuery->whereIn('status', ['active', 'verified']);
+            })
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
                 $inventoryQuery->where('store_id', $storeId)
                     ->where('quantity_available', '>', 0)
@@ -2080,6 +2107,9 @@ class EcommerceController extends Controller
                     ->where('store_id', $storeId)
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
+                    ->whereHas('store', function ($storeQuery) {
+                        $storeQuery->whereIn('status', ['active', 'verified']);
+                    })
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
                         $inventoryQuery->where('store_id', $storeId)
                             ->where('quantity_available', '>', 0)
@@ -2157,6 +2187,9 @@ class EcommerceController extends Controller
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->whereNull('deleted_at')
+            ->whereHas('store', function ($storeQuery) {
+                $storeQuery->whereIn('status', ['active', 'verified']);
+            })
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
                 $inventoryQuery->where('store_id', $storeId)
                     ->where('quantity_available', '>', 0)
@@ -2697,7 +2730,9 @@ class EcommerceController extends Controller
             return $requestedStoreId;
         }
 
-        return (int) Store::query()->value('id');
+        return (int) Store::query()
+            ->whereIn('status', ['active', 'verified'])
+            ->value('id');
     }
 
     private function resolveAuthenticatedStoreId(): int
@@ -2707,7 +2742,9 @@ class EcommerceController extends Controller
             return (int) $user->store_id;
         }
 
-        return (int) Store::query()->value('id');
+        return (int) Store::query()
+            ->whereIn('status', ['active', 'verified'])
+            ->value('id');
     }
 
     private function toAssetUrl(?string $path): ?string

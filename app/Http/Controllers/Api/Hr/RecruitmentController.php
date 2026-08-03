@@ -112,18 +112,21 @@ class RecruitmentController extends Controller
         $hrUser = $request->user();
         $storeId = $hrUser->store_id;
 
-        $validated = $request->validate([
-            'branch_id' => 'required|exists:branches,id',
-            'department_id' => 'required|exists:departments,id',
-            'role_id' => 'required|exists:roles,id',
-            'hire_date' => 'required|date',
-            'pay_type' => 'nullable|in:monthly,hourly,hybrid',
-            'employment_type' => 'required|in:full_time,part_time,contract,intern',
-            'salary' => 'required|numeric|min:0',
-            'position' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:50',
-            'address' => 'nullable|string|max:255',
-        ]);
+            $validated = $request->validate([
+                'branch_id' => 'required|exists:branches,id',
+                'department_id' => 'required|exists:departments,id',
+                'role_id' => 'required|exists:roles,id',
+                'hire_date' => 'required|date',
+                'pay_type' => 'nullable|in:monthly,hourly,hybrid',
+                'employment_type' => 'required|in:full_time,part_time,contract,intern',
+                'salary' => 'required|numeric|min:0',
+                'position' => 'required|string|max:255',
+                'phone' => 'nullable|string|max:50',
+                'address' => 'nullable|string|max:255',
+                'government_id_type' => 'nullable|string|max:50',
+                'government_id_number' => 'nullable|string|max:100',
+                'id_document' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            ]);
 
         if ($application->employee_id) {
             return response()->json([
@@ -182,8 +185,18 @@ class RecruitmentController extends Controller
                 'salary' => $validated['salary'],
                 'pay_type' => $validated['pay_type'] ?? 'monthly',
                 'hourly_rate' => isset($validated['pay_type']) && $validated['pay_type'] === 'hourly' ? $validated['salary'] / 160 : null,
+                'government_id_type' => $validated['government_id_type'] ?? null,
+                'government_id_number' => $validated['government_id_number'] ?? null,
+                'government_id_path' => null,
+                'government_id_status' => 'pending',
                 'status' => 'active',
             ]);
+
+            if ($request->hasFile('id_document')) {
+                $employee->government_id_path = $request->file('id_document')->store("hr/employee-ids/{$employee->id}", 'public');
+                $employee->id_document_path = $employee->government_id_path;
+                $employee->save();
+            }
 
             $this->applyStoreDeductions($employee, $storeId, $hrUser->id);
             $this->applyDefaultLeaveBalances($employee, $storeId, $hrUser->id, (int) date('Y', strtotime($validated['hire_date'])));

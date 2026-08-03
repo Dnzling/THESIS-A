@@ -3,14 +3,16 @@
 namespace App\Models\Store;
 
 use App\Models\Core\User;
+use App\Models\Admin\SubscriptionPlan;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Store extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $primaryKey = 'id';
     public $incrementing = true;
@@ -27,8 +29,13 @@ class Store extends Model
         'status',
         'subscription_tier',
         'subscription_ends_at',
+        'trial_started_at',
+        'trial_ends_at',
         'longitude',
         'latitude',
+        'deactivation_reason',
+        'deactivated_at',
+        'deactivated_by',
         'verified_at',
         'verified_by',
         'settings',
@@ -42,6 +49,9 @@ class Store extends Model
         'updated_at' => 'datetime',
         'verified_at' => 'datetime',
         'subscription_ends_at' => 'date',
+        'trial_started_at' => 'datetime',
+        'trial_ends_at' => 'datetime',
+        'deactivated_at' => 'datetime',
         'settings' => 'array',
     ];
 
@@ -89,6 +99,11 @@ class Store extends Model
     public function products()
     {
         return $this->hasMany(Product::class, 'store_id', 'id');
+    }
+
+    public function subscriptionPlan()
+    {
+        return $this->belongsTo(SubscriptionPlan::class, 'subscription_tier', 'id');
     }
 
     public function sales()
@@ -251,5 +266,41 @@ class Store extends Model
     {
         $this->update(['status' => 'inactive']);
         return $this;
+    }
+
+    public function getSubscriptionTierAttribute($value)
+    {
+        if ($value === null || $value === '') {
+            return 'free';
+        }
+
+        if (is_numeric($value)) {
+            $plan = $this->relationLoaded('subscriptionPlan')
+                ? $this->getRelation('subscriptionPlan')
+                : SubscriptionPlan::query()->find((int) $value);
+
+            return $plan?->plan_key ?? 'free';
+        }
+
+        return (string) $value;
+    }
+
+    public function setSubscriptionTierAttribute($value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['subscription_tier'] = null;
+            return;
+        }
+
+        if (is_numeric($value)) {
+            $this->attributes['subscription_tier'] = (int) $value;
+            return;
+        }
+
+        $planId = SubscriptionPlan::query()
+            ->where('plan_key', strtolower(trim((string) $value)))
+            ->value('id');
+
+        $this->attributes['subscription_tier'] = $planId ? (int) $planId : null;
     }
 }

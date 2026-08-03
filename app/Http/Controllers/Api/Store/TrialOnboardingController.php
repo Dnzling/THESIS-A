@@ -8,29 +8,11 @@ use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
 
 class TrialOnboardingController extends Controller
 {
-    private const FIXED_TRIAL_MODULES = [
-        'inventory',
-        'sales',
-        'procurement',
-        'finance',
-        'hr',
-    ];
-
-    private const ALL_STORE_MODULES = [
-        'inventory',
-        'procurement',
-        'sales',
-        'hr',
-        'logistics',
-        'finance',
-        'supplier',
-        'ecommerce',
-    ];
-
     public function show(Request $request)
     {
         $profile = TrialOnboardingProfile::where('user_id', $request->user()->id)->first();
@@ -44,7 +26,10 @@ class TrialOnboardingController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'plan' => 'required|string|in:simple,unlimited',
+            'plan' => 'required|string|exists:subscription_plans,plan_key',
+            'setup_mode' => 'nullable|string|in:free,paid',
+            'store_name' => 'required|string|max:255',
+            'store_type' => 'required|string|max:100',
             'employee_range' => 'nullable|string|max:30',
             'branch_range' => 'nullable|string|max:30',
             'modules' => 'nullable|array',
@@ -54,9 +39,8 @@ class TrialOnboardingController extends Controller
         ]);
 
         $selectedPlan = strtolower((string) ($validated['plan'] ?? 'simple'));
-        $fixedModules = $selectedPlan === 'unlimited'
-            ? self::ALL_STORE_MODULES
-            : self::FIXED_TRIAL_MODULES;
+        $setupMode = strtolower((string) ($validated['setup_mode'] ?? 'free'));
+        $fixedModules = app(ModuleAccessService::class)->enabledModuleKeysForPlan($selectedPlan);
         $employeeRange = $validated['employee_range'] ?? '1-5';
 
         $profile = null;
@@ -79,15 +63,30 @@ class TrialOnboardingController extends Controller
 
             if (!$user->store_id) {
                 $storeCode = 'TRIAL-' . str_pad((string) $user->id, 6, '0', STR_PAD_LEFT);
-                $storeName = 'Trial Store ' . $user->id;
+                $storeName = trim((string) $validated['store_name']);
+                $storeType = trim((string) $validated['store_type']);
 
+                $subscriptionTier = $setupMode === 'paid' ? $selectedPlan : 'free';
                 $store = Store::create([
                     'name' => $storeName,
                     'store_code' => $storeCode,
-                    'type' => 'trial',
+                    'type' => $storeType,
                     'status' => 'pending',
-                    'subscription_tier' => strtolower((string) $validated['plan']),
+                    'subscription_tier' => $subscriptionTier,
                 ]);
+
+                if ($setupMode === 'free') {
+                    $trialFields = [
+                        'subscription_ends_at' => now()->addDays(7)->toDateString(),
+                    ];
+                    if (Schema::hasColumn('stores', 'trial_started_at')) {
+                        $trialFields['trial_started_at'] = now();
+                    }
+                    if (Schema::hasColumn('stores', 'trial_ends_at')) {
+                        $trialFields['trial_ends_at'] = now()->addDays(7);
+                    }
+                    $store->forceFill($trialFields)->save();
+                }
 
                 $branchCode = $storeCode . '-MAIN';
                 $branch = Branch::create([
@@ -108,10 +107,28 @@ class TrialOnboardingController extends Controller
             } else {
                 $store = $user->store;
                 if ($store) {
-                    $store->subscription_tier = strtolower((string) $validated['plan']);
-                    $store->save();
-                    app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+                if ($setupMode === 'free') {
+                    $store->subscription_tier = 'free';
+                    $store->subscription_ends_at = now()->addDays(7)->toDateString();
+                    if (Schema::hasColumn('stores', 'trial_started_at')) {
+                        $store->trial_started_at = $store->trial_started_at ?? now();
+                    }
+                    if (Schema::hasColumn('stores', 'trial_ends_at')) {
+                        $store->trial_ends_at = now()->addDays(7);
+                    }
+                } else {
+                    $store->subscription_tier = $selectedPlan;
+                    $store->subscription_ends_at = null;
+                    if (Schema::hasColumn('stores', 'trial_started_at')) {
+                        $store->trial_started_at = null;
+                    }
+                    if (Schema::hasColumn('stores', 'trial_ends_at')) {
+                        $store->trial_ends_at = null;
+                    }
                 }
+                $store->save();
+                app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+            }
             }
         });
 

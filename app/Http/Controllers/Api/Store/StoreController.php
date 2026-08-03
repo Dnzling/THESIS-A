@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
+use App\Models\Admin\SubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
 
 class StoreController extends Controller
@@ -92,9 +94,12 @@ class StoreController extends Controller
             ];
 
             $payload['settings'] = $storeSettings;
-            if (!empty($validated['plan'])) {
-                $payload['subscription_tier'] = strtolower((string) $validated['plan']);
-            }
+            $payload['subscription_tier'] = !empty($validated['plan'])
+                ? strtolower((string) $validated['plan'])
+                : 'free';
+            $payload['subscription_ends_at'] = now()->addDays(7)->toDateString();
+            $payload['trial_started_at'] = now();
+            $payload['trial_ends_at'] = now()->addDays(7);
 
             $store = Store::create($payload);
 
@@ -153,6 +158,42 @@ class StoreController extends Controller
                 'message' => 'Store registration failed',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    public function updateSubscription(Request $request, Store $store)
+    {
+        try {
+            $validated = $request->validate([
+                'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
+                'setup_mode' => 'nullable|string|in:free,paid',
+            ]);
+
+            $setupMode = strtolower((string) ($validated['setup_mode'] ?? 'free'));
+            $store->subscription_tier = strtolower((string) $validated['subscription_tier']);
+            $store->subscription_ends_at = $setupMode === 'free' ? now()->addDays(7)->toDateString() : null;
+
+            if (Schema::hasColumn('stores', 'trial_started_at')) {
+                $store->trial_started_at = $setupMode === 'free' ? now() : null;
+            }
+            if (Schema::hasColumn('stores', 'trial_ends_at')) {
+                $store->trial_ends_at = $setupMode === 'free' ? now()->addDays(7) : null;
+            }
+
+            $store->save();
+            app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store subscription updated successfully',
+                'data' => $store->fresh(),
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
         }
     }
 

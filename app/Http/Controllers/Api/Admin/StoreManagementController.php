@@ -124,14 +124,16 @@ class StoreManagementController extends Controller
         ]);
     }
 
-    public function show(Store $store): JsonResponse
+    public function show(string $store): JsonResponse
     {
         if (!auth()->user()?->hasRole('super_admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
+        $store = Store::withTrashed()->findOrFail((int) $store);
+
         $store->load([
-            'products:id,store_id,sku,product_name,is_active,cost_price,tax_rate,created_at',
+            'products:id,store_id,sku,product_name,is_active,cost_price,created_at',
         ]);
 
         $store->loadCount([
@@ -155,7 +157,6 @@ class StoreManagementController extends Controller
                         'product_name' => $product->product_name,
                         'is_active' => (bool) $product->is_active,
                         'cost_price' => (float) ($product->cost_price ?? 0),
-                        'tax_rate' => (float) ($product->tax_rate ?? 0),
                         'created_at' => optional($product->created_at)->toDateTimeString(),
                     ];
                 })->values(),
@@ -169,6 +170,58 @@ class StoreManagementController extends Controller
                     'age_days' => $this->storeAgeDays($store),
                 ],
             ],
+        ]);
+    }
+
+    public function deactivate(Request $request, string $store): JsonResponse
+    {
+        if (!auth()->user()?->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:2000'],
+        ]);
+
+        $storeModel = Store::withTrashed()->findOrFail((int) $store);
+        $storeModel->update([
+            'status' => 'inactive',
+            'deactivation_reason' => trim((string) $validated['reason']),
+            'deactivated_at' => now(),
+            'deactivated_by' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Store deactivated successfully.',
+            'data' => [
+                'store' => $this->formatStore($storeModel->fresh(['users', 'products']), $this->customerCountForStore((int) $storeModel->id)),
+            ],
+        ]);
+    }
+
+    public function destroy(Request $request, string $store): JsonResponse
+    {
+        if (!auth()->user()?->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:2000'],
+        ]);
+
+        $storeModel = Store::withTrashed()->findOrFail((int) $store);
+        $storeModel->update([
+            'status' => 'inactive',
+            'deactivation_reason' => trim((string) $validated['reason']),
+            'deactivated_at' => now(),
+            'deactivated_by' => $request->user()?->id,
+        ]);
+        $storeModel->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Store deleted successfully.',
         ]);
     }
 

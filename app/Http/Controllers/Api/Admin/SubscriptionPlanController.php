@@ -7,6 +7,7 @@ use App\Models\Admin\SubscriptionPlan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\Modules\ModuleAccessService;
 
 class SubscriptionPlanController extends Controller
 {
@@ -17,6 +18,7 @@ class SubscriptionPlanController extends Controller
         }
 
         $plans = SubscriptionPlan::query()
+            ->whereNull('deleted_at')
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -28,6 +30,10 @@ class SubscriptionPlanController extends Controller
     {
         if (!auth()->user()?->hasRole('super_admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if ($subscriptionPlan->trashed()) {
+            return response()->json(['success' => false, 'message' => 'Plan not found.'], 404);
         }
 
         $modules = DB::table('modules')
@@ -208,14 +214,65 @@ class SubscriptionPlanController extends Controller
         ]);
     }
 
+    public function destroy(SubscriptionPlan $subscriptionPlan): JsonResponse
+    {
+        if (!auth()->user()?->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if ($subscriptionPlan->trashed()) {
+            return response()->json(['success' => false, 'message' => 'Plan not found.'], 404);
+        }
+
+        $subscriptionPlan->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Plan deleted successfully.',
+        ]);
+    }
+
     public function publicIndex(): JsonResponse
     {
         $plans = SubscriptionPlan::query()
             ->where('is_active', true)
+            ->whereNull('deleted_at')
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
         return response()->json(['success' => true, 'data' => $plans]);
+    }
+
+    public function publicModules(string $planKey): JsonResponse
+    {
+        $planKey = strtolower(trim($planKey));
+        $plan = SubscriptionPlan::query()
+            ->where('plan_key', $planKey)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$plan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Plan not found.',
+            ], 404);
+        }
+
+        $keys = app(ModuleAccessService::class)->enabledModuleKeysForPlan($planKey);
+        $modules = DB::table('modules')
+            ->whereIn('key', $keys)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'key', 'name', 'description']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'plan' => $plan,
+                'modules' => $modules,
+            ],
+        ]);
     }
 }

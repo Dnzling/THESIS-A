@@ -28,6 +28,9 @@ class Product extends Model
         'product_type',
         'brand',
         'collection_name',
+        'unit_of_measurement',
+        'supplier_name',
+        'initial_stock',
         'base_price',
         'cost_price',
         'discounted_price',
@@ -60,6 +63,7 @@ class Product extends Model
     protected $casts = [
         'base_price' => 'decimal:2',
         'cost_price' => 'decimal:2',
+        'initial_stock' => 'decimal:2',
         'discounted_price' => 'decimal:2',
         'pending_base_price' => 'decimal:2',
         'pending_discounted_price' => 'decimal:2',
@@ -179,6 +183,25 @@ class Product extends Model
     {
         return $query->where('category_id', $categoryId)
             ->orWhere('subcategory_id', $categoryId);
+    }
+
+    public function scopeByProductType($query, $productType)
+    {
+        return $query->when($productType, function ($q) use ($productType) {
+            $q->where('product_type', $productType);
+        });
+    }
+
+    public function scopeAvailableInBranch($query, $branchId)
+    {
+        if (empty($branchId)) {
+            return $query;
+        }
+
+        return $query->whereHas('inventory', function ($q) use ($branchId) {
+            $q->where('branch_id', (int) $branchId)
+              ->where('quantity_available', '>', 0);
+        });
     }
 
     public function scopePriceRange($query, $min, $max)

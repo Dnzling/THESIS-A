@@ -2,7 +2,7 @@
   <nav class="border-b border-slate-200/70 bg-white/95 backdrop-blur">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
       <router-link to="/" class="flex items-center gap-3" @click="closeMobileMenu">
-          <img src="/Logo Landscape.png" alt="FurniSync" class="h-full w-32 object-contain p-1" />
+           <span class="portal-brand text-orange-500 text-xl">FURNISYNC</span>
       </router-link>
 
       <div class="hidden items-center gap-6 md:flex">
@@ -22,10 +22,10 @@
           Log In
         </router-link>
         <router-link
-          to="/register?plan=simple&trial=1"
+          to="/register"
           class="rounded-full bg-gradient-to-r from-orange-500 to-orange-400 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-orange-500"
         >
-          Sign Up
+          Get Started
         </router-link>
       </div>
 
@@ -137,5 +137,10 @@ watch(() => route.path, closeMobileMenu)
 .mobile-link-active {
   background: #ecfeff;
   color: #0f172a;
+}
+
+.portal-brand {
+  font-family: 'Barabara', sans-serif;
+
 }
 </style>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin\SubscriptionPlan;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Models\Admin\ViolationReport;
@@ -30,7 +31,9 @@ class SubscriptionManagementController extends Controller
         }
 
         if ($request->filled('tier')) {
-            $query->where('subscription_tier', (string) $request->input('tier'));
+            $tier = strtolower(trim((string) $request->input('tier')));
+            $planId = SubscriptionPlan::query()->where('plan_key', $tier)->value('id');
+            $query->when($planId, fn ($q) => $q->where('subscription_tier', $planId), fn ($q) => $q->whereRaw('1 = 0'));
         }
 
         if ($request->filled('status')) {
@@ -58,30 +61,42 @@ class SubscriptionManagementController extends Controller
         }
 
         $today = Carbon::today();
-        $expiringDate = Carbon::today()->addDays(14);
 
         $totalStores = Store::query()->count();
-        $activePaid = Store::query()
-            ->where('subscription_tier', '!=', 'free')
-            ->whereDate('subscription_ends_at', '>=', $today)
+        $paid = Store::query()
+            ->whereNotNull('subscription_tier')
+            ->whereHas('subscriptionPlan', function ($planQuery) {
+                $planQuery->where('plan_key', '!=', 'free');
+            })
+            ->where(function ($query) use ($today) {
+                $query->whereNull('subscription_ends_at')
+                    ->orWhereDate('subscription_ends_at', '>=', $today);
+            })
             ->count();
-        $expiringSoon = Store::query()
-            ->whereNotNull('subscription_ends_at')
-            ->whereDate('subscription_ends_at', '>=', $today)
-            ->whereDate('subscription_ends_at', '<=', $expiringDate)
-            ->count();
-        $expired = Store::query()
+        $overdue = Store::query()
+            ->whereNotNull('subscription_tier')
+            ->whereHas('subscriptionPlan', function ($planQuery) {
+                $planQuery->where('plan_key', '!=', 'free');
+            })
             ->whereNotNull('subscription_ends_at')
             ->whereDate('subscription_ends_at', '<', $today)
+            ->count();
+        $unpaid = Store::query()
+            ->where(function ($query) {
+                $query->whereNull('subscription_tier')
+                    ->orWhereHas('subscriptionPlan', function ($planQuery) {
+                        $planQuery->where('plan_key', 'free');
+                    });
+            })
             ->count();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'total_stores' => $totalStores,
-                'active_paid' => $activePaid,
-                'expiring_soon' => $expiringSoon,
-                'expired' => $expired,
+                'paid' => $paid,
+                'overdue' => $overdue,
+                'unpaid' => $unpaid,
             ],
         ]);
     }
@@ -93,18 +108,20 @@ class SubscriptionManagementController extends Controller
         }
 
         $validated = $request->validate([
-            'subscription_tier' => 'required|in:free,basic,premium,enterprise',
+            'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
             'subscription_ends_at' => 'nullable|date',
             'status' => 'nullable|in:pending,active,inactive,suspended,banned,verified,rejected',
         ]);
 
+        $planId = SubscriptionPlan::query()->where('plan_key', strtolower((string) $validated['subscription_tier']))->value('id');
+
         $store->update([
-            'subscription_tier' => $validated['subscription_tier'],
+            'subscription_tier' => $planId,
             'subscription_ends_at' => $validated['subscription_ends_at'] ?? null,
             'status' => $validated['status'] ?? $store->status,
         ]);
 
-        if ($validated['subscription_tier'] !== 'free') {
+        if (strtolower((string) $validated['subscription_tier']) !== 'free') {
             $this->activatePaidSubscription($store);
         }
 
@@ -149,17 +166,21 @@ class SubscriptionManagementController extends Controller
     {
         $today = Carbon::today();
         $endsAt = $store->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
+        $rawStatus = strtolower(trim((string) $store->status));
+        $displayStatus = $rawStatus === 'pending' ? 'unverified' : $store->status;
         $statusDetails = $this->getStatusDetailsForStore((int) $store->id, (string) $store->status);
 
         $subscriptionStatus = 'free';
         $daysRemaining = null;
-        if ($store->subscription_tier !== 'free') {
+        if (($store->subscriptionPlan?->plan_key ?? 'free') !== 'free') {
             if (!$endsAt) {
-                $subscriptionStatus = 'active';
+                $subscriptionStatus = 'paid';
             } else {
                 $daysRemaining = $today->diffInDays($endsAt, false);
-                $subscriptionStatus = $daysRemaining < 0 ? 'expired' : 'active';
+                $subscriptionStatus = $daysRemaining < 0 ? 'overdue' : 'paid';
             }
+        } else {
+            $subscriptionStatus = 'unpaid';
         }
 
         return [
@@ -168,8 +189,8 @@ class SubscriptionManagementController extends Controller
             'email' => $store->email,
             'contact_person' => $store->contact_person,
             'contact_number' => $store->contact_number,
-            'status' => $store->status,
-            'subscription_tier' => $store->subscription_tier ?? 'free',
+            'status' => $displayStatus,
+            'subscription_tier' => $store->subscriptionPlan?->plan_key ?? 'free',
             'subscription_ends_at' => optional($endsAt)->toDateString(),
             'subscription_status' => $subscriptionStatus,
             'days_remaining' => $daysRemaining,

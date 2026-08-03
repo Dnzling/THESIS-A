@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('suppliers')) {
+            return;
+        }
+
         // Create supplier_payments table
         if (!Schema::hasTable('supplier_payments')) {
             Schema::create('supplier_payments', function (Blueprint $table) {
@@ -33,6 +37,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (!Schema::hasTable('supplier_payments')) {
+            return;
+        }
+
         Schema::dropIfExists('supplier_payments');
     }
 };

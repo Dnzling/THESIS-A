@@ -37,7 +37,7 @@
     <template v-else-if="store">
       <div class="ml-auto flex items-center justify-end gap-1">
   
-        <Button label="Vouchers" severity="warn" text @click="goStoreVouchers" />
+        <!-- <Button label="Vouchers" severity="warn" text @click="goStoreVouchers" /> -->
         <Button label="Chat Store" severity="help" text @click="goChatStore" />
       </div>
       <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -164,7 +164,7 @@
         </div>
       </div>
   
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+      <!-- <div class="rounded-2xl border border-slate-200 bg-white p-4">
         <h2 class="mb-2 text-lg font-semibold text-slate-900">Store Vouchers</h2>
         <div v-if="!(store.vouchers || []).length" class="text-sm text-slate-500">No active vouchers.</div>
         <div v-else class="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -179,7 +179,7 @@
             </p>
           </div>
         </div>
-      </div>
+      </div> -->
     </template>
   </div>
 </template>

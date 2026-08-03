@@ -11,8 +11,8 @@
     <div class="relative z-10 space-y-6">
 
       <div>
-        <h1 class="text-4xl font-semibold leading-tight lg:text-5xl">
-          Furnisync
+        <h1 class="text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
+          FURNISYNC
         </h1>
         <p class="mt-4 max-w-md text-sm leading-relaxed opacity-90 lg:text-base">
           {{ subtitle }}
@@ -149,5 +149,10 @@ onBeforeUnmount(() => {
 
 section {
   font-family: 'Space Grotesk', sans-serif;
+}
+
+.portal-brand {
+  font-family: 'Barabara', sans-serif;
+
 }
 </style>

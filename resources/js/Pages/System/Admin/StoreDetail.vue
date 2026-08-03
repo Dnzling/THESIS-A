@@ -11,8 +11,16 @@
             <p class="ml-10 text-sm text-slate-500">Users, products, and performance summary.</p>
           </div>
           <div class="flex gap-2">
-            <!-- <Button icon="pi pi-sliders-h" label="Modules Override" severity="secondary" outlined @click="openModulesDialog" />
-            <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadStoreDetail" /> -->
+            <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadStoreDetail" />
+            <Button
+              :label="store.status === 'active' ? 'Deactivate' : 'Inactive'"
+              :icon="store.status === 'active' ? 'pi pi-ban' : 'pi pi-lock'"
+              :severity="store.status === 'active' ? 'warning' : 'secondary'"
+              outlined
+              :disabled="store.status !== 'active'"
+              @click="openDeactivateDialog"
+            />
+            <Button icon="pi pi-trash" label="Delete" severity="danger" outlined @click="openDeleteDialog" />
           </div>
         </div>
       </template>
@@ -29,7 +37,14 @@
           </div>
           <div>
             <p class="text-xs uppercase tracking-wide text-slate-500">Status</p>
-            <Tag :value="toTitle(store.status)" :severity="statusSeverity(store.status)" />
+            <Tag :value="displayStatus(store.status)" :severity="statusSeverity(store.status)" />
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-slate-500">Deactivation</p>
+            <Tag
+              :value="store.deleted_at ? 'Deleted' : store.deactivated_at ? 'Deactivated' : 'None'"
+              :severity="store.deleted_at ? 'danger' : store.deactivated_at ? 'warning' : 'secondary'"
+            />
           </div>
           <div>
             <p class="text-xs uppercase tracking-wide text-slate-500">Contact Person</p>
@@ -54,6 +69,10 @@
           <div>
             <p class="text-xs uppercase tracking-wide text-slate-500">Address</p>
             <p class="text-sm text-slate-700">{{ store.address || '-' }}</p>
+          </div>
+          <div class="md:col-span-2 xl:col-span-4" v-if="store.deactivation_reason">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Reason</p>
+            <p class="mt-1 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 whitespace-pre-line">{{ store.deactivation_reason }}</p>
           </div>
         </div>
       </template>
@@ -132,9 +151,6 @@
           <Column field="cost_price" header="Cost Price">
             <template #body="{ data }">{{ formatMoney(data.cost_price) }}</template>
           </Column>
-          <Column field="tax_rate" header="Tax Rate">
-            <template #body="{ data }">{{ Number(data.tax_rate || 0).toFixed(2) }}%</template>
-          </Column>
           <Column field="created_at" header="Created">
             <template #body="{ data }">{{ formatDateTime(data.created_at) }}</template>
           </Column>
@@ -166,23 +182,39 @@
       :store-id="store.id"
       :store-name="store.store_name"
     />
+
+    <Dialog v-model:visible="actionDialog.visible" modal :header="actionDialog.title" class="w-full max-w-lg">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600 whitespace-pre-line">{{ actionDialog.message }}</p>
+        <Textarea v-model="actionDialog.reason" autoResize rows="4" class="w-full" placeholder="Type the reason here" />
+        <Message v-if="actionDialog.error" severity="error" :closable="false">
+          {{ actionDialog.error }}
+        </Message>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="actionDialog.visible = false" />
+        <Button :label="actionDialog.confirmLabel" :severity="actionDialog.severity" :loading="actionDialog.loading" @click="submitAction" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
 import axiosClient from '@/axios'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
+import Dialog from 'primevue/dialog'
+import Textarea from 'primevue/textarea'
+import Message from 'primevue/message'
 import StoreModulesDialog from '@/Components/Admin/StoreModulesDialog.vue'
+import { showResponseDialog } from '@/utils/responseDialogBus'
 
 const route = useRoute()
 const router = useRouter()
-const toast = useToast()
 const loading = ref(false)
 const showModulesDialog = ref(false)
 
@@ -197,6 +229,17 @@ const performance = ref({
   products_active: 0,
   customers_total: 0,
   age_days: 0,
+})
+const actionDialog = ref({
+  visible: false,
+  mode: '' as 'deactivate' | 'delete' | '',
+  title: '',
+  message: '',
+  confirmLabel: 'Confirm',
+  severity: 'warning' as 'warning' | 'danger',
+  reason: '',
+  error: '',
+  loading: false,
 })
 
 const toTitle = (value: string | null | undefined) =>
@@ -214,11 +257,13 @@ const tierSeverity = (tier: string) => {
 }
 
 const statusSeverity = (status: string) => {
-  switch (status) {
+  const normalized = String(status || '').toLowerCase()
+  switch (normalized) {
     case 'active':
     case 'verified':
       return 'success'
     case 'pending':
+    case 'unverified':
       return 'warning'
     case 'rejected':
     case 'suspended':
@@ -226,6 +271,12 @@ const statusSeverity = (status: string) => {
     default:
       return 'secondary'
   }
+}
+
+const displayStatus = (value: string | null | undefined) => {
+  const normalized = String(value || '').toLowerCase()
+  if (normalized === 'pending') return 'Unverified'
+  return toTitle(value)
 }
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -261,14 +312,81 @@ const loadStoreDetail = async () => {
     customers.value = payload.customers || []
     performance.value = payload.performance || performance.value
   } catch (error: any) {
-    toast.add({
+    showResponseDialog({
       severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to load store detail',
-      life: 3000,
+      title: 'Failed to Load Store',
+      message: error?.response?.data?.message || 'Failed to load store detail',
     })
   } finally {
     loading.value = false
+  }
+}
+
+const openDeactivateDialog = () => {
+  actionDialog.value = {
+    ...actionDialog.value,
+    visible: true,
+    mode: 'deactivate',
+    title: store.value?.status === 'active' ? 'Deactivate Store' : 'Reactivate Store',
+    message:
+      store.value?.status === 'active'
+        ? 'This will mark the store as inactive. Please enter a reason so other users can understand why it was deactivated.'
+        : 'This will reactivate the store. Please enter a short reason for the status change.',
+    confirmLabel: store.value?.status === 'active' ? 'Deactivate' : 'Reactivate',
+    severity: 'warning',
+    reason: '',
+    error: '',
+    loading: false,
+  }
+}
+
+const openDeleteDialog = () => {
+  actionDialog.value = {
+    ...actionDialog.value,
+    visible: true,
+    mode: 'delete',
+    title: 'Delete Store',
+    message: 'This will soft delete the store. It will be hidden from normal lists but can still be restored later if needed. Please enter a reason.',
+    confirmLabel: 'Delete',
+    severity: 'danger',
+    reason: '',
+    error: '',
+    loading: false,
+  }
+}
+
+const submitAction = async () => {
+  if (!actionDialog.value.reason.trim()) {
+    actionDialog.value.error = 'Please provide a reason before continuing.'
+    return
+  }
+
+  actionDialog.value.loading = true
+  actionDialog.value.error = ''
+
+  try {
+    const storeId = route.params.id
+    if (actionDialog.value.mode === 'deactivate') {
+      await axiosClient.patch(`/api/admin/stores/${storeId}/deactivate`, { reason: actionDialog.value.reason })
+      showResponseDialog({
+        severity: 'success',
+        title: 'Store Updated',
+        message: 'The store has been deactivated successfully.',
+      })
+    } else if (actionDialog.value.mode === 'delete') {
+      await axiosClient.delete(`/api/admin/stores/${storeId}`, { data: { reason: actionDialog.value.reason } })
+      showResponseDialog({
+        severity: 'success',
+        title: 'Store Deleted',
+        message: 'The store has been soft deleted successfully.',
+      })
+    }
+    actionDialog.value.visible = false
+    await loadStoreDetail()
+  } catch (error: any) {
+    actionDialog.value.error = error?.response?.data?.message || 'Action failed. Please try again.'
+  } finally {
+    actionDialog.value.loading = false
   }
 }
 

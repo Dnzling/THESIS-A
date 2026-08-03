@@ -50,20 +50,20 @@
       </Card>
       <Card class="border border-slate-200 shadow-none">
         <template #content>
-          <p class="text-xs uppercase tracking-wide text-slate-500">Active Paid</p>
-          <p class="mt-2 text-3xl font-semibold text-emerald-600">{{ stats.active_paid }}</p>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Paid</p>
+          <p class="mt-2 text-3xl font-semibold text-emerald-600">{{ stats.paid }}</p>
         </template>
       </Card>
       <Card class="border border-slate-200 shadow-none">
         <template #content>
-          <p class="text-xs uppercase tracking-wide text-slate-500">Expiring in 14 days</p>
-          <p class="mt-2 text-3xl font-semibold text-amber-600">{{ stats.expiring_soon }}</p>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Overdue</p>
+          <p class="mt-2 text-3xl font-semibold text-rose-600">{{ stats.overdue }}</p>
         </template>
       </Card>
       <Card class="border border-slate-200 shadow-none">
         <template #content>
-          <p class="text-xs uppercase tracking-wide text-slate-500">Expired</p>
-          <p class="mt-2 text-3xl font-semibold text-rose-600">{{ stats.expired }}</p>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Unpaid</p>
+          <p class="mt-2 text-3xl font-semibold text-amber-600">{{ stats.unpaid }}</p>
         </template>
       </Card>
     </div>
@@ -131,9 +131,14 @@
               <div>
                 <p class="text-sm text-slate-800">{{ formatDate(data.subscription_ends_at) }}</p>
                 <p class="text-xs" :class="daysClass(data.days_remaining)">
-                  {{ daysLabel(data.days_remaining, data.subscription_tier) }}
+                  {{ subscriptionStatusLabel(data.subscription_status, data.days_remaining, data.subscription_tier) }}
                 </p>
               </div>
+            </template>
+          </Column>
+          <Column field="subscription_status" header="Billing Status" sortable>
+            <template #body="{ data }">
+              <Tag :value="toTitle(data.subscription_status)" :severity="subscriptionStatusSeverity(data.subscription_status)" />
             </template>
           </Column>
           <Column field="status" header="Store Status" sortable>
@@ -362,9 +367,9 @@ const stores = ref<any[]>([])
 const selectedStore = ref<any | null>(null)
 const stats = reactive({
   total_stores: 0,
-  active_paid: 0,
-  expiring_soon: 0,
-  expired: 0,
+  paid: 0,
+  overdue: 0,
+  unpaid: 0,
 })
 const plans = ref<any[]>([])
 const plansLoading = ref(false)
@@ -451,6 +456,15 @@ const tierSeverity = (tier: string) => {
   }
 }
 
+const subscriptionStatusSeverity = (status: string) => {
+  switch (String(status || '').toLowerCase()) {
+    case 'paid': return 'success'
+    case 'overdue': return 'danger'
+    case 'unpaid': return 'warning'
+    default: return 'secondary'
+  }
+}
+
 const storeStatusSeverity = (status: string) => {
   switch (status) {
     case 'active': return 'success'
@@ -478,7 +492,19 @@ const openStatusInfoDialog = (store: any) => {
   statusInfoDialog.value = true
 }
 
-const daysLabel = (daysRemaining: number | null, tier: string) => {
+const subscriptionStatusLabel = (subscriptionStatus: string, daysRemaining: number | null, tier: string) => {
+  const normalized = String(subscriptionStatus || '').toLowerCase()
+  if (normalized === 'paid') {
+    if (tier === 'free') return 'Free plan'
+    if (daysRemaining === null || daysRemaining === undefined) return 'Paid'
+    if (daysRemaining <= 14) return `${daysRemaining === 0 ? 'Expires today' : `${daysRemaining} day(s) left`}`
+    return `${daysRemaining} day(s) left`
+  }
+  if (normalized === 'overdue') {
+    if (daysRemaining === null || daysRemaining === undefined) return 'Overdue'
+    return `Overdue ${Math.abs(daysRemaining)} day(s)`
+  }
+  if (normalized === 'unpaid') return 'Unpaid / Free'
   if (tier === 'free') return 'Free plan'
   if (daysRemaining === null || daysRemaining === undefined) return 'No end date'
   if (daysRemaining < 0) return `Expired ${Math.abs(daysRemaining)} day(s) ago`
@@ -510,9 +536,9 @@ const loadStats = async () => {
     const response = await axiosClient.get('/api/admin/subscriptions/stats')
     const data = response.data?.data || {}
     stats.total_stores = Number(data.total_stores || 0)
-    stats.active_paid = Number(data.active_paid || 0)
-    stats.expiring_soon = Number(data.expiring_soon || 0)
-    stats.expired = Number(data.expired || 0)
+    stats.paid = Number(data.paid || 0)
+    stats.overdue = Number(data.overdue || 0)
+    stats.unpaid = Number(data.unpaid || 0)
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load stats', life: 3000 })
   }

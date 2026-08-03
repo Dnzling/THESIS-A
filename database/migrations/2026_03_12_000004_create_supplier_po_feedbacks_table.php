@@ -22,7 +22,7 @@ return new class extends Migration
             $table->integer('delivery_quantity')->nullable();
             $table->text('delivery_notes')->nullable();
             $table->timestamp('receipt_confirmed_at')->nullable();
-            $table->timestamp('submitted_at');
+            $table->timestamp('submitted_at')->nullable()->useCurrent();
             $table->timestamps();
 
             $table->foreign('supplier_portal_id')->references('id')->on('supplier_portals')->onDelete('cascade');

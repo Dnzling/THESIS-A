@@ -19,7 +19,7 @@
         <Column header="Override?">
           <template #body="{ data }">
             <div class="flex items-center gap-3">
-              <InputSwitch
+              <ToggleSwitch
                 :modelValue="draftOverrides[data.module_key] ?? data.effective_enabled === true"
                 @update:modelValue="(val: boolean) => onToggleDraft(data.module_key, val)"
                 :disabled="loading"

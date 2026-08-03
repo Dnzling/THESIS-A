@@ -27,6 +27,9 @@ class EmployeeCreditCardController extends Controller
         $validator = Validator::make($request->all(), [
             'card_number' => 'nullable|string|max:50',
             'card_type' => 'nullable|string|max:50',
+            'expiration_month' => 'nullable|digits:2',
+            'expiration_year' => 'nullable|digits:4',
+            'security_code' => 'nullable|string|max:10',
             'status' => 'nullable|in:active,inactive,pending',
             'metadata' => 'nullable|array',
             'assigned_at' => 'nullable|date',
@@ -71,6 +74,9 @@ class EmployeeCreditCardController extends Controller
             ],
             [
                 'card_number' => $cardNumber,
+                'expiration_month' => $request->expiration_month,
+                'expiration_year' => $request->expiration_year,
+                'security_code' => $request->security_code,
                 'status' => $request->status ?? 'active',
                 'metadata' => $request->metadata ?? [],
                 'assigned_at' => $request->assigned_at ?? now(),

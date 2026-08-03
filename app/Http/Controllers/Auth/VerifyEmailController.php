@@ -15,10 +15,22 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class VerifyEmailController extends Controller
 {
+    private function nextPathForRole($user): string
+    {
+        $roleName = strtolower((string) ($user?->role?->name ?? $user?->role_name ?? ''));
+
+        return match ($roleName) {
+            'customer' => '/customer/login',
+            'applicant' => '/job-portal/login',
+            'store_admin' => '/login',
+            default => '/login',
+        };
+    }
+
     /**
      * Get user from Bearer token in Authorization header
      */
-    private function getUserFromToken(Request $request)
+    private function getTokenFromRequest(Request $request): ?PersonalAccessToken
     {
         $token = $request->bearerToken();
         
@@ -26,8 +38,16 @@ class VerifyEmailController extends Controller
             return null;
         }
 
-        $accessToken = PersonalAccessToken::findToken($token);
-        
+        return PersonalAccessToken::findToken($token);
+    }
+
+    /**
+     * Get user from Bearer token in Authorization header
+     */
+    private function getUserFromToken(Request $request)
+    {
+        $accessToken = $this->getTokenFromRequest($request);
+
         if (!$accessToken) {
             return null;
         }
@@ -65,6 +85,7 @@ class VerifyEmailController extends Controller
 
         // Get user from Bearer token
         $user = $this->getUserFromToken($request);
+        $accessToken = $this->getTokenFromRequest($request);
 
         if (!$user) {
             return response()->json([
@@ -78,8 +99,10 @@ class VerifyEmailController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Email already verified',
-                'verified' => true
-            ], status: 201);
+                'verified' => true,
+                'requires_login' => true,
+                'next_path' => $this->nextPathForRole($user),
+            ], 200);
         }
 
         if (!$user->isValidOtp($request->otp)) {
@@ -97,9 +120,22 @@ class VerifyEmailController extends Controller
             event(new Verified($user));
         }
 
+        $user->loadMissing('role');
+        $roleName = strtolower((string) ($user->role?->name ?? $user->role_name ?? ''));
+        $nextPath = $this->nextPathForRole($user);
+
+        // OTP verification tokens are temporary; after verification, require login for a proper session token.
+        $requiresLogin = true;
+        if ($accessToken) {
+            $accessToken->delete();
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Email verified successfully!',
+            'requires_login' => $requiresLogin,
+            'next_path' => $nextPath,
+            'role' => $roleName,
             'user' => [
                 'user_id' => $user->user_id,
                 'name' => $user->fname . ' ' . $user->lname,
@@ -107,7 +143,7 @@ class VerifyEmailController extends Controller
                 'email_verified_at' => $user->email_verified_at,
                 'status' => $user->status
             ]
-        ], 201);
+        ], 200);
     }
 
     /**

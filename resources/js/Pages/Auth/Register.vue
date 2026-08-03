@@ -39,10 +39,15 @@ const handleRegister = async (formData: RegisterFormData) => {
 
     // Success
     localStorage.setItem('register_token', response.data.user.access_token)
-    localStorage.setItem('otp_context', 'saas')
+    const role = String(response.data.user?.role || '').toLowerCase()
+    localStorage.setItem('otp_context', role || 'saas')
 
-    const selectedPlan = getQueryParam('plan') || 'simple'
-    localStorage.setItem('trial_plan', selectedPlan)
+    localStorage.removeItem('selected_subscription_plan')
+    localStorage.removeItem('subscription_flow')
+    localStorage.removeItem('pending_subscription_plan')
+    localStorage.removeItem('pending_subscription_flow')
+    localStorage.removeItem('post_otp_redirect')
+    localStorage.setItem('onboarding_next_step', 'login')
 
     router.visit('/verify-otp')
 
