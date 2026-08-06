@@ -179,7 +179,7 @@ const canSubmit = computed(() => {
 const loadOptions = async () => {
   const [employeeRes, vehicleRes, zoneRes] = await Promise.all([
     logisticsService.getLogisticsEmployees(),
-    logisticsService.getVehicles({ per_page: 100 }),
+    logisticsService.getVehicles({ per_page: 100, status: 'active' }),
     logisticsService.getZones({ per_page: 200, is_active: true }),
   ])
 

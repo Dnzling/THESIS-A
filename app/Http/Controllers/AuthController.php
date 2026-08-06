@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use \Illuminate\Validation\ValidationException;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthController extends Controller
 {
@@ -168,7 +169,7 @@ class AuthController extends Controller
             $validated = $request->validate([
                 'fname' => 'required|string|max:255',
                 'lname' => 'required|string|max:255',
-                'email' => 'required|email|unique:users',
+                'email' => 'required|email',
                 'password' => 'required|string|min:8|max:255',
                 'role_id' => 'nullable|integer|exists:roles,id',
                 'birthday' => 'nullable|date|before_or_equal:today',
@@ -179,6 +180,18 @@ class AuthController extends Controller
 
             $targetRoleId = (int) ($validated['role_id'] ?? 2);
             $isCustomerRegistration = $targetRoleId === 16;
+            $existingUser = User::query()->where('email', $validated['email'])->first();
+
+            // A customer whose email has not been verified is still a pending
+            // registration. Allow them to retry and receive a fresh OTP.
+            if ($existingUser && (!$isCustomerRegistration
+                || (int) $existingUser->role_id !== 16
+                || $existingUser->email_verified_at !== null)) {
+                throw ValidationException::withMessages([
+                    'email' => ['The email has already been taken.'],
+                ]);
+            }
+
             if ($isCustomerRegistration) {
                 $birthday = $validated['birthday'] ?? null;
                 if (!$birthday) {
@@ -195,36 +208,44 @@ class AuthController extends Controller
                 }
             }
 
-            $user = DB::transaction(function () use ($validated) {
-                $user = User::create([
+            $user = DB::transaction(function () use ($validated, $existingUser) {
+                $attributes = [
                     'fname' => $validated['fname'],
                     'lname' => $validated['lname'],
-                    'email' => $validated['email'],
                     'birthday' => $validated['birthday'] ?? null,
                     'password' => Hash::make($validated['password']),
                     'role_id' => $validated['role_id'] ?? 2,
                     'is_active' => 1,
-                ]);
+                ];
+
+                if ($existingUser) {
+                    $existingUser->update($attributes);
+                    $user = $existingUser->fresh();
+                } else {
+                    $user = User::create($attributes + ['email' => $validated['email']]);
+                }
 
                 $user->loadMissing('role');
 
+                if ($user->hasRole('customer') || (int) $user->role_id === 16) {
+                    Customer::firstOrCreate(
+                        ['user_id' => $user->id],
+                        ['verification_status' => 'unverified']
+                    );
+                }
+
+                // Keep account creation atomic with OTP delivery. If the mail
+                // transport fails, the transaction rolls back the user and
+                // customer rows so the email can be registered again.
+                $otp = $user->generateOtp();
+                $mail = $user->hasRole('customer')
+                    ? new CustomerOtpVerificationMail($otp, $user->fname)
+                    : new OtpVerificationMail($otp, $user->fname);
+
+                Mail::to($user->email)->send($mail);
+
                 return $user;
             });
-
-            if ($user->hasRole('customer') || (int) $user->role_id === 16) {
-                Customer::firstOrCreate(
-                    ['user_id' => $user->id],
-                    ['verification_status' => 'unverified']
-                );
-            }
-
-            // Generate and send OTP
-            $otp = $user->generateOtp();
-            if ($user->hasRole('customer')) {
-                Mail::to($user->email)->send(new CustomerOtpVerificationMail($otp, $user->fname));
-            } else {
-                Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
-            }
 
             $user->load(['role' => function ($query) {
                 $query->select('id', 'name', 'display_name');
@@ -265,7 +286,29 @@ class AuthController extends Controller
             } else {
                 return back()->withErrors($e->errors())->withInput();
             }
+        } catch (TransportExceptionInterface $th) {
+            \Log::error('Registration OTP email delivery failed', [
+                'email' => $request->input('email'),
+                'exception' => get_class($th),
+                'message' => $th->getMessage(),
+            ]);
+
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to send the verification code. The email service is not configured correctly.',
+                    'error' => 'Configure a valid sender Gmail and Google App Password, then try again.',
+                ], 503);
+            }
+
+            return back()->with('error', 'Unable to send the verification code. Please try again later.')->withInput();
         } catch (\Throwable $th) {
+            \Log::error('Registration failed', [
+                'email' => $request->input('email'),
+                'exception' => get_class($th),
+                'message' => $th->getMessage(),
+            ]);
+
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api\Sales;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\EcommerceOrderReturn;
 use App\Models\Sales\SalesRefund;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SalesRefundController extends Controller
 {
@@ -39,8 +41,12 @@ class SalesRefundController extends Controller
         ]);
     }
 
-    public function show(SalesRefund $refund)
+    public function show(Request $request, SalesRefund $refund)
     {
+        if ((int) $refund->store_id !== (int) $request->user()?->store_id) {
+            abort(403, 'Unauthorized access to refund.');
+        }
+
         return response()->json([
             'data' => $refund,
         ]);
@@ -80,6 +86,10 @@ class SalesRefundController extends Controller
 
     public function updateStatus(Request $request, SalesRefund $refund)
     {
+        if ((int) $refund->store_id !== (int) $request->user()?->store_id) {
+            abort(403, 'Unauthorized access to refund.');
+        }
+
         $request->validate([
             'status' => ['required', 'in:approved,rejected'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -87,12 +97,41 @@ class SalesRefundController extends Controller
 
         $user = $request->user();
 
-        $refund->update([
-            'status' => $request->string('status'),
-            'notes' => $request->string('notes')->toString(),
-            'processed_by' => $user?->id,
-            'processed_at' => now(),
-        ]);
+        $status = $request->string('status')->toString();
+        $linkedReturn = null;
+
+        DB::transaction(function () use ($refund, $request, $user, $status, &$linkedReturn): void {
+            $refund->update([
+                'status' => $status,
+                'notes' => $request->string('notes')->toString(),
+                'processed_by' => $user?->id,
+                'processed_at' => now(),
+            ]);
+
+            if ($status === 'approved' && $refund->order_type === 'ecommerce_return') {
+                $linkedReturn = EcommerceOrderReturn::query()
+                    ->where('store_id', (int) $refund->store_id)
+                    ->lockForUpdate()
+                    ->find((int) $refund->order_id);
+
+                if ($linkedReturn && (string) $linkedReturn->status === 'received') {
+                    $linkedReturn->status = 'refunded';
+                    $linkedReturn->save();
+                }
+            }
+        });
+
+        if ($status === 'approved' && $linkedReturn?->user_id) {
+            $this->notify((int) $linkedReturn->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'ecommerce_order_return',
+                'entity_id' => (int) $linkedReturn->id,
+                'title' => 'Refund approved',
+                'message' => 'Your refund of ₱' . number_format((float) $refund->amount, 2) . ' has been approved.',
+                'severity' => 'success',
+                'store_id' => (int) $refund->store_id,
+            ]);
+        }
 
         return response()->json([
             'message' => 'Refund status updated.',

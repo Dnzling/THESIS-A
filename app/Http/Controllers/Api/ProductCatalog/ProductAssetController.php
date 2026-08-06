@@ -471,22 +471,47 @@ class ProductAssetController extends BaseController
             $asset = ProductAsset::findOrFail($id);
 
             // Build file path
-            $filePath = Storage::disk('public')->path($asset->file_path);
+            $disk = Storage::disk('public');
+            $filePath = $disk->path($asset->file_path);
+            $normalizedPath = ltrim(str_replace('\\', '/', (string) $asset->file_path), '/');
+            $legacyFilePath = public_path('storage/' . $normalizedPath);
+            $diskFileExists = $disk->exists($asset->file_path);
+            $legacyFileExists = !str_contains($normalizedPath, '..') && is_file($legacyFilePath);
 
             Log::info('Serving asset', [
                 'asset_id' => $id,
                 'file_path' => $asset->file_path,
                 'full_path' => $filePath,
-                'exists' => file_exists($filePath)
+                'exists' => $diskFileExists,
+                'legacy_exists' => $legacyFileExists,
             ]);
 
-            if (!file_exists($filePath)) {
-                Log::error('File not found', ['path' => $filePath]);
+            if (!$diskFileExists && !$legacyFileExists) {
+                Log::warning('Product asset file not found', [
+                    'asset_id' => $asset->id,
+                    'path' => $filePath,
+                ]);
+
+                if (in_array($asset->asset_type, ['Image_Main', 'Image_Gallery', 'Image_360'], true)) {
+                    return response()->file(public_path('product-placeholder.svg'), [
+                        'Content-Type' => 'image/svg+xml',
+                        'Cache-Control' => 'no-store',
+                    ]);
+                }
+
                 abort(404, 'File not found');
             }
 
+            // Older installations stored uploads directly in public/storage
+            // before the standard storage/app/public link was introduced.
+            if (!$diskFileExists) {
+                $filePath = $legacyFilePath;
+            }
+
             // Get MIME type
-            $mimeType = $asset->mime_type ?: Storage::disk('public')->mimeType($asset->file_path);
+            $mimeType = $asset->mime_type
+                ?: ($diskFileExists ? $disk->mimeType($asset->file_path) : mime_content_type($filePath))
+                ?: 'application/octet-stream';
 
             // Return file with CORS headers
             return response()->file($filePath, [
@@ -499,6 +524,8 @@ class ProductAssetController extends BaseController
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             Log::error('Asset not found', ['id' => $id]);
             abort(404, 'Asset not found');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Failed to serve asset', [
                 'asset_id' => $id,

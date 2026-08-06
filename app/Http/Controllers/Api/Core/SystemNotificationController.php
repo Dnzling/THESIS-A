@@ -19,9 +19,6 @@ class SystemNotificationController extends Controller
             $onlyUnread = $request->boolean('unread_only', false);
 
             $query = SystemNotification::where('user_id', $user->id);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
 
             if ($request->filled('module')) {
                 $query->where('module', $request->module);
@@ -52,13 +49,7 @@ class SystemNotificationController extends Controller
                     'per_page' => $notifications->perPage(),
                     'current_page' => $notifications->currentPage(),
                     'last_page' => $notifications->lastPage(),
-                    'unread_count' => (function () use ($user) {
-                        $q = SystemNotification::where('user_id', $user->id)->where('is_read', false);
-                        if (!is_null($user->store_id)) {
-                            $q->where('store_id', $user->store_id);
-                        }
-                        return $q->count();
-                    })(),
+                    'unread_count' => SystemNotification::where('user_id', $user->id)->where('is_read', false)->count(),
                 ],
             ], 200);
         } catch (\Exception $e) {
@@ -74,9 +65,6 @@ class SystemNotificationController extends Controller
         try {
             $user = auth()->user();
             $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
             $notification = $query->firstOrFail();
 
             return response()->json([
@@ -101,9 +89,6 @@ class SystemNotificationController extends Controller
         try {
             $user = auth()->user();
             $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
             $notification = $query->firstOrFail();
 
             $notification->markAsRead();
@@ -131,9 +116,6 @@ class SystemNotificationController extends Controller
         try {
             $user = auth()->user();
             $query = SystemNotification::where('user_id', $user->id)->where('is_read', false);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
             $updated = $query->update([
                     'is_read' => true,
                     'read_at' => now(),
@@ -157,9 +139,6 @@ class SystemNotificationController extends Controller
         try {
             $user = auth()->user();
             $query = SystemNotification::where('id', $id)->where('user_id', $user->id);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
             $notification = $query->firstOrFail();
 
             $notification->delete();
@@ -195,9 +174,6 @@ class SystemNotificationController extends Controller
             }
 
             $query = SystemNotification::where('user_id', $user->id)->whereIn('id', $ids);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
             $deleted = $query->delete();
 
             return response()->json([
@@ -218,9 +194,6 @@ class SystemNotificationController extends Controller
         try {
             $user = auth()->user();
             $query = SystemNotification::where('user_id', $user->id)->where('is_read', false);
-            if (!is_null($user->store_id)) {
-                $query->where('store_id', $user->store_id);
-            }
             $unreadCount = $query->count();
 
             return response()->json([

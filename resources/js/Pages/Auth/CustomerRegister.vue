@@ -162,7 +162,7 @@ async function submitRegister() {
       toast.add({
         severity: 'error',
         summary: 'Registration Failed',
-        detail: error?.response?.data?.message || 'Something went wrong. Please try again.',
+        detail: error?.response?.data?.error || error?.response?.data?.message || 'Something went wrong. Please try again.',
         life: 5000,
       })
     }

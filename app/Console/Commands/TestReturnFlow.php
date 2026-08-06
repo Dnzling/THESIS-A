@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use App\Http\Controllers\Api\Sales\SalesReturnController;
+use App\Http\Controllers\Api\Sales\SalesRefundController;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceOrderItem;
 use App\Models\Ecommerce\EcommerceOrder;
@@ -167,7 +168,7 @@ class TestReturnFlow extends Command
                 'amount' => 1000,
                 'reason' => 'Refund by smoke test',
                 'notes' => 'Processed by smoke test',
-                'mark_as_approved' => true,
+                'mark_as_approved' => false,
             ]);
             $refundReq->setUserResolver(fn () => $user);
             $refundRes = $salesController->refund($refundReq, EcommerceOrderReturn::query()->findOrFail($return->id));
@@ -178,6 +179,20 @@ class TestReturnFlow extends Command
             if ($refundAfter <= $refundBefore) {
                 throw new \RuntimeException('Expected sales_refunds record to be created.');
             }
+
+            $createdRefund = SalesRefund::query()
+                ->where('order_type', 'ecommerce_return')
+                ->where('order_id', $return->id)
+                ->latest('id')
+                ->firstOrFail();
+            $refundApprovalReq = Request::create("/api/sales/refunds/{$createdRefund->id}/status", 'PUT', [
+                'status' => 'approved',
+                'notes' => 'Approved by smoke test',
+            ]);
+            $refundApprovalReq->setUserResolver(fn () => $user);
+            $refundApprovalRes = app(SalesRefundController::class)->updateStatus($refundApprovalReq, $createdRefund);
+            $refundApprovalPayload = $refundApprovalRes->getData(true);
+            $this->line('Refund approved: ' . json_encode(['status' => $refundApprovalPayload['data']['status'] ?? null]));
 
             $returnFinal = EcommerceOrderReturn::query()->findOrFail($return->id);
             if ((string) $returnFinal->status !== 'refunded') {

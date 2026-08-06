@@ -666,7 +666,10 @@ const appliedVoucher = ref<AppliedVoucher | null>(null)
 const validatedDiscountAmount = ref(0)
 
 const selectedAddress = computed(() => addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null)
-const requiresVerification = computed(() => String(customerVerificationStatus.value || 'unverified').toLowerCase() !== 'verified')
+const requiresVerification = computed(() => {
+  const status = String(customerVerificationStatus.value || 'unverified').toLowerCase()
+  return !['verified', 'approved'].includes(status)
+})
 const selectedAddressSummary = computed(() =>
   selectedAddress.value
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
@@ -743,9 +746,12 @@ async function loadAddressTemplates() {
 
 async function loadCustomerVerificationStatus() {
   try {
-    const response = await axios.get('/api/profile')
-    customerVerificationStatus.value = String(response?.data?.data?.customer?.verification_status || 'unverified')
-  } catch {
+    const response = await ecommerceService.getCustomerProfile()
+    customerVerificationStatus.value = String(
+      response?.data?.data?.customer?.verification_status || 'unverified'
+    ).toLowerCase()
+  } catch (error) {
+    console.error('Failed to load customer verification status:', error)
     customerVerificationStatus.value = 'unverified'
   }
 }

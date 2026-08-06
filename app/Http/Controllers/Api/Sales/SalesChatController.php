@@ -125,6 +125,19 @@ class SalesChatController extends Controller
 
         $thread->update(['last_message_at' => $message->created_at]);
 
+        $preview = mb_strlen($messageBody) > 120 ? mb_substr($messageBody, 0, 117) . '...' : $messageBody;
+        $this->notify((int) $thread->customer_user_id, [
+            'store_id' => (int) $thread->store_id,
+            'module' => 'ecommerce',
+            'entity_type' => 'ecommerce_chat_thread',
+            'entity_id' => (int) $thread->id,
+            'action' => 'message_received',
+            'title' => 'New message from store',
+            'message' => $preview,
+            'severity' => 'info',
+            'link' => '/shop/chats?store_id=' . (int) $thread->store_id,
+        ]);
+
         return response()->json([
             'success' => true,
             'data' => $message,

@@ -25,13 +25,21 @@ ecommerceClient.interceptors.response.use(
     const status = error.response?.status
     if (status === 401) {
       const redirect = window.location.pathname + window.location.search
-      router.visit('/customer/login', { data: { redirect }, replace: true })
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('user')
+      document.cookie = 'auth_token=; Max-Age=0; path=/; SameSite=Lax'
+      router.visit(`/customer/login?redirect=${encodeURIComponent(redirect)}`, { replace: true })
     }
     return Promise.reject(error)
   },
 )
 
 const ecommerceService = {
+  getCustomerProfile() {
+    return ecommerceClient.get('/api/profile')
+  },
+
   getProducts(params?: any) {
     return ecommerceClient.get('/api/ecommerce/products', { params })
   },

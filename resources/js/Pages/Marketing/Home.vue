@@ -45,7 +45,7 @@
             </div>
 
             <div class="mt-10 flex flex-wrap gap-6 text-sm text-orange-50/90">
-              <div v-for="item in proofItems" :key="item.title" class="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur">
+              <div v-for="item in stats" :key="item.title" class="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur">
                 <p class="font-semibold text-white">{{ item.title }}</p>
                 <p>{{ item.sub }}</p>
               </div>

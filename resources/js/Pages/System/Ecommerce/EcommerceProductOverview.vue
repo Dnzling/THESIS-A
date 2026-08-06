@@ -324,8 +324,8 @@
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
 import ecommerceService from '@/services/ecommerce.service'
+import { useAuthStore } from '@/stores/auth'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -344,11 +344,14 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const loading = ref(false)
 const quantity = ref(1)
 const product = ref<any>(null)
 const selectedVariationId = ref<number | null>(null)
-const activeTab = ref<'description' | 'reviews' | 'recommended'>('description')
+const activeTab = ref<'description' | 'reviews' | 'recommended'>(
+  String(route.query.tab) === 'reviews' ? 'reviews' : (String(route.query.tab) === 'recommended' ? 'recommended' : 'description'),
+)
 const recommendedProducts = ref<any[]>([])
 const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_avg: number; rating_count: number } | null>(null)
 const show3DViewer = ref(false)
@@ -622,6 +625,7 @@ async function addToCart() {
     showAlert({ severity: 'warn', summary: 'Out of stock', detail: 'This item is out of stock.' })
     return
   }
+  if (!requireCustomerLogin()) return
   try {
     await ecommerceService.addToCart({
       product_id: Number(product.value.id),
@@ -631,7 +635,8 @@ async function addToCart() {
     })
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
     showAlert({ severity: 'success', summary: 'Added to cart', detail: `${product.value.product_name}` })
-  } catch {
+  } catch (error: any) {
+    if (Number(error?.response?.status) === 401) return
     showAlert({ severity: 'error', summary: 'Error', detail: 'Could not add to cart.' })
   }
 }
@@ -646,8 +651,9 @@ async function buyNow() {
     showAlert({ severity: 'warn', summary: 'Out of stock', detail: 'This item is out of stock.' })
     return
   }
+  if (!requireCustomerLogin()) return
   try {
-    const profileResponse = await axios.get('/api/profile')
+    const profileResponse = await ecommerceService.getCustomerProfile()
     const verificationStatus = String(profileResponse?.data?.data?.customer?.verification_status || 'unverified').toLowerCase()
     if (verificationStatus !== 'verified') {
       showAlert({
@@ -681,12 +687,22 @@ async function buyNow() {
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
     router.push({ name: 'ecommerce.checkout' })
   } catch (error: any) {
-    if (Number(error?.response?.status) === 401) {
-      router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
-      return
-    }
+    if (Number(error?.response?.status) === 401) return
     showAlert({ severity: 'error', summary: 'Error', detail: 'Could not process Buy Now.' })
   }
+}
+
+function requireCustomerLogin() {
+  const hasToken = Boolean(localStorage.getItem('auth_token') || localStorage.getItem('access_token'))
+  if (hasToken && authStore.isCustomer) return true
+
+  showAlert({
+    severity: 'info',
+    summary: 'Login required',
+    detail: 'Please sign in with your customer account to add items and continue to checkout.',
+  })
+  router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
+  return false
 }
 
 function goBack() {

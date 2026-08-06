@@ -59,6 +59,9 @@ Route::get('/customer/register', function () {
     return Inertia::render('Auth/CustomerRegister');
 })->name('customer.register');
 
+// Compatibility for older customer links; the canonical storefront is /shop.
+Route::redirect('/customer/shop', '/shop');
+
 Route::get('/supplier/register', function () {
     return Inertia::render('Auth/SupplierRegister');
 })->name('supplier.register');

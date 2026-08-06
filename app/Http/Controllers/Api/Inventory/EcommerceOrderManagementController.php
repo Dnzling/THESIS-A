@@ -807,6 +807,21 @@ class EcommerceOrderManagementController extends Controller
 
         $thread->update(['last_message_at' => $message->created_at]);
 
+        $preview = mb_strlen((string) $message->message) > 120
+            ? mb_substr((string) $message->message, 0, 117) . '...'
+            : (string) $message->message;
+        $this->notify((int) $order->user_id, [
+            'store_id' => (int) $order->store_id,
+            'module' => 'ecommerce',
+            'entity_type' => 'ecommerce_chat_thread',
+            'entity_id' => (int) $thread->id,
+            'action' => 'order_message_received',
+            'title' => 'New message about your order',
+            'message' => $preview,
+            'severity' => 'info',
+            'link' => '/shop/chats?store_id=' . (int) $order->store_id,
+        ]);
+
         return response()->json(['success' => true, 'data' => $message], 201);
     }
 

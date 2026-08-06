@@ -417,7 +417,6 @@ class EcommerceController extends Controller
                 'products.category_id',
                 'products.base_price',
                 'products.discounted_price',
-                'products.tax_rate',
                 'products.store_id'
             ])
             ->with([
@@ -457,10 +456,12 @@ class EcommerceController extends Controller
         $inventories = $this->getInventoryData($storeId, $productIds);
         $productImages = $this->getProductImages($storeId, $productIds);
         $product3dModels = $this->getProduct3dModels($storeId, $productIds);
+        $productRatings = $this->getProductRatingData($storeId, $productIds);
 
         // Transform results with pre-fetched data
-        $products->getCollection()->transform(function (Product $product) use ($storeId, $inventories, $productImages, $product3dModels) {
+        $products->getCollection()->transform(function (Product $product) use ($storeId, $inventories, $productImages, $product3dModels, $productRatings) {
             $inventory = $inventories[$product->id] ?? null;
+            $rating = $productRatings[$product->id] ?? ['rating_avg' => 0.0, 'rating_count' => 0];
             $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
 
             return [
@@ -471,9 +472,10 @@ class EcommerceController extends Controller
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
-                'tax_rate' => (float) ($product->tax_rate ?? 0),
                 'image' => $this->toAssetUrl($productImages[$product->id] ?? null),
                 'has_3d_model' => isset($product3dModels[$product->id]),
+                'rating_avg' => $rating['rating_avg'],
+                'rating_count' => $rating['rating_count'],
                 'quantity_available' => (int) ($inventory['quantity_available'] ?? 0),
                 'stock_status' => $inventory['stock_status'] ?? 'out_of_stock',
             ];
@@ -608,6 +610,31 @@ class EcommerceController extends Controller
             ->toArray();
 
         return $models;
+    }
+
+    /**
+     * Return published customer-review totals for all products on the current page.
+     */
+    private function getProductRatingData(int $storeId, array $productIds): array
+    {
+        if (empty($productIds)) {
+            return [];
+        }
+
+        return EcommerceProductReview::query()
+            ->selectRaw('product_id, COALESCE(AVG(rating), 0) as rating_avg, COUNT(*) as rating_count')
+            ->where('store_id', $storeId)
+            ->whereIn('product_id', $productIds)
+            ->where('status', 'published')
+            ->groupBy('product_id')
+            ->get()
+            ->mapWithKeys(fn (EcommerceProductReview $review) => [
+                (int) $review->product_id => [
+                    'rating_avg' => round((float) $review->rating_avg, 2),
+                    'rating_count' => (int) $review->rating_count,
+                ],
+            ])
+            ->all();
     }
 
 
@@ -806,6 +833,8 @@ class EcommerceController extends Controller
                         'count' => (int) ($breakdownRaw[$star] ?? 0),
                     ])->values(),
                 ],
+                'rating_avg' => round((float) ($reviewStats?->average_rating ?? 0), 2),
+                'rating_count' => (int) ($reviewStats?->total_reviews ?? 0),
                 'reviews' => $reviews,
             ],
         ]);
@@ -1361,9 +1390,12 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-        $customer = Customer::query()->where('user_id', $user->id)->first();
+        $customer = Customer::query()
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->first();
         $verificationStatus = strtolower((string) ($customer?->verification_status ?? 'unverified'));
-        if ($verificationStatus !== 'verified') {
+        if (!in_array($verificationStatus, ['verified', 'approved'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Your account must be verified before placing an order.',
@@ -2040,10 +2072,24 @@ class EcommerceController extends Controller
             ]
         );
 
+        $ratingSummary = EcommerceProductReview::query()
+            ->where('product_id', (int) $orderItem->product_id)
+            ->where('store_id', (int) $orderItem->order->store_id)
+            ->where('status', 'published')
+            ->selectRaw('COALESCE(AVG(rating), 0) as average_rating, COUNT(*) as total_reviews')
+            ->first();
+
         return response()->json([
             'success' => true,
             'message' => 'Review submitted successfully.',
-            'data' => $review,
+            'data' => [
+                'review' => $review->fresh(),
+                'product_rating' => [
+                    'product_id' => (int) $orderItem->product_id,
+                    'average_rating' => round((float) ($ratingSummary?->average_rating ?? 0), 2),
+                    'total_reviews' => (int) ($ratingSummary?->total_reviews ?? 0),
+                ],
+            ],
         ]);
     }
 

@@ -88,12 +88,22 @@ class SalesReviewController extends Controller
                     $customerName = trim(($review->user?->fname ?? '') . ' ' . ($review->user?->lname ?? ''));
                     $customerContact = (string) ($review->user?->phone_number ?: $review->user?->email ?: '');
 
-                    $salesReview = SalesReview::query()->firstOrNew([
-                        'order_type' => 'ecommerce',
-                        'order_id' => (int) $review->order_id,
-                        'product_id' => (int) $review->product_id,
-                        'created_by' => (int) $review->user_id,
-                    ]);
+                    $salesReview = SalesReview::query()
+                        ->where('store_id', $storeId)
+                        ->whereIn('order_type', ['ecommerce', 'ecommerce_order'])
+                        ->where('order_id', (int) $review->order_id)
+                        ->where('product_id', (int) $review->product_id)
+                        ->where('created_by', (int) $review->user_id)
+                        ->first();
+
+                    if (! $salesReview) {
+                        $salesReview = new SalesReview([
+                            'order_type' => 'ecommerce_order',
+                            'order_id' => (int) $review->order_id,
+                            'product_id' => (int) $review->product_id,
+                            'created_by' => (int) $review->user_id,
+                        ]);
+                    }
 
                     $existingStatus = (string) ($salesReview->status ?? 'pending');
 
@@ -141,6 +151,39 @@ class SalesReviewController extends Controller
             'replied_at' => now(),
             'status' => 'replied',
         ]);
+
+        if (! $review->created_by && in_array((string) $review->order_type, ['ecommerce', 'ecommerce_order'], true)) {
+            $customerId = EcommerceProductReview::query()
+                ->where('store_id', (int) $review->store_id)
+                ->where('order_id', (int) $review->order_id)
+                ->where('product_id', (int) $review->product_id)
+                ->value('user_id');
+
+            if ($customerId) {
+                $review->created_by = (int) $customerId;
+                $review->save();
+            }
+        }
+
+        if ($review->created_by) {
+            $productName = $review->product?->product_name ?: 'your purchased item';
+            $this->notify((int) $review->created_by, [
+                'store_id' => (int) $review->store_id,
+                'branch_id' => $review->branch_id ? (int) $review->branch_id : null,
+                'module' => 'ecommerce',
+                'entity_type' => 'product_review',
+                'entity_id' => (int) $review->id,
+                'action' => 'store_replied',
+                'title' => 'Store replied to your review',
+                'message' => "The store replied to your review for {$productName}: \"" . (string) $review->reply . '"',
+                'severity' => 'info',
+                'link' => '/shop/products/' . (int) $review->product_id . '?tab=reviews',
+                'data' => [
+                    'product_id' => (int) $review->product_id,
+                    'reply' => (string) $review->reply,
+                ],
+            ]);
+        }
 
         return response()->json([
             'message' => 'Reply saved.',

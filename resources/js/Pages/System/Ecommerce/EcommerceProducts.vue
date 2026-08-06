@@ -149,7 +149,7 @@
               </h3>
               <div class="flex items-center justify-between">
                 <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.price) }}</span>
-                <span class="text-[10px] text-slate-400 font-medium">{{ product.rating_count || 0 }} sold</span>
+                <span class="text-[10px] text-slate-400 font-medium">{{ product.rating_count || 0 }} reviews</span>
               </div>
             </div>
           </div>
@@ -347,4 +347,3 @@ async function loadProducts() {
 
 onMounted(loadProducts)
 </script>
-

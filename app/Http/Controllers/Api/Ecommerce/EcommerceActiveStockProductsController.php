@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\EcommerceProductReview;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Http\JsonResponse;
@@ -95,8 +96,17 @@ class EcommerceActiveStockProductsController extends Controller
             ->groupBy('product_id')
             ->map(fn($group) => $group->first());
 
-        $products->getCollection()->transform(function (Product $product) use ($inventoryMap) {
+        $ratingMap = EcommerceProductReview::query()
+            ->selectRaw('product_id, COALESCE(AVG(rating), 0) as rating_avg, COUNT(*) as rating_count')
+            ->whereIn('product_id', $productIds)
+            ->where('status', 'published')
+            ->groupBy('product_id')
+            ->get()
+            ->keyBy('product_id');
+
+        $products->getCollection()->transform(function (Product $product) use ($inventoryMap, $ratingMap) {
             $inventory = $inventoryMap->get($product->id);
+            $rating = $ratingMap->get($product->id);
             $imageAsset = $this->selectBestImage($product);
 
             return [
@@ -111,6 +121,8 @@ class EcommerceActiveStockProductsController extends Controller
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
                 // Prefer the signed/served asset URL to avoid relying on /storage symlinks in production.
                 'image' => $imageAsset?->url ? (string) $imageAsset->url : $this->toAssetUrl($imageAsset?->file_path),
+                'rating_avg' => round((float) ($rating?->rating_avg ?? 0), 2),
+                'rating_count' => (int) ($rating?->rating_count ?? 0),
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'stock_status' => (string) ($inventory?->stock_status ?? 'out_of_stock'),
             ];

@@ -367,14 +367,15 @@ $inertia('/shop/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProd
 $inertia('/shop/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
 $inertia('/shop/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
 
-Route::middleware('auth:sanctum')->group(function () use ($inertia) {
-    $inertia('/shop/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
-    $inertia('/shop/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
-    $inertia('/shop/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
-    $inertia('/shop/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
-    $inertia('/shop/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
-    $inertia('/shop/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
-    $inertia('/shop/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
-    $inertia('/shop/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
-    $inertia('/shop/profile', 'System/Ecommerce/EcommerceProfile', 'ecommerce.profile', 'My Profile');
-});
+// These page shells must remain reachable because customer authentication uses a
+// bearer token from localStorage. The protected ecommerce API routes still enforce
+// auth:sanctum and redirect unauthenticated customers from the client interceptor.
+$inertia('/shop/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
+$inertia('/shop/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
+$inertia('/shop/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
+$inertia('/shop/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
+$inertia('/shop/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
+$inertia('/shop/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
+$inertia('/shop/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
+$inertia('/shop/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
+$inertia('/shop/profile', 'System/Ecommerce/EcommerceProfile', 'ecommerce.profile', 'My Profile');

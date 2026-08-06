@@ -165,6 +165,12 @@
                     <span class="text-xs text-slate-500">{{ formatDate(notif.created_at) }}</span>
                   </div>
                   <p class="mt-1 text-xs text-slate-600">{{ notif.message || 'Tap to view details.' }}</p>
+                  <p
+                    v-if="notif.entity_type === 'product_review' && notif.data?.reply"
+                    class="mt-2 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm italic text-slate-700"
+                  >
+                    “{{ notif.data.reply }}”
+                  </p>
                 </button>
               </div>
             </div>
@@ -361,7 +367,12 @@ type AddressTemplate = {
 }
 
 const loading = ref(false)
-const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'verification' | 'returns' | 'cancellations'>('basic')
+const initialProfileSection = String(new URLSearchParams(window.location.search).get('section') || '').toLowerCase()
+const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'verification' | 'returns' | 'cancellations'>(
+  ['address', 'payment', 'notifications', 'verification', 'returns', 'cancellations'].includes(initialProfileSection)
+    ? initialProfileSection as any
+    : 'basic',
+)
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -542,7 +553,7 @@ async function loadNotifications() {
 
 function openNotificationsSection() {
   activeSection.value = 'notifications'
-  router.replace({ query: { ...route.query, section: 'notifications' } })
+  router.replace({ name: 'ecommerce.profile', query: { section: 'notifications' } })
   loadNotifications()
 }
 
@@ -967,15 +978,18 @@ onMounted(async () => {
   try {
     await Promise.all([loadProfile(), loadAddressTemplates(), loadOrders(), fetchProvinces()])
     const querySection = String(route.query?.section || '').toLowerCase() || getSectionFromUrl()
-    if (!querySection) {
+    if (querySection === 'notifications') {
+      activeSection.value = 'notifications'
+      await loadNotifications()
+    } else if (!querySection) {
       const remembered = String(localStorage.getItem('ecommerce_profile_section') || '').toLowerCase()
       if (remembered === 'notifications') {
         activeSection.value = 'notifications'
         await loadNotifications()
-        router.replace({ query: { ...route.query, section: 'notifications' } })
+        router.replace({ name: 'ecommerce.profile', query: { section: 'notifications' } })
       }
-      localStorage.removeItem('ecommerce_profile_section')
     }
+    localStorage.removeItem('ecommerce_profile_section')
   } finally {
     loading.value = false
   }

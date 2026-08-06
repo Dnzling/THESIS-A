@@ -12,7 +12,7 @@
         <div class="grid grid-cols-6 gap-1 py-2 text-[11px] font-medium text-slate-500">
           <button
             type="button"
-            class="flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
+            class="relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
             :class="isActive(['ecommerce.products']) ? 'text-orange-600' : 'hover:text-slate-900'"
             @click="goTo('ecommerce.products')"
           >
@@ -39,12 +39,18 @@
           </button>
           <button
             type="button"
-            class="flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
+            class="relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
             :class="isNotificationsActive ? 'text-orange-600' : 'hover:text-slate-900'"
             @click="goNotifications"
           >
             <i class="pi pi-bell text-lg" />
             <span>Notifs</span>
+            <Badge
+              v-if="unreadNotificationCount"
+              :value="unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)"
+              severity="danger"
+              class="!absolute !-top-1 !right-3"
+            />
           </button>
           <button
             type="button"
@@ -81,6 +87,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import ecommerceService from '@/services/ecommerce.service'
+import axiosClient from '@/axios'
 import EcommerceLayout from '@/Layouts/EcommerceLayout.vue'
 
 const route = useRoute()
@@ -89,6 +96,8 @@ const authStore = useAuthStore()
 
 const isLoggedIn = computed(() => authStore.isAuthenticated)
 const cartCount = ref(0)
+const unreadNotificationCount = ref(0)
+let notificationPoll: ReturnType<typeof setInterval> | null = null
 const isNotificationsActive = computed(() => String(route.name || '') === 'ecommerce.profile' && String(route.query?.section || '') === 'notifications')
 
 function isActive(names: string[]) {
@@ -113,7 +122,7 @@ function goNotifications() {
   } catch {
     // no-op
   }
-  router.push('/shop/profile?section=notifications')
+  router.push({ name: 'ecommerce.profile', query: { section: 'notifications' } })
 }
 
 async function loadCartCount() {
@@ -130,19 +139,44 @@ async function loadCartCount() {
   }
 }
 
+async function loadUnreadNotificationCount() {
+  if (!isLoggedIn.value) {
+    unreadNotificationCount.value = 0
+    return
+  }
+
+  try {
+    const response = await axiosClient.get('/api/notifications/unread', {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    unreadNotificationCount.value = Number(response.data?.data?.unread_count || 0)
+  } catch {
+    unreadNotificationCount.value = 0
+  }
+}
+
 function handleCartUpdated() {
   loadCartCount()
 }
 
-watch(() => route.fullPath, loadCartCount)
-watch(isLoggedIn, loadCartCount)
+watch(() => route.fullPath, () => {
+  loadCartCount()
+  loadUnreadNotificationCount()
+})
+watch(isLoggedIn, () => {
+  loadCartCount()
+  loadUnreadNotificationCount()
+})
 
 onMounted(() => {
   loadCartCount()
+  loadUnreadNotificationCount()
+  notificationPoll = setInterval(loadUnreadNotificationCount, 30000)
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
 })
 
 onUnmounted(() => {
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
+  if (notificationPoll) clearInterval(notificationPoll)
 })
 </script>

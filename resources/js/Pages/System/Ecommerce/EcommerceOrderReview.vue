@@ -87,11 +87,27 @@ async function submitReview() {
 
   submitting.value = true
   try {
-    await ecommerceService.submitItemReview(selectedItem.value.id, {
+    const response = await ecommerceService.submitItemReview(selectedItem.value.id, {
       rating: Number(form.rating),
       review_text: form.review_text.trim() || undefined,
     })
-    showAlert({ severity: 'success', summary: 'Submitted', detail: 'Thank you for your review!' })
+
+    const productRating = response.data?.data?.product_rating
+    if (productRating) {
+      window.dispatchEvent(new CustomEvent('ecommerce-product-rating-updated', {
+        detail: productRating,
+      }))
+    }
+
+    const average = Number(productRating?.average_rating || 0).toFixed(1)
+    const total = Number(productRating?.total_reviews || 0)
+    await showAlert({
+      severity: 'success',
+      summary: 'Rating Updated',
+      detail: productRating
+        ? `Your review is published. Product rating is now ${average}/5 from ${total} ${total === 1 ? 'review' : 'reviews'}.`
+        : 'Thank you for your review!',
+    })
     goBack()
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Unable to submit review.' })
@@ -106,4 +122,3 @@ function goBack() {
 
 onMounted(loadOrder)
 </script>
-

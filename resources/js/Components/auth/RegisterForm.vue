@@ -190,7 +190,7 @@ interface ValidationErrors {
   email?: string
   fname?: string
   lname?: string
-  birthday?: Date
+  birthday?: string
   password?: string
   confirmPassword?: string
 }
@@ -231,6 +231,7 @@ const validateForm = (): boolean => {
   validationErrors.fname = ''
   validationErrors.lname = ''
   validationErrors.email = ''
+  validationErrors.birthday = undefined
   validationErrors.password = ''
   validationErrors.confirmPassword = ''
 
@@ -241,6 +242,11 @@ const validateForm = (): boolean => {
 
   if (!formData.lname.trim()) {
     validationErrors.lname = 'Lastname is required'
+    isValid = false
+  }
+
+  if (!formData.birthday) {
+    validationErrors.birthday = 'Birthday is required'
     isValid = false
   }
 

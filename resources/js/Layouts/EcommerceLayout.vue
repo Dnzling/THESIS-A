@@ -120,7 +120,7 @@ function goNotifications() {
   } catch {
     // no-op
   }
-  router.push('/shop/profile?section=notifications')
+  router.push({ name: 'ecommerce.profile', query: { section: 'notifications' } })
 }
 
 function toggleProfilePopover(event: Event) {

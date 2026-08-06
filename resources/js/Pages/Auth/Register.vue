@@ -32,15 +32,15 @@ const handleRegister = async (formData: RegisterFormData) => {
       lname: formData.lname,
       email: formData.email,
       password: formData.password,
-      role_id: 2,
-      birthday: formData.birthday,
-      device_name: 'web-browswer'
+      role_id: 16,
+      birthday: formData.birthday ? new Date(formData.birthday).toISOString().slice(0, 10) : null,
+      device_name: 'web-browser'
     })
 
     // Success
     localStorage.setItem('register_token', response.data.user.access_token)
     const role = String(response.data.user?.role || '').toLowerCase()
-    localStorage.setItem('otp_context', role || 'saas')
+    localStorage.setItem('otp_context', role || 'customer')
 
     localStorage.removeItem('selected_subscription_plan')
     localStorage.removeItem('subscription_flow')
@@ -73,11 +73,10 @@ const handleRegister = async (formData: RegisterFormData) => {
       toast.add({
         severity: 'error',
         summary: 'Registration Failed',
-        detail: error.response?.data?.message || 'Something went wrong. Please try again.',
+        detail: error.response?.data?.error || error.response?.data?.message || 'Something went wrong. Please try again.',
         life: 5000
       })
     }
-    throw error
   } finally {
     isSubmitting.value = false
   }

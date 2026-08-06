@@ -34,7 +34,8 @@ class UnifiedDeliveryController extends Controller
 
     private const ORDER_SOURCES = ['ecommerce', 'sales'];
 
-    private const PENDING_ORDER_STATUSES = ['pending', 'pending_payment', 'confirmed', 'ready_for_dispatch'];
+    // Ecommerce orders must be reviewed by Sales before Logistics can dispatch them.
+    private const PENDING_ORDER_STATUSES = ['ready_for_dispatch'];
 
     public function orders(Request $request): JsonResponse
     {
