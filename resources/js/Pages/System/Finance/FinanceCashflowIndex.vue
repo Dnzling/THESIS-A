@@ -160,7 +160,7 @@
             :disabled="adjustForm.direction === 'in'"
           />
           <small v-if="adjustForm.direction === 'in'" class="text-xs text-gray-500 mt-1 block">
-            Top-up accepts PayMongo only.
+            Top-up accepts Online Payment only.
           </small>
         </div>
         <div>
@@ -176,7 +176,7 @@
           <Button
             type="submit"
             :severity="adjustForm.direction === 'in' ? 'success' : 'danger'"
-            :label="adjustForm.direction === 'in' ? 'Proceed to PayMongo' : 'Deduct Budget'"
+            :label="adjustForm.direction === 'in' ? 'Proceed to Online Payment' : 'Deduct Budget'"
             :loading="savingAdjustment || topupPaymongoLoading"
           />
         </div>
@@ -329,7 +329,7 @@ const formatPaymentMethod = (value: string) => {
     bank_transfer: 'Bank Transfer',
     credit_card: 'Credit Card',
     debit_card: 'Debit Card',
-    paymongo_gcash: 'PayMongo GCash',
+    paymongo_gcash: 'Online Payment GCash',
     gcash: 'GCash',
   }
   return map[value] || value.replace(/_/g, ' ').replace(/\b\w/g, (s) => s.toUpperCase())
@@ -429,7 +429,7 @@ const startPaymongoTopUp = async () => {
 
     topupPaymongoIntentId.value = intentResponse?.data?.data?.id || null
     if (!topupPaymongoIntentId.value) {
-      throw new Error(intentResponse?.message || 'Failed to create PayMongo top-up intent.')
+      throw new Error(intentResponse?.message || 'Failed to create Online Payment top-up intent.')
     }
 
     const gcashResponse = await paymongoService.startGcash(topupPaymongoIntentId.value, {
@@ -441,22 +441,22 @@ const startPaymongoTopUp = async () => {
 
     const redirectUrl = gcashResponse?.data?.redirect_url
     if (!redirectUrl) {
-      throw new Error('PayMongo checkout URL is missing.')
+      throw new Error('Online Payment checkout URL is missing.')
     }
 
     window.open(redirectUrl, '_blank')
     startTopupPaymongoPolling()
     toast.add({
       severity: 'info',
-      summary: 'PayMongo',
-      detail: 'Complete the payment in PayMongo checkout. Balance will update automatically after success.',
+      summary: 'Online Payment',
+      detail: 'Complete the payment in Online Payment checkout. Balance will update automatically after success.',
       life: 3500,
     })
   } catch (error: any) {
     toast.add({
       severity: 'error',
-      summary: 'PayMongo',
-      detail: error?.response?.data?.message || error?.message || 'Unable to start PayMongo top-up.',
+      summary: 'Online Payment',
+      detail: error?.response?.data?.message || error?.message || 'Unable to start Online Payment top-up.',
       life: 3500,
     })
   } finally {
@@ -495,7 +495,7 @@ const pollTopupPaymongoStatus = async () => {
       toast.add({
         severity: 'warn',
         summary: 'Top-up Not Completed',
-        detail: 'PayMongo payment was not completed.',
+        detail: 'Online payment was not completed.',
         life: 3000,
       })
     }

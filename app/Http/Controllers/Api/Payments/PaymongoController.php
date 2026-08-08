@@ -51,6 +51,13 @@ class PaymongoController extends Controller
 
     public function create(Request $request): JsonResponse
     {
+        if (!$this->service->isConfigured()) {
+            return response()->json([
+                'message' => 'Online Payment is not configured. Add the secret and public API keys to the server environment, then clear the configuration cache.',
+                'code' => 'ONLINE_PAYMENT_NOT_CONFIGURED',
+            ], 503);
+        }
+
         $data = $request->validate([
             'amount' => 'required|integer|min:1',
             'currency' => 'string|min:3|max:3',
@@ -99,7 +106,7 @@ class PaymongoController extends Controller
 
             if ((string) $invoice->status !== 'approved') {
                 return response()->json([
-                    'message' => 'PayMongo payment can only be created after invoice is approved.',
+                    'message' => 'Online payment can only be created after invoice is approved.',
                 ], 422);
             }
 
@@ -130,7 +137,7 @@ class PaymongoController extends Controller
             'payment_method_allowed' => $data['payment_method_allowed'],
         ];
 
-        // PayMongo rejects blank metadata, so only send it when it has values.
+        // Online Payment rejects blank metadata, so only send it when it has values.
         $normalizedMetadata = $this->normalizeMetadata($data['metadata'] ?? null);
         if (!empty($normalizedMetadata)) {
             $attributes['metadata'] = $normalizedMetadata;
@@ -145,12 +152,12 @@ class PaymongoController extends Controller
         $intentPayload = $this->service->createIntent($payload);
         $intentId = data_get($intentPayload, 'data.id');
 
-        // Do not persist anything when PayMongo returned an error payload.
+        // Do not persist anything when Online Payment returned an error payload.
         if (!$intentId) {
             $firstError = data_get($intentPayload, 'errors.0.detail');
 
             return response()->json([
-                'message' => $firstError ?: 'PayMongo intent creation failed.',
+                'message' => $firstError ?: 'Online Payment intent creation failed.',
                 'errors' => data_get($intentPayload, 'errors', []),
                 'raw' => $intentPayload,
             ], 422);
@@ -233,7 +240,7 @@ class PaymongoController extends Controller
 
             if ((string) $invoice->status !== 'approved') {
                 return response()->json([
-                    'message' => 'PayMongo payment can only be created after invoice is approved.',
+                    'message' => 'Online payment can only be created after invoice is approved.',
                 ], 422);
             }
 
@@ -303,7 +310,7 @@ class PaymongoController extends Controller
 
         if (!$checkoutUrl) {
             return response()->json([
-                'message' => data_get($sessionPayload, 'errors.0.detail', 'Unable to create PayMongo checkout session.'),
+                'message' => data_get($sessionPayload, 'errors.0.detail', 'Unable to create Online Payment checkout session.'),
                 'errors' => data_get($sessionPayload, 'errors', []),
                 'raw' => $sessionPayload,
             ], 422);
@@ -319,7 +326,7 @@ class PaymongoController extends Controller
             $retrievedExpiresAt = data_get($retrieved, 'data.attributes.expires_at') ?? data_get($retrieved, 'data.attributes.expiry');
         }
 
-        \Log::info('PayMongo checkout session created', [
+        \Log::info('Online Payment checkout session created', [
             'store_id' => $resolvedStoreId,
             'payable_type' => $data['payable_type'],
             'payable_id' => $data['payable_id'],
@@ -368,7 +375,7 @@ class PaymongoController extends Controller
 
         if (data_get($payload, 'errors.0.detail')) {
             return response()->json([
-                'message' => data_get($payload, 'errors.0.detail', 'Unable to retrieve PayMongo payment intent.'),
+                'message' => data_get($payload, 'errors.0.detail', 'Unable to retrieve Online Payment payment intent.'),
                 'errors' => data_get($payload, 'errors', []),
                 'data' => $payload,
             ], 502);
@@ -416,7 +423,7 @@ class PaymongoController extends Controller
                 $this->refreshIntentFromPaymongo($intent);
                 $intent = $intent->fresh();
             } catch (\Throwable $e) {
-                Log::warning('PayMongo latest sync failed.', [
+                Log::warning('Online Payment latest sync failed.', [
                     'intent_id' => $intent->payment_intent_id,
                     'error' => $e->getMessage(),
                 ]);
@@ -536,7 +543,7 @@ class PaymongoController extends Controller
      * Start a card payment by creating a card PaymentMethod and attaching it to a PaymentIntent.
      *
      * NOTE: This collects card data on our server and should only be used as a fallback for development/testing.
-     * Prefer PayMongo hosted checkout sessions for production to avoid handling card data.
+     * Prefer Online Payment hosted checkout sessions for production to avoid handling card data.
      */
     public function startCard(Request $request, string $paymentIntentId): JsonResponse
     {
@@ -689,7 +696,7 @@ class PaymongoController extends Controller
                     $payment
                 );
             } catch (\Throwable $e) {
-                Log::error('Sales order settlement failed after PayMongo paid event.', [
+                Log::error('Sales order settlement failed after Online Payment paid event.', [
                     'order_id' => $payment->sales_order_id,
                     'intent' => $intent->payment_intent_id,
                     'error' => $e->getMessage(),
@@ -729,7 +736,7 @@ class PaymongoController extends Controller
         }
 
         if ($previousStatus !== 'paid' && $nextOrderPaymentStatus === 'paid') {
-            // If the order was created as a PayMongo "pending snapshot" (no order items yet),
+            // If the order was created as a Online Payment "pending snapshot" (no order items yet),
             // finalize the order items + inventory only after successful payment.
             try {
                 $this->finalizeEcommerceOrderFromSnapshot($order);
@@ -983,7 +990,7 @@ class PaymongoController extends Controller
         $paymentAmount = (float) ($invoice->net_amount ?: $invoice->invoice_amount ?: 0);
 
         DB::transaction(function () use ($invoice, $intent, $paymentAmount) {
-            // Keep invoice state in sync with successful PayMongo payment.
+            // Keep invoice state in sync with successful Online Payment payment.
             $invoice->update([
                 'payment_status' => 'paid',
                 'payment_method' => 'paymongo_gcash',
@@ -1052,7 +1059,7 @@ class PaymongoController extends Controller
                     'invoice',
                     (int) $invoice->id,
                     auth()->id(),
-                    'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)) . ' via PayMongo',
+                    'Invoice payment ' . ($invoice->invoice_number ?? ('#' . $invoice->id)) . ' via Online Payment',
                     'paymongo_gcash',
                     [
                         'payment_intent_id' => $intent->payment_intent_id,
@@ -1137,7 +1144,7 @@ class PaymongoController extends Controller
             'cashflow_topup',
             (int) $intent->id,
             Auth::id(),
-            'Cashflow top-up via PayMongo',
+            'Cashflow top-up via Online Payment',
             'paymongo_gcash',
             [
                 'payment_intent_id' => $intent->payment_intent_id,

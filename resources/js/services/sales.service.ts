@@ -261,7 +261,7 @@ class SalesService {
     return res.data
   }
 
-  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected' | 'received' | 'refunded'; review_notes?: string }) {
+  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected' | 'received' | 'refunded'; return_type?: 'refund' | 'replacement'; review_notes?: string }) {
     const res = await axiosClient.put(`/api/sales/returns/${id}/status`, payload)
     return res.data
   }
@@ -271,7 +271,7 @@ class SalesService {
     return res.data
   }
 
-  async receiveReturn(id: number | string, payload: { received_quantity: number; condition: 'resellable' | 'damaged'; notes?: string }) {
+  async receiveReturn(id: number | string, payload: { received_quantity: number; condition: 'good' | 'bad'; notes?: string }) {
     const res = await axiosClient.post(`/api/sales/returns/${id}/receive`, payload)
     return res.data
   }

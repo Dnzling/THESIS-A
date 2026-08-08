@@ -187,7 +187,14 @@ class LogisticsService {
     return response.data
   }
 
-  async updateReturnPickup(id: string | number, payload: any) {
+  async updateReturnPickup(id: string | number, payload: {
+    status?: 'scheduled' | 'assigned' | 'picked_up' | 'cancelled'
+    scheduled_at?: string | null
+    pickup_name?: string
+    pickup_phone?: string
+    pickup_address?: string
+    notes?: string
+  }) {
     const response = await axiosClient.put(`${this.baseUrl}/return-pickups/${id}`, payload)
     return response.data
   }

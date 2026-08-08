@@ -283,7 +283,7 @@ const base64Encode = (value: string) => {
 const getPublicKey = async () => {
   const res = await paymongoService.getPublicKey()
   const key = String(res?.data?.public_key || '').trim()
-  if (!key) throw new Error('Missing PayMongo public key.')
+  if (!key) throw new Error('Missing Online Payment public key.')
   return key
 }
 

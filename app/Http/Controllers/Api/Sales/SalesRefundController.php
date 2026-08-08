@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\EcommerceOrderReturn;
 use App\Models\Sales\SalesRefund;
+use App\Services\Finance\CashflowService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -84,7 +85,7 @@ class SalesRefundController extends Controller
         ]);
     }
 
-    public function updateStatus(Request $request, SalesRefund $refund)
+    public function updateStatus(Request $request, SalesRefund $refund, CashflowService $cashflow)
     {
         if ((int) $refund->store_id !== (int) $request->user()?->store_id) {
             abort(403, 'Unauthorized access to refund.');
@@ -100,7 +101,33 @@ class SalesRefundController extends Controller
         $status = $request->string('status')->toString();
         $linkedReturn = null;
 
-        DB::transaction(function () use ($refund, $request, $user, $status, &$linkedReturn): void {
+        DB::transaction(function () use ($refund, $request, $user, $status, $cashflow, &$linkedReturn): void {
+            $refund = SalesRefund::query()->lockForUpdate()->findOrFail($refund->id);
+            if ((string) $refund->status !== 'pending') {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => ['Only a pending refund can be processed by Finance.'],
+                ]);
+            }
+
+            if ($status === 'approved') {
+                try {
+                    $cashflow->debit(
+                        (int) $refund->store_id,
+                        (float) $refund->amount,
+                        'sales_refund',
+                        (int) $refund->id,
+                        $user?->id,
+                        'Customer refund for ' . ($refund->order_number ?: ('request #' . $refund->id)),
+                        null,
+                        ['order_type' => $refund->order_type, 'order_id' => (int) $refund->order_id]
+                    );
+                } catch (\RuntimeException $exception) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'amount' => [$exception->getMessage()],
+                    ]);
+                }
+            }
+
             $refund->update([
                 'status' => $status,
                 'notes' => $request->string('notes')->toString(),
@@ -114,12 +141,15 @@ class SalesRefundController extends Controller
                     ->lockForUpdate()
                     ->find((int) $refund->order_id);
 
-                if ($linkedReturn && (string) $linkedReturn->status === 'received') {
+                if ($linkedReturn && in_array((string) $linkedReturn->status, ['received', 'refund_pending'], true)) {
                     $linkedReturn->status = 'refunded';
+                    $linkedReturn->resolved_at = now();
                     $linkedReturn->save();
                 }
             }
         });
+
+        $refund->refresh();
 
         if ($status === 'approved' && $linkedReturn?->user_id) {
             $this->notify((int) $linkedReturn->user_id, [
@@ -134,7 +164,9 @@ class SalesRefundController extends Controller
         }
 
         return response()->json([
-            'message' => 'Refund status updated.',
+            'message' => $status === 'approved'
+                ? 'Refund approved and recorded in Finance cashflow.'
+                : 'Refund rejected by Finance.',
             'data' => $refund,
         ]);
     }

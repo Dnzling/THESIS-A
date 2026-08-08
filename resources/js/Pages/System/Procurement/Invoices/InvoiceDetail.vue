@@ -463,7 +463,7 @@
                     I confirm this is the correct supplier bank account destination.
                   </label>
                 </div>
-                <p class="text-xs text-blue-700">PayMongo Status: <span class="font-medium">{{ paymongoInvoiceStatus }}</span></p>
+                <p class="text-xs text-blue-700">Online Payment Status: <span class="font-medium">{{ paymongoInvoiceStatus }}</span></p>
                 <button
                   :disabled="paymongoInvoiceLoading || !hasPaymentDestination || !confirmPaymentDestination"
                   class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
@@ -474,7 +474,7 @@
                 </button>
               </div>
               <div v-else class="bg-amber-50 rounded-lg p-4">
-                <p class="text-xs text-amber-700">PayMongo payment can be created only after invoice status is Approved.</p>
+                <p class="text-xs text-amber-700">Online payment can be created only after invoice status is Approved.</p>
               </div>
             </div>
           </div>
@@ -552,8 +552,8 @@ const effectivePaymentStatus = computed(() => {
 
 const paymongoInvoiceActionLabel = computed(() => {
   if (invoice.value?.payment_status === 'paid') return 'Invoice Paid'
-  if (!paymongoInvoiceIntentId.value) return 'Pay with PayMongo'
-  return 'Open PayMongo Checkout'
+  if (!paymongoInvoiceIntentId.value) return 'Pay with Online Payment'
+  return 'Open Online Payment Checkout'
 })
 
 const paymentDestination = computed(() => {
@@ -796,15 +796,15 @@ async function createInvoicePaymongoIntent() {
     invoiceMarkedPaidByPaymongo.value = false
 
     if (!paymongoInvoiceIntentId.value) {
-      throw new Error(intentResponse?.message || 'PayMongo intent was created without an ID.')
+      throw new Error(intentResponse?.message || 'Online Payment intent was created without an ID.')
     }
 
     startInvoicePaymongoPolling()
   } catch (error: any) {
     toast.add({
       severity: 'error',
-      summary: 'PayMongo',
-      detail: error?.response?.data?.message || error?.message || 'Failed to create PayMongo intent for invoice.',
+      summary: 'Online Payment',
+      detail: error?.response?.data?.message || error?.message || 'Failed to create Online Payment intent for invoice.',
       life: 3500,
     })
   } finally {
@@ -824,13 +824,13 @@ async function openInvoicePaymongoCheckout() {
     })
 
     const redirectUrl = response?.data?.redirect_url
-    if (!redirectUrl) throw new Error('PayMongo checkout URL is missing.')
+    if (!redirectUrl) throw new Error('Online Payment checkout URL is missing.')
     window.open(redirectUrl, '_blank')
   } catch (error: any) {
     toast.add({
       severity: 'error',
-      summary: 'PayMongo',
-      detail: error?.response?.data?.message || 'Unable to open PayMongo checkout.',
+      summary: 'Online Payment',
+      detail: error?.response?.data?.message || 'Unable to open Online Payment checkout.',
       life: 3500,
     })
   } finally {
@@ -883,7 +883,7 @@ async function pollInvoicePaymongoStatus() {
       await loadInvoice()
       toast.add({
         severity: 'success',
-        summary: 'PayMongo',
+        summary: 'Online Payment',
         detail: 'Invoice payment completed and expense updated.',
         life: 3500,
       })
@@ -893,7 +893,7 @@ async function pollInvoicePaymongoStatus() {
       stopInvoicePaymongoPolling()
     }
   } catch (error: any) {
-    console.error('PayMongo invoice polling failed', error)
+    console.error('Online Payment invoice polling failed', error)
   } finally {
     paymongoInvoiceLoading.value = false
   }
@@ -1157,5 +1157,4 @@ onBeforeUnmount(() => {
   background: #a1a1a1;
 }
 </style>
-
 

@@ -126,7 +126,9 @@ class ReturnPickupController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => ['required', Rule::in(self::STATUSES)],
+            // Schedule/contact edits keep the current workflow status when the
+            // client is not explicitly performing a status transition.
+            'status' => ['sometimes', Rule::in(self::STATUSES)],
             'scheduled_at' => ['nullable', 'date'],
             'pickup_name' => ['nullable', 'string', 'max:255'],
             'pickup_phone' => ['nullable', 'string', 'max:255'],

@@ -23,6 +23,14 @@ class EcommerceOrderReturn extends Model
         'details',
         'evidence_urls',
         'status',
+        'return_type',
+        'product_condition',
+        'inventory_disposition',
+        'received_quantity',
+        'inspected_by',
+        'inspected_at',
+        'inspection_notes',
+        'resolved_at',
         'reviewed_by',
         'reviewed_at',
         'review_notes',
@@ -31,6 +39,9 @@ class EcommerceOrderReturn extends Model
     protected $casts = [
         'requested_quantity' => 'integer',
         'reviewed_at' => 'datetime',
+        'received_quantity' => 'integer',
+        'inspected_at' => 'datetime',
+        'resolved_at' => 'datetime',
         'evidence_urls' => 'array',
     ];
 
@@ -57,6 +68,11 @@ class EcommerceOrderReturn extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function inspector(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'inspected_by');
     }
 
     public function pickup(): HasOne

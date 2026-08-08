@@ -217,7 +217,9 @@ const statusOptions = computed(() => ([
   { label: 'Approved', value: 'approved' },
   { label: 'Rejected', value: 'rejected' },
   { label: 'Received', value: 'received' },
+  { label: 'Refund Pending', value: 'refund_pending' },
   { label: 'Refunded', value: 'refunded' },
+  { label: 'Replaced', value: 'replaced' },
 ]))
 
 const toIsoDate = (date: Date) => {
@@ -308,7 +310,7 @@ const prettyStatus = (value: any) => {
 
 const statusSeverity = (status: string) => {
   const normalized = String(status || '').toLowerCase()
-  if (normalized === 'approved' || normalized === 'received' || normalized === 'refunded') return 'success'
+  if (['approved', 'received', 'refunded', 'replaced'].includes(normalized)) return 'success'
   if (normalized === 'rejected') return 'danger'
   return 'warning'
 }

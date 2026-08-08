@@ -3,6 +3,21 @@ import axiosClient from '../axios'
 const baseUrl = '/api/finance'
 
 const financeService = {
+  async getRefunds(params?: any) {
+    const response = await axiosClient.get(`${baseUrl}/refunds`, { params })
+    return response.data
+  },
+
+  async getRefund(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/refunds/${id}`)
+    return response.data
+  },
+
+  async updateRefundStatus(id: number | string, payload: { status: 'approved' | 'rejected'; notes?: string }) {
+    const response = await axiosClient.put(`${baseUrl}/refunds/${id}/status`, payload)
+    return response.data
+  },
+
   async getDashboard() {
     const response = await axiosClient.get(`${baseUrl}/dashboard`)
     return response.data

@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-gray-900">Refund Detail</h1>
-        <p class="text-sm text-gray-500">Review refund request details.</p>
+        <p class="text-sm text-gray-500">Finance authorization and cashflow posting.</p>
       </div>
       <Button severity="secondary" outlined icon="pi pi-arrow-left" label="Back" @click="goBack" />
     </div>
@@ -18,7 +18,7 @@
               <div class="text-lg font-semibold text-gray-900">{{ refund.order_number || refund.order_id }}</div>
               <div class="text-sm text-gray-500">{{ refund.customer_name || '' }}</div>
             </div>
-            <Tag :value="refund.status || 'pending'" :severity="statusSeverity(refund.status)" />
+            <Tag :value="statusLabel(refund.status)" :severity="statusSeverity(refund.status)" />
           </div>
 
           <div>
@@ -38,19 +38,19 @@
         </div>
       </template>
       <template #footer>
-        <Button label="Approve" icon="pi pi-check" severity="success" :disabled="!canManageRefunds" @click="updateStatus('approved')" />
-        <Button label="Reject" icon="pi pi-times" severity="danger" :disabled="!canManageRefunds" @click="updateStatus('rejected')" />
+        <Button label="Approve & Release Refund" icon="pi pi-check" severity="success" :disabled="!canProcessRefund" @click="updateStatus('approved')" />
+        <Button label="Reject" icon="pi pi-times" severity="danger" :disabled="!canProcessRefund" @click="updateStatus('rejected')" />
       </template>
     </Card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
-import salesService from '@/services/sales.service'
+import financeService from '@/services/finance.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -60,7 +60,8 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
-const canManageRefunds = authStore.hasPermission('sales.refunds.manage')
+const canManageRefunds = authStore.hasPermission('finance.refunds.approve')
+const canProcessRefund = computed(() => canManageRefunds && String(refund.value?.status || '').toLowerCase() === 'pending')
 
 const loading = ref(false)
 const refund = ref<any>({})
@@ -69,7 +70,7 @@ const notes = ref('')
 const loadRefund = async () => {
   loading.value = true
   try {
-    const res = await salesService.getRefund(String(route.params.id))
+    const res = await financeService.getRefund(String(route.params.id))
     refund.value = res?.data || {}
     notes.value = refund.value.notes || ''
   } catch (error: any) {
@@ -81,7 +82,7 @@ const loadRefund = async () => {
 
 const updateStatus = async (status: 'approved' | 'rejected') => {
   try {
-    await salesService.updateRefundStatus(String(route.params.id), { status, notes: notes.value })
+    await financeService.updateRefundStatus(String(route.params.id), { status, notes: notes.value })
     toast.add({ severity: 'success', summary: 'Updated', detail: `Refund ${status}.`, life: 2000 })
     await loadRefund()
   } catch (error: any) {
@@ -95,10 +96,16 @@ const statusSeverity = (status: string) => {
   return 'warning'
 }
 
+const statusLabel = (status: string) => {
+  if (String(status).toLowerCase() === 'pending_inspection') return 'Pending Inventory Inspection'
+  if (String(status).toLowerCase() === 'pending') return 'Pending Finance Approval'
+  return status || 'Pending'
+}
+
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 
 const goBack = () => {
-  router.push({ name: 'sales.refunds' })
+  router.push({ name: 'finance.refunds' })
 }
 
 onMounted(loadRefund)

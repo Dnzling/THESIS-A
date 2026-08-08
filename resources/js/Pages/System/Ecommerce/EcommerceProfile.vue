@@ -140,7 +140,7 @@
             <div v-else-if="activeSection === 'payment'" class="space-y-4">
               <h3 class="text-2xl font-semibold text-slate-900">Payment Methods</h3>
               <div class="rounded-xl border border-slate-200 p-4 text-sm">Cash on Delivery (COD)</div>
-              <div class="rounded-xl border border-slate-200 p-4 text-sm">GCash (PayMongo)</div>
+              <div class="rounded-xl border border-slate-200 p-4 text-sm">GCash (Online Payment)</div>
               <div class="rounded-xl border border-slate-200 p-4 text-sm">Credit Card</div>
             </div>
 

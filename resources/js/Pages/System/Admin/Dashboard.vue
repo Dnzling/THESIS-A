@@ -199,7 +199,7 @@
         <div class="flex justify-between items-center mb-6">
           <div>
             <h3 class="text-lg font-semibold text-gray-800">Recent Payments</h3>
-            <p class="text-sm text-gray-500">Latest PayMongo subscription and billing transactions</p>
+            <p class="text-sm text-gray-500">Latest Online Payment subscription and billing transactions</p>
           </div>
           <router-link to="/finance/receivables" class="text-blue-600 text-sm font-medium hover:text-blue-800">
             View All →

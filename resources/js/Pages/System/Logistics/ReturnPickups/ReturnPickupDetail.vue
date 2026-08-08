@@ -418,6 +418,7 @@ const saveSchedule = async () => {
   savingSchedule.value = true
   try {
     const payload: any = {
+      status: pickup.value.status,
       scheduled_at: scheduleForm.scheduled_at ? toIsoDateTime(scheduleForm.scheduled_at) : null,
       pickup_name: scheduleForm.pickup_name || undefined,
       pickup_phone: scheduleForm.pickup_phone || undefined,

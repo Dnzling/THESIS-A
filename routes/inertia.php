@@ -250,6 +250,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/finance/payroll/basic', 'System/Finance/FinancePayrollBasicIndex', 'finance.payroll.basic', 'Basic Payroll');
     $inertia('/finance/payroll/{payPeriodId}', 'System/Finance/FinancePayrollDetail', 'finance.payroll.detail', 'Payroll Period Detail');
     $inertia('/finance/cashflow', 'System/Finance/FinanceCashflowIndex', 'finance.cashflow', 'Cashflow');
+    $inertia('/finance/refunds', 'System/Sales/SalesRefunds', 'finance.refunds', 'Refunds');
+    $inertia('/finance/refunds/{id}', 'System/Sales/SalesRefundDetail', 'finance.refunds.detail', 'Refund Detail');
     $inertia('/finance/budgets', 'System/Finance/FinanceBudgetsIndex', 'finance.budgets', 'Budgets');
     $inertia('/finance/reports', 'System/Finance/FinanceReportsIndex', 'finance.reports', 'Reports');
 
@@ -288,8 +290,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/sales/vouchers/create', 'System/Sales/SalesVoucherCreate', 'sales.vouchers.create', 'Create Voucher');
     $inertia('/sales/vouchers/{id}', 'System/Sales/SalesVoucherShow', 'sales.vouchers.detail', 'Voucher Details');
     $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
-    $inertia('/sales/refunds', 'System/Sales/SalesRefunds', 'sales.refunds', 'Refunds');
-    $inertia('/sales/refunds/{id}', 'System/Sales/SalesRefundDetail', 'sales.refunds.detail', 'Refund Detail');
     $inertia('/sales/returns', 'System/Sales/SalesReturnsIndex', 'sales.returns', 'Returns');
     $inertia('/sales/returns/{id}', 'System/Sales/SalesReturnDetail', 'sales.returns.detail', 'Return Detail');
 

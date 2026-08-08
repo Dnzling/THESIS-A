@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold text-gray-900">Refunds</h1>
-        <p class="text-sm text-gray-500">Review and manage refund requests.</p>
+        <p class="text-sm text-gray-500">Finance review and processing of customer refund requests.</p>
       </div>
       <Button severity="info" outlined icon="pi pi-refresh" label="Refresh" />
     </div>
@@ -19,7 +19,7 @@
           <Column field="reason" header="Reason" />
           <Column field="status" header="Status">
             <template #body="{ data }">
-              <Tag :value="data.status" :severity="statusSeverity(data.status)" />
+              <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
           <Column header="Actions">
@@ -62,7 +62,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'primevue/usetoast'
-import salesService from '@/services/sales.service'
+import financeService from '@/services/finance.service'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -70,7 +70,7 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 
 const authStore = useAuthStore()
-const canManageRefunds = authStore.hasPermission('sales.refunds.manage')
+const canManageRefunds = authStore.hasPermission('finance.refunds.approve')
 const router = useRouter()
 
 const toast = useToast()
@@ -80,7 +80,7 @@ const refunds = ref<any[]>([])
 const loadRefunds = async () => {
   loading.value = true
   try {
-    const res = await salesService.getRefunds()
+    const res = await financeService.getRefunds()
     refunds.value = res?.data?.data || []
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load refunds', life: 3000 })
@@ -91,7 +91,7 @@ const loadRefunds = async () => {
 
 const setStatus = async (refund: any, status: string) => {
   try {
-    await salesService.updateRefundStatus(refund.id, { status: status.toLowerCase() as 'approved' | 'rejected' })
+    await financeService.updateRefundStatus(refund.id, { status: status.toLowerCase() as 'approved' | 'rejected' })
     toast.add({ severity: 'success', summary: 'Updated', detail: `Refund ${status.toLowerCase()}.`, life: 2000 })
     await loadRefunds()
   } catch (error: any) {
@@ -100,13 +100,19 @@ const setStatus = async (refund: any, status: string) => {
 }
 
 const openDetail = (refund: any) => {
-  router.push({ name: 'sales.refunds.detail', params: { id: refund.id } })
+  router.push({ name: 'finance.refunds.detail', params: { id: refund.id } })
 }
 
 const statusSeverity = (status: string) => {
   if (status === 'approved' || status === 'Approved') return 'success'
   if (status === 'rejected' || status === 'Rejected') return 'danger'
   return 'warning'
+}
+
+const statusLabel = (status: string) => {
+  if (String(status).toLowerCase() === 'pending_inspection') return 'Pending Inventory Inspection'
+  if (String(status).toLowerCase() === 'pending') return 'Pending Finance Approval'
+  return status
 }
 
 onMounted(loadRefunds)

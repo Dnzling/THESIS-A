@@ -85,6 +85,19 @@
           </template>
         </Card>
       </div>
+
+      <Card v-if="returnRequest.return_type" class="rounded-2xl border border-gray-100 shadow-sm">
+        <template #title>Return Processing</template>
+        <template #content>
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm">
+            <div><p class="text-xs text-gray-500">Resolution</p><p class="font-semibold">{{ prettyStatus(returnRequest.return_type) }}</p></div>
+            <div><p class="text-xs text-gray-500">Product quality</p><p class="font-semibold">{{ prettyStatus(returnRequest.product_condition) }}</p></div>
+            <div><p class="text-xs text-gray-500">Disposition</p><p class="font-semibold">{{ prettyStatus(returnRequest.inventory_disposition) }}</p></div>
+            <div><p class="text-xs text-gray-500">Inspected</p><p class="font-semibold">{{ formatDateTime(returnRequest.inspected_at) }}</p></div>
+          </div>
+          <p v-if="returnRequest.inspection_notes" class="mt-3 text-sm text-gray-700 whitespace-pre-line">{{ returnRequest.inspection_notes }}</p>
+        </template>
+      </Card>
   
       <Card class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
@@ -122,13 +135,11 @@
       <div class="flex flex-wrap justify-end gap-2">
         <Button v-if="canReject" icon="pi pi-times" label="Reject" severity="danger" size="small"
           :loading="statusUpdating" @click="openNotesThenConfirm('rejected')" />
-        <Button v-if="canApprove" icon="pi pi-check" label="Approve" severity="success" size="small"
-          :loading="statusUpdating" @click="confirmUpdate('approved')" />
+        <Button v-if="canApprove" icon="pi pi-check" :label="approvalButtonLabel" severity="success" size="small"
+          :loading="statusUpdating" @click="openApproval" />
   
-        <Button v-if="canMarkReceived" icon="pi pi-box" label="Mark Received" severity="info" outlined size="small"
+        <Button v-if="canMarkReceived" icon="pi pi-box" label="Inventory Inspection" severity="info" outlined size="small"
           :loading="statusUpdating" @click="receiveDialogVisible = true" />
-        <Button v-if="canMarkRefunded" icon="pi pi-credit-card" label="Mark Refunded" severity="help" outlined
-          size="small" :loading="statusUpdating" @click="refundDialogVisible = true" />
         <Button v-if="canSchedulePickup" icon="pi pi-calendar-plus" label="Schedule Pickup" severity="info" outlined
           size="small" :loading="pickupScheduling" @click="pickupDialogVisible = true" />
         <Button v-if="returnRequest?.pickup?.id" icon="pi pi-truck" label="Open Pickup" severity="secondary" outlined
@@ -206,16 +217,16 @@
       </template>
     </Dialog>
   
-    <Dialog v-model:visible="receiveDialogVisible" header="Receive Return (Inventory)" modal class="w-full max-w-xl">
+    <Dialog v-model:visible="receiveDialogVisible" header="Receive & Inspect Return (Inventory)" modal class="w-full max-w-xl">
       <div class="space-y-3">
-        <p class="text-sm text-gray-600">This will post an inventory transaction and update stock/damaged counts.</p>
+        <p class="text-sm text-gray-600">Good items return to sellable stock; bad items are discarded. Refunds are sent automatically to Finance, while replacements are issued from available stock.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label class="mb-1 block text-sm text-gray-600">Received Quantity</label>
             <InputNumber v-model="receiveForm.received_quantity" :min="1" :max="Number(returnRequest?.requested_quantity ?? 1)" class="w-full" />
           </div>
           <div>
-            <label class="mb-1 block text-sm text-gray-600">Condition</label>
+            <label class="mb-1 block text-sm text-gray-600">Product Quality</label>
             <Select v-model="receiveForm.condition" :options="receiveConditionOptions" optionLabel="label"
               optionValue="value" class="w-full" />
           </div>
@@ -227,7 +238,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" outlined size="small" @click="receiveDialogVisible = false" />
-        <Button icon="pi pi-check" label="Post Receive" size="small" :loading="receiving" @click="confirmReceive" />
+        <Button icon="pi pi-check" label="Complete Inspection" size="small" :loading="receiving" @click="confirmReceive" />
       </template>
     </Dialog>
   
@@ -268,6 +279,11 @@
         <p class="text-sm text-gray-600">
           Add a short note for the customer/internal team. Notes are required when rejecting.
         </p>
+        <div v-if="pendingStatus === 'approved'" class="space-y-2">
+          <label class="block text-sm text-gray-600">Return Type</label>
+          <Select v-model="pendingReturnType" :options="returnTypeOptions" optionLabel="label" optionValue="value"
+            placeholder="Select refund or replacement" class="w-full" />
+        </div>
         <div v-if="pendingStatus === 'rejected'" class="space-y-2">
           <label class="block text-sm text-gray-600">Reject Reason</label>
           <Select
@@ -369,14 +385,22 @@ const loadReturn = async () => {
   }
 }
 
-const canApprove = computed(() => String(returnRequest.value?.status || '') === 'pending_verification')
+const canApprove = computed(() => {
+  const status = String(returnRequest.value?.status || '')
+  if (status === 'pending_verification') return true
+  if (status !== 'approved' || returnRequest.value?.inspected_at) return false
+  return String(returnRequest.value?.pickup?.status || '') !== 'picked_up'
+})
+const approvalButtonLabel = computed(() => {
+  if (String(returnRequest.value?.status || '') !== 'approved') return 'Approve'
+  return returnRequest.value?.return_type ? 'Change Return Type' : 'Set Return Type'
+})
 const canReject = computed(() => ['pending_verification', 'approved'].includes(String(returnRequest.value?.status || '')))
 const canMarkReceived = computed(() => {
   if (String(returnRequest.value?.status || '') !== 'approved') return false
   const pickupStatus = String(returnRequest.value?.pickup?.status || '')
   return pickupStatus === 'picked_up'
 })
-const canMarkRefunded = computed(() => String(returnRequest.value?.status || '') === 'received')
 const canSchedulePickup = computed(() => String(returnRequest.value?.status || '') === 'approved' && !returnRequest.value?.pickup?.id)
 
 const openOrder = () => {
@@ -452,6 +476,11 @@ watch(
 const notesDialogVisible = ref(false)
 const pendingStatus = ref<'approved' | 'rejected' | 'received' | 'refunded'>('approved')
 const pendingReviewNotes = ref('')
+const pendingReturnType = ref<'refund' | 'replacement' | null>(null)
+const returnTypeOptions = [
+  { label: 'Refund (send to Finance after inspection)', value: 'refund' },
+  { label: 'Replacement (Inventory issues replacement stock)', value: 'replacement' },
+]
 const pendingRejectReason = ref<string | null>(null)
 const rejectReasonOptions = [
   { label: 'Not eligible / outside return policy', value: 'Not eligible / outside return policy' },
@@ -464,12 +493,12 @@ const rejectReasonOptions = [
 const receiveDialogVisible = ref(false)
 const receiving = ref(false)
 const receiveConditionOptions = [
-  { label: 'Resellable (Back to stock)', value: 'resellable' },
-  { label: 'Damaged (Write to damaged)', value: 'damaged' },
+  { label: 'Good condition (Resell)', value: 'good' },
+  { label: 'Bad condition (Discard)', value: 'bad' },
 ]
 const receiveForm = reactive({
   received_quantity: 1,
-  condition: 'resellable' as 'resellable' | 'damaged',
+  condition: 'good' as 'good' | 'bad',
   notes: '',
 })
 
@@ -482,7 +511,9 @@ const confirmReceive = () => {
   }
   confirm.require({
     header: 'Post inventory receive?',
-    message: 'This will update inventory and mark the return as received.',
+    message: returnRequest.value?.return_type === 'refund'
+      ? 'Inventory will record the item disposition and automatically send the product-price refund to Finance.'
+      : 'Inventory will record the item disposition and deduct replacement stock.',
     icon: 'pi pi-exclamation-triangle',
     rejectProps: { label: 'Cancel', outlined: true, size: 'small' },
     acceptProps: { label: 'Confirm', size: 'small', severity: 'success' },
@@ -556,7 +587,7 @@ watch(
   (visible) => {
     if (!visible) return
     receiveForm.received_quantity = Number(returnRequest.value?.requested_quantity ?? 1)
-    receiveForm.condition = 'resellable'
+    receiveForm.condition = 'good'
     receiveForm.notes = ''
   },
 )
@@ -575,6 +606,7 @@ watch(
 )
 
 const notesContinueDisabled = computed(() => {
+  if (pendingStatus.value === 'approved') return !pendingReturnType.value
   if (pendingStatus.value !== 'rejected') return false
   const hasReason = !!String(pendingRejectReason.value || '').trim().length
   const hasNotes = !!String(pendingReviewNotes.value || '').trim().length
@@ -588,11 +620,22 @@ const openNotesThenConfirm = (nextStatus: 'rejected') => {
   notesDialogVisible.value = true
 }
 
+const openApproval = () => {
+  pendingStatus.value = 'approved'
+  pendingReturnType.value = returnRequest.value?.return_type || null
+  pendingReviewNotes.value = returnRequest.value?.review_notes || ''
+  notesDialogVisible.value = true
+}
+
 const closeNotesDialog = () => {
   notesDialogVisible.value = false
 }
 
 const confirmUpdate = (nextStatus: 'approved' | 'rejected' | 'received' | 'refunded') => {
+  if (nextStatus === 'approved' && !pendingReturnType.value) {
+    toast.add({ severity: 'warn', summary: 'Required', detail: 'Select Refund or Replacement.', life: 2500 })
+    return
+  }
   if (nextStatus === 'rejected') {
     const hasReason = !!String(pendingRejectReason.value || '').trim().length
     const hasNotes = !!String(pendingReviewNotes.value || '').trim().length
@@ -641,7 +684,8 @@ const updateStatus = async (nextStatus: 'approved' | 'rejected' | 'received' | '
     const combinedRejectNotes = rejectReason && rejectNotes ? `${rejectReason}\n\n${rejectNotes}` : (rejectReason || rejectNotes)
     const res = await salesService.updateReturnStatus(id.value, {
       status: nextStatus,
-      review_notes: nextStatus === 'rejected' ? combinedRejectNotes : undefined,
+      return_type: nextStatus === 'approved' ? pendingReturnType.value || undefined : undefined,
+      review_notes: nextStatus === 'rejected' ? combinedRejectNotes : (pendingReviewNotes.value || undefined),
     })
     returnRequest.value = res?.data || returnRequest.value
     toast.add({
@@ -698,7 +742,7 @@ const prettyStatus = (value: any) => {
 
 const statusSeverity = (status: any) => {
   const normalized = String(status || '').toLowerCase()
-  if (normalized === 'approved' || normalized === 'received' || normalized === 'refunded') return 'success'
+  if (['approved', 'received', 'refunded', 'replaced'].includes(normalized)) return 'success'
   if (normalized === 'rejected') return 'danger'
   return 'warning'
 }

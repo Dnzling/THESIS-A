@@ -103,6 +103,7 @@ class SalesReturnController extends Controller
             'orderItem.product:id,product_name,sku',
             'user:id,fname,lname,email',
             'reviewer:id,fname,lname,email',
+            'inspector:id,fname,lname,email',
             'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
             'pickup.driver:id,fname,lname,email',
         ]);
@@ -125,11 +126,23 @@ class SalesReturnController extends Controller
 
         $validated = $request->validate([
             'status' => ['required', 'in:approved,rejected'],
+            'return_type' => ['nullable', 'required_if:status,approved', 'in:refund,replacement'],
             'review_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $newStatus = $validated['status'];
         $currentStatus = (string) $return->status;
+
+        if ($newStatus === 'approved'
+            && $currentStatus === 'approved'
+            && $return->return_type
+            && $return->return_type !== $validated['return_type']
+            && in_array((string) $return->pickup?->status, ['picked_up', 'completed'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Return type can no longer be changed after the item has been picked up.',
+            ], 422);
+        }
 
         if ($newStatus === 'rejected' && empty(trim((string) ($validated['review_notes'] ?? '')))) {
             return response()->json([
@@ -159,6 +172,9 @@ class SalesReturnController extends Controller
             if (array_key_exists('review_notes', $validated)) {
                 $return->review_notes = $validated['review_notes'];
             }
+            if ($newStatus === 'approved') {
+                $return->return_type = $validated['return_type'];
+            }
 
             $return->reviewed_by = auth()->id();
             $return->reviewed_at = Carbon::now();
@@ -181,6 +197,42 @@ class SalesReturnController extends Controller
                         'updated_by' => auth()->id(),
                     ]
                 );
+
+                // Put refund resolutions in Finance immediately for visibility.
+                // Finance may only release it after Inventory changes the status
+                // from pending_inspection to pending.
+                if ($return->return_type === 'refund') {
+                    $return->loadMissing(['orderItem:id,order_id,unit_price']);
+                    SalesRefund::query()->firstOrCreate(
+                        [
+                            'store_id' => (int) $return->store_id,
+                            'order_type' => 'ecommerce_return',
+                            'order_id' => (int) $return->id,
+                        ],
+                        [
+                            'branch_id' => (int) (auth()->user()?->branch_id ?? 0) ?: null,
+                            'order_number' => $return->order?->order_number,
+                            'customer_name' => $return->order?->shipping_name,
+                            'reason' => 'Approved customer return #' . (int) $return->id,
+                            'amount' => round((float) ($return->orderItem?->unit_price ?? 0) * (int) $return->requested_quantity, 2),
+                            'status' => 'pending_inspection',
+                            'requested_by' => auth()->id(),
+                            'notes' => 'Awaiting Inventory inspection before Finance can release the refund.',
+                        ]
+                    );
+                }
+            } elseif ($newStatus === 'rejected') {
+                SalesRefund::query()
+                    ->where('store_id', (int) $return->store_id)
+                    ->where('order_type', 'ecommerce_return')
+                    ->where('order_id', (int) $return->id)
+                    ->where('status', 'pending_inspection')
+                    ->update([
+                        'status' => 'rejected',
+                        'notes' => $validated['review_notes'] ?? 'Return rejected by Sales.',
+                        'processed_by' => auth()->id(),
+                        'processed_at' => now(),
+                    ]);
             }
         });
 
@@ -191,7 +243,7 @@ class SalesReturnController extends Controller
                 'entity_id' => (int) $return->id,
                 'title' => $newStatus === 'approved' ? 'Return request approved' : 'Return request rejected',
                 'message' => $newStatus === 'approved'
-                    ? 'Your return request was approved and is ready for pickup scheduling.'
+                    ? 'Your ' . $return->return_type . ' return was approved and is ready for pickup scheduling.'
                     : 'Your return request was rejected. Please review the store notes.',
                 'severity' => $newStatus === 'approved' ? 'success' : 'warn',
                 'store_id' => (int) $return->store_id,
@@ -204,6 +256,7 @@ class SalesReturnController extends Controller
             'orderItem.product:id,product_name,sku',
             'user:id,fname,lname,email',
             'reviewer:id,fname,lname,email',
+            'inspector:id,fname,lname,email',
             'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
             'pickup.driver:id,fname,lname,email',
         ]);
@@ -301,7 +354,7 @@ class SalesReturnController extends Controller
 
         $validated = $request->validate([
             'received_quantity' => ['required', 'integer', 'min:1'],
-            'condition' => ['required', 'in:resellable,damaged'],
+            'condition' => ['required', 'in:good,bad'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -312,7 +365,10 @@ class SalesReturnController extends Controller
         }
 
         if ((string) $return->status !== 'approved') {
-            return response()->json(['success' => false, 'message' => 'Return must be approved before receiving.'], 422);
+            return response()->json(['success' => false, 'message' => 'Only an approved return can be inspected.'], 422);
+        }
+        if (!in_array((string) $return->return_type, ['refund', 'replacement'], true)) {
+            return response()->json(['success' => false, 'message' => 'Sales must select Refund or Replacement before Inventory inspection.'], 422);
         }
 
         $user = $request->user();
@@ -322,13 +378,17 @@ class SalesReturnController extends Controller
             return response()->json(['success' => false, 'message' => 'User must be linked to an employee + branch to post inventory receive.'], 422);
         }
 
-        $return->loadMissing(['orderItem:id,order_id,product_id,unit_price']);
+        $return->loadMissing([
+            'order:id,order_number,shipping_name',
+            'orderItem:id,order_id,product_id,unit_price',
+        ]);
         $productId = (int) ($return->orderItem?->product_id ?? 0);
         if ($productId <= 0) {
             return response()->json(['success' => false, 'message' => 'Return item product is missing.'], 422);
         }
 
-        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $branchId, $employeeId): void {
+        $refund = null;
+        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $branchId, $employeeId, $user, &$refund): void {
             $inventory = BranchInventory::query()
                 ->where('store_id', (int) $return->store_id)
                 ->where('branch_id', $branchId)
@@ -358,11 +418,66 @@ class SalesReturnController extends Controller
             }
 
             $quantityBefore = (int) $inventory->quantity_on_hand;
-            $inventory->quantity_on_hand = $quantityBefore + $receivedQty;
-            if ($validated['condition'] === 'damaged') {
-                $inventory->quantity_damaged = (int) $inventory->quantity_damaged + $receivedQty;
-            } else {
+            $availableBefore = (int) $inventory->quantity_available;
+
+            // A replacement is issued from existing sellable stock. The returned
+            // item is inspected separately and must not be used to satisfy it.
+            if ($return->return_type === 'replacement' && $availableBefore < $receivedQty) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'received_quantity' => ['Insufficient available stock to issue the replacement.'],
+                ]);
+            }
+
+            // Good returns go back to sellable stock. Bad returns are discarded,
+            // so they never inflate quantity-on-hand or available stock.
+            if ($validated['condition'] === 'good') {
+                $inventory->quantity_on_hand = $quantityBefore + $receivedQty;
                 $inventory->quantity_available = (int) $inventory->quantity_available + $receivedQty;
+            }
+
+            $receivedQuantityAfter = (int) $inventory->quantity_on_hand;
+            InventoryTransaction::query()->create([
+                'transaction_number' => 'INVTX-RET-' . (int) $return->id . '-' . now()->format('YmdHisv'),
+                'store_id' => (int) $return->store_id,
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+                'variation_id' => null,
+                'transaction_type' => $validated['condition'] === 'good' ? 'customer_return' : 'writeoff',
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => $validated['condition'] === 'good' ? $receivedQty : 0,
+                'quantity_after' => $receivedQuantityAfter,
+                'reference_type' => 'ecommerce_order_return',
+                'reference_id' => (int) $return->id,
+                'notes' => $validated['notes'] ?? ($validated['condition'] === 'good' ? 'Returned item approved for resale.' : 'Returned item discarded after quality inspection.'),
+                'unit_cost' => $return->orderItem?->unit_price,
+                'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
+                'created_by' => $employeeId,
+                'transaction_date' => now(),
+            ]);
+
+            if ($return->return_type === 'replacement') {
+                $replacementBefore = (int) $inventory->quantity_on_hand;
+                $inventory->quantity_on_hand = $replacementBefore - $receivedQty;
+                $inventory->quantity_available = (int) $inventory->quantity_available - $receivedQty;
+
+                InventoryTransaction::query()->create([
+                    'transaction_number' => 'INVTX-REPL-' . (int) $return->id . '-' . now()->format('YmdHisv'),
+                    'store_id' => (int) $return->store_id,
+                    'branch_id' => $branchId,
+                    'product_id' => $productId,
+                    'variation_id' => null,
+                    'transaction_type' => 'sale',
+                    'quantity_before' => $replacementBefore,
+                    'quantity_change' => -$receivedQty,
+                    'quantity_after' => (int) $inventory->quantity_on_hand,
+                    'reference_type' => 'ecommerce_return_replacement',
+                    'reference_id' => (int) $return->id,
+                    'notes' => 'Replacement item issued to customer.',
+                    'unit_cost' => $return->orderItem?->unit_price,
+                    'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
+                    'created_by' => $employeeId,
+                    'transaction_date' => now(),
+                ]);
             }
 
             $available = (int) $inventory->quantity_available;
@@ -371,26 +486,36 @@ class SalesReturnController extends Controller
             $inventory->total_value = round((float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0) * (int) $inventory->quantity_on_hand, 2);
             $inventory->save();
 
-            InventoryTransaction::query()->create([
-                'transaction_number' => 'INVTX-RET-' . (int) $return->id . '-' . now()->format('YmdHis'),
-                'store_id' => (int) $return->store_id,
-                'branch_id' => $branchId,
-                'product_id' => $productId,
-                'variation_id' => null,
-                'transaction_type' => $validated['condition'] === 'damaged' ? 'damage' : 'customer_return',
-                'quantity_before' => $quantityBefore,
-                'quantity_change' => $receivedQty,
-                'quantity_after' => (int) $inventory->quantity_on_hand,
-                'reference_type' => 'ecommerce_order_return',
-                'reference_id' => (int) $return->id,
-                'notes' => $validated['notes'] ?? ('Received from return #' . (int) $return->id),
-                'unit_cost' => $return->orderItem?->unit_price,
-                'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
-                'created_by' => $employeeId,
-                'transaction_date' => now(),
-            ]);
-
-            $return->status = 'received';
+            if ($return->return_type === 'refund') {
+                $amount = round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty, 2);
+                $refund = SalesRefund::query()->updateOrCreate(
+                    [
+                        'store_id' => (int) $return->store_id,
+                        'order_type' => 'ecommerce_return',
+                        'order_id' => (int) $return->id,
+                    ],
+                    [
+                        'branch_id' => $branchId,
+                        'order_number' => $return->order?->order_number,
+                        'customer_name' => $return->order?->shipping_name,
+                        'reason' => 'Approved customer return #' . (int) $return->id,
+                        'amount' => $amount,
+                        'status' => 'pending',
+                        'requested_by' => (int) ($user?->id ?? 0) ?: null,
+                        'notes' => 'Inventory inspection complete. Ready for Finance approval.',
+                    ]
+                );
+                $return->status = 'refund_pending';
+            } else {
+                $return->status = 'replaced';
+                $return->resolved_at = now();
+            }
+            $return->product_condition = $validated['condition'];
+            $return->inventory_disposition = $validated['condition'] === 'good' ? 'resell' : 'discard';
+            $return->received_quantity = $receivedQty;
+            $return->inspected_by = auth()->id();
+            $return->inspected_at = now();
+            $return->inspection_notes = $validated['notes'] ?? null;
             $return->save();
         });
 
@@ -399,8 +524,10 @@ class SalesReturnController extends Controller
                 'module' => 'ecommerce',
                 'entity_type' => 'ecommerce_order_return',
                 'entity_id' => (int) $return->id,
-                'title' => 'Returned item received',
-                'message' => 'Your returned item has been received and is ready for refund processing.',
+                'title' => $return->return_type === 'refund' ? 'Return sent to Finance' : 'Replacement issued',
+                'message' => $return->return_type === 'refund'
+                    ? 'Inventory inspected your item. Your refund request was sent to Finance.'
+                    : 'Inventory inspected your item and issued your replacement.',
                 'severity' => 'success',
                 'store_id' => (int) $return->store_id,
             ]);
@@ -408,8 +535,10 @@ class SalesReturnController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Return received and inventory transaction posted.',
-            'data' => $return->fresh(),
+            'message' => $return->return_type === 'refund'
+                ? 'Inspection complete. Refund request sent to Finance.'
+                : 'Inspection complete. Replacement issued and inventory adjusted.',
+            'data' => $return->fresh()->load(['inspector:id,fname,lname,email']),
         ]);
     }
 
@@ -427,8 +556,11 @@ class SalesReturnController extends Controller
             'mark_as_approved' => ['nullable', 'boolean'],
         ]);
 
-        if ((string) $return->status !== 'received') {
+        if (!in_array((string) $return->status, ['received', 'refund_pending'], true)) {
             return response()->json(['success' => false, 'message' => 'Return must be received before processing refund.'], 422);
+        }
+        if ($return->return_type && (string) $return->return_type !== 'refund') {
+            return response()->json(['success' => false, 'message' => 'A replacement return cannot be changed to a refund.'], 422);
         }
 
         $user = $request->user();

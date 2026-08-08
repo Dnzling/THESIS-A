@@ -45,7 +45,7 @@
         </template>
       </Card>
 
-      <!-- PayMongo methods moved to Upgrade flow; card removed -->
+      <!-- Online Payment methods moved to Upgrade flow; card removed -->
 
       
     </div>
@@ -978,7 +978,7 @@ const startUpgradeCheckout = async (gcashName: string, gcashPhone: string) => {
 
     const fallbackEmail = (store.email || 'owner@example.com').trim()
 
-    // Card payments should use PayMongo hosted checkout so we never collect card data on our site.
+    // Card payments should use Online Payment hosted checkout so we never collect card data on our site.
     if (selectedWalletType.value === 'card') {
       const successUrl = `${window.location.origin}/store/settings?paymongo_checkout=1`
       const cancelUrl = `${window.location.origin}/store/settings?paymongo_checkout_cancel=1`

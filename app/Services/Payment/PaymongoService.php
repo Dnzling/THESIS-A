@@ -48,6 +48,15 @@ class PaymongoService
         ]);
     }
 
+    public function isConfigured(): bool
+    {
+        $secret = trim((string) config('paymongo.secret'));
+        $public = trim((string) config('paymongo.public'));
+
+        return preg_match('/^sk_(test|live)_/', $secret) === 1
+            && preg_match('/^pk_(test|live)_/', $public) === 1;
+    }
+
     public function createIntent(array $payload): array
     {
         try {
@@ -60,7 +69,7 @@ class PaymongoService
             Log::error('PaymongoService: createIntent exception', ['error' => $e->getMessage()]);
             return [
                 'errors' => [[
-                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                    'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
         }
@@ -79,7 +88,7 @@ class PaymongoService
 
             return [
                 'errors' => [[
-                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                    'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
         }
@@ -97,7 +106,7 @@ class PaymongoService
             Log::error('PaymongoService: createPaymentMethod exception', ['error' => $e->getMessage()]);
             return [
                 'errors' => [[
-                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                    'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
         }
@@ -119,7 +128,7 @@ class PaymongoService
 
             return [
                 'errors' => [[
-                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                    'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
         }
@@ -153,7 +162,7 @@ class PaymongoService
             ]);
             return [
                 'errors' => [[
-                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                    'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
         }
@@ -185,7 +194,7 @@ class PaymongoService
 
             return [
                 'errors' => [[
-                    'detail' => 'Unable to connect to PayMongo. Please try again later.',
+                    'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
         }
@@ -197,7 +206,7 @@ class PaymongoService
             return false;
         }
 
-        // PayMongo-Signature format: "t=timestamp,te=v1_signature"
+        // Online Payment-Signature format: "t=timestamp,te=v1_signature"
         $segments = collect(explode(',', $signature))
             ->mapWithKeys(function (string $part) {
                 [$key, $value] = array_pad(explode('=', trim($part), 2), 2, null);
@@ -242,7 +251,7 @@ class PaymongoService
 
         $existing = PaymongoIntent::query()->where('payment_intent_id', $intentId)->first();
         if (!$existing && (!data_get($resource, 'attributes.metadata.payable_type') || !data_get($resource, 'attributes.metadata.payable_id'))) {
-            Log::warning('PayMongo webhook ignored: missing payable mapping.', [
+            Log::warning('Online Payment webhook ignored: missing payable mapping.', [
                 'event_type' => $type,
                 'intent_id' => $intentId,
             ]);

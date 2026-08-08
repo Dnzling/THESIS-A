@@ -62,7 +62,7 @@
         </Card>
 
         <Card v-if="showPaymongoPanel" class="rounded-2xl border border-gray-100 shadow-sm">
-          <template #title>PayMongo Payment</template>
+          <template #title>Online Payment</template>
           <template #content>
             <div v-if="!isPaymongoPaid" class="space-y-3">
               <p class="text-sm text-gray-600">Amount</p>
@@ -83,7 +83,7 @@
 
             <div v-else class="space-y-3 rounded-xl border border-green-200 bg-green-50 p-4">
               <div class="flex items-center justify-between">
-                <h4 class="text-sm font-semibold text-green-800">PayMongo Invoice</h4>
+                <h4 class="text-sm font-semibold text-green-800">Online Payment Invoice</h4>
                 <Tag severity="success" value="Paid" />
               </div>
               <div class="grid grid-cols-1 gap-2 text-sm text-gray-700">
@@ -247,7 +247,7 @@ const isPaymongoPaid = computed(() => ['succeeded', 'paid'].includes(normalizedP
 const hasOpenPaymongoIntent = computed(() => !!paymongoIntentId.value && !['failed', 'canceled', 'cancelled'].includes(normalizedPaymongoStatus.value))
 const paymongoActionLabel = computed(() => {
   if (isPaymongoPaid.value) return 'Payment Completed'
-  return hasOpenPaymongoIntent.value ? 'Open GCash Checkout' : 'Create PayMongo Intent'
+  return hasOpenPaymongoIntent.value ? 'Open GCash Checkout' : 'Create Online Payment Intent'
 })
 const paymongoActionSeverity = computed(() => (hasOpenPaymongoIntent.value ? 'info' : 'success'))
 const paymongoPayment = computed(() => {
@@ -354,7 +354,7 @@ const createPaymongoIntent = async () => {
     paymongoIntentPayload.value = response.data
     startPaymongoPolling()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Payment Error', detail: error?.response?.data?.message || 'Unable to create PayMongo intent.', life: 4000 })
+    toast.add({ severity: 'error', summary: 'Payment Error', detail: error?.response?.data?.message || 'Unable to create Online Payment intent.', life: 4000 })
   } finally {
     paymongoCreating.value = false
   }
@@ -413,7 +413,7 @@ const openPaymongoCheckout = async () => {
       return_url: window.location.href,
     })
     const url = response?.data?.redirect_url
-    if (!url) throw new Error('Missing redirect URL from PayMongo.')
+    if (!url) throw new Error('Missing redirect URL from Online Payment.')
     window.open(url, '_blank')
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Checkout Error', detail: error?.response?.data?.message || 'Unable to open GCash checkout.', life: 4000 })

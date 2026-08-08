@@ -610,7 +610,7 @@ class SalesPosController extends Controller
         if (!$payment || $payment->payment_provider !== 'paymongo' || !$payment->provider_reference) {
             return response()->json([
                 'success' => false,
-                'message' => 'No PayMongo payment is linked to this order.',
+                'message' => 'No Online Payment payment is linked to this order.',
             ], 422);
         }
 

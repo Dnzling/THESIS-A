@@ -1611,8 +1611,8 @@ class EcommerceController extends Controller
                 'placed_at' => now(),
             ]);
 
-            // For PayMongo methods, defer order item creation and inventory reservation until payment is confirmed.
-            // This prevents "products ordered" being stored/consumed when PayMongo checkout is cancelled/expired.
+            // For Online Payment methods, defer order item creation and inventory reservation until payment is confirmed.
+            // This prevents "products ordered" being stored/consumed when Online Payment checkout is cancelled/expired.
             if ($isPaymongo) {
                 $snapshotItems = $itemsForCheckout->map(function ($item) {
                     return [
@@ -1938,7 +1938,7 @@ class EcommerceController extends Controller
 
         $hasActiveReturn = EcommerceOrderReturn::query()
             ->where('order_item_id', $orderItem->id)
-            ->whereIn('status', ['pending_verification', 'approved', 'received', 'refunded'])
+            ->whereIn('status', ['pending_verification', 'approved', 'received', 'refund_pending', 'refunded', 'replaced'])
             ->exists();
 
         if ($hasActiveReturn) {
@@ -3015,6 +3015,12 @@ class EcommerceController extends Controller
             $returnStatus = strtolower((string) $latestReturn->status);
             if ($returnStatus === 'refunded') {
                 return 'refunded';
+            }
+            if ($returnStatus === 'refund_pending') {
+                return 'return_processing';
+            }
+            if ($returnStatus === 'replaced') {
+                return 'replaced';
             }
             if ($returnStatus === 'received') {
                 return 'return_received';

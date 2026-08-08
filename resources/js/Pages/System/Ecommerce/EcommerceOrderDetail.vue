@@ -242,7 +242,7 @@ async function syncPaymongoPaymentStatus() {
       showAlert({ severity: 'success', summary: 'Payment Confirmed', detail: 'Your GCash payment was confirmed.' })
     }
   } catch {
-    // Keep order page usable even if PayMongo status refresh fails.
+    // Keep order page usable even if Online Payment status refresh fails.
   }
 }
 

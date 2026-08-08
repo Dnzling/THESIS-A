@@ -23,6 +23,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'invoices',
             'purchase-orders',
             'price-approvals',
+            'refunds',
         ];
 
         // Standardize finance permissions to a minimal, predictable set
@@ -97,6 +98,16 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
         // Ensure finance cashflow and price-approval navigation entries exist.
         $navItems = [
             [
+                'name' => 'finance.refunds',
+                'display_name' => 'Refunds',
+                'module' => 'finance',
+                'section' => 'refunds',
+                'route_name' => 'finance.refunds',
+                'route_path' => '/finance/refunds',
+                'icon' => 'pi pi-replay',
+                'display_order' => 8,
+            ],
+            [
                 'name' => 'finance.cashflow',
                 'display_name' => 'Cashflow',
                 'module' => 'finance',
@@ -104,7 +115,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
                 'route_name' => 'finance.cashflow',
                 'route_path' => '/finance/cashflow',
                 'icon' => 'pi pi-chart-line',
-                'display_order' => 8,
+                'display_order' => 9,
             ],
             [
                 'name' => 'finance.price-approvals',
@@ -114,7 +125,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
                 'route_name' => 'finance.price-approvals',
                 'route_path' => '/finance/price-approvals',
                 'icon' => 'pi pi-sliders-h',
-                'display_order' => 9,
+                'display_order' => 10,
             ],
         ];
 
@@ -147,6 +158,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'finance.purchase-orders' => 'finance.purchase-orders.view',
             'finance.price-approvals' => 'finance.price-approvals.view',
             'finance.cashflow' => 'finance.cashflow.view',
+            'finance.refunds' => 'finance.refunds.view',
         ];
 
         foreach ($navPermissionMap as $navName => $permissionName) {

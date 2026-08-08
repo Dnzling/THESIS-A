@@ -28,9 +28,10 @@ class TestReturnFlow extends Command
         {--user_id= : Acting user (defaults to first active user in store)}
         {--order_item_id= : Use a specific ecommerce_order_items.id}
         {--driver_user_id= : Driver user id to assign (defaults to another active user in store)}
+        {--return_type=refund : Resolution path to test (refund or replacement)}
     ';
 
-    protected $description = 'Smoke-test the ecommerce return → sales approval → pickup scheduling → logistics pickup proof → return received/refunded statuses (no finance/inventory posting yet).';
+    protected $description = 'Smoke-test ecommerce return approval, pickup, inventory inspection, and refund/replacement resolution.';
 
     public function handle(): int
     {
@@ -63,6 +64,11 @@ class TestReturnFlow extends Command
         Auth::login($user);
 
         $commit = (bool) $this->option('commit');
+        $returnType = strtolower((string) $this->option('return_type'));
+        if (!in_array($returnType, ['refund', 'replacement'], true)) {
+            $this->error('--return_type must be refund or replacement.');
+            return 1;
+        }
 
         DB::beginTransaction();
         try {
@@ -90,6 +96,7 @@ class TestReturnFlow extends Command
             // Approve
             $approveReq = Request::create("/api/sales/returns/{$return->id}/status", 'PUT', [
                 'status' => 'approved',
+                'return_type' => $returnType,
                 'review_notes' => 'Approved by smoke test',
             ]);
             $approveReq->setUserResolver(fn () => $user);
@@ -147,9 +154,10 @@ class TestReturnFlow extends Command
 
             // Receive (Inventory posting)
             $invBefore = InventoryTransaction::query()->where('reference_type', 'ecommerce_order_return')->where('reference_id', $return->id)->count();
+            $refundBefore = SalesRefund::query()->where('order_type', 'ecommerce_return')->where('order_id', $return->id)->count();
             $receiveReq = Request::create("/api/sales/returns/{$return->id}/receive", 'POST', [
                 'received_quantity' => 1,
-                'condition' => 'resellable',
+                'condition' => 'good',
                 'notes' => 'Received by smoke test',
             ]);
             $receiveReq->setUserResolver(fn () => $user);
@@ -162,41 +170,32 @@ class TestReturnFlow extends Command
                 throw new \RuntimeException('Expected inventory transaction to be created.');
             }
 
-            // Refund (Finance posting)
-            $refundBefore = SalesRefund::query()->where('order_type', 'ecommerce_return')->where('order_id', $return->id)->count();
-            $refundReq = Request::create("/api/sales/returns/{$return->id}/refund", 'POST', [
-                'amount' => 1000,
-                'reason' => 'Refund by smoke test',
-                'notes' => 'Processed by smoke test',
-                'mark_as_approved' => false,
-            ]);
-            $refundReq->setUserResolver(fn () => $user);
-            $refundRes = $salesController->refund($refundReq, EcommerceOrderReturn::query()->findOrFail($return->id));
-            $refundPayload = $refundRes->getData(true);
-            $this->line('Refund created: ' . json_encode(['success' => $refundPayload['success'] ?? null]));
+            if ($returnType === 'refund') {
+                // Inventory automatically notifies Finance by creating a pending refund.
+                $refundAfter = SalesRefund::query()->where('order_type', 'ecommerce_return')->where('order_id', $return->id)->count();
+                if ($refundAfter <= $refundBefore) {
+                    throw new \RuntimeException('Expected sales_refunds record to be created.');
+                }
 
-            $refundAfter = SalesRefund::query()->where('order_type', 'ecommerce_return')->where('order_id', $return->id)->count();
-            if ($refundAfter <= $refundBefore) {
-                throw new \RuntimeException('Expected sales_refunds record to be created.');
+                $createdRefund = SalesRefund::query()
+                    ->where('order_type', 'ecommerce_return')
+                    ->where('order_id', $return->id)
+                    ->latest('id')
+                    ->firstOrFail();
+                $refundApprovalReq = Request::create("/api/sales/refunds/{$createdRefund->id}/status", 'PUT', [
+                    'status' => 'approved',
+                    'notes' => 'Approved by smoke test',
+                ]);
+                $refundApprovalReq->setUserResolver(fn () => $user);
+                $refundApprovalRes = app(SalesRefundController::class)->updateStatus($refundApprovalReq, $createdRefund);
+                $refundApprovalPayload = $refundApprovalRes->getData(true);
+                $this->line('Refund approved: ' . json_encode(['status' => $refundApprovalPayload['data']['status'] ?? null]));
             }
 
-            $createdRefund = SalesRefund::query()
-                ->where('order_type', 'ecommerce_return')
-                ->where('order_id', $return->id)
-                ->latest('id')
-                ->firstOrFail();
-            $refundApprovalReq = Request::create("/api/sales/refunds/{$createdRefund->id}/status", 'PUT', [
-                'status' => 'approved',
-                'notes' => 'Approved by smoke test',
-            ]);
-            $refundApprovalReq->setUserResolver(fn () => $user);
-            $refundApprovalRes = app(SalesRefundController::class)->updateStatus($refundApprovalReq, $createdRefund);
-            $refundApprovalPayload = $refundApprovalRes->getData(true);
-            $this->line('Refund approved: ' . json_encode(['status' => $refundApprovalPayload['data']['status'] ?? null]));
-
             $returnFinal = EcommerceOrderReturn::query()->findOrFail($return->id);
-            if ((string) $returnFinal->status !== 'refunded') {
-                throw new \RuntimeException('Expected return to be refunded, got: ' . $returnFinal->status);
+            $expectedStatus = $returnType === 'refund' ? 'refunded' : 'replaced';
+            if ((string) $returnFinal->status !== $expectedStatus) {
+                throw new \RuntimeException("Expected return to be {$expectedStatus}, got: {$returnFinal->status}");
             }
 
             if ($commit) {
@@ -207,7 +206,9 @@ class TestReturnFlow extends Command
                 $this->info('Rolled back (default). No records persisted.');
             }
 
-            $this->info('Inventory + Finance postings validated (inventory_transactions + sales_refunds).');
+            $this->info($returnType === 'refund'
+                ? 'Refund path validated (Inventory + Finance).'
+                : 'Replacement path validated (Inventory receipt + replacement issue).');
 
             return 0;
         } catch (\Throwable $e) {
@@ -260,7 +261,7 @@ class TestReturnFlow extends Command
                     ->whereIn('status', ['delivered']);
             })
             ->whereDoesntHave('returnRequests', function ($q) {
-                $q->whereIn('status', ['pending_verification', 'approved', 'received', 'refunded']);
+                $q->whereIn('status', ['pending_verification', 'approved', 'received', 'refund_pending', 'refunded', 'replaced']);
             })
             ->orderByDesc('id')
             ->first();

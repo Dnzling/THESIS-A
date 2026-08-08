@@ -325,7 +325,7 @@
     >
       <div class="space-y-3">
         <p class="text-sm text-slate-600">
-          Enter your card details to continue. This form sends card data directly to PayMongo using your public key.
+          Enter your card details to continue. This form sends card data directly to Online Payment using your public key.
         </p>
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Card Number</label>
@@ -1112,7 +1112,7 @@ async function placeOrder() {
 
     if (selectedPaymentMethod.value === 'gcash' || selectedPaymentMethod.value === 'card') {
       if (!orderId || !orderStoreId) {
-        throw new Error('Order ID or store ID is missing for PayMongo checkout.')
+        throw new Error('Order ID or store ID is missing for Online Payment checkout.')
       }
 
       paymongoCreating.value = true
@@ -1132,7 +1132,7 @@ async function placeOrder() {
       const intentId = String(intentResponse?.data?.data?.id || '')
       const clientKey = String(intentResponse?.data?.data?.attributes?.client_key || '')
       if (!intentId || !clientKey) {
-        throw new Error(intentResponse?.message || 'Failed to initialize PayMongo payment intent.')
+        throw new Error(intentResponse?.message || 'Failed to initialize Online Payment payment intent.')
       }
 
       pendingPaymongo.orderId = Number(orderId)
@@ -1150,7 +1150,7 @@ async function placeOrder() {
         return
       }
 
-      // Card: open local form. Card details will be sent directly to PayMongo via public key + client_key attach.
+      // Card: open local form. Card details will be sent directly to Online Payment via public key + client_key attach.
       cardDialog.cardNumber = ''
       cardDialog.expMonth = ''
       cardDialog.expYear = ''
@@ -1203,7 +1203,7 @@ async function getPaymongoPublicKey(): Promise<string> {
   if (cachedPaymongoPublicKey) return cachedPaymongoPublicKey
   const res = await paymongoService.getPublicKey()
   const key = String(res?.data?.public_key || '').trim()
-  if (!key) throw new Error('Missing PayMongo public key.')
+  if (!key) throw new Error('Missing Online Payment public key.')
   cachedPaymongoPublicKey = key
   return key
 }
@@ -1242,12 +1242,12 @@ async function createPaymongoCardPaymentMethod(args: {
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    const detail = payload?.errors?.[0]?.detail || 'Unable to create PayMongo card payment method.'
+    const detail = payload?.errors?.[0]?.detail || 'Unable to create Online Payment card payment method.'
     throw new Error(detail)
   }
 
   const paymentMethodId = String(payload?.data?.id || '')
-  if (!paymentMethodId) throw new Error('PayMongo did not return a payment_method id.')
+  if (!paymentMethodId) throw new Error('Online Payment did not return a payment_method id.')
   return paymentMethodId
 }
 
@@ -1392,7 +1392,7 @@ async function checkPaymongoResult(orderId: number) {
     const status = String(latest?.data?.status || '').toLowerCase().trim()
 
     if (!status) {
-      showAlert({ severity: 'warn', summary: 'Payment Pending', detail: 'No PayMongo status yet. Please wait a moment and refresh.' })
+      showAlert({ severity: 'warn', summary: 'Payment Pending', detail: 'No Online Payment status yet. Please wait a moment and refresh.' })
       return
     }
 
@@ -1436,7 +1436,7 @@ onMounted(async () => {
   }
   if (paymongoOrderId > 0) {
     if (String(route.query?.paymongo_cancel || '') === '1') {
-      showAlert({ severity: 'info', summary: 'Payment Cancelled', detail: 'You cancelled the PayMongo checkout. No payment was made.' })
+      showAlert({ severity: 'info', summary: 'Payment Cancelled', detail: 'You cancelled the Online Payment checkout. No payment was made.' })
     } else {
       await checkPaymongoResult(paymongoOrderId)
     }

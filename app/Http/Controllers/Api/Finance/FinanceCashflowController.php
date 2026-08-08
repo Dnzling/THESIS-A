@@ -138,7 +138,7 @@ class FinanceCashflowController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        // Enforce PayMongo-only funding source for top-ups.
+        // Enforce Online Payment-only funding source for top-ups.
         if (($validated['direction'] ?? '') === 'in') {
             $validated['payment_method'] = 'paymongo_gcash';
         }

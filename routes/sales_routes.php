@@ -82,10 +82,7 @@ Route::prefix('sales')->group(function () {
     });
 
     Route::prefix('refunds')->group(function () {
-        Route::get('/', [SalesRefundController::class, 'index'])->middleware('can:sales.refunds.view');
-        Route::get('/{refund}', [SalesRefundController::class, 'show'])->middleware('can:sales.refunds.view');
         Route::post('/', [SalesRefundController::class, 'store'])->middleware('can:sales.refunds.manage');
-        Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus'])->middleware('can:sales.refunds.manage');
     });
 
     Route::prefix('returns')->group(function () {
