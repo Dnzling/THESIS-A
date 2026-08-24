@@ -110,7 +110,7 @@ class SubscriptionManagementController extends Controller
         $validated = $request->validate([
             'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
             'subscription_ends_at' => 'nullable|date',
-            'status' => 'nullable|in:pending,active,inactive,suspended,banned,verified,rejected',
+            'status' => 'nullable|in:unverified,pending,active,inactive,deactivated,suspended,banned,verified,rejected',
         ]);
 
         $planId = SubscriptionPlan::query()->where('plan_key', strtolower((string) $validated['subscription_tier']))->value('id');
@@ -251,8 +251,8 @@ class SubscriptionManagementController extends Controller
         $settings['requires_verification'] = true;
         $store->settings = $settings;
 
-        if ($store->status !== 'verified') {
-            $store->status = 'pending';
+        if (!in_array((string) $store->status, ['active', 'pending'], true)) {
+            $store->status = 'unverified';
         }
 
         $this->ensureStoreHasMainBranch($store);

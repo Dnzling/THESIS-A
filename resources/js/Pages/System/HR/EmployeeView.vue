@@ -28,7 +28,7 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button label="Update Role & Salary" icon="pi pi-id-card" severity="warning" outlined @click="openEditDialog" />
+          <Button label="Update Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
@@ -386,8 +386,8 @@
         <template #footer>
           <Button label="Cancel" text @click="showEditDialog = false" />
           <Button v-if="activeEditStep > 0" label="Back" severity="secondary" text @click="activeEditStep -= 1" />
-          <Button v-if="activeEditStep === 0" label="Next" severity="info" @click="activeEditStep = 1" />
-          <Button v-else label="Save Changes" icon="pi pi-save" severity="info" :loading="savingEdit" @click="submitEditEmployee" />
+          <Button v-if="activeEditStep === 0" label="Next" @click="activeEditStep = 1" />
+          <Button v-else label="Save Changes" :loading="savingEdit" @click="submitEditEmployee" />
         </template>
       </Dialog>
 

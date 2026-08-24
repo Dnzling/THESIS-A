@@ -477,9 +477,6 @@ class ProductVariationController extends BaseController
                     'maximum_stock' => 0,
                     'safety_stock' => 0,
                     'stock_status' => 'out_of_stock',
-                    'unit_cost' => 0,
-                    'average_cost' => 0,
-                    'total_value' => 0,
                 ]
             );
         }

@@ -33,6 +33,8 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthController extends Controller
 {
+    private const STRONG_PASSWORD_RULE = 'required|string|min:8|max:255|regex:/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/';
+
     public function registerSupplier(Request $request)
     {
         try {
@@ -46,7 +48,7 @@ class AuthController extends Controller
                 'fname' => 'required|string|max:255',
                 'lname' => 'required|string|max:255',
                 'email' => 'required|email|unique:users,email',
-                'password' => 'required|string|min:8|max:255|confirmed',
+                'password' => self::STRONG_PASSWORD_RULE . '|confirmed',
                 'phone' => 'nullable|string|max:50',
             ]);
 
@@ -169,8 +171,8 @@ class AuthController extends Controller
             $validated = $request->validate([
                 'fname' => 'required|string|max:255',
                 'lname' => 'required|string|max:255',
-                'email' => 'required|email',
-                'password' => 'required|string|min:8|max:255',
+                'email' => 'required|email|unique:users',
+                'password' => self::STRONG_PASSWORD_RULE,
                 'role_id' => 'nullable|integer|exists:roles,id',
                 'birthday' => 'nullable|date|before_or_equal:today',
                 'plan' => 'nullable|string|exists:subscription_plans,plan_key',

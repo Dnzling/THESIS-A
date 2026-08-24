@@ -3,59 +3,49 @@
     <div class="max-w-6xl mx-auto">
       <div class="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 class="text-xl font-bold text-gray-800">Purchase Requisitions</h1>
-          <p class="text-xs text-gray-500 mt-0.5">Replenishment requests for your branch.</p>
+          <h1 class="text-lg font-bold text-gray-800">Purchase Requisitions</h1>
+      
         </div>
-        <Button
-          v-if="canManage"
-          label="Create"
-          icon="pi pi-plus"
-          severity="success"
-          size="small"
-          @click="router.push({ name: 'inventory.requisites.create' })"
-        />
+        <div class="flex items-center gap-2">
+          <Button
+            v-if="canManage"
+            label="Receipts"
+            severity="secondary"
+            outlined
+            size="small"
+            @click="router.push({ name: 'inventory.goods-receipts' })"
+          />
+          <Button
+            v-if="canManage"
+            label="Create PR" 
+            severity="warn"
+            size="small"
+            @click="router.push({ name: 'inventory.requisites.create' })"
+          />
+        </div>
       </div>
-
-      <Card class="mb-3">
-        <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Search</label>
-              <InputText v-model="filters.search" placeholder="Product, SKU, branch" />
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Status</label>
-              <Select
-                v-model="filters.status"
-                :options="statusOptions"
-                optionLabel="label"
-                optionValue="value"
-                placeholder="All"
-                showClear
-              />
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-semibold text-gray-700">Per Page</label>
-              <Select v-model="perPage" :options="[10, 15, 20, 50]" />
-            </div>
-            <div class="flex justify-end gap-2">
-              <Button
-                type="button"
-                label="Refresh"
-                icon="pi pi-refresh"
-                severity="secondary"
-                outlined
-                size="small"
-                :loading="loading"
-                @click="load()"
-              />
-            </div>
-          </div>
-        </template>
-      </Card>
 
       <Card>
         <template #content>
+          <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-3 mb-4">
+            <IconField>
+              <InputIcon class="pi pi-search" />
+              <InputText v-model="filters.search" placeholder="Search requisition, product, or SKU" fluid  size="small" />
+            </IconField>
+            <Select
+              v-model="filters.status"
+              :options="statusOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="All Statuses"
+              showClear
+              size="small"
+            />
+            <div v-if="hasActiveFilters">
+              <Button label="Clear All" severity="danger" size="small" @click="resetFilters" />
+            </div>
+          </div>
+          <!-- Requisition Table -->
           <div v-if="loading" class="space-y-3">
             <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
               <Skeleton height="24px" class="col-span-1" />
@@ -83,14 +73,25 @@
             paginator
             :rows="perPage"
             :totalRecords="total"
+            :lazy="true"
             :first="(page - 1) * perPage"
+            dataKey="id"
             @page="onPageChange"
             :sortField="sortField"
             :sortOrder="sortOrder"
             @sort="onSort"
             @row-click="onRowClick"
             :rowClass="rowClass"
+            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
+            currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
+            :rowsPerPageOptions="[15, 25, 50]"
           >
+            <template #empty>
+              <div class="py-8 text-center">
+                <i class="pi pi-inbox text-3xl text-gray-400"></i>
+                <p class="mt-2 text-xs text-gray-600">No purchase requisitions found</p>
+              </div>
+            </template>
             <Column field="created_at" header="Date" sortable style="width: 130px">
               <template #body="{ data }">
                 <div class="text-xs">
@@ -124,21 +125,8 @@
               </template>
             </Column>
 
-            <Column header="Actions" style="width: 120px">
-              <template #body="{ data }">
-                <div class="flex gap-2 items-center">
-                  <Button
-                    icon="pi pi-eye"
-                    severity="info"
-                    outlined
-                    rounded
-                    @click="router.push({ name: 'inventory.requisites.detail', params: { id: data.id } })"
-                  />
-                </div>
-              </template>
-            </Column>
           </DataTable>
-        </template>
+          </template>
       </Card>
     </div>
   </div>
@@ -150,6 +138,8 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
 
 const router = useRouter()
 const toast = useToast()
@@ -164,6 +154,7 @@ const sortField = ref('created_at')
 const sortOrder = ref(-1)
 
 const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.status))
 
 const filters = reactive<{ search: string; status: string | null }>({
   search: '',
@@ -243,8 +234,18 @@ const load = async () => {
 }
 
 const onPageChange = (e: any) => {
-  page.value = Math.floor(e.first / e.rows) + 1
+  page.value = e.page + 1
   perPage.value = e.rows
+  load()
+}
+
+const resetFilters = () => {
+  filters.search = ''
+  filters.status = null
+  page.value = 1
+  perPage.value = 15
+  sortField.value = 'created_at'
+  sortOrder.value = -1
   load()
 }
 
@@ -254,13 +255,20 @@ const onSort = (e: any) => {
   load()
 }
 
-watch(
-  () => [filters.search, filters.status, perPage.value],
-  () => {
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+watch([() => filters.status, () => perPage.value], () => {
+  page.value = 1
+  load()
+})
+
+watch(() => filters.search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
     page.value = 1
     load()
-  }
-)
+  }, 350)
+})
 
 onMounted(async () => {
   try {

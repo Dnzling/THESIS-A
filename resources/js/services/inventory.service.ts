@@ -32,9 +32,6 @@ export interface BranchInventoryItem {
   maximum_stock: number
   safety_stock: number
   stock_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'overstock'
-  unit_cost?: number | null
-  average_cost?: number | null
-  total_value: string | number
 
   // Relationships
   product?: {
@@ -42,6 +39,8 @@ export interface BranchInventoryItem {
     sku: string
     product_name: string
     base_price: string
+    cost_price?: string | number | null
+    inventory_cost_price?: string | number | null
   }
   variation?: any
   branch?: {
@@ -109,7 +108,6 @@ export interface InventoryProductPayload {
   unit_of_measurement?: string | null
   supplier_name?: string | null
   initial_stock?: number | null
-  unit_cost?: number
   is_active?: boolean
 }
 
@@ -429,7 +427,18 @@ class InventoryService {
   }
 
   async updateProduct(id: number, data: any) {
-    const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, data)
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
+    const body = isFormData ? data : data
+    if (isFormData) {
+      body.append('_method', 'PUT')
+      const response = await axiosClient.post(`${this.baseUrl}/products/${id}`, body, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+      return response.data
+    }
+    const response = await axiosClient.put(`${this.baseUrl}/products/${id}`, body)
     return response.data
   }
 

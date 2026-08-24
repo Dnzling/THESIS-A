@@ -36,8 +36,31 @@
             <div class="space-y-2">
               <label class="text-base font-semibold text-slate-900 sm:text-lg">Password</label>
               <Password v-model="form.password" fluid :feedback="false" autocomplete="new-password"
-  name="new_password" toggleMask
-                placeholder="Password" />
+                name="new_password" toggleMask
+                placeholder="Password"
+                @focus="passwordFocused = true"
+                @blur="passwordFocused = false" />
+              <Transition name="password-guide">
+                <div v-if="showPasswordRules" class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p class="mb-2 font-semibold text-slate-800">Password must include:</p>
+                  <ul class="space-y-2">
+                    <li
+                      v-for="rule in passwordRuleItems"
+                      :key="rule.key"
+                      class="flex items-center gap-2 transition-colors duration-300"
+                      :class="rule.met ? 'text-emerald-700' : 'text-slate-500'"
+                    >
+                      <span
+                        class="flex h-5 w-5 items-center justify-center rounded-full border text-xs font-bold transition-all duration-300"
+                        :class="rule.met ? 'scale-100 border-emerald-500 bg-emerald-500 text-white' : 'scale-90 border-slate-300 bg-white text-slate-400'"
+                      >
+                        <i :class="rule.met ? 'pi pi-check' : 'pi pi-minus'"></i>
+                      </span>
+                      <span>{{ rule.label }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </Transition>
             </div>
             <div class="space-y-2">
               <label class="text-base font-semibold text-slate-900 sm:text-lg">Confirm Password</label>
@@ -80,7 +103,7 @@
 
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
@@ -109,6 +132,37 @@ const form = reactive({
   confirmPassword: '',
 })
 
+const passwordRules = [
+  'at least 8 characters',
+  'one uppercase letter',
+  'one number',
+  'one special character',
+]
+
+const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/
+const passwordFocused = ref(false)
+const passwordRuleItems = reactive([
+  { key: 'length', label: 'At least 8 characters', met: false },
+  { key: 'uppercase', label: 'One uppercase letter', met: false },
+  { key: 'number', label: 'One number', met: false },
+  { key: 'special', label: 'One special character', met: false },
+])
+
+const showPasswordRules = computed(() => passwordFocused.value && form.password.length > 0)
+
+const updatePasswordRules = (value: string) => {
+  passwordRuleItems[0].met = value.length >= 8
+  passwordRuleItems[1].met = /[A-Z]/.test(value)
+  passwordRuleItems[2].met = /\d/.test(value)
+  passwordRuleItems[3].met = /[^A-Za-z0-9]/.test(value)
+}
+
+watch(
+  () => form.password,
+  (value) => updatePasswordRules(value),
+  { immediate: true }
+)
+
 async function submitRegister() {
   if (isSubmitting.value) return
 
@@ -127,6 +181,16 @@ async function submitRegister() {
 
   if (form.password !== form.confirmPassword) {
     toast.add({ severity: 'warn', summary: 'Password mismatch', detail: 'Password and confirm password do not match.', life: 3000 })
+    return
+  }
+
+  if (!passwordRegex.test(form.password)) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Weak password',
+      detail: `Password must be ${passwordRules.join(', ')}.`,
+      life: 4000,
+    })
     return
   }
 
@@ -177,5 +241,27 @@ async function submitRegister() {
 
 .portal-title {
   font-family: 'Space Grotesk', sans-serif;
+}
+</style>
+
+<style scoped>
+.password-guide-enter-active,
+.password-guide-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease, max-height 0.22s ease;
+  max-height: 180px;
+}
+
+.password-guide-enter-from,
+.password-guide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+  max-height: 0;
+}
+
+.password-guide-enter-to,
+.password-guide-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 180px;
 }
 </style>

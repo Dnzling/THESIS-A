@@ -19,7 +19,7 @@ class ReportingService
      */
     public function getBranchSummary(int $storeId, int $branchId, ?int $days = null, ?string $productType = null): array
     {
-        $query = BranchInventory::where('store_id', $storeId)
+        $query = BranchInventory::with('product')->where('store_id', $storeId)
             ->where('branch_id', $branchId);
 
         if ($productType) {
@@ -32,15 +32,15 @@ class ReportingService
         return [
             'branch_id' => $branchId,
             'total_items' => $items->count(),
-            'total_value' => (float) $items->sum('total_value'),
+            'total_value' => (float) $items->sum(fn ($item) => $this->inventoryValue($item)),
             'total_quantity' => $items->sum('quantity_on_hand'),
             'in_stock' => $items->where('stock_status', 'in_stock')->count(),
             'low_stock' => $items->where('stock_status', 'low_stock')->count(),
             'out_of_stock' => $items->where('stock_status', 'out_of_stock')->count(),
             'damaged_units' => $items->sum('quantity_damaged'),
             'reserved_units' => $items->sum('quantity_reserved'),
-            'average_unit_cost' => $items->count() > 0 
-                ? $items->avg('average_cost') 
+            'average_unit_cost' => $items->count() > 0
+                ? $items->avg(fn ($item) => $this->productCost($item))
                 : 0,
             'inventory_accuracy' => $this->calculateAccuracy($storeId, $branchId),
             'stock_turnover_ratio' => $this->calculateStockTurnover($storeId, $branchId, $days, $productType),
@@ -130,7 +130,7 @@ class ReportingService
      */
     public function getValueByCategory(int $storeId, int $branchId, ?string $productType = null): array
     {
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product.category')->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->with('product.category')
             ->when($productType, function ($query) use ($storeId, $productType) {
@@ -144,7 +144,7 @@ class ReportingService
             ->map(function ($categoryItems, $categoryName) {
                 return [
                     'category' => $categoryName,
-                    'total_value' => (float) $categoryItems->sum('total_value'),
+                    'total_value' => (float) $categoryItems->sum(fn ($item) => $this->inventoryValue($item)),
                     'total_items' => $categoryItems->count(),
                     'total_units' => $categoryItems->sum('quantity_on_hand'),
                     'percentage_of_total' => 0, // Calculated after
@@ -161,13 +161,14 @@ class ReportingService
         $cutoffDate = now()->subDays($days);
         $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product')
+            ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('total_value', '>=', $minValue)
             ->when($productType, function ($query) use ($productIds) {
                 $query->whereIn('product_id', $productIds);
             })
-            ->get();
+            ->get()
+            ->filter(fn ($item) => $this->inventoryValue($item) >= $minValue);
 
         return $items->filter(function ($item) use ($cutoffDate, $storeId, $branchId) {
             $lastMovement = InventoryTransaction::where('store_id', $storeId)
@@ -232,7 +233,8 @@ class ReportingService
      */
     protected function calculateAccuracy(int $storeId, int $branchId): float
     {
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product')
+            ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->get();
 
@@ -294,16 +296,27 @@ class ReportingService
             ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0)));
 
         // Calculate average inventory value
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product')
+            ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->when($productType, function ($query) use ($productIds) {
                 $query->whereIn('product_id', $productIds);
             })
             ->get();
 
-        $avgInventory = $items->avg('total_value');
+        $avgInventory = $items->avg(fn ($item) => $this->inventoryValue($item));
 
         return $avgInventory > 0 ? $sales / $avgInventory : 0;
+    }
+
+    private function productCost(BranchInventory $item): float
+    {
+        return (float) ($item->product?->getRawOriginal('cost_price') ?? 0);
+    }
+
+    private function inventoryValue(BranchInventory $item): float
+    {
+        return (float) $item->quantity_on_hand * $this->productCost($item);
     }
 
     /**
@@ -401,11 +414,36 @@ class ReportingService
         $now = now();
         $items = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->with('product:id,sku,product_name,product_type,cost_price')
             ->when($productType, function ($query) use ($storeId, $productType) {
                 $productIds = $this->getProductIdsByType($storeId, $productType);
                 $query->whereIn('product_id', $productIds);
             })
             ->get();
+
+        $bucket = function ($item) use ($now) {
+            if (!$item->last_stock_count_date) return 'never_counted';
+            $days = $now->diffInDays($item->last_stock_count_date);
+            if ($days <= 30) return 'less_than_30_days';
+            if ($days <= 60) return 'between_30_60_days';
+            if ($days <= 90) return 'between_60_90_days';
+            return 'older_than_90_days';
+        };
+
+        $details = $items->groupBy($bucket)->map(function ($rows) use ($now) {
+            return $rows->map(function ($item) use ($now) {
+                return [
+                    'id' => $item->id,
+                    'sku' => $item->product?->sku,
+                    'product_name' => $item->product?->product_name,
+                    'product_type' => $item->product?->product_type,
+                    'quantity_on_hand' => (float) ($item->quantity_on_hand ?? 0),
+                    'cost_price' => (float) ($item->product?->getRawOriginal('cost_price') ?? 0),
+                    'last_stock_count_date' => $item->last_stock_count_date,
+                    'age_days' => $item->last_stock_count_date ? $now->diffInDays($item->last_stock_count_date) : null,
+                ];
+            })->values();
+        });
 
         return [
             'less_than_30_days' => $items->filter(function ($item) use ($now) {
@@ -423,6 +461,7 @@ class ReportingService
             'never_counted' => $items->filter(function ($item) {
                 return !$item->last_stock_count_date;
             })->count(),
+            'details' => $details,
         ];
     }
 

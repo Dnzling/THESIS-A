@@ -190,7 +190,7 @@ class StockAdjustmentController extends Controller
             // Create items
             foreach ($validated['items'] as $item) {
                 // Get unit cost from inventory
-                $inventory = BranchInventory::where('branch_id', $branchId)
+                $inventory = BranchInventory::with('product')->where('branch_id', $branchId)
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
@@ -205,7 +205,7 @@ class StockAdjustmentController extends Controller
 
                 $difference = $item['actual_quantity'] - $item['system_quantity'];
 
-                $unitCost = $inventory?->average_cost ?? 0;
+                $unitCost = (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0);
                 $valueDifference = $difference * $unitCost;
 
                 StockAdjustmentItem::create([
@@ -437,7 +437,6 @@ class StockAdjustmentController extends Controller
             $inventory->save();
 
             $inventory->updateStockStatus();
-            $inventory->calculateTotalValue();
 
             // Create inventory transaction with unique datetime-based number
             $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);

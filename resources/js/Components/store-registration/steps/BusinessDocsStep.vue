@@ -1,6 +1,10 @@
 <template>
   <div>
-    <h2 class="text-2xl font-bold text-gray-800 mb-6">Business Documents</h2>
+    <div class="mb-6">
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 2</p>
+      <h2 class="mt-1 text-2xl font-bold text-slate-950">Business Documents</h2>
+      <p class="mt-2 text-sm text-slate-600">Upload the documents needed to validate the store business record.</p>
+    </div>
   
     <form @submit.prevent="handleNext">
       <div class="space-y-6">
@@ -27,15 +31,16 @@
           Additional Notes (Optional)
         </label>
         <textarea v-model="localForm.additionalNotes" rows="3"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          class="w-full rounded-xl border border-orange-100 px-4 py-2 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+          @input="updateField('additionalNotes', localForm.additionalNotes)"
           placeholder="Any additional information about your documents..."></textarea>
       </div>
   
       <!-- Navigation Buttons -->
       <div class="flex justify-between mt-8 pt-6 border-t border-gray-200">
-        <Button type="button" @click="handlePrev" class="w-1/5" severity="contrast" variant="outlined" label="Previous" />
+        <Button type="button" @click="handlePrev" severity="secondary" outlined label="Previous" />
   
-        <Button type="submit" class="w-1/5" severity="success" label="Next" :disabled="!isStepValid" />
+        <Button type="button" severity="warn" label="Next: Review" :disabled="!isStepValid" @click="handleNext" />
       </div>
     </form>
   </div>
@@ -64,7 +69,7 @@ const emit = defineEmits<Emits>()
 // Local form data
 const localForm = ref({
   ...props.formData,
-  additionalNotes: ''
+  additionalNotes: props.formData.additionalNotes || ''
 })
 
 // Update field and emit immediately

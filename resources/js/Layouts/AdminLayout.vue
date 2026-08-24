@@ -165,6 +165,7 @@ const pageTitle = computed(() => String(page.props?.title || ''))
 const pageSubtitle = computed(() => String(page.props?.subtitle || ''))
 const authStore = useAuthStore()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isBooting = ref(true)
 
 type User = {
   id: number
@@ -363,14 +364,22 @@ const formatTimeAgo = (iso: string) => {
 }
 
 onMounted(() => {
-  if (!isAuthenticated.value) {
+  const storedToken = localStorage.getItem('auth_token')
+  if (!storedToken) {
     router.visit('/login')
     return
   }
+
+  if (!authStore.user) {
+    authStore.fetchCurrentUser().catch(() => null)
+  }
+
   loadNotifications()
+  isBooting.value = false
 })
 
 watch(isAuthenticated, (value) => {
+  if (isBooting.value) return
   if (value) return
   notifications.value = []
   unreadCount.value = 0

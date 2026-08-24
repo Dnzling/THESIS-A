@@ -1,42 +1,42 @@
 <template>
-  <div class="border border-gray-200 rounded-lg p-4">
+  <div class="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm">
     <div class="flex items-center justify-between mb-4">
       <div>
-        <h4 class="text-lg font-medium text-gray-800">
+        <h4 class="text-sm font-semibold text-slate-900">
           {{ title }}
           <span v-if="required" class="text-red-500">*</span>
         </h4>
-        <p class="text-sm text-gray-600 mt-1">
+        <p class="mt-1 text-xs leading-5 text-slate-500">
           {{ description }}
         </p>
       </div>
-      <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+      <span class="rounded-full bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700">
         Max 5MB
       </span>
     </div>
     
     <div
       @click="$refs.fileInput.click()"
-      class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition"
-      :class="{ 'border-green-500 bg-green-50': file }"
+      class="cursor-pointer rounded-2xl border-2 border-dashed border-orange-200 bg-orange-50/30 p-6 text-center transition hover:border-orange-400 hover:bg-orange-50"
+      :class="{ 'border-emerald-400 bg-emerald-50/70': file }"
     >
       <slot :file="file">
         <div v-if="!file">
-          <i class="pi pi-cloud-upload text-4xl text-gray-400 mb-3"></i>
-          <p class="text-sm text-gray-600">
-            <span class="font-medium text-blue-600">Click to upload</span> or drag and drop
+          <i class="pi pi-cloud-upload mb-3 text-3xl text-orange-400"></i>
+          <p class="text-sm text-slate-600">
+            <span class="font-semibold text-orange-600">Click to upload</span> or drag and drop
           </p>
           <p class="text-xs text-gray-500 mt-1">
-            {{ acceptText || 'PNG, JPG, PDF up to 5MB' }}
+            {{ acceptText || 'PNG or JPG up to 5MB' }}
           </p>
         </div>
         <div v-else class="flex items-center justify-center space-x-4">
-          <div class="bg-blue-100 p-3 rounded-lg">
-            <i class="pi pi-file text-2xl text-blue-600"></i>
+          <div class="rounded-xl bg-emerald-100 p-3">
+            <i class="pi pi-file text-2xl text-emerald-600"></i>
           </div>
           <div class="text-left">
-            <p class="font-medium text-gray-800">{{ file.name }}</p>
-            <p class="text-sm text-gray-600">{{ formatFileSize(file.size) }}</p>
+            <p class="font-medium text-slate-800">{{ file.name }}</p>
+            <p class="text-sm text-slate-500">{{ formatFileSize(file.size) }}</p>
           </div>
         </div>
       </slot>
@@ -54,7 +54,7 @@
       <button
         type="button"
         @click.stop="$emit('remove')"
-        class="text-red-500 hover:text-red-700 text-sm"
+        class="text-sm font-medium text-red-500 hover:text-red-700"
       >
         <i class="pi pi-times mr-1"></i>
         Remove

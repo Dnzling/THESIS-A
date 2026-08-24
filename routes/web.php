@@ -19,6 +19,10 @@ Route::prefix('stores/{store}')->group(function () {
 });
 
 Route::get('/', function () {
+    return Inertia::render('System/Ecommerce/EcommerceProducts');
+});
+
+Route::get('/business', function () {
     return Inertia::render('Marketing/Home', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
@@ -40,7 +44,7 @@ Route::get('/subscription-plans', function () {
 })->name('subscription.plans');
 
 Route::get('/subscription-checkout', function () {
-    return redirect('/subscription-plans');
+    return Inertia::render('Auth/SubscriptionCheckout');
 })->name('subscription.checkout');
 
 Route::get('/store/registration', function () {
@@ -89,6 +93,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::middleware(['auth'])->group(function () {
+    Route::post('/store/settings/profile/request-otp', [\App\Http\Controllers\System\StoreAdmin\StoreSettingsController::class, 'requestProfileUpdateOtp']);
     Route::get('/inventory/transactions/{id}/print', [InventoryTransactionController::class, 'print'])
         ->name('inventory.transactions.print');
 });

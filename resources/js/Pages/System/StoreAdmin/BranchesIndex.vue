@@ -3,9 +3,8 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Branches</h1>
-        <p class="text-sm text-slate-600">Manage store branches and geofence coverage.</p>
       </div>
-      <Button label="Add Branch" icon="pi pi-plus" @click="openCreateDialog" />
+      <Button label="Add Branch" icon="pi pi-plus" size="small" severity="warn" @click="openCreateDialog" />
     </div>
 
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
@@ -23,7 +22,7 @@
             size="small"
             stripedRows
             dataKey="id"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-sm"
           >
             <Column field="name" header="Branch" sortable>
               <template #body="{ data }">
@@ -37,7 +36,7 @@
             <Column field="address" header="Address" />
             <Column header="Action" style="width: 110px">
               <template #body="{ data }">
-                <Button label="View" text size="small" icon="pi pi-arrow-right" @click="viewBranch(data.id)" />
+                <Button label="View" text size="small" severity="warn" @click="viewBranch(data.id)" />
               </template>
             </Column>
           </DataTable>

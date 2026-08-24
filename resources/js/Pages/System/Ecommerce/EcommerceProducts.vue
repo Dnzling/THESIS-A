@@ -164,6 +164,7 @@
       </main>
     </div>
   </div>
+  <MarketingFooter />
 </template>
 
 <script setup lang="ts">
@@ -176,6 +177,7 @@ import Slider from 'primevue/slider'
 import InputNumber from 'primevue/inputnumber'
 import Carousel from '@/Components/Ecommerce/carousel.vue'
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
+import MarketingFooter from '@/Components/MarketingFooter.vue'
 
 defineOptions({
   layout: EcommerceMobileWrapper,

@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Hr\Department;
 use App\Models\Hr\Employee;
+use App\Models\Store\Branch;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
@@ -43,6 +44,7 @@ class DepartmentController extends Controller
             $departments->setCollection(
                 $departments->getCollection()->map(function ($department) use ($storeId) {
                     $department->employee_count = $this->countEmployeesForDepartment($department, $storeId);
+                    $department->branch_employee_counts = $this->countEmployeesForDepartmentByBranch($department, $storeId);
                     $department->status = $this->normalizeStatus($department->status);
                     return $department;
                 })
@@ -50,6 +52,7 @@ class DepartmentController extends Controller
         } else {
             $departments = $departments->map(function ($department) use ($storeId) {
                 $department->employee_count = $this->countEmployeesForDepartment($department, $storeId);
+                $department->branch_employee_counts = $this->countEmployeesForDepartmentByBranch($department, $storeId);
                 $department->status = $this->normalizeStatus($department->status);
                 return $department;
             });
@@ -100,6 +103,7 @@ class DepartmentController extends Controller
 
         $department->load('roles');
         $department->employee_count = $this->countEmployeesForDepartment($department, $storeId);
+        $department->branch_employee_counts = $this->countEmployeesForDepartmentByBranch($department, $storeId);
         $department->status = $this->normalizeStatus($department->status);
 
         return response()->json([
@@ -129,6 +133,7 @@ class DepartmentController extends Controller
         }
 
         $department->employee_count = $this->countEmployeesForDepartment($department, $storeId);
+        $department->branch_employee_counts = $this->countEmployeesForDepartmentByBranch($department, $storeId);
         $department->status = $this->normalizeStatus($department->status);
 
         return response()->json([
@@ -180,6 +185,7 @@ class DepartmentController extends Controller
 
         $department->load('roles');
         $department->employee_count = $this->countEmployeesForDepartment($department, $storeId);
+        $department->branch_employee_counts = $this->countEmployeesForDepartmentByBranch($department, $storeId);
         $department->status = $this->normalizeStatus($department->status);
 
         return response()->json([
@@ -327,6 +333,36 @@ class DepartmentController extends Controller
         }
 
         return $query->count();
+    }
+
+    private function countEmployeesForDepartmentByBranch(Department $department, int $storeId): array
+    {
+        $roleIds = $department->roles?->pluck('id')->filter()->values() ?? collect();
+
+        return Branch::where('store_id', $storeId)
+            ->orderByDesc('is_main_branch')
+            ->orderBy('name')
+            ->get(['id', 'name', 'branch_code', 'is_main_branch'])
+            ->map(function (Branch $branch) use ($department, $roleIds, $storeId) {
+                $query = Employee::where('store_id', $storeId)
+                    ->where('branch_id', $branch->id);
+
+                if ($roleIds->count() > 0) {
+                    $query->whereIn('role_id', $roleIds->all());
+                } else {
+                    $query->where('department', $department->name);
+                }
+
+                return [
+                    'branch_id' => $branch->id,
+                    'branch_name' => $branch->name,
+                    'branch_code' => $branch->branch_code,
+                    'is_main_branch' => (bool) $branch->is_main_branch,
+                    'employee_count' => $query->count(),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private function normalizeStatus($status): string

@@ -32,6 +32,7 @@
     },
     "dependencies": {
         "@capacitor/core": "^8.3.0",
+        "@primeicons/vue": "^8.0.0",
         "leaflet": "^1.9.4",
         "quill": "^2.0.3",
         "sweetalert2": "^11.10.7"

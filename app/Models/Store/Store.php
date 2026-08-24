@@ -68,7 +68,7 @@ class Store extends Model
     // Check if store is verified
     public function isVerified(): bool
     {
-        return $this->status === 'verified';
+        return $this->status === 'active';
     }
 
     // Check if store has submitted documents
@@ -264,7 +264,7 @@ class Store extends Model
      */
     public function deactivate()
     {
-        $this->update(['status' => 'inactive']);
+        $this->update(['status' => 'deactivated']);
         return $this;
     }
 

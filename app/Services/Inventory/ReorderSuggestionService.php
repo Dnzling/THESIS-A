@@ -325,6 +325,10 @@ class ReorderSuggestionService
         $product = $rule->product;
         $branch = $rule->branch;
 
+        if (!$product || !$branch) {
+            throw new Exception('Reorder rule is missing a linked product or branch.');
+        }
+
         // Get current stock level (you might need to implement this based on your stock tracking)
         $currentStock = $this->getCurrentStockLevel($product->id, $branch->id);
 

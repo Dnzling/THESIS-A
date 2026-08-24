@@ -16,7 +16,7 @@
                 <div class="space-y-3">
                   <div class="flex flex-wrap items-center gap-2">
                     <Tag :value="posting?.status || 'N/A'" :severity="statusSeverity(posting?.status)" />
-                    <Tag v-if="posting?.role?.display_name || posting?.role?.name" severity="info" :value="posting?.role?.display_name || posting?.role?.name" />
+                    <Tag v-if="posting?.role?.display_name || posting?.role?.name" :value="posting?.role?.display_name || posting?.role?.name" />
                   </div>
                   <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Job Posting Overview</p>
@@ -52,7 +52,7 @@
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Applicant Preview</p>
                     <h2 class="mt-2 text-lg font-semibold text-slate-900">{{ applicants.length }} Applicants</h2>
                   </div>
-                  <Button label="Open Applicant List" icon="pi pi-arrow-right" severity="info" outlined @click="router.push({ name: 'hr.job-postings.applicants', params: { postingId: route.params.postingId } })" />
+                  <Button label="Open Applicant List" icon="pi pi-arrow-right" outlined @click="router.push({ name: 'hr.job-postings.applicants', params: { postingId: route.params.postingId } })" />
                 </div>
 
                 <div class="mt-4 space-y-3">
@@ -71,7 +71,7 @@
                     </div>
                   </div>
 
-                  <Message v-if="!previewApplicants.length" severity="info" :closable="false">
+                  <Message v-if="!previewApplicants.length" :closable="false">
                     No applicants yet for this posting.
                   </Message>
                 </div>

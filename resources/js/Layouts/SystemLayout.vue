@@ -3,23 +3,42 @@
   <div
     class="flex h-screen w-full max-w-[100vw] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_38%),linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_42%,_#ffffff_100%)]">
     <!-- Sidebar -->
-    <aside class="sidebar bg-white w-64 flex flex-col z-30 overflow-y-auto shadow-lg"
+    <aside class="sidebar bg-white flex flex-col z-30 overflow-y-auto shadow-lg"
       :class="{ 'open': sidebarOpen, 'closed': !sidebarOpen }">
       <!-- Logo section -->
       <div class="px-5 py-4 border-b border-gray-200">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center justify-center w-10 h-10 rounded-lg">
+        <div class="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            class="flex items-center gap-3 min-w-0 rounded-2xl bg-transparent"
+            :class="!sidebarOpen ? 'hover:bg-orange-400' : ''"
+            :disabled="sidebarOpen"
+            @click="!sidebarOpen && (sidebarOpen = true)"
+          
+          >
+          <div class="flex items-center justify-center w-10 h-10 rounded-lg shrink-0">
             <img src="/F.svg" alt="Furnisync" class="w-20 h-20" />
           </div>
-          <div class="leading-tight">
-          <span class="portal-brand text-orange-400">FURNISYNC</span>
-            <p class="text-xs text-gray-600">Platform</p>
+          <div v-if="sidebarOpen" class="leading-tight">
+            <span class="portal-brand text-orange-400">FURNISYNC</span>
           </div>
+          </button>
+          <Button
+            v-if="sidebarOpen"
+            icon="pi pi-caret-left"
+            size="small"
+            text
+            rounded
+            class="hidden lg:inline-flex shrink-0"
+            aria-label="Collapse sidebar"
+            @click="sidebarOpen = false"
+            v-tooltip="'Collapse sidebar'"
+          />
         </div>
       </div>
   
       <!-- Navigation by Module -->
-      <nav class="flex-1 overflow-y-auto py-4">
+      <nav v-if="sidebarOpen" class="flex-1 overflow-y-auto py-4">
         <!-- Loading State -->
         <div v-if="loadingNavigation" class="px-4 space-y-2">
           <Skeleton height="40px" class="rounded-lg" />
@@ -29,79 +48,39 @@
   
         <!-- Module Accordions -->
         <template v-else>
-          <div v-if="groupedNavigation.length > 0" class="px-2 space-y-1">
-            <div v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" class="mb-3">
-              <!-- Module Header (Accordion Toggle) -->
-              <button v-if="moduleGroup.items.length > 0" @click="toggleModule(moduleGroup.module)"
-                class="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors group">
-                <div class="flex items-center space-x-2">
-                  <span class="uppercase tracking-wider text-xs font-bold">{{
-                    formatModuleName(moduleGroup.module) }}</span>
-                </div>
-                <i :class="[
-                          'pi transition-transform',
-                          expandedModules[moduleGroup.module] ? 'pi-chevron-down' : 'pi-chevron-right'
-                        ]"></i>
-              </button>
-  
-              <!-- Module Items (Accordion Content) -->
-              <transition name="accordion">
-                <div v-if="expandedModules[moduleGroup.module]" class="space-y-1 mt-1">
+          <div v-if="groupedNavigation.length > 0" class="px-1">
+            <Accordion multiple :value="expandedModuleValues" class="system-navigation-accordion">
+              <AccordionPanel v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" size="small"
+                :value="moduleGroup.module">
+                <AccordionHeader v-if="moduleGroup.items.length > 0" size="small">
+                  <span class="uppercase tracking-wider text-xs font-bold text-gray-700">
+                    {{ formatModuleName(moduleGroup.module) }}
+                  </span>
+                </AccordionHeader>
+                <AccordionContent v-if="moduleGroup.items.length > 0">
+                  <div class="space-y-1 mt-1">
                   <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
-                    <div v-if="item.children?.length && item.route_path && !String(item.route_path).startsWith('#') && !item.meta?.is_group"
-                      class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
-                      <Link :href="item.route_path" class="flex items-center space-x-3 flex-1 min-w-0"
-                        :class="{ 'text-blue-600': isActive(item.route_path) }">
-                        <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>
-                        <span class="truncate">{{ item.display_name }}</span>
-                      </Link>
-                      <button type="button" class="shrink-0" @click.stop="toggleSection(item.id)">
-                        <i :class="[
-                                                  'pi text-xs transition-transform',
-                                                  expandedSections[item.id] ? 'pi-chevron-down' : 'pi-chevron-right'
-                                              ]"></i>
-                      </button>
-                    </div>
-
-                    <button v-else-if="item.children?.length" @click="toggleSection(item.id)"
-                      class="w-full flex items-center justify-between px-6 py-2.5 mx-1 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors">
-                      <div class="flex items-center space-x-3">
-                        <i :class="[item.icon || 'pi pi-folder', 'w-4 text-gray-400']"></i>
-                        <span>{{ item.display_name }}</span>
-                      </div>
-                      <i :class="[
-                                                  'pi text-xs transition-transform',
-                                                  expandedSections[item.id] ? 'pi-chevron-down' : 'pi-chevron-right'
-                                              ]"></i>
-                    </button>
-  
-                    <Link v-else :href="item.route_path"
-                      class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors group"
-                      :class="{ 'bg-blue-50 text-blue-600': isActive(item.route_path) }">
+                    <Link v-if="item.route_path && !String(item.route_path).startsWith('#')" :href="item.route_path"
+                      class="flex items-center justify-between px-7 py-2.5 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-colors group"
+                      :class="{ 'bg-orange-50 text-orange-600': isActive(item.route_path) }">
                     <div class="flex items-center space-x-3 flex-1">
-                      <i :class="[item.icon || 'pi pi-circle', 'w-4 text-gray-400 group-hover:text-blue-500']"></i>
+                      <i :class="[
+                        item.icon || 'pi pi-circle',
+                        'w-4',
+                        isActive(item.route_path)
+                          ? 'text-orange-600'
+                          : 'text-gray-400 group-hover:text-orange-500'
+                      ]"></i>
                       <span>{{ item.display_name }}</span>
                     </div>
                     <Badge v-if="item.badge_count && item.badge_count > 0" :value="item.badge_count" severity="danger"
                       size="small" />
                     </Link>
-  
-                    <div v-if="item.children?.length && expandedSections[item.id]" class="space-y-1 ml-5">
-                      <Link v-for="child in item.children" :key="child.id" :href="child.route_path"
-                        class="flex items-center justify-between px-6 py-2 mx-1 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors group"
-                        :class="{ 'bg-blue-50 text-blue-600': isActive(child.route_path) }">
-                      <div class="flex items-center space-x-3 flex-1">
-                        <i :class="[child.icon || 'pi pi-circle', 'w-4 text-gray-300 group-hover:text-blue-500']"></i>
-                        <span>{{ child.display_name }}</span>
-                      </div>
-                      <Badge v-if="child.badge_count && child.badge_count > 0" :value="child.badge_count"
-                        severity="danger" size="small" />
-                      </Link>
-                    </div>
                   </div>
-                </div>
-              </transition>
-            </div>
+                  </div>
+                </AccordionContent>
+              </AccordionPanel>
+            </Accordion>
           </div>
   
           <!-- Empty State -->
@@ -120,7 +99,7 @@
       <header
         class="bg-white border-b border-gray-200 py-4 px-6 flex items-center justify-between lg:justify-end sticky top-0 z-20 shadow-sm">
         <div class="flex items-center gap-3 lg:hidden">
-          <Button icon="pi pi-bars" text rounded severity="secondary" @click="sidebarOpen = true" />
+          <Button icon="pi pi-bars" size="small" text rounded severity="secondary" @click="sidebarOpen = !sidebarOpen" />
           <div class="text-sm font-semibold text-gray-700">Menu</div>
         </div>
   
@@ -141,18 +120,18 @@
             <div class="px-4 pt-3">
               <div class="flex items-center gap-4 text-sm">
                 <button class="pb-2 border-b-2 transition"
-                  :class="activeNotifTab === 'inbox' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                  :class="activeNotifTab === 'inbox' ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-500'"
                   @click="activeNotifTab = 'inbox'">
                   Inbox <span v-if="unreadCount" class="ml-1 text-xs bg-green-500 text-white rounded-full px-2 py-0.5">{{
                     unreadCount }}</span>
                 </button>
                 <button class="pb-2 border-b-2 transition"
-                  :class="activeNotifTab === 'general' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                  :class="activeNotifTab === 'general' ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-500'"
                   @click="activeNotifTab = 'general'">
                   General
                 </button>
                 <button class="pb-2 border-b-2 transition"
-                  :class="activeNotifTab === 'archived' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-500'"
+                  :class="activeNotifTab === 'archived' ? 'border-orange-500 text-orange-600 font-semibold' : 'border-transparent text-gray-500'"
                   @click="activeNotifTab = 'archived'">
                   Archived
                 </button>
@@ -171,11 +150,11 @@
               </div>
   
               <button v-for="notif in filteredNotifications" :key="notif.id"
-                class="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-blue-50/50 transition"
+                class="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-orange-50/50 transition"
                 @click="openNotification(notif)">
                 <div class="relative">
                   <div
-                    class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-blue-700 font-semibold text-xs">
+                    class="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-100 to-orange-50 flex items-center justify-center text-orange-700 font-semibold text-xs">
                     {{ getNotifInitials(notif) }}
                   </div>
                   <span v-if="!notif.is_read" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
@@ -193,8 +172,8 @@
           <!-- User Profile -->
           <div class="border-l border-gray-200 pl-4 cursor-pointer select-none" @click="openUserDialog">
             <div class="flex items-center space-x-3 hover:bg-gray-50 px-2 py-1 rounded-lg transition">
-              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                <span class="text-sm font-semibold text-blue-600">{{ userInitials }}</span>
+              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                <span class="text-sm font-semibold text-orange-600">{{ userInitials }}</span>
               </div>
               <div>
                 <h2 class="font-semibold text-gray-800 text-sm">{{ fullName }}</h2>
@@ -233,7 +212,7 @@
                 ? 'bg-red-50 text-red-600'
                 : responseDialog.severity === 'warn'
                   ? 'bg-amber-50 text-amber-600'
-                  : 'bg-blue-50 text-blue-600'
+                  : 'bg-orange-50 text-orange-600'
           ]">
           <i :class="[
               'pi text-2xl',
@@ -265,6 +244,10 @@ import { startCase, toLower, groupBy } from 'lodash'
 import Skeleton from 'primevue/skeleton'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
+import Accordion from 'primevue/accordion'
+import AccordionPanel from 'primevue/accordionpanel'
+import AccordionHeader from 'primevue/accordionheader'
+import AccordionContent from 'primevue/accordioncontent'
 import Popover from 'primevue/popover'
 import axiosClient from '@/axios'
 import { useAuthStore } from '@/stores/auth'
@@ -281,7 +264,7 @@ const isBooting = ref(true)
 const userDialogRef = ref(null)
 const loadingNavigation = ref(false)
 const enabledModules = ref<string[] | null>(null)
-const sidebarOpen = ref(false)
+const sidebarOpen = ref(true)
 const notificationPanel = ref()
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
@@ -305,7 +288,20 @@ const expandedModules = ref<Record<string, boolean>>({
   hr: false,
   supplier: true,
 })
-const expandedSections = ref<Record<string, boolean>>({})
+const expandedModuleValues = computed<string[]>({
+  get: () => Object.entries(expandedModules.value)
+    .filter(([, expanded]) => expanded)
+    .map(([module]) => module),
+  set: (values) => {
+    const openModules = new Set(values)
+    const nextState: Record<string, boolean> = {}
+    Object.keys(expandedModules.value).forEach((module) => {
+      nextState[module] = openModules.has(module)
+    })
+    expandedModules.value = nextState
+    localStorage.setItem('expandedModules', JSON.stringify(nextState))
+  }
+})
 
 // Load saved state on mount
 onMounted(async () => {
@@ -370,14 +366,6 @@ onMounted(async () => {
       // Use defaults
     }
   }
-  const savedSections = localStorage.getItem('expandedSections')
-  if (savedSections) {
-    try {
-      expandedSections.value = JSON.parse(savedSections)
-    } catch (e) {
-      // ignore
-    }
-  }
   window.addEventListener('keydown', handleKeyboardShortcut)
   loadNotifications()
   if (!notificationPoller.value) {
@@ -418,11 +406,6 @@ const toggleModule = (module: string) => {
   localStorage.setItem('expandedModules', JSON.stringify(expandedModules.value))
 }
 
-const toggleSection = (sectionId: number) => {
-  expandedSections.value[sectionId] = !expandedSections.value[sectionId]
-  localStorage.setItem('expandedSections', JSON.stringify(expandedSections.value))
-}
-
 watch(currentPath, () => {
   if (window.innerWidth < 1024) {
     sidebarOpen.value = false
@@ -439,83 +422,83 @@ const handleKeyboardShortcut = (event: KeyboardEvent) => {
 }
 
 // Group navigation items by module
-const supplierFallbackNavigation = [
-  {
-    id: -101,
-    name: 'supplier.dashboard',
-    display_name: "Supplier's Dashboard",
-    module: 'supplier',
-    route_name: 'supplier.dashboard',
-    route_path: '/supplier-portal/dashboard',
-    icon: 'pi pi-home',
-    parent_id: null,
-    display_order: 1,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -102,
-    name: 'supplier.purchase_orders',
-    display_name: 'Purchase Orders',
-    module: 'supplier',
-    route_name: 'supplier.pos',
-    route_path: '/supplier-portal/pos',
-    icon: 'pi pi-shopping-cart',
-    parent_id: null,
-    display_order: 2,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -103,
-    name: 'supplier.rfqs',
-    display_name: 'RFQs',
-    module: 'supplier',
-    route_name: 'supplier.rfqs',
-    route_path: '/supplier-portal/rfqs',
-    icon: 'pi pi-file',
-    parent_id: null,
-    display_order: 3,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -104,
-    name: 'supplier.transactions',
-    display_name: 'Transactions',
-    module: 'supplier',
-    route_name: 'supplier.transactions',
-    route_path: '/supplier-portal/transactions',
-    icon: 'pi pi-credit-card',
-    parent_id: null,
-    display_order: 4,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-  {
-    id: -105,
-    name: 'supplier.payment_account',
-    display_name: 'Payment Account',
-    module: 'supplier',
-    route_name: 'supplier.payment-account',
-    route_path: '/supplier-portal/payment-account',
-    icon: 'pi pi-wallet',
-    parent_id: null,
-    display_order: 5,
-    section: 'General',
-    meta: null,
-    is_active: true,
-    badge_count: 0,
-  },
-]
+// const supplierFallbackNavigation = [
+//   {
+//     id: -101,
+//     name: 'supplier.dashboard',
+//     display_name: "Supplier's Dashboard",
+//     module: 'supplier',
+//     route_name: 'supplier.dashboard',
+//     route_path: '/supplier-portal/dashboard',
+//     icon: 'pi pi-home',
+//     parent_id: null,
+//     display_order: 1,
+//     section: 'General',
+//     meta: null,
+//     is_active: true,
+//     badge_count: 0,
+//   },
+//   {
+//     id: -102,
+//     name: 'supplier.purchase_orders',
+//     display_name: 'Purchase Orders',
+//     module: 'supplier',
+//     route_name: 'supplier.pos',
+//     route_path: '/supplier-portal/pos',
+//     icon: 'pi pi-shopping-cart',
+//     parent_id: null,
+//     display_order: 2,
+//     section: 'General',
+//     meta: null,
+//     is_active: true,
+//     badge_count: 0,
+//   },
+//   {
+//     id: -103,
+//     name: 'supplier.rfqs',
+//     display_name: 'RFQs',
+//     module: 'supplier',
+//     route_name: 'supplier.rfqs',
+//     route_path: '/supplier-portal/rfqs',
+//     icon: 'pi pi-file',
+//     parent_id: null,
+//     display_order: 3,
+//     section: 'General',
+//     meta: null,
+//     is_active: true,
+//     badge_count: 0,
+//   },
+//   {
+//     id: -104,
+//     name: 'supplier.transactions',
+//     display_name: 'Transactions',
+//     module: 'supplier',
+//     route_name: 'supplier.transactions',
+//     route_path: '/supplier-portal/transactions',
+//     icon: 'pi pi-credit-card',
+//     parent_id: null,
+//     display_order: 4,
+//     section: 'General',
+//     meta: null,
+//     is_active: true,
+//     badge_count: 0,
+//   },
+//   {
+//     id: -105,
+//     name: 'supplier.payment_account',
+//     display_name: 'Payment Account',
+//     module: 'supplier',
+//     route_name: 'supplier.payment-account',
+//     route_path: '/supplier-portal/payment-account',
+//     icon: 'pi pi-wallet',
+//     parent_id: null,
+//     display_order: 5,
+//     section: 'General',
+//     meta: null,
+//     is_active: true,
+//     badge_count: 0,
+//   },
+// ]
 
 // const storeFallbackNavigation = [
 //   {
@@ -652,6 +635,29 @@ const groupedNavigation = computed(() => {
     const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
     if (!existingPaths.has(supplierPaymentItem.route_path)) {
       baseNavigation = [...baseNavigation, supplierPaymentItem]
+    }
+  }
+
+  if (isStoreRole) {
+    const storeBillingItem = {
+      id: -904,
+      name: 'store.billing',
+      display_name: 'Billing',
+      module: 'account',
+      route_name: 'store.billing',
+      route_path: '/store/billing',
+      icon: 'pi pi-credit-card',
+      parent_id: null,
+      display_order: 997,
+      section: 'General',
+      meta: null,
+      is_active: true,
+      badge_count: 0,
+    }
+
+    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
+    if (!existingPaths.has(storeBillingItem.route_path)) {
+      baseNavigation = [...baseNavigation, storeBillingItem]
     }
   }
 
@@ -954,8 +960,23 @@ watch(isAuthenticated, (value) => {
   font-family: 'Barabara', sans-serif;
 }
 
+.system-navigation-accordion :deep(.p-accordionheader-toggle-icon) {
+  width: 0.7rem;
+  height: 0.7rem;
+  font-size: 0.7rem;
+}
+
+.system-navigation-accordion :deep(.p-accordionheader) {
+  padding: 0.7rem 1rem;
+}
+
 .sidebar {
-  transition: all 0.3s ease;
+  width: 16rem;
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+.sidebar.closed {
+  width: 5rem;
 }
 
 @media (max-width: 1024px) {

@@ -7,7 +7,10 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductAsset;
 use App\Models\ProductCatalog\ProductVariation;
+use App\Models\Hr\Employee;
+use App\Models\Store\Branch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,9 +23,27 @@ class ProductController extends Controller
      */
     private function getUserContext(): array
     {
+        $user = auth()->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $branchId = (int) ($user?->branch_id ?? 0);
+
+        // Some store-level users are not assigned to a branch. Inventory still
+        // needs a concrete branch, so use the store's main active branch first.
+        if ($storeId && (!$branchId || !Branch::query()
+            ->where('id', $branchId)
+            ->where('store_id', $storeId)
+            ->exists())) {
+            $branchId = (int) (Branch::query()
+                ->where('store_id', $storeId)
+                ->where('status', 'active')
+                ->orderByDesc('is_main_branch')
+                ->orderBy('id')
+                ->value('id') ?? 0);
+        }
+
         return [
-            'store_id' => auth()->user()->store_id,
-            'branch_id' => auth()->user()->branch_id,
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
         ];
     }
 
@@ -86,17 +107,56 @@ class ProductController extends Controller
         try {
             $context = $this->getUserContext();
 
-            $query = Product::with([
-                    'category',
-                    'variations',
-                    'assets',
+            if (!$context['store_id']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account is not assigned to a store.',
+                ], 422);
+            }
+
+            if (!$context['branch_id']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No active branch is configured for this store. Assign a branch before creating inventory products.',
+                ], 422);
+            }
+            if ($request->filled('branch_id')) {
+                $context['branch_id'] = (int) $request->branch_id;
+            }
+
+            $query = Product::select([
+                    'id',
+                    'store_id',
+                    'sku',
+                    'product_name',
+                    'description',
+                    'category_id',
+                    'product_type',
+                    'base_price',
+                    'cost_price',
+                    'cost_price as inventory_cost_price',
+                    'unit_of_measurement',
+                    'supplier_name',
+                    'initial_stock',
+                    'is_active',
+                    'created_at',
+                    'updated_at',
+                ])
+                ->with([
+                    'category:id,category_name',
                     'inventory' => function ($q) use ($context) {
+                        $q->select([
+                            'id',
+                            'product_id',
+                            'branch_id',
+                            'quantity_available',
+                            'reorder_point',
+                        ]);
                         if (!empty($context['branch_id'])) {
                             $q->where('branch_id', $context['branch_id']);
                         }
                     },
                 ])
-                ->withCount('variations')
                 ->where('store_id', $context['store_id'])
                 ->where('is_active', true);
 
@@ -107,6 +167,18 @@ class ProductController extends Controller
 
             if ($request->filled('product_type')) {
                 $query->byProductType($request->product_type);
+            }
+
+            if ($request->filled('status')) {
+                $status = (string) $request->status;
+                if ($status === 'no_supplier') {
+                    $query->where(function ($q) {
+                        $q->whereNull('supplier_name')
+                          ->orWhere('supplier_name', '');
+                    });
+                } elseif (in_array($status, ['1', '0', 'true', 'false'], true)) {
+                    $query->where('is_active', filter_var($status, FILTER_VALIDATE_BOOLEAN));
+                }
             }
 
             if ($request->boolean('available_only', false)) {
@@ -129,7 +201,29 @@ class ProductController extends Controller
                 });
             }
 
-            $products = $query->orderBy('product_name')
+            $sortBy = $request->get('sort_by', 'created_at');
+            $sortOrder = strtolower((string) $request->get('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSorts = [
+                'product_name' => 'product_name',
+                'base_price' => 'base_price',
+                'created_at' => 'created_at',
+                'updated_at' => 'updated_at',
+            ];
+
+            if ($sortBy === 'reorder_point') {
+                $query->leftJoin('branch_inventory as bi', function ($join) use ($context) {
+                    $join->on('bi.product_id', '=', 'products.id');
+                    if (!empty($context['branch_id'])) {
+                        $join->where('bi.branch_id', '=', (int) $context['branch_id']);
+                    }
+                })
+                ->select('products.*')
+                ->orderByRaw('COALESCE(bi.reorder_point, 0) ' . $sortOrder);
+            } else {
+                $query->orderBy($allowedSorts[$sortBy] ?? 'created_at', $sortOrder);
+            }
+
+            $products = $query
                 ->paginate($request->get('per_page', 15));
 
             return response()->json([
@@ -165,6 +259,10 @@ class ProductController extends Controller
             ->where('store_id', $context['store_id'])
             ->findOrFail($id);
 
+            // The Product model protects cost_price through an accessor. Return a scoped
+            // inventory field so product editing can still load the saved cost.
+            $product->setAttribute('inventory_cost_price', $product->getRawOriginal('cost_price'));
+
             return response()->json([
                 'success' => true,
                 'data' => $product,
@@ -191,7 +289,7 @@ class ProductController extends Controller
                 'product_name' => 'required|string|max:255',
                 'sku' => 'nullable|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
-                'category_id' => 'nullable|exists:product_categories,id',
+                'category_id' => 'nullable|exists:categories,id',
                 'product_type' => 'nullable|in:raw_material,finished_good,supply',
                 'base_price' => 'nullable|numeric|min:0',
                 'unit_cost' => 'nullable|numeric|min:0',
@@ -204,11 +302,102 @@ class ProductController extends Controller
                 'variations.*.variation_name' => 'required|string|max:255',
                 'variations.*.sku' => 'required|string|max:100',
                 'variations.*.price_modifier' => 'numeric',
+                'product_image' => 'nullable|image|max:5120',
             ]);
+
+            $initialStock = (int) ($validated['initial_stock'] ?? 0);
+            $branchId = (int) $context['branch_id'];
+            $employeeId = Employee::query()
+                ->where('user_id', auth()->id())
+                ->value('id');
+
+            if (!$employeeId) {
+                $employeeId = Employee::query()
+                    ->where('store_id', $context['store_id'])
+                    ->value('id');
+            }
+
+            if (!$employeeId) {
+                $employeeId = config('app.system_employee_id');
+            }
+
+            if ($initialStock > 0 && !$employeeId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No employee record is available to record opening stock.',
+                ], 422);
+            }
 
             DB::beginTransaction();
 
             $product = Product::create($this->buildProductPayload($validated, $context['store_id']));
+
+            $inventory = BranchInventory::query()->firstOrCreate(
+                [
+                    'store_id' => $context['store_id'],
+                    'branch_id' => $branchId,
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                ],
+                [
+                    'quantity_on_hand' => 0,
+                    'quantity_reserved' => 0,
+                    'quantity_available' => 0,
+                    'quantity_damaged' => 0,
+                    'quantity_incoming' => 0,
+                    'reorder_point' => (int) ($product->reorder_point ?? 0),
+                    'reorder_quantity' => 0,
+                    'maximum_stock' => 0,
+                    'safety_stock' => 0,
+                    'stock_status' => 'out_of_stock',
+                ]
+            );
+
+            if ($initialStock > 0) {
+                $inventory->quantity_on_hand = $initialStock;
+                $inventory->quantity_available = $initialStock;
+                $inventory->stock_status = $initialStock <= (int) ($inventory->reorder_point ?? 0)
+                    ? 'low_stock'
+                    : 'in_stock';
+                $inventory->save();
+
+                InventoryTransaction::create([
+                    'transaction_number' => 'TXN-' . strtoupper(Str::random(10)),
+                    'store_id' => $context['store_id'],
+                    'branch_id' => $branchId,
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'transaction_type' => 'adjustment',
+                    'quantity_before' => 0,
+                    'quantity_change' => $initialStock,
+                    'quantity_after' => $initialStock,
+                    'notes' => 'Opening stock seeded during product creation',
+                    'unit_cost' => $product->cost_price ?? 0,
+                    'total_value' => $initialStock * (float) ($product->cost_price ?? 0),
+                    'requires_approval' => false,
+                    'approval_status' => 'not_required',
+                    'created_by' => (int) $employeeId,
+                    'transaction_date' => now(),
+                ]);
+            }
+
+            if ($request->hasFile('product_image')) {
+                $file = $request->file('product_image');
+                $path = $file->store("stores/{$context['store_id']}/products/{$product->id}/images", 'public');
+
+                ProductAsset::create([
+                    'store_id' => $context['store_id'],
+                    'product_id' => $product->id,
+                    'asset_type' => 'Image_Main',
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_path' => $path,
+                    'file_size_kb' => round($file->getSize() / 1024),
+                    'mime_type' => $file->getMimeType(),
+                    'is_primary' => true,
+                    'display_order' => 0,
+                    'alt_text' => $validated['product_name'] ?? null,
+                ]);
+            }
 
             // Create variations if provided
             if (!empty($validated['variations'])) {
@@ -227,7 +416,7 @@ class ProductController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $product->load(['category', 'variations']),
+                'data' => $product->load(['category', 'variations', 'assets', 'inventory']),
                 'message' => 'Product created successfully',
             ], 201);
         } catch (\Exception $e) {
@@ -255,7 +444,7 @@ class ProductController extends Controller
                 'product_name' => 'required|string|max:255',
                 'sku' => 'nullable|string|max:100|unique:products,sku,' . $id . ',id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
-                'category_id' => 'nullable|exists:product_categories,id',
+                'category_id' => 'nullable|exists:categories,id',
                 'product_type' => 'nullable|in:raw_material,finished_good,supply',
                 'base_price' => 'nullable|numeric|min:0',
                 'unit_cost' => 'nullable|numeric|min:0',
@@ -264,6 +453,7 @@ class ProductController extends Controller
                 'supplier_name' => 'nullable|string|max:255',
                 'initial_stock' => 'nullable|numeric|min:0',
                 'is_active' => 'boolean',
+                'product_image' => 'nullable|image|max:5120',
             ]);
 
             DB::beginTransaction();
@@ -302,11 +492,34 @@ class ProductController extends Controller
             }
 
             $product->update($updates);
+
+            if ($request->hasFile('product_image')) {
+                $file = $request->file('product_image');
+                $path = $file->store("stores/{$context['store_id']}/products/{$product->id}/images", 'public');
+
+                ProductAsset::where('store_id', $context['store_id'])
+                    ->where('product_id', $product->id)
+                    ->where('asset_type', 'Image_Main')
+                    ->update(['is_primary' => false]);
+
+                ProductAsset::create([
+                    'store_id' => $context['store_id'],
+                    'product_id' => $product->id,
+                    'asset_type' => 'Image_Main',
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_path' => $path,
+                    'file_size_kb' => round($file->getSize() / 1024),
+                    'mime_type' => $file->getMimeType(),
+                    'is_primary' => true,
+                    'display_order' => 0,
+                    'alt_text' => $validated['product_name'] ?? null,
+                ]);
+            }
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $product->load(['category', 'variations']),
+                'data' => $product->load(['category', 'variations', 'assets']),
                 'message' => $isPriceChanged
                     ? 'Price change submitted for finance approval. Live price will update after approval.'
                     : 'Product updated successfully',

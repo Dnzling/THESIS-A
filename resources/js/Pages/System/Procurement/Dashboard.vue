@@ -1,9 +1,12 @@
 <template>
   <div class="space-y-6 pb-6">
     <!-- Header -->
-    <div class="mb-8">
-      <h1 class="text-4xl font-bold text-gray-900 mb-2">Procurement Dashboard</h1>
-      <p class="text-gray-600">Real-time overview of your procurement operations</p>
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Procurement Dashboard</h1>
+        <p class="text-gray-600">Real-time overview of your procurement operations</p>
+      </div>
+      <Button label="Refresh" icon="pi pi-sync" severity="secondary" outlined size="small" @click="loadDashboard" />
     </div>
 
     <div v-if="loading" class="space-y-6">
@@ -18,63 +21,63 @@
 
     <div v-else>
       <!-- Summary Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <!-- Active Suppliers -->
-        <div class="bg-linear-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200 p-6 hover:shadow-lg transition cursor-pointer"
+        <div class="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
           @click="router.push({ name: 'procurement.suppliers' })">
-          <div class="flex items-start justify-between mb-4">
+          <div class="flex items-start justify-between">
             <div>
-              <p class="text-sm font-medium text-blue-600 uppercase mb-1">Active Suppliers</p>
-              <h3 class="text-4xl font-bold text-gray-900">{{ stats.summary?.active_suppliers?.count || 0 }}</h3>
-              <p class="text-xs text-blue-700 mt-2">of {{ stats.summary?.active_suppliers?.total || 0 }} total</p>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Active Suppliers</p>
+              <h3 class="mt-1 text-2xl font-bold text-gray-900">{{ stats.summary?.active_suppliers?.count || 0 }}</h3>
+              <p class="mt-1 text-xs text-gray-500">of {{ stats.summary?.active_suppliers?.total || 0 }} total</p>
             </div>
-            <div class="bg-blue-600 p-3 rounded-lg">
-              <i class="pi pi-users text-2xl text-white"></i>
+            <div class="rounded-lg bg-blue-600 p-2">
+              <i class="pi pi-users text-lg text-white"></i>
             </div>
           </div>
         </div>
 
         <!-- Pending Approvals -->
-        <div class="bg-linear-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200 p-6 hover:shadow-lg transition cursor-pointer"
+        <div class="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
           @click="router.push({ name: 'procurement.purchase-requisitions' })">
-          <div class="flex items-start justify-between mb-4">
+          <div class="flex items-start justify-between">
             <div>
-              <p class="text-sm font-medium text-amber-600 uppercase mb-1">Pending Approvals</p>
-              <h3 class="text-4xl font-bold text-gray-900">{{ stats.summary?.pending_approvals?.total || 0 }}</h3>
-              <p class="text-xs text-amber-700 mt-2">{{ stats.summary?.pending_approvals?.pr_count }} PRs, {{ stats.summary?.pending_approvals?.po_count }} POs</p>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Pending Approvals</p>
+              <h3 class="mt-1 text-2xl font-bold text-gray-900">{{ stats.summary?.pending_approvals?.total || 0 }}</h3>
+              <p class="mt-1 text-xs text-gray-500">{{ stats.summary?.pending_approvals?.pr_count }} PRs, {{ stats.summary?.pending_approvals?.po_count }} POs</p>
             </div>
-            <div class="bg-amber-600 p-3 rounded-lg">
-              <i class="pi pi-clock text-2xl text-white"></i>
+            <div class="rounded-lg bg-amber-600 p-2">
+              <i class="pi pi-clock text-lg text-white"></i>
             </div>
           </div>
         </div>
 
         <!-- Active POs -->
-        <div class="bg-linear-to-br from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 p-6 hover:shadow-lg transition cursor-pointer"
+        <div class="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
           @click="router.push({ name: 'procurement.purchase-orders' })">
-          <div class="flex items-start justify-between mb-4">
+          <div class="flex items-start justify-between">
             <div>
-              <p class="text-sm font-medium text-indigo-600 uppercase mb-1">Active POs</p>
-              <h3 class="text-4xl font-bold text-gray-900">{{ stats.summary?.active_pos?.count || 0 }}</h3>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Active POs</p>
+              <h3 class="mt-1 text-2xl font-bold text-gray-900">{{ stats.summary?.active_pos?.count || 0 }}</h3>
               <p class="text-xs text-indigo-700 mt-2">₱{{ formatCurrency(stats.summary?.active_pos?.total_value || 0) }}</p>
             </div>
-            <div class="bg-indigo-600 p-3 rounded-lg">
-              <i class="pi pi-shopping-cart text-2xl text-white"></i>
+            <div class="rounded-lg bg-indigo-600 p-2">
+              <i class="pi pi-shopping-cart text-lg text-white"></i>
             </div>
           </div>
         </div>
 
         <!-- Pending Payments -->
-        <div class="bg-linear-to-br from-green-50 to-green-100 rounded-lg border border-green-200 p-6 hover:shadow-lg transition cursor-pointer"
+        <div class="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
           @click="router.push({ name: 'procurement.payments' })">
-          <div class="flex items-start justify-between mb-4">
+          <div class="flex items-start justify-between">
             <div>
-              <p class="text-sm font-medium text-green-600 uppercase mb-1">Pending Payments</p>
-              <h3 class="text-4xl font-bold text-gray-900">{{ stats.summary?.pending_payments?.count || 0 }}</h3>
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Pending Payments</p>
+              <h3 class="mt-1 text-2xl font-bold text-gray-900">{{ stats.summary?.pending_payments?.count || 0 }}</h3>
               <p class="text-xs text-green-700 mt-2">₱{{ formatCurrency(stats.summary?.pending_payments?.total_amount || 0) }}</p>
             </div>
-            <div class="bg-green-600 p-3 rounded-lg">
-              <i class="pi pi-wallet text-2xl text-white"></i>
+            <div class="rounded-lg bg-green-600 p-2">
+              <i class="pi pi-wallet text-lg text-white"></i>
             </div>
           </div>
         </div>
@@ -269,4 +272,3 @@ onMounted(() => {
   loadDashboard()
 })
 </script>
-

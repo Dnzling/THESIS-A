@@ -1,9 +1,8 @@
 <template>
   <div class="space-y-6">
-    <div class="rounded-xl border border-slate-200 bg-white p-6">
+    <div class="">
       <div class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold text-slate-900">Store Admin Dashboard</h1>
-        <p class="text-sm text-slate-600">Operational overview for your store.</p>
+        <h1 class="text-2xl font-semibold text-slate-900">Store Dashboard</h1>
       </div>
     </div>
 

@@ -21,24 +21,45 @@ class StoreVerificationController extends Controller
     }
 
     private const DOC_SPECS = [
-        'business_registration_file' => [
-            'label' => "Mayor's Permit",
+        'gov_id_front_file' => [
+            'label' => 'Primary ID Front',
             'required' => true,
-            'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
+            'allowed_mimes' => ['image/jpeg', 'image/png'],
             'max_kb' => 5120,
         ],
-        'business_permit_file' => [
-            'label' => 'Business Permit',
+        'gov_id_back_file' => [
+            'label' => 'Primary ID Back',
+            'required' => false,
+            'allowed_mimes' => ['image/jpeg', 'image/png'],
+            'max_kb' => 5120,
+        ],
+        'business_registration_file' => [
+            'label' => 'Business Registration Permit',
             'required' => true,
             'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
             'max_kb' => 5120,
         ],
         'tax_certificate_file' => [
-            'label' => 'Tax Certificate',
+            'label' => 'BIR Tax Certificate',
             'required' => true,
-            'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
+            'allowed_mimes' => ['application/pdf'],
             'max_kb' => 5120,
         ],
+        'business_permit_file' => [
+            'label' => "Mayor's/Business Permit",
+            'required' => true,
+            'allowed_mimes' => ['application/pdf'],
+            'max_kb' => 5120,
+        ],
+    ];
+
+    private const ID_TYPES = [
+        'sss',
+        'tin',
+        'passport',
+        'driver_license',
+        'umid',
+        'national_id',
     ];
 
     public function submitDocuments(Request $request, Store $store)
@@ -48,14 +69,17 @@ class StoreVerificationController extends Controller
             // First, you need to add user_id to stores table or have another way to link
             // For now, let's assume the authenticated user can submit
 
+            $idTypes = implode(',', self::ID_TYPES);
             $validated = $request->validate([
+                'gov_id_type' => ['required', 'string', "in:{$idTypes}"],
+                'gov_id_number' => ['required', 'string', 'max:100'],
+                'gov_id_front_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
+                'gov_id_back_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
                 'business_registration_number' => ['nullable', 'string', 'max:100'],
-                'business_registration_date' => 'required|date|before_or_equal:today',
-                'business_registration_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'business_permit_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'tax_certificate_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
-                'other_documents' => 'nullable|array',
-                'other_documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
+                'business_registration_date' => ['required', 'date', 'before_or_equal:today'],
+                'business_registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+                'tax_certificate_file' => ['required', 'file', 'mimes:pdf', 'max:5120'],
+                'business_permit_file' => ['required', 'file', 'mimes:pdf', 'max:5120'],
             ]);
 
             $legitimacyIssues = $this->validateUploadedDocuments($request);
@@ -70,9 +94,11 @@ class StoreVerificationController extends Controller
             // Upload files
             $uploads = [];
             $fileFields = [
+                'gov_id_front_file',
+                'gov_id_back_file',
                 'business_registration_file',
+                'tax_certificate_file',
                 'business_permit_file',
-                'tax_certificate_file'
             ];
 
             foreach ($fileFields as $fileField) {
@@ -82,26 +108,22 @@ class StoreVerificationController extends Controller
                 }
             }
 
-            // Upload other documents if any
-            if ($request->hasFile('other_documents')) {
-                $otherDocs = [];
-                foreach ($request->file('other_documents') as $file) {
-                    $path = $file->store("store-verifications/{$store->id}/other", 'public');
-                    $otherDocs[] = $path;
-                }
-                $uploads['other_documents'] = $otherDocs;
-            }
-
             // Create or update verification record
             $verification = StoreVerification::updateOrCreate(
                 ['store_id' => $store->id], // Use $store->id, not $store->store_id
                 array_merge(
-                    $validated,
-                    $uploads,
                     [
+                        'gov_id_type' => $validated['gov_id_type'],
+                        'gov_id_number' => $validated['gov_id_number'],
+                        'business_registration_number' => $validated['business_registration_number'] ?? null,
+                        'business_registration_date' => $validated['business_registration_date'],
+                        'other_documents' => null,
+                        'reviewed_at' => null,
+                        'reviewed_by' => null,
+                        'rejection_reason' => null,
                         'submitted_at' => now(),
-                        'business_registration_date' => $validated['business_registration_date']
-                    ]
+                    ],
+                    $uploads
                 )
             );
 
@@ -133,6 +155,34 @@ class StoreVerificationController extends Controller
                 'message' => 'Failed to submit verification documents',
                 'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
+        }
+    }
+
+    public function extractOwnerId(Request $request)
+    {
+        $request->validate([
+            'id_type' => ['nullable', 'string', 'in:' . implode(',', self::ID_TYPES)],
+            'id_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
+        ]);
+
+        $path = $request->file('id_file')->store('store-verifications/tmp-owner-id', 'public');
+
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $idNumber = $this->documentAutoValidationService->extractLikelyIdNumber($text);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id_number' => $idNumber,
+                    'confidence' => $idNumber ? 'low' : 'none',
+                    'message' => $idNumber
+                        ? 'We found a possible ID number. Please confirm it before submitting.'
+                        : 'We could not read the ID number clearly. Please enter it manually.',
+                ],
+            ]);
+        } finally {
+            Storage::disk('public')->delete($path);
         }
     }
 
@@ -372,8 +422,8 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => $validated['rejection_reason']
                 ]);
 
-                // 2. Keep store in pending state after rejection.
-                $verification->store->update(['status' => 'pending']);
+                // 2. Rejected submissions return the store to unverified so the owner can resubmit.
+                $verification->store->update(['status' => 'unverified']);
             });
 
             $message = 'Store verification rejected';
@@ -561,7 +611,8 @@ class StoreVerificationController extends Controller
         }
 
         $otherDocuments = is_array($verification->other_documents) ? $verification->other_documents : [];
-        foreach ($otherDocuments as $index => $path) {
+        foreach ($otherDocuments as $index => $document) {
+            $path = is_array($document) ? ($document['path'] ?? '') : $document;
             $documents[] = $this->buildDocumentItem(
                 $verification,
                 'other_documents',
@@ -649,10 +700,12 @@ class StoreVerificationController extends Controller
                 return null;
             }
 
+            $otherDoc = $otherDocs[$index];
+
             return [
                 'key' => $document,
                 'index' => $index,
-                'path' => (string) $otherDocs[$index],
+                'path' => (string) (is_array($otherDoc) ? ($otherDoc['path'] ?? '') : $otherDoc),
             ];
         }
 

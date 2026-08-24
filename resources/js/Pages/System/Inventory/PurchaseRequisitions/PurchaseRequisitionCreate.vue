@@ -177,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
@@ -315,9 +315,11 @@ const formatMoney = (value: any) => {
 
 const resolveUnitCost = (inventoryRow: any): number => {
   return Number(
+    inventoryRow?.product?.cost_price ??
+    inventoryRow?.product?.inventory_cost_price ??
+    inventoryRow?.cost_price ??
     inventoryRow?.unit_cost ??
     inventoryRow?.average_cost ??
-    inventoryRow?.product?.cost_price ??
     inventoryRow?.product?.base_price ??
     0
   )
@@ -579,6 +581,14 @@ onMounted(async () => {
     if (typeof notesRaw === 'string' && notesRaw.trim()) {
       form.notes = notesRaw
     }
+  }
+})
+
+watch(currentBranchId, async (branchId, previousBranchId) => {
+  if (!branchId || branchId === previousBranchId) return
+
+  if (!branchLabel.value || branchLabel.value === 'Unassigned Branch') {
+    await loadInventory()
   }
 })
 </script>

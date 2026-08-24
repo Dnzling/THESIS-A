@@ -202,16 +202,9 @@ class EcommerceController extends Controller
         $hasOrderItemsTable = Schema::hasTable('ecommerce_order_items');
         $hasReviewsTable = Schema::hasTable('ecommerce_product_reviews');
 
-        // Do not expose products from stores on free trial in ecommerce.
         Store::query()
             ->where('id', $storeId)
             ->whereIn('status', ['active', 'verified'])
-            ->where(function ($query) {
-                $query->whereNull('subscription_tier')
-                    ->orWhereHas('subscriptionPlan', function ($planQuery) {
-                        $planQuery->where('plan_key', '!=', 'free');
-                    });
-            })
             ->firstOrFail();
 
         $query = Product::query()
@@ -426,13 +419,7 @@ class EcommerceController extends Controller
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified'])
-                    ->where(function ($query) {
-                        $query->whereNull('subscription_tier')
-                            ->orWhereHas('subscriptionPlan', function ($planQuery) {
-                                $planQuery->where('plan_key', '!=', 'free');
-                            });
-                    });
+                $storeQuery->whereIn('status', ['active', 'verified']);
             });
 
         // Optimized inventory filter using EXISTS instead of WHERE HAS (faster)
@@ -655,13 +642,7 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified'])
-                    ->where(function ($query) {
-                        $query->whereNull('subscription_tier')
-                            ->orWhereHas('subscriptionPlan', function ($planQuery) {
-                                $planQuery->where('plan_key', '!=', 'free');
-                            });
-                    });
+                $storeQuery->whereIn('status', ['active', 'verified']);
             })
             ->when($request->filled('store_id'), function ($query) use ($request) {
                 $query->where('store_id', (int) $request->input('store_id'));
@@ -972,12 +953,7 @@ class EcommerceController extends Controller
 
         $isStoreVisibleInEcommerce = Store::query()
             ->where('id', $storeId)
-            ->where(function ($query) {
-                $query->whereNull('subscription_tier')
-                    ->orWhereHas('subscriptionPlan', function ($planQuery) {
-                        $planQuery->where('plan_key', '!=', 'free');
-                    });
-            })
+            ->whereIn('status', ['active', 'verified'])
             ->exists();
 
         if (!$isStoreVisibleInEcommerce) {
@@ -1296,12 +1272,7 @@ class EcommerceController extends Controller
         }
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
-        $storeTier = Store::query()
-            ->where('id', $cart->store_id)
-            ->whereIn('status', ['active', 'verified'])
-            ->with('subscriptionPlan:id,plan_key')
-            ->first(['id', 'subscription_tier'])?->subscriptionPlan?->plan_key ?? 'free';
-        $bulkTrip = $bulkTripRequested && ($storeTier === 'enterprise');
+        $bulkTrip = $bulkTripRequested;
         $bulkDiscountRate = $bulkTrip ? $this->resolveBulkTripDiscountRate($cart->store_id) : 0.0;
 
         if ($customerLatitude === null || $customerLongitude === null) {
@@ -1352,7 +1323,7 @@ class EcommerceController extends Controller
             'data' => [
                 'shipping_fee' => (float) $finalFee,
                 'distance_km' => round($distanceKm, 2),
-                'bulk_trip_allowed' => ($storeTier === 'enterprise'),
+                'bulk_trip_allowed' => true,
                 'fallback_used' => true,
                 'fallback_reason' => 'Using store delivery fee settings.',
                 'breakdown' => [
@@ -1575,12 +1546,7 @@ class EcommerceController extends Controller
         }
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
-        $storeTier = Store::query()
-            ->where('id', $cart->store_id)
-            ->whereIn('status', ['active', 'verified'])
-            ->with('subscriptionPlan:id,plan_key')
-            ->first(['id', 'subscription_tier'])?->subscriptionPlan?->plan_key ?? 'free';
-        $bulkTrip = $bulkTripRequested && ($storeTier === 'enterprise');
+        $bulkTrip = $bulkTripRequested;
         if ($bulkTrip) {
             $bulkDiscountRate = $this->resolveBulkTripDiscountRate($cart->store_id);
             $shippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);

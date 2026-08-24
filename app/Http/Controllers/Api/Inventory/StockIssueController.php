@@ -165,7 +165,7 @@ class StockIssueController extends Controller
                     ], 422);
                 }
 
-                $unitCost = $inventoryItem->unit_cost ?? $inventoryItem->average_cost ?? 0;
+                $unitCost = (float) $inventoryItem->product?->getRawOriginal('cost_price');
                 $itemTotalValue = $itemData['quantity'] * $unitCost;
 
                 StockIssueItem::create([

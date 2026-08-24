@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4 text-sm">
     <div v-if="loading" class="space-y-6">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Skeleton v-for="i in 4" :key="i" height="120px" class="rounded-lg" />
@@ -8,17 +8,25 @@
     </div>
   
     <div v-else>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 class="text-lg font-semibold text-gray-900">Inventory Dashboard</h1>
+        </div>
+        <IconField class="w-full sm:w-72">
+          <InputIcon class="pi pi-search" />
+          <InputText v-model="searchQuery" placeholder="Search inventory" size="small" class="w-full text-sm"
+            @keyup.enter="searchInventory" />
+        </IconField>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
         <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="router.push({ name: 'inventory.items' })">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-600 mb-1">Total Items</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.inventory.total_items }}</h3>
+                <h3 class="text-3xl font-black text-gray-900">{{ dashboardData.inventory.total_items }}</h3>
               </div>
-              <div class="bg-emerald-100 p-4 rounded-full">
-                <i class="pi pi-box text-3xl text-emerald-600"></i>
-              </div>
+              <i class="pi pi-box text-xl text-emerald-600"></i>
             </div>
           </template>
         </Card>
@@ -31,79 +39,137 @@
                 <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.inventory.low_stock }}</h3>
                 <p class="text-xs text-red-600 mt-1">{{ dashboardData.inventory.out_of_stock }} Out of stock</p>
               </div>
-              <div class="bg-red-100 p-4 rounded-full">
-                <i class="pi pi-exclamation-triangle text-3xl text-red-600"></i>
-              </div>
+              <i class="pi pi-exclamation-triangle text-xl text-red-600"></i>
             </div>
           </template>
         </Card>
   
         <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'inventory.adjustments' })">
+          @click="router.push({ name: 'inventory.stock-movements' })">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-600 mb-1">Pending Adjustments</p>
                 <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.adjustments.pending_approvals }}</h3>
               </div>
-              <div class="bg-amber-100 p-4 rounded-full">
-                <i class="pi pi-sync text-3xl text-amber-600"></i>
-              </div>
+              <i class="pi pi-sync text-xl text-amber-600"></i>
             </div>
           </template>
         </Card>
   
         <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'inventory.transfers' })">
+          @click="router.push({ name: 'inventory.stock-movements' })">
           <template #content>
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm text-gray-600 mb-1">Pending Transfers</p>
                 <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.transfers.pending }}</h3>
               </div>
-              <div class="bg-blue-100 p-4 rounded-full">
-                <i class="pi pi-arrow-right-arrow-left text-3xl text-blue-600"></i>
+              <i class="pi pi-arrow-right-arrow-left text-xl text-blue-600"></i>
+            </div>
+          </template>
+        </Card>
+
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-4">
+        <Card>
+          <template #title><span class="text-sm font-semibold">Stock Health</span></template>
+          <template #content>
+            <div class="space-y-3">
+              <div v-for="health in stockHealth" :key="health.label">
+                <div class="mb-1 flex justify-between text-xs">
+                  <span class="text-gray-600">{{ health.label }}</span>
+                  <span class="font-medium text-gray-900">{{ health.value }}</span>
+                </div>
+                <div class="h-1.5 rounded-full bg-gray-100">
+                  <div class="h-1.5 rounded-full" :class="health.color" :style="{ width: `${health.percent}%` }"></div>
+                </div>
               </div>
             </div>
           </template>
         </Card>
 
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'inventory.activity-logs' })">
-          <template #content>
+        <Card>
+          <template #title>
             <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Activity Logs</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.activity_logs_count }}</h3>
-                <p class="text-xs text-blue-600 mt-1">Recent inventory actions</p>
-              </div>
-              <div class="bg-indigo-100 p-4 rounded-full">
-                <i class="pi pi-history text-3xl text-indigo-600"></i>
+              <span class="text-sm font-semibold">Stock Movement</span>
+              <Select v-model="trendPeriod" :options="trendPeriods" optionLabel="label" optionValue="value" size="small" class="w-24 text-xs" />
+            </div>
+          </template>
+          <template #content>
+            <div class="flex h-32 items-end gap-2 border-b border-gray-100 px-2">
+              <div v-for="point in movementTrend" :key="point.label" class="flex min-w-0 flex-1 flex-col items-center gap-1">
+                <div class="w-full rounded-t bg-orange-400" :style="{ height: `${point.height}%` }"></div>
+                <span class="truncate text-[10px] text-gray-500">{{ point.label }}</span>
               </div>
             </div>
           </template>
         </Card>
+
+        <Card>
+          <template #title><span class="text-sm font-semibold">Inventory Value</span></template>
+          <template #content>
+            <p class="text-2xl font-semibold text-gray-900">{{ formatPhpCurrency(dashboardData.inventory.total_value) }}</p>
+            <p class="mt-1 text-xs text-gray-500">Based on quantity on hand and cost per unit.</p>
+          </template>
+        </Card>
+
+        <Card>
+          <template #title>
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold">Reorder Watchlist</span>
+              <Button label="View All" text size="small" class="text-xs" @click="router.push({ name: 'inventory.reorder-suggestions' })" />
+            </div>
+          </template>
+          <template #content>
+            <div v-if="reorderWatchlist.length" class="space-y-2">
+              <div v-for="item in reorderWatchlist.slice(0, 5)" :key="item.id" class="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0">
+                <div class="min-w-0">
+                  <p class="truncate text-xs font-medium text-gray-800">{{ item.product?.product_name || 'N/A' }}</p>
+                  <p class="text-[10px] text-gray-500">Stock {{ item.quantity_available }} / Reorder {{ item.reorder_point }}</p>
+                </div>
+                <Tag value="Reorder" severity="warn" size="small" />
+              </div>
+            </div>
+            <p v-else class="py-4 text-center text-xs text-gray-500">No items need reordering.</p>
+          </template>
+        </Card>
       </div>
-  
+
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card class="lg:col-span-3 hover:shadow-lg transition-shadow cursor-pointer">
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <span>Stock Inventory</span>
+                <span class="text-lg">Stock Inventory</span>
               </div>
-              <Button label="View All" text size="small" @click="router.push({ name: 'inventory.items' })" />
+              <div class="flex items-center gap-2">
+                <IconField class="w-56">
+                  <InputIcon class="pi pi-search" />
+                  <InputText v-model="stockSearchQuery" placeholder="Search stock" size="small" class="w-full text-sm" />
+                </IconField>
+                <Button label="View All" size="small" @click="router.push({ name: 'inventory.items' })" />
+              </div>
             </div>
           </template>
           <template #content>
-            <DataTable
-              :value="inventoryItems"
-              class="p-datatable-sm"
+            <div v-if="inventoryItemsLoading" class="space-y-2">
+              <div class="grid grid-cols-6 gap-3">
+                <Skeleton v-for="i in 6" :key="i" height="22px" />
+              </div>
+              <div v-for="row in 6" :key="row" class="grid grid-cols-6 gap-3">
+                <Skeleton v-for="column in 6" :key="column" height="18px" />
+              </div>
+            </div>
+            <DataTable v-else
+              :value="filteredInventoryItems"
+              class="p-datatable-xs text-xs"
               responsiveLayout="scroll"
-              :loading="inventoryItemsLoading"
               rowHover
               stripedRows
               size="small"
+              @row-click="onInventoryRowClick"
             >
               <template #empty>
                 <div class="text-center py-8">
@@ -135,13 +201,10 @@
                 </template>
               </Column>
 
-              <Column header="Variant" style="width: 16%">
+              <Column field="product.product_type" header="Product Type" style="width: 16%">
                 <template #body="{ data }">
-                  <div v-if="data.variation_id" class="text-xs text-gray-700">
-                    <div>{{ data.variation?.color || '-' }} / {{ data.variation?.size || '-' }}</div>
-                    <div class="text-gray-500">{{ data.variation?.material || '-' }}</div>
-                  </div>
-                  <span v-else class="text-xs text-gray-500">Standard</span>
+                  <Tag :value="getProductTypeLabel(data.product?.product_type)"
+                    :severity="getProductTypeSeverity(data.product?.product_type)" size="small" />
                 </template>
               </Column>
 
@@ -176,13 +239,13 @@
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <span>Recent Transactions</span>
+                <span class="text-lg">Recent Transactions</span>
               </div>
-              <Button label="View All" text size="small" @click="router.push({ name: 'inventory.transactions' })" />
+              <Button label="View All" size="small" @click="router.push({ name: 'inventory.transactions' })" />
             </div>
           </template>
           <template #content>
-            <DataTable :value="dashboardData.recent_transactions" class="p-datatable-sm" responsiveLayout="scroll"
+            <DataTable :value="dashboardData.recent_transactions" class="p-datatable-xs text-xs" responsiveLayout="scroll"
               :loading="loading" sortMode="multiple" removableSort rowHover stripedRows size="small">
               <Column field="transaction_number" header="Reference" sortable removableSort  />
   
@@ -232,47 +295,6 @@
           </template>
         </Card>
 
-        <Card class="lg:col-span-3 hover:shadow-lg transition-shadow cursor-pointer">
-          <template #title>
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <span>Recent Activity Logs</span>
-              </div>
-              <Button label="View All" text size="small" @click="router.push({ name: 'inventory.activity-logs' })" />
-            </div>
-          </template>
-          <template #content>
-            <DataTable :value="dashboardData.recent_activity_logs" class="p-datatable-sm" responsiveLayout="scroll"
-              :loading="loading" rowHover stripedRows size="small">
-              <Column field="created_at" header="Date">
-                <template #body="{ data }">
-                  {{ formatDate(data.created_at) }}
-                </template>
-              </Column>
-              <Column field="action" header="Action">
-                <template #body="{ data }">
-                  <Tag :value="formatAction(data.action)" severity="info" />
-                </template>
-              </Column>
-              <Column field="description" header="Description">
-                <template #body="{ data }">
-                  {{ data.description || 'N/A' }}
-                </template>
-              </Column>
-              <Column field="entity_id" header="Source ID">
-                <template #body="{ data }">
-                  {{ data.entity_id || '-' }}
-                </template>
-              </Column>
-              <template #empty>
-                <div class="text-center py-8 text-gray-500">
-                  <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
-                  <p>No recent activity logs found</p>
-                </div>
-              </template>
-            </DataTable>
-          </template>
-        </Card>
       </div>
   
       <!-- Period Info -->
@@ -285,7 +307,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
@@ -296,6 +318,87 @@ const toast = useToast()
 const loading = ref(true)
 const inventoryItems = ref<any[]>([])
 const inventoryItemsLoading = ref(false)
+const stockSearchQuery = ref('')
+const trendPeriod = ref('daily')
+const trendPeriods = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Monthly', value: 'monthly' }
+]
+
+const stockHealth = computed(() => {
+  const total = Math.max(Number(dashboardData.value.inventory.total_items || 0), 1)
+  return [
+    { label: 'In Stock', value: dashboardData.value.inventory.in_stock, color: 'bg-emerald-500', percent: Math.min(100, dashboardData.value.inventory.in_stock / total * 100) },
+    { label: 'Low Stock', value: dashboardData.value.inventory.low_stock, color: 'bg-amber-500', percent: Math.min(100, dashboardData.value.inventory.low_stock / total * 100) },
+    { label: 'Out of Stock', value: dashboardData.value.inventory.out_of_stock, color: 'bg-red-500', percent: Math.min(100, dashboardData.value.inventory.out_of_stock / total * 100) }
+  ]
+})
+
+const reorderWatchlist = computed(() => inventoryItems.value.filter((item) =>
+  Number(item.quantity_available || 0) <= Number(item.reorder_point || 0)
+))
+
+const movementTrend = computed(() => {
+  const rows: any[] = Array.isArray(dashboardData.value.transaction_trends)
+    ? dashboardData.value.transaction_trends
+    : []
+  const values = rows.map((row) => Number(row.total_quantity || row.quantity || row.total || 0))
+  const max = Math.max(...values, 1)
+  return rows.slice(-7).map((row, index) => ({
+    label: row.date || row.period || row.label || `${index + 1}`,
+    height: Math.max(8, Number(row.total_quantity || row.quantity || row.total || 0) / max * 100)
+  }))
+})
+
+const formatPhpCurrency = (value: any) => new Intl.NumberFormat('en-PH', {
+  style: 'currency', currency: 'PHP'
+}).format(Number(value || 0))
+
+const filteredInventoryItems = computed(() => {
+  const search = stockSearchQuery.value.trim().toLowerCase()
+  if (!search) return inventoryItems.value
+
+  return inventoryItems.value.filter((item) => {
+    const values = [
+      item.product?.product_name,
+      item.product?.sku,
+      item.variation?.variation_name,
+      item.product?.product_type
+    ]
+    return values.some((value) => String(value || '').toLowerCase().includes(search))
+  })
+})
+
+const onInventoryRowClick = ({ data }: { data: any }) => {
+  const productId = data.product?.id || data.product_id
+  if (productId) {
+    router.push({ name: 'inventory.products.detail', params: { id: productId } })
+  }
+}
+
+const getProductTypeLabel = (type?: string) => {
+  const labels: Record<string, string> = {
+    finished_good: 'Finished Good',
+    raw_material: 'Raw Material',
+    supply: 'Supply'
+  }
+  return labels[String(type || '').toLowerCase()] || 'Product'
+}
+
+const getProductTypeSeverity = (type?: string) => {
+  const severities: Record<string, string> = {
+    finished_good: 'success',
+    raw_material: 'info',
+    supply: 'warn'
+  }
+  return severities[String(type || '').toLowerCase()] || 'secondary'
+}
+const searchQuery = ref('')
+
+const searchInventory = () => {
+  const query = searchQuery.value.trim()
+  router.push({ name: 'inventory.items', query: query ? { search: query } : undefined })
+}
 
 const dashboardData = ref({
   inventory: {
@@ -303,7 +406,8 @@ const dashboardData = ref({
     in_stock: 0,
     low_stock: 0,
     out_of_stock: 0,
-    total_quantity: 0
+    total_quantity: 0,
+    total_value: 0
   },
   alerts: {
     total: 0,
@@ -320,17 +424,16 @@ const dashboardData = ref({
   },
   activity_logs_count: 0,
   recent_activity_logs: [] as any[],
-  recent_transactions: [] as any[]
+  recent_transactions: [] as any[],
+  transaction_trends: [] as any[]
 })
 
 const loadDashboard = async () => {
   loading.value = true
   inventoryItemsLoading.value = true
   try {
-    // Load main dashboard data + recent logs
-    const [statsResponse, logsResponse, inventoryResponse] = await Promise.all([
+    const [statsResponse, inventoryResponse] = await Promise.all([
       axios.get('/api/inventory/dashboard/stats'),
-      axios.get('/api/inventory/activity-logs', { params: { per_page: 5 } }),
       inventoryService.getInventoryItems({ page: 1, per_page: 8, sort_by: 'created_at', sort_order: 'desc' })
     ])
 
@@ -339,12 +442,6 @@ const loadDashboard = async () => {
         ...dashboardData.value,
         ...statsResponse.data.data
       }
-    }
-
-    if (logsResponse.data?.success) {
-      const rows = Array.isArray(logsResponse.data?.data?.data) ? logsResponse.data.data.data : []
-      dashboardData.value.recent_activity_logs = rows
-      dashboardData.value.activity_logs_count = Number(logsResponse.data?.data?.total || rows.length)
     }
 
     const inventoryRows = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : []
@@ -439,5 +536,9 @@ onMounted(() => {
 <style scoped>
 :deep(.p-card) {
   @apply h-full;
+}
+
+:deep(.p-card-body) {
+  padding: 0.75rem;
 }
 </style>

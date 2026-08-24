@@ -3,12 +3,12 @@
     <div class="flex items-center justify-between">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Roles & Permissions</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage store roles and module access</p>
       </div>
       <Button
         label="Add Role"
         icon="pi pi-plus"
         size="small"
+        severity="warn"
         :disabled="!hasStore"
         @click="openCreateRoleDialog"
       />
@@ -59,6 +59,7 @@
               label="Save Permissions"
               icon="pi pi-check"
               size="small"
+              severity="warn"
               :disabled="!selectedRole"
               :loading="savingPermissions"
               @click="savePermissions"
@@ -118,7 +119,7 @@
                   class="border border-gray-100 rounded-md"
                 >
                   <div class="flex items-center justify-between px-3 py-2 bg-white">
-                    <div class="text-sm font-medium text-gray-800">
+                    <div class="text-sm font-medium uppercase text-orange-500 text-gray-800">
                       {{ formatLabel(submodule.name) }}
                     </div>
                     <Checkbox
@@ -136,7 +137,6 @@
                     >
                       <div class="text-sm">
                         <div class="font-medium text-gray-900">{{ permission.display_name }}</div>
-                        <div class="text-xs text-gray-500">{{ permission.name }}</div>
                       </div>
                       <Checkbox
                         :modelValue="selectedRolePermissions.includes(permission.id)"

@@ -42,9 +42,6 @@ class ProductObserver
                 'safety_stock'      => 5,
                 'maximum_stock'     => 0,
                 'stock_status'      => 'out_of_stock',
-                'unit_cost'         => $product->cost_price ?? 0,
-                'average_cost'      => $product->cost_price ?? 0,
-                'total_value'       => 0,
             ]);
 
             // Generate initial out-of-stock alert

@@ -129,6 +129,41 @@ class PayrollController extends Controller
             ], 500);
         }
     }
+
+    public function preview(Request $request)
+    {
+        $data = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+        $user = Auth::user();
+        $employees = Employee::where('store_id', $user->store_id)
+            ->whereIn('status', ['active', 'on_leave'])
+            ->orderBy('fname')->orderBy('lname')->get();
+        $rows = $employees->map(function ($employee) use ($data) {
+            $records = Attendance::where('employee_id', $employee->id)
+                ->whereBetween('attendance_date', [$data['start_date'], $data['end_date']])
+                ->orderBy('attendance_date')->get();
+            $dailyRate = (float) ($employee->salary ?? 0) / 26;
+            $paidHours = $records->sum(fn ($record) => (float) ($record->paid_hours ?? (((float) ($record->total_worked_minutes ?? 0)) / 60)));
+            $lateMinutes = (int) $records->sum('late_minutes');
+            $otHours = round((float) $records->sum('overtime_minutes') / 60, 2);
+            $gross = round($paidHours * ($dailyRate / 8) + ($otHours * ($dailyRate / 8) * 1.25), 2);
+            $lateDeduction = round($lateMinutes * (($dailyRate / 8) / 60), 2);
+            $deductions = $lateDeduction;
+            $details = $records->map(function ($record) use ($dailyRate) {
+                $actual = (float) ($record->total_worked_minutes ?? 0) / 60;
+                $paid = (float) ($record->paid_hours ?? $actual);
+                $late = (int) ($record->late_minutes ?? 0);
+                $ot = round((float) ($record->overtime_minutes ?? 0) / 60, 2);
+                $dailyGross = round($paid * ($dailyRate / 8) + ($ot * ($dailyRate / 8) * 1.25), 2);
+                $lateDed = round($late * (($dailyRate / 8) / 60), 2);
+                return ['date' => $record->attendance_date?->format('Y-m-d'), 'status' => $record->status, 'clock_in' => $record->clock_in, 'clock_out' => $record->clock_out, 'actual_hours' => round($actual, 2), 'paid_hours' => round($paid, 2), 'break_minutes' => (int) ($record->break_minutes ?? 0), 'late_minutes' => $late, 'late_deduction' => $lateDed, 'ot_hours' => $ot, 'ot_pay' => round($ot * ($dailyRate / 8) * 1.25, 2), 'daily_gross' => $dailyGross, 'daily_net' => round($dailyGross - $lateDed, 2)];
+            })->values();
+            return ['employee_id' => $employee->id, 'employee_name' => trim($employee->fname . ' ' . $employee->lname), 'days' => $records->count(), 'absent' => $records->where('status', 'absent')->count(), 'on_leave' => $records->where('status', 'on_leave')->count(), 'break_minutes' => (int) $records->sum('break_minutes'), 'allowances' => 0, 'incentives' => 0, 'late_minutes' => $lateMinutes, 'late_deduction' => $lateDeduction, 'ot_hours' => $otHours, 'ot_pay' => round($otHours * ($dailyRate / 8) * 1.25, 2), 'gross' => $gross, 'deductions' => $deductions, 'net_pay' => round($gross - $deductions, 2), 'details' => $details];
+        })->values();
+        return response()->json(['success' => true, 'data' => ['start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'employees' => $rows, 'summary' => ['employees' => $rows->count(), 'gross' => $rows->sum('gross'), 'incentives' => $rows->sum('incentives'), 'deductions' => $rows->sum('deductions'), 'net_pay' => $rows->sum('net_pay')]]);
+    }
     public function generate(Request $request)
     {
         try {

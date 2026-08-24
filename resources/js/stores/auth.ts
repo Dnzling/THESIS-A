@@ -354,7 +354,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.setItem('user', JSON.stringify(userData))
 
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
-            document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
+            document.cookie = `auth_token=${encodeURIComponent(accessToken)}; path=/; SameSite=Lax`
 
             // Load RBAC navigation immediately for roles that rely on DB permissions.
             // (Fixes initial load showing only the account/profile nav until a reload.)

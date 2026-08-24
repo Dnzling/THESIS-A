@@ -20,31 +20,70 @@ class DashboardController extends Controller
     public function getStats(Request $request)
     {
         try {
+            $user = auth()->user();
+            $storeId = (int) ($user?->store_id ?? 0);
+            $branchId = (int) ($user?->branch_id ?? 0);
+
+            if ($storeId <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account is not assigned to a store.',
+                ], 422);
+            }
+
+            $scopePurchaseOrders = function ($query) use ($storeId, $branchId) {
+                $query->where('purchase_orders.store_id', $storeId);
+                if ($branchId > 0) {
+                    $query->where('purchase_orders.branch_id', $branchId);
+                }
+            };
+
+            $scopeRequisitions = function ($query) use ($storeId, $branchId) {
+                $query->where('purchase_requisitions.store_id', $storeId);
+                if ($branchId > 0) {
+                    $query->where('purchase_requisitions.branch_id', $branchId);
+                }
+            };
+
             // ===== SUMMARY CARDS =====
-            $activeSuppliersCount = Supplier::where('status', 'active')->count();
-            $totalSuppliersCount = Supplier::count();
+            $activeSuppliersCount = Supplier::where('store_id', $storeId)->where('status', 'active')->count();
+            $totalSuppliersCount = Supplier::where('store_id', $storeId)->count();
         
-            $pendingPRCount = PurchaseRequisition::where('status', 'submitted')->count();
-            $pendingPOApprovalsCount = PurchaseOrder::whereIn('status', ['pending_finance_approval'])->count();
+            $pendingPRCount = PurchaseRequisition::where($scopeRequisitions)
+                ->where('status', 'submitted')
+                ->count();
+            $pendingPOApprovalsCount = PurchaseOrder::where($scopePurchaseOrders)
+                ->whereIn('status', ['pending_finance_approval'])
+                ->count();
             $totalPendingApprovals = $pendingPRCount + $pendingPOApprovalsCount;
 
-            $activePOsCount = PurchaseOrder::whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit'])->count();
-            $activePOsValue = PurchaseOrder::whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit'])->sum('total_amount') ?? 0;
-            $totalPOsValue = PurchaseOrder::sum('total_amount') ?? 0;
+            $activePOs = PurchaseOrder::where($scopePurchaseOrders)
+                ->whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit']);
+            $activePOsCount = (clone $activePOs)->count();
+            $activePOsValue = (clone $activePOs)->sum('total_amount') ?? 0;
+            $totalPOsValue = PurchaseOrder::where($scopePurchaseOrders)->sum('total_amount') ?? 0;
 
             $pendingPaymentsCount = 0;
             $pendingPaymentsAmount = 0;
             try {
-                $pendingPaymentsCount = SupplierPayment::where('status', 'pending_approval')->count();
-                $pendingPaymentsAmount = SupplierPayment::where('status', 'pending_approval')->sum('payment_amount') ?? 0;
+                $pendingPayments = SupplierPayment::where('store_id', $storeId)
+                    ->where('status', 'pending_approval')
+                    ->when($branchId > 0, function ($query) use ($branchId) {
+                        $query->whereHas('purchaseOrder', fn ($po) => $po->where('branch_id', $branchId));
+                    });
+                $pendingPaymentsCount = (clone $pendingPayments)->count();
+                $pendingPaymentsAmount = (clone $pendingPayments)->sum('payment_amount') ?? 0;
             } catch (\Exception $e) {
                 \Log::warning('Error fetching pending payments: ' . $e->getMessage());
             }
 
             // ===== TOP SUPPLIERS =====
-            $topSuppliers = Supplier::select('id', 'supplier_name', 'supplier_code', 'rating', 'total_orders', 'total_amount_purchased')
+            $topSuppliers = Supplier::select('id', 'supplier_name', 'supplier_code', 'rating')
+                ->withCount(['purchaseOrders as scoped_total_orders' => $scopePurchaseOrders])
+                ->withSum(['purchaseOrders as scoped_total_spent' => $scopePurchaseOrders], 'total_amount')
+                ->where('store_id', $storeId)
                 ->where('status', 'active')
-                ->orderByDesc('total_amount_purchased')
+                ->orderByDesc('scoped_total_spent')
                 ->limit(5)
                 ->get()
                 ->map(function ($supplier) {
@@ -53,13 +92,14 @@ class DashboardController extends Controller
                         'name' => $supplier->supplier_name,
                         'code' => $supplier->supplier_code,
                         'rating' => round($supplier->rating, 1),
-                        'total_orders' => (int) $supplier->total_orders,
-                        'total_spent' => (float) $supplier->total_amount_purchased,
+                        'total_orders' => (int) $supplier->scoped_total_orders,
+                        'total_spent' => (float) ($supplier->scoped_total_spent ?? 0),
                     ];
                 });
 
             // ===== RECENT PURCHASE ORDERS =====
             $recentPOs = PurchaseOrder::select('id', 'po_number', 'supplier_id', 'total_amount', 'status', 'created_at')
+                ->where($scopePurchaseOrders)
                 ->with('supplier:id,supplier_name')
                 ->latest('created_at')
                 ->limit(5)
@@ -76,7 +116,8 @@ class DashboardController extends Controller
                 });
 
             // ===== PO STATUS BREAKDOWN =====
-            $poStatusBreakdown = PurchaseOrder::select('status')
+            $poStatusBreakdown = PurchaseOrder::where($scopePurchaseOrders)
+                ->select('status')
                 ->selectRaw('COUNT(*) as count')
                 ->selectRaw('SUM(total_amount) as total')
                 ->groupBy('status')
@@ -90,8 +131,8 @@ class DashboardController extends Controller
                 });
 
             // ===== KEY METRICS =====
-            $completedPOs = PurchaseOrder::where('status', 'delivered')->count();
-            $avgSupplierRating = Supplier::where('status', 'active')->avg('rating') ?? 0;
+            $completedPOs = PurchaseOrder::where($scopePurchaseOrders)->where('status', 'delivered')->count();
+            $avgSupplierRating = Supplier::where('store_id', $storeId)->where('status', 'active')->avg('rating') ?? 0;
 
             return response()->json([
                 'success' => true,
@@ -153,4 +194,3 @@ class DashboardController extends Controller
         return $this->getStats($request);
     }
 }
-

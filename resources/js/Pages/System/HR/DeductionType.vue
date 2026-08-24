@@ -1,71 +1,62 @@
 <template>
-  <div class=" mx-auto">
+  <div class="mx-auto text-xs">
     <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
+    <div class="mb-4 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-800">Deduction Types</h1>
-        <p class="text-sm text-gray-500 mt-1">Manage company deduction types and configurations</p>
+        <h1 class="text-base font-semibold text-gray-900">Deduction Types</h1>
       </div>
-      <Button label="Add Deduction Type" icon="pi pi-plus" severity="info" @click="openCreateDialog" />
+      <Button label="Add Deduction Type" icon="pi pi-plus" severity="warn" size="small" @click="openCreateDialog" />
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center jusstify-between">
+    <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div class="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+        <div class="flex items-center justify-between">
           <div>
-            <div class="text-sm text-gray-500">Total Types</div>
-            <div class="text-2xl font-semibold text-gray-800">{{ deductionTypes.length }}</div>
+            <div class="text-xs text-gray-500">Total Types</div>
+            <div class="text-xl font-semibold text-gray-900">{{ deductionTypes.length }}</div>
           </div>
-          <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-list text-blue-500"></i>
-          </div>
+          <i class="pi pi-list text-base text-black"></i>
         </div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-sm text-gray-500">Active</div>
-            <div class="text-2xl font-semibold text-green-600">{{ activeCount }}</div>
+            <div class="text-xs text-gray-500">Active</div>
+            <div class="text-xl font-semibold text-gray-900">{{ activeCount }}</div>
           </div>
-          <div class="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-check-circle text-green-500"></i>
-          </div>
+          <i class="pi pi-check-circle text-base text-black"></i>
         </div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-sm text-gray-500">Mandatory</div>
-            <div class="text-2xl font-semibold text-orange-600">{{ mandatoryCount }}</div>
+            <div class="text-xs text-gray-500">Mandatory</div>
+            <div class="text-xl font-semibold text-gray-900">{{ mandatoryCount }}</div>
           </div>
-          <div class="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-lock text-orange-500"></i>
-          </div>
+          <i class="pi pi-lock text-base text-black"></i>
         </div>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <div class="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-sm text-gray-500">Taxable</div>
-            <div class="text-2xl font-semibold text-purple-600">{{ taxableCount }}</div>
+            <div class="text-xs text-gray-500">Taxable</div>
+            <div class="text-xl font-semibold text-gray-900">{{ taxableCount }}</div>
           </div>
-          <div class="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-percentage text-purple-500"></i>
-          </div>
+          <i class="pi pi-percentage text-base text-black"></i>
         </div>
       </div>
     </div>
 
     <!-- Filters -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-      <div class="flex flex-wrap gap-4">
+    <div class="mb-4 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+      <div class="flex flex-wrap gap-2">
         <IconField>
           <InputIcon class="pi pi-search" />
-          <InputText v-model="filters.search" placeholder="Search..." class="w-64" @input="fetchDeductionTypes" />
+          <InputText v-model="filters.search" placeholder="Search..." class="w-64 text-xs" size="small" @input="fetchDeductionTypes" />
         </IconField>
 
         <Select
@@ -75,7 +66,8 @@
           optionValue="value"
           placeholder="All Categories"
           showClear
-          class="w-48"
+          class="w-48 text-xs"
+          size="small"
           @change="fetchDeductionTypes"
         />
 
@@ -86,7 +78,8 @@
           optionValue="value"
           placeholder="All Calculation Types"
           showClear
-          class="w-48"
+          class="w-48 text-xs"
+          size="small"
           @change="fetchDeductionTypes"
         />
 
@@ -97,14 +90,15 @@
           optionValue="value"
           placeholder="All Status"
           showClear
-          class="w-40"
+          class="w-40 text-xs"
+          size="small"
           @change="fetchDeductionTypes"
         />
       </div>
     </div>
 
     <!-- Data Table -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
       <DataTable
         :value="deductionTypes"
         :loading="loading"
@@ -115,7 +109,7 @@
         currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
         rowHover
         responsiveLayout="scroll"
-        class="text-sm"
+        class="p-datatable-sm text-xs"
       >
         <Column field="code" header="Code" sortable style="width: 100px">
           <template #body="{ data }">
@@ -898,5 +892,3 @@ onMounted(() => {
   fetchDeductionTypes()
 })
 </script>
-
-

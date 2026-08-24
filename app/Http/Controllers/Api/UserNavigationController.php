@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Core\NavigationItem;
 use App\Models\Core\Permission;
-use App\Models\Admin\SubscriptionPlan;
 use App\Services\Core\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -135,24 +134,6 @@ class UserNavigationController extends Controller
         $finalPermissions = array_values(array_unique($basePermissions));
         $filteredOut = [];
 
-        // Store-plan specific permission restrictions
-        $roleName = strtolower((string) ($user->role?->name ?? ''));
-        if ($roleName === 'store_admin' && (int) ($user->store_id ?? 0) > 0) {
-            $subscriptionTier = strtolower((string) ($user->store?->subscriptionPlan?->plan_key ?? ''));
-            if ($subscriptionTier === '') {
-                $subscriptionTier = strtolower((string) (SubscriptionPlan::query()
-                    ->join('stores', 'stores.subscription_tier', '=', 'subscription_plans.id')
-                    ->where('stores.id', (int) $user->store_id)
-                    ->value('subscription_plans.plan_key') ?? ''));
-            }
-
-            if (in_array($subscriptionTier, ['free', 'simple'], true)) {
-                $restricted = ['hr.recuitment.manage', 'hr.recuitment.view'];
-                $filteredOut = array_values(array_intersect($finalPermissions, $restricted));
-                $finalPermissions = array_values(array_diff($finalPermissions, $restricted));
-            }
-        }
-
         return [
             'permissions' => $finalPermissions,
             'meta' => [
@@ -218,19 +199,9 @@ class UserNavigationController extends Controller
             return [];
         }
 
-        $subscriptionTier = strtolower((string) ($user->store?->subscriptionPlan?->plan_key ?? ''));
-        $onboardingPlan = strtolower((string) ($user->trialOnboardingProfile?->plan ?? ''));
-        if ($subscriptionTier === 'unlimited' || $onboardingPlan === 'unlimited') {
-            return self::ALL_STORE_MODULES;
-        }
-
-        if (!$user->store_id) {
-            return [];
-        }
-
-        /** @var \App\Services\Modules\ModuleAccessService $modules */
-        $modules = app(\App\Services\Modules\ModuleAccessService::class);
-        return $modules->enabledModuleKeysForStore((int) $user->store_id);
+        // Modules are available to every store while the platform transitions
+        // from subscription billing to commission-based revenue.
+        return self::ALL_STORE_MODULES;
     }
 
     private function filterPermissionsByModules($user, array $permissions): array
@@ -284,6 +255,14 @@ class UserNavigationController extends Controller
 
         // Check if user has any of the required permissions
         $requiredPermissions = $navItem->permissions->pluck('name')->toArray();
+
+        // Recruitment is available to HR users without the old recruitment permission gate.
+        if (collect($requiredPermissions)->every(fn ($permission) => in_array($permission, [
+            'hr.recruitment.view', 'hr.recruitment.manage', 'hr.recruitment.approve', 'hr.recruitment.delete',
+            'hr.recuitment.view', 'hr.recuitment.manage',
+        ], true))) {
+            return true;
+        }
         
         return !empty(array_intersect($requiredPermissions, $userPermissions));
     }

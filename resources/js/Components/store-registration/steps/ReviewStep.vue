@@ -1,306 +1,197 @@
 <template>
-  <div>
-    <h2 class="text-2xl font-bold text-gray-800 mb-6">Review & Submit</h2>
-  
-    <div class="space-y-8">
-      <!-- Store Information Review -->
-      <ReviewSection title="Store Information" :canEdit="true" @edit="$emit('edit-step', 1)">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <InfoItem label="Store Name" :value="formData.storeName" />
-          <InfoItem label="Business Type" :value="formatBusinessType(formData.businessType)" />
-          <InfoItem label="Business Number" :value="formData.businessNumber" />
-          <InfoItem label="Contact Number" :value="formData.contactNumber" />
-          <InfoItem label="Email" :value="formData.email" class="md:col-span-2" />
-          <!-- Address part -->
-          <InfoItem label="Business Address" :value="formattedAddress" class="md:col-span-2" />
-        </div>
-      </ReviewSection>  
-      <!-- Business Documents Review -->
-      <ReviewSection title="Business Documents" :canEdit="true" @edit="$emit('edit-step', 2)">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <FilePreview :file="formData.registrationPermit" label="Registration Permit" />
-          <FilePreview :file="formData.taxCertificate" label="Tax Certificate" />
-          <FilePreview :file="formData.mayorPermit" label="Mayor's Permit" />
-        </div>
-        <InfoItem v-if="formData.additionalNotes" label="Additional Notes" :value="formData.additionalNotes" />
-      </ReviewSection>
-  
-      <!-- Terms and Conditions -->
-      <div class="border border-gray-200 rounded-lg p-6">
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">Terms & Conditions</h3>
-  
-        <div class="space-y-4">
-          <label class="flex items-start">
-            <input type="checkbox" v-model="localForm.termsAccepted" class="mt-1 mr-3" required />
-            <span class="text-sm text-gray-700">
-              I agree to the <a href="#" class="text-blue-600 hover:underline">Terms of Service</a> and confirm that all
-              information provided is accurate and complete.
-            </span>
-          </label>
-  
-          <label class="flex items-start">
-            <input type="checkbox" v-model="localForm.privacyAccepted" class="mt-1 mr-3" required />
-            <span class="text-sm text-gray-700">
-              I agree to the <a href="#" class="text-blue-600 hover:underline">Privacy Policy</a> and consent to the
-              processing of my personal data for verification purposes.
-            </span>
-          </label>
-        </div>
+  <div class="space-y-6">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 3</p>
+      <h2 class="mt-1 text-2xl font-bold text-slate-950">Review and submit</h2>
+      <p class="mt-2 text-sm text-slate-600">Confirm the owner ID and business documents before sending this for admin review.</p>
+    </div>
+
+    <ReviewSection title="Owner Primary ID" :canEdit="true" @edit="$emit('edit-step', 1)">
+      <div class="grid gap-4 md:grid-cols-2">
+        <InfoItem label="ID Type" :value="idLabel(formData.primaryIdType)" />
+        <InfoItem label="ID Number" :value="formData.primaryIdNumber" />
+        <FilePreview :file="formData.primaryIdFront" label="Front photo" />
+        <FilePreview :file="formData.primaryIdBack" label="Back photo" />
       </div>
-  
-      <!-- Navigation Buttons -->
-      <div class="flex justify-end pt-6 border-t border-gray-200">
-        <Button type="button" @click="submitRegistration" class="w-1/5" severity="success" label="Submit Registration"
-          :disabled="!isStepValid || isSubmitting" />
+    </ReviewSection>
+
+    <ReviewSection title="Business Documents" :canEdit="true" @edit="$emit('edit-step', 2)">
+      <div class="grid gap-4 md:grid-cols-3">
+        <FilePreview :file="formData.registrationPermit" label="Registration permit" />
+        <FilePreview :file="formData.taxCertificate" label="BIR tax certificate" />
+        <FilePreview :file="formData.mayorPermit" label="Mayor's/business permit" />
+      </div>
+      <InfoItem v-if="formData.additionalNotes" label="Additional Notes" :value="formData.additionalNotes" />
+    </ReviewSection>
+
+    <div class="rounded-2xl border border-orange-100 bg-orange-50/50 p-5">
+      <h3 class="font-semibold text-slate-950">Consent and confirmation</h3>
+      <div class="mt-4 space-y-3">
+        <label class="flex items-start gap-3 text-sm text-slate-700">
+          <input v-model="localForm.termsAccepted" type="checkbox" class="mt-1 rounded border-orange-300 text-orange-500" @change="syncForm" />
+          <span>I confirm that the submitted owner ID and business documents are accurate and complete.</span>
+        </label>
+        <label class="flex items-start gap-3 text-sm text-slate-700">
+          <input v-model="localForm.privacyAccepted" type="checkbox" class="mt-1 rounded border-orange-300 text-orange-500" @change="syncForm" />
+          <span>I consent to processing these documents for store verification and fraud prevention.</span>
+        </label>
       </div>
     </div>
+
+    <div class="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-between">
+      <Button type="button" label="Back" severity="secondary" outlined @click="$emit('prev')" />
+      <Button type="button" label="Submit Verification" icon="pi pi-check" severity="warn" :disabled="!isStepValid || isSubmitting" @click="submitVerification" />
+    </div>
   </div>
-  
+
   <Dialog v-model:visible="isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '300px' }">
     <div class="flex flex-col items-center justify-center p-6">
       <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
-      <p class="mt-4 text-lg font-medium text-gray-700">Submitting your form...</p>
-      <p class="text-gray-500">Please wait a moment</p>
+      <p class="mt-4 text-lg font-medium text-slate-700">Submitting verification...</p>
+      <p class="text-sm text-slate-500">Please wait a moment</p>
+    </div>
+  </Dialog>
+
+  <Dialog class="text-center" v-model:visible="responseModal.visible" modal :closable="!responseModal.success" :style="{ width: '28rem' }" :header="responseModal.title">
+    <div class="space-y-4">
+      <div class="flex items-start gap-3">
+        <div
+          class="flex h-11 w-12 shrink-0 items-center justify-center rounded-2xl"
+          :class="responseModal.success ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'"
+        >
+          <i :class="responseModal.success ? 'pi pi-check-circle' : 'pi pi-exclamation-triangle'" class="text-xl"></i>
+        </div>
+        <p class="text-sm leading-6 text-slate-600">{{ responseModal.message }}</p>
+      </div>
+
+      <div class="flex justify-center gap-2 border-t border-slate-100 pt-4">
+        <Button
+          v-if="responseModal.success"
+          label="Ok"
+          severity="warn"
+          iconPos="right"
+          @click="goToSettings"
+        />
+        <Button
+          v-else
+          label="OK"
+          severity="secondary"
+          outlined
+          @click="responseModal.visible = false"
+        />
+      </div>
     </div>
   </Dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import ReviewSection from '../shared/ReviewSection.vue'
 import InfoItem from '../shared/InfoItem.vue'
 import FilePreview from '../shared/FilePreview.vue'
-import { useToast } from 'primevue/usetoast'
-import { useAuthStore } from '@/stores/auth'
 import axiosClient from '@/axios'
 
-const toast = useToast()
-const authStore = useAuthStore()
-const isSubmitting = ref<boolean>(false)
-const storeId = ref<number>()
-
-const getContactPersonName = (): string => {
-  const user = authStore.user as any
-  const firstName = String(user?.first_name ?? user?.fname ?? '').trim()
-  const lastName = String(user?.last_name ?? user?.lname ?? '').trim()
-  const fullName = `${firstName} ${lastName}`.trim()
-  return fullName || 'Store Owner'
-}
-
-interface Props {
-  formData: any
-}
-
-interface Emits {
+const props = defineProps<{ formData: any }>()
+const emit = defineEmits<{
   (e: 'update:formData', data: any): void
-  (e: 'next'): void
   (e: 'prev'): void
-  (e: 'submit'): void
+  (e: 'verification-submitted'): void
   (e: 'edit-step', step: number): void
+}>()
+
+const isSubmitting = ref(false)
+const responseModal = ref({
+  visible: false,
+  success: false,
+  title: '',
+  message: '',
+})
+
+const idLabels: Record<string, string> = {
+  national_id: 'PhilSys National ID',
+  umid: 'UMID',
+  sss: 'SSS ID',
+  tin: 'TIN ID',
+  driver_license: "Driver's License",
+  passport: 'Philippine Passport',
 }
 
-const props = defineProps<Props>()
-const emit = defineEmits<Emits>()
-
-// Local form data
 const localForm = ref({
   ...props.formData,
   termsAccepted: props.formData.termsAccepted || false,
-  privacyAccepted: props.formData.privacyAccepted || false
+  privacyAccepted: props.formData.privacyAccepted || false,
 })
 
-// Validation
-const isStepValid = computed(() => {
-  return localForm.value.termsAccepted && localForm.value.privacyAccepted
-})
+const idLabel = (value: string) => idLabels[value] || value || 'Not provided'
+const syncForm = () => emit('update:formData', { ...localForm.value })
 
-// Format functions
-const formatBusinessType = (type: string) => {
-  const types: Record<string, string> = {
-    retail: 'Retail Store',
-    restaurant: 'Restaurant',
-    service: 'Service Provider',
-    wholesale: 'Wholesale',
-    online: 'Online Store',
-    other: 'Other'
+const hasRequiredData = computed(() =>
+  Boolean(props.formData.storeId)
+  && Boolean(props.formData.primaryIdType)
+  && Boolean(String(props.formData.primaryIdNumber || '').trim())
+  && props.formData.primaryIdFront instanceof File
+  && props.formData.registrationPermit instanceof File
+  && props.formData.taxCertificate instanceof File
+  && props.formData.mayorPermit instanceof File
+)
+
+const isStepValid = computed(() => hasRequiredData.value && localForm.value.termsAccepted && localForm.value.privacyAccepted)
+
+const appendFile = (payload: FormData, key: string, file: unknown) => {
+  if (file instanceof File) {
+    payload.append(key, file)
   }
-  return types[type] || type || 'Not provided'
 }
 
-const formattedAddress = computed(() => {
-  const addr = localForm.value.businessAddress
-  if (!addr) return 'Not provided'
-
-  const parts = []
-
-  if (addr.address) parts.push(addr.address)
-  if (addr.barangay) parts.push(addr.barangay)
-  if (addr.city) parts.push(addr.city)
-  parts.push('Cavite')
-
-  return parts.join(', ') || 'Not provided'
-})
-
-const parseNullableNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === '') {
-    return null
+const showResponseModal = (success: boolean, title: string, message: string) => {
+  responseModal.value = {
+    visible: true,
+    success,
+    title,
+    message,
   }
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
-// Submit registration
-const submitRegistration = async () => {
-  if (!isStepValid.value) return
+const goToSettings = () => {
+  responseModal.value.visible = false
+  emit('verification-submitted')
+}
 
-  const missingStoreFields: string[] = []
-  if (!String(localForm.value.storeName || '').trim()) missingStoreFields.push('Store Name')
-  if (!String(localForm.value.contactNumber || '').trim()) missingStoreFields.push('Contact Number')
-  if (!String(localForm.value.businessAddress?.city || '').trim()) missingStoreFields.push('City')
-  if (!String(localForm.value.businessAddress?.barangay || '').trim()) missingStoreFields.push('Barangay')
-  if (!String(localForm.value.businessAddress?.address || '').trim()) missingStoreFields.push('Business Address')
-
-  if (missingStoreFields.length > 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Missing Required Fields',
-      detail: `Please complete: ${missingStoreFields.join(', ')}`,
-      life: 5000,
-    })
-    return
-  }
-
-  const missingRequiredFiles: string[] = []
-  if (!(localForm.value.registrationPermit instanceof File)) missingRequiredFiles.push('Business Registration Permit')
-  if (!(localForm.value.taxCertificate instanceof File)) missingRequiredFiles.push('BIR Tax Certificate')
-  if (!(localForm.value.mayorPermit instanceof File)) missingRequiredFiles.push("Mayor's Permit")
-
-  if (missingRequiredFiles.length > 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Missing Required Documents',
-      detail: `Please upload: ${missingRequiredFiles.join(', ')}`,
-      life: 5000,
-    })
+const submitVerification = async () => {
+  if (!isStepValid.value) {
+    showResponseModal(false, 'Review Required', 'Please complete the owner ID, business documents, and consent checks before submitting.')
     return
   }
 
   isSubmitting.value = true
 
   try {
-    // 1. Prepare FormData for file uploads
-    const formData = new FormData()
+    const payload = new FormData()
+    payload.append('gov_id_type', props.formData.primaryIdType)
+    payload.append('gov_id_number', props.formData.primaryIdNumber)
+    payload.append('business_registration_number', '')
+    payload.append('business_registration_date', new Date().toISOString().slice(0, 10))
+    appendFile(payload, 'gov_id_front_file', props.formData.primaryIdFront)
+    appendFile(payload, 'gov_id_back_file', props.formData.primaryIdBack)
+    appendFile(payload, 'business_registration_file', props.formData.registrationPermit)
+    appendFile(payload, 'tax_certificate_file', props.formData.taxCertificate)
+    appendFile(payload, 'business_permit_file', props.formData.mayorPermit)
 
-    // Step 1: Store Information
-    formData.append('business_registration_number', localForm.value.businessNumber)
-    formData.append('business_registration_date', new Date().toISOString().slice(0, 10))
-
-    // Step 2: Documents - Append files if they exist
-    if (localForm.value.registrationPermit instanceof File) {
-      formData.append('business_registration_file', localForm.value.registrationPermit)
-    }
-
-    if (localForm.value.taxCertificate instanceof File) {
-      formData.append('tax_certificate_file', localForm.value.taxCertificate)
-    }
-
-    if (localForm.value.mayorPermit instanceof File) {
-      formData.append('business_permit_file', localForm.value.mayorPermit)
-    }
-
-    // 1. Prepare data object
-    const payload = {
-      store_name: localForm.value.storeName,
-      business_type: localForm.value.businessType,
-      business_registration_number: localForm.value.businessNumber,
-      contact_number: localForm.value.contactNumber,
-      email: localForm.value.email,
-      address: localForm.value.businessAddress?.address || '',
-      city: localForm.value.businessAddress?.city || '',
-      barangay: localForm.value.businessAddress?.barangay || '',
-      province: 'Cavite',
-      latitude: parseNullableNumber(localForm.value.businessAddress?.latitude),
-      longitude: parseNullableNumber(localForm.value.businessAddress?.longitude),
-      contact_person: getContactPersonName()
-    }
-
-    const storeResponse = await axiosClient.post('/api/stores/register', payload)
-
-    const createdStoreId = Number(storeResponse?.data?.store?.store_id || storeResponse?.data?.store?.id)
-    if (!Number.isFinite(createdStoreId) || createdStoreId <= 0) {
-      throw new Error('Store registration succeeded but no valid store id was returned.')
-    }
-
-    storeId.value = createdStoreId
-
-    // Make API call
-    const verifyResponse = await axiosClient.post(
-      `/api/stores/${storeId.value}/verification/submit`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      }
-    )
-
-    // 4. Handle success
-    toast.add({
-      severity: 'success',
-      summary: 'Registration Submitted!',
-      detail: verifyResponse.data.message || 'Your store registration is under review.',
-      life: 5000
+    const response = await axiosClient.post(`/api/stores/${props.formData.storeId}/verification/submit`, payload, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
 
-    // 5. Emit success to parent
-    emit('submit')
-
+    showResponseModal(true, 'Verification Submitted', response?.data?.message || 'Your store verification is now under review.')
   } catch (error: any) {
-    console.error('Submission error:', error)
-
-    try {
-      if (storeId.value) {
-        await axiosClient.delete(`/api/stores/${storeId.value}`)
-      }
-    } catch (rollbackError) {
-      console.error('Failed to rollback store creation:', rollbackError)
-    }
-
-    if (error.response?.status === 422) {
-      // Validation errors
-      const errors = error.response?.data?.errors
-      const errorValues = errors && typeof errors === 'object' ? Object.values(errors) : []
-      const firstError = errorValues.length > 0 ? errorValues[0] : null
-      const backendError = error.response?.data?.error
-      const backendMessage = error.response?.data?.message
-
-      toast.add({
-        severity: 'error',
-        summary: 'Validation Error',
-        detail: Array.isArray(firstError)
-          ? String(firstError[0] || 'Please check your input')
-          : (backendError || backendMessage || 'Please check your input'),
-        life: 5000
-      })
-    } else if (error.response?.status === 403) {
-      toast.add({
-        severity: 'error',
-        summary: 'Permission Denied',
-        detail: 'You do not have permission to submit verification for this store.',
-        life: 5000
-      })
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Submission Failed',
-        detail: error.response?.data?.message || 'Please try again later',
-        life: 3000
-      })
-    }
+    const errors = error?.response?.data?.errors
+    const firstError = errors && typeof errors === 'object' ? Object.values(errors)[0] : null
+    showResponseModal(
+      false,
+      error?.response?.status === 422 ? 'Validation Error' : 'Submission Failed',
+      Array.isArray(firstError) ? String(firstError[0]) : (error?.response?.data?.message || 'Please try again later.')
+    )
   } finally {
     isSubmitting.value = false
   }
 }
 </script>
-
-

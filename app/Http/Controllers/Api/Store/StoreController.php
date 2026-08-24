@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Admin\SubscriptionPlan;
+use App\Models\Hr\Employee;
+use App\Models\Core\Role;
+use App\Models\Hr\Department;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
@@ -87,6 +90,7 @@ class StoreController extends Controller
                 'address' => $validated['address'],
                 'latitude' => $validated['latitude'] ?? null,
                 'longitude' => $validated['longitude'] ?? null,
+                'status' => 'unverified',
             ];
 
             $storeSettings = [
@@ -115,7 +119,7 @@ class StoreController extends Controller
                 $branchCode = $branchCode . '-' . str_pad((string) random_int(1, 999), 3, '0', STR_PAD_LEFT);
             }
 
-            Branch::create([
+            $branch = Branch::create([
                 'store_id' => $store->id,
                 'name' => $store->name . ' - Main',
                 'address' => $store->address,
@@ -129,6 +133,46 @@ class StoreController extends Controller
                 'status' => 'active',
                 'branch_type' => 'storefront',
             ]);
+
+            if ($request->user()) {
+                $request->user()->update(['branch_id' => $branch->id]);
+
+                $storeAdminRole = Role::query()
+                    ->where(function ($query) {
+                        $query->whereRaw('LOWER(name) = ?', ['store_admin'])
+                            ->orWhereRaw('LOWER(display_name) = ?', ['store admin']);
+                    })
+                    ->first();
+                $storeAdminRoleId = (int) ($storeAdminRole?->id ?? 2);
+
+                $managementDepartment = Department::query()->firstOrCreate(
+                    ['store_id' => $store->id, 'name' => 'Management'],
+                    [
+                        'description' => 'Store management department',
+                        'status' => 'active',
+                        'created_by' => $request->user()->id,
+                    ]
+                );
+
+                // The registering account is the first employee and store administrator.
+                $request->user()->update(['role_id' => $storeAdminRoleId]);
+
+                Employee::query()->firstOrCreate(
+                    ['user_id' => $request->user()->id, 'store_id' => $store->id],
+                    [
+                        'store_id' => $store->id,
+                        'branch_id' => $branch->id,
+                        'role_id' => $storeAdminRoleId,
+                        'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                        'fname' => (string) $request->user()->fname,
+                        'lname' => (string) $request->user()->lname,
+                        'department' => $managementDepartment->name,
+                        'employment_type' => 'full_time',
+                        'status' => 'active',
+                        'hire_date' => now()->toDateString(),
+                    ]
+                );
+            }
 
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
 
@@ -167,11 +211,25 @@ class StoreController extends Controller
             $validated = $request->validate([
                 'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
                 'setup_mode' => 'nullable|string|in:free,paid',
+                'months' => 'nullable|integer|min:1|max:36',
+                'billing_cycle' => 'nullable|string|in:monthly,yearly',
             ]);
 
             $setupMode = strtolower((string) ($validated['setup_mode'] ?? 'free'));
-            $store->subscription_tier = strtolower((string) $validated['subscription_tier']);
-            $store->subscription_ends_at = $setupMode === 'free' ? now()->addDays(7)->toDateString() : null;
+            $planKey = strtolower((string) $validated['subscription_tier']);
+            $plan = SubscriptionPlan::query()->where('plan_key', $planKey)->firstOrFail();
+            $months = (int) ($validated['months'] ?? (($validated['billing_cycle'] ?? '') === 'yearly' ? 12 : 1));
+
+            $store->subscription_tier = $plan->id;
+            if ($setupMode === 'free') {
+                $store->subscription_ends_at = now()->addDays(7)->toDateString();
+            } else {
+                $currentEndsAt = $store->subscription_ends_at ? \Carbon\Carbon::parse($store->subscription_ends_at) : null;
+                $nextEndsAt = now()->addMonths($months);
+                $store->subscription_ends_at = ($currentEndsAt && $currentEndsAt->gt($nextEndsAt))
+                    ? $currentEndsAt->toDateString()
+                    : $nextEndsAt->toDateString();
+            }
 
             if (Schema::hasColumn('stores', 'trial_started_at')) {
                 $store->trial_started_at = $setupMode === 'free' ? now() : null;

@@ -1,11 +1,21 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
-    <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.adjustments' })" />
-      <div>
-        <h2 class="text-2xl font-bold text-gray-800">Create Stock Adjustment</h2>
-        <p class="text-sm text-gray-500 mt-1">Perform physical count or stock correction</p>
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.items' })" />
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">Create Stock Adjustment</h2>
+          <p class="text-sm text-gray-500 mt-1">Perform physical count or stock correction</p>
+        </div>
       </div>
+      <Button
+        label="Create Product"
+        icon="pi pi-plus"
+        severity="warn"
+        size="small"
+        class="text-sm"
+        @click="router.push({ name: 'inventory.products.create' })"
+      />
     </div>
   
     <Card>
@@ -17,7 +27,7 @@
               <label class="text-sm font-semibold text-gray-700">
                 Branch <span class="text-red-500">*</span>
               </label>
-              <InputText :model-value="branchLabel" disabled fluid />
+              <InputText :model-value="branchLabel" disabled fluid size="small" class="text-sm" />
               <small class="text-gray-500">Auto-filled from your profile</small>
               <small v-if="errors.branch_id" class="text-red-500">{{ errors.branch_id }}</small>
             </div>
@@ -34,6 +44,7 @@
                 placeholder="Select adjustment type" 
                 :class="{ 'p-invalid': errors.type }"
                 fluid
+                size="small"
               />
               <small v-if="errors.type" class="text-red-500">{{ errors.type }}</small>
             </div>
@@ -50,6 +61,7 @@
                 placeholder="Select reason" 
                 :class="{ 'p-invalid': errors.reason }"
                 fluid
+                size="small"
               />
               <small v-if="errors.reason" class="text-red-500">{{ errors.reason }}</small>
             </div>
@@ -77,12 +89,13 @@
                   filter 
                   showClear
                   fluid
+                  size="small"
                 >
                   <template #option="{ option }">
                     <div class="flex flex-col">
                       <span class="font-medium">{{ option.productName }}</span>
                       <span class="text-xs text-gray-500">
-                        SKU: {{ option.sku }} | Stock: {{ option.stock }}
+                        Type: {{ option.productTypeLabel }} | SKU: {{ option.sku }} | Stock: {{ option.stock }}
                       </span>
                     </div>
                   </template>
@@ -102,8 +115,9 @@
                   optionLabel="label" 
                   optionValue="value"
                   placeholder="Type"
-                  fluid
-                />
+                fluid
+                size="small"
+              />
               </div>
   
               <div class="flex flex-col gap-2 md:col-span-2">
@@ -113,8 +127,9 @@
                   :min="0" 
                   disabled 
                   class="w-full bg-gray-100"
-                  fluid
-                />
+                fluid
+                size="small"
+              />
               </div>
   
               <div class="flex flex-col gap-2 md:col-span-2">
@@ -135,8 +150,10 @@
                   label="Add" 
                   @click="addItem" 
                   :disabled="!canAddItem" 
-                  class="mt-6 w-full"
+                  class="mt-6 w-full text-sm"
                   fluid
+                  severity="warn"
+                  size="small"
                 />
               </div>
             </div>
@@ -161,7 +178,7 @@
           </div>
   
           <!-- Items Table -->
-          <DataTable :value="form.items" class="p-datatable-sm" stripedRows showGridlines>
+          <DataTable :value="form.items" class="p-datatable-sm text-xs" stripedRows showGridlines>
             <template #empty>
               <div class="text-center py-8 text-gray-500">
                 <i class="pi pi-inbox text-4xl mb-2"></i>
@@ -252,6 +269,8 @@
               rows="2" 
               placeholder="Any additional notes about this adjustment..."
               fluid
+              size="small"
+              class="text-sm"
             />
           </div>
   
@@ -264,6 +283,8 @@
               type="button" 
               @click="cancel"
               fluid
+              size="small"
+              class="text-sm"
             />
             <Button 
               label="Create Adjustment" 
@@ -272,6 +293,9 @@
               type="submit" 
               :disabled="!isFormValid"
               fluid
+              severity="warn"
+              size="small"
+              class="text-sm"
             />
           </div>
         </form>
@@ -410,8 +434,7 @@ const productOptions = computed(() => {
   
   return inventoryItems.value
     .filter(item => {
-      // Show only items that belong to the currently selected branch.
-      const itemBranchId = Number(item.branch_id || 0)
+      const itemBranchId = Number(item.branch_id || item.inventory?.[0]?.branch_id || 0)
       return !currentBranchId || !itemBranchId || itemBranchId === currentBranchId
     })
     .filter(item => !addedIds.includes(item.id))
@@ -419,10 +442,12 @@ const productOptions = computed(() => {
       id: item.id,
       productId: item.product_id,
       variationId: item.variation_id,
-      productName: item.product?.product_name || 'Unknown Product',
-      sku: item.product?.sku || 'N/A',
-      stock: item.quantity_available || 0,
-      displayName: `${item.product?.product_name || 'Unknown'} (Stock: ${item.quantity_available || 0})`,
+      productName: item.product?.product_name || item.product_name || 'Unknown Product',
+      sku: item.product?.sku || item.sku || 'N/A',
+      productType: item.product?.product_type || item.product_type || 'finished_good',
+      productTypeLabel: getProductTypeLabel(item.product?.product_type || item.product_type),
+      stock: item.quantity_available ?? item.inventory?.[0]?.quantity_available ?? 0,
+      displayName: `${item.product?.product_name || item.product_name || 'Unknown'} (Stock: ${item.quantity_available ?? item.inventory?.[0]?.quantity_available ?? 0})`,
       // Keep original data for reference
       original: item
     }))
@@ -497,17 +522,40 @@ const loadInventoryItems = async () => {
 
   loadingProducts.value = true
   try {
-    const response = await inventoryService.getBranchInventory(form.branch_id, { per_page: 100 })
+    const response = await inventoryService.getProducts({
+      per_page: 1000,
+      available_only: false
+    })
 
     // inventoryService already returns axios response.data
-    // BranchInventoryController returns: { success, data: [], meta }
     const payload = response || {}
-    if (payload?.success === true && Array.isArray(payload?.data)) {
-      inventoryItems.value = payload.data
-    } else if (Array.isArray(payload?.data?.data)) {
-      inventoryItems.value = payload.data.data
-    } else if (Array.isArray(payload?.data)) {
-      inventoryItems.value = payload.data
+    const products = Array.isArray(payload?.data?.data)
+      ? payload.data.data
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : []
+
+    inventoryItems.value = products
+      .map((product: any) => {
+        const branchInventory = Array.isArray(product.inventory)
+          ? product.inventory.find((row: any) => Number(row.branch_id) === Number(form.branch_id))
+          : null
+
+        if (!branchInventory) {
+          return null
+        }
+
+        return {
+          ...branchInventory,
+          product,
+          product_id: product.id,
+          quantity_available: branchInventory.quantity_available ?? 0
+        }
+      })
+      .filter(Boolean)
+      .flat()
+    if (Array.isArray(payload?.data?.data) || Array.isArray(payload?.data)) {
+      // handled above
     } else if (Array.isArray(payload)) {
       inventoryItems.value = payload
     } else {
@@ -558,6 +606,16 @@ const getProductSku = (inventoryItemId: number) => {
   if (!inventoryItems.value || inventoryItems.value.length === 0) return ''
   const item = inventoryItems.value.find(i => i.id === inventoryItemId)
   return item?.product?.sku || ''
+}
+
+const getProductTypeLabel = (type?: string) => {
+  const normalized = String(type || '').toLowerCase()
+  const labels: Record<string, string> = {
+    finished_good: 'Finished Good',
+    raw_material: 'Raw Material',
+    supply: 'Supply'
+  }
+  return labels[normalized] || 'Product'
 }
 
 const getCurrentStock = (inventoryItemId: number) => {

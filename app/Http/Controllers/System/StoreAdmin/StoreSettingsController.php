@@ -12,7 +12,10 @@ use App\Models\Store\Store;
 use App\Services\Modules\ModuleAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use App\Mail\OtpVerificationMail;
 use Inertia\Inertia;
 
 class StoreSettingsController extends Controller
@@ -29,6 +32,7 @@ class StoreSettingsController extends Controller
             : null;
         $profile = $user?->trialOnboardingProfile;
         $storeId = (int) ($store?->id ?? 0);
+        $mainBranch = $store?->branches()->orderByDesc('is_main_branch')->first();
 
         $enabledModuleKeys = $storeId > 0
             ? app(ModuleAccessService::class)->enabledModuleKeysForStore($storeId)
@@ -84,12 +88,15 @@ class StoreSettingsController extends Controller
                 'phone' => $store?->phone,
                 'address' => $store?->address,
                 'city' => $store?->city,
+                'barangay' => $mainBranch?->barangay,
                 'province' => $store?->province,
                 'type' => $store?->type,
                 'store_code' => $store?->store_code,
                 'status' => $store?->status,
                 'status_details' => $store ? $this->resolveStoreStatusDetails((int) $store->id, (string) $store->status) : null,
                 'contact_person' => is_array($store?->settings) ? ($store->settings['contact_person'] ?? null) : null,
+                'logo_url' => $this->resolveStoreLogoUrl($store),
+                'logo_dimensions' => is_array($store?->settings) ? ($store->settings['logo_dimensions'] ?? null) : null,
             ],
             'payments' => $this->resolvePaymentSettings($store),
             'branches' => $store?->branches()
@@ -154,14 +161,63 @@ class StoreSettingsController extends Controller
         return back()->with('success', 'Payment settings updated.');
     }
 
+    public function updateLogo(Request $request)
+    {
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+
+        if (!$store) {
+            abort(404, 'Store not found for this user.');
+        }
+
+        $validated = $request->validate([
+            'logo' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'original_width' => 'nullable|integer|min:1|max:20000',
+            'original_height' => 'nullable|integer|min:1|max:20000',
+        ]);
+
+        $file = $validated['logo'];
+        $imageSize = @getimagesize($file->getRealPath());
+        $savedWidth = (int) ($imageSize[0] ?? 0);
+        $savedHeight = (int) ($imageSize[1] ?? 0);
+
+        if ($savedWidth <= 0 || $savedHeight <= 0) {
+            return back()->withErrors(['logo' => 'Unable to read the uploaded logo dimensions.']);
+        }
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $oldPath = $settings['logo_path'] ?? null;
+        $path = $file->store("store-logos/{$store->id}", 'public');
+
+        $settings['logo'] = $path;
+        $settings['logo_path'] = $path;
+        $settings['logo_dimensions'] = [
+            'width' => $savedWidth,
+            'height' => $savedHeight,
+            'original_width' => (int) ($validated['original_width'] ?? $savedWidth),
+            'original_height' => (int) ($validated['original_height'] ?? $savedHeight),
+        ];
+
+        $store->settings = $settings;
+        $store->save();
+
+        if ($oldPath && $oldPath !== $path && Storage::disk('public')->exists($oldPath)) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return back()->with('success', 'Store logo updated.');
+    }
+
     public function updateProfile(Request $request)
     {
         $validated = $request->validate([
+            'otp' => 'required|string|size:6',
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|nullable|email|max:255',
             'phone' => 'sometimes|nullable|string|max:50',
             'address' => 'sometimes|nullable|string|max:255',
             'city' => 'sometimes|nullable|string|max:255',
+            'barangay' => 'sometimes|nullable|string|max:150',
             'province' => 'sometimes|nullable|string|max:255',
             'type' => 'sometimes|nullable|string|max:50',
             'store_code' => 'sometimes|nullable|string|max:50',
@@ -175,7 +231,16 @@ class StoreSettingsController extends Controller
             abort(404, 'Store not found for this user.');
         }
 
-        $store->fill(collect($validated)->except('contact_person')->toArray());
+        if (!$user->isValidOtp($validated['otp'])) {
+            return back()->withErrors(['otp' => 'Invalid or expired OTP code.']);
+        }
+        $user->clearOtp();
+
+        $store->fill(collect($validated)->except(['contact_person', 'otp'])->toArray());
+
+        if (array_key_exists('barangay', $validated)) {
+            $store->branches()->orderByDesc('is_main_branch')->first()?->update(['barangay' => $validated['barangay']]);
+        }
 
         $settings = is_array($store->settings) ? $store->settings : [];
         if (array_key_exists('contact_person', $validated)) {
@@ -187,9 +252,249 @@ class StoreSettingsController extends Controller
         return back()->with('success', 'Store profile updated.');
     }
 
-    public function updateAttendanceSettings(Request $request)
+    public function prepareProfileUpdate(Request $request)
+    {
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+
+        if (!$store) {
+            abort(404, 'Store not found for this user.');
+        }
+
+        $validated = $request->validate($this->profileUpdateRules());
+
+        if (!$user?->email) {
+            return back()->withErrors(['email' => 'No email address is available for verification.']);
+        }
+
+        $request->session()->put('store_profile_update.pending', $validated);
+
+        $otp = $user->generateOtp();
+        Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+
+        return redirect()
+            ->route('store.settings.profile.otp')
+            ->with('success', 'A verification code was sent to your email.');
+    }
+
+    public function showProfileUpdateOtp(Request $request)
+    {
+        if (!$request->session()->has('store_profile_update.pending')) {
+            return redirect()
+                ->route('store.settings')
+                ->withErrors(['profile' => 'No pending store profile update was found.']);
+        }
+
+        return Inertia::render('System/StoreAdmin/ProfileUpdateOtp', [
+            'title' => 'Verify Store Update',
+            'subtitle' => 'Store Settings',
+            'email' => $request->user()?->email,
+        ]);
+    }
+
+    public function resendProfileUpdateOtp(Request $request)
+    {
+        if (!$request->session()->has('store_profile_update.pending')) {
+            return back()->withErrors(['otp' => 'No pending store profile update was found.']);
+        }
+
+        $user = $request->user();
+        if (!$user?->email) {
+            return back()->withErrors(['email' => 'No email address is available for verification.']);
+        }
+
+        $otp = $user->generateOtp();
+        Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+
+        return back()->with('success', 'A new verification code was sent to your email.');
+    }
+
+    public function verifyProfileUpdateOtp(Request $request)
     {
         $validated = $request->validate([
+            'otp' => 'required|string|size:6',
+        ]);
+
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+        $pending = $request->session()->get('store_profile_update.pending');
+
+        if (!$store || !is_array($pending)) {
+            return redirect()
+                ->route('store.settings')
+                ->withErrors(['profile' => 'No pending store profile update was found.']);
+        }
+
+        if (!$user->isValidOtp($validated['otp'])) {
+            return back()->withErrors(['otp' => 'Invalid or expired OTP code.']);
+        }
+
+        $user->clearOtp();
+        $this->applyProfileUpdate($store, $pending);
+        $request->session()->forget('store_profile_update.pending');
+
+        return redirect()
+            ->route('store.settings', ['profile_updated' => 1])
+            ->with('success', 'Store profile updated.');
+    }
+
+    public function prepareAttendanceUpdate(Request $request)
+    {
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+
+        if (!$store) {
+            abort(404, 'Store not found for this user.');
+        }
+
+        $validated = $request->validate($this->attendanceUpdateRules());
+
+        if (!$user?->email) {
+            return back()->withErrors(['email' => 'No email address is available for verification.']);
+        }
+
+        $request->session()->put('store_attendance_update.pending', $validated);
+
+        $otp = $user->generateOtp();
+        Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+
+        return redirect()
+            ->route('store.settings.attendance.otp')
+            ->with('success', 'A verification code was sent to your email.');
+    }
+
+    public function showAttendanceUpdateOtp(Request $request)
+    {
+        if (!$request->session()->has('store_attendance_update.pending')) {
+            return redirect()
+                ->route('store.settings')
+                ->withErrors(['attendance' => 'No pending attendance geolocation update was found.']);
+        }
+
+        return Inertia::render('System/StoreAdmin/ProfileUpdateOtp', [
+            'title' => 'Verify Attendance Update',
+            'subtitle' => 'Store Settings',
+            'email' => $request->user()?->email,
+            'contextLabel' => 'Attendance Geolocation Verification',
+            'heading' => 'Verify attendance update',
+            'description' => 'Enter the 6-digit OTP before we save your attendance geolocation changes.',
+            'notice' => 'This verification is only for Attendance Geolocation updates.',
+            'verifyEndpoint' => '/store/settings/attendance/otp/verify',
+            'resendEndpoint' => '/store/settings/attendance/otp/resend',
+            'successRedirect' => '/store/settings?attendance_updated=1',
+        ]);
+    }
+
+    public function resendAttendanceUpdateOtp(Request $request)
+    {
+        if (!$request->session()->has('store_attendance_update.pending')) {
+            return back()->withErrors(['otp' => 'No pending attendance geolocation update was found.']);
+        }
+
+        $user = $request->user();
+        if (!$user?->email) {
+            return back()->withErrors(['email' => 'No email address is available for verification.']);
+        }
+
+        $otp = $user->generateOtp();
+        Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+
+        return back()->with('success', 'A new verification code was sent to your email.');
+    }
+
+    public function verifyAttendanceUpdateOtp(Request $request)
+    {
+        $validated = $request->validate([
+            'otp' => 'required|string|size:6',
+        ]);
+
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+        $pending = $request->session()->get('store_attendance_update.pending');
+
+        if (!$store || !is_array($pending)) {
+            return redirect()
+                ->route('store.settings')
+                ->withErrors(['attendance' => 'No pending attendance geolocation update was found.']);
+        }
+
+        if (!$user->isValidOtp($validated['otp'])) {
+            return back()->withErrors(['otp' => 'Invalid or expired OTP code.']);
+        }
+
+        $user->clearOtp();
+        $this->applyAttendanceUpdate($store, $pending);
+        $request->session()->forget('store_attendance_update.pending');
+
+        return redirect()
+            ->route('store.settings', ['attendance_updated' => 1])
+            ->with('success', 'Attendance location updated.');
+    }
+
+    public function requestProfileUpdateOtp(Request $request)
+    {
+        $user = $request->user();
+        if (!$user?->email) {
+            return response()->json(['message' => 'No email address is available for verification.'], 422);
+        }
+
+        $otp = $user->generateOtp();
+        Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
+
+        return response()->json(['message' => 'A verification code was sent to your email.']);
+    }
+
+    private function profileUpdateRules(): array
+    {
+        return [
+            'name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|nullable|email|max:255',
+            'phone' => 'sometimes|nullable|string|max:50',
+            'address' => 'sometimes|nullable|string|max:255',
+            'city' => 'sometimes|nullable|string|max:255',
+            'barangay' => 'sometimes|nullable|string|max:150',
+            'province' => 'sometimes|nullable|string|max:255',
+            'type' => 'sometimes|nullable|string|max:50',
+            'store_code' => 'sometimes|nullable|string|max:50',
+            'contact_person' => 'sometimes|nullable|string|max:255',
+        ];
+    }
+
+    private function applyProfileUpdate(Store $store, array $validated): void
+    {
+        $store->fill(collect($validated)->except(['contact_person'])->toArray());
+
+        if (array_key_exists('barangay', $validated)) {
+            $store->branches()->orderByDesc('is_main_branch')->first()?->update(['barangay' => $validated['barangay']]);
+        }
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        if (array_key_exists('contact_person', $validated)) {
+            $settings['contact_person'] = $validated['contact_person'];
+        }
+        $store->settings = $settings;
+        $store->save();
+    }
+
+    public function updateAttendanceSettings(Request $request)
+    {
+        $validated = $request->validate($this->attendanceUpdateRules());
+
+        $user = $request->user();
+        $store = $this->resolveStoreForUser($user);
+
+        if (!$store) {
+            abort(404, 'Store not found for this user.');
+        }
+
+        $this->applyAttendanceUpdate($store, $validated);
+
+        return back()->with('success', 'Attendance location updated.');
+    }
+
+    private function attendanceUpdateRules(): array
+    {
+        return [
             'branch_id' => 'nullable|exists:branches,id',
             'address' => 'nullable|string|max:255',
             'barangay' => 'nullable|string|max:150',
@@ -199,15 +504,11 @@ class StoreSettingsController extends Controller
             'longitude' => 'required|numeric|between:-180,180',
             'geofence_radius_m' => 'nullable|integer|min:0|max:100',
             'geofence_enabled' => 'nullable|boolean',
-        ]);
+        ];
+    }
 
-        $user = $request->user();
-        $store = $this->resolveStoreForUser($user);
-
-        if (!$store) {
-            abort(404, 'Store not found for this user.');
-        }
-
+    private function applyAttendanceUpdate(Store $store, array $validated): void
+    {
         $branchQuery = Branch::query()->where('store_id', $store->id);
         if (!empty($validated['branch_id'])) {
             $branchQuery->where('id', $validated['branch_id']);
@@ -243,8 +544,6 @@ class StoreSettingsController extends Controller
             $store->settings = $settings;
             $store->save();
         }
-
-        return back()->with('success', 'Attendance location updated.');
     }
 
     private function resolveStoreForUser(?User $user): ?Store
@@ -300,6 +599,25 @@ class StoreSettingsController extends Controller
                 'payment_method_allowed' => $methods,
             ],
         ];
+    }
+
+    private function resolveStoreLogoUrl(?Store $store): ?string
+    {
+        if (!$store || !is_array($store->settings)) {
+            return null;
+        }
+
+        $path = $store->settings['logo'] ?? $store->settings['logo_path'] ?? null;
+        if (!$path) {
+            return null;
+        }
+
+        $path = (string) $path;
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     private function resolveAttendanceSettings(?int $storeId): array
@@ -366,7 +684,7 @@ class StoreSettingsController extends Controller
     {
         if (!$store) {
             return [
-                'store_status' => 'pending',
+                'store_status' => 'unverified',
                 'submitted_at' => null,
                 'reviewed_at' => null,
                 'rejection_reason' => null,
@@ -376,14 +694,22 @@ class StoreSettingsController extends Controller
 
         $store->loadMissing('verification');
         $verification = $store->verification;
-        $status = (string) ($verification?->status ?? 'pending');
+        $status = 'unverified';
+        if ($verification?->submitted_at) {
+            $status = 'reviewing';
+        }
+        if ($verification?->reviewed_at && $verification?->rejection_reason) {
+            $status = 'rejected';
+        } elseif ($verification?->reviewed_at) {
+            $status = 'approved';
+        }
 
         return [
             'store_status' => $status,
             'submitted_at' => $verification?->submitted_at?->toDateTimeString(),
             'reviewed_at' => $verification?->reviewed_at?->toDateTimeString(),
             'rejection_reason' => $verification?->rejection_reason,
-            'documents_submitted' => (bool) ($verification?->documents_submitted ?? false),
+            'documents_submitted' => (bool) $verification?->submitted_at,
         ];
     }
 

@@ -5,62 +5,11 @@
     <!-- Header Section -->
     <div class="flex justify-between items-center">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Department Management</h2>
-        <p class="text-sm text-gray-600 mt-1">Manage company departments and organizational structure</p>
+        <h2 class="text-2xl font-bold text-gray-800">Departments</h2>
       </div>
-      <Button label="Add Department" icon="pi pi-plus" severity="info" @click="openAddDialog" />
+      <Button label="Add Department" icon="pi pi-plus" severity="warn" @click="openAddDialog" />
     </div>
 
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Total Departments</div>
-            <div class="text-2xl font-semibold text-blue-600">{{ stats.total }}</div>
-          </div>
-          <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-50">
-            <i class="pi pi-building text-blue-500"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Active</div>
-            <div class="text-2xl font-semibold text-green-600">{{ stats.active }}</div>
-          </div>
-          <div class="w-10 h-10 rounded-lg flex items-center justify-between bg-green-50">
-            <i class="pi pi-check-circle text-green-500"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Total Employees</div>
-            <div class="text-2xl font-semibold text-purple-600">{{ stats.totalEmployees }}</div>
-          </div>
-          <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-purple-50">
-            <i class="pi pi-users text-purple-500"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Inactive</div>
-            <div class="text-2xl font-semibold text-gray-600">{{ stats.inactive }}</div>
-          </div>
-          <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-gray-50">
-            <i class="pi pi-ban text-gray-500"></i>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Search and Filters -->
     <div class="flex gap-3 flex-wrap">
@@ -86,7 +35,6 @@
         <Column field="name" header="Department Name" sortable style="min-width: 200px">
           <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <i class="pi pi-building text-blue-500"></i>
                   <div>
                     <div class="font-medium">{{ data.name }}</div>
                   </div>
@@ -97,17 +45,6 @@
         <Column field="description" header="Description" style="min-width: 250px">
           <template #body="{ data }">
             <span class="text-gray-600">{{ data.description || 'N/A' }}</span>
-          </template>
-        </Column>
-
-        <Column field="manager_name" header="Manager" sortable style="min-width: 180px">
-          <template #body="{ data }">
-            <div v-if="data.manager_name" class="flex items-center gap-2">
-              <Avatar :label="getInitials(data.manager_name)" size="small" shape="circle"
-                class="bg-purple-100 text-purple-600" />
-              <span>{{ data.manager_name }}</span>
-            </div>
-            <span v-else class="text-gray-400">No Manager</span>
           </template>
         </Column>
 
@@ -167,12 +104,6 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Manager (Optional)</label>
-          <Select v-model="formData.manager_id" :options="employees" optionLabel="full_name" optionValue="id"
-            placeholder="Select manager" showClear filter class="w-full" />
-        </div>
-
-        <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Roles in Department</label>
           <MultiSelect
             v-model="formData.role_ids"
@@ -221,13 +152,30 @@
         </div>
 
         <div class="bg-gray-50 p-3 rounded-lg">
-          <div class="text-xs text-gray-500 mb-1">Manager</div>
-          <div v-if="selectedDepartment.manager_name" class="flex items-center gap-2 mt-2">
-            <Avatar :label="getInitials(selectedDepartment.manager_name)" size="normal" shape="circle"
-              class="bg-purple-100 text-purple-600" />
-            <span class="font-medium">{{ selectedDepartment.manager_name }}</span>
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-xs text-gray-500">Employees by Branch</div>
+              <p class="text-xs text-gray-400">Counted from this store's existing branches.</p>
+            </div>
+            <Tag :value="`${selectedDepartment.branch_employee_counts?.length || 0} branches`" severity="warn" />
           </div>
-          <span v-else class="text-gray-400">No manager assigned</span>
+          <div v-if="selectedDepartment.branch_employee_counts?.length" class="space-y-2">
+            <div
+              v-for="branch in selectedDepartment.branch_employee_counts"
+              :key="branch.branch_id"
+              class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2"
+            >
+              <div>
+                <div class="font-medium text-gray-800">{{ branch.branch_name }}</div>
+                <div class="text-xs text-gray-500">
+                  {{ branch.branch_code || 'No branch code' }}
+                  <span v-if="branch.is_main_branch"> · Main branch</span>
+                </div>
+              </div>
+              <Tag :value="branch.employee_count || 0" severity="info" />
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400">No branches found for this store.</span>
         </div>
 
         <div v-if="selectedDepartment.description" class="bg-gray-50 p-3 rounded-lg">
@@ -272,9 +220,18 @@ interface Department {
   manager_id?: number
   manager_name?: string
   employee_count?: number
+  branch_employee_counts?: BranchEmployeeCount[]
   status: 'active' | 'inactive'
   created_at: string
   updated_at: string
+}
+
+interface BranchEmployeeCount {
+  branch_id: number
+  branch_name: string
+  branch_code?: string | null
+  is_main_branch?: boolean
+  employee_count: number
 }
 
 interface Employee {

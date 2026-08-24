@@ -2,87 +2,34 @@
 <template>
   <div class="space-y-6 text-sm">
     <!-- Header with HR-focused actions -->
-    <div class="flex justify-between items-center">
-      <div class="flex gap-2 ml-auto">
-        <Button label="Export Report" icon="pi pi-download" severity="secondary" outlined @click="exportReport" />
-        <Button v-if="activeTab === 'assignments'" :loading="assignmentDialog" label="New Assignment" icon="pi pi-plus"
-          severity="info" @click="openAssignmentDialog" />
-        <Button v-if="activeTab === 'templates'" label="Create Shift" icon="pi pi-plus" severity="info"
-          @click="goToCreateShift" />
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-lg font-semibold text-slate-900">Shift Management</h1>
+      </div>
+      <div class="flex gap-2">
+        <Button v-if="activeTab === 'assignments'" :loading="assignmentDialog" label="New Assignment" 
+ size="small" @click="openAssignmentDialog" />
       </div>
     </div>
-  
-    <!-- HR Dashboard Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-sm text-gray-500">Total Employees</div>
-            <div class="text-2xl font-semibold mt-1">{{ dashboardStats.totalEmployees }}</div>
-          </div>
-          <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-users text-blue-500"></i>
-          </div>
-        </div>
-        <div class="text-xs text-gray-400 mt-2">Active: {{ dashboardStats.activeEmployees }}</div>
+
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide text-gray-500">Unfilled Shifts</div>
+        <div class="mt-1 text-2xl font-semibold text-red-500">{{ dashboardStats.unfilledShifts }}</div>
+        <div class="mt-1 text-xs text-gray-400">Needs attention in the selected coverage period</div>
       </div>
-  
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-sm text-gray-500">Today's Shifts</div>
-            <div class="text-2xl font-semibold mt-1">{{ dashboardStats.todayShifts }}</div>
-          </div>
-          <div class="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-calendar text-green-500"></i>
-          </div>
-        </div>
-        <div class="text-xs text-gray-400 mt-2">{{ dashboardStats.onLeave }} on leave</div>
-      </div>
-  
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-sm text-gray-500">Pending Swaps</div>
-            <div class="text-2xl font-semibold mt-1">{{ dashboardStats.pendingSwaps }}</div>
-          </div>
-          <div class="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-clock text-orange-500"></i>
-          </div>
-        </div>
-        <div class="text-xs text-orange-400 mt-2">Action required</div>
-      </div>
-  
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-sm text-gray-500">Night Diff</div>
-            <div class="text-2xl font-semibold mt-1">{{ dashboardStats.nightDiffEmployees }}</div>
-          </div>
-          <div class="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-moon text-purple-500"></i>
-          </div>
-        </div>
-        <div class="text-xs text-gray-400 mt-2">Eligible employees</div>
-      </div>
-  
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-sm text-gray-500">Unfilled Shifts</div>
-            <div class="text-2xl font-semibold mt-1 text-red-500">{{ dashboardStats.unfilledShifts }}</div>
-          </div>
-          <div class="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-exclamation-triangle text-red-500"></i>
-          </div>
-        </div>
-        <div class="text-xs text-red-400 mt-2">Needs attention</div>
+      <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide text-gray-500">Pending Swap Requests</div>
+        <div class="mt-1 text-2xl font-semibold text-orange-500">{{ dashboardStats.pendingSwaps }}</div>
+        <div class="mt-1 text-xs text-gray-400">Requests waiting for review</div>
       </div>
     </div>
   
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center items-center py-12">
-      <i class="pi pi-spin pi-spinner text-3xl text-blue-500"></i>
+    <div v-if="loading" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div v-for="n in 4" :key="n" class="h-32 animate-pulse rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <Skeleton width="35%" height="0.75rem" class="mb-4" /><Skeleton width="70%" height="1.25rem" class="mb-3" /><Skeleton width="90%" height="0.65rem" />
+      </div>
     </div>
   
     <!-- Error State -->
@@ -99,18 +46,23 @@
     <div v-else class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <Tabs v-model:value="activeTab">
         <TabList class="px-4 pt-2 border-b border-gray-100">
-          <Tab value="templates">Shift Library</Tab>
+          <Tab value="coverage">Coverage</Tab>
           <Tab value="assignments">Assignments</Tab>
           <Tab value="swaps">Swap Requests</Tab>
-          <Tab value="coverage">Coverage</Tab>
         </TabList>
   
         <TabPanels class="p-4">
           <!-- COVERAGE VIEW -->
           <TabPanel value="coverage">
             <div class="space-y-4">
-              <div v-if="coverageUnavailable" class="p-6 border border-dashed border-gray-200 rounded-lg bg-yellow-50 text-sm text-gray-700">
+              <div v-if="coverageLoading" class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div v-for="n in 4" :key="n" class="h-36 animate-pulse rounded-lg border border-gray-100 p-4"><Skeleton width="45%" height="1rem" class="mb-4" /><Skeleton width="100%" height="0.6rem" class="mb-4" /><Skeleton width="70%" height="0.75rem" /></div>
+              </div>
+              <div v-else-if="coverageUnavailable" class="p-6 border border-dashed border-gray-200 rounded-lg bg-yellow-50 text-sm text-gray-700">
                 Coverage is temporarily unavailable while we validate schedule data. Please check back shortly.
+              </div>
+              <div v-else-if="departments.length === 0" class="rounded-lg border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500">
+                No shifts are scheduled for this date.
               </div>
               <div v-else>
               <div class="flex items-center gap-4">
@@ -136,15 +88,10 @@
                   <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
                     <div class="bg-blue-500 h-2 rounded-full" :style="{ width: dept.coveragePercentage + '%' }"></div>
                   </div>
-                  <div class="space-y-2 mt-3">
-                    <div v-for="emp in dept.scheduledEmployees" :key="emp.id"
-                      class="flex items-center justify-between text-sm">
-                      <div class="flex items-center gap-2">
-                        <Avatar :label="getInitials(emp.name)" size="small" class="bg-blue-100 text-blue-600" />
-                        <span>{{ emp.name }}</span>
-                      </div>
-                      <Tag :value="emp.shiftType" :severity="getShiftSeverity(emp.shiftType)" size="small" />
-                    </div>
+                  <div class="mt-3 text-xs text-gray-500">
+                    {{ dept.scheduled }} employees scheduled for this department.
+                  </div>
+                  <div v-if="dept.unfilledCount > 0" class="mt-2 space-y-2">
                     <div v-for="n in dept.unfilledCount" :key="'unfilled-'+n"
                       class="flex items-center gap-2 text-sm text-gray-400">
                       <i class="pi pi-plus-circle text-xs"></i>
@@ -171,8 +118,10 @@
                   placeholder="Assignment Type" showClear @change="fetchAssignments" />
               </div>
   
-              <DataTable :value="assignments" :paginator="true" :rows="10" :loading="assignmentsLoading"
+              <DataTable :value="assignments" :paginator="true" :rows="10" :loading="assignmentsLoading" @row-click="openAssignmentDetails"
                 paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink" class="text-sm">
+                <template #loading><div class="space-y-3 p-3"><Skeleton v-for="n in 5" :key="n" height="2rem" /></div></template>
+                <template #empty><div class="py-8 text-center text-sm text-gray-500">No assignments found. Create an assignment to schedule an employee.</div></template>
                 <Column field="employee.full_name" header="Employee" sortable>
                   <template #body="{ data }">
                     <div class="flex items-center gap-2">
@@ -225,8 +174,10 @@
                   option-value="value" size="small" placeholder="Status" showClear @change="fetchSwapRequests" />
               </div>
   
-              <DataTable :value="swapRequests" :paginator="true" :rows="10" :loading="swapLoading"
+              <DataTable :value="swapRequests" :paginator="true" :rows="10" :loading="swapLoading" @row-click="openSwapDetails"
                 paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink" class="text-sm">
+                <template #loading><div class="space-y-3 p-3"><Skeleton v-for="n in 5" :key="n" height="2rem" /></div></template>
+                <template #empty><div class="py-8 text-center text-sm text-gray-500">No swap requests found. New requests will appear here.</div></template>
                 <Column header="Requestor">
                   <template #body="{ data }">
                     <div class="flex items-center gap-2">
@@ -260,13 +211,13 @@
                 </Column>
                 <Column header="Actions">
                   <template #body="{ data }">
-                    <div class="flex gap-2" v-if="data.status === 'pending' && !isMyRequest(data)">
+                    <div class="flex gap-2" v-if="data.status === 'pending' && !isMyRequest(data)" @click.stop>
                       <Button label="Accept" icon="pi pi-check" size="small" severity="success"
                         @click="confirmSwapAction(data, 'accept')" />
                       <Button label="Reject" icon="pi pi-times" size="small" severity="danger" outlined
                         @click="confirmSwapAction(data, 'reject')" />
                     </div>
-                    <div v-else-if="data.status === 'pending' && isMyRequest(data)">
+                    <div v-else-if="data.status === 'pending' && isMyRequest(data)" @click.stop>
                       <Button label="Cancel" icon="pi pi-ban" size="small" severity="warning" outlined
                         @click="confirmSwapAction(data, 'cancel')" />
                     </div>
@@ -417,6 +368,23 @@
       </template>
     </Dialog>
   
+    <Dialog v-model:visible="assignmentDetailsVisible" modal header="Assignment Details" :style="{ width: '34rem' }">
+      <div v-if="selectedAssignment" class="space-y-4 text-sm">
+        <div class="rounded-lg bg-slate-50 p-4"><div class="text-xs uppercase text-slate-400">Employee</div><div class="mt-1 text-lg font-semibold text-slate-900">{{ employeeName(selectedAssignment.employee) }}</div></div>
+        <div class="grid grid-cols-2 gap-3"><div><span class="text-xs text-slate-400">Shift</span><div class="font-semibold">{{ selectedAssignment.shift?.name || 'Not set' }}</div></div><div><span class="text-xs text-slate-400">Assignment type</span><div class="font-semibold capitalize">{{ selectedAssignment.assignment_type || 'Not set' }}</div></div><div><span class="text-xs text-slate-400">Start date</span><div class="font-semibold">{{ formatDate(selectedAssignment.start_date) }}</div></div><div><span class="text-xs text-slate-400">End date</span><div class="font-semibold">{{ selectedAssignment.end_date ? formatDate(selectedAssignment.end_date) : 'Permanent' }}</div></div></div>
+      </div>
+      <template #footer><Button label="Close" severity="secondary" outlined @click="assignmentDetailsVisible = false" /></template>
+    </Dialog>
+
+    <Dialog v-model:visible="swapDetailsVisible" modal header="Swap Request Details" :style="{ width: '38rem' }">
+      <div v-if="selectedSwap" class="space-y-4 text-sm">
+        <div class="flex items-center justify-between"><div><div class="text-xs text-slate-400">Status</div><Tag :value="String(selectedSwap.status || '').toUpperCase()" :severity="getSwapStatusSeverity(selectedSwap.status)" /></div><div class="text-right"><div class="text-xs text-slate-400">Request type</div><div class="font-semibold">{{ selectedSwap.swap_type || 'Not set' }}</div></div></div>
+        <div class="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4"><div><span class="text-xs text-slate-400">Requestor</span><div class="font-semibold">{{ employeeName(selectedSwap.requestor) }}</div></div><div><span class="text-xs text-slate-400">Receiver</span><div class="font-semibold">{{ employeeName(selectedSwap.receiver) }}</div></div><div><span class="text-xs text-slate-400">Requested date</span><div class="font-semibold">{{ formatDate(selectedSwap.requestorSchedule?.schedule_date) }}</div></div><div><span class="text-xs text-slate-400">Created</span><div class="font-semibold">{{ formatDate(selectedSwap.created_at) }}</div></div></div>
+        <div><div class="text-xs uppercase text-slate-400">Reason</div><p class="mt-1 text-slate-700">{{ selectedSwap.reason || 'No reason provided.' }}</p></div>
+      </div>
+      <template #footer><Button label="Close" severity="secondary" outlined @click="swapDetailsVisible = false" /></template>
+    </Dialog>
+
     <!-- Error Modal -->
     <Dialog v-model:visible="errorDialogVisible" modal header="Error" :style="{ width: '40vw' }" :closable="true">
       <div class="flex items-center gap-3 p-4">
@@ -539,12 +507,13 @@ import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
 import DatePicker from 'primevue/datepicker'
+import Skeleton from 'primevue/skeleton'
 
 const router = useRouter()
 const toast = useToast()
 
 // --- General State ---
-const activeTab = ref('templates')
+const activeTab = ref('coverage')
 const selectedDate = ref(new Date())
 const loading = ref(true)
 const assignmentDialog = ref(false)
@@ -578,6 +547,8 @@ const shiftOptions = ref<{ label: string; value: number }[]>([])
 
 // --- Assignment State ---
 const assignments = ref<any[]>([])
+const assignmentDetailsVisible = ref(false)
+const selectedAssignment = ref<any | null>(null)
 const assignmentsLoading = ref(false)
 const assignmentFilters = ref({ search: '', type: null as string | null })
 const assignmentTypeOptions = ref([
@@ -601,6 +572,8 @@ const departmentEmployeeCounts = ref<Record<string, number>>({})
 
 // --- Swap State ---
 const swapRequests = ref<any[]>([])
+const swapDetailsVisible = ref(false)
+const selectedSwap = ref<any | null>(null)
 const swapLoading = ref(false)
 const swapFilters = ref({ search: '', status: null as string | null })
 const swapStatusOptions = ref([
@@ -719,9 +692,6 @@ watch(activeTab, (newTab) => {
   if (newTab === 'coverage') {
     fetchCoverageData()
   }
-  if (newTab === 'templates' && shiftDefinitions.value.length === 0) {
-    fetchShiftDefinitions()
-  }
 })
 
 // Watch receiver selection to load their schedules
@@ -827,7 +797,8 @@ const getSwapStatusSeverity = (status: string): string => {
 const isToday = computed(() => new Date().toDateString() === selectedDate.value.toDateString())
 
 // Temporarily disable live coverage until data is validated
-const coverageUnavailable = ref(true)
+const coverageUnavailable = ref(false)
+const coverageLoading = ref(false)
 
 // --- Data Transformers ---
 const transformShiftData = (records: any[]): any[] => {
@@ -1005,6 +976,7 @@ const extractFilterOptions = () => {
 
 const fetchCoverageData = async () => {
   if (coverageUnavailable.value) return
+  coverageLoading.value = true
   try {
     // Prefer server-side coverage endpoint (temporary debug) to get today's assignments
     const resp = await hrService.api.get('api/test/_debug/shifts-today', {
@@ -1063,6 +1035,8 @@ const fetchCoverageData = async () => {
       d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
     })
     departments.value = Array.from(deptMap.values())
+  } finally {
+    coverageLoading.value = false
   }
 }
 
@@ -1160,6 +1134,16 @@ const openAssignmentDialog = async () => {
   await fetchShiftOptions()
   assignmentDialogVisible.value = true
   assignmentDialog.value = false
+}
+
+const employeeName = (employee: any) => employee?.full_name || `${employee?.fname || ''} ${employee?.lname || ''}`.trim() || 'Not set'
+const openAssignmentDetails = (event: any) => {
+  selectedAssignment.value = event.data
+  assignmentDetailsVisible.value = true
+}
+const openSwapDetails = (event: any) => {
+  selectedSwap.value = event.data
+  swapDetailsVisible.value = true
 }
 
 // --- API Calls: Swap Requests ---

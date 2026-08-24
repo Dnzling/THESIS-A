@@ -33,7 +33,7 @@ class SalesOrderSettlementService
                     continue;
                 }
 
-                $inventory = BranchInventory::query()
+                $inventory = BranchInventory::with('product')
                     ->lockForUpdate()
                     ->findOrFail($item->branch_inventory_id);
 
@@ -63,7 +63,7 @@ class SalesOrderSettlementService
                     'reference_type' => 'sales_pos_order',
                     'reference_id' => $lockedOrder->id,
                     'notes' => "POS sale {$lockedOrder->order_number}",
-                    'unit_cost' => (float) ($inventory->average_cost ?? 0),
+                    'unit_cost' => (float) ($inventory->product?->getRawOriginal('cost_price') ?? 0),
                     'total_value' => (float) $item->line_total,
                     'requires_approval' => false,
                     'approval_status' => 'auto_approved',
@@ -164,4 +164,3 @@ class SalesOrderSettlementService
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
     }
 }
-

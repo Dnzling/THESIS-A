@@ -291,6 +291,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
         // Payroll Overview
         Route::get('/overview', [PayrollController::class, 'overview']);
+        Route::get('/preview', [PayrollController::class, 'preview']);
 
         // Payroll
         Route::get('/pay-periods', [PayPeriodController::class, 'getAllPayPeriods']);
@@ -345,6 +346,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // ========== STORE MANAGEMENT ==========
     Route::get('pending-verification', [StoreVerificationController::class, 'getPendingVerifications']);
     Route::get('store-verifications', [StoreVerificationController::class, 'index']);
+    Route::post('store-verification/owner-id/extract', [StoreVerificationController::class, 'extractOwnerId']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
     Route::get('store-verification/{verification}/documents/{document}/download', [StoreVerificationController::class, 'downloadDocument']);

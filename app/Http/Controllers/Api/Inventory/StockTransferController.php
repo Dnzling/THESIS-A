@@ -193,12 +193,12 @@ class StockTransferController extends Controller
             // Calculate goods value and distance
             $goodsValue = 0;
             foreach ($validated['items'] as $item) {
-                $inventory = BranchInventory::where('branch_id', $validated['from_branch_id'])
+                $inventory = BranchInventory::with('product')->where('branch_id', $validated['from_branch_id'])
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
 
-                $goodsValue += ($inventory?->average_cost ?? 0) * $item['requested_quantity'];
+                $goodsValue += (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0) * $item['requested_quantity'];
             }
 
             // Get distance between branches
@@ -230,7 +230,7 @@ class StockTransferController extends Controller
 
             // Create items
             foreach ($validated['items'] as $item) {
-                $inventory = BranchInventory::where('branch_id', $validated['from_branch_id'])
+                $inventory = BranchInventory::with('product')->where('branch_id', $validated['from_branch_id'])
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
@@ -240,7 +240,7 @@ class StockTransferController extends Controller
                     'product_id' => $item['product_id'],
                     'variation_id' => $item['variation_id'] ?? null,
                     'requested_quantity' => $item['requested_quantity'],
-                    'unit_value' => $inventory?->average_cost ?? 0,
+                    'unit_value' => (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0),
                     'notes' => $item['notes'] ?? null,
                 ]);
             }
@@ -585,7 +585,6 @@ class StockTransferController extends Controller
                 $inventory->quantity_on_hand = $inventory->quantity_available;
                 $inventory->save();
                 $inventory->updateStockStatus();
-                $inventory->calculateTotalValue();
 
                 // Create transaction with unique datetime-based number
                 $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
@@ -719,7 +718,6 @@ class StockTransferController extends Controller
                 $inventory->quantity_damaged += ($itemData['damaged_quantity'] ?? 0);
                 $inventory->save();
                 $inventory->updateStockStatus();
-                $inventory->calculateTotalValue();
 
                 // Create transaction with unique datetime-based number
                 $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);

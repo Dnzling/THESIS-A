@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\Hr\LeaveBalanceController;
 use App\Http\Controllers\Api\Hr\DashboardController;
 use App\Http\Controllers\Api\Hr\ShiftSwapRequestController;
 use App\Http\Controllers\Api\Hr\EmployeeCreditCardController;
+use App\Http\Controllers\Api\Hr\HolidayController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 // Shifts
@@ -20,6 +21,11 @@ Route::get('shifts/{id}/stats', [ShiftController::class, 'getStats']);
 
 // Shift Management (alias endpoints for HR flow)
 Route::get('shift-management/templates', [ShiftController::class, 'index']);
+Route::get('holidays', [HolidayController::class, 'index']);
+Route::post('holidays', [HolidayController::class, 'store']);
+Route::post('holidays/import', [HolidayController::class, 'import']);
+Route::post('holidays/import-ph', [HolidayController::class, 'importPh']);
+Route::delete('holidays/{id}', [HolidayController::class, 'destroy']);
 Route::post('shift-management/templates', [ShiftController::class, 'store']);
 Route::get('shift-management/templates/{id}', [ShiftController::class, 'show']);
 Route::put('shift-management/templates/{id}', [ShiftController::class, 'update']);

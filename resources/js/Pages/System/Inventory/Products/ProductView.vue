@@ -5,12 +5,13 @@
         <Button
           icon="pi pi-arrow-left"
           text
-          rounded
-          @click="router.push({ name: 'inventory.products.index' })"
+          severity="warn"
+          size="small"
+          @click="goBack"
         />
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">Item Details</h2>
-          <p class="text-sm text-gray-500 mt-1">View inventory item information, stock data, and attachments</p>
+          <h2 class="text-xl font-bold text-gray-800">Product Details</h2>
+  
         </div>
       </div>
       <div class="flex gap-2">
@@ -19,12 +20,14 @@
           label="View 3D"
           icon="pi pi-cube"
           severity="info"
+          size="small"
           @click="openView3DModal"
         />
         <Button
           label="Edit"
           icon="pi pi-pencil"
-          severity="warning"
+          severity="warn"
+          size="small"
           @click="goToEdit"
         />
         <Button
@@ -32,6 +35,7 @@
           icon="pi pi-trash"
           severity="danger"
           outlined
+          size="small"
           @click="confirmDelete"
         />
       </div>
@@ -62,6 +66,10 @@
               <div class="text-left lg:text-right">
                 <p class="text-3xl font-bold text-green-600">₱{{ formatPrice(product.base_price) }}</p>
                 <p class="text-sm text-gray-500 mt-1">{{ priceLabel }}</p>
+                <p class="mt-3 text-xs text-gray-500">Cost Price per Unit</p>
+                <p class="text-lg font-semibold text-gray-800">
+                  {{ product.cost_price != null ? `₱${formatPrice(product.cost_price)}` : 'N/A' }}
+                </p>
               </div>
             </div>
 
@@ -74,7 +82,7 @@
                 <p class="text-xs text-gray-600 mb-1">Type</p>
                 <p class="text-sm font-semibold text-gray-900">{{ productTypeLabel }}</p>
               </div>
-              <div>
+              <div v-if="product?.product_type === 'finished_good'">
                 <p class="text-xs text-gray-600 mb-1">Variations</p>
                 <p class="text-sm font-semibold text-gray-900">{{ variations.length }}</p>
               </div>
@@ -93,26 +101,40 @@
       </Card>
 
       <div class="grid grid-cols-1 xl:grid-cols-[1.4fr_0.8fr] gap-6">
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-box text-purple-600"></i>
-              <span>Item Details</span>
-            </div>
-          </template>
+      <Card>
+        <template #title>
+          <span class="text-sm font-semibold text-gray-800">Item Details</span>
+        </template>
           <template #content>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <p class="text-xs text-gray-600 mb-1">Unit of Measurement</p>
-                <p class="text-lg font-semibold text-gray-900">{{ product.unit_of_measurement || 'N/A' }}</p>
+                <p class="text-lg capitalize font-semibold text-gray-900">{{ product.unit_of_measurement || 'N/A' }}</p>
               </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
-                <p class="text-lg font-semibold text-gray-900">{{ product.supplier_name || 'N/A' }}</p>
+                <div class="flex items-center gap-2">
+                  <p class="text-lg font-semibold text-gray-900">{{ product.supplier_name || '' }}</p>
+                  <Button
+                    v-if="!hasSupplier"
+                    label="Create PR"
+                    icon="pi pi-file-plus"
+                    severity="warn"
+                    size="small"
+                    outlined
+                    @click="goToCreatePR"
+                  />
+                </div>
               </div>
               <div>
-                <p class="text-xs text-gray-600 mb-1">Initial Stock</p>
-                <p class="text-lg font-semibold text-gray-900">{{ product.initial_stock ?? 'N/A' }}</p>
+                <p class="text-xs text-gray-600 mb-1">Cost Price per Unit</p>
+                <p class="text-lg font-semibold text-gray-900">
+                  {{ product.cost_price != null ? `₱${formatPrice(product.cost_price)}` : 'N/A' }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-gray-600 mb-1">Reorder Level</p>
+                <p class="text-lg font-semibold text-gray-900">{{ branchInventory?.reorder_point ?? 'N/A' }}</p>
               </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Available Stock</p>
@@ -130,13 +152,10 @@
           </template>
         </Card>
 
-        <Card>
-          <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-chart-bar text-blue-600"></i>
-              <span>Stock Summary</span>
-            </div>
-          </template>
+      <Card>
+        <template #title>
+          <span class="text-sm font-semibold text-gray-800">Stock Summary</span>
+        </template>
           <template #content>
             <div class="space-y-4">
               <div class="rounded-lg bg-gray-50 p-4">
@@ -156,30 +175,27 @@
         </Card>
       </div>
 
-      <Card v-if="variations.length > 0 && product?.product_type === 'finished_good'">
+      <Card v-if="product?.product_type === 'finished_good' && variations.length > 0" class="border border-gray-200 shadow-sm">
         <template #title>
-          <div class="flex items-center gap-2">
-            <i class="pi pi-th-large text-indigo-600"></i>
-            <span>Product Variations</span>
-          </div>
+          <span class="text-sm font-semibold text-gray-800">Product Variations</span>
         </template>
         <template #content>
-          <DataTable :value="variations" class="p-datatable-sm">
+          <DataTable :value="variations" class="p-datatable-sm text-xs">
             <Column field="variation_name" header="Variation">
               <template #body="{ data }">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 text-xs">
                   <div
                     v-if="data.color_hex"
                     :style="{ backgroundColor: data.color_hex }"
-                    class="w-6 h-6 rounded border border-gray-300"
+                    class="h-5 w-5 rounded border border-gray-300"
                   ></div>
-                  <span class="font-medium">{{ data.variation_name }}</span>
+                  <span class="font-medium text-xs">{{ data.variation_name }}</span>
                 </div>
               </template>
             </Column>
             <Column field="variation_sku" header="SKU">
               <template #body="{ data }">
-                <span class="font-mono text-sm">{{ data.variation_sku }}</span>
+                <span class="font-mono text-xs">{{ data.variation_sku }}</span>
               </template>
             </Column>
             <Column header="Attributes">
@@ -193,7 +209,7 @@
             </Column>
             <Column field="final_price" header="Price">
               <template #body="{ data }">
-                <span class="font-semibold">₱{{ formatPrice(data.final_price || 0) }}</span>
+                <span class="font-semibold text-xs">₱{{ formatPrice(data.final_price || 0) }}</span>
               </template>
             </Column>
           </DataTable>
@@ -202,10 +218,7 @@
 
       <Card v-if="productImages.length > 0">
         <template #title>
-          <div class="flex items-center gap-2">
-            <i class="pi pi-images text-pink-600"></i>
-            <span>Attachments</span>
-          </div>
+          <span class="text-sm font-semibold text-gray-800">Attachments</span>
         </template>
         <template #content>
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -302,7 +315,6 @@
     </div>
 
     <div v-else class="text-center py-12">
-      <i class="pi pi-exclamation-triangle text-6xl text-red-500 mb-4"></i>
       <h3 class="text-xl font-semibold text-gray-800 mb-2">Item Not Found</h3>
       <p class="text-gray-600 mb-4">The item you're looking for doesn't exist or has been deleted.</p>
       <Button
@@ -314,7 +326,6 @@
 
     <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
       <div class="flex items-center gap-3">
-        <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
         <div>
           <p class="font-semibold">Are you sure you want to delete this item?</p>
           <p class="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
@@ -379,8 +390,12 @@ const productTypeLabel = computed(() => {
 const productTypeSeverity = computed(() => {
   const type = product.value?.product_type
   if (type === 'raw_material') return 'info'
-  if (type === 'supply') return 'warning'
+  if (type === 'supply') return 'warn'
   return 'success'
+})
+
+const hasSupplier = computed(() => {
+  return Boolean(product.value?.supplier_name && String(product.value.supplier_name).trim())
 })
 
 const branchInventory = computed(() => {
@@ -425,6 +440,18 @@ const loadProduct = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToCreatePR = () => {
+  const inventoryId = branchInventory.value?.id
+  router.push({
+    name: 'inventory.requisites.create',
+    query: {
+      branch_inventory_id: inventoryId || undefined,
+      requested_quantity: branchInventory.value?.reorder_quantity || undefined,
+      notes: `Auto-generated from ${product.value?.product_name || 'product'}`
+    }
+  })
 }
 
 const loadImageWithAuth = async (image: any) => {
@@ -476,6 +503,10 @@ const loadAssets = async () => {
 
 const goToEdit = () => {
   router.push({ name: 'inventory.products.edit', params: { id: productId.value } })
+}
+
+const goBack = () => {
+  window.history.back()
 }
 
 const openView3DModal = () => {

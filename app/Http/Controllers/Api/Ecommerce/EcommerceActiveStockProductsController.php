@@ -43,13 +43,7 @@ class EcommerceActiveStockProductsController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
-                $storeQuery->whereIn('status', ['active', 'verified'])
-                    ->where(function ($query) {
-                $query->whereNull('subscription_tier')
-                            ->orWhereHas('subscriptionPlan', function ($planQuery) {
-                                $planQuery->where('plan_key', '!=', 'free');
-                            });
-                    });
+                $storeQuery->whereIn('status', ['active', 'verified']);
             })
             ->whereHas('inventory', function ($inventoryQuery) {
                 $inventoryQuery

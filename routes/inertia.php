@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\System\StoreAdmin\StoreSettingsController as WebStoreSettingsController;
+use App\Http\Controllers\System\StoreAdmin\BillingController as StoreBillingController;
 
 $render = function (string $page, array $props = []) {
     return Inertia::render($page, array_filter($props, fn($value) => $value !== null));
@@ -52,17 +53,37 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
 
     });
 
-    // System (Store Admin)u
+    // System (Store Admin)
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
         Route::get('/store/settings', [WebStoreSettingsController::class, 'show'])
             ->name('store.settings');
+        Route::get('/store/billing', [StoreBillingController::class, 'show'])
+            ->name('store.billing');
+        Route::post('/store/settings/profile/prepare', [WebStoreSettingsController::class, 'prepareProfileUpdate'])
+            ->name('store.settings.profile.prepare');
+        Route::get('/store/settings/profile/otp', [WebStoreSettingsController::class, 'showProfileUpdateOtp'])
+            ->name('store.settings.profile.otp');
+        Route::post('/store/settings/profile/otp/resend', [WebStoreSettingsController::class, 'resendProfileUpdateOtp'])
+            ->name('store.settings.profile.otp.resend');
+        Route::post('/store/settings/profile/otp/verify', [WebStoreSettingsController::class, 'verifyProfileUpdateOtp'])
+            ->name('store.settings.profile.otp.verify');
         Route::put('/store/settings/profile', [WebStoreSettingsController::class, 'updateProfile'])
             ->name('store.settings.profile');
+        Route::post('/store/settings/logo', [WebStoreSettingsController::class, 'updateLogo'])
+            ->name('store.settings.logo');
         Route::put('/store/settings/payments', [WebStoreSettingsController::class, 'updatePaymentSettings'])
             ->name('store.settings.payments');
         Route::put('/store/settings/attendance', [WebStoreSettingsController::class, 'updateAttendanceSettings'])
             ->name('store.settings.attendance');
+        Route::post('/store/settings/attendance/prepare', [WebStoreSettingsController::class, 'prepareAttendanceUpdate'])
+            ->name('store.settings.attendance.prepare');
+        Route::get('/store/settings/attendance/otp', [WebStoreSettingsController::class, 'showAttendanceUpdateOtp'])
+            ->name('store.settings.attendance.otp');
+        Route::post('/store/settings/attendance/otp/resend', [WebStoreSettingsController::class, 'resendAttendanceUpdateOtp'])
+            ->name('store.settings.attendance.otp.resend');
+        Route::post('/store/settings/attendance/otp/verify', [WebStoreSettingsController::class, 'verifyAttendanceUpdateOtp'])
+            ->name('store.settings.attendance.otp.verify');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
@@ -86,13 +107,13 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/hr/leaves/{id}', 'System/HR/LeaveDetail', 'hr.leaves.detail', 'Leave Details');
     $inertia('/hr/analytics', 'System/HR/Analytics', 'hr.analytics', 'Analytics');
     $inertia('/hr/settings', 'System/HR/Settings', 'hr.settings', 'Settings');
-    $inertia('/hr/payroll', 'System/HR/PayrollList', 'hr.payroll', 'Payroll');
-    $inertia('/hr/payroll/overview', 'System/HR/PayrollOverview', 'hr.payroll.overview', 'Payroll Overview');
+    $inertia('/hr/payroll', 'System/HR/Payroll/PayrollIndex', 'hr.payroll', 'Payroll');
+    $inertia('/hr/payroll/overview', 'System/HR/Payroll/PayrollIndex', 'hr.payroll.overview', 'Payroll');
     $inertia('/hr/payroll/periods', 'System/HR/PayPeriods', 'hr.payroll.periods', 'Pay Periods');
     $inertia('/hr/payroll/lists', 'System/HR/PayrollList', 'hr.payroll.list', 'Edit Payroll');
-    $inertia('/hr/payroll/create', 'System/HR/PayrollCreate', 'hr.payroll.create', 'Generate Payroll');
-    $inertia('/hr/payroll/view/{id}', 'System/HR/PayrollView', 'hr.payroll.view', 'View Payroll');
-    $inertia('/hr/payroll/edit/{id}', 'System/HR/PayrollEdit', 'hr.payroll.edit', 'Edit Payroll');
+    $inertia('/hr/payroll/create', 'System/HR/Payroll/PayrollCreate', 'hr.payroll.create', 'Generate Payroll');
+    $inertia('/hr/payroll/view/{id}', 'System/HR/Payroll/PayrollView', 'hr.payroll.view', 'View Payroll');
+    $inertia('/hr/payroll/edit/{id}', 'System/HR/Payroll/PayrollEdit', 'hr.payroll.edit', 'Edit Payroll');
     $inertia('/hr/recuitment', 'System/HR/JobPostings/JobPostingsIndex', 'hr.recuitment', 'Job Postings');
     $inertia('/hr/recuitment/postings/{postingId}', 'System/HR/JobPostings/JobPostingDetailView', 'hr.recuitment.detail', 'Job Posting Overview');
     $inertia('/hr/recuitment/postings/{postingId}/applicants', 'System/HR/JobPostings/JobPostingApplicantsList', 'hr.recuitment.applicants', 'Applicants');
@@ -124,9 +145,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/products/create', 'System/Inventory/Products/ProductForm', 'inventory.products.create', 'Add Product', 'Create a new product');
     $inertia('/inventory/products/{id}/edit', 'System/Inventory/Products/ProductForm', 'inventory.products.edit', 'Edit Product', 'Update product information');
     $inertia('/inventory/products/{id}', 'System/Inventory/Products/ProductView', 'inventory.products.detail', 'Product Details');
-    $inertia('/inventory/raw-materials/create', 'System/Inventory/Products/RawMaterialForm', 'inventory.raw-materials.create', 'Add Raw Material', 'Create a new raw material');
-    $inertia('/inventory/supplies/create', 'System/Inventory/Products/SupplyForm', 'inventory.supplies.create', 'Add Supply', 'Create a new supply');
-    $inertia('/inventory/supplies/{id}/edit', 'System/Inventory/Products/SupplyForm', 'inventory.supplies.edit', 'Edit Supply', 'Update supply information');
     $inertia('/inventory/categories', 'System/Inventory/Categories/CategoryIndex', 'inventory.categories', 'Categories');
     $inertia('/inventory/categories/{id}', 'System/Inventory/Categories/CategoryDetail', 'inventory.categories.detail', 'Category Details');
     $inertia('/inventory/units', 'System/Inventory/Units/UnitIndex', 'inventory.units', 'Units');
@@ -176,6 +194,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/transfers', 'System/Inventory/Transfers/TransferIndex', 'inventory.transfers', 'Transfers');
     $inertia('/inventory/transfers/create', 'System/Inventory/Transfers/TransferCreate', 'inventory.transfers.create', 'Create Transfer');
     $inertia('/inventory/transfers/{id}', 'System/Inventory/Transfers/TransferDetail', 'inventory.transfers.detail', 'Transfer Detail');
+    $inertia('/inventory/stock-movements', 'System/Inventory/StockMovements/StockMovementIndex', 'inventory.stock-movements', 'Stock Movements');
     $inertia('/inventory/alerts', 'System/Inventory/Alerts/AlertsIndex', 'inventory.alerts', 'Alerts');
     $inertia('/inventory/transactions', 'System/Inventory/Transactions/TransactionIndex', 'inventory.transactions', 'Transactions');
     $inertia('/inventory/transactions/{id}', 'System/Inventory/Transactions/TransactionDetail', 'inventory.transactions.detail', 'Transaction Detail');
@@ -184,10 +203,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/reports', 'System/Inventory/Reports/ReportsIndex', 'inventory.reports', 'Reports');
     $inertia('/inventory/notifications', 'System/Inventory/Notifications/NotificationIndex', 'inventory.notifications', 'Notifications');
     $inertia('/inventory/configuration', 'System/Inventory/Configuration/ConfigIndex', 'inventory.configuration', 'Configuration');
-    $inertia('/inventory/stock-order-requests', 'System/Inventory/PurchaseRequests/PurchaseRequestIndex', 'stock-order-requests.index', 'Stock Order Requests');
-    $inertia('/inventory/stock-order-requests/create', 'System/Inventory/PurchaseRequests/PurchaseRequestCreate', 'stock-order-requests.create', 'Create Stock Order Request');
-    $inertia('/inventory/stock-order-requests/{id}', 'System/Inventory/PurchaseRequests/PurchaseRequestDetail', 'stock-order-requests.detail', 'Stock Order Request Detail');
-    $inertia('/inventory/stock-order-requests/{id}/edit', 'System/Inventory/PurchaseRequests/PurchaseRequestEdit', 'stock-order-requests.edit', 'Edit Stock Order Request');
 
     // Procurement
     Route::redirect('/procurement', '/procurement/dashboard')->name('procurement');

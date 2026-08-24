@@ -1,28 +1,36 @@
 <template>
   <div class="p-6 min-h-screen">
-    <div class="mb-6 flex justify-between items-center">
+    <div class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-lg font-bold text-gray-800">Stock Adjustments</h1>
       </div>
-      <Button v-if="canCreateAdjustments" label="Create Adjustment" icon="pi pi-plus" severity="success"
-        @click="router.push({ name: 'inventory.adjustments.create' })" />
+      <SplitButton
+        v-if="canCreateAdjustments"
+        label="Create Adjustment"
+        icon="pi pi-plus"
+        severity="warn"
+        size="small"
+        class="text-sm"
+        :model="createAdjustmentItems"
+        @click="router.push({ name: 'inventory.adjustments.create' })"
+      />
     </div>
   
     <!-- Filters -->
     <Card class="mb-6">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
           <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-            placeholder="All Statuses" showClear @change="() => loadAdjustments(1)" fluid />
+            placeholder="All Statuses" showClear @change="() => loadAdjustments(1)" fluid class="text-sm" size="small" />
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search reference no..." fluid @keyup.enter="loadAdjustments(1)" />
+            <InputText v-model="filters.search" placeholder="Search reference no..." fluid size="small" class="text-sm" @keyup.enter="loadAdjustments(1)" />
           </IconField>
           <div>
-            <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
-            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
+            <label class="mb-1 block text-xs font-semibold text-gray-700">Date Range</label>
+            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full text-sm" showIcon />
           </div>
-          <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters" />
+          <Button icon="pi pi-filter-slash" label="Reset" severity="warn" outlined size="small" class="text-sm" @click="resetFilters" />
         </div>
       </template>
     </Card>
@@ -30,8 +38,8 @@
     <!-- Adjustments Table -->
     <Card>
       <template #content>
-        <div v-if="loading" class="space-y-3">
-          <div class="grid grid-cols-6 gap-3 text-xs text-gray-400">
+        <div v-if="loading" class="space-y-2">
+          <div class="grid grid-cols-6 gap-2 text-xs text-gray-400">
             <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
@@ -39,7 +47,7 @@
             <Skeleton height="24px" class="col-span-1" />
             <Skeleton height="24px" class="col-span-1" />
           </div>
-          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-3">
+          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-2">
             <Skeleton height="20px" class="col-span-1" />
             <Skeleton height="20px" class="col-span-1" />
             <Skeleton height="20px" class="col-span-1" />
@@ -96,7 +104,7 @@
           <Column header="Actions" style="width: 15%">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button v-if="canViewAdjustments" icon="pi pi-eye" size="small" text severity="info"
+                <Button v-if="canViewAdjustments" icon="pi pi-eye" size="small" text severity="warn"
                   @click="router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })"
                   v-tooltip="'View details'" />
               </div>
@@ -111,6 +119,7 @@
 <script setup lang="ts">
 import { onMounted, ref, reactive, watch } from 'vue'
 import Calendar from 'primevue/calendar'
+import SplitButton from 'primevue/splitbutton'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
@@ -133,6 +142,18 @@ const adjustments = ref<any[]>([])
 
 const canViewAdjustments = authStore.hasPermission('inventory.adjustments.view')
 const canCreateAdjustments = authStore.hasPermission('inventory.adjustments.manage')
+const createAdjustmentItems = [
+  {
+    label: 'Physical Count',
+    icon: 'pi pi-list',
+    command: () => router.push({ name: 'inventory.adjustments.create', query: { type: 'physical_count' } })
+  },
+  {
+    label: 'Correction',
+    icon: 'pi pi-pencil',
+    command: () => router.push({ name: 'inventory.adjustments.create', query: { type: 'correction' } })
+  }
+]
 
 const pagination = reactive<Pagination>({
   current_page: 1,

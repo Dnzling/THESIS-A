@@ -1,53 +1,94 @@
 <template>
-  <Toast />
-  <div class="space-y-6">
+  <div>
+    <Toast />
+    <div class="space-y-3">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-slate-900">Store Settings</h1>
-        <p class="text-sm text-slate-600">Manage your store profile, plan, and system configuration.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Store Settings</h1>
       </div>
     </div>
-
-    <div :class="isActiveSubscription ? 'grid gap-6 lg:grid-cols-2' : 'grid gap-6 lg:grid-cols-2'">
-      
-
-      <Card>
-        <template #title>Plan Status</template>
+    <div class="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+      <Card class="border border-slate-200 shadow-sm">
+        <template #title></template>
         <template #content>
-          <div class="space-y-3 text-sm text-slate-700">
-            <div class="flex items-center justify-between">
-              <span>Store Status</span>
-              <div class="flex items-center gap-2">
+          <div class="space-y-4">
+            <div class="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="text-2xl font-semibold text-slate-950">{{ store.name || 'Store profile' }}</div>
+                <div class="mt-1 text-sm capitalize text-slate-500">{{ store.type || 'Store type not set' }}</div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
                 <Tag :value="storeStatusLabel" :severity="storeStatusSeverity" />
                 <Button
-                  v-if="showStoreStatusInfo"
-                  icon="pi pi-info-circle"
-                  text
-                  rounded
-                  severity="secondary"
-                  @click="storeStatusDialogVisible = true"
+                  v-if="shouldShowVerifyButton"
+                  :label="verifyButtonLabel"
+                  :icon="verifyButtonIcon"
+                  size="small"
+                  :severity="isVerificationRejected ? 'danger' : 'warn'"
+                  outlined
+              
+                  :rounded="isVerificationRejected"
+                  @click="handleStoreVerifyClick"
                 />
+                <Button v-if="showStoreStatusInfo" icon="pi pi-info-circle" text rounded severity="secondary" @click="storeStatusDialogVisible = true" />
               </div>
             </div>
-            <div class="flex items-center justify-between">
-              <span>Plan</span>
-              <span class="font-semibold">{{ currentPlanLabel }}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span>Ends On</span>
-              <span class="font-semibold">{{ subscriptionEndsAtLabel }}</span>
+
+            <div class="grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-xs uppercase tracking-wide text-slate-400">Phone</div>
+                <div class="mt-1 font-semibold text-slate-900">{{ store.phone || 'Not set' }}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-xs uppercase tracking-wide text-slate-400">Location</div>
+                <div class="mt-1 font-semibold text-slate-900">{{ [store.city, store.province].filter(Boolean).join(', ') || 'Not set' }}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3 sm:col-span-2">
+                <div class="text-xs uppercase tracking-wide text-slate-400">Shop Address</div>
+                <div class="mt-1 font-semibold capitalize text-slate-900">
+                  {{ [store.address, store.barangay, store.city, store.province || 'Cavite'].filter(Boolean).join(', ') || 'No address recorded' }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-xs uppercase tracking-wide text-slate-400">Store Code</div>
+                <div class="mt-1 font-semibold text-slate-900">{{ store.store_code || 'Not set' }}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-xs uppercase tracking-wide text-slate-400">Billing Email</div>
+                <div class="mt-1 font-semibold text-slate-900">{{ store.email || 'Not set' }}</div>
+              </div>
             </div>
           </div>
-          <div class="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-            Upgrade your plan anytime to unlock all modules and remove trial limits.
-          </div>
-          <Button class="mt-4 w-full" label="Upgrade Plan" severity="info" :loading="upgrading" @click="goToUpgrade" />
+          <Button class="mt-5 w-full" label="Edit store profile" size="small" icon="pi pi-pencil" outlined @click="openProfileEditor" />
         </template>
       </Card>
 
       <!-- Online Payment methods moved to Upgrade flow; card removed -->
 
-      
+      <Card class="border border-slate-200 shadow-sm">
+        <template #title>Logo</template>
+        <template #content>
+          <div class="space-y-4">
+            <div class="mx-auto w-full max-w-xs">
+              <div class="relative aspect-square overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
+                <img v-if="store.logo_url" :src="store.logo_url" :alt="`${store.name || 'Store'} logo`" class="h-full w-full object-cover" />
+                <div v-else class="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                  <i class="pi pi-image text-4xl"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-md bg-slate-50 px-2.5 py-1.5 text-center">
+              <div class="text-[10px] uppercase tracking-wide text-slate-400">Saved logo size</div>
+              <div class="text-xs font-semibold text-slate-900">{{ logoDimensionLabel }}</div>
+              <p class="mt-0.5 text-[10px] leading-3 text-slate-500">
+                Shown on shop pages. Upload at least 512 x 512 px, ideally 1024 x 1024 px.
+              </p>
+            </div>
+          </div>
+          <Button class="mt-5 w-full" label="Upload" size="small" icon="pi pi-upload" severity="warn" outlined @click="openLogoDialog" />
+        </template>
+      </Card>
     </div>
 
     <Dialog v-model:visible="planDialogVisible" modal header="Available Plans" :style="{ width: '36rem' }">
@@ -148,10 +189,14 @@
 
   
 
-    <Dialog v-model:visible="verificationDocumentsDialogVisible" modal header="Submitted Verification Documents" :style="{ width: '48rem' }">
+    <Dialog v-model:visible="verificationDocumentsDialogVisible" modal :header="verificationDocumentsDialogTitle" :style="{ width: '48rem' }">
       <div class="space-y-3">
+        <div v-if="isVerificationRejected" class="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">
+          <div class="font-semibold">Rejected Reason</div>
+          <div class="mt-1 whitespace-pre-wrap">{{ verification.rejection_reason || 'No reason was provided.' }}</div>
+        </div>
         <div class="text-xs text-slate-500">
-          Review submitted attachments while your verification is under review.
+          {{ isVerificationRejected ? 'Review the previous attachments before resubmitting.' : 'Review submitted attachments while your verification is under review.' }}
         </div>
 
         <DataTable :value="verificationDocuments" responsiveLayout="scroll" class="text-sm" stripedRows>
@@ -172,12 +217,12 @@
           <Column header="Action">
             <template #body="slotProps">
               <Button
-                v-if="slotProps.data.download_url"
+                v-if="slotProps.data.path || slotProps.data.download_url || slotProps.data.inspect_url"
                 label="View"
                 icon="pi pi-external-link"
                 size="small"
                 outlined
-                @click="openDocument(slotProps.data.download_url)"
+                @click="openDocumentDialog(slotProps.data)"
               />
               <span v-else class="text-slate-400">—</span>
             </template>
@@ -190,57 +235,86 @@
       </div>
       <template #footer>
         <Button label="Close" severity="secondary" outlined @click="verificationDocumentsDialogVisible = false" />
+        <Button v-if="isVerificationRejected" label="Resubmit" severity="warn" icon="pi pi-refresh" @click="resubmitVerification" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="documentPreviewDialogVisible" modal :header="documentPreviewTitle" :style="{ width: 'min(92vw, 56rem)' }">
+      <div class="min-h-[22rem] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        <img
+          v-if="documentPreviewKind === 'image'"
+          :src="documentPreviewUrl"
+          :alt="documentPreviewTitle"
+          class="max-h-[70vh] w-full object-contain"
+        />
+        <iframe
+          v-else
+          :src="documentPreviewUrl"
+          class="h-[70vh] w-full border-0"
+          title="Verification document preview"
+        ></iframe>
+      </div>
+      <template #footer>
+        <Button label="Close" severity="secondary" outlined @click="documentPreviewDialogVisible = false" />
       </template>
     </Dialog>
 
 
-    <Card>
-      <template #title>Store Profile</template>
-      <template #content>
-        <div class="grid gap-4 md:grid-cols-2 text-sm text-slate-700">
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Store Name</label>
-            <InputText v-model="store.name" class="w-full" placeholder="Store name" readonly />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Contact Person</label>
-            <InputText v-model="store.contact_person" class="w-full" placeholder="Contact person" />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Email</label>
-            <InputText v-model="store.email" class="w-full" placeholder="Store email" readonly />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Phone</label>
-            <InputText v-model="store.phone" class="w-full" placeholder="Store phone" />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Address</label>
-            <InputText v-model="store.address" class="w-full" placeholder="Store address" />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">City</label>
-            <InputText v-model="store.city" class="w-full" placeholder="City" />
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Province</label>
-            <InputText v-model="store.province" class="w-full" placeholder="Province" readonly/>
-          </div>
-          <div>
-            <label class="text-xs uppercase text-slate-400 block mb-1">Store Type</label>
-            <InputText v-model="store.type" class="w-full" placeholder="Retail, Warehouse, etc." />
-          </div>
+    <Dialog v-model:visible="profileEditorVisible" modal header="Edit Store Profile" :style="{ width: '36rem' }">
+      <div class="space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="sm:col-span-2"><label class="mb-1 block text-sm font-medium cap">Store Name</label><InputText :modelValue="store.name" class="capitalize w-full bg-slate-100" disabled /></div>
+          <div><label class="mb-1 block text-sm font-medium">Contact Person</label><InputText v-model="profileForm.contact_person" class="w-full" disabled/></div>
+          <div><label class="mb-1 block text-sm font-medium">Phone</label><InputMask v-model="profileForm.phone" class="w-full" mask="0999 999 9999" placeholder="09__ ___ ____" /></div>
+          <div class="sm:col-span-2"><label class="mb-1 block text-sm font-medium">Address</label><Textarea v-model="profileForm.address" rows="3" class="w-full" /></div>
+          <div><label class="mb-1 block text-sm font-medium">City</label><Select v-model="profileForm.city_id" :options="profileCityOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="profileCitiesLoading" placeholder="Select city" @change="onProfileCityChange" /></div>
+          <div><label class="mb-1 block text-sm font-medium">Province</label><InputText v-model="profileForm.province" class="w-full" readonly /></div>
+          <div><label class="mb-1 block text-sm font-medium">Barangay</label><Select v-model="profileForm.barangay" :options="profileBarangayOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="profileBarangaysLoading" :disabled="!profileForm.city_id" placeholder="Select barangay" /></div>
+          <div><label class="mb-1 block text-sm font-medium">Store Type</label><Select v-model="profileForm.type" :options="businessTypeOptions" optionLabel="label" optionValue="value" class="w-full" /></div>
         </div>
-        <div class="mt-4 flex items-center justify-end gap-2">
-          <Button
-            label="Save Store Profile"
-            size="small"
-            :loading="savingProfile"
-            @click="saveStoreProfile"
-          />
-        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="profileEditorVisible = false" />
+        <Button label="Save" :loading="savingProfile" @click="saveStoreProfile" />
       </template>
-    </Card>
+    </Dialog>
+
+    <Dialog v-model:visible="profileSuccessVisible" modal header="Profile Updated" :style="{ width: '28rem' }">
+      <div class="py-3 text-center"><i class="pi pi-check-circle text-5xl text-green-500"></i><p class="mt-3 text-slate-700">Your store profile was updated successfully.</p></div>
+      <template #footer><Button label="Close" @click="profileSuccessVisible = false" /></template>
+    </Dialog>
+
+    <Dialog v-model:visible="logoDialogVisible" modal header="Shop Logo" :style="{ width: '34rem' }">
+      <div class="space-y-4">
+        <div class="rounded-xl border border-orange-100 bg-orange-50 p-4 text-sm text-slate-700">
+          Upload any JPG, PNG, or WebP logo. We will center-crop it into a square before saving so it looks clean on the shop page.
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-[10rem_1fr]">
+          <div class="aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+            <img v-if="logoPreviewUrl" :src="logoPreviewUrl" alt="Logo preview" class="h-full w-full object-cover" />
+            <div v-else class="flex h-full w-full items-center justify-center text-slate-400">
+              <i class="pi pi-image text-3xl"></i>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <label class="block">
+              <span class="mb-1 block text-sm font-medium text-slate-700">Upload logo</span>
+              <input type="file" accept="image/png,image/jpeg,image/webp" class="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-orange-700 hover:file:bg-orange-200" @change="handleLogoFileChange" />
+            </label>
+            <div class="rounded-lg border border-slate-200 p-3 text-xs text-slate-600">
+              <div><b>Original:</b> {{ logoOriginalDimensionLabel }}</div>
+              <div><b>Saved:</b> 512 x 512 px square</div>
+              <div class="mt-2 text-slate-500">Best upload: at least 512 x 512 px, ideally 1024 x 1024 px for sharper displays.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="closeLogoDialog" />
+        <Button label="Save Logo" icon="pi pi-check" severity="warn" :disabled="!logoSquareBlob" :loading="savingLogo" @click="saveLogo" />
+      </template>
+    </Dialog>
 
     <Card>
       <template #title>Attendance Geolocation</template>
@@ -248,15 +322,7 @@
         <p class="text-sm text-slate-600 mb-4">
           Set the main branch location for attendance login/clock-in. Employees must be within the radius to log in.
         </p>
-        <div class="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div>
-            <div class="mb-3 flex flex-wrap items-center gap-2">
-              <InputText v-model="searchQuery" class="flex-1 min-w-[220px]" placeholder="Search address..." />
-              <Button label="Search" icon="pi pi-search" severity="secondary" @click="searchAddress" />
-            </div>
-            <div ref="mapEl" class="h-72 w-full rounded-xl border border-slate-200"></div>
-            <p class="mt-2 text-xs text-slate-500">Drag the pin to adjust the exact location.</p>
-          </div>
+        <div class="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
           <div class="space-y-3 text-sm text-slate-700">
             <div>
               <div class="text-xs uppercase text-slate-400">Address</div>
@@ -267,7 +333,7 @@
                 <div class="text-xs uppercase text-slate-400">Geofence</div>
                 <div class="text-sm font-semibold">{{ attendance.geofence_enabled ? 'Enabled' : 'Disabled' }}</div>
               </div>
-              <InputSwitch v-model="attendance.geofence_enabled" />
+              <Tag :value="attendance.geofence_enabled ? 'Enabled' : 'Disabled'" :severity="attendance.geofence_enabled ? 'success' : 'secondary'" />
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
@@ -284,32 +350,94 @@
               </div>
               <div>
                 <div class="text-xs uppercase text-slate-400">Radius (meters)</div>
-                <div class="mt-2 space-y-2">
-                  <Slider v-model="attendance.geofence_radius_m" :min="0" :max="100" :step="1" class="w-full" />
-                  <div class="text-xs text-slate-500">{{ attendance.geofence_radius_m }} meters</div>
-                </div>
+                <div class="font-semibold">{{ attendance.geofence_radius_m }} meters</div>
               </div>
             </div>
-            <div class="text-xs text-slate-500">
-              Coordinates: {{ attendance.latitude ?? '—' }}, {{ attendance.longitude ?? '—' }}
-            </div>
-            <Button
-              label="Save Attendance Location"
-              icon="pi pi-check"
-              :loading="savingAttendance"
-              @click="saveAttendance"
-            />
+           
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div class="text-xs uppercase text-slate-400">Protection</div>
+            <div class="mt-1 font-semibold text-slate-900">OTP required before updates</div>
+            <p class="mt-2 text-xs leading-5 text-slate-500">
+              Changes to attendance address, geofence, and radius require authorization from the store account email.
+            </p>
+            <Button class="mt-4 w-full" label="Edit Attendance Location" icon="pi pi-map-marker" outlined @click="openAttendanceEditor" />
           </div>
         </div>
       </template>
     </Card>
 
+    <Dialog v-model:visible="attendanceEditorVisible" modal header="Edit Attendance Geolocation" :style="{ width: '52rem' }" @show="handleAttendanceDialogShow">
+      <div class="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+        <div>
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <InputText v-model="searchQuery" class="flex-1 min-w-[220px]" placeholder="Search address..." />
+            <Button label="Search" icon="pi pi-search" severity="secondary" @click="searchAddress" />
+          </div>
+          <div ref="mapEl" class="h-72 w-full rounded-xl border border-slate-200"></div>
+          <p class="mt-2 text-xs text-slate-500">Drag the pin or click the map to adjust the exact attendance point.</p>
+        </div>
 
+        <div class="space-y-4">
+          <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+            <div>
+              <div class="text-xs uppercase text-slate-400">Geofence</div>
+              <div class="text-sm font-semibold">{{ attendanceDraft.geofence_enabled ? 'Enabled' : 'Disabled' }}</div>
+            </div>
+            <InputSwitch v-model="attendanceDraft.geofence_enabled" />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">Address</label>
+            <Textarea v-model="attendanceDraft.address" rows="4" class="w-full" placeholder="Attendance address" />
+          </div>
+
+          <div>
+            <div class="mb-2 flex items-center justify-between">
+              <label class="block text-sm font-medium text-slate-700">Allowed Radius</label>
+              <span class="text-sm font-semibold text-slate-900">{{ attendanceDraft.geofence_radius_m }} meters</span>
+            </div>
+            <Slider v-model="attendanceDraft.geofence_radius_m" :min="0" :max="100" :step="1" class="w-full" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <div class="text-xs uppercase text-slate-400">Barangay</div>
+              <div class="font-semibold">{{ attendanceDraft.barangay || 'Not set' }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase text-slate-400">City</div>
+              <div class="font-semibold">{{ attendanceDraft.city || 'Not set' }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase text-slate-400">Province</div>
+              <div class="font-semibold">{{ attendanceDraft.province || 'Not set' }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase text-slate-400">Coordinates</div>
+              <div class="font-semibold">{{ attendanceDraft.latitude ?? '—' }}, {{ attendanceDraft.longitude ?? '—' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="attendanceEditorVisible = false" />
+        <Button label="Continue to OTP" icon="pi pi-shield" :loading="savingAttendance" @click="saveAttendance" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="attendanceSuccessVisible" modal header="Attendance Updated" :style="{ width: '28rem' }">
+      <div class="py-3 text-center"><i class="pi pi-check-circle text-5xl text-green-500"></i><p class="mt-3 text-slate-700">Attendance geolocation settings were updated successfully.</p></div>
+      <template #footer><Button label="Close" @click="attendanceSuccessVisible = false" /></template>
+    </Dialog>
+
+
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import axiosClient from '@/axios'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
@@ -319,6 +447,8 @@ import MultiSelect from 'primevue/multiselect'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import InputMask from 'primevue/inputmask'
+import Select from 'primevue/select'
+import Textarea from 'primevue/textarea'
 import InputSwitch from 'primevue/inputswitch'
 import Slider from 'primevue/slider'
 import Tag from 'primevue/tag'
@@ -328,6 +458,7 @@ import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { usePermissions } from '@/composables/usePermissions'
 import paymongoService from '@/services/paymongo.service'
+import ecommerceService from '@/services/ecommerce.service'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -357,6 +488,12 @@ const props = defineProps<{
 
 const savingAttendance = ref(false)
 const savingProfile = ref(false)
+const savingLogo = ref(false)
+const profileEditorVisible = ref(false)
+const profileSuccessVisible = ref(false)
+const logoDialogVisible = ref(false)
+const attendanceEditorVisible = ref(false)
+const attendanceSuccessVisible = ref(false)
 const upgrading = ref(false)
 const planDialogVisible = ref(false)
 const gcashDialogVisible = ref(false)
@@ -433,14 +570,36 @@ const store = reactive({
   phone: '',
   address: '',
   city: '',
+  barangay: '',
   province: '',
   type: '',
   store_code: '',
   status: '',
   status_details: null as any,
+  logo_url: '',
+  logo_dimensions: null as any,
+})
+
+const logoPreviewUrl = ref('')
+const logoSquareBlob = ref<Blob | null>(null)
+const logoOriginalDimensions = reactive({
+  width: 0,
+  height: 0,
 })
 
 const attendance = reactive({
+  branch_id: null as number | null,
+  address: '',
+  barangay: '',
+  city: '',
+  province: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
+  geofence_radius_m: 5,
+  geofence_enabled: true,
+})
+
+const attendanceDraft = reactive({
   branch_id: null as number | null,
   address: '',
   barangay: '',
@@ -460,6 +619,29 @@ const subscription = reactive({
   modules: [] as { key: string; name: string }[],
 })
 
+const profileForm = reactive({
+  contact_person: '',
+  phone: '',
+  address: '',
+  city: '',
+  city_id: '',
+  barangay: '',
+  province: '',
+  type: '',
+})
+const businessTypeOptions = [
+  { label: 'Retail', value: 'retail' },
+  { label: 'Enterprise', value: 'enterprise' },
+  { label: 'Showroom', value: 'showroom' },
+  { label: 'Wholesale', value: 'wholesale' },
+]
+const profileCities = ref<any[]>([])
+const profileBarangays = ref<any[]>([])
+const profileCitiesLoading = ref(false)
+const profileBarangaysLoading = ref(false)
+const profileCityOptions = computed(() => profileCities.value.map((city: any) => ({ label: city.name || city.city_name || 'City', value: String(city.city_id || city.id || city.code || '') })))
+const profileBarangayOptions = computed(() => profileBarangays.value.map((item: any) => ({ label: item.name || item.barangay_name || 'Barangay', value: String(item.code || item.psgc_id || item.id || item.name || '') })))
+
 const verification = reactive({
   store_status: 'pending',
   submitted_at: '' as string | null,
@@ -471,6 +653,11 @@ const verification = reactive({
 const verificationDocumentsDialogVisible = ref(false)
 const verificationDocuments = ref<any[]>([])
 const loadingVerificationDocuments = ref(false)
+const documentPreviewDialogVisible = ref(false)
+const documentPreviewUrl = ref('')
+const documentPreviewTitle = ref('Verification Document')
+const documentPreviewKind = ref<'image' | 'pdf'>('pdf')
+const apiBaseUrl = String(axiosClient.defaults.baseURL || '').replace(/\/api\/?$/, '')
 
 const branches = ref<any[]>(Array.isArray(props.branches) ? props.branches : [])
 
@@ -500,11 +687,24 @@ store.email = props.store?.email || ''
 store.phone = props.store?.phone || ''
 store.address = props.store?.address || ''
 store.city = props.store?.city || ''
+store.barangay = props.store?.barangay || ''
 store.province = props.store?.province || ''
 store.type = props.store?.type || ''
 store.store_code = props.store?.store_code || ''
 store.status = props.store?.status || ''
 store.status_details = props.store?.status_details || null
+store.logo_url = props.store?.logo_url || ''
+store.logo_dimensions = props.store?.logo_dimensions || null
+
+Object.assign(profileForm, {
+  contact_person: store.contact_person,
+  phone: store.phone,
+  address: store.address,
+  city: store.city,
+  barangay: store.barangay,
+  province: store.province,
+  type: store.type,
+})
 
 subscription.store_id = props.store?.id ?? null
 subscription.tier = props.subscription?.tier || 'free'
@@ -545,14 +745,23 @@ const currentPlanLabel = computed(() => {
 const storeStatusLabel = computed(() => {
   const raw = String(store.status || 'unknown').toLowerCase()
   if (raw === 'pending') return 'Unverified'
+  if (raw === 'unverified') return 'Unverified'
+  if (raw === 'deactivated') return 'Deactivated'
   return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 })
+const isStoreUnverified = computed(() => String(store.status || '').toLowerCase() === 'unverified')
+const isStorePendingVerification = computed(() => String(store.status || '').toLowerCase() === 'pending')
+const isVerificationRejected = computed(() => verification.store_status === 'rejected')
+const shouldShowVerifyButton = computed(() => isStoreUnverified.value && !isStorePendingVerification.value)
+const verifyButtonLabel = computed(() => isVerificationRejected.value ? '' : 'Verify')
+const verifyButtonIcon = computed(() => isVerificationRejected.value ? 'pi pi-exclamation-circle' : '')
+const verificationDocumentsDialogTitle = computed(() => isVerificationRejected.value ? 'Verification Rejected' : 'Submitted Verification Documents')
 
 const storeStatusSeverity = computed(() => {
   const status = String(store.status || '').toLowerCase()
   if (status === 'active' || status === 'approved' || status === 'verified') return 'success'
   if (status === 'pending' || status === 'unverified') return 'warning'
-  if (status === 'suspended' || status === 'banned') return 'danger'
+  if (status === 'suspended' || status === 'banned' || status === 'deactivated') return 'danger'
   return 'secondary'
 })
 
@@ -568,7 +777,25 @@ const formatRemainingDays = (value: number) => {
 }
 
 
-const subscriptionEndsAtLabel = computed(() => subscription.ends_at || 'Not set')
+const logoDimensionLabel = computed(() => {
+  const dimensions = store.logo_dimensions || {}
+  const width = Number(dimensions.width || 0)
+  const height = Number(dimensions.height || 0)
+  if (!width || !height) return 'No logo yet'
+  return `${width} x ${height} px`
+})
+
+const logoOriginalDimensionLabel = computed(() => {
+  if (logoOriginalDimensions.width && logoOriginalDimensions.height) {
+    return `${logoOriginalDimensions.width} x ${logoOriginalDimensions.height} px`
+  }
+
+  const dimensions = store.logo_dimensions || {}
+  const width = Number(dimensions.original_width || dimensions.width || 0)
+  const height = Number(dimensions.original_height || dimensions.height || 0)
+  if (!width || !height) return 'Select an image to detect pixels'
+  return `${width} x ${height} px`
+})
 
 const approvalMatrixRows = [
   {
@@ -615,7 +842,7 @@ const verificationStatusLabel = computed(() => {
   if (verification.store_status === 'approved') return 'Approved'
   if (verification.store_status === 'reviewing') return 'Under Review'
   if (verification.store_status === 'rejected') return 'Rejected'
-  return 'Pending'
+  return 'Unverified'
 })
 
 const verificationSeverity = computed(() => {
@@ -626,7 +853,7 @@ const verificationSeverity = computed(() => {
 })
 
 const shouldShowVerificationAttachments = computed(() =>
-  verification.store_status === 'reviewing' || verification.store_status === 'approved'
+  ['reviewing', 'approved', 'rejected'].includes(verification.store_status)
 )
 
 const verificationActionLabel = computed(() =>
@@ -672,62 +899,264 @@ const savePaymentSettings = async () => {
 }
 
 const saveAttendance = async () => {
-  if (attendance.latitude === null || attendance.longitude === null) return
+  if (attendanceDraft.latitude === null || attendanceDraft.longitude === null) {
+    toast.add({ severity: 'warn', summary: 'Location required', detail: 'Search, click, or drag the pin to set a valid attendance point.', life: 3000 })
+    return
+  }
   savingAttendance.value = true
-  try {
-    router.put(
-      '/store/settings/attendance',
-      {
-        branch_id: attendance.branch_id,
-        address: attendance.address || null,
-        barangay: attendance.barangay || null,
-        city: attendance.city || null,
-        province: attendance.province || null,
-        latitude: attendance.latitude,
-        longitude: attendance.longitude,
-        geofence_radius_m: attendance.geofence_radius_m || 5,
-        geofence_enabled: attendance.geofence_enabled,
+  router.post(
+    '/store/settings/attendance/prepare',
+    {
+      branch_id: attendanceDraft.branch_id,
+      address: attendanceDraft.address || null,
+      barangay: attendanceDraft.barangay || null,
+      city: attendanceDraft.city || null,
+      province: attendanceDraft.province || null,
+      latitude: attendanceDraft.latitude,
+      longitude: attendanceDraft.longitude,
+      geofence_radius_m: attendanceDraft.geofence_radius_m || 5,
+      geofence_enabled: attendanceDraft.geofence_enabled,
+    },
+    {
+      preserveScroll: true,
+      onError: (errors) => {
+        toast.add({
+          severity: 'error',
+          summary: 'Unable to continue',
+          detail: errors?.email || errors?.attendance || 'Please check the attendance location details.',
+          life: 3500,
+        })
       },
-      {
-        preserveScroll: true,
-        onSuccess: () => toast.add({ severity: 'success', summary: 'Saved', detail: 'Attendance location updated.', life: 2500 }),
-      }
-    )
-  } catch (error) {
-    console.error('Failed to update attendance location', error)
+      onFinish: () => { savingAttendance.value = false },
+    }
+  )
+}
+
+const loadProfileCities = async () => {
+  profileCitiesLoading.value = true
+  try {
+    const provinces = await ecommerceService.getProvinces()
+    const items = Array.isArray(provinces.data?.data) ? provinces.data.data : (provinces.data || [])
+    const cavite = items.find((item: any) => String(item.name).trim().toLowerCase() === 'cavite')
+    const response = await ecommerceService.getCities(String(cavite?.province_id || cavite?.id || ''))
+    profileCities.value = Array.isArray(response.data?.data) ? response.data.data : (response.data || [])
+    const match = profileCities.value.find((item: any) => String(item.name || item.city_name).trim().toLowerCase() === String(profileForm.city).trim().toLowerCase())
+    profileForm.city_id = String(match?.city_id || match?.id || match?.code || '')
+    if (profileForm.city_id) await onProfileCityChange()
   } finally {
-    savingAttendance.value = false
+    profileCitiesLoading.value = false
   }
 }
 
-const saveStoreProfile = async () => {
-  savingProfile.value = true
+const onProfileCityChange = async () => {
+  const selectedCity = profileCities.value.find((item: any) => String(item.city_id || item.id || item.code || '') === String(profileForm.city_id))
+  profileForm.city = selectedCity?.name || selectedCity?.city_name || profileForm.city
+  profileForm.barangay = ''
+  profileBarangaysLoading.value = true
   try {
-    router.put(
-      '/store/settings/profile',
-      {
-        contact_person: store.contact_person || null,
-        phone: store.phone || null,
-        address: store.address || null,
-        city: store.city || null,
-        province: store.province || null,
-        type: store.type || null,
-      },
-      {
-        preserveScroll: true,
-        onSuccess: () => toast.add({ severity: 'success', summary: 'Saved', detail: 'Store profile updated.', life: 3000 }),
+    const response = await ecommerceService.getBarangays(String(profileForm.city_id))
+    profileBarangays.value = Array.isArray(response.data?.data) ? response.data.data : (response.data || [])
+    const match = profileBarangays.value.find((item: any) => String(item.name || item.barangay_name).trim().toLowerCase() === String(store.barangay || '').trim().toLowerCase())
+    profileForm.barangay = String(match?.code || match?.id || match?.name || '')
+  } finally {
+    profileBarangaysLoading.value = false
+  }
+}
+
+const openProfileEditor = async () => {
+  Object.assign(profileForm, {
+    contact_person: store.contact_person,
+    phone: store.phone,
+    address: store.address,
+    city: store.city,
+    barangay: store.barangay,
+    province: store.province,
+    type: store.type,
+  })
+  profileEditorVisible.value = true
+  await loadProfileCities()
+}
+
+const openLogoDialog = () => {
+  logoPreviewUrl.value = store.logo_url || ''
+  logoSquareBlob.value = null
+  logoOriginalDimensions.width = Number(store.logo_dimensions?.original_width || store.logo_dimensions?.width || 0)
+  logoOriginalDimensions.height = Number(store.logo_dimensions?.original_height || store.logo_dimensions?.height || 0)
+  logoDialogVisible.value = true
+}
+
+const closeLogoDialog = () => {
+  logoDialogVisible.value = false
+  if (logoPreviewUrl.value && logoPreviewUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(logoPreviewUrl.value)
+  }
+  logoPreviewUrl.value = store.logo_url || ''
+  logoSquareBlob.value = null
+}
+
+const createSquareLogoBlob = (file: File): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    image.onload = () => {
+      logoOriginalDimensions.width = image.naturalWidth
+      logoOriginalDimensions.height = image.naturalHeight
+
+      const sourceSize = Math.min(image.naturalWidth, image.naturalHeight)
+      const sourceX = Math.floor((image.naturalWidth - sourceSize) / 2)
+      const sourceY = Math.floor((image.naturalHeight - sourceSize) / 2)
+      const canvas = document.createElement('canvas')
+      canvas.width = 512
+      canvas.height = 512
+      const context = canvas.getContext('2d')
+
+      if (!context) {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error('Unable to prepare the logo crop.'))
+        return
       }
-    )
+
+      context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 512, 512)
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(objectUrl)
+        if (!blob) {
+          reject(new Error('Unable to convert the logo to a square image.'))
+          return
+        }
+        resolve(blob)
+      }, 'image/png', 0.92)
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Unable to read the selected image.'))
+    }
+
+    image.src = objectUrl
+  })
+}
+
+const handleLogoFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    toast.add({ severity: 'warn', summary: 'Invalid file', detail: 'Please choose a JPG, PNG, or WebP image.', life: 3000 })
+    input.value = ''
+    return
+  }
+
+  try {
+    const blob = await createSquareLogoBlob(file)
+    if (logoPreviewUrl.value && logoPreviewUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(logoPreviewUrl.value)
+    }
+    logoSquareBlob.value = blob
+    logoPreviewUrl.value = URL.createObjectURL(blob)
   } catch (error: any) {
     toast.add({
       severity: 'error',
-      summary: 'Update failed',
-      detail: error?.response?.data?.message || 'Failed to update store profile.',
-      life: 3000,
+      summary: 'Logo failed',
+      detail: error?.message || 'Unable to prepare the logo.',
+      life: 3500,
     })
   } finally {
-    savingProfile.value = false
+    input.value = ''
   }
+}
+
+const saveLogo = () => {
+  if (!logoSquareBlob.value) {
+    toast.add({ severity: 'warn', summary: 'No logo selected', detail: 'Choose a logo image first.', life: 2800 })
+    return
+  }
+
+  savingLogo.value = true
+  const formData = new FormData()
+  formData.append('logo', logoSquareBlob.value, 'store-logo.png')
+  formData.append('original_width', String(logoOriginalDimensions.width || 512))
+  formData.append('original_height', String(logoOriginalDimensions.height || 512))
+
+  router.post('/store/settings/logo', formData, {
+    forceFormData: true,
+    preserveScroll: true,
+    onSuccess: () => {
+      logoDialogVisible.value = false
+      toast.add({ severity: 'success', summary: 'Logo updated', detail: 'Your shop logo was saved.', life: 3000 })
+      router.reload({ only: ['store'], preserveScroll: true })
+    },
+    onError: (errors) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Upload failed',
+        detail: errors?.logo || 'Unable to save the store logo.',
+        life: 3500,
+      })
+    },
+    onFinish: () => {
+      savingLogo.value = false
+    },
+  })
+}
+
+const openAttendanceEditor = () => {
+  if (mapRef.value) {
+    mapRef.value.remove()
+    mapRef.value = null
+    markerRef.value = null
+    circleRef.value = null
+  }
+  Object.assign(attendanceDraft, {
+    branch_id: attendance.branch_id,
+    address: attendance.address,
+    barangay: attendance.barangay,
+    city: attendance.city,
+    province: attendance.province,
+    latitude: attendance.latitude,
+    longitude: attendance.longitude,
+    geofence_radius_m: attendance.geofence_radius_m,
+    geofence_enabled: attendance.geofence_enabled,
+  })
+  searchQuery.value = attendance.address || ''
+  mapReady.value = false
+  attendanceEditorVisible.value = true
+}
+
+const handleAttendanceDialogShow = async () => {
+  await nextTick()
+  const handlers = await initMap()
+  if (handlers?.updateRadius) {
+    handlers.updateRadius()
+  }
+}
+
+const goToStoreVerification = () => router.visit('/system/store/verification')
+const goToBilling = () => router.visit('/store/billing')
+
+const saveStoreProfile = async () => {
+  savingProfile.value = true
+  router.post(
+    '/store/settings/profile/prepare',
+    {
+      ...profileForm,
+      city: profileForm.city,
+      barangay: profileBarangayOptions.value.find((item) => item.value === profileForm.barangay)?.label || profileForm.barangay,
+    },
+    {
+      preserveScroll: true,
+      onError: (errors) => {
+        toast.add({
+          severity: 'error',
+          summary: 'Unable to continue',
+          detail: errors?.email || errors?.profile || 'Please check the store profile details.',
+          life: 3500,
+        })
+      },
+      onFinish: () => { savingProfile.value = false },
+    }
+  )
 }
 
 const setupLeafletDefaults = () => {
@@ -752,16 +1181,16 @@ const reverseGeocode = async (lat: number, lng: number) => {
     if (!response.ok) return
     const data = await response.json()
     const address = data?.address || {}
-    attendance.address = data?.display_name || attendance.address
-    attendance.barangay =
+    attendanceDraft.address = data?.display_name || attendanceDraft.address
+    attendanceDraft.barangay =
       address.suburb ||
       address.neighbourhood ||
       address.village ||
       address.quarter ||
       address.hamlet ||
-      attendance.barangay
-    attendance.city = address.city || address.town || address.municipality || address.county || attendance.city
-    attendance.province = address.state || address.region || attendance.province
+      attendanceDraft.barangay
+    attendanceDraft.city = address.city || address.town || address.municipality || address.county || attendanceDraft.city
+    attendanceDraft.province = address.state || address.region || attendanceDraft.province
   } catch (error) {
     console.error('Reverse geocode failed', error)
   }
@@ -785,8 +1214,8 @@ const forwardGeocode = async (query: string) => {
 }
 
 const syncLocation = async (lat: number, lng: number) => {
-  attendance.latitude = lat
-  attendance.longitude = lng
+  attendanceDraft.latitude = lat
+  attendanceDraft.longitude = lng
   await reverseGeocode(lat, lng)
 }
 
@@ -795,18 +1224,18 @@ const initMap = async () => {
   setupLeafletDefaults()
 
   const defaultCenter: [number, number] = [
-    attendance.latitude ?? 14.5995,
-    attendance.longitude ?? 120.9842,
+    attendanceDraft.latitude ?? 14.5995,
+    attendanceDraft.longitude ?? 120.9842,
   ]
 
-  const map = L.map(mapEl.value).setView(defaultCenter, attendance.latitude ? 16 : 12)
+  const map = L.map(mapEl.value).setView(defaultCenter, attendanceDraft.latitude ? 16 : 12)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map)
 
   const marker = L.marker(defaultCenter, { draggable: true }).addTo(map)
   const circle = L.circle(defaultCenter, {
-    radius: attendance.geofence_radius_m || 5,
+    radius: attendanceDraft.geofence_radius_m || 5,
     color: '#16a34a',
     fillColor: '#22c55e',
     fillOpacity: 0.15,
@@ -825,8 +1254,8 @@ const initMap = async () => {
     await syncLocation(event.latlng.lat, event.latlng.lng)
   })
 
-  if (!attendance.address && attendance.latitude && attendance.longitude) {
-    await syncLocation(attendance.latitude, attendance.longitude)
+  if (!attendanceDraft.address && attendanceDraft.latitude && attendanceDraft.longitude) {
+    await syncLocation(attendanceDraft.latitude, attendanceDraft.longitude)
   }
 
   mapRef.value = map
@@ -835,7 +1264,7 @@ const initMap = async () => {
   mapReady.value = true
 
   const updateRadius = () => {
-    circle.setRadius(attendance.geofence_radius_m || 5)
+    circle.setRadius(attendanceDraft.geofence_radius_m || 5)
   }
 
   return { updateRadius }
@@ -908,9 +1337,20 @@ const goToVerification = () => {
   router.visit('/system/store/verification')
 }
 
-const openDocument = (url: string) => {
+const buildFileUrl = (path: string | null | undefined) => {
+  if (!path) return ''
+  if (/^https?:\/\//i.test(path)) return path
+  return `${apiBaseUrl}/storage/${String(path).replace(/^\/+/, '')}`
+}
+
+const openDocumentDialog = (document: any) => {
+  const url = buildFileUrl(document?.path) || String(document?.inspect_url || document?.download_url || '')
   if (!url) return
-  window.open(url, '_blank', 'noopener')
+
+  documentPreviewUrl.value = url
+  documentPreviewTitle.value = String(document?.label || 'Verification Document')
+  documentPreviewKind.value = String(document?.mime_type || '').startsWith('image/') ? 'image' : 'pdf'
+  documentPreviewDialogVisible.value = true
 }
 
 const loadVerificationDocuments = async () => {
@@ -945,6 +1385,21 @@ const handleVerificationAction = async () => {
 
   await loadVerificationDocuments()
   verificationDocumentsDialogVisible.value = true
+}
+
+const handleStoreVerifyClick = async () => {
+  if (!isVerificationRejected.value) {
+    goToStoreVerification()
+    return
+  }
+
+  await loadVerificationDocuments()
+  verificationDocumentsDialogVisible.value = true
+}
+
+const resubmitVerification = () => {
+  verificationDocumentsDialogVisible.value = false
+  goToStoreVerification()
 }
 
 const toPlainPhone = (value: string): string => value.replace(/\D/g, '')
@@ -1097,18 +1552,29 @@ const handleUpgradePrompt = () => {
 }
 
 onMounted(async () => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('profile_updated') === '1') {
+    profileSuccessVisible.value = true
+    params.delete('profile_updated')
+    const query = params.toString()
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
+  }
+  if (params.get('attendance_updated') === '1') {
+    attendanceSuccessVisible.value = true
+    params.delete('attendance_updated')
+    const query = params.toString()
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
+  }
   await handleUpgradeReturn()
   handleUpgradePrompt()
-  try {
-    const handlers = await initMap()
-    if (handlers?.updateRadius) {
-      watch(
-        () => attendance.geofence_radius_m,
-        () => handlers.updateRadius()
-      )
-    }
-  } catch (error) {
-    console.error('Map init failed', error)
-  }
 })
+
+watch(
+  () => attendanceDraft.geofence_radius_m,
+  (radius) => {
+    if (circleRef.value) {
+      circleRef.value.setRadius(radius || 5)
+    }
+  }
+)
 </script>

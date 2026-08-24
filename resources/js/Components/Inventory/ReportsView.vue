@@ -1,93 +1,94 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4 text-xs">
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Inventory Reports</h1>
-        <p class="text-gray-600 mt-1">Generate and analyze inventory metrics</p>
+        <h1 class="text-lg font-semibold text-gray-800">Inventory Reports</h1>
       </div>
       <div class="flex gap-2">
+        <Button
+          label="Activity Log"
+          icon="pi pi-history"
+          severity="secondary"
+          size="small"
+          @click="router.push({ name: 'inventory.activity-logs' })"
+        />
         <Button
           icon="pi pi-download"
           label="Export"
           severity="secondary"
+          size="small"
           @click="exportReport"
           :disabled="selectedReport === null || selectedReport === 'activity_logs'"
         />
         <Button
           icon="pi pi-refresh"
           label="Refresh"
+          size="small"
           @click="loadSelectedReport"
         />
       </div>
     </div>
 
-    <!-- Report Type Selector -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div
-        v-for="report in reportTypes"
-        :key="report.id"
-        @click="selectedReport = report.id"
-        :class="[
-          'p-4 rounded-lg border-2 cursor-pointer transition-all',
-          selectedReport === report.id
-            ? 'border-blue-600 bg-blue-50'
-            : 'border-gray-200 bg-white hover:border-gray-300'
-        ]"
-      >
-        <div class="flex items-center gap-3">
-          <div :class="['text-3xl', report.icon]"></div>
-          <div>
-            <h3 class="font-semibold text-gray-900">{{ report.name }}</h3>
-            <p class="text-xs text-gray-600">{{ report.description }}</p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Card>
+      <template #content>
+        <!-- Report Type Selector -->
+        <Tabs v-model:value="selectedReport" class="inventory-report-tabs">
+          <TabList>
+            <Tab v-for="report in reportTypes" :key="report.id" :value="report.id" class="text-xs">
+              {{ report.name }}
+            </Tab>
+          </TabList>
+        </Tabs>
 
     <!-- Date Range Filters -->
-    <Card v-if="selectedReport">
-      <template #content>
+    <div v-if="selectedReport" class="mt-4">
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">From Date</label>
-            <DatePicker v-model="filters.startDate" dateFormat="dd/mm/yy" class="w-full" />
+          <div class="md:col-span-2">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Report Period</label>
+            <DatePicker
+              v-model="dateRange"
+              selectionMode="range"
+              dateFormat="dd/mm/yy"
+              fluid
+              class=""
+              size="small"
+              placeholder="Select date range"
+              :manualInput="false"
+            />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">To Date</label>
-            <DatePicker v-model="filters.endDate" dateFormat="dd/mm/yy" class="w-full" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Group By</label>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Group By</label>
             <Select
               v-model="filters.groupBy"
               :options="groupByOptions"
               optionLabel="label"
               optionValue="value"
-              class="w-full"
+              class="w-full text-xs"
+              size="small"
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Product Type</label>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Product Type</label>
             <Select
               v-model="filters.productType"
               :options="productTypeOptions"
               optionLabel="label"
               optionValue="value"
-              class="w-full"
+              class="w-full text-xs"
+              size="small"
               showClear
               placeholder="All Types"
             />
           </div>
           <div class="flex items-end">
-            <Button label="Generate Report" icon="pi pi-chart-bar" class="w-full" @click="loadSelectedReport" />
+            <Button label="Generate Report" size="small" class="w-full text-xs" @click="loadSelectedReport" />
           </div>
         </div>
-      </template>
-    </Card>
+    </div>
 
     <!-- Report Content -->
-    <div v-if="selectedReport && !loading" class="space-y-6">
+    <div v-if="selectedReport && !loading" class="mt-4 space-y-4">
       <!-- Summary Cards -->
       <div v-if="reportSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card v-for="(item, index) in reportSummary" :key="index" class="hover:shadow-lg transition-shadow">
@@ -127,7 +128,7 @@
         <template #content>
           <DataTable
             :value="reportData"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs"
             stripedRows
             responsiveLayout="scroll"
             :paginator="true"
@@ -159,35 +160,73 @@
                 <span v-else>{{ data[column.field] }}</span>
               </template>
             </Column>
+            <Column v-if="selectedReport === 'aging'" header="Actions" style="width: 100px">
+              <template #body="{ data }">
+                <Button label="View Items" size="small" severity="warn" text class="text-xs"
+                  @click="openAgingItems(data)" />
+              </template>
+            </Column>
           </DataTable>
         </template>
       </Card>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="space-y-6">
-      <Skeleton height="100px" v-for="i in 3" :key="i" class="rounded-lg" />
-    </div>
+        <div v-if="loading" class="mt-4 space-y-4">
+          <Skeleton height="80px" v-for="i in 3" :key="i" class="rounded-lg" />
+        </div>
 
-    <!-- Empty State -->
-    <div v-if="!selectedReport" class="text-center py-16">
-      <i class="pi pi-chart-bar text-6xl text-gray-300 mb-4"></i>
-      <p class="text-gray-600 text-lg">Select a report type to get started</p>
-    </div>
+        <div v-if="!selectedReport" class="py-10 text-center">
+          <i class="pi pi-chart-bar text-4xl text-gray-300 mb-3"></i>
+          <p class="text-xs text-gray-600">Select a report type to get started</p>
+        </div>
+      </template>
+    </Card>
+
+    <Dialog v-model:visible="agingDialogVisible" modal header="Stock Aging Items" :style="{ width: 'min(900px, 95vw)' }">
+      <DataTable :value="agingDialogItems" class="p-datatable-sm text-xs" stripedRows paginator :rows="10">
+        <template #empty>
+          <div class="py-8 text-center text-xs text-gray-500">
+            <i class="pi pi-inbox mb-2 text-2xl text-gray-300"></i>
+            <p>No items found in this aging bucket.</p>
+          </div>
+        </template>
+        <Column field="sku" header="SKU" />
+        <Column field="product_name" header="Product" />
+        <Column field="product_type" header="Type">
+          <template #body="{ data }">{{ getProductTypeLabel(data.product_type) }}</template>
+        </Column>
+        <Column field="quantity_on_hand" header="Quantity" />
+        <Column field="cost_price" header="Cost/Unit">
+          <template #body="{ data }">{{ formatPhpCurrency(data.cost_price) }}</template>
+        </Column>
+        <Column field="last_stock_count_date" header="Last Count">
+          <template #body="{ data }">{{ formatDateTime(data.last_stock_count_date) }}</template>
+        </Column>
+        <Column field="age_days" header="Age (Days)" />
+      </DataTable>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import 'chart.js/auto'
 import axiosClient from '../../axios'
 import { useToast } from 'primevue/usetoast'
+import Tab from 'primevue/tab'
+import TabList from 'primevue/tablist'
+import Tabs from 'primevue/tabs'
 
-type ReportType = 'slow_movers' | 'fast_movers' | 'aging'
+type ReportType = 'slow_movers' | 'fast_movers' | 'aging' | 'transactions'
 
-const selectedReport = ref<ReportType | null>(null)
+const selectedReport = ref<ReportType | null>('slow_movers')
+const router = useRouter()
 const loading = ref(false)
 const reportData = ref<any[]>([])
+const agingDetails = ref<Record<string, any[]>>({})
+const agingDialogItems = ref<any[]>([])
+const agingDialogVisible = ref(false)
 const reportSummary = ref<any[]>([])
 const chartData = ref<any>(null)
 const pieChartData = ref<any>(null)
@@ -212,15 +251,24 @@ const reportTypes = [
     name: 'Stock Aging',
     description: 'Product age analysis',
     icon: 'pi pi-clock'
+  },
+  {
+    id: 'transactions',
+    name: 'Transactions',
+    description: 'Inventory movement history',
+    icon: 'pi pi-list'
   }
 ]
 
 const filters = reactive({
-  startDate: new Date(new Date().setDate(new Date().getDate() - 30)),
-  endDate: new Date(),
   groupBy: 'daily',
   productType: null as string | null
 })
+
+const dateRange = ref<Date[]>([
+  new Date(new Date().setDate(new Date().getDate() - 30)),
+  new Date()
+])
 
 const groupByOptions = [
   { label: 'Daily', value: 'daily' },
@@ -247,6 +295,34 @@ const chartOptions = {
 const getReportTitle = (): string => {
   const report = reportTypes.find(r => r.id === selectedReport.value)
   return report?.name || 'Report'
+}
+
+const getProductTypeLabel = (type?: string) => {
+  const labels: Record<string, string> = {
+    finished_good: 'Finished Good',
+    raw_material: 'Raw Material',
+    supply: 'Supply'
+  }
+  return labels[String(type || '').toLowerCase()] || 'Product'
+}
+
+const formatPhpCurrency = (value: any) => {
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP'
+  }).format(Number(value || 0))
+}
+
+const openAgingItems = (bucket: any) => {
+  const keys: Record<string, string> = {
+    '< 30 days': 'less_than_30_days',
+    '30-60 days': 'between_30_60_days',
+    '60-90 days': 'between_60_90_days',
+    '> 90 days': 'older_than_90_days',
+    'Never counted': 'never_counted'
+  }
+  agingDialogItems.value = agingDetails.value[keys[bucket.age_bucket]] || []
+  agingDialogVisible.value = true
 }
 
 const formatValue = (value: any, type?: string): string => {
@@ -276,6 +352,22 @@ const getStatusSeverity = (status: string): string => {
 
 const normalizeReportData = (reportType: ReportType, raw: any) => {
   switch (reportType) {
+    case 'transactions': {
+      const source = Array.isArray(raw) ? raw : (raw?.data || [])
+      const rows = source.map((x: any) => ({
+        transaction_number: x?.transaction_number || x?.reference_no || '-',
+        transaction_type: x?.transaction_type || '-',
+        product_name: x?.product?.product_name || x?.product_name || '-',
+        quantity_change: Number(x?.quantity_change || 0),
+        transaction_date: x?.transaction_date || x?.created_at || null,
+      }))
+      return {
+        summary: [{ label: 'Transactions', value: rows.length, type: 'number' }],
+        items: rows,
+        details: raw?.details || {},
+      }
+    }
+
     case 'slow_movers': {
       const rows = Array.isArray(raw) ? raw.map((x: any) => ({
         sku: x?.product?.sku || x?.sku || '-',
@@ -289,6 +381,7 @@ const normalizeReportData = (reportType: ReportType, raw: any) => {
           { label: 'Slow Movers', value: rows.length, type: 'number' },
         ],
         items: rows,
+        details: raw?.details || {},
       }
     }
 
@@ -306,23 +399,25 @@ const normalizeReportData = (reportType: ReportType, raw: any) => {
           { label: 'Units Sold', value: rows.reduce((s: number, r: any) => s + Number(r.units_sold || 0), 0), type: 'number' },
         ],
         items: rows,
+        details: raw?.details || {},
       }
     }
 
     case 'aging': {
       const rows = [
-        { sku: '-', product_name: '< 30 days', received_date: '-', days_in_inventory: 30, inventory_value: Number(raw?.less_than_30_days || 0) },
-        { sku: '-', product_name: '30-60 days', received_date: '-', days_in_inventory: 60, inventory_value: Number(raw?.between_30_60_days || 0) },
-        { sku: '-', product_name: '60-90 days', received_date: '-', days_in_inventory: 90, inventory_value: Number(raw?.between_60_90_days || 0) },
-        { sku: '-', product_name: '> 90 days', received_date: '-', days_in_inventory: 120, inventory_value: Number(raw?.older_than_90_days || 0) },
-        { sku: '-', product_name: 'Never counted', received_date: '-', days_in_inventory: 0, inventory_value: Number(raw?.never_counted || 0) },
+        { age_bucket: '< 30 days', days_in_inventory: 30, item_count: Number(raw?.less_than_30_days || 0) },
+        { age_bucket: '30-60 days', days_in_inventory: 60, item_count: Number(raw?.between_30_60_days || 0) },
+        { age_bucket: '60-90 days', days_in_inventory: 90, item_count: Number(raw?.between_60_90_days || 0) },
+        { age_bucket: '> 90 days', days_in_inventory: 91, item_count: Number(raw?.older_than_90_days || 0) },
+        { age_bucket: 'Never counted', days_in_inventory: 0, item_count: Number(raw?.never_counted || 0) },
       ]
       return {
         summary: [
           { label: 'Aging Buckets', value: rows.length, type: 'number' },
-          { label: 'Total Items', value: rows.reduce((s: number, r: any) => s + Number(r.inventory_value || 0), 0), type: 'number' },
+          { label: 'Total Items', value: rows.reduce((s: number, r: any) => s + Number(r.item_count || 0), 0), type: 'number' },
         ],
         items: rows,
+        details: raw?.details || {},
       }
     }
 
@@ -353,18 +448,22 @@ const loadSelectedReport = async () => {
       slow_movers: '/api/inventory/reports/slow-movers',
       fast_movers: '/api/inventory/reports/fast-movers',
       aging: '/api/inventory/reports/aging',
+      transactions: '/api/inventory/transactions',
     }
 
     const endpoint = endpointMap[selectedReport.value]
 
+    const startDate = dateRange.value?.[0] || new Date(new Date().setDate(new Date().getDate() - 30))
+    const endDate = dateRange.value?.[1] || startDate
     const days = Math.max(
       1,
-      Math.ceil((Number(filters.endDate) - Number(filters.startDate)) / (1000 * 60 * 60 * 24))
+      Math.ceil((Number(endDate) - Number(startDate)) / (1000 * 60 * 60 * 24))
     )
 
     const response = await axiosClient.get(endpoint, {
       params: {
         days,
+        per_page: 50,
         group_by: filters.groupBy,
         product_type: filters.productType || undefined
       }
@@ -375,6 +474,7 @@ const loadSelectedReport = async () => {
 
     reportSummary.value = normalized.summary || []
     reportData.value = normalized.items || []
+    agingDetails.value = selectedReport.value === 'aging' ? (normalized.details || {}) : {}
 
     // Set columns based on report type
     setReportColumns()
@@ -430,11 +530,16 @@ const setReportColumns = () => {
       { field: 'sales_velocity', header: 'Velocity', type: 'number' }
     ],
     aging: [
-      { field: 'sku', header: 'SKU', width: '100px' },
+      { field: 'age_bucket', header: 'Age Bucket', width: '180px' },
+      { field: 'days_in_inventory', header: 'Age (Days)', type: 'number' },
+      { field: 'item_count', header: 'Items', type: 'number' }
+    ],
+    transactions: [
+      { field: 'transaction_number', header: 'Reference', width: '130px' },
+      { field: 'transaction_type', header: 'Type', width: '120px' },
       { field: 'product_name', header: 'Product', width: '200px' },
-      { field: 'received_date', header: 'Received', width: '120px' },
-      { field: 'days_in_inventory', header: 'Days In Inventory', type: 'number' },
-      { field: 'inventory_value', header: 'Value', type: 'currency' }
+      { field: 'quantity_change', header: 'Quantity', type: 'number' },
+      { field: 'transaction_date', header: 'Date', type: 'datetime' }
     ]
   }
 

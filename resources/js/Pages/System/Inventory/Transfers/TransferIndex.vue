@@ -20,7 +20,7 @@
             placeholder="All Statuses" showClear @change="loadTransfers(1)" fluid  size="small" />
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">Date Range</label>
-            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
+            <DatePicker v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full" showIcon />
           </div>
           <Button icon="pi pi-filter-slash" label="Reset" @click="resetFilters"  size="small" />
         </div>

@@ -38,13 +38,13 @@
                     <p class="text-xs text-slate-500">{{ doc.file_name || 'Attachment' }}</p>
                   </div>
                   <div class="flex gap-2">
-                    <Button label="View" icon="pi pi-eye" severity="info" outlined @click="previewDocument(doc)" />
+                    <Button label="View" icon="pi pi-eye" outlined @click="previewDocument(doc)" />
                     <Button label="Download" icon="pi pi-download" severity="secondary" outlined
                       @click="downloadDocument(doc)" />
                   </div>
                 </div>
               </div>
-              <Message v-else severity="info" :closable="false">No documents uploaded.</Message>
+              <Message v-else :closable="false">No documents uploaded.</Message>
             </template>
           </Card>
         </div>
@@ -68,12 +68,12 @@
                   optionValue="value" placeholder="Interview type" class="w-full" />
                 <Textarea v-model="interviewForm.notes" rows="3" class="w-full" placeholder="Interview notes" />
                 <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
-                <Button :label="interviewButtonLabel" icon="pi pi-calendar-plus" severity="info" fluid :loading="submitting"
+                <Button :label="interviewButtonLabel" icon="pi pi-calendar-plus" fluid :loading="submitting"
                   @click="scheduleInterview" />
                 </div>
 
                 <div v-if="application?.interviews?.length" class="space-y-3">
-                  <Message severity="info" :closable="false">
+                  <Message severity="warn" :closable="false">
                     Interview attempts are already recorded. You can schedule another attempt below before opening decision.
                   </Message>
                   <div v-for="(interview, index) in application.interviews" :key="interview.id" class="rounded-2xl border border-slate-200 bg-white p-4">

@@ -42,6 +42,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            Store35August2026Seeder::class,
             // RoleSeeder::class,
             // UserSeeder::class,
             // EmployeeSeeder::class,

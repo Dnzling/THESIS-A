@@ -185,7 +185,7 @@ class StoreManagementController extends Controller
 
         $storeModel = Store::withTrashed()->findOrFail((int) $store);
         $storeModel->update([
-            'status' => 'inactive',
+            'status' => 'deactivated',
             'deactivation_reason' => trim((string) $validated['reason']),
             'deactivated_at' => now(),
             'deactivated_by' => $request->user()?->id,
@@ -212,7 +212,7 @@ class StoreManagementController extends Controller
 
         $storeModel = Store::withTrashed()->findOrFail((int) $store);
         $storeModel->update([
-            'status' => 'inactive',
+            'status' => 'deactivated',
             'deactivation_reason' => trim((string) $validated['reason']),
             'deactivated_at' => now(),
             'deactivated_by' => $request->user()?->id,

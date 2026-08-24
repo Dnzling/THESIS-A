@@ -286,22 +286,10 @@ class GoodsReceiptController extends Controller
                     $inventory->quantity_damaged += $itemData['quantity_damaged'];
                 }
 
-                // Update costs
                 $newCost = $poItem->unit_cost;
-                $totalQuantity = $quantityBefore + $itemData['quantity_received'];
-                
-                if ($totalQuantity > 0) {
-                    $inventory->average_cost = (
-                        ($inventory->average_cost * $quantityBefore) + 
-                        ($newCost * $itemData['quantity_received'])
-                    ) / $totalQuantity;
-                }
-
-                $inventory->unit_cost = $newCost;
                 $inventory->save();
 
                     $inventory->updateStockStatus();
-                    $inventory->calculateTotalValue();
 
                     // Create inventory transaction with unique datetime-based number
                 $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
@@ -506,18 +494,9 @@ class GoodsReceiptController extends Controller
             }
 
             $newCost = $poItem->unit_cost ?? 0;
-            $totalQuantity = $quantityBefore + $itemData['quantity_received'];
-            if ($totalQuantity > 0) {
-                $inventory->average_cost = (
-                    ($inventory->average_cost * $quantityBefore) +
-                    ($newCost * $itemData['quantity_received'])
-                ) / $totalQuantity;
-            }
-            $inventory->unit_cost = $newCost;
             $inventory->save();
 
             $inventory->updateStockStatus();
-            $inventory->calculateTotalValue();
 
             $transactionNumber = 'TXN-' . date('YmdHis') . '-' . str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
 

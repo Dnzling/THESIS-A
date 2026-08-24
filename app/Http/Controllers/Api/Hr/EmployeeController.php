@@ -117,6 +117,8 @@ class EmployeeController extends Controller
                     'department' => $employee->department,
                     'status' => ucfirst($employee->status),
                     'hireDate' => $employee->hire_date,
+                    'monthly_salary' => round((float) ($employee->salary ?? 0), 2),
+                    'pay_type' => $employee->pay_type ?? 'monthly',
                     'email' => $employee->user->email ?? null,
                     'branch' => $employee->user->branch->name ?? null,
                     'phone' => $employee->phone
@@ -255,6 +257,7 @@ class EmployeeController extends Controller
                 'hire_date' => 'required|date',
                 'department' => 'required|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
+                'pay_type' => 'nullable|in:monthly,hourly,hybrid',
                 'salary' => 'required|numeric|min:0',
                 'status' => 'required|in:active,on_leave,suspended,terminated'
             ]);
@@ -295,6 +298,8 @@ class EmployeeController extends Controller
                 'hire_date' => $validated['hire_date'],
                 'department' => $validated['department'],
                 'employment_type' => $validated['employment_type'],
+                'pay_type' => $validated['pay_type'] ?? 'monthly',
+                'hourly_rate' => isset($validated['pay_type']) && $validated['pay_type'] === 'hourly' ? $validated['salary'] / 160 : null,
                 'salary' => $validated['salary'],
                 'status' => $validated['status']
             ]);

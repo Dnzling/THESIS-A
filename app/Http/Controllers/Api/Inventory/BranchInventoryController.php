@@ -85,7 +85,7 @@ class BranchInventoryController extends Controller
                 }
             }
             
-            $query = BranchInventory::with(['product.suppliers', 'variation', 'branch'])
+            $query = BranchInventory::with(['product.suppliers', 'variation', 'branch', 'lastCountedBy'])
                 ->where('store_id', $context['store_id'])
                 ->where('branch_id', $targetBranchId);
 
@@ -161,6 +161,15 @@ class BranchInventoryController extends Controller
                 $row->reorder_point = $rule?->reorder_point ?? $row->reorder_point ?? 0;
                 $row->reorder_quantity = $rule?->reorder_quantity ?? $row->reorder_quantity ?? 0;
 
+                // Procurement needs the product's default cost even when the Product
+                // model hides cost_price through its finance permission accessor.
+                if ($row->relationLoaded('product') && $row->product) {
+                    $row->product->setAttribute(
+                        'inventory_cost_price',
+                        $row->product->getRawOriginal('cost_price')
+                    );
+                }
+
                 // Ensure UI sees correct status even if stock_status wasn't recalculated after rule changes
                 if ((int) $row->quantity_available <= 0) {
                     $row->stock_status = 'out_of_stock';
@@ -204,6 +213,7 @@ class BranchInventoryController extends Controller
                 'variation',
                 'branch',
                 'store',
+                'lastCountedBy',
             ])
             ->where('store_id', $context['store_id'])
             ->where('branch_id', $context['branch_id'])
@@ -216,6 +226,10 @@ class BranchInventoryController extends Controller
                 ->first();
             $inventory->reorder_point = $rule?->reorder_point ?? $inventory->reorder_point ?? 0;
             $inventory->reorder_quantity = $rule?->reorder_quantity ?? $inventory->reorder_quantity ?? 0;
+            $inventory->product?->setAttribute(
+                'inventory_cost_price',
+                $inventory->product?->getRawOriginal('cost_price')
+            );
 
             return response()->json([
                 'success' => true,
@@ -358,7 +372,6 @@ class BranchInventoryController extends Controller
             unset($validated['quantity_on_hand']);
 
             $inventory->update($validated);
-            $inventory->calculateTotalValue();
 
             // If reorder fields were included, update/create the rule instead of branch_inventory columns.
             if ($reorderPoint !== null || $reorderQuantity !== null) {

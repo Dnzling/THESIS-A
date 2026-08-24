@@ -11,9 +11,9 @@
     <div class="relative z-10 space-y-6">
 
       <div>
-        <h1 class="text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
+        <Link href="/" class="inline-flex text-3xl font-semibold leading-tight lg:text-4xl portal-brand">
           FURNISYNC
-        </h1>
+        </Link>
         <p class="mt-4 max-w-md text-sm leading-relaxed opacity-90 lg:text-base">
           {{ subtitle }}
         </p>
@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { Link } from '@inertiajs/vue3'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 

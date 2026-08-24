@@ -103,6 +103,8 @@ const businessTypeOptions = [
   { label: 'Enterprise', value: 'enterprise' },
   { label: 'Showroom', value: 'showroom' },
   { label: 'Wholesale', value: 'wholesale' },
+  { label: 'Online Store', value: 'online_store' },
+
 ]
 
 const form = ref({

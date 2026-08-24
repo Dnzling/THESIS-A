@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
+use App\Models\Hr\Employee;
+use App\Models\Core\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -71,7 +73,7 @@ class TrialOnboardingController extends Controller
                     'name' => $storeName,
                     'store_code' => $storeCode,
                     'type' => $storeType,
-                    'status' => 'pending',
+                    'status' => 'unverified',
                     'subscription_tier' => $subscriptionTier,
                 ]);
 
@@ -103,10 +105,57 @@ class TrialOnboardingController extends Controller
                     'branch_id' => $branch->id,
                 ]);
 
+                $storeAdminRoleId = (int) ($user->role_id ?: Role::query()
+                    ->where('name', 'store_admin')
+                    ->value('id') ?? 2);
+
+                Employee::query()->firstOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'store_id' => $store->id,
+                        'branch_id' => $branch->id,
+                        'role_id' => $storeAdminRoleId,
+                        'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                        'fname' => (string) $user->fname,
+                        'lname' => (string) $user->lname,
+                        'department' => 'Management',
+                        'employment_type' => 'full_time',
+                        'status' => 'active',
+                        'hire_date' => now()->toDateString(),
+                    ]
+                );
+
                 app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
             } else {
                 $store = $user->store;
                 if ($store) {
+                $existingBranch = Branch::query()
+                    ->where('store_id', $store->id)
+                    ->orderByDesc('is_main_branch')
+                    ->orderBy('id')
+                    ->first();
+                $storeAdminRoleId = (int) ($user->role_id ?: Role::query()
+                    ->where('name', 'store_admin')
+                    ->value('id') ?? 2);
+
+                if ($existingBranch) {
+                    Employee::query()->firstOrCreate(
+                        ['user_id' => $user->id],
+                        [
+                            'store_id' => $store->id,
+                            'branch_id' => $existingBranch->id,
+                            'role_id' => $storeAdminRoleId,
+                            'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                            'fname' => (string) $user->fname,
+                            'lname' => (string) $user->lname,
+                            'department' => 'Management',
+                            'employment_type' => 'full_time',
+                            'status' => 'active',
+                            'hire_date' => now()->toDateString(),
+                        ]
+                    );
+                }
+
                 if ($setupMode === 'free') {
                     $store->subscription_tier = 'free';
                     $store->subscription_ends_at = now()->addDays(7)->toDateString();

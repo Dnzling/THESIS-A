@@ -280,7 +280,7 @@ class PurchaseOrderController extends Controller
                     }
 
                     // Use product's unit cost as default
-                    $unitCost = $product->unit_cost ?? 0;
+                    $unitCost = (float) ($product->getRawOriginal('cost_price') ?? 0);
                     $itemSubtotal = $unitCost * $stockRequest->requested_quantity;
 
                     $subtotal += $itemSubtotal;
