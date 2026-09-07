@@ -17,6 +17,16 @@ const getRequestKey = (config: any): string => {
     return `GET:${baseUrl}${url}:${JSON.stringify(config.params ?? {})}`
 }
 
+const isDialogSuppressed = (config: any): boolean => {
+    const headers = config?.headers
+    return Boolean(
+        headers?.['X-Suppress-Dialog'] ||
+        headers?.['x-suppress-dialog'] ||
+        headers?.get?.('X-Suppress-Dialog') ||
+        headers?.get?.('x-suppress-dialog')
+    )
+}
+
 const applyBaseConfig = (client: AxiosInstance) => {
     client.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
     client.defaults.withCredentials = false
@@ -66,7 +76,7 @@ const attachInterceptors = (client: AxiosInstance) => {
             const key = getRequestKey(response.config)
             if (key) pendingRequests.delete(key)
             const method = String(response.config?.method || '').toLowerCase()
-            const suppress = response.config?.headers?.['X-Suppress-Dialog']
+            const suppress = isDialogSuppressed(response.config)
             if (method && method !== 'get' && method !== 'head' && !suppress) {
                 const message =
                     response.data?.message ||
@@ -116,7 +126,7 @@ const attachInterceptors = (client: AxiosInstance) => {
             }
 
             const method = String(error.config?.method || '').toLowerCase()
-            const suppress = error.config?.headers?.['X-Suppress-Dialog']
+            const suppress = isDialogSuppressed(error.config)
             if (method && method !== 'get' && method !== 'head' && !suppress) {
                 const message =
                     error.response?.data?.message ||

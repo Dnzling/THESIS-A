@@ -33,7 +33,7 @@ class SalesOrderDeliveryController extends Controller
 
         $salesQuery = SalesOrderDelivery::query()
             ->with([
-                'order:id,branch_id,order_number,status,total_amount,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email',
+                'order:id,branch_id,order_number,status,total_amount,shipping_fee,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email',
                 'driver:id,fname,lname,email',
             ]);
 
@@ -125,7 +125,7 @@ class SalesOrderDeliveryController extends Controller
     {
         $query = SalesOrderDelivery::query()
             ->with([
-                'order:id,branch_id,order_number,status,total_amount,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email,created_at',
+                'order:id,branch_id,order_number,status,total_amount,shipping_fee,customer_name,customer_phone,notes,delivery_required,delivery_address,delivery_notes,delivery_province,delivery_city,delivery_barangay,delivery_address_line,delivery_latitude,delivery_longitude,delivery_email,created_at',
                 'order.items:id,order_id,product_name,sku,quantity,unit_price,line_total',
                 'driver:id,fname,lname,email',
                 'logs:id,delivery_id,sales_order_id,event_type,status_from,status_to,message,meta,created_by,created_at',

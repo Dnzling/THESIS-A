@@ -78,7 +78,9 @@ class PurchaseRequisitionController extends Controller
 
         $with = ['branch', 'items.product', 'items.variation'];
         if ($hasEmployeesTable) {
-            $with[] = 'requestedBy';
+            // requested_by stores employees.id. Resolve the employee's user_id
+            // so the inventory index receives the person's name, not the FK.
+            $with[] = 'requestedBy.user:id,fname,lname';
         }
 
         $query = PurchaseRequisition::with($with)
@@ -95,6 +97,14 @@ class PurchaseRequisitionController extends Controller
 
         if ($request->filled('priority')) {
             $query->where('priority', (int) $request->input('priority'));
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->input('date_to'));
         }
 
         if ($request->filled('search')) {
@@ -126,6 +136,17 @@ class PurchaseRequisitionController extends Controller
         $perPage = max(1, min((int) $request->input('per_page', 15), 100));
         $rows = $query->orderBy($sortBy, $sortOrder)->paginate($perPage);
 
+        $rows->getCollection()->transform(function (PurchaseRequisition $requisition) {
+            $user = $requisition->requestedBy?->user;
+            $name = trim(collect([$user?->fname, $user?->lname])->filter()->implode(' '));
+            $requisition->setAttribute('requested_by_name', $name !== '' ? $name : null);
+            // Keep the existing index contract compatible while replacing the
+            // employee FK value shown by legacy clients with the resolved name.
+            $requisition->setAttribute('requested_by', $name !== '' ? $name : null);
+
+            return $requisition;
+        });
+
         return response()->json([
             'success' => true,
             'data' => $rows,
@@ -149,13 +170,20 @@ class PurchaseRequisitionController extends Controller
             'rfqs.awardedToSupplier',
         ];
         if ($hasEmployeesTable) {
-            $with[] = 'requestedBy';
+            $with[] = 'requestedBy.user:id,fname,lname';
         }
 
         $pr = PurchaseRequisition::with($with)
             ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->findOrFail($id);
+
+        $requesterUser = $pr->requestedBy?->user;
+        $requesterName = trim(collect([
+            $requesterUser?->fname,
+            $requesterUser?->lname,
+        ])->filter()->implode(' '));
+        $pr->setAttribute('requested_by_name', $requesterName !== '' ? $requesterName : null);
 
         return response()->json([
             'success' => true,

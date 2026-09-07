@@ -33,8 +33,7 @@
           </div>
         </div>
         <div class="flex gap-2">
-          <Button type="submit" :label="isEditMode ? 'Update Product' : 'Create Product'" icon="pi pi-check"
-            :loading="submitting" class="rounded-xl px-5 py-2.5 bg-blue-500 hover:bg-blue-600 border-none text-white" />
+  
         </div>
       </div>
   
@@ -55,7 +54,7 @@
                   Product Name <span class="text-red-500">*</span>
                 </label>
                 <InputText v-model="form.product_name" placeholder="e.g., Modern L-Shaped Sectional Sofa"
-                  :class="{ 'p-invalid': errors.product_name }" @input="generateSKU"
+                  :class="{ 'p-invalid': errors.product_name }"
                   class="w-full bg-gray-50 border-gray-200 rounded-xl" />
                 <small v-if="errors.product_name" class="text-red-500">{{ errors.product_name }}</small>
               </div>
@@ -63,17 +62,14 @@
               <!-- SKU -->
               <div class="space-y-2">
                 <label class="text-sm font-medium text-gray-700">
-                  SKU <span class="text-red-500">*</span>
+                  SKU <span class="text-red-500"></span>
                 </label>
                 <div class="flex gap-2">
-                  <InputText v-model="form.sku" placeholder="Will be auto-generated" :class="{ 'p-invalid': errors.sku }"
-                    readonly class="flex-1 bg-gray-100 border-gray-200 rounded-xl" />
+                  <InputText v-model="form.sku" placeholder="Enter the SKU assigned in Inventory" :class="{ 'p-invalid': errors.sku }"
+                    class="flex-1 bg-gray-50 border-gray-200 rounded-xl" />
                   <Button icon="pi pi-copy" v-tooltip.top="'Copy SKU'" severity="secondary" outlined @click="copySKU"
                     :disabled="!form.sku" class="rounded-xl" />
-                  <Button icon="pi pi-refresh" v-tooltip.top="'Regenerate SKU'" severity="secondary" outlined
-                    @click="generateSKU" :disabled="!form.product_name || !form.category_id" class="rounded-xl" />
                 </div>
-                <small class="text-gray-500 text-xs">Format: CATEGORY-ATTRIBUTE-001</small>
                 <small v-if="errors.sku" class="text-red-500">{{ errors.sku }}</small>
               </div>
   
@@ -96,35 +92,19 @@
                     optionValue="id" placeholder="Select subcategory" showClear :disabled="!form.category_id"
                     class="w-full bg-gray-50 border-gray-200 rounded-xl" />
                 </div>
-
+  
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Unit</label>
                   <Select v-model="form.unit_code" :options="unitOptions" optionLabel="label" optionValue="value"
-                    placeholder="Select unit" showClear
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl" />
+                    placeholder="Select unit" showClear class="w-full bg-gray-50 border-gray-200 rounded-xl" />
                 </div>
-              </div>
-  
-              <!-- Product Type -->
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-gray-700">
-                  Product Type <span class="text-red-500">*</span>
-                </label>
-                <Select
-                  v-model="form.product_type"
-                  :options="productTypeOptions"
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Select product type"
-                  class="w-full bg-gray-50 border-gray-200 rounded-xl"
-                />
               </div>
   
               <!-- Brand & Collection -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Brand</label>
-                  <InputText v-model="form.brand" placeholder="e.g., IKEA, Ashley Furniture" @input="generateSKU"
+                  <InputText v-model="form.brand" placeholder="e.g., IKEA, Ashley Furniture"
                     class="w-full bg-gray-50 border-gray-200 rounded-xl" />
                 </div>
                 <div class="space-y-2">
@@ -190,7 +170,7 @@
                 </div>
               </div>
             </section>
-
+  
             <!-- Pricing -->
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
@@ -200,7 +180,7 @@
               <Message v-if="isEditMode && form.price_approval_status === 'pending'" severity="warn" :closable="false">
                 Price update is pending finance approval. Live selling price will stay unchanged until approved.
               </Message>
-
+  
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Base Price <span class="text-red-500">*</span></label>
@@ -231,13 +211,15 @@
                   <small class="text-gray-500 text-xs">Auto-managed value (read-only)</small>
                 </div>
               </div>
-
-              <div v-if="form.base_price || form.discounted_price" class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+  
+              <div v-if="form.base_price || form.discounted_price"
+                class="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Display Price Preview</p>
                 <p v-if="form.discounted_price" class="mt-2 text-3xl font-semibold text-red-600">
                   {{ formatCurrencyPHP(form.discounted_price) }}
                 </p>
-                <p :class="form.discounted_price ? 'text-xl font-medium text-gray-500 line-through' : 'mt-2 text-3xl font-semibold text-gray-900'">
+                <p
+                  :class="form.discounted_price ? 'text-xl font-medium text-gray-500 line-through' : 'mt-2 text-3xl font-semibold text-gray-900'">
                   {{ formatCurrencyPHP(form.base_price || 0) }}
                 </p>
               </div>
@@ -288,7 +270,7 @@
                         <p class="text-xs text-gray-600">{{ formatFileSize(form.modelFile.size) }}</p>
                       </div>
                     </div>
-                    <Button icon="pi pi-trash" severity="danger" text rounded @click="removeModel" />
+                    <Button type="button" icon="pi pi-trash" severity="danger" text rounded @click="removeModel" v-tooltip.top="'Remove selected 3D model'" />
                   </div>
                   <div class="mt-2 flex items-center gap-2 text-xs text-green-700">
                     <i class="pi pi-check-circle"></i>
@@ -301,14 +283,14 @@
                   <div class="flex items-start justify-between">
                     <div class="flex items-center gap-3">
                       <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                        <i class="pi pi-cube text-gray-600"></i>
+                        <i class="pi pi-box text-gray-600"></i>
                       </div>
                       <div>
                         <p class="text-sm font-semibold text-gray-900">{{ existingModel.file_name }}</p>
                         <p class="text-xs text-gray-600">{{ formatFileSize(existingModel.file_size_kb * 1024) }}</p>
                       </div>
                     </div>
-                    <Button icon="pi pi-trash" severity="danger" text rounded @click="deleteExistingModel" />
+                    <Button type="button" icon="pi pi-times" severity="danger" size=small rounded @click="deleteExistingModel" v-tooltip.top="'Remove existing 3D model'" />
                   </div>
                   <Tag value="Existing Model" severity="info" class="mt-2 w-full justify-center" />
                 </div>
@@ -347,34 +329,23 @@
               <div class="space-y-3 pt-4 border-t border-gray-100">
                 <h4 class="text-sm font-semibold text-gray-900">Product Images</h4>
                 <div class="space-y-2">
-                  <FileUpload
-                    v-if="remainingImageSlots > 0"
-                    mode="basic"
-                    name="images[]"
-                    accept="image/*"
-                    :maxFileSize="5000000"
-                    :multiple="true"
-                    :auto="false"
-                    :chooseLabel="`Upload Images (${remainingImageSlots} left)`"
-                    class="w-full"
-                    @select="handleImageSelect"
-                  />
+                  <FileUpload v-if="remainingImageSlots > 0" mode="basic" name="images[]" accept="image/*"
+                    :maxFileSize="5000000" :multiple="true" :auto="false"
+                    :chooseLabel="`Upload Images (${remainingImageSlots} left)`" class="w-full"
+                    @select="handleImageSelect" />
                   <Message v-else severity="info" :closable="false">
                     You’ve reached the maximum of 4 images. Remove one to upload more.
                   </Message>
-                  <small class="text-gray-500 text-xs">Up to 4 images. JPG, PNG, WebP (Max 5MB each). Images are cropped to square.</small>
+                  <small class="text-gray-500 text-xs">Up to 4 images. JPG, PNG, WebP (Max 5MB each). Images are cropped
+                    to square.</small>
                 </div>
-
+  
                 <!-- PrimeVue Galleria Preview -->
                 <div v-if="previewGalleryItems.length" class="mt-2">
                   <div class="rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
                     <div class="relative aspect-square">
-                      <img
-                        v-if="selectedAssetPreviewItem?.src"
-                        :src="selectedAssetPreviewItem.src"
-                        :alt="selectedAssetPreviewItem.alt"
-                        class="absolute inset-0 w-full h-full object-cover"
-                      />
+                      <img v-if="selectedAssetPreviewItem?.src" :src="selectedAssetPreviewItem.src"
+                        :alt="selectedAssetPreviewItem.alt" class="absolute inset-0 w-full h-full object-cover" />
                       <div v-else class="absolute inset-0 flex items-center justify-center text-gray-400">
                         <i class="pi pi-image text-3xl"></i>
                       </div>
@@ -383,43 +354,27 @@
                         <Tag v-if="selectedAssetPreviewItem?.type === 'existing'" value="Existing" severity="secondary" />
                         <Tag v-else value="New" severity="info" />
                       </div>
-                      <Button
-                        v-if="selectedAssetPreviewItem?.type === 'existing'"
-                        icon="pi pi-trash"
-                        severity="danger"
-                        rounded
-                        size="small"
+                      <Button v-if="selectedAssetPreviewItem?.type === 'existing'" icon="pi pi-times" severity="danger"
+                        rounded size="small" class="absolute top-3 right-3"
+                        @click="selectedAssetPreviewItem?.raw && deleteExistingImage(selectedAssetPreviewItem.raw)" />
+                      <Button v-else icon="pi pi-times" severity="danger" rounded size="small"
                         class="absolute top-3 right-3"
-                        @click="selectedAssetPreviewItem?.raw && deleteExistingImage(selectedAssetPreviewItem.raw)"
-                      />
-                      <Button
-                        v-else
-                        icon="pi pi-times"
-                        severity="danger"
-                        rounded
-                        size="small"
-                        class="absolute top-3 right-3"
-                        @click="typeof selectedAssetPreviewItem?.index === 'number' && removeImage(selectedAssetPreviewItem.index)"
-                      />
+                        @click="typeof selectedAssetPreviewItem?.index === 'number' && removeImage(selectedAssetPreviewItem.index)" />
                     </div>
                   </div>
-
+  
                   <div class="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    <button
-                      v-for="(it, idx) in previewGalleryItems"
-                      :key="it.key"
-                      type="button"
+                    <button v-for="(it, idx) in previewGalleryItems" :key="it.key" type="button"
                       class="shrink-0 w-14 h-14 rounded-xl overflow-hidden border transition-colors"
                       :class="idx === selectedAssetPreviewIndex ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'"
-                      @click="selectedAssetPreviewIndex = idx"
-                    >
+                      @click="selectedAssetPreviewIndex = idx">
                       <img :src="it.src" :alt="it.alt" class="w-full h-full object-cover" />
                     </button>
                   </div>
                 </div>
               </div>
             </section>
-
+  
             <!-- Variations -->
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
@@ -429,31 +384,26 @@
               <Message v-if="!isEditMode" severity="info" :closable="false">
                 Save this product first, then you can create and manage variations here.
               </Message>
-
+  
               <template v-else>
                 <div class="flex items-center justify-between">
                   <p class="text-sm text-gray-500">Manage this product variations in one place.</p>
-                  <Button label="Add Variation" icon="pi pi-plus" class="rounded-xl" @click="openCreateVariationDialog" />
+                  <Button label="Add Variation" size=small icon="pi pi-plus" class="rounded-xl" @click="openCreateVariationDialog" />
                 </div>
-
-                <DataTable
-                  :value="variations"
-                  :loading="loadingVariations"
-                  dataKey="id"
-                  stripedRows
-                  class="p-datatable-sm rounded-xl overflow-hidden border border-gray-100"
-                >
+  
+                <DataTable :value="variations" :loading="loadingVariations" dataKey="id" stripedRows
+                  class="p-datatable-xs rounded-xl overflow-hidden border border-gray-100 text-xs">
                   <template #empty>
                     <div class="py-8 text-center text-sm text-gray-500">No variations yet.</div>
                   </template>
-
-                  <Column field="variation_sku" header="SKU" style="min-width: 180px">
+  
+                  <Column field="variation_sku" header="SKU" style="min-width: 120px">
                     <template #body="{ data }">
                       <span class="font-mono text-xs font-semibold">{{ data.variation_sku || '-' }}</span>
                     </template>
                   </Column>
-                  <Column field="variation_name" header="Name" style="min-width: 220px" />
-                  <Column header="Attributes" style="min-width: 220px">
+                  <Column field="variation_name" header="Name" style="min-width: 120px" />
+                  <Column header="Attributes" style="min-width: 120px">
                     <template #body="{ data }">
                       <div class="flex flex-wrap gap-1">
                         <Tag v-if="data.color" :value="data.color" severity="info" />
@@ -463,20 +413,22 @@
                       </div>
                     </template>
                   </Column>
-                  <Column header="Price Adj." style="width: 140px">
+                  <Column header="Price Adj." style="width: 120px">
                     <template #body="{ data }">
                       {{ formatCurrencyPHP(data.price_adjustment || 0) }}
                     </template>
                   </Column>
                   <Column header="Status" style="width: 120px">
                     <template #body="{ data }">
-                      <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+                      <Tag :value="data.is_active ? 'Active' : 'Inactive'"
+                        :severity="data.is_active ? 'success' : 'secondary'" />
                     </template>
                   </Column>
                   <Column header="Actions" style="width: 140px">
                     <template #body="{ data }">
                       <div class="flex items-center gap-1">
-                        <Button icon="pi pi-pencil" text rounded severity="warning" @click="openEditVariationDialog(data)" />
+                        <Button icon="pi pi-pencil" text rounded severity="warning"
+                          @click="openEditVariationDialog(data)" />
                         <Button icon="pi pi-trash" text rounded severity="danger" @click="removeVariation(data)" />
                       </div>
                     </template>
@@ -486,7 +438,7 @@
             </section>
           </div>
         </div>
-
+  
         <!-- Ecommerce Preview (right) -->
         <aside class="lg:sticky lg:top-6">
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -501,38 +453,32 @@
                     <span class="text-xs font-medium text-gray-500">3D</span>
                     <ToggleSwitch v-model="previewShow3d" />
                   </div>
-                  <Tag :value="form.is_active ? 'Active' : 'Inactive'" :severity="form.is_active ? 'success' : 'secondary'" />
+                  <Tag :value="form.is_active ? 'Active' : 'Inactive'"
+                    :severity="form.is_active ? 'success' : 'secondary'" />
                 </div>
               </div>
             </div>
-
+  
             <div class="p-5 space-y-5">
               <!-- Media -->
               <div class="rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden">
                 <div class="aspect-square relative">
-                  <Model3DPreview
-                    v-if="previewShow3d && previewModelUrl"
-                    :model-url="previewModelUrl"
+                  <Model3DPreview v-if="previewShow3d && previewModelUrl" :model-url="previewModelUrl"
                     :model-format="previewUsesVariation3d ? (selectedVariation3dAsset?.model_format) : existingModel?.model_format"
                     :auth-token="previewAuthToken"
                     :camera-x="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_camera_angle_x ?? 0) : form.default_camera_angle_x"
                     :camera-y="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_camera_angle_y ?? 15) : form.default_camera_angle_y"
                     :zoom="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_zoom_level ?? 1.5) : form.default_zoom_level"
-                    height="100%"
-                  />
-                  <img
-                    v-else-if="previewPrimaryImageUrl"
-                    :src="previewPrimaryImageUrl"
-                    alt="Product image preview"
-                    class="absolute inset-0 w-full h-full object-cover"
-                  />
+                    height="100%" />
+                  <img v-else-if="previewPrimaryImageUrl" :src="previewPrimaryImageUrl" alt="Product image preview"
+                    class="absolute inset-0 w-full h-full object-cover" />
                   <div v-else class="absolute inset-0 flex items-center justify-center text-gray-400">
                     <div class="text-center">
                       <i class="pi pi-image text-3xl block mb-2"></i>
                       <p class="text-xs font-medium">No image yet</p>
                     </div>
                   </div>
-
+  
                   <div class="absolute top-3 left-3 flex flex-wrap gap-2">
                     <Tag v-if="form.is_new_arrival" value="New" severity="info" />
                     <Tag v-if="form.is_bestseller" value="Bestseller" severity="success" />
@@ -540,40 +486,31 @@
                   </div>
                 </div>
               </div>
-
+  
               <!-- Image Selector (Base product only) -->
-              <div v-if="!previewUsesVariationImage && basePreviewImages.length > 1" class="flex gap-2 overflow-x-auto pb-1">
-                <button
-                  v-for="(img, idx) in basePreviewImages"
-                  :key="img.key"
-                  type="button"
+              <div v-if="!previewUsesVariationImage && basePreviewImages.length > 1"
+                class="flex gap-2 overflow-x-auto pb-1">
+                <button v-for="(img, idx) in basePreviewImages" :key="img.key" type="button"
                   class="shrink-0 w-14 h-14 rounded-xl overflow-hidden border transition-colors"
                   :class="idx === selectedBaseImageIndex ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'"
-                  @click="selectedBaseImageIndex = idx"
-                >
+                  @click="selectedBaseImageIndex = idx">
                   <img :src="img.src" :alt="img.alt" class="w-full h-full object-cover" />
                 </button>
               </div>
-
+  
               <!-- Variations (Preview Selector) -->
               <div v-if="variations.length" class="space-y-2">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Variation</p>
                 <div class="flex flex-wrap gap-2">
-                  <Button
-                    v-for="v in variations"
-                    :key="v.id"
-                    type="button"
-                    size="small"
-                    :label="v.variation_name"
-                    class="rounded-full"
-                    :outlined="Number(selectedVariationId) !== Number(v.id)"
+                  <Button v-for="v in variations" :key="v.id" type="button" size="small" :label="v.variation_name"
+                    class="rounded-full" :outlined="Number(selectedVariationId) !== Number(v.id)"
                     :severity="Number(selectedVariationId) === Number(v.id) ? 'info' : 'secondary'"
-                    @click="selectedVariationId = Number(v.id); previewShow3d = true"
-                  />
+                    @click="selectedVariationId = Number(v.id); previewShow3d = true" />
                 </div>
-                <small class="text-xs text-gray-500">Default preview shows base product images. Select a variation to preview its 3D + photo.</small>
+                <small class="text-xs text-gray-500">Default preview shows base product images. Select a variation to
+                  preview its 3D + photo.</small>
               </div>
-
+  
               <!-- Title + Meta -->
               <div class="space-y-2">
                 <p class="text-lg font-semibold text-gray-900 leading-snug">
@@ -588,7 +525,7 @@
                   SKU: <span class="font-mono font-semibold text-gray-700">{{ form.sku || '—' }}</span>
                 </p>
               </div>
-
+  
               <!-- Price -->
               <div class="space-y-1">
                 <div class="flex items-end gap-2">
@@ -605,41 +542,51 @@
                   <span v-if="form.assembly_required" class="ml-2">Assembly required</span>
                 </p>
               </div>
-
+  
               <!-- Description -->
               <div class="space-y-2">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Description</p>
-                <div v-if="previewDescriptionHtml" class="text-sm text-gray-700 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline" v-html="previewDescriptionHtml"></div>
+                <div v-if="previewDescriptionHtml"
+                  class="text-sm text-gray-700 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+                  v-html="previewDescriptionHtml"></div>
                 <p v-else class="text-sm text-gray-500">
                   Add a description to help customers understand the product.
                 </p>
               </div>
-
+  
               <!-- Dimensions -->
               <div class="space-y-2">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Specs</p>
                 <div class="grid grid-cols-2 gap-3 text-sm">
                   <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                     <p class="text-[11px] text-gray-500">L</p>
-                    <p class="font-semibold text-gray-900">{{ previewLengthCm ?? '—' }}<span v-if="previewLengthCm"> cm</span></p>
+                    <p class="font-semibold text-gray-900">{{ previewLengthCm ?? '—' }}<span v-if="previewLengthCm">
+                        cm</span></p>
                   </div>
                   <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                     <p class="text-[11px] text-gray-500">W</p>
-                    <p class="font-semibold text-gray-900">{{ previewWidthCm ?? '—' }}<span v-if="previewWidthCm"> cm</span></p>
+                    <p class="font-semibold text-gray-900">{{ previewWidthCm ?? '—' }}<span v-if="previewWidthCm">
+                        cm</span></p>
                   </div>
                   <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                     <p class="text-[11px] text-gray-500">H</p>
-                    <p class="font-semibold text-gray-900">{{ previewHeightCm ?? '—' }}<span v-if="previewHeightCm"> cm</span></p>
+                    <p class="font-semibold text-gray-900">{{ previewHeightCm ?? '—' }}<span v-if="previewHeightCm">
+                        cm</span></p>
                   </div>
                   <div class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                     <p class="text-[11px] text-gray-500">Weight</p>
-                    <p class="font-semibold text-gray-900">{{ previewWeightKg ?? '—' }}<span v-if="previewWeightKg"> kg</span></p>
+                    <p class="font-semibold text-gray-900">{{ previewWeightKg ?? '—' }}<span v-if="previewWeightKg">
+                        kg</span></p>
                   </div>
                 </div>
+                <div class="mt-6 border-t border-gray-200 px-4 pt-4">
+                  <Button type="submit" :label="isEditMode ? 'Update Product' : 'Create Product'" :loading="submitting" fluid />
+                </div>
               </div>
-
+  
               <!-- 3D Model Hint -->
-              <div v-if="form.modelFile || existingModelPreviewUrl" class="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <div v-if="form.modelFile || existingModelPreviewUrl"
+                class="rounded-xl border border-gray-200 bg-gray-50 p-3">
                 <div class="flex items-start gap-3">
                   <div class="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center">
                     <i class="pi pi-cube text-gray-700"></i>
@@ -664,11 +611,11 @@
         <div class="relative mx-auto bg-gray-100 rounded-xl overflow-hidden"
           :style="{ width: cropViewportSize + 'px', height: cropViewportSize + 'px' }">
           <img v-if="cropImageUrl" :src="cropImageUrl" alt="Crop preview" class="absolute" :style="{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      transform: `scale(${cropZoom}) translate(${cropOffsetX / cropZoom}px, ${cropOffsetY / cropZoom}px)`
-                    }" />
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        transform: `scale(${cropZoom}) translate(${cropOffsetX / cropZoom}px, ${cropOffsetY / cropZoom}px)`
+                      }" />
         </div>
   
         <div class="space-y-3">
@@ -694,25 +641,17 @@
         <Button label="Crop & Continue" severity="info" @click="applyCropAndNext" class="rounded-xl" />
       </template>
     </Dialog>
-
-    <Dialog
-      v-model:visible="variationDialogVisible"
-      :header="editingVariationId ? 'Edit Variation' : 'Add Variation'"
-      :modal="true"
-      :style="{ width: '680px', maxWidth: '95vw' }"
-    >
-      <VariationFormDialog
-        embedded
-        :embedded-product="{
-          id: Number(route.params.id),
-          product_name: form.product_name,
-          sku: form.sku,
-          base_price: Number(form.base_price || 0)
-        }"
+  
+    <Dialog v-model:visible="variationDialogVisible" :header="editingVariationId ? 'Edit Variation' : 'Add Variation'"
+      :modal="true" :style="{ width: '680px', maxWidth: '95vw' }">
+      <VariationFormDialog embedded :embedded-product="{
+            id: Number(route.params.id),
+            product_name: form.product_name,
+            sku: form.sku,
+            base_price: Number(form.base_price || 0)
+          }"
         :embedded-variation="editingVariationId ? (variations.find(v => Number(v.id) === Number(editingVariationId)) || { id: editingVariationId }) : null"
-        @saved="handleVariationSaved"
-        @cancel="closeVariationDialog"
-      />
+        @saved="handleVariationSaved" @cancel="closeVariationDialog" />
     </Dialog>
   
     <ConfirmDialog />
@@ -1225,71 +1164,38 @@ const loadProductAssets = async (productId: number) => {
 
 const deleteExistingImage = async (asset: any) => {
   if (!asset?.id) return
-  try {
-    await merchandisingService.deleteAsset(asset.id)
-    existingImages.value = existingImages.value.filter((img: any) => img.id !== asset.id)
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Image deleted',
-      life: 3000
-    })
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to delete image',
-      life: 3000
-    })
-  }
+
+  confirm.require({
+    header: 'Delete image?',
+    message: 'This will permanently remove the uploaded image from this product.',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    acceptLabel: 'Delete',
+    rejectLabel: 'Cancel',
+    accept: async () => {
+      try {
+        await merchandisingService.deleteAsset(asset.id)
+        existingImages.value = existingImages.value.filter((img: any) => img.id !== asset.id)
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: 'Image deleted',
+          life: 3000
+        })
+      } catch (error: any) {
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: error?.response?.data?.message || 'Failed to delete image',
+          life: 3000
+        })
+      }
+    },
+  })
 }
 
 const onCategoryChange = () => {
   form.value.subcategory_id = null
-  generateSKU()
-}
-
-// SKU Generation Logic
-const generateSKU = async () => {
-  if (!form.value.product_name || !form.value.category_id) return
-
-  const category = categories.value.find((c: any) => c.id === form.value.category_id)
-  if (!category) return
-
-  // Get category code
-  const categoryCode = category.category_code || 'GEN'
-
-  // Get brand initial or use first letter of product name
-  const brandCode = form.value.brand
-    ? form.value.brand.substring(0, 3).toUpperCase()
-    : form.value.product_name.substring(0, 3).toUpperCase()
-
-  // Generate base SKU
-  const baseSKU = `${categoryCode}-${brandCode}`
-
-  // Check for uniqueness and get next sequence
-  try {
-    const response = await merchandisingService.getProducts({ search: baseSKU, product_type: 'finished_good' })
-    const existingProducts = response.data?.data || response.data?.data?.data || []
-
-    // Find highest sequence number
-    let maxSequence = 0
-    existingProducts.forEach((p: any) => {
-      const match = p.sku?.match(new RegExp(`${baseSKU}-(\\d+)`))
-      if (match) {
-        const seq = parseInt(match[1])
-        if (seq > maxSequence) maxSequence = seq
-      }
-    })
-
-    // Generate new sequence
-    const nextSequence = (maxSequence + 1).toString().padStart(3, '0')
-    form.value.sku = `${baseSKU}-${nextSequence}`
-  } catch (error) {
-    // Fallback to random sequence if API fails
-    const randomSeq = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
-    form.value.sku = `${baseSKU}-${randomSeq}`
-  }
 }
 
 const copySKU = () => {
@@ -1534,7 +1440,22 @@ const getImagePreview = (file: File) => {
 }
 
 const removeImage = (index: number) => {
-  form.value.imageFiles.splice(index, 1)
+  if (!form.value.imageFiles[index]) return
+
+  confirm.require({
+    header: 'Remove image?',
+    message: 'This will remove the selected image from the form before saving.',
+    icon: 'pi pi-exclamation-triangle',
+    acceptClass: 'p-button-danger',
+    acceptLabel: 'Remove',
+    rejectLabel: 'Cancel',
+    accept: () => {
+      form.value.imageFiles.splice(index, 1)
+      if (selectedAssetPreviewIndex.value >= previewGalleryItems.value.length - 1) {
+        selectedAssetPreviewIndex.value = Math.max(0, previewGalleryItems.value.length - 2)
+      }
+    },
+  })
 }
 
 const formatFileSize = (bytes: number) => {

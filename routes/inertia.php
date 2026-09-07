@@ -36,7 +36,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
-        $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
         $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
         $inertia('/admin/support-&-maintenance', 'System/Admin/SupportMaintenance', 'admin.support-maintenance', 'Support & Maintenance', 'Super Admin Management');
         $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
@@ -87,6 +86,14 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
+    });
+
+    // Driver portal
+    Route::middleware('role:driver')->group(function () use ($inertia) {
+        Route::redirect('/driver/portal', '/driver/deliveries')->name('driver.portal');
+        $inertia('/driver/deliveries', 'System/Driver/DriverDeliveriesIndex', 'driver.deliveries', 'My Deliveries');
+        $inertia('/driver/delivery-history', 'System/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
+        $inertia('/driver/deliveries/{source}/{orderId}', 'System/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     });
 
     // Store role permissions accessible by store admins and HR
@@ -153,6 +160,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/units/{id}/edit', 'System/Inventory/Units/UnitEdit', 'inventory.units.edit', 'Edit Unit');
     $inertia('/inventory/stock-issues', 'System/Inventory/StockIssues/StockIssueIndex', 'inventory.stock-issues', 'Stock Issues');
     $inertia('/inventory/stock-issues/create', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.create', 'Create Stock Issue');
+    $inertia('/inventory/supply-issuance/create', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.supply-issuance.create', 'Create Supply Issuance');
     $inertia('/inventory/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'inventory.stock-issues.detail', 'Stock Issue Detail');
     $inertia('/inventory/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueEdit', 'inventory.stock-issues.edit', 'Edit Stock Issue');
     $inertia('/inventory/requisites', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionIndex', 'inventory.requisites.index', 'Purchase Requisitions');
@@ -207,6 +215,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // Procurement
     Route::redirect('/procurement', '/procurement/dashboard')->name('procurement');
     $inertia('/procurement/dashboard', 'System/Procurement/Dashboard', 'procurement.dashboard', 'Procurement Dashboard');
+    $inertia('/procurement/analytics/forecasting', 'System/Procurement/Analytics/Forecasting', 'procurement.analytics.forecasting', 'Procurement Forecasting');
     $inertia('/procurement/suppliers', 'System/Procurement/Suppliers/SupplierIndex', 'procurement.suppliers', 'Suppliers');
     $inertia('/procurement/suppliers/create', 'System/Procurement/Suppliers/SupplierCreate', 'procurement.suppliers.create', 'Create Supplier');
     $inertia('/procurement/suppliers/verified/{portalId}', 'System/Procurement/Suppliers/VerifiedSupplierShow', 'procurement.suppliers.verified.show', 'Verified Supplier');
@@ -225,6 +234,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/purchase-orders', 'System/Procurement/PurchaseOrders/PurchaseOrderIndex', 'procurement.purchase-orders', 'Purchase Orders');
     $inertia('/procurement/purchase-orders/create', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.create', 'Create Purchase Order');
     $inertia('/procurement/purchase-orders/{id}', 'System/Procurement/PurchaseOrders/PurchaseOrderDetail', 'procurement.purchase-orders.detail', 'Purchase Order Details');
+    $inertia('/procurement/purchase-orders/{id}/pickup', 'System/Procurement/PurchaseOrders/PurchaseOrderPickupCreate', 'procurement.purchase-orders.pickup', 'Assign Supplier Pickup');
     $inertia('/procurement/purchase-orders/{id}/edit', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.edit', 'Edit Purchase Order');
     $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
     $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
@@ -239,6 +249,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'procurement.goods-receipts.create', 'Create Goods Receipt');
     $inertia('/procurement/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'procurement.goods-receipts.detail', 'Goods Receipt Detail');
     $inertia('/procurement/products', 'System/Procurement/ProductsIndex', 'procurement.products', 'Products');
+    $inertia('/procurement/products/{id}', 'System/Procurement/ProcurementProductView', 'procurement.products.detail', 'Product Details');
     $inertia('/procurement/analytics/reorder-suggestions', 'System/Procurement/Analytics/ReorderSuggestions', 'procurement.analytics.reorder-suggestions', 'Reorder Suggestions');
     $inertia('/procurement/analytics/spend', 'System/Procurement/Analytics/SpendAnalytics', 'procurement.analytics.spend', 'Spend Analytics');
     $inertia('/procurement/analytics/budget', 'System/Procurement/Analytics/BudgetTracking', 'procurement.analytics.budget', 'Budget Tracking');
@@ -282,7 +293,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');
-    $inertia('/logistics/delivery-fees', 'System/Merchandising/DeliveryFeeSettings', 'logistics.delivery-fees', 'Delivery Fee Settings', 'Configure store delivery fees');
+    $inertia('/logistics/delivery-fees', 'System/Logistics/Settings/DeliverySettings', 'logistics.delivery-fees', 'Delivery Settings', 'Configure store delivery pricing and limits');
     Route::get('/logistics/zones', fn() => redirect('/logistics/delivery-fees'));
 
     // Sales
@@ -312,7 +323,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');
     Route::get('/merchandising/delivery-fees', fn() => redirect('/logistics/delivery-fees'));
     $inertia('/merchandising/dashboard', 'System/Merchandising/Dashboard', 'merchandising.dashboard', 'Product Catalog Dashboard', 'Overview of your product catalog and inventory');
-    $inertia('/merchandising/products', 'System/Merchandising/products/ProductsList', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
+    $inertia('/merchandising/products', 'System/Merchandising/products/ProductIndex', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
     $inertia('/merchandising/products/logs', 'System/Merchandising/products/ProductLogs', 'merchandising.products.logs', 'Product Logs', 'View product module activity logs');
     $inertia('/merchandising/products/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.create', 'Add New Product', 'Create a new furniture product');
     Route::redirect('/merchandising/products/raw/new', '/merchandising/products/new')->name('merchandising.products.raw.create');
@@ -347,11 +358,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/supplier-portal/pos', 'System/Supplier/SupplierPOIndex', 'supplier.pos', 'Purchase Orders');
     $inertia('/supplier-portal/pos/{id}', 'System/Supplier/SupplierPOApprove', 'supplier.pos.approve', 'Review Purchase Order');
     $inertia('/supplier-portal/pos/{id}/view', 'System/Supplier/SupplierPODetail', 'supplier.pos.view', 'Purchase Order Details');
-    $inertia('/supplier-portal/pos/{id}/delivery-template', 'System/Supplier/SupplierPODeliveryTemplate', 'supplier.pos.delivery-template', 'Delivery Form');
-    $inertia('/supplier-portal/pos/{id}/invoice', 'System/Supplier/SupplierPOShipmentConfirm', 'supplier.pos.invoice', 'Invoice Confirmation');
     $inertia('/supplier-portal/pos/{id}/invoice-view', 'System/Supplier/SupplierInvoiceDetail', 'supplier.pos.invoice-view', 'Invoice Details');
-    $inertia('/supplier-portal/deliveries', 'System/Supplier/SupplierDriverShipmentsIndex', 'supplier.deliveries', 'Delivery Logs');
-    $inertia('/supplier-portal/deliveries/{id}', 'System/Supplier/SupplierDriverShipmentDetail', 'supplier.deliveries.detail', 'Delivery Log Detail');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
     $inertia('/supplier-portal/stores', 'System/Supplier/SupplierStores', 'supplier.stores', 'Linked Stores');
     $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details');
@@ -374,23 +381,23 @@ $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-por
 
 
 // Ecommerce storefront
-$inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
-$inertia('/shop/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
-$inertia('/shop/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
-$inertia('/shop/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');
-$inertia('/shop/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
-$inertia('/shop/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
-$inertia('/shop/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
+$inertia('/', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
+$inertia('/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
+$inertia('/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
+$inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');
+$inertia('/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
+$inertia('/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
+$inertia('/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
 
 // These page shells must remain reachable because customer authentication uses a
 // bearer token from localStorage. The protected ecommerce API routes still enforce
 // auth:sanctum and redirect unauthenticated customers from the client interceptor.
-$inertia('/shop/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
-$inertia('/shop/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
-$inertia('/shop/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
-$inertia('/shop/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
-$inertia('/shop/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
-$inertia('/shop/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
-$inertia('/shop/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
-$inertia('/shop/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
-$inertia('/shop/profile', 'System/Ecommerce/EcommerceProfile', 'ecommerce.profile', 'My Profile');
+$inertia('/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
+$inertia('/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
+$inertia('/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
+$inertia('/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
+$inertia('/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
+$inertia('/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
+$inertia('/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
+$inertia('/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
+$inertia('/profile', 'System/Ecommerce/EcommerceProfile', 'ecommerce.profile', 'My Profile');

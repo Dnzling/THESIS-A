@@ -41,6 +41,11 @@ class SalesService {
     return res.data
   }
 
+  async estimatePosDeliveryFee(payload: any) {
+    const res = await axiosClient.post('/api/sales/pos/delivery-fee/estimate', payload)
+    return res.data
+  }
+
   async checkout(payload: any) {
     const res = await axiosClient.post('/api/sales/pos/checkout', payload)
     return res.data

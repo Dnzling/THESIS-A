@@ -76,7 +76,8 @@
 
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Tax Rate (%)</label>
-              <InputNumber v-model="form.tax_rate" :min="0" :max="100" placeholder="0" suffix="%" class="w-full" />
+              <InputNumber v-model="form.tax_rate" :min="12" :max="12" suffix="%" class="w-full" disabled />
+              <small class="text-gray-600">Fixed at 12%.</small>
               <small v-if="errors.tax_rate" class="text-red-600">{{ errors.tax_rate }}</small>
             </div>
           </div>
@@ -204,7 +205,7 @@ const form = reactive({
   end_date: null,
   discount_percentage: 0,
   payment_terms_days: 30,
-  tax_rate: 0,
+  tax_rate: 12,
   terms_conditions: '',
   contract_file_path: null,
 })
@@ -751,8 +752,8 @@ const validateForm = (): boolean => {
   if (form.discount_percentage < 0 || form.discount_percentage > 100) {
     errors.discount_percentage = 'Discount must be between 0 and 100'
   }
-  if (form.tax_rate < 0 || form.tax_rate > 100) {
-    errors.tax_rate = 'Tax rate must be between 0 and 100'
+  if (Number(form.tax_rate) !== 12) {
+    errors.tax_rate = 'Tax rate is fixed at 12%'
   }
 
   return Object.keys(errors).length === 0

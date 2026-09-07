@@ -5,7 +5,7 @@
       <div class="grid h-full gap-0 lg:grid-cols-2">
         <div class="flex flex-col justify-center p-8 lg:p-12">
           <div class="mb-6 text-center sm:mb-8">
-            <div class="portal-title text-2xl font-bold text-teal-600">Supplier Account Registration</div>
+            <div class="portal-title text-2xl font-bold text-orange-500">Supplier Account Registration</div>
             <p class="mt-2 text-sm text-slate-500 sm:text-lg">Create your supplier access for Furnisync IMS</p>
           </div>
 
@@ -45,19 +45,19 @@
               <Checkbox v-model="acceptedTerms" inputId="acceptedSupplierTerms" :binary="true" />
               <label for="acceptedSupplierTerms" class="leading-6 text-slate-700">
                 I agree to the
-                <a href="#" class="font-medium text-teal-600 hover:underline">Supplier Terms</a>
+                <a href="#" class="font-medium text-orange-500 hover:underline">Supplier Terms</a>
                 and
-                <a href="#" class="font-medium text-teal-600 hover:underline">Platform Policy</a>.
+                <a href="#" class="font-medium text-orange-500 hover:underline">Platform Policy</a>.
               </label>
             </div>
 
-            <Button type="submit" :loading="isSubmitting" fluid class="bg-teal-600 border-teal-600 hover:bg-teal-700 hover:border-teal-700 text-base font-semibold text-white sm:py-3 sm:text-xl">
+            <Button type="submit" :loading="isSubmitting" fluid severity="warn" class="text-base font-semibold sm:py-3 sm:text-xl">
               Register
             </Button>
 
             <p class="text-center text-sm text-slate-600 sm:text-base">
               Already have a supplier account?
-              <button type="button" @click="router.visit('/login')" class="font-semibold text-teal-600 hover:underline">
+                <button type="button" @click="router.visit('/login')" class="font-semibold text-orange-500 hover:underline">
                 Login
               </button>
             </p>

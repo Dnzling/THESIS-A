@@ -42,7 +42,7 @@
                 />
               </template>
             </Column>
-            <Column header="Price">
+            <Column header="Price (VAT Included)">
               <template #body="{ data }">
                 {{ money(data.product?.discounted_price || data.product?.base_price || 0) }}
               </template>
@@ -162,6 +162,26 @@
               <span>Subtotal</span>
               <span class="font-medium">{{ money(subtotal) }}</span>
             </div>
+            <div class="flex justify-between py-1 text-sm text-gray-600">
+              <span>VATable Sales</span>
+              <span>{{ money(vatableSales) }}</span>
+            </div>
+            <div class="flex justify-between py-1 text-sm text-gray-600">
+              <span>VAT Included (12%)</span>
+              <span>{{ money(vatAmount) }}</span>
+            </div>
+            <div v-if="deliveryRequired" class="flex justify-between py-1 text-sm">
+              <span>Shipping Fee</span>
+              <span v-if="deliveryFeeLoading" class="text-slate-500">Calculating...</span>
+              <span v-else class="font-medium">{{ money(deliveryFee) }}</span>
+            </div>
+            <div v-if="deliveryRequired && deliveryDistanceKm !== null" class="flex justify-between py-1 text-xs text-gray-500">
+              <span>Delivery Distance</span>
+              <span>{{ deliveryDistanceKm.toFixed(2) }} km</span>
+            </div>
+            <Message v-if="deliveryRequired && deliveryFeeError" severity="warn" :closable="false" class="my-2 text-xs">
+              {{ deliveryFeeError }}
+            </Message>
             <div class="flex justify-between py-1 text-base font-semibold border-t mt-1 pt-2">
               <span>Total</span>
               <span class="text-blue-600">{{ money(total) }}</span>
@@ -177,7 +197,7 @@
             severity="info" 
             fluid 
             :loading="checkingOut" 
-            :disabled="!canManagePos || !cart.length"
+            :disabled="!canManagePos || !cart.length || deliveryFeeLoading"
             label="Checkout"
             @click="checkout"
           />
@@ -309,6 +329,10 @@ const cart = ref<any[]>([])
 const paymentMethod = ref('cash')
 const amountTendered = ref<number | null>(null)
 const deliveryRequired = ref(false)
+const deliveryFee = ref(0)
+const deliveryFeeLoading = ref(false)
+const deliveryFeeError = ref('')
+const deliveryDistanceKm = ref<number | null>(null)
 const customerDialog = ref(false)
 const customerForm = ref({
   name: '',
@@ -405,7 +429,12 @@ const removeCart = (item: any) => {
 }
 
 const subtotal = computed(() => cart.value.reduce((s, i) => s + (Number(i.unit_price) * Number(i.quantity || 0)), 0))
-const total = computed(() => subtotal.value)
+const VAT_RATE = 12
+const vatAmount = computed(() => subtotal.value > 0
+  ? subtotal.value - (subtotal.value / (1 + (VAT_RATE / 100)))
+  : 0)
+const vatableSales = computed(() => subtotal.value - vatAmount.value)
+const total = computed(() => subtotal.value + (deliveryRequired.value ? deliveryFee.value : 0))
 const changeAmount = computed(() => Math.max(0, Number(amountTendered.value || 0) - total.value))
 
 const checkout = async () => {
@@ -425,6 +454,12 @@ const checkout = async () => {
       customerDialog.value = true
       return
     }
+    if (customerForm.value.latitude === null || customerForm.value.longitude === null) {
+      toast.add({ severity: 'warn', summary: 'Pin location', detail: 'Pin the delivery location so the store shipping fee can be calculated.', life: 3000 })
+      customerDialog.value = true
+      return
+    }
+    if (!(await estimatePosDeliveryFee(true))) return
   }
   
   checkingOut.value = true
@@ -465,6 +500,9 @@ const checkout = async () => {
     cart.value = []
     amountTendered.value = null
     deliveryRequired.value = false
+    deliveryFee.value = 0
+    deliveryFeeError.value = ''
+    deliveryDistanceKm.value = null
     customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '' }
     addressSelection.value = { provinceId: null, cityId: null, barangayCode: null }
     loadProducts()
@@ -480,7 +518,61 @@ const openCheckout = (url: string) => {
 
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 
+const estimatePosDeliveryFee = async (notifyOnError = false): Promise<boolean> => {
+  if (!deliveryRequired.value || !cart.value.length) {
+    deliveryFee.value = 0
+    deliveryFeeError.value = ''
+    deliveryDistanceKm.value = null
+    return !deliveryRequired.value
+  }
+
+  if (customerForm.value.latitude === null || customerForm.value.longitude === null) {
+    deliveryFee.value = 0
+    deliveryDistanceKm.value = null
+    deliveryFeeError.value = 'Pin the customer location to calculate the store shipping fee.'
+    return false
+  }
+
+  deliveryFeeLoading.value = true
+  deliveryFeeError.value = ''
+  try {
+    const response = await salesService.estimatePosDeliveryFee({
+      delivery_latitude: customerForm.value.latitude,
+      delivery_longitude: customerForm.value.longitude,
+      items: cart.value.map((item) => ({
+        branch_inventory_id: item.branch_inventory_id,
+        quantity: Number(item.quantity || 1),
+      })),
+    })
+    deliveryFee.value = Number(response?.data?.shipping_fee || 0)
+    const distance = Number(response?.data?.distance_km)
+    deliveryDistanceKm.value = Number.isFinite(distance) ? distance : null
+    return true
+  } catch (error: any) {
+    deliveryFee.value = 0
+    deliveryDistanceKm.value = null
+    deliveryFeeError.value = error?.response?.data?.message || 'Unable to calculate the store shipping fee.'
+    if (notifyOnError) {
+      toast.add({ severity: 'error', summary: 'Shipping Fee', detail: deliveryFeeError.value, life: 3500 })
+    }
+    return false
+  } finally {
+    deliveryFeeLoading.value = false
+  }
+}
+
+let deliveryEstimateTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleDeliveryFeeEstimate = () => {
+  if (deliveryEstimateTimer) clearTimeout(deliveryEstimateTimer)
+  deliveryEstimateTimer = setTimeout(() => estimatePosDeliveryFee(), 400)
+}
+
 watch(search, () => loadProducts())
+watch(
+  [deliveryRequired, cart, () => customerForm.value.latitude, () => customerForm.value.longitude],
+  scheduleDeliveryFeeEstimate,
+  { deep: true },
+)
 onMounted(async () => {
   loadProducts()
   await fetchProvinces()
@@ -613,6 +705,7 @@ async function onCityChange() {
 }
 
 onBeforeUnmount(() => {
+  if (deliveryEstimateTimer) clearTimeout(deliveryEstimateTimer)
   if (map) {
     map.remove()
     map = null

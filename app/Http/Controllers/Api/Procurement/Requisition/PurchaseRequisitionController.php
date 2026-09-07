@@ -30,7 +30,7 @@ class PurchaseRequisitionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = PurchaseRequisition::with(['branch', 'requestedBy', 'items.product.suppliers'])
+        $query = PurchaseRequisition::with(['branch', 'requestedBy.user', 'items.product.suppliers'])
             ->where('store_id', Auth::user()->store_id);
 
         // Filters
@@ -64,11 +64,21 @@ class PurchaseRequisitionController extends Controller
                             ->orWhere('branch_code', 'like', "%{$search}%");
                     })
                     ->orWhereHas('requestedBy', function ($requestedByQuery) use ($search) {
-                        $requestedByQuery->where('fname', 'like', "%{$search}%")
-                            ->orWhere('lname', 'like', "%{$search}%")
-                            ->orWhere('employee_number', 'like', "%{$search}%");
+                        $requestedByQuery->where('employee_number', 'like', "%{$search}%")
+                            ->orWhereHas('user', function ($userQuery) use ($search) {
+                                $userQuery->where('fname', 'like', "%{$search}%")
+                                    ->orWhere('lname', 'like', "%{$search}%");
+                            });
                     });
             });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->input('date_to'));
         }
 
         $sortBy = (string) $request->input('sort_by', 'created_at');
@@ -87,6 +97,9 @@ class PurchaseRequisitionController extends Controller
             });
             $pr->setAttribute('all_items_have_suppliers', $allHaveSuppliers);
             $pr->setAttribute('any_item_missing_supplier', !$allHaveSuppliers);
+            $requester = $pr->requestedBy;
+            $requesterName = trim(($requester?->user?->fname ?? $requester?->fname ?? '') . ' ' . ($requester?->user?->lname ?? $requester?->lname ?? ''));
+            $pr->setAttribute('created_by_name', $requesterName !== '' ? $requesterName : null);
             return $pr;
         });
 
@@ -104,11 +117,12 @@ class PurchaseRequisitionController extends Controller
     {
         $requisition = PurchaseRequisition::with([
             'branch',
-            'requestedBy',
+            'requestedBy.user',
             'items.product',
             'items.product.suppliers',
             'items.variation',
             'purchaseOrders.supplier',
+            'purchaseOrders.goodsReceipts.items',
             'rfqs.awardedToSupplier',
         ])->findOrFail($id);
 

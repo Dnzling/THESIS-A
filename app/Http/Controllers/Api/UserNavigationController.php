@@ -44,7 +44,7 @@ class UserNavigationController extends Controller
             }
 
             // Refresh user to ensure store_id comes from users table
-            $user = $user->fresh(['role', 'store', 'trialOnboardingProfile']);
+            $user = $user->fresh(['role', 'store']);
             
             // Get permissions based on role
             $permissionPayload = $this->getUserPermissionsWithMeta($user);
@@ -248,23 +248,45 @@ class UserNavigationController extends Controller
             return false;
         }
 
-        // If no permissions required, everyone can access
-        if ($navItem->permissions->isEmpty()) {
-            return true;
-        }
-
-        // Check if user has any of the required permissions
+        // Older navigation rows may not have a navigation_permissions pivot
+        // record even though the matching permission exists. Fall back to the
+        // conventional permission name so a missing link does not hide a menu
+        // from an authorized user.
         $requiredPermissions = $navItem->permissions->pluck('name')->toArray();
+        if ($navItem->permissions->isEmpty()) {
+            $requiredPermissions = $this->fallbackNavigationPermissions($navItem);
+        }
 
-        // Recruitment is available to HR users without the old recruitment permission gate.
-        if (collect($requiredPermissions)->every(fn ($permission) => in_array($permission, [
-            'hr.recruitment.view', 'hr.recruitment.manage', 'hr.recruitment.approve', 'hr.recruitment.delete',
-            'hr.recuitment.view', 'hr.recuitment.manage',
-        ], true))) {
+        // Group/utility items without a permission remain visible; their
+        // children are still permission-checked individually.
+        if (empty($requiredPermissions)) {
             return true;
         }
-        
+
         return !empty(array_intersect($requiredPermissions, $userPermissions));
+    }
+
+    private function fallbackNavigationPermissions($navItem): array
+    {
+        $name = (string) ($navItem->name ?? '');
+
+        $special = [
+            'hr.job-postings' => ['hr.recruitment.view'],
+            'hr.screening-pipeline' => ['hr.recruitment.view'],
+            'hr.apply-job' => ['hr.recruitment.view'],
+        ];
+
+        if (isset($special[$name])) {
+            return $special[$name];
+        }
+
+        if (!in_array($navItem->module, ['hr', 'merchandising'], true)) {
+            return [];
+        }
+
+        // Navigation names use the same namespace as permissions. Detail and
+        // action pages are intentionally matched by their explicit suffix.
+        return [$name . '.view', $name . '.manage', $name];
     }
 
     /**

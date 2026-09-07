@@ -7,9 +7,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Receiving\GoodsReceiptItem;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
+use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 use App\Models\Hr\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -45,7 +47,21 @@ class GoodsReceiptController extends Controller
             $query->where('receipt_status', $request->receipt_status);
         }
 
-        if ($request->has('start_date') && $request->has('end_date')) {
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('grn_number', 'like', "%{$search}%")
+                    ->orWhereHas('purchaseOrder', function ($poQuery) use ($search) {
+                        $poQuery->where('po_number', 'like', "%{$search}%")
+                            ->orWhereHas('supplier', function ($supplierQuery) use ($search) {
+                                $supplierQuery->where('supplier_name', 'like', "%{$search}%")
+                                    ->orWhere('company_name', 'like', "%{$search}%");
+                            });
+                    });
+            });
+        }
+
+        if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('receipt_date', [$request->start_date, $request->end_date]);
         }
 
@@ -62,7 +78,7 @@ class GoodsReceiptController extends Controller
      * Show single goods receipt
      * GET /api/procurement/goods-receipts/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $receipt = GoodsReceipt::with([
             'purchaseOrder.supplier',
@@ -71,12 +87,85 @@ class GoodsReceiptController extends Controller
             'items.variation',
             'items.purchaseOrderItem',
             'receivedBy',
-            'verifiedBy'
-        ])->findOrFail($id);
+            'verifiedBy',
+            'supplierEvaluation.evaluator:id,fname,lname',
+        ])->whereHas('purchaseOrder', function ($query) use ($request) {
+            $query->where('store_id', $request->user()->store_id);
+        })->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $receipt,
+        ]);
+    }
+
+    /**
+     * Create or update the supplier evaluation attached to a goods receipt.
+     */
+    public function saveSupplierEvaluation(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'quality_score' => 'required|integer|between:1,5',
+            'quantity_accuracy_score' => 'required|integer|between:1,5',
+            'delivery_timeliness_score' => 'required|integer|between:1,5',
+            'packaging_condition_score' => 'required|integer|between:1,5',
+            'remarks' => 'nullable|string|max:2000',
+        ]);
+
+        $storeId = (int) $request->user()->store_id;
+        $receipt = GoodsReceipt::with('purchaseOrder.supplier')
+            ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $storeId))
+            ->findOrFail($id);
+
+        $purchaseOrder = $receipt->purchaseOrder;
+        if (!$purchaseOrder?->supplier) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This goods receipt has no supplier to evaluate.',
+            ], 422);
+        }
+
+        $scores = [
+            $validated['quality_score'],
+            $validated['quantity_accuracy_score'],
+            $validated['delivery_timeliness_score'],
+            $validated['packaging_condition_score'],
+        ];
+
+        $evaluation = DB::transaction(function () use ($validated, $scores, $receipt, $purchaseOrder, $storeId, $request) {
+            $evaluation = SupplierPerformanceEvaluation::updateOrCreate(
+                ['goods_receipt_id' => $receipt->id],
+                [
+                    'store_id' => $storeId,
+                    'supplier_id' => $purchaseOrder->supplier_id,
+                    'purchase_order_id' => $purchaseOrder->id,
+                    'evaluated_by_user_id' => $request->user()->id,
+                    'quality_score' => $validated['quality_score'],
+                    'quantity_accuracy_score' => $validated['quantity_accuracy_score'],
+                    'delivery_timeliness_score' => $validated['delivery_timeliness_score'],
+                    'packaging_condition_score' => $validated['packaging_condition_score'],
+                    'overall_rating' => round(array_sum($scores) / count($scores), 2),
+                    'remarks' => $validated['remarks'] ?? null,
+                ]
+            );
+
+            $purchaseOrder->supplier->updateRating();
+
+            ActivityLog::record(
+                'supplier_performance_evaluated',
+                "Supplier evaluated from goods receipt {$receipt->grn_number}.",
+                ['goods_receipt_id' => $receipt->id, 'overall_rating' => $evaluation->overall_rating],
+                'supplier',
+                $purchaseOrder->supplier_id
+            );
+
+            return $evaluation;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier performance rating saved successfully.',
+            'data' => $evaluation->load('evaluator:id,fname,lname'),
         ]);
     }
 
@@ -132,8 +221,6 @@ class GoodsReceiptController extends Controller
     {
         $validated = $request->validate([
             'purchase_order_id' => 'required|exists:purchase_orders,id',
-            'receipt_date' => 'required|date',
-            'receipt_time' => 'required',
             'delivery_note_number' => 'nullable|string|max:100',
             'vehicle_number' => 'nullable|string|max:50',
             'driver_name' => 'nullable|string|max:100',
@@ -151,6 +238,11 @@ class GoodsReceiptController extends Controller
             'status' => 'nullable|in:draft,completed',
         ]);
 
+        // Receipt timestamp is authoritative server data, not user-entered data.
+        $receivedAt = now();
+        $receiptDate = $receivedAt->toDateString();
+        $receiptTime = $receivedAt->format('H:i:s');
+
         DB::beginTransaction();
         try {
             $actorEmployeeId = $this->resolveActorEmployeeId();
@@ -161,7 +253,18 @@ class GoodsReceiptController extends Controller
                 ], 422);
             }
 
-            $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
+            $po = PurchaseOrder::with('items')
+                ->where('store_id', $request->user()->store_id)
+                ->findOrFail($validated['purchase_order_id']);
+
+            $pickup = PurchaseOrderShipment::where('purchase_order_id', $po->id)->first();
+            if ($pickup && $pickup->status !== 'delivered') {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The supplier pickup must arrive at the store before goods can be received.',
+                ], 422);
+            }
 
             // Validate quantities vs expected
             foreach ($validated['items'] as $itemData) {
@@ -210,8 +313,8 @@ class GoodsReceiptController extends Controller
                 'grn_number' => $grnNumber,
                 'purchase_order_id' => $validated['purchase_order_id'],
                 'branch_id' => $po->branch_id,
-                'receipt_date' => $validated['receipt_date'],
-                'receipt_time' => $validated['receipt_time'],
+                'receipt_date' => $receiptDate,
+                'receipt_time' => $receiptTime,
                 'receipt_status' => $receiptStatus,
                 'received_by' => $actorEmployeeId,
                 'delivery_note_number' => $validated['delivery_note_number'] ?? null,
@@ -347,12 +450,12 @@ class GoodsReceiptController extends Controller
             if ($allItemsReceived) {
                 $po->markGoodsReceived();
                 $po->update([
-                    'actual_delivery_date' => $validated['receipt_date'],
+                    'actual_delivery_date' => $receiptDate,
                 ]);
 
                 // Update supplier performance
                 $expectedDate = $po->expected_delivery_date;
-                $actualDate = $validated['receipt_date'];
+                $actualDate = $receiptDate;
                 $onTime = $actualDate <= $expectedDate;
 
                 if ($po->supplier) {
@@ -362,7 +465,7 @@ class GoodsReceiptController extends Controller
                 ActivityLog::record(
                     'po_delivered',
                     "PO {$po->po_number} marked delivered.",
-                    ['po_number' => $po->po_number, 'receipt_date' => $validated['receipt_date']],
+                    ['po_number' => $po->po_number, 'receipt_date' => $receiptDate],
                     'purchase_order',
                     $po->id
                 );
@@ -564,10 +667,18 @@ class GoodsReceiptController extends Controller
         $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier'])
             ->findOrFail($poId);
 
-        if (!in_array($po->status, ['supplier_accepted', 'sent_to_supplier', 'in_transit'])) {
+        if (!in_array($po->status, ['supplier_accepted', 'sent_to_supplier', 'in_transit', 'delivered'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Purchase order is not ready for receiving',
+            ], 422);
+        }
+
+        $pickup = PurchaseOrderShipment::where('purchase_order_id', $po->id)->first();
+        if ($pickup && $pickup->status !== 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'The supplier pickup has not arrived at the store yet.',
             ], 422);
         }
 

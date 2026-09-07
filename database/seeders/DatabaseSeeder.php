@@ -43,7 +43,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             Store35August2026Seeder::class,
-            // RoleSeeder::class,
+            RoleSeeder::class,
             // UserSeeder::class,
             // EmployeeSeeder::class,
             // DeductionTypesSeeder::class,

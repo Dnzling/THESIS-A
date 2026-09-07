@@ -175,7 +175,9 @@
                   <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
                     <tr>
                       <th class="px-4 py-3 text-left">Item</th>
-                      <th class="px-4 py-3 text-right">Qty</th>
+                      <th class="px-4 py-3 text-right">Qty / UOM</th>
+                      <th class="px-4 py-3 text-right">Weight</th>
+                      <th class="px-4 py-3 text-right">Dimensions</th>
                       <th class="px-4 py-3 text-right">Price</th>
                       <th class="px-4 py-3 text-right">Line Total</th>
                     </tr>
@@ -186,7 +188,12 @@
                         <div class="font-medium text-gray-900">{{ item.product?.product_name || 'Item' }}</div>
                         <div class="text-xs text-gray-500 mt-0.5">{{ item.product?.sku || '' }}</div>
                       </td>
-                      <td class="px-4 py-3 text-right font-medium">{{ item.quantity_ordered }}</td>
+                      <td class="px-4 py-3 text-right font-medium">{{ formatQuantity(item.quantity_ordered) }} {{ item.product?.unit_of_measurement || 'unit' }}</td>
+                      <td class="px-4 py-3 text-right">
+                        <div>{{ formatDecimal(item.weight_kg, 3) }} kg/unit</div>
+                        <div class="text-xs text-slate-500">{{ formatDecimal(Number(item.weight_kg || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div>
+                      </td>
+                      <td class="px-4 py-3 text-right">{{ formatDimensions(item) }}</td>
                       <td class="px-4 py-3 text-right">₱{{ formatMoney(item.unit_cost) }}</td>
                       <td class="px-4 py-3 text-right font-semibold text-green-600">₱{{ formatMoney(item.line_total) }}</td>
                     </tr>
@@ -194,21 +201,6 @@
                 </table>
               </div>
 
-              <!-- Totals Summary -->
-              <div class="mt-4 bg-gray-50 rounded-xl p-4">
-                <div class="flex items-center justify-between text-sm">
-                  <span class="text-gray-600">Subtotal (Items)</span>
-                  <span class="font-semibold text-gray-900">₱{{ formatMoney(po?.subtotal) }}</span>
-                </div>
-                <div class="flex items-center justify-between text-sm mt-2">
-                  <span class="text-gray-600">Delivery Charge</span>
-                  <span class="font-semibold text-emerald-600">₱{{ formatMoney(deliveryCharge) }}</span>
-                </div>
-                <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 text-base font-semibold">
-                  <span class="text-gray-900">Total</span>
-                  <span class="text-blue-600">₱{{ formatMoney(totalWithDelivery) }}</span>
-                </div>
-              </div>
             </div>
           </template>
         </Card>
@@ -216,8 +208,27 @@
 
       <!-- Right Column - Shipment Information -->
       <div v-if="!isDeclined" class="space-y-6">
-        <!-- Delivery Information Card -->
         <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">All Fees</h3></div></template>
+          <template #content>
+            <div class="space-y-3 p-6 pt-0 text-sm">
+              <div class="flex justify-between"><span class="text-gray-500">Items subtotal</span><span class="font-medium">₱{{ formatMoney(po?.subtotal) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Contract discount ({{ formatDecimal(contractDiscountPercent) }}%)</span><span class="font-medium text-rose-600">− ₱{{ formatMoney(po?.discount_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Taxable amount</span><span class="font-medium">₱{{ formatMoney(taxableAmount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">VAT / Tax ({{ formatDecimal(contractTaxRate) }}%)</span><span class="font-medium">₱{{ formatMoney(po?.tax_amount) }}</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Shipping fee</span><span class="font-medium">₱{{ formatMoney(po?.shipping_cost) }}</span></div>
+              <div class="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold"><span>Total</span><span class="text-emerald-600">₱{{ formatMoney(po?.total_amount) }}</span></div>
+            </div>
+          </template>
+        </Card>
+
+        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <template #header><div class="px-6 pt-6"><h3 class="text-lg font-semibold text-gray-900">Fulfillment</h3></div></template>
+          <template #content><div class="p-6 pt-0"><Tag :value="fulfillmentLabel" :severity="po?.fulfillment_method === 'supplier_delivery' ? 'info' : 'success'" /><p class="mt-3 text-sm text-gray-600">{{ fulfillmentDescription }}</p></div></template>
+        </Card>
+
+        <!-- Delivery Information Card -->
+        <Card v-if="shipment" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
@@ -230,16 +241,20 @@
               <div class="space-y-3">
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Driver</span>
-                  <span class="font-medium text-gray-900">{{ shipment?.driver_name || '-' }}</span>
+                  <span class="font-medium text-gray-900">{{ assignedDriverName }}</span>
                 </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Employee Number</span><span class="font-medium text-gray-900">{{ shipment?.driver_employee?.employee_number || '-' }}</span></div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Contact</span><span class="font-medium text-gray-900">{{ shipment?.driver_contact || shipment?.driver_user?.phone_number || '-' }}</span></div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Email</span><span class="font-medium text-gray-900">{{ shipment?.driver_user?.email || shipment?.driver_employee?.user?.email || '-' }}</span></div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Plate Number</span>
                   <span class="font-medium text-gray-900">{{ shipment?.plate_number || '-' }}</span>
                 </div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Truck</span>
-                  <span class="font-medium text-gray-900">{{ shipment?.truck_brand || shipment?.truck_type || '-' }}</span>
+                  <span class="font-medium text-gray-900">{{ vehicleDescription }}</span>
                 </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100"><span class="text-sm text-gray-500">Capacity</span><span class="font-medium text-gray-900">{{ shipment?.vehicle?.capacity_kg ? `${formatDecimal(shipment.vehicle.capacity_kg)} kg` : '-' }}</span></div>
                 <div class="flex items-center justify-between py-2 border-b border-gray-100">
                   <span class="text-sm text-gray-500">Distance</span>
                   <span class="font-medium text-gray-900">{{ shipment?.distance_km || '-' }} km</span>
@@ -254,7 +269,7 @@
         </Card>
 
         <!-- Shipment Summary Card -->
-        <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <Card v-if="shipment" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
@@ -426,6 +441,8 @@ const goodsReceipt = ref<any>(null)
 const existingInvoice = ref<any>(null)
 const invoiceCreating = ref(false)
 const rejectionReason = ref<string | null>(null)
+const contractTaxRate = ref(0)
+const contractDiscountPercent = ref(0)
 
 // Computed properties
 const deliveryCharge = computed(() => {
@@ -435,6 +452,22 @@ const deliveryCharge = computed(() => {
 const totalWithDelivery = computed(() => {
   const subtotal = Number(po.value?.subtotal || 0)
   return subtotal + deliveryCharge.value
+})
+
+const taxableAmount = computed(() => Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0)))
+const fulfillmentLabel = computed(() => po.value?.fulfillment_method === 'supplier_delivery' ? 'Supplier Delivery' : po.value?.fulfillment_method === 'store_pickup' ? 'Store Pickup' : 'Not selected')
+const fulfillmentDescription = computed(() => po.value?.fulfillment_method === 'supplier_delivery'
+  ? 'Your supplier team is responsible for delivering this order to the store.'
+  : po.value?.fulfillment_method === 'store_pickup'
+    ? 'The store will assign a driver and vehicle to collect this order.'
+    : 'The fulfillment method has not been selected yet.')
+const assignedDriverName = computed(() => {
+  const user = shipment.value?.driver_employee?.user || shipment.value?.driver_user
+  return [user?.fname, user?.lname].filter(Boolean).join(' ') || shipment.value?.driver_name || '-'
+})
+const vehicleDescription = computed(() => {
+  const vehicle = shipment.value?.vehicle
+  return [vehicle?.brand, vehicle?.model, vehicle?.vehicle_type].filter(Boolean).join(' ') || shipment.value?.truck_brand || shipment.value?.truck_type || '-'
 })
 
 const isDeclined = computed(() => {
@@ -529,6 +562,11 @@ const formatQuantity = (value?: number): string => {
   return Number(value ?? 0).toLocaleString('en-PH')
 }
 
+const formatDecimal = (value?: number, digits = 2): string => Number(value ?? 0).toLocaleString('en-PH', { maximumFractionDigits: digits })
+const formatDimensions = (item: any): string => item?.length_cm && item?.width_cm && item?.height_cm
+  ? `${formatDecimal(item.length_cm)} × ${formatDecimal(item.width_cm)} × ${formatDecimal(item.height_cm)} cm`
+  : '-'
+
 const formatStatus = (status: string): string => {
   if (!status) return '-'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -575,6 +613,8 @@ const goToInvoice = () => {
       shipment.value = payload?.data?.shipment || null
       goodsReceipt.value = payload?.data?.goods_receipt || null
       existingInvoice.value = payload?.data?.invoice || null
+      contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0)
+      contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || po.value?.contract_discount_percentage || 0)
 
       if (!isDeclined.value && po.value?.id && !shipment.value) {
         const shipmentRes = await supplierService.getPOShipment(id)

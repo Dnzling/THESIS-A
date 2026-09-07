@@ -24,7 +24,8 @@
           <div><span class="text-slate-500">Contact:</span> <strong>{{ customerContact }}</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong></div>
           <div><span class="text-slate-500">Order Status:</span> <Tag :value="formattedOrderStatus" severity="secondary" /></div>
-          <div><span class="text-slate-500">Total:</span> <strong>₱ {{ orderTotal }}</strong></div>
+          <div><span class="text-slate-500">Total:</span> <strong>{{ formatCurrency(order?.total_amount) }}</strong></div>
+          <div><span class="text-slate-500">Shipping Fee:</span> <strong>{{ formatCurrency(order?.shipping_fee) }}</strong></div>
         </div>
       </template>
     </Card>
@@ -46,6 +47,18 @@
             />
           </div>
 
+          <div v-if="selectedEmployee" class="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <div class="mb-3 flex items-center justify-between"><h3 class="font-semibold text-slate-900">Driver Information</h3><Tag value="Active" severity="success" /></div>
+            <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div><span class="text-slate-500">Full Name</span><p class="font-medium text-slate-900">{{ selectedEmployee.name || '-' }}</p></div>
+              <div><span class="text-slate-500">Employee Number</span><p class="font-medium text-slate-900">{{ selectedEmployee.employee_number || '-' }}</p></div>
+              <div><span class="text-slate-500">Contact</span><p class="font-medium text-slate-900">{{ selectedEmployee.contact || form.courier_contact || '-' }}</p></div>
+              <div><span class="text-slate-500">Email</span><p class="font-medium text-slate-900">{{ selectedEmployee.email || '-' }}</p></div>
+              <div><span class="text-slate-500">Department</span><p class="font-medium text-slate-900">{{ selectedEmployee.department || '-' }}</p></div>
+              <div><span class="text-slate-500">Position</span><p class="font-medium text-slate-900">{{ selectedEmployee.position || 'Driver' }}</p></div>
+            </div>
+          </div>
+
           <div>
             <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
             <Select
@@ -59,6 +72,17 @@
             />
           </div>
 
+          <div v-if="selectedVehicle" class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+            <div class="mb-3 flex items-center justify-between"><h3 class="font-semibold text-slate-900">Vehicle Details</h3><Tag :value="selectedVehicle.status || 'Active'" severity="success" /></div>
+            <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div><span class="text-slate-500">Vehicle Name</span><p class="font-medium text-slate-900">{{ selectedVehicle.vehicle_name || '-' }}</p></div>
+              <div><span class="text-slate-500">Type</span><p class="font-medium capitalize text-slate-900">{{ selectedVehicle.vehicle_type || '-' }}</p></div>
+              <div><span class="text-slate-500">Plate Number</span><p class="font-medium text-slate-900">{{ selectedVehicle.plate_number || '-' }}</p></div>
+              <div><span class="text-slate-500">Brand / Model</span><p class="font-medium text-slate-900">{{ [selectedVehicle.brand, selectedVehicle.model].filter(Boolean).join(' ') || '-' }}</p></div>
+              <div><span class="text-slate-500">Capacity</span><p class="font-medium text-slate-900">{{ selectedVehicle.capacity_kg ? `${selectedVehicle.capacity_kg} kg` : '-' }}</p></div>
+            </div>
+          </div>
+
           <div>
             <label class="mb-1 block text-sm text-slate-600">Courier Contact Number</label>
             <InputText v-model="form.courier_contact" fluid placeholder="09xxxxxxxxx" />
@@ -66,7 +90,7 @@
 
           <div>
             <label class="mb-1 block text-sm text-slate-600">Estimated Delivery Time</label>
-            <DatePicker v-model="form.estimated_delivery_at" showTime hourFormat="12" fluid />
+            <DatePicker v-model="form.estimated_delivery_at" :minDate="new Date()" showTime hourFormat="12" fluid />
           </div>
 
           <div class="md:col-span-2">
@@ -75,7 +99,6 @@
           </div>
 
           <div class="md:col-span-2 flex flex-wrap gap-2">
-            <Button type="button" outlined icon="pi pi-map-marker" label="Calculate Distance" :loading="estimating" @click="calculateDistance" />
             <Button type="submit" icon="pi pi-check" label="Assign Delivery" :loading="submitting" :disabled="!canManageDeliveries || !canSubmit" />
           </div>
         </form>
@@ -118,6 +141,8 @@ const vehicles = ref<any[]>([])
 const zones = ref<any[]>([])
 const selectedZone = ref<any>(null)
 const selectedRate = ref<any>(null)
+const selectedEmployee = computed(() => employees.value.find((employee: any) => Number(employee.id) === Number(form.driver_user_id)))
+const selectedVehicle = computed(() => vehicles.value.find((vehicle: any) => Number(vehicle.id) === Number(form.vehicle_id)))
 
 const form = reactive({
   driver_user_id: null as number | null,
@@ -144,15 +169,7 @@ const formattedOrderStatus = computed(() => {
   if (!status) return '-'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 })
-const orderTotal = computed(() => Number(order.value?.total_amount || 0).toFixed(2))
-const estimatedFee = computed(() => {
-  const base = Number(form.base_fee || 0)
-  const distance = Number(form.distance_km || 0)
-  const perKm = Number(form.per_km_charge || 0)
-  const weight = Number(form.weight_kg || 0)
-  const perKg = Number(form.per_kg_fee || 0)
-  return (base + distance * perKm + weight * perKg).toFixed(2)
-})
+const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 
 const totalWeightKg = computed(() => {
   const items = order.value?.items || []

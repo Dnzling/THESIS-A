@@ -28,6 +28,7 @@ class StoreScopedRoleController extends Controller
             ->selectRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) as display_name')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
+            ->selectRaw('(SELECT COUNT(*) FROM employees WHERE role_id = roles.id AND employees.store_id = ?) as employees_count', [$storeId])
             ->where('store_id', $storeId)
             ->orderByRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) ASC')
             ->get();
@@ -56,6 +57,7 @@ class StoreScopedRoleController extends Controller
             ->selectRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) as display_name')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
+            ->selectRaw('(SELECT COUNT(*) FROM employees WHERE role_id = roles.id AND employees.store_id = ?) as employees_count', [$storeId])
             ->where('roles.store_id', $storeId);
 
         if ($departmentId || $departmentName) {

@@ -25,14 +25,12 @@ use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
 use App\Http\Controllers\Api\Store\StoreScopedRoleController;
 use App\Http\Controllers\Api\Payments\PaymongoController;
-use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Admin\SupplierVerificationController;
 use App\Http\Controllers\Api\Admin\ViolationReportController;
-use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\Core\SystemNotificationController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
@@ -44,6 +42,7 @@ use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 // ========== PUBLIC ROUTES ==========
 Route::prefix('auth')->group(function () {
     Route::middleware('throttle:login')->post('login', [AuthController::class, 'login']);
+    Route::middleware('throttle:login')->post('super-admin/login', [AuthController::class, 'superAdminLogin']);
     Route::middleware('throttle:login-with-clock-in')->post('login-with-clock-in', [AuthController::class, 'loginWithClockIn']);
     Route::middleware('throttle:register')->post('register', [AuthController::class, 'register']);
     Route::middleware('throttle:register')->post('supplier/register', [AuthController::class, 'registerSupplier']);
@@ -88,7 +87,6 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
-    Route::post('/customer-verification/trigger', [CustomerVerificationTriggerController::class, 'trigger']);
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
     // Add admin supplier verification endpoints
     Route::get('/admin/suppliers/pending', [SupplierVerificationController::class, 'index']);
@@ -140,17 +138,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/store-modules/override', [\App\Http\Controllers\Api\Admin\StoreModuleController::class, 'override']);
 
         // Customer Validation
-        Route::get('/customer-validations', [CustomerValidationController::class, 'index']);
-        Route::get('/customer-validations/documents/{document}/serve', [CustomerValidationController::class, 'serveDocument']);
-        Route::get('/customer-validations/{id}', [CustomerValidationController::class, 'show']);
-        Route::post('/customer-validations/{id}/review', [CustomerValidationController::class, 'review']);
 
         // Customer Management
         Route::get('/customers', [CustomerManagementController::class, 'index']);
-        Route::post('/customers/{id}/require-verification', [CustomerManagementController::class, 'requireVerification']);
-        Route::post('/customers/require-verification-bulk', [CustomerManagementController::class, 'requireVerificationBulk']);
-
-        // Subscription Management
         Route::get('/subscriptions', [SubscriptionManagementController::class, 'index']);
         Route::get('/subscriptions/stats', [SubscriptionManagementController::class, 'stats']);
         Route::put('/subscriptions/{store}', [SubscriptionManagementController::class, 'update']);
@@ -160,6 +150,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'update']);
         Route::delete('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'destroy']);
+
 
         // Super Admin Management
         Route::get('/super-admins', [\App\Http\Controllers\Api\Admin\SuperAdminManagementController::class, 'index']);
@@ -241,9 +232,6 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // ========== PROFILE ==========
     Route::prefix('profile')->controller(ApiProfileController::class)->group(function () {
         Route::get('/', 'show');
-        Route::get('/verification', 'verificationStatus');
-        Route::post('/verification', 'submitVerification');
-        Route::get('/verification/documents/{document}/serve', 'serveVerificationDocument');
         Route::put('/', 'update');
         Route::post('avatar', 'updateAvatar');
         Route::delete('avatar', 'removeAvatar');

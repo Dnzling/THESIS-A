@@ -86,8 +86,14 @@
         <tr>
           <td>Subtotal: {{ number_format((float) $order->subtotal, 2) }}</td>
           <td>Discount: {{ number_format((float) $order->discount_amount, 2) }}</td>
-          <td>Tax: {{ number_format((float) $order->tax_amount, 2) }}</td>
+          <td>VATable Sales: {{ number_format(max(0, (float) $order->subtotal - (float) $order->discount_amount - (float) $order->tax_amount), 2) }}</td>
           <td class="right"><strong>Total: {{ number_format((float) $order->total_amount, 2) }}</strong></td>
+        </tr>
+        <tr>
+          <td>VAT Included (12%): {{ number_format((float) $order->tax_amount, 2) }}</td>
+          <td>Shipping Fee: {{ number_format((float) ($order->shipping_fee ?? 0), 2) }}</td>
+          <td></td>
+          <td></td>
         </tr>
         <tr>
           <td>Payment Method: {{ strtoupper($order->payment_method ?? '-') }}</td>

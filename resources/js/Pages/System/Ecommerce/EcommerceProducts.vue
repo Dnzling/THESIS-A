@@ -117,7 +117,10 @@
                   {{ item.product_name }}
                 </h3>
                 <div class="flex items-center justify-between">
-                  <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(item.price) }}</span>
+                  <div>
+                    <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(item.price) }}</span>
+                    <p class="text-[10px] text-slate-400">VAT included</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -148,7 +151,10 @@
                 {{ product.product_name }}
               </h3>
               <div class="flex items-center justify-between">
-                <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.price) }}</span>
+                <div>
+                  <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.price) }}</span>
+                  <p class="text-[10px] text-slate-400">VAT included</p>
+                </div>
                 <span class="text-[10px] text-slate-400 font-medium">{{ product.rating_count || 0 }} reviews</span>
               </div>
             </div>
@@ -341,7 +347,10 @@ async function loadProducts() {
   loading.value = true
   try {
     const response = await ecommerceService.getActiveStockProducts({ per_page: 80 })
-    products.value = response.data?.data?.data || response.data?.data || []
+    const rows = response.data?.data?.data || response.data?.data || []
+    products.value = Array.isArray(rows)
+      ? rows.filter((product: any) => product.product_type === 'finished_good')
+      : []
   } finally {
     loading.value = false
   }

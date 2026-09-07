@@ -3,8 +3,8 @@
     <div class="flex items-center gap-3">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-issues' })" />
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Create Stock Issue</h2>
-        <p class="text-sm text-gray-500 mt-1">Record stock out transactions (damaged, lost, expired, etc.)</p>
+        <h2 class="text-2xl font-bold text-gray-800">{{ isSupplyIssuance ? 'Create Supply Issuance' : 'Create Stock Issue' }}</h2>
+        <p class="text-sm text-gray-500 mt-1">{{ isSupplyIssuance ? 'Issue office and operational supplies to a team or department.' : 'Record stock out transactions (damaged, lost, expired, etc.)' }}</p>
       </div>
     </div>
 
@@ -14,10 +14,10 @@
           <!-- Header Section -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">
+                <label v-if="!isSupplyIssuance" class="text-sm font-semibold text-gray-700">
                 Issue Type <span class="text-red-500">*</span>
               </label>
-              <Select 
+              <Select v-if="!isSupplyIssuance"
                 v-model="form.issue_type" 
                 :options="typeOptions" 
                 optionLabel="label" 
@@ -33,6 +33,9 @@
                   </div>
                 </template>
               </Select>
+              <div v-else class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <i class="pi pi-send mr-2 text-orange-500" /> Supply issuance
+              </div>
               <small v-if="errors.issue_type" class="text-red-500">{{ errors.issue_type[0] }}</small>
             </div>
 
@@ -323,7 +326,7 @@
               @click="cancel"
             />
             <Button 
-              label="Create Stock Issue" 
+              :label="isSupplyIssuance ? 'Create Supply Issuance' : 'Create Stock Issue'" 
               icon="pi pi-check" 
               :loading="submitting" 
               type="submit" 
@@ -350,12 +353,14 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
+const isSupplyIssuance = computed(() => route.name === 'inventory.supply-issuance.create')
 
 // State
 const submitting = ref(false)
@@ -367,7 +372,7 @@ const today = new Date()
 
 // Form state
 const form = reactive({
-  issue_type: '',
+  issue_type: isSupplyIssuance.value ? 'other' : '',
   issue_date: today,
   reference_number: '',
   description: '',
@@ -438,6 +443,7 @@ const availableProducts = computed(() => {
   const addedIds = form.items.map(item => item.inventory_item_id)
 
   return inventoryItems.value
+    .filter(item => !isSupplyIssuance.value || item.product?.product_type === 'supply')
     .filter(item => !addedIds.includes(item.id) && item.quantity_available > 0)
     .map(item => ({
       id: item.id,
@@ -565,7 +571,7 @@ const loadInventoryItems = async () => {
       toast.add({
         severity: 'info',
         summary: 'No Stock',
-        detail: 'No items with available stock found',
+      detail: isSupplyIssuance.value ? 'No supplies with available stock found' : 'No items with available stock found',
         life: 3000
       })
     }
@@ -597,7 +603,7 @@ const addItem = () => {
   toast.add({
     severity: 'success',
     summary: 'Item Added',
-    detail: `${getProductName(newItem.inventory_item_id!)} has been added to the issue`,
+    detail: `${getProductName(newItem.inventory_item_id!)} has been added`,
     life: 2000
   })
 
@@ -687,7 +693,7 @@ const submitIssue = async () => {
       toast.add({
         severity: 'error',
         summary: 'Error',
-        detail: error.response?.data?.message || 'Failed to create stock issue',
+        detail: error.response?.data?.message || (isSupplyIssuance.value ? 'Failed to create supply issuance' : 'Failed to create stock issue'),
         life: 3000
       })
     }

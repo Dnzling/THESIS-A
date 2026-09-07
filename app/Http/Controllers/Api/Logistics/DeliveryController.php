@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Core\User;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
+use App\Services\Sales\OrderCommissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,11 @@ use Illuminate\Validation\Rule;
 
 class DeliveryController extends Controller
 {
+    public function __construct(
+        private readonly OrderCommissionService $commissionService
+    ) {
+    }
+
     private const DELIVERY_STATUSES = [
         'assigned',
         'packed',
@@ -132,6 +138,9 @@ class DeliveryController extends Controller
                 $delivery->order->payment_status = 'paid';
             }
             $delivery->order->save();
+            if ($delivery->order->payment_status === 'paid' && $delivery->order->payment_method === 'cod') {
+                $this->commissionService->record($delivery->order, false);
+            }
         }
 
         return response()->json([
@@ -168,6 +177,7 @@ class DeliveryController extends Controller
             ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,phone,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
+            ->whereHas('role', fn ($query) => $query->where('name', 'driver'))
             ->when($roleIds->isNotEmpty(), fn ($query) => $query->whereIn('role_id', $roleIds))
             ->when($branchId, fn ($q) => $q->whereHas('employee', fn ($employee) => $employee->where('branch_id', $branchId)))
             ->orderBy('fname')
@@ -252,6 +262,9 @@ class DeliveryController extends Controller
                 $delivery->order->payment_status = 'paid';
             }
             $delivery->order->save();
+            if ($delivery->order->payment_status === 'paid' && $delivery->order->payment_method === 'cod') {
+                $this->commissionService->record($delivery->order, false);
+            }
         }
 
         $proofPhotoUrl = Storage::disk('public')->url($delivery->proof_of_delivery_path);

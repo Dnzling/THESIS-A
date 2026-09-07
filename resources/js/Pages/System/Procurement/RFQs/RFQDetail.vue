@@ -3,10 +3,8 @@
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <button 
-          @click="router.push({ name: 'procurement.rfqs' })"
-          class="w-10 h-10 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center transition-colors shadow-sm border border-gray-200"
-        >
+        <button @click="router.push({ name: 'procurement.rfqs' })"
+          class="w-10 h-10 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center transition-colors shadow-sm border border-gray-200">
           <i class="pi pi-chevron-left text-gray-600 text-lg"></i>
         </button>
         <div>
@@ -16,7 +14,7 @@
       </div>
       <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="text-xs" />
     </div>
-
+  
     <!-- Loading State -->
     <div v-if="loading" class="space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -32,7 +30,7 @@
         <Skeleton height="200px" />
       </div>
     </div>
-
+  
     <template v-else-if="detail">
       <!-- iOS-style Stats Cards -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -44,9 +42,9 @@
             </div>
           </div>
           <p class="text-xl font-semibold text-gray-900">{{ detail.rfq_number }}</p>
-          <p class="text-xs text-gray-500 mt-2">Created by: {{ detail.created_by?.fname }} {{ detail.created_by?.lname }}</p>
+          <p class="text-xs text-gray-500 mt-2">Created by: {{ getPersonName(detail.created_by) }}</p>
         </div>
-
+  
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Title</span>
@@ -57,7 +55,7 @@
           <p class="text-lg font-semibold text-gray-900">{{ detail.title }}</p>
           <p class="text-xs text-gray-500 mt-2">Type: {{ capitalizeWords(detail.rfq_type) }}</p>
         </div>
-
+  
         <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-blue-100 uppercase tracking-wider">Suppliers</span>
@@ -69,7 +67,7 @@
           <p class="text-xs text-blue-200 mt-2">{{ detail.items?.length || 0 }} line items</p>
         </div>
       </div>
-
+  
       <!-- RFQ Details & Terms Card -->
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -91,21 +89,21 @@
                 <p class="font-medium text-gray-900">{{ formatDate(detail.issue_date) }}</p>
               </div>
             </div>
-
+  
             <!-- Payment & Shipping Terms -->
             <div class="space-y-4">
               <div>
                 <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Currency</p>
                 <p class="font-semibold text-gray-900">{{ detail.currency }}</p>
               </div>
-            
+  
               <div>
                 <p class="text-xs text-gray-500 mb-1">Special Instructions</p>
                 <p class="text-gray-900">{{ detail.instructions || 'None' }}</p>
               </div>
             </div>
           </div>
-
+  
           <!-- Qualification Requirements -->
           <div v-if="detail.qualification_requirements" class="mt-6 p-4 bg-yellow-50 rounded-xl border border-yellow-100">
             <div class="flex items-center gap-2 mb-2">
@@ -116,7 +114,7 @@
           </div>
         </div>
       </div>
-
+  
       <!-- Line Items -->
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -127,8 +125,8 @@
         </div>
         <div class="p-6">
           <div v-if="detail.items && detail.items.length > 0" class="space-y-3">
-            <div v-for="(item, index) in detail.items" :key="index" 
-                 class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+            <div v-for="(item, index) in detail.items" :key="index"
+              class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="md:col-span-1">
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product</p>
@@ -140,7 +138,8 @@
                 </div>
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Quantity</p>
-                  <p class="text-2xl font-semibold text-blue-600">{{ item.quantity }}</p>
+                  <p class="text-2xl font-semibold text-blue-600">{{ item.quantity }} {{ item.product?.unit_of_measurement
+                    || item.unit_of_measurement || item.unit || '-' }}</p>
                   <p v-if="item.specifications" class="text-xs text-gray-500 mt-2">
                     Specs: {{ item.specifications }}
                   </p>
@@ -161,7 +160,7 @@
           </div>
         </div>
       </div>
-
+  
       <!-- Invited Suppliers -->
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -172,19 +171,21 @@
         </div>
         <div class="p-6">
           <div v-if="detail.suppliers && detail.suppliers.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div v-for="(invitedSupplier, index) in detail.suppliers" :key="index" 
-                 class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+            <div v-for="(invitedSupplier, index) in detail.suppliers" :key="index"
+              class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
               <div class="flex items-start justify-between mb-3">
                 <div>
-                  <p class="font-semibold text-gray-900">{{ invitedSupplier.supplier?.supplier_name || 'Unknown Supplier' }}</p>
+                  <p class="font-semibold text-gray-900">{{ invitedSupplier.supplier?.supplier_name || 'Unknown Supplier'
+                    }}</p>
                   <p class="text-sm text-gray-600 mt-1">{{ invitedSupplier.supplier?.email || 'No email' }}</p>
                   <p v-if="invitedSupplier.supplier?.contact_person" class="text-xs text-gray-500 mt-1">
                     Contact: {{ invitedSupplier.supplier.contact_person }}
                   </p>
                 </div>
-                <Tag :value="formatStatus(invitedSupplier.status)" :severity="getSupplierStatusSeverity(invitedSupplier.status)" />
+                <Tag :value="formatStatus(invitedSupplier.status)"
+                  :severity="getSupplierStatusSeverity(invitedSupplier.status)" />
               </div>
-
+  
               <div class="space-y-2 text-sm border-t border-gray-100 pt-3">
                 <div class="flex items-center gap-2">
                   <i class="pi pi-envelope text-gray-400 text-xs"></i>
@@ -196,7 +197,8 @@
                 </div>
                 <div v-if="invitedSupplier.responded_at" class="flex items-center gap-2">
                   <i class="pi pi-check-circle text-green-500 text-xs"></i>
-                  <span class="text-xs text-green-600">Responded: {{ formatDateTime(invitedSupplier.responded_at) }}</span>
+                  <span class="text-xs text-green-600">Responded: {{ formatDateTime(invitedSupplier.responded_at)
+                    }}</span>
                 </div>
                 <div v-if="invitedSupplier.decline_reason" class="mt-2 p-2 bg-red-50 rounded-lg">
                   <p class="text-xs text-red-600">Declined: {{ invitedSupplier.decline_reason }}</p>
@@ -210,9 +212,10 @@
           </div>
         </div>
       </div>
-
+  
       <!-- Supplier Portal Responses -->
-      <div v-if="portalFeedbackGroups.length > 0" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div v-if="portalFeedbackGroups.length > 0"
+        class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
           <div class="flex items-center gap-2">
             <i class="pi pi-inbox text-gray-500"></i>
@@ -220,74 +223,119 @@
           </div>
         </div>
         <div class="p-6 space-y-4">
-          <div v-for="group in portalFeedbackGroups" :key="group.supplier_id" 
-               class="bg-white rounded-xl border border-gray-100 p-4">
+          <div v-for="group in portalFeedbackGroups" :key="group.supplier_id"
+            class="bg-white rounded-xl border border-gray-100 p-4">
             <div class="flex items-start justify-between mb-4">
               <div>
                 <p class="font-semibold text-gray-900">{{ group.supplier_name }}</p>
                 <p class="text-sm text-gray-600">{{ group.supplier_email }}</p>
               </div>
               <div class="flex items-center gap-2">
-                <Tag :value="group.items.length + ' Items'" severity="info" class="text-xs" />
-                <button
-                  v-if="group.items.some((item) => item.status === 'pending')"
+                <Tag :value="group.items.length + ' Item/s'" severity="info" class="text-xs" />
+                <button v-if="group.items.length > 1 && group.items.some((item) => item.status === 'pending')"
                   @click="bulkApproveGroup(group.items.filter((item) => item.status === 'pending').map((item) => item.feedback_id))"
-                  class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
-                >
+                  class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors">
                   Approve All
                 </button>
               </div>
             </div>
-
+  
             <div class="space-y-3">
-              <div v-for="item in group.items" :key="item.id" 
-                   class="bg-gray-50 rounded-xl p-4">
+              <div v-for="item in group.items" :key="item.id" class="bg-gray-50 rounded-xl p-4">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <p class="text-xs text-gray-500 mb-1">Product</p>
                     <p class="font-medium text-gray-900">{{ item.product_name }}</p>
                     <p class="text-xs text-gray-500 mt-1">SKU: {{ item.sku || 'N/A' }}</p>
-                    <p class="text-xs text-gray-500">Qty: {{ item.quantity }} {{ item.unit || '' }}</p>
+                    <p class="text-xs text-gray-500">Qty: {{ item.quantity }} {{ item.unit_of_measurement || item.unit ||
+                      '-' }}</p>
                   </div>
                   <div>
-                    <p class="text-xs text-gray-500 mb-1">Quoted Price</p>
-                    <p class="text-lg font-semibold text-green-600">{{ detail?.currency || 'PHP' }} {{ item.quoted_price }}</p>
-                    <p v-if="item.submitted_at" class="text-xs text-gray-500 mt-1">Submitted: {{ formatDateTime(item.submitted_at) }}</p>
+                    <p class="text-xs text-gray-500 mb-1">Unit Price</p>
+                    <p class="text-lg font-semibold text-green-600">{{ detail?.currency || 'PHP' }} {{ item.quoted_price
+                      }}</p>
+                    <p class="mt-1 text-xs text-slate-600">Estimated total: <strong class="text-slate-900">{{
+                        detail?.currency || 'PHP' }} {{ item.estimated_total }}</strong></p>
+                    <p v-if="item.submitted_at" class="text-xs text-gray-500 mt-1">Submitted: {{
+                      formatDateTime(item.submitted_at) }}</p>
                   </div>
                   <div class="text-right">
                     <Tag :value="item.statusLabel" :severity="item.statusSeverity" class="mb-2" />
                     <p v-if="item.rejection_reason" class="text-xs text-red-600 mt-1">{{ item.rejection_reason }}</p>
                   </div>
                 </div>
-
+  
+                <div
+                  class="mt-4 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 sm:grid-cols-3">
+                  <div><span class="text-slate-400">Available quantity</span>
+                    <p class="font-medium text-slate-900">{{ formatWholeNumber(item.available_quantity) }} {{
+                      item.unit_of_measurement || item.unit || '-' }}</p>
+                  </div>
+                  <div><span class="text-slate-400">Estimated delivery</span>
+                    <p class="font-medium text-slate-900">{{ formatDate(item.estimated_delivery_date) }}</p>
+                  </div>
+                  <div><span class="text-slate-400">Quotation valid until</span>
+                    <p class="font-medium text-slate-900">{{ formatDate(item.quotation_valid_until) }}</p>
+                  </div>
+                </div>
+                <div v-if="item.product_specifications || item.additional_notes || item.attachment_path"
+                  class="mt-3 space-y-2 text-xs">
+                  <p v-if="item.product_specifications" class="text-gray-600"><span
+                      class="font-medium text-gray-800">Product specifications:</span> {{ item.product_specifications }}
+                  </p>
+                  <p v-if="item.additional_notes" class="text-gray-600"><span class="font-medium text-gray-800">Additional
+                      notes:</span> {{ item.additional_notes }}</p>
+                  <div v-if="item.attachment_path" class="mt-3 border-t border-slate-100 pt-3">
+                    <p class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Supplier attachment</p>
+                    <div class="flex flex-wrap gap-3">
+                      <button type="button"
+                        class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                        @click="openAttachmentPreview(item.attachment_path)">
+                        <img v-if="isAttachmentImage(item.attachment_path)" :src="getAttachmentUrl(item.attachment_path)"
+                          alt="Supplier attachment" class="h-32 w-40 object-cover transition group-hover:scale-105" />
+                        <span v-else class="flex h-32 w-40 items-center justify-center bg-slate-100 text-slate-500">
+                          <i class="pi pi-file text-3xl"></i>
+                        </span>
+                        <span
+                          class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View
+                          attachment</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+  
                 <div v-if="item.negotiations && item.negotiations.length > 0" class="mt-3">
                   <p class="text-xs font-medium text-gray-700 mb-2">Negotiation History</p>
                   <div class="space-y-2">
-                    <div v-for="nego in item.negotiations" :key="nego.id" 
-                         class="bg-blue-50 p-2 rounded-lg text-xs">
-                      <span class="font-medium">Counter: {{ detail?.currency || 'PHP' }} {{ parseFloat(nego.counter_price).toFixed(2) }}</span>
+                    <div v-for="nego in item.negotiations" :key="nego.id" class="bg-blue-50 p-2 rounded-lg text-xs">
+                      <span class="font-medium">Counter: {{ detail?.currency || 'PHP' }} {{
+                        parseFloat(nego.counter_price).toFixed(2) }}</span>
                       <span class="text-gray-500 ml-2">{{ formatDateTime(nego.created_at) }}</span>
                     </div>
                   </div>
                 </div>
-
+  
                 <div v-if="item.status === 'pending'" class="mt-4 flex gap-2 justify-end">
-                  <button
-                    @click="approveFeedback(item.feedback_id)"
-                    class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
-                  >
+                  <button @click="openRejectDialog(item.feedback_id)"
+                    class="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors">
+                    Reject
+                  </button>
+                  <button @click="approveFeedback(item.feedback_id)"
+                    class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors">
                     Approve
                   </button>
-                  <button
-                    @click="openRejectDialog(item.feedback_id)"
-                    class="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors"
-                  >
-                    Reject
+  
+                </div>
+                <div v-if="item.status === 'approved' && canManagePurchaseOrders" class="mt-4 flex justify-end">
+                  <button @click="createPOFromApprovedItem(item)"
+                    class="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-orange-600">
+                    <i class="pi pi-shopping-cart"></i>
+                    Create PO for this product
                   </button>
                 </div>
               </div>
             </div>
-
+  
             <div v-if="group.notes.length > 0" class="mt-4 p-3 bg-gray-100 rounded-lg">
               <p class="text-xs font-medium text-gray-700 mb-1">Notes</p>
               <ul class="space-y-1">
@@ -297,121 +345,93 @@
           </div>
         </div>
       </div>
-
-      <!-- Quotations -->
-      <div v-if="detail.quotations && detail.quotations.length > 0" class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <div class="flex items-center gap-2">
-            <i class="pi pi-credit-card text-gray-500"></i>
-            <h3 class="font-medium text-gray-700">Supplier Quotations</h3>
-          </div>
-        </div>
-        <div class="p-6 space-y-3">
-          <div v-for="(quotation, index) in detail.quotations" :key="index" 
-               class="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
-            <div class="flex justify-between items-start">
-              <div>
-                <p class="font-semibold text-gray-900">{{ quotation.supplier?.supplier_name || 'Unknown' }}</p>
-                <p class="text-sm text-gray-600 mt-1">Quote Date: {{ formatDate(quotation.quote_date) }}</p>
-              </div>
-              <div class="text-right">
-                <p class="text-2xl font-bold text-blue-600">{{ detail.currency }} {{ parseFloat(quotation.total_price || 0).toFixed(2) }}</p>
-                <Tag :value="formatStatus(quotation.status)" :severity="getSupplierStatusSeverity(quotation.status)" class="mt-2" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+  
+  
+  
       <!-- Action Buttons -->
       <div class="flex justify-end gap-3">
-        <button
-          v-if="canManageRfq && detail.status === 'draft'"
-          @click="editRFQ"
-          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-amber-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-        >
+        <button v-if="canManageRfq && detail.status === 'draft'" @click="editRFQ"
+          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-amber-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200">
           <i class="pi pi-pencil text-sm"></i>
           <span>Edit RFQ</span>
         </button>
-        <button
-          v-if="canManageRfq && detail.status === 'draft'"
-          @click="deleteRFQ"
-          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200"
-        >
+        <button v-if="canManageRfq && detail.status === 'draft'" @click="deleteRFQ"
+          class="px-5 py-2.5 bg-white hover:bg-gray-50 text-red-600 font-medium rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-200">
           <i class="pi pi-trash text-sm"></i>
           <span>Delete RFQ</span>
         </button>
-        <button
-          v-if="detail.status === 'quotes_received'"
-          @click="award"
-          :disabled="processing"
-          class="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
+        <button v-if="detail.status === 'quotes_received'" @click="award" :disabled="processing"
+          class="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm">
           <i class="pi pi-check text-sm"></i>
           <span>{{ processing ? 'Awarding...' : 'Award RFQ' }}</span>
         </button>
-        <button
-          v-if="canManagePurchaseOrders && detail.status === 'approved'"
-          @click="createPOFromRFQ"
-          class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm"
-        >
+        <button v-if="canManagePurchaseOrders && detail.status === 'approved'" @click="createPOFromRFQ"
+          class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm">
           <i class="pi pi-shopping-cart text-sm"></i>
           <span>Create PO</span>
         </button>
       </div>
     </template>
-
+  
     <!-- Error State -->
     <div v-else class="text-center py-12 bg-white rounded-2xl border border-gray-100">
       <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
         <i class="pi pi-exclamation-circle text-gray-400 text-3xl"></i>
       </div>
       <h3 class="text-lg font-medium text-gray-700">RFQ Not Found</h3>
-      <p class="text-gray-500 mt-2 mb-4">The RFQ you're looking for doesn't exist or you don't have permission to view it.</p>
-      <button
-        @click="router.push({ name: 'procurement.rfqs' })"
-        class="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors inline-flex items-center gap-2"
-      >
+      <p class="text-gray-500 mt-2 mb-4">The RFQ you're looking for doesn't exist or you don't have permission to view it.
+      </p>
+      <button @click="router.push({ name: 'procurement.rfqs' })"
+        class="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl text-sm transition-colors inline-flex items-center gap-2">
         <i class="pi pi-arrow-left"></i>
         <span>Back to RFQs</span>
       </button>
     </div>
-
+  
     <ConfirmDialog />
-    
+  
     <!-- Reject Dialog -->
     <div v-if="rejectDialogVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">Reject Supplier Response</h3>
-        
+  
         <div class="space-y-4">
           <p class="text-sm text-gray-600">Provide a reason for rejection. This will be visible to the supplier.</p>
-          <textarea
-            v-model="rejectReason"
-            rows="4"
-            placeholder="Enter rejection reason..."
-            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
-          ></textarea>
+          <textarea v-model="rejectReason" rows="4" placeholder="Enter rejection reason..."
+            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"></textarea>
         </div>
-
+  
         <div class="flex justify-end gap-3 mt-6">
-          <button
-            @click="closeRejectDialog"
-            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition-colors"
-          >
+          <button @click="closeRejectDialog"
+            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl text-sm transition-colors">
             Cancel
           </button>
-          <button
-            @click="submitReject"
-            :disabled="processing"
-            class="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2"
-          >
-            <span v-if="processing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+          <button @click="submitReject" :disabled="processing"
+            class="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2">
+            <span v-if="processing"
+              class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             <span>{{ processing ? 'Rejecting...' : 'Reject' }}</span>
           </button>
         </div>
       </div>
     </div>
+  
+    <Dialog v-model:visible="attachmentPreviewVisible" modal :header="attachmentPreviewTitle" class="w-full max-w-4xl">
+      <div class="max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+        <div v-if="attachmentPreviewLoading" class="flex h-[50vh] items-center justify-center text-slate-500">Loading
+          attachment...</div>
+        <div v-else-if="attachmentPreviewError" class="flex h-[50vh] items-center justify-center text-red-500">{{
+          attachmentPreviewError }}</div>
+        <img v-else-if="attachmentIsImage && attachmentPreviewObjectUrl" :src="attachmentPreviewObjectUrl"
+          alt="Supplier attachment preview" class="mx-auto max-h-[70vh] w-auto rounded-lg object-contain" />
+        <iframe v-else :src="attachmentPreviewObjectUrl || attachmentPreviewUrl"
+          class="h-[70vh] w-full rounded-lg border-0 bg-white" />
+      </div>
+      <template #footer>
+        <button type="button" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700"
+          @click="closeAttachmentPreview">Close</button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -424,6 +444,7 @@ import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Dialog from 'primevue/dialog'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -461,6 +482,13 @@ const detail = ref<RFQDetail | null>(null)
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejectTargetFeedbackId = ref<number | null>(null)
+const attachmentPreviewVisible = ref(false)
+const attachmentPreviewUrl = ref('')
+const attachmentPreviewObjectUrl = ref('')
+const attachmentPreviewMimeType = ref('')
+const attachmentPreviewTitle = ref('Supplier Attachment Preview')
+const attachmentPreviewLoading = ref(false)
+const attachmentPreviewError = ref('')
 
 // Helper functions
 const formatStatus = (status: string): string => {
@@ -471,6 +499,12 @@ const formatStatus = (status: string): string => {
 const capitalizeWords = (str: string): string => {
   if (!str) return 'N/A'
   return str.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')
+}
+
+const getPersonName = (person: any): string => {
+  const source = person?.user || person
+  const name = [source?.fname, source?.lname].filter(Boolean).join(' ').trim()
+  return name || source?.full_name || 'N/A'
 }
 
 const formatDate = (date: string | null): string => {
@@ -498,6 +532,8 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
     draft: 'contrast',
     sent: 'info',
     quotes_received: 'warn',
+    partially_approved: 'warn',
+    approved: 'success',
     awarded: 'success',
     cancelled: 'danger',
   }
@@ -537,11 +573,20 @@ const portalFeedbackGroups = computed(() => {
     groups[supplierId].items.push({
       id: feedback.id,
       feedback_id: feedback.id,
+      rfq_item_id: feedback?.rfq_item_id || rfqItem?.id,
       product_name: product?.product_name || 'Unknown Item',
       sku: product?.sku,
       quantity: rfqItem?.quantity || '-',
-      unit: rfqItem?.unit || '',
+      unit: rfqItem?.unit || product?.unit_of_measurement || '',
+      unit_of_measurement: product?.unit_of_measurement || rfqItem?.unit || '',
       quoted_price: parseFloat(feedback?.quoted_price || 0).toFixed(2),
+      estimated_total: (Number(rfqItem?.quantity || 0) * Number(feedback?.quoted_price || 0)).toFixed(2),
+      available_quantity: feedback?.available_quantity ?? null,
+      estimated_delivery_date: feedback?.estimated_delivery_date || null,
+      quotation_valid_until: feedback?.quotation_valid_until || null,
+      attachment_path: feedback?.attachment_path || null,
+      product_specifications: feedback?.product_specifications || '',
+      additional_notes: feedback?.additional_notes || '',
       submitted_at: feedback?.submitted_at || null,
       status: feedback?.status || 'pending',
       statusLabel: capitalizeWords(feedback?.status || 'pending'),
@@ -558,12 +603,74 @@ const portalFeedbackGroups = computed(() => {
   return Object.values(groups)
 })
 
+const getAttachmentUrl = (path: string) => path.startsWith('http') ? path : `/storage/${path.replace(/^\/+/, '')}`
+
+const isAttachmentImage = (path: string) => {
+  const value = String(path || '').toLowerCase().split('?')[0]
+  return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].some((extension) => value.endsWith(extension))
+}
+
+const formatWholeNumber = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '-'
+  return Math.round(Number(value)).toLocaleString('en-PH', { maximumFractionDigits: 0 })
+}
+
+const attachmentIsImage = computed(() => {
+  if (attachmentPreviewMimeType.value.startsWith('image/')) return true
+  const value = String(attachmentPreviewUrl.value || '').toLowerCase()
+  return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].some((extension) => value.includes(extension))
+})
+
+const openAttachmentPreview = async (path: string) => {
+  const targetUrl = getAttachmentUrl(path)
+  if (!targetUrl) return
+
+  if (attachmentPreviewObjectUrl.value) {
+    URL.revokeObjectURL(attachmentPreviewObjectUrl.value)
+    attachmentPreviewObjectUrl.value = ''
+  }
+
+  attachmentPreviewUrl.value = targetUrl
+  attachmentPreviewMimeType.value = ''
+  attachmentPreviewVisible.value = true
+  attachmentPreviewLoading.value = true
+  attachmentPreviewError.value = ''
+
+  try {
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('access_token') || ''
+    const response = await fetch(targetUrl, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('Unable to load supplier attachment.')
+    const blob = await response.blob()
+    attachmentPreviewMimeType.value = blob.type || response.headers.get('content-type') || ''
+    attachmentPreviewTitle.value = attachmentIsImage.value ? 'Supplier Attachment Preview' : 'Supplier Attachment'
+    attachmentPreviewObjectUrl.value = URL.createObjectURL(blob)
+  } catch (error: any) {
+    attachmentPreviewError.value = error?.message || 'Unable to load supplier attachment.'
+  } finally {
+    attachmentPreviewLoading.value = false
+  }
+}
+
+const closeAttachmentPreview = () => {
+  attachmentPreviewVisible.value = false
+  attachmentPreviewLoading.value = false
+  attachmentPreviewError.value = ''
+  attachmentPreviewUrl.value = ''
+  attachmentPreviewMimeType.value = ''
+  if (attachmentPreviewObjectUrl.value) {
+    URL.revokeObjectURL(attachmentPreviewObjectUrl.value)
+    attachmentPreviewObjectUrl.value = ''
+  }
+}
+
 const approveFeedback = async (feedbackId: number) => {
   if (!detail.value) return
   confirm.require({
     message: 'Approve this supplier response? This will lock other quotes for the same item.',
     header: 'Confirm Approval',
-    icon: 'pi pi-check-circle',
     accept: async () => {
       processing.value = true
       try {
@@ -784,6 +891,17 @@ const createPOFromRFQ = () => {
   })
 }
 
+const createPOFromApprovedItem = (item: any) => {
+  router.push({
+    name: 'procurement.purchase-orders.create',
+    query: {
+      rfq_id: rfqId,
+      rfq_item_id: String(item.rfq_item_id || item.id),
+      feedback_id: String(item.feedback_id),
+    },
+  })
+}
+
 onMounted(() => {
   loadDetail()
 })
@@ -826,7 +944,9 @@ onMounted(() => {
 
 /* Loading spinner */
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .animate-spin {

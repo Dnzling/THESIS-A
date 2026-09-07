@@ -1,19 +1,13 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
-      <template #content>
-        <div class="flex items-center justify-between gap-3">
+   <div class="flex items-center justify-between gap-3">
           <div>
             <h1 class="text-2xl font-semibold text-gray-900">Delivery Vehicles</h1>
-            <p class="text-sm text-gray-500">Register vehicles with validation to reduce delivery errors.</p>
           </div>
           <div class="flex gap-2">
-            <Button severity="info" outlined icon="pi pi-arrow-left" label="Back to Deliveries" @click="goBack" />
-            <Button v-if="canManageDeliveries" severity="info" icon="pi pi-plus" label="Add Vehicle" @click="openCreate" />
+            <Button v-if="canManageDeliveries" size=small icon="pi pi-plus" label="Add Vehicle" @click="openCreate" />
           </div>
         </div>
-      </template>
-    </Card>
 
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
@@ -54,6 +48,9 @@
           </Column>
           <Column field="vehicle_type" header="Type" />
           <Column field="capacity_kg" header="Capacity (kg)" />
+          <Column field="cost_per_km" header="Rate / km">
+            <template #body="{ data }">{{ new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(data.cost_per_km || 0)) }}</template>
+          </Column>
           <Column field="max_orders_per_trip" header="Max Orders/Trip" />
           <Column field="status" header="Status">
             <template #body="{ data }">
@@ -106,6 +103,11 @@
           <div>
             <label class="text-sm text-gray-600">Capacity (kg)</label>
             <InputNumber v-model="form.capacity_kg" fluid :min="0" :minFractionDigits="0" :maxFractionDigits="2" />
+          </div>
+          <div>
+            <label class="text-sm text-gray-600">Delivery Rate (₱ / km) *</label>
+            <InputNumber v-model="form.cost_per_km" fluid mode="currency" currency="PHP" locale="en-PH" :min="0.01" :minFractionDigits="2" :maxFractionDigits="2" />
+            <small class="text-xs text-gray-500">Used to calculate supplier pickup shipping fees.</small>
           </div>
           <div class="md:col-span-2">
             <label class="text-sm text-gray-600">Max Orders Per Trip</label>
@@ -179,6 +181,7 @@ const form = reactive<any>({
   model: '',
   color: '',
   capacity_kg: null,
+  cost_per_km: 0,
   max_orders_per_trip: 10,
   status: 'active',
   notes: '',
@@ -193,6 +196,7 @@ const resetForm = () => {
   form.model = ''
   form.color = ''
   form.capacity_kg = null
+  form.cost_per_km = 0
   form.max_orders_per_trip = 10
   form.status = 'active'
   form.notes = ''
@@ -231,6 +235,7 @@ const openEdit = (row: any) => {
   form.model = row.model || ''
   form.color = row.color || ''
   form.capacity_kg = row.capacity_kg ? Number(row.capacity_kg) : null
+  form.cost_per_km = Number(row.cost_per_km || 0)
   form.max_orders_per_trip = Number(row.max_orders_per_trip || 10)
   form.status = row.status || 'active'
   form.notes = row.notes || ''

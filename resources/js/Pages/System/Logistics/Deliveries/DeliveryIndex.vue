@@ -2,9 +2,9 @@
   <div class="mx-auto space-y-6 px-4 sm:px-6 lg:px-8">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Logistics Delivery Orders</h1>
+        <h1 class="text-lg font-semibold tracking-tight text-slate-900">Logistics Delivery Orders</h1>
       </div>
-      <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadOrders" />
+    
     </div>
   
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
@@ -47,8 +47,8 @@
   
           <Column header="Source" style="width: 7.5rem">
             <template #body="{ data }">
-              <Tag :value="data.source_type === 'ecommerce' ? 'Ecommerce' : 'Sales'"
-                :severity="data.source_type === 'ecommerce' ? 'info' : 'contrast'" />
+              <Tag :value="data.source_type === 'pickup' ? 'Supplier Pickup' : (data.source_type === 'ecommerce' ? 'Ecommerce' : 'Sales')"
+                :severity="data.source_type === 'pickup' ? 'warning' : (data.source_type === 'ecommerce' ? 'info' : 'contrast')" />
             </template>
           </Column>
   
@@ -61,7 +61,7 @@
   
           <Column header="Customer" style="min-width: 11rem">
             <template #body="{ data }">
-              <p class="font-medium text-slate-800">{{ data.customer_name || '-' }}</p>
+              <p class="font-medium text-slate-800">{{ data.source_type === 'pickup' ? 'Supplier: ' : '' }}{{ data.customer_name || '-' }}</p>
               <p class="text-[11px] text-slate-500">{{ data.customer_contact || '-' }}</p>
             </template>
           </Column>
@@ -74,15 +74,10 @@
 
           <Column field="delivery_address" header="Address" style="min-width: 14rem" />
   
-          <Column header="Order Status" style="width: 8rem">
+
+          <Column header="Delivery" style="width: 20rem">
             <template #body="{ data }">
-              <Tag :value="formatStatus(data.order_status)" severity="secondary" />
-            </template>
-          </Column>
-  
-          <Column header="Delivery" style="width: 10rem">
-            <template #body="{ data }">
-              <Tag v-if="data.delivery_status" :value="formatStatus(data.delivery_status)"
+              <badge v-if="data.delivery_status" :value="formatStatus(data.delivery_status)"
                 :severity="deliverySeverity(data.delivery_status)" />
               <Tag v-else value="Ready For Dispatch" severity="warn" />
             </template>
@@ -134,7 +129,7 @@ const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage
 const filters = reactive({
   search: '',
   source: 'all',
-  status: 'ready_for_dispatch',
+  status: '',
 })
 
 const pageState = reactive({
@@ -147,6 +142,7 @@ const sourceOptions = [
   { label: 'All Sources', value: 'all' },
   { label: 'Ecommerce', value: 'ecommerce' },
   { label: 'Sales', value: 'sales' },
+  { label: 'Supplier Pickups', value: 'pickup' },
 ]
 
 const statusOptions = [
@@ -196,12 +192,16 @@ const onPage = (event: any) => {
 const resetFilters = () => {
   filters.search = ''
   filters.source = 'all'
-  filters.status = 'ready_for_dispatch'
+  filters.status = ''
   pageState.page = 1
   loadOrders()
 }
 
 const openDetail = (order: any) => {
+  if (order.source_type === 'pickup') {
+    router.push({ name: 'procurement.purchase-orders.detail', params: { id: order.order_id } })
+    return
+  }
   router.push({
     name: 'logistics.deliveries.detail',
     params: { source: order.source_type, orderId: order.order_id },

@@ -378,8 +378,7 @@ const onInventoryRowClick = ({ data }: { data: any }) => {
 
 const getProductTypeLabel = (type?: string) => {
   const labels: Record<string, string> = {
-    finished_good: 'Finished Good',
-    raw_material: 'Raw Material',
+    finished_good: 'Product',
     supply: 'Supply'
   }
   return labels[String(type || '').toLowerCase()] || 'Product'

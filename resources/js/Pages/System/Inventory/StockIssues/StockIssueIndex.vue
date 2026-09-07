@@ -7,11 +7,20 @@
             <h1 class="text-3xl font-bold text-gray-800">Stock Issues</h1>
             <p class="text-gray-600 mt-1">Manage stock issue transactions</p>
           </div>
-          <Button
-            label="Issue Stock"
-            @click="createStockIssue"
-            class="bg-blue-600 hover:bg-blue-700"
-          />
+          <div class="flex items-center gap-2">
+            <Button
+              label="Supply Issuance"
+              icon="pi pi-send"
+              severity="secondary"
+              outlined
+              @click="router.push({ name: 'inventory.supply-issuance.create' })"
+            />
+            <Button
+              label="Issue Stock"
+              @click="createStockIssue"
+              class="bg-blue-600 hover:bg-blue-700"
+            />
+          </div>
         </div>
       </div>
 

@@ -108,6 +108,12 @@ class FinanceReceivablesController extends Controller
                         'subtotal' => (float) ($order->subtotal ?? 0),
                         'discount' => (float) ($order->discount_amount ?? 0),
                         'tax' => (float) ($order->tax_amount ?? 0),
+                        'commission_percentage' => (float) ($order->commission_percentage ?? 0),
+                        'commission_base' => (float) ($order->commission_base_amount ?? 0),
+                        'commission' => (float) ($order->commission_amount ?? 0),
+                        'store_net' => (float) $order->store_net_amount > 0
+                            ? (float) $order->store_net_amount
+                            : max(0, (float) $order->total_amount - (float) $order->commission_amount),
                         'shipping_fee' => 0,
                         'total' => (float) ($order->total_amount ?? 0),
                     ],
@@ -170,6 +176,12 @@ class FinanceReceivablesController extends Controller
                     'subtotal' => (float) ($order->subtotal ?? 0),
                     'discount' => (float) ($order->discount_amount ?? 0),
                     'tax' => (float) ($order->tax_amount ?? 0),
+                    'commission_percentage' => (float) ($order->commission_percentage ?? 0),
+                    'commission_base' => (float) ($order->commission_base_amount ?? 0),
+                    'commission' => (float) ($order->commission_amount ?? 0),
+                    'store_net' => (float) $order->store_net_amount > 0
+                        ? (float) $order->store_net_amount
+                        : max(0, (float) $order->total_amount - (float) $order->commission_amount),
                     'shipping_fee' => (float) ($order->shipping_fee ?? 0),
                     'total' => (float) ($order->total_amount ?? 0),
                 ],

@@ -5,7 +5,7 @@
 
     <!-- Header -->
     <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.goods-receipts' })" />
+      <Button label="Back" text @click="router.push({ name: 'inventory.goods-receipts' })" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Goods Receipt</h2>
         <p class="text-sm text-gray-500 mt-1">Receive and verify purchased items from supplier</p>
@@ -15,65 +15,16 @@
     <Card>
       <template #content>
         <form class="space-y-6" @submit.prevent="submitForm">
-          <!-- Section 1: PO Selection -->
+          <!-- Section 1: Purchase Order -->
           <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-link text-blue-600"></i>
-              Reference Purchase Order
-            </h3>
-
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <!-- PO Selection -->
-              <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Select Purchase Order
-                </label>
-                <Select
-                  v-model="form.purchase_order_id"
-                  :options="approvedPOs"
-                  option-label="po_number"
-                  option-value="id"
-                  placeholder="Select an approved PO..."
-                  class="w-full"
-                  @change="onPoSelected"
-                  :loading="loadingPOs"
-                />
-                <p class="text-xs text-gray-500 mt-1">Only approved purchase orders are available</p>
-              </div>
-
-            <!-- Receipt Date -->
-              <div class="md:col-span-2">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Receipt Date
-                </label>
-                <DatePicker fluid v-model="form.receipt_date" date-format="yy-mm-dd" class="w-full" show-icon />
-              </div>
-
-              <!-- Receipt Time -->
-              <div class="md:col-span-2">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Receipt Time
-                </label>
-                <InputText v-model="form.receipt_time" placeholder="HH:mm:ss" class="w-full" />
-              </div>
-
-              <!-- Receipt Status -->
-              <div class="md:col-span-2">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Receipt Type
-                </label>
-                <Select
-                  v-model="form.receipt_status"
-                  :options="receiptStatusOptions"
-                  option-label="label"
-                  option-value="value"
-                  class="w-full"
-                />
-              </div>
-            </div>
+            <h3 class="mb-4 text-lg font-semibold text-gray-800">Reference Purchase Order</h3>
 
             <!-- PO Details Summary -->
-            <div v-if="selectedPO" class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div v-if="selectedPO" class="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p class="text-xs font-semibold text-gray-500">PO Number</p>
+                <p class="font-semibold text-gray-800">{{ selectedPO.po_number }}</p>
+              </div>
               <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <p class="text-xs text-blue-600 font-semibold">Supplier</p>
                 <p class="text-gray-800 font-semibold">{{ selectedPO.supplier?.supplier_name }}</p>
@@ -87,14 +38,14 @@
                 <p class="text-gray-800 font-semibold">₱ {{ (parseFloat(selectedPO?.total_amount) || 0).toFixed(2) }}</p>
               </div>
             </div>
+            <div v-else class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Open this form from a delivered purchase order to receive its supplies.
+            </div>
           </div>
 
-          <!-- Section 2: Barcode Scanner / Quick Add -->
+          <!-- Section 2: Barcode Scanner -->
           <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-barcode text-purple-600"></i>
-              Receive Items
-            </h3>
+            <h3 class="mb-4 text-lg font-semibold text-gray-800">Receive Items</h3>
 
             <div class="space-y-4">
               <!-- Barcode Input -->
@@ -110,47 +61,28 @@
                     @keyup.enter="addByBarcode"
                   />
                   <Button
-                    icon="pi pi-search"
+                    label="Search"
                     :loading="scanningBarcode"
                     @click="addByBarcode"
                     v-tooltip="'Or press Enter'"
                   />
                 </div>
-                <p class="text-xs text-gray-500 mt-1">🔍 Barcode scanner will auto-populate product and any custom quantity</p>
+                <p class="mt-1 text-xs text-gray-500">Barcode scanning or product search matches items from this purchase order.</p>
               </div>
 
-              <!-- Quick Add from PO Items -->
-              <div v-if="selectedPO?.items?.length" class="p-4 bg-amber-50 border-l-4 border-amber-400 rounded">
-                <p class="text-sm font-semibold text-gray-700 mb-3">📦 Quick Add from PO:</p>
-                <div class="flex gap-2 flex-wrap">
-                  <Button
-                    v-for="item in selectedPO.items"
-                    :key="item.id"
-                    :label="`${item.product?.product_name} (${item.quantity_ordered})`"
-                    size="small"
-                    severity="secondary"
-                    outlined
-                    @click="quickAddItem(item)"
-                    class="text-xs"
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
           <!-- Section 3: Received Items Table -->
           <div class="border-b pb-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <i class="pi pi-inbox text-green-600"></i>
-                Received Items ({{ receivedItems.length }})
-              </h3>
+              <h3 class="text-lg font-semibold text-gray-800">Received Items ({{ receivedItems.length }})</h3>
             </div>
 
             <!-- Discrepancy Alert -->
             <div v-if="hasDiscrepancies" class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 rounded">
               <p class="text-sm font-semibold text-red-800">
-                ⚠️ Discrepancies Detected - Review items below
+                Discrepancies detected. Review the items below.
               </p>
             </div>
 
@@ -165,7 +97,7 @@
                     <th class="text-center p-3">Variance</th>
                     <th class="text-center p-3">Status</th>
                     <th class="text-center p-3">Remarks</th>
-                    <th class="text-center p-3">Action</th>
+                   
                   </tr>
                 </thead>
                 <tbody>
@@ -221,22 +153,13 @@
                         class="w-full text-xs"
                       />
                     </td>
-                    <td class="p-3 text-center">
-                      <Button
-                        icon="pi pi-trash"
-                        text
-                        severity="danger"
-                        size="small"
-                        @click="removeReceivedItem(index)"
-                      />
-                    </td>
+                  
                   </tr>
                 </tbody>
               </table>
             </div>
             <div v-else class="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded">
-              <i class="pi pi-inbox text-gray-400 text-3xl mb-2"></i>
-              <p class="text-gray-500">No items received yet. Use barcode scanner or quick add buttons above.</p>
+              <p class="text-gray-500">No purchase-order items are available to receive.</p>
             </div>
           </div>
 
@@ -280,6 +203,7 @@
               v-model="form.notes"
               rows="3"
               placeholder="Add any special notes about this receipt..."
+              fluid
             />
           </div>
 
@@ -294,15 +218,12 @@
             />
             <Button
               label="Save as Draft"
-              icon="pi pi-download"
-              severity="info"
+              severity="secondary"
               :loading="saving"
               @click="saveDraft = true; submitForm()"
             />
             <Button
               label="Complete Receipt"
-              icon="pi pi-check"
-              severity="success"
               :loading="saving"
               @click="saveDraft = false; submitForm()"
             />
@@ -328,28 +249,16 @@ const toast = useToast()
 const form = reactive({
   purchase_order_id: null as number | null,
   branch_id: null as number | null,
-  receipt_date: new Date(),
-  receipt_time: new Date().toTimeString().split(' ')[0],
-  receipt_status: 'full' as 'full' | 'partial' | 'damaged' | 'rejected',
   notes: ''
 })
 
 // UI State
 const saving = ref(false)
 const saveDraft = ref(false)
-const loadingPOs = ref(false)
 const scanningBarcode = ref(false)
 const barcodeInput = ref('')
-const approvedPOs = ref<any[]>([])
 const selectedPO = ref<any>(null)
 const receivedItems = ref<any[]>([])
-
-const receiptStatusOptions = [
-  { label: 'Full Receipt', value: 'full' },
-  { label: 'Partial Receipt', value: 'partial' },
-  { label: 'Damaged Items', value: 'damaged' },
-  { label: 'Rejected', value: 'rejected' }
-]
 
 const itemStatusOptions = [
   { label: 'Complete', value: 'complete' },
@@ -382,8 +291,6 @@ const completionPercent = computed(() => {
 
 // Methods
 onMounted(async () => {
-  await loadApprovedPOs()
-
   // If PO ID provided in query, auto-select and prefill
   const poIdFromQuery = Number(route.query.po_id || 0)
   if (poIdFromQuery > 0) {
@@ -425,11 +332,6 @@ const prefillFromPurchaseOrder = async (poId: number) => {
     const po = payload?.data ?? payload ?? null
     if (!po?.id) return
 
-    // Ensure selected value exists in options so Select can display it.
-    const existing = approvedPOs.value.find((o: any) => String(o?.id) === String(po.id))
-    if (!existing) {
-      approvedPOs.value = [po, ...approvedPOs.value]
-    }
     form.purchase_order_id = po.id
     hydrateReceiptFromPO(po)
   } catch (error) {
@@ -466,79 +368,6 @@ const prefillFromRequisition = async (prId: number) => {
       detail: 'Failed to prefill goods receipt from requisition',
       life: 3000
     })
-  }
-}
-
-const loadApprovedPOs = async () => {
-  loadingPOs.value = true
-  try {
-    const response = await procurementService.getApprovedPurchaseOrders?.({ per_page: 100 })
-      .catch(() => ({ data: [] }))
-    approvedPOs.value = response?.data?.data || response?.data || []
-  } catch (error) {
-    console.error('Failed to load approved POs', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load purchase orders',
-      life: 3000
-    })
-  } finally {
-    loadingPOs.value = false
-  }
-}
-
-const onPoSelected = async () => {
-  if (!form.purchase_order_id) {
-    selectedPO.value = null
-    receivedItems.value = []
-    return
-  }
-
-  try {
-      const response = await procurementService.getPurchaseOrder(Number(form.purchase_order_id))
-      const payload = response?.data ?? response
-      const po = payload?.data ?? payload ?? null
-      hydrateReceiptFromPO(po)
-  } catch (error) {
-    console.error('Failed to load PO details', error)
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: 'Failed to load purchase order details',
-      life: 3000
-    })
-  }
-}
-
-const quickAddItem = (item: any) => {
-  // Check if already added
-  const exists = receivedItems.value.find((ri) => ri.product_id === item.product_id)
-  if (!exists && selectedPO.value?.items) {
-    const poItem = selectedPO.value.items.find((i: any) => i.product_id === item.product_id)
-    if (poItem) {
-      receivedItems.value.push({
-        id: poItem.id,
-        purchase_order_item_id: poItem.id,
-        product_id: item.product_id,
-        product: item.product,
-        variation_id: poItem.variation_id,
-        quantity_ordered: item.quantity_ordered,
-        quantity_expected: item.quantity_ordered,
-        quantity_received: item.quantity_ordered,
-        quantity_damaged: 0,
-        variance: 0,
-        variance_percent: 0,
-        status: 'complete',
-        remarks: ''
-      })
-      toast.add({
-        severity: 'success',
-        summary: 'Added',
-        detail: `${item.product?.product_name} added`,
-        life: 2000
-      })
-    }
   }
 }
 
@@ -611,9 +440,6 @@ const addByBarcode = async () => {
       : 0
   }
 
-const removeReceivedItem = (index: number) => {
-  receivedItems.value.splice(index, 1)
-}
 
   const getVarianceColor = (item: any) => {
     if (item.variance === 0) return 'text-green-600'
@@ -638,7 +464,7 @@ const removeReceivedItem = (index: number) => {
 const submitForm = async () => {
   // Validation
   if (!form.purchase_order_id) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Please select a purchase order', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Purchase Order Required', detail: 'Open this form from a delivered purchase order.', life: 3000 })
     return
   }
 
@@ -649,18 +475,10 @@ const submitForm = async () => {
 
   saving.value = true
   try {
-    // Convert Date to ISO string date for API
-    const receiptDate = (form.receipt_date instanceof Date
-      ? form.receipt_date.toISOString().split('T')[0]
-      : form.receipt_date) || new Date().toISOString().split('T')[0]
-
       const payload: Record<string, any> = {
         purchase_order_id: form.purchase_order_id,
         branch_id: form.branch_id,
-        receipt_date: receiptDate,
-        receipt_time: form.receipt_time || new Date().toTimeString().split(' ')[0],
-        receipt_status: form.receipt_status,
-        notes: form.notes,
+        quality_notes: form.notes,
         items: receivedItems.value.map((item) => ({
           purchase_order_item_id: item.purchase_order_item_id,
           product_id: item.product_id,

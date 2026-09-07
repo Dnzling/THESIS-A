@@ -61,6 +61,16 @@
             </template>
           </Column>
         </DataTable>
+        <div class="mt-5 ml-auto max-w-sm space-y-2 border-t border-gray-200 pt-4 text-sm">
+          <div class="flex justify-between"><span class="text-gray-500">Subtotal</span><span>{{ money(order.subtotal) }}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">VATable Sales</span><span>{{ money(vatableSales) }}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">VAT Included (12%)</span><span>{{ money(order.tax_amount) }}</span></div>
+          <div v-if="order.delivery_required" class="flex justify-between"><span class="text-gray-500">Shipping Fee</span><span>{{ money(order.shipping_fee) }}</span></div>
+          <div v-if="Number(order.discount_amount || 0) > 0" class="flex justify-between"><span class="text-gray-500">Discount</span><span>- {{ money(order.discount_amount) }}</span></div>
+          <div class="flex justify-between border-t border-gray-200 pt-2 text-base font-semibold"><span>Order Total</span><span>{{ money(order.total_amount) }}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">Platform Commission ({{ Number(order.commission_percentage || 0).toFixed(2) }}%)</span><span>- {{ money(order.commission_amount) }}</span></div>
+          <div class="flex justify-between font-semibold text-emerald-700"><span>Store Net Proceeds</span><span>{{ money(storeNetAmount) }}</span></div>
+        </div>
       </template>
     </Card>
 
@@ -128,6 +138,21 @@ const authStore = useAuthStore()
 const toast = useToast()
 const order = ref<any>(null)
 const sendingToLogistics = ref(false)
+const vatableSales = computed(() => Math.max(
+  0,
+  Number(order.value?.subtotal || 0)
+    - Number(order.value?.discount_amount || 0)
+    - Number(order.value?.tax_amount || 0),
+))
+const storeNetAmount = computed(() => {
+  const storedNet = Number(order.value?.store_net_amount || 0)
+  if (storedNet > 0) return storedNet
+
+  return Math.max(
+    0,
+    Number(order.value?.total_amount || 0) - Number(order.value?.commission_amount || 0),
+  )
+})
 
 const loadOrder = async () => {
   const res = await salesService.getPosOrder(Number(route.params.id))

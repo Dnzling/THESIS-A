@@ -18,6 +18,7 @@ import Toast from 'primevue/toast'
 import { Head, router, usePage } from '@inertiajs/vue3'
 import { LoginFormData } from '@/Components/auth/LoginForm.vue'
 import { useAuthStore } from '@/stores/auth'
+import axios from '@/axios'
 
 const page = usePage()
 const toast = useToast()
@@ -33,6 +34,7 @@ const getFirstAvailableRoute = (): string => {
   }
 
   if (normalizedRole === 'super_admin') return '/admin/dashboard'
+  if (normalizedRole === 'driver') return '/driver/deliveries'
   if (normalizedRole === 'supplier') return '/supplier-portal/dashboard'
 
   const items = authStore.navigation
@@ -69,7 +71,8 @@ const handleLogin = async (formData: LoginFormData) => {
   try {
     // Let authStore handle the entire login process
     await authStore.login(formData.login, formData.password)
-    await authStore.fetchCurrentUser({ reloadPermissions: true })
+    // Login already loads permissions; avoid requesting the navigation endpoint twice.
+    await authStore.fetchCurrentUser()
 
     // console.log('✅ Login successful')
     // console.log('User role:', authStore.user?.role)
@@ -94,6 +97,26 @@ const handleLogin = async (formData: LoginFormData) => {
       String(authStore.user?.role || '').toLowerCase().includes('customer') ||
       String((authStore.user as any)?.display_role || '').toLowerCase().includes('customer')
 
+    const isSupplierRole = String(authStore.user?.role || '').toLowerCase() === 'supplier'
+    const isDriverRole = String(authStore.user?.role || '').toLowerCase() === 'driver'
+    if (isDriverRole) {
+      router.visit('/driver/deliveries')
+      return
+    }
+    if (isSupplierRole) {
+      try {
+        await axios.get('/api/supplier-portal/my-portal')
+        router.visit('/supplier-portal/dashboard')
+        return
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          router.visit('/supplier-portal/registration')
+          return
+        }
+        throw error
+      }
+    }
+
     let redirectTo = '/store/registration'
 
     if (hasStore) {
@@ -101,10 +124,8 @@ const handleLogin = async (formData: LoginFormData) => {
       redirectTo = !isCustomerRole && redirectParam ? redirectParam : getFirstAvailableRoute()
     }
 
-    // ✅ Single redirect with delay (for toast to show)
-    setTimeout(() => {
-      router.visit(redirectTo)
-    }, 500) // Reduced from 1500ms
+    // Navigate immediately after authentication instead of adding an artificial delay.
+    router.visit(redirectTo)
 
   } catch (error: any) {
     console.error('❌ Login error:', error)

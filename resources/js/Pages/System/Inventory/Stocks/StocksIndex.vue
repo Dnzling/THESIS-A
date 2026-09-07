@@ -2,7 +2,7 @@
   <div class="min-h-screen p-4">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h1 class="text-lg font-bold text-gray-800">Inventory</h1>
+        <h1 class="text-xl font-bold text-gray-800">Inventory</h1>
       </div>
       <div class="flex items-center gap-2">
         <!-- <Button
@@ -63,7 +63,7 @@
           @row-click="onItemRowClick" :rowClass="itemRowClass"
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
-          class="p-datatable-sm text-xs" stripedRows>
+          class="p-datatable-sm text-xs" rowhover>
           <template #empty>
             <div class="text-center py-8">
               <i class="pi pi-inbox text-4xl text-gray-400"></i>
@@ -88,20 +88,15 @@
               <div class="space-y-0.5 text-xs">
                 <div class="font-medium text-gray-900">{{ data.product?.product_name || data.product_name || 'N/A' }}
                 </div>
-               
               </div>
             </template>
           </Column>
   
-          <Column header="Supplier" style="width: 16%">
-            <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getSupplierName(data) }}</span>
-            </template>
-          </Column>
+          
   
           <Column header="Cost/Unit" style="width: 12%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}</span>
+              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.unit_of_measurement }}</b></span>
             </template>
           </Column>
   
@@ -126,7 +121,7 @@
   
           <Column header="Reorder" style="width: 8%">
             <template #body="{ data }">
-              <Tag :value="needsReorder(data) ? 'Yes' : 'No'" :severity="needsReorder(data) ? 'warn' : 'success'"
+              <Badge :value="needsReorder(data) ? 'Yes' : 'No'" :severity="needsReorder(data) ? 'danger' : 'success'"
                 class="text-xs" />
             </template>
           </Column>
@@ -200,8 +195,7 @@ const hasActiveFilters = computed(() => {
 })
 
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Product', value: 'finished_good' },
   { label: 'Supply', value: 'supply' }
 ]
 
@@ -308,7 +302,6 @@ const formatMoney = (value: number | string) => {
 const getTypeLabel = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const labels: Record<string, string> = {
-    raw_material: 'Raw Material',
     supply: 'Supply',
     finished_good: 'Product'
   }
@@ -334,10 +327,7 @@ const getStockValue = (data: any) => {
 
 const getSupplierName = (data: any) => {
   return (
-    data.product?.supplier_name ||
-    data.product?.suppliers?.[0]?.name ||
-    data.product?.suppliers?.[0]?.company_name ||
-    'N/A'
+   data.product?.supplier_name
   )
 }
 

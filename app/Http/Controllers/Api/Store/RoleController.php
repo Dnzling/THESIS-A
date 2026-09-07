@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Core\Role;
 use App\Models\Store\Store;
-use App\Models\Store\TrialOnboardingProfile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -121,12 +120,13 @@ class RoleController extends Controller
     public function index(): JsonResponse
     {
         $storeId = Auth::user()->store_id;
-        $globalAllowed = ['customer', 'store_admin', 'supplier'];
+        $globalAllowed = ['store_admin', 'driver'];
 
         $roles = DB::table('roles')
             ->select('roles.*')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
+            ->selectRaw('(SELECT COUNT(*) FROM employees WHERE role_id = roles.id AND employees.store_id = ?) as employees_count', [$storeId])
             ->where(function ($q) use ($storeId) {
                 $q->where('store_id', $storeId);
             })
@@ -143,6 +143,7 @@ class RoleController extends Controller
     public function storeSpecific(Request $request): JsonResponse
     {
         $storeId = $this->resolveStoreId($request);
+        $globalAllowed = ['store_admin', 'driver'];
 
         if (empty($storeId)) {
             return response()->json(['data' => []]);
@@ -153,7 +154,13 @@ class RoleController extends Controller
             ->selectRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) as display_name')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
-            ->where('store_id', $storeId)
+            ->selectRaw('(SELECT COUNT(*) FROM employees WHERE role_id = roles.id AND employees.store_id = ?) as employees_count', [$storeId])
+            ->where(function ($query) use ($storeId, $globalAllowed) {
+                $query->where('store_id', $storeId)
+                    ->orWhere(function ($query) use ($globalAllowed) {
+                        $query->whereNull('store_id')->whereIn('name', $globalAllowed);
+                    });
+            })
             ->orderByRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) ASC')
             ->get();
 
@@ -253,9 +260,10 @@ class RoleController extends Controller
         $role = Role::where('store_id', $storeId)->findOrFail($id);
 
         $userCount = DB::table('users')->where('role_id', $role->id)->where('store_id', $storeId)->count();
-        if ($userCount > 0) {
+        $employeeCount = DB::table('employees')->where('role_id', $role->id)->where('store_id', $storeId)->count();
+        if ($userCount > 0 || $employeeCount > 0) {
             return response()->json([
-                'message' => 'Cannot delete role with assigned users',
+                'message' => 'Cannot delete a role with assigned employees or users. Reassign them first.',
             ], 422);
         }
 
@@ -296,7 +304,7 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $globalAllowed = ['customer', 'store_admin', 'supplier'];
+        $globalAllowed = ['store_admin', 'driver'];
         $role = Role::where(function ($q) use ($storeId) {
                 $q->whereNull('store_id')->orWhere('store_id', $storeId);
             })
@@ -327,11 +335,19 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $role = Role::where('store_id', $storeId)->findOrFail($roleId);
+        $globalAllowed = ['store_admin', 'driver'];
+        $role = Role::query()
+            ->where(function ($query) use ($storeId, $globalAllowed) {
+                $query->where('store_id', $storeId)
+                    ->orWhere(function ($query) use ($globalAllowed) {
+                        $query->whereNull('store_id')->whereIn('name', $globalAllowed);
+                    });
+            })
+            ->findOrFail($roleId);
         $enabledModules = $this->getEffectiveEnabledModules($storeId);
 
         $request->validate([
-            'permissions' => 'required|array',
+            'permissions' => 'present|array',
             'permissions.*' => 'exists:permissions,id'
         ]);
 

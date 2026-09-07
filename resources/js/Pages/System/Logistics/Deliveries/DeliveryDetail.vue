@@ -1,6 +1,6 @@
 <template>
   <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl border border-slate-200/80 bg-linear-to-br from-indigo-50 via-white to-sky-50 p-6 shadow-sm">
+    <div class="rounded-3xl p-6 shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
@@ -55,6 +55,16 @@
       </template>
     </Card>
 
+    <Card v-if="delivery" class="rounded-3xl border border-slate-200/80 shadow-sm">
+      <template #title>
+        <div class="flex flex-wrap items-center justify-between gap-3"><span>Live Delivery Tracking</span><Tag :value="isDelivered ? 'Tracking completed' : currentPoint ? 'Live location available' : 'Waiting for location'" :severity="isDelivered ? 'secondary' : currentPoint ? 'success' : 'warn'" /></div>
+      </template>
+      <template #content>
+        <div ref="mapElement" class="h-[360px] w-full overflow-hidden rounded-2xl border border-slate-200 sm:h-[440px]"></div>
+        <p v-if="!currentPoint" class="mt-3 text-sm text-amber-700">Waiting for the driver’s live GPS location.</p>
+      </template>
+    </Card>
+
     <Card v-if="order?.items?.length" class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Order Items</template>
       <template #content>
@@ -81,6 +91,10 @@
           </div>
 
           <div class="space-y-3">
+            <div v-if="nextStatus">
+              <label class="mb-1 block text-sm text-slate-600">Delivery Steps</label>
+              <Button icon="pi pi-check-circle" :label="nextStatusLabel" severity="success" :loading="statusUpdating || delivering" :disabled="!canManageDeliveries" @click="advanceDelivery" />
+            </div>
             <div>
               <label class="mb-1 block text-sm text-slate-600">Update Delivery Status</label>
               <Select
@@ -161,6 +175,12 @@
             <p v-if="entry.status_from || entry.status_to" class="mt-1 text-xs text-slate-500">
               {{ entry.status_from || '-' }} → {{ entry.status_to || '-' }}
             </p>
+            <div v-if="entry.attachments?.length" class="mt-3 flex flex-wrap gap-3">
+              <button v-for="attachment in entry.attachments" :key="attachment.id || attachment.public_url" type="button" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-white" @click="openMedia(attachment.public_url)">
+                <img :src="attachment.public_url" alt="Delivery attachment" class="h-28 w-36 object-cover transition group-hover:scale-105" />
+                <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-xs text-white">View attachment</span>
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -248,7 +268,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
@@ -262,6 +282,11 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -295,6 +320,12 @@ const savingLog = ref(false)
 const order = ref<any>(null)
 const delivery = ref<any>(null)
 const logs = ref<any[]>([])
+const mapElement = ref<HTMLElement | null>(null)
+let trackingMap: L.Map | null = null
+let truckMarker: L.Marker | null = null
+let destinationMarker: L.Marker | null = null
+let routeLine: L.Polyline | null = null
+let tileLayerAdded = false
 
 const photoFile = ref<File | null>(null)
 const signatureCanvas = ref<HTMLCanvasElement | null>(null)
@@ -330,6 +361,17 @@ const canRecordTransitLog = computed(() => {
   return ['in_transit', 'out_for_delivery'].includes(status) && canManageDeliveries
 })
 const canAssignDelivery = computed(() => canManageDeliveries && !delivery.value && !!order.value)
+const nextStatus = computed(() => ({ assigned: 'in_transit', packed: 'in_transit', in_transit: 'out_for_delivery', out_for_delivery: 'delivered' } as Record<string, string>)[String(delivery.value?.status || '').toLowerCase()] || null)
+const nextStatusLabel = computed(() => nextStatus.value === 'delivered' ? 'Arrival / Mark Delivered' : nextStatus.value === 'in_transit' ? 'Start Delivery' : 'Start Pickup')
+const currentPoint = computed<[number, number] | null>(() => {
+  const lat = Number(delivery.value?.current_latitude); const lng = Number(delivery.value?.current_longitude)
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0 ? [lat, lng] : null
+})
+const destinationPoint = computed<[number, number] | null>(() => {
+  const lat = Number(source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
+  const lng = Number(source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0 ? [lat, lng] : null
+})
 
 const loadAll = async () => {
   if (!orderId.value) return
@@ -344,11 +386,41 @@ const loadAll = async () => {
     if (delivery.value) {
       statusForm.status = delivery.value.status || 'assigned'
     }
+    await renderTrackingMap()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load detail.', life: 3500 })
   } finally {
     loading.value = false
   }
+}
+
+async function renderTrackingMap() {
+  if (!mapElement.value) return
+  const center = currentPoint.value || destinationPoint.value || [14.5995, 120.9842] as [number, number]
+  if (!trackingMap) trackingMap = L.map(mapElement.value).setView(center, currentPoint.value || destinationPoint.value ? 13 : 10)
+  if (!tileLayerAdded) {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trackingMap)
+    tileLayerAdded = true
+  }
+  const destinationIcon = L.icon({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41], shadowSize: [41, 41] })
+  const truckIcon = L.icon({ iconUrl: '/images/truck-map-marker-orange.png', iconSize: [85, 85], iconAnchor: [42, 42] })
+  if (currentPoint.value) truckMarker ? truckMarker.setLatLng(currentPoint.value) : truckMarker = L.marker(currentPoint.value, { icon: truckIcon }).addTo(trackingMap).bindTooltip('Truck location')
+  if (destinationPoint.value) destinationMarker ? destinationMarker.setLatLng(destinationPoint.value) : destinationMarker = L.marker(destinationPoint.value, { icon: destinationIcon }).addTo(trackingMap).bindTooltip('Destination')
+  if (currentPoint.value && destinationPoint.value) {
+    const coords = `${currentPoint.value[1]},${currentPoint.value[0]};${destinationPoint.value[1]},${destinationPoint.value[0]}`
+    let points: [number, number][] = [currentPoint.value, destinationPoint.value]
+    try { const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`); const data = await response.json(); const road = data?.routes?.[0]?.geometry?.coordinates || []; if (road.length > 1) points = road.map((p: number[]) => [p[1], p[0]]) } catch { /* fallback */ }
+    routeLine ? routeLine.setLatLngs(points) : routeLine = L.polyline(points, { color: '#2563eb', weight: 5, opacity: 0.8 }).addTo(trackingMap)
+    trackingMap.fitBounds(L.latLngBounds(points).pad(0.15), { maxZoom: 15 })
+  }
+  window.setTimeout(() => trackingMap?.invalidateSize(), 100)
+}
+
+const advanceDelivery = async () => {
+  if (!nextStatus.value) return
+  if (nextStatus.value === 'delivered') { openDeliveredDialog(); return }
+  statusForm.status = nextStatus.value
+  await saveStatus()
 }
 
 const saveStatus = async () => {
@@ -600,5 +672,10 @@ onMounted(() => {
   loadAll()
   setupSignatureCanvas()
   window.addEventListener('resize', setupSignatureCanvas)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', setupSignatureCanvas)
+  if (trackingMap) trackingMap.remove()
+  trackingMap = null
 })
 </script>

@@ -27,6 +27,7 @@ use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Models\Logistics\DeliveryZone;
 use App\Models\Logistics\DeliveryZoneRate;
 use App\Models\Sales\SalesReview;
+use App\Services\Sales\OrderCommissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,13 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class EcommerceController extends Controller
 {
+    private const VAT_RATE = 12.0;
+
+    public function __construct(
+        private readonly OrderCommissionService $commissionService
+    ) {
+    }
+
     public function storeDirectory(Request $request)
     {
         $query = Store::query()
@@ -44,7 +52,8 @@ class EcommerceController extends Controller
             ->whereIn('status', ['active', 'verified'])
             // Hide stores with no active products available in ecommerce.
             ->whereHas('products', function ($productQuery) {
-                $productQuery->where('is_active', true)
+                $productQuery->where('product_type', 'finished_good')
+                    ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('inventory', function ($inventoryQuery) {
                         $inventoryQuery->where('quantity_available', '>', 0)
@@ -116,6 +125,7 @@ class EcommerceController extends Controller
             ->select(['categories.id', 'categories.category_name'])
             ->whereHas('products', function ($query) use ($storeId) {
                 $query->where('store_id', $storeId)
+                    ->where('product_type', 'finished_good')
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
@@ -210,6 +220,7 @@ class EcommerceController extends Controller
         $query = Product::query()
             ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
             ->where('store_id', $storeId)
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
@@ -282,7 +293,7 @@ class EcommerceController extends Controller
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
                 'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
-                'tax_rate' => (float) ($product->tax_rate ?? 0),
+                'tax_rate' => self::VAT_RATE,
                 // Prefer served asset URL (avoids relying on public /storage symlink in production).
                 'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
@@ -297,6 +308,7 @@ class EcommerceController extends Controller
             ->select(['categories.id', 'categories.category_name'])
             ->whereHas('products', function ($categoryProductQuery) use ($storeId) {
                 $categoryProductQuery->where('store_id', $storeId)
+                    ->where('product_type', 'finished_good')
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
@@ -416,6 +428,7 @@ class EcommerceController extends Controller
                 'category:id,category_name',
             ])
             ->where('products.store_id', $storeId)
+            ->where('products.product_type', 'finished_good')
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->whereHas('store', function ($storeQuery) {
@@ -639,6 +652,7 @@ class EcommerceController extends Controller
                 },
             ])
             ->where('id', $id)
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
@@ -743,7 +757,7 @@ class EcommerceController extends Controller
                 'store_logo' => $this->toAssetUrl($storeLogo),
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
-                'tax_rate' => (float) ($product->tax_rate ?? 0),
+                'tax_rate' => self::VAT_RATE,
                 'assembly_required' => (bool) ($product->assembly_required ?? false),
                 'is_featured' => (bool) ($product->is_featured ?? false),
                 'is_new_arrival' => (bool) ($product->is_new_arrival ?? false),
@@ -947,6 +961,7 @@ class EcommerceController extends Controller
         ]);
 
         $product = Product::query()
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->findOrFail($validated['product_id']);
         $storeId = (int) $product->store_id;
@@ -1047,7 +1062,7 @@ class EcommerceController extends Controller
             $item->update([
                 'quantity' => $newQty,
                 'unit_price' => $price,
-                'tax_rate' => (float) ($product->tax_rate ?? 0),
+                'tax_rate' => self::VAT_RATE,
                 'variation_name' => $variationName,
             ]);
         } else {
@@ -1058,7 +1073,7 @@ class EcommerceController extends Controller
                 'variation_name' => $variationName,
                 'quantity' => (int) $validated['quantity'],
                 'unit_price' => $price,
-                'tax_rate' => (float) ($product->tax_rate ?? 0),
+                'tax_rate' => self::VAT_RATE,
             ]);
         }
 
@@ -1314,7 +1329,13 @@ class EcommerceController extends Controller
         foreach ($itemsForCheckout as $item) {
             $subtotal += (float) $item->unit_price * (int) $item->quantity;
         }
-        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm);
+        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm, $totalWeight);
+        if (!($fallback['delivery_available'] ?? true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The delivery address is outside this store\'s maximum delivery distance.',
+            ], 422);
+        }
         $discountAmount = $bulkTrip ? round(((float) $fallback['shipping_fee']) * $bulkDiscountRate, 2) : 0.0;
         $finalFee = round(((float) $fallback['shipping_fee']) - $discountAmount, 2);
 
@@ -1329,7 +1350,7 @@ class EcommerceController extends Controller
                 'breakdown' => [
                     'base_fee' => (float) ($fallback['base_fee'] ?? 0),
                     'distance_fee' => (float) ($fallback['distance_fee'] ?? 0),
-                    'weight_fee' => 0.0,
+                    'weight_fee' => (float) ($fallback['weight_fee'] ?? 0),
                     'distance_km' => round($distanceKm, 2),
                     'weight_kg' => round($totalWeight, 2),
                     'bulk_trip' => $bulkTrip,
@@ -1361,20 +1382,6 @@ class EcommerceController extends Controller
         ]);
 
         $user = Auth::user();
-        $customer = Customer::query()
-            ->where('user_id', $user->id)
-            ->latest('id')
-            ->first();
-        $verificationStatus = strtolower((string) ($customer?->verification_status ?? 'unverified'));
-        if (!in_array($verificationStatus, ['verified', 'approved'], true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Your account must be verified before placing an order.',
-                'code' => 'CUSTOMER_NOT_VERIFIED',
-                'redirect_to' => '/shop/profile?section=verification',
-            ], 403);
-        }
-
         $cart = null;
         $itemsForCheckout = collect();
 
@@ -1537,12 +1544,16 @@ class EcommerceController extends Controller
                 (float) $customerLongitude
             );
 
-            if (!is_null($providedShippingFee)) {
-                $shippingFee = $providedShippingFee;
-            } else {
-                $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm);
-                $shippingFee = (float) $fallback['shipping_fee'];
+            // Always recalculate on the server when coordinates are available.
+            // The client-provided amount is only a fallback when routing data is unavailable.
+            $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm, $totalWeight);
+            if (!($fallback['delivery_available'] ?? true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The delivery address is outside this store\'s maximum delivery distance.',
+                ], 422);
             }
+            $shippingFee = (float) $fallback['shipping_fee'];
         }
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
@@ -1588,7 +1599,7 @@ class EcommerceController extends Controller
                         'variation_name' => $item->variation_name ? (string) $item->variation_name : null,
                         'quantity' => (int) $item->quantity,
                         'unit_price' => (float) $item->unit_price,
-                        'tax_rate' => (float) $item->tax_rate,
+                        'tax_rate' => self::VAT_RATE,
                     ];
                 })->values()->all();
 
@@ -1596,8 +1607,15 @@ class EcommerceController extends Controller
                     $subtotal += (float) $item->unit_price * (int) $item->quantity;
                 }
 
+                $taxAmount = $this->extractIncludedVat(max(0, $subtotal - $discountAmount));
                 $totalAmount = round($subtotal + $shippingFee - $discountAmount, 2);
-                $order->update([
+                $commission = $this->commissionService->calculate(
+                    (int) $cart->store_id,
+                    $subtotal,
+                    $discountAmount,
+                    $totalAmount
+                );
+                $order->update(array_merge([
                     'subtotal' => round($subtotal, 2),
                     'tax_amount' => round($taxAmount, 2),
                     'shipping_fee' => round($shippingFee, 2),
@@ -1606,7 +1624,7 @@ class EcommerceController extends Controller
                     'pending_snapshot' => [
                         'items' => $snapshotItems,
                     ],
-                ]);
+                ], $commission));
 
                 return $order->fresh();
             }
@@ -1639,12 +1657,13 @@ class EcommerceController extends Controller
                 }
 
                 $lineSubtotal = (float) $item->unit_price * (int) $item->quantity;
-                // Unit price is already tax-inclusive for ecommerce checkout totals.
-                $lineTax = 0;
+                // Selling prices are VAT-inclusive; VAT is extracted rather
+                // than added on top of the displayed customer price.
+                $lineTax = $this->extractIncludedVat($lineSubtotal);
                 $lineTotal = $lineSubtotal;
 
                 $subtotal += $lineSubtotal;
-                $taxAmount += 0;
+                $taxAmount += $lineTax;
 
                 $order->items()->create([
                     'product_id' => $item->product_id,
@@ -1655,7 +1674,7 @@ class EcommerceController extends Controller
                     'sku' => $item->variation?->variation_sku ?? $item->product?->sku,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
-                    'tax_rate' => (float) $item->tax_rate,
+                    'tax_rate' => self::VAT_RATE,
                     'line_subtotal' => round($lineSubtotal, 2),
                     'line_tax' => $lineTax,
                     'line_total' => round($lineTotal, 2),
@@ -1667,14 +1686,21 @@ class EcommerceController extends Controller
                 $inventory->updateStockStatus();
             }
 
+            $taxAmount = $this->extractIncludedVat(max(0, $subtotal - $discountAmount));
             $totalAmount = round($subtotal + $shippingFee - $discountAmount, 2);
-            $order->update([
+            $commission = $this->commissionService->calculate(
+                (int) $cart->store_id,
+                $subtotal,
+                $discountAmount,
+                $totalAmount
+            );
+            $order->update(array_merge([
                 'subtotal' => round($subtotal, 2),
                 'tax_amount' => round($taxAmount, 2),
                 'shipping_fee' => round($shippingFee, 2),
                 'discount_amount' => round($discountAmount, 2),
                 'total_amount' => $totalAmount,
-            ]);
+            ], $commission));
 
             EcommerceCartItem::query()
                 ->where('cart_id', $cart->id)
@@ -1759,7 +1785,7 @@ class EcommerceController extends Controller
     {
         $user = Auth::user();
         $ordersQuery = EcommerceOrder::query()
-            ->with(['store:id,name', 'assignedBranch:id,name,branch_code,city,province,latitude,longitude', 'items.product.assets'])
+            ->with(['store:id,name', 'assignedBranch:id,name,branch_code,city,province,latitude,longitude', 'delivery', 'items.product.assets', 'items.product.category'])
             ->withCount('items')
             ->where('user_id', $user->id);
 
@@ -1788,6 +1814,7 @@ class EcommerceController extends Controller
                 'assignedBranch:id,name,branch_code,city,province,latitude,longitude',
                 'cancellationRequests',
                 'items.product.assets',
+                'items.product.category',
                 'items.returnRequests',
                 'items.review',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
@@ -2084,6 +2111,7 @@ class EcommerceController extends Controller
         $query = Product::query()
             ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
             ->where('store_id', $storeId)
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
@@ -2105,6 +2133,7 @@ class EcommerceController extends Controller
             $fallbackStoreId = Product::query()
                 ->select('products.store_id')
                 ->join('branch_inventory', 'branch_inventory.product_id', '=', 'products.id')
+                ->where('products.product_type', 'finished_good')
                 ->where('products.is_active', true)
                 ->whereNull('products.deleted_at')
                 ->where('branch_inventory.quantity_available', '>', 0)
@@ -2117,6 +2146,7 @@ class EcommerceController extends Controller
                 $query = Product::query()
                     ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
                     ->where('store_id', $storeId)
+                    ->where('product_type', 'finished_good')
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('store', function ($storeQuery) {
@@ -2197,6 +2227,7 @@ class EcommerceController extends Controller
         $query = Product::query()
             ->with(['category:id,category_name', 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order'])
             ->where('store_id', $storeId)
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
@@ -2677,8 +2708,9 @@ class EcommerceController extends Controller
     {
         $items = $cart->items->map(function (EcommerceCartItem $item) use ($favoriteMap) {
             $lineSubtotal = (float) $item->unit_price * (int) $item->quantity;
-            // Unit price is already tax-inclusive for ecommerce cart totals.
-            $lineTax = 0;
+            // Unit price is VAT-inclusive, so expose the included VAT without
+            // increasing the amount payable by the customer.
+            $lineTax = $this->extractIncludedVat($lineSubtotal);
             $lineTotal = $lineSubtotal;
 
             $productId = (int) $item->product_id;
@@ -2688,6 +2720,7 @@ class EcommerceController extends Controller
                 'product_id' => $item->product_id,
                 'product_name' => $item->product?->product_name,
                 'sku' => $item->product?->sku,
+                'unit_of_measurement' => $item->product?->unit_of_measurement,
                 'store_name' => $item->product?->store?->store_name ?? $item->product?->store?->name ?? 'Store',
                 'variation_id' => $item->variation_id,
                 'variation_name' => $item->variation_name ?: $item->variation?->variation_name,
@@ -2696,7 +2729,7 @@ class EcommerceController extends Controller
                 'is_favorite' => isset($favoriteMap[$productId]),
                 'quantity' => (int) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
-                'tax_rate' => (float) $item->tax_rate,
+                'tax_rate' => self::VAT_RATE,
                 'line_subtotal' => round($lineSubtotal, 2),
                 'line_tax' => $lineTax,
                 'line_total' => round($lineTotal, 2),
@@ -2704,7 +2737,7 @@ class EcommerceController extends Controller
         })->values();
 
         $subtotal = round($items->sum('line_subtotal'), 2);
-        $taxAmount = 0;
+        $taxAmount = round($items->sum('line_tax'), 2);
         $totalAmount = round($items->sum('line_total'), 2);
 
         return [
@@ -2717,6 +2750,18 @@ class EcommerceController extends Controller
                 'items_count' => (int) $items->sum('quantity'),
             ],
         ];
+    }
+
+    private function extractIncludedVat(float $vatInclusiveAmount): float
+    {
+        if ($vatInclusiveAmount <= 0) {
+            return 0.0;
+        }
+
+        return round(
+            $vatInclusiveAmount - ($vatInclusiveAmount / (1 + (self::VAT_RATE / 100))),
+            2
+        );
     }
 
     private function generateOrderNumber(): string
@@ -2909,6 +2954,10 @@ class EcommerceController extends Controller
                 'tracking_number' => $order->delivery->tracking_number,
                 'courier_name' => $order->delivery->courier_name,
                 'courier_contact' => $order->delivery->courier_contact,
+                'current_latitude' => $order->delivery->current_latitude,
+                'current_longitude' => $order->delivery->current_longitude,
+                'current_address' => $order->delivery->current_address,
+                'estimated_delivery_at' => $order->delivery->estimated_delivery_at,
                 'proof_photo_url' => $order->delivery->proof_of_delivery_path ? Storage::disk('public')->url($order->delivery->proof_of_delivery_path) : null,
                 'proof_signature_url' => $order->delivery->proof_signature_path ? Storage::disk('public')->url($order->delivery->proof_signature_path) : null,
             ] : null,
@@ -2925,6 +2974,16 @@ class EcommerceController extends Controller
                     'product_id' => $item->product_id,
                     'product_name' => $item->product_name,
                     'sku' => $item->sku,
+                    'description' => $item->product?->description,
+                    'unit_of_measurement' => $item->product?->unit_of_measurement,
+                    'brand' => $item->product?->brand,
+                    'category_name' => $item->product?->category?->category_name,
+                    'weight_kg' => $item->product?->weight_kg !== null ? (float) $item->product->weight_kg : null,
+                    'dimensions' => $item->product ? [
+                        'length_cm' => $item->product->length_cm !== null ? (float) $item->product->length_cm : null,
+                        'width_cm' => $item->product->width_cm !== null ? (float) $item->product->width_cm : null,
+                        'height_cm' => $item->product->height_cm !== null ? (float) $item->product->height_cm : null,
+                    ] : null,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
                     'line_subtotal' => (float) $item->line_subtotal,
@@ -3116,6 +3175,7 @@ class EcommerceController extends Controller
         $productsStats = Product::query()
             ->selectRaw('store_id, COUNT(*) as products_count, COUNT(DISTINCT category_id) as categories_count')
             ->whereIn('store_id', $storeIds)
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('inventory', function ($query) {
@@ -3388,7 +3448,7 @@ class EcommerceController extends Controller
         ];
     }
 
-    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm): array
+    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm, float $totalWeightKg = 0): array
     {
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
         if (!$setting) {
@@ -3397,6 +3457,7 @@ class EcommerceController extends Controller
                 'is_active' => true,
                 'base_fee' => 100,
                 'per_km_fee' => 10,
+                'per_kg_fee' => 0,
                 'min_delivery_fee' => 80,
                 'free_shipping_min_order' => null,
                 'bulky_item_surcharge' => 0,
@@ -3406,12 +3467,27 @@ class EcommerceController extends Controller
             ]);
         }
 
-        if (!(bool) $setting->is_active) {
+        $maxDistance = $setting->max_delivery_distance_km;
+        if (!is_null($maxDistance) && $distanceKm > (float) $maxDistance) {
             return [
+                'delivery_available' => false,
                 'shipping_fee' => 0.0,
                 'free_shipping_applied' => false,
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
+                'weight_fee' => 0.0,
+                'minimum_applied' => false,
+            ];
+        }
+
+        if (!(bool) $setting->is_active) {
+            return [
+                'shipping_fee' => 0.0,
+                'delivery_available' => true,
+                'free_shipping_applied' => false,
+                'base_fee' => 0.0,
+                'distance_fee' => 0.0,
+                'weight_fee' => 0.0,
                 'minimum_applied' => false,
             ];
         }
@@ -3420,24 +3496,29 @@ class EcommerceController extends Controller
         if (!is_null($freeThreshold) && $subtotal >= (float) $freeThreshold) {
             return [
                 'shipping_fee' => 0.0,
+                'delivery_available' => true,
                 'free_shipping_applied' => true,
                 'base_fee' => (float) $setting->base_fee,
                 'distance_fee' => round($distanceKm * (float) $setting->per_km_fee, 2),
+                'weight_fee' => round($totalWeightKg * (float) $setting->per_kg_fee, 2),
                 'minimum_applied' => false,
             ];
         }
 
         $base = (float) $setting->base_fee;
         $distanceFee = $distanceKm * (float) $setting->per_km_fee;
-        $raw = $base + $distanceFee;
+        $weightFee = $totalWeightKg * (float) $setting->per_kg_fee;
+        $raw = $base + $distanceFee + $weightFee;
         $min = (float) $setting->min_delivery_fee;
         $applied = max($raw, $min);
 
         return [
             'shipping_fee' => round($applied, 2),
+            'delivery_available' => true,
             'free_shipping_applied' => false,
             'base_fee' => round($base, 2),
             'distance_fee' => round($distanceFee, 2),
+            'weight_fee' => round($weightFee, 2),
             'minimum_applied' => $applied > $raw,
         ];
     }

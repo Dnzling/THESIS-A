@@ -51,7 +51,10 @@
                   size="normal" />
                 <div>
                   <h3 class="font-semibold text-gray-800">{{ role.display_name }}</h3>
-                  <p class="text-xs text-gray-500">{{ role.name }}</p>
+                  <div class="flex items-center gap-2">
+                    <p class="text-xs text-gray-500">{{ role.name }}</p>
+                    <Tag v-if="isProtectedRole(role)" value="System role" severity="secondary" />
+                  </div>
                 </div>
               </div>
   
@@ -729,7 +732,9 @@ const selectedIcon = computed({
 
 // Role Menu
 const roleMenu = ref()
-const roleMenuItems = ref([
+const protectedRoleNames = ['super_admin', 'store_admin', 'driver', 'applicant', 'supplier', 'customer']
+const isProtectedRole = (role: any) => protectedRoleNames.includes(String(role?.name || '').toLowerCase())
+const roleMenuItems = computed(() => [
   {
     label: 'Edit',
     icon: 'pi pi-pencil',
@@ -747,6 +752,7 @@ const roleMenuItems = ref([
     label: 'Delete',
     icon: 'pi pi-trash',
     class: 'text-red-500',
+    disabled: isProtectedRole(selectedRole.value),
     command: () => confirmDeleteRole(selectedRole.value)
   }
 ])
@@ -1087,8 +1093,14 @@ const openPermissionsDialog = async (role: any) => {
 const saveRolePermissions = async () => {
   savingPermissions.value = true
   try {
+    const permissionIds = Array.from(new Set(
+      (Array.isArray(selectedRolePermissions.value) ? selectedRolePermissions.value : [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ))
+
     await axios.post(`/api/admin/roles/${selectedRole.value.id}/permissions`, {
-      permissions: selectedRolePermissions.value
+      permissions: permissionIds
     })
 
     toast.add({ severity: 'success', summary: 'Success', detail: 'Permissions updated successfully', life: 3000 })
@@ -1444,6 +1456,10 @@ const clearPermissionFilters = () => {
 
 const confirmDeleteRole = (role: any) => {
   if (!role?.id) return
+  if (isProtectedRole(role)) {
+    toast.add({ severity: 'warn', summary: 'Protected Role', detail: 'System roles cannot be deleted.', life: 3000 })
+    return
+  }
 
   confirm.require({
     header: 'Delete Role',
@@ -1503,4 +1519,3 @@ onMounted(() => {
   loadNavigationItems()
 })
 </script>
-

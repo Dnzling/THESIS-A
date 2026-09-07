@@ -36,14 +36,10 @@ class Employee extends Model
         'branch_id',
         'role_id',
         'employee_number',
-        'fname',
-        'lname',
-        'phone',
         'address',
         'province',
         'city',
         'barangay',
-        'date_of_birth',
         'gender',
         'hire_date',
         'department',
@@ -104,6 +100,27 @@ class Employee extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    // Legacy reads remain available while identity data is stored on users.
+    public function getFnameAttribute(): ?string
+    {
+        return $this->user?->fname;
+    }
+
+    public function getLnameAttribute(): ?string
+    {
+        return $this->user?->lname;
+    }
+
+    public function getPhoneAttribute(): ?string
+    {
+        return $this->user?->phone_number;
+    }
+
+    public function getDateOfBirthAttribute(): mixed
+    {
+        return $this->user?->birthday;
     }
 
     /**

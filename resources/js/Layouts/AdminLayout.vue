@@ -200,6 +200,7 @@ const adminMenu = [
   },
   {
     to: "/admin/subscription",
+    name: 'AdminSubscription',
     label: "Subscriptions",
     icon: "pi pi-credit-card text-gray-500 w-5"
   },

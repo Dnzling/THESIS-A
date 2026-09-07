@@ -8,19 +8,29 @@ use App\Http\Controllers\Api\Logistics\DeliveryZoneController;
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
+use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 
 Route::prefix('logistics')->group(function () {
+    Route::prefix('settings/delivery-fees')->group(function () {
+        Route::get('/', [DeliveryFeeSettingController::class, 'show'])->middleware('can:logistics.settings.view');
+        Route::put('/', [DeliveryFeeSettingController::class, 'update'])->middleware('can:logistics.settings.manage');
+        Route::post('/estimate', [DeliveryFeeSettingController::class, 'estimate'])->middleware('can:logistics.settings.view');
+    });
+
     Route::prefix('delivery-orders')->group(function () {
         Route::get('/logistics-employees', [UnifiedDeliveryController::class, 'logisticsEmployees'])->middleware('can:logistics.deliveries.view');
         Route::post('/distance-estimate', [UnifiedDeliveryController::class, 'estimateDistance'])->middleware('can:logistics.deliveries.manage');
         Route::post('/assign', [UnifiedDeliveryController::class, 'assign'])->middleware('can:logistics.deliveries.manage');
-        Route::get('/', [UnifiedDeliveryController::class, 'orders'])->middleware('can:logistics.deliveries.view');
-        Route::get('/{source}/{orderId}', [UnifiedDeliveryController::class, 'orderDetail'])->middleware('can:logistics.deliveries.view');
-        Route::get('/{source}/{orderId}/proof/{kind}', [UnifiedDeliveryController::class, 'serveProof'])->middleware('can:logistics.deliveries.view');
-        Route::get('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'logs'])->middleware('can:logistics.deliveries.view');
-        Route::post('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'addLog'])->middleware('can:logistics.deliveries.manage');
-        Route::put('/{source}/{orderId}/status', [UnifiedDeliveryController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{source}/{orderId}/delivered', [UnifiedDeliveryController::class, 'delivered'])->middleware('can:logistics.deliveries.manage');
+        // Drivers are authorized inside the controller and are restricted to their own assignments.
+        Route::get('/', [UnifiedDeliveryController::class, 'orders']);
+        Route::get('/{source}/{orderId}', [UnifiedDeliveryController::class, 'orderDetail']);
+        Route::get('/{source}/{orderId}/proof/{kind}', [UnifiedDeliveryController::class, 'serveProof']);
+        Route::get('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'logs']);
+        Route::post('/{source}/{orderId}/logs', [UnifiedDeliveryController::class, 'addLog']);
+        Route::put('/{source}/{orderId}/status', [UnifiedDeliveryController::class, 'updateStatus']);
+        Route::post('/{source}/{orderId}/status', [UnifiedDeliveryController::class, 'updateStatus']);
+        Route::post('/{source}/{orderId}/location', [UnifiedDeliveryController::class, 'updateLocation']);
+        Route::post('/{source}/{orderId}/delivered', [UnifiedDeliveryController::class, 'delivered']);
     });
 
     // Delivery Management

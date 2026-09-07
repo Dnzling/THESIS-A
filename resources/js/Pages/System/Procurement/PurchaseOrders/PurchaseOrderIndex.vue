@@ -4,80 +4,90 @@
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-xl font-bold text-gray-800">Purchase Orders</h1>
-        <p class="text-gray-500 mt-1">Manage purchase orders and track delivery status</p>
       </div>
-      <Button v-if="canManagePurchaseOrders" label="New Purchase Order" icon="pi pi-plus" size="small"
-        @click="goToCreatePO" />
+      <!-- <Button v-if="canManagePurchaseOrders" label="New Purchase Order" icon="pi pi-plus" size="small"
+        @click="goToCreatePO" /> -->
     </div>
   
     <!-- Quick Stats -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
-          <div class="text-center">
-            <p class="text-gray-500 text-sm">Total POs</p>
-            <p class="text-3xl font-bold text-blue-600">{{ stats.totalCount }}</p>
+          <div class="flex items-center justify-between">
+            <div class="">
+              <p class="text-xs font-bold  uppercase tracking-wide">Total POs</p>
+              <p class="text-2xl font-bold text-black-600">{{ stats.totalCount }}</p>
+            </div>
+            <i class="pi pi-file text-4xl text-black-600"></i>
           </div>
         </template>
       </Card>
       <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
-          <div class="text-center">
-            <p class="text-gray-500 text-sm">Sent to Supplier</p>
-            <p class="text-2xl font-bold text-orange-600">{{ stats.pendingApproval }}</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-bold  uppercase tracking-wide">Sent to Supplier</p>
+              <p class="text-2xl font-bold text-black-600">{{ stats.pendingApproval }}</p>
+            </div>
+            <i class="pi pi-send text-4xl text-black-600"></i>
           </div>
         </template>
       </Card>
       <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
-          <div class="text-center">
-            <p class="text-gray-500 text-sm">Total Amount</p>
-            <p class="text-2xl font-bold text-purple-600">₱ {{ formatNumber(stats.totalAmount) }}</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-bold  uppercase tracking-wide">Total Amount</p>
+              <p class="text-2xl font-bold text-black-600">₱ {{ formatNumber(stats.totalAmount) }}</p>
+            </div>
+            <i class="pi pi-money-bill text-4xl text-black-600"></i>
           </div>
         </template>
       </Card>
       <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
         <template #content>
-          <div class="text-center">
-            <p class="text-gray-500 text-sm">Delayed Orders</p>
-            <p class="text-2xl font-bold text-red-600">{{ stats.delayedCount }}</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-bold  uppercase tracking-wide">Delayed Orders</p>
+              <p class="text-2xl font-bold text-red-600">{{ stats.delayedCount }}</p>
+            </div>
+            <i class="pi pi-clock text-4xl text-red-600"></i>
           </div>
         </template>
       </Card>
     </div>
   
-    <!-- Filters -->
-    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search PO No" class="w-full" @keyup.enter="loadOrders" />
-          </IconField>
-  
-          <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear
-            @change="loadOrders" fluid />
-  
-          <Select v-model="filters.supplier_id" :options="suppliers" optionLabel="supplier_name" optionValue="id"
-            placeholder="All Suppliers" showClear @change="loadOrders" fluid />
-  
-          <DatePicker v-model="filters.date_from" placeholder="From Date" @date-select="loadOrders" fluid />
-  
-          <DatePicker v-model="filters.date_to" placeholder="To Date" @date-select="loadOrders" fluid />
-  
-          <Button icon="pi pi-refresh" class="p-button-outlined p-button-rounded" @click="loadOrders"
-            v-tooltip="'Refresh'" />
-        </div>
-      </template>
-    </Card>
-  
     <!-- POs Table -->
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
+      <template #header>
+        <div class="m-4 mt-6 grid grid-cols-1 gap-3 md:grid-cols-5">
+          <div>
+            <IconField fluid>
+              <InputIcon class="pi pi-search" />
+            <InputText v-model="filters.search" size="small" placeholder="Search PO, Supplier, or Created By" fluid @keyup.enter="applyFilters" />
+            </IconField>
+          </div>
+          <div>
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
+              placeholder="All Statuses" showClear fluid size="small" @change="applyFilters" />
+          </div>
+          <div>
+            <Select v-model="filters.supplier_id" :options="suppliers" optionLabel="supplier_name"
+              optionValue="id" placeholder="All Suppliers" showClear fluid size="small" @change="applyFilters" />
+          </div>
+          <div>
+            <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false"
+              placeholder="Order date range" dateFormat="M d, yy" show-icon size="small" @date-select="applyFilters" fluid />
+          </div>
+          <div class="flex items-center gap-2">
+            <Button label="Clear Filters" severity="secondary" size="small" outlined @click="resetFilters" />
+          </div>
+        </div>
+      </template>
       <template #content>
-        <DataTable v-if="!loading" :value="orders" :loading="loading" :paginator="true" :rows="15"
-          responsive-layout="scroll" class="p-datatable-sm">
+        <DataTable v-if="!loading" rowHover :value="orders" :loading="loading" :paginator="true" :rows="10" :rowsPerPageOptions="[10, 20, 50]" responsive-layout="scroll" class="p-datatable-sm">
   
-          <Column header="Order Date" style="width: 9%" sortable >
+          <Column header="Order Date" style="width: 9%" sortable>
             <template #body="{ data }">
               <span class="text-sm text-gray-700">{{ formatDate(data.order_date) }}</span>
             </template>
@@ -103,21 +113,9 @@
             </template>
           </Column>
   
-          <!-- Source (Stock Request or Manual)
-          <Column header="Source" style="width: 10%">
+          <Column header="Created By" style="width: 14%">
             <template #body="{ data }">
-              <Badge v-if="data.stock_order_request_id" value="Stock Request" severity="info" class="text-xs" />
-              <Badge v-else value="Manual Entry" severity="secondary" class="text-xs" />
-            </template>
-          </Column> -->
-  
-          <!-- Dates -->
-          <Column header="Order" style="width: 14%">
-            <template #body="{ data }">
-              <div class="text-sm space-y-1">
-                <p>Order: {{ formatDate(data.order_date) }}</p>
-  
-              </div>
+              <span class="text-sm text-gray-700">{{ getPersonName(data.created_by) }}</span>
             </template>
           </Column>
   
@@ -197,6 +195,7 @@ const filters = ref({
   date_from: '',
   date_to: '',
 })
+const dateRange = ref<Date[] | null>(null)
 
 const statusOptions = ref([
   { label: 'Draft', value: 'draft' },
@@ -215,7 +214,13 @@ async function loadOrders() {
   try {
     // Debug: Check token and user inf
 
-    const response = await procurementService.getPurchaseOrders(filters.value)
+    const params: any = { ...filters.value }
+    if (dateRange.value?.[0]) params.start_date = formatFilterDate(dateRange.value[0])
+    if (dateRange.value?.[1]) params.end_date = formatFilterDate(dateRange.value[1])
+    delete params.date_from
+    delete params.date_to
+
+    const response = await procurementService.getPurchaseOrders(params)
     console.log('📦 API Response:', response)
     console.log('📊 Orders array:', response.data?.data)
     console.log('📊 Total count:', response.data?.total)
@@ -230,6 +235,29 @@ async function loadOrders() {
   } finally {
     loading.value = false
   }
+}
+
+function formatFilterDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function applyFilters() {
+  loadOrders()
+}
+
+function resetFilters() {
+  filters.value = {
+    search: '',
+    status: '',
+    supplier_id: '',
+    date_from: '',
+    date_to: '',
+  }
+  dateRange.value = null
+  loadOrders()
 }
 
 async function loadSuppliers() {
@@ -281,6 +309,13 @@ function formatStatus(status: string): string {
   }
   return map[status] || status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 }
+
+function getPersonName(person: any): string {
+  const source = person?.user || person
+  const name = [source?.fname, source?.lname].filter(Boolean).join(' ').trim()
+  return name || source?.full_name || 'N/A'
+}
+
 function formatDate(date: string): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })

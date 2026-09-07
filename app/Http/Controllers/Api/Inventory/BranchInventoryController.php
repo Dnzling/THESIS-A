@@ -75,16 +75,6 @@ class BranchInventoryController extends Controller
             $user = auth()->user();
             $targetBranchId = (int) ($branchId ?? $context['branch_id']);
 
-            if ($targetBranchId !== (int) $context['branch_id']) {
-                $canViewAll = $user?->hasPermissionTo('inventory.branch_inventory.view_all', (int) $context['store_id']) ?? false;
-                if (!$canViewAll) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Unauthorized to view other branch inventory',
-                    ], 403);
-                }
-            }
-            
             $query = BranchInventory::with(['product.suppliers', 'variation', 'branch', 'lastCountedBy'])
                 ->where('store_id', $context['store_id'])
                 ->where('branch_id', $targetBranchId);

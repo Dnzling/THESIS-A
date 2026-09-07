@@ -562,11 +562,8 @@ const groupedNavigation = computed(() => {
     : []
 
   if (baseNavigation.length === 0) {
-    if (isSupplierRole) {
-      baseNavigation = [...supplierFallbackNavigation]
-    } else if (isStoreRole) {
-      // baseNavigation = [...storeFallbackNavigation]
-    }
+    // Navigation is supplied by the backend permission response.
+    // Keep the list empty when no permitted items are returned.
   }
 
   if (!isCustomerRole) {
@@ -680,17 +677,6 @@ const groupedNavigation = computed(() => {
         }
       }
       return item
-    })
-  }
-
-  // For store roles, hide nav items for modules that are not enabled for their store
-  if (isStoreRole && Array.isArray(enabledModules.value)) {
-    const allowed = new Set<string>(enabledModules.value)
-    activeItems = activeItems.filter((item: any) => {
-      // keep items with no module tag (safety), and account/profile utilities
-      if (!item.module) return true
-      if (['account', 'support'].includes(item.module)) return true
-      return allowed.has(item.module)
     })
   }
 

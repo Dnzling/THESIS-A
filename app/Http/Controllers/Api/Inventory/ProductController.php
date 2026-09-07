@@ -62,7 +62,7 @@ class ProductController extends Controller
             default => 'FG',
         };
 
-        return $prefix . '-' . strtoupper(Str::random(4)) . '-' . now()->format('YmdHis') . '-' . $storeId;
+        return $prefix . '-' . strtoupper(Str::random(4)) . '-' . now()->format('YmdHis');
     }
 
     private function buildProductPayload(array $data, int $storeId): array
@@ -144,6 +144,8 @@ class ProductController extends Controller
                 ])
                 ->with([
                     'category:id,category_name',
+                    'suppliers:id,supplier_code,supplier_name,company_name',
+                    'assets:id,product_id,asset_type,file_name,file_path,is_primary,display_order',
                     'inventory' => function ($q) use ($context) {
                         $q->select([
                             'id',
@@ -158,6 +160,10 @@ class ProductController extends Controller
                     },
                 ])
                 ->where('store_id', $context['store_id'])
+                // Raw materials are outside the current inventory MVP. Keep
+                // existing records available through direct detail links, but
+                // do not include them in the product catalog list.
+                ->whereIn('product_type', ['finished_good', 'supply'])
                 ->where('is_active', true);
 
             // Filters
@@ -175,7 +181,7 @@ class ProductController extends Controller
                     $query->where(function ($q) {
                         $q->whereNull('supplier_name')
                           ->orWhere('supplier_name', '');
-                    });
+                    })->whereDoesntHave('suppliers');
                 } elseif (in_array($status, ['1', '0', 'true', 'false'], true)) {
                     $query->where('is_active', filter_var($status, FILTER_VALIDATE_BOOLEAN));
                 }
@@ -226,6 +232,24 @@ class ProductController extends Controller
             $products = $query
                 ->paginate($request->get('per_page', 15));
 
+            $products->getCollection()->transform(function (Product $product) {
+                $supplierNames = $product->suppliers
+                    ->map(fn ($supplier) => $supplier->supplier_name ?: $supplier->company_name)
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                $product->setAttribute('supplier_names', $supplierNames);
+
+                // Keep paginated index rows compatible with screens that read the
+                // legacy flat field while the relationship remains authoritative.
+                if ($supplierNames->isNotEmpty()) {
+                    $product->setAttribute('supplier_name', $supplierNames->implode(', '));
+                }
+
+                return $product;
+            });
+
             return response()->json([
                 'success' => true,
                 'data' => $products,
@@ -250,6 +274,8 @@ class ProductController extends Controller
 
             $product = Product::with([
                 'category',
+                'suppliers:id,supplier_code,supplier_name,company_name',
+                'tags:id,tag_name',
                 'variations',
                 'assets',
                 'inventory' => function ($query) use ($context) {
@@ -262,6 +288,9 @@ class ProductController extends Controller
             // The Product model protects cost_price through an accessor. Return a scoped
             // inventory field so product editing can still load the saved cost.
             $product->setAttribute('inventory_cost_price', $product->getRawOriginal('cost_price'));
+            $employee = Employee::with('user:id,fname,lname')->find($product->getRawOriginal('created_by'));
+            $creatorName = trim(($employee?->user?->fname ?? '') . ' ' . ($employee?->user?->lname ?? ''));
+            $product->setAttribute('created_by_name', $creatorName !== '' ? $creatorName : null);
 
             return response()->json([
                 'success' => true,
@@ -290,7 +319,7 @@ class ProductController extends Controller
                 'sku' => 'nullable|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
                 'category_id' => 'nullable|exists:categories,id',
-                'product_type' => 'nullable|in:raw_material,finished_good,supply',
+                'product_type' => 'nullable|in:finished_good,supply',
                 'base_price' => 'nullable|numeric|min:0',
                 'unit_cost' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',

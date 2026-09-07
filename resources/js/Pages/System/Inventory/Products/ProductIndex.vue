@@ -3,11 +3,11 @@
     <!-- Header -->
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 ">
       <div>
-        <h1 class="text-lg font-bold text-gray-900">Products</h1>
+        <h1 class="text-lg font-bold text-gray-900">Items</h1>
       </div>
       <div class="flex items-center gap-2">
         <Button
-          label="Create Product"
+          label="Create Item"
           size="small"
           @click="router.push({ name: 'inventory.products.create' })"
         />
@@ -23,7 +23,7 @@
               <InputIcon class="pi pi-search" />
               <InputText
                 v-model="filters.search"
-                placeholder="Search by product name or SKU"
+                placeholder="Search by item name or SKU"
                 class="w-full text-sm"
                 size="small"
                 @input="onFilterChange"
@@ -99,7 +99,7 @@
           @row-click="onProductRowClick" :rowClass="productRowClass"
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          class="p-datatable-sm text-xs" stripedRows responsive-layout="scroll">
+          class="p-datatable-sm text-xs" responsive-layout="scroll">
   
           <template #empty>
             <div class="text-center py-8">
@@ -116,11 +116,32 @@
             </template>
           </Column>
   
-          <Column field="product_name" header="Product Name" sortable>
+          <Column field="product_name" header="Item Name" sortable>
             <template #body="{ data }">
               <div class="flex items-center gap-3">
-                <div class="flex h-8 w-8 items-center justify-center rounded bg-gray-100">
-                  <i class="pi pi-image text-gray-400"></i>
+                <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                  <Carousel
+                    v-if="getProductImages(data).length > 1"
+                    :value="getProductImages(data)"
+                    :numVisible="1"
+                    :numScroll="1"
+                    :showNavigators="true"
+                    :showIndicators="false"
+                    class="product-index-carousel h-full"
+                  >
+                    <template #item="{ data: image }">
+                      <img :src="image.url" :alt="image.alt_text || data.product_name" class="h-14 w-14 object-cover" />
+                    </template>
+                  </Carousel>
+                  <img
+                    v-else-if="getProductImages(data).length === 1"
+                    :src="getProductImages(data)[0].url"
+                    :alt="getProductImages(data)[0].alt_text || data.product_name"
+                    class="h-full w-full object-cover"
+                  />
+                  <div v-else class="flex h-full w-full items-center justify-center">
+                    <i class="pi pi-image text-lg text-slate-300"></i>
+                  </div>
                 </div>
                 <div>
                   <p class="font-medium text-gray-900 text-xs">{{ data.product_name }}</p>
@@ -132,9 +153,9 @@
   
           <Column field="product_type" header="Type">
             <template #body="{ data }">
-              <Tag :severity="getTypeSeverity(data.product_type)" size="small">
+              <Badge :severity="getTypeSeverity(data.product_type)" size="small">
                 <span class="text-xs">{{ getTypeLabel(data.product_type) }}</span>
-              </Tag>
+              </Badge>
             </template>
           </Column>
 
@@ -143,7 +164,7 @@
           <Column field="base_price" header="Cost/Unit" sortable>
             <template #body="{ data }">
               <div>
-                <p class="font-semibold text-gray-900 text-xs">₱{{ formatPrice(getUnitCost(data)) }}</p>
+                <p class=" text-gray-900 text-xs">₱{{ formatPrice(getUnitCost(data)) }}/<span class="font-bold">{{ data.unit_of_measurement }}</span></p>
               </div>
             </template>
           </Column>
@@ -154,9 +175,9 @@
             </template>
           </Column>
 
-          <Column header="Supplier">
+          <Column field="supplier_name" header="Supplier">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getSupplierRecorded(data) }}</span>
+              <span class="text-xs text-gray-700">{{ getSupplierName(data) }}</span>
             </template>
           </Column>
 
@@ -197,6 +218,7 @@ import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRouter } from 'vue-router'
+import Carousel from 'primevue/carousel'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -231,8 +253,7 @@ const statusOptions = [
   { label: 'No Supplier', value: 'no_supplier' }
 ]
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Product', value: 'finished_good' },
   { label: 'Supply', value: 'supply' }
 ]
 
@@ -251,8 +272,9 @@ const loadProducts = async () => {
   loading.value = true
   try {
     const response = await inventoryService.getProducts(filters)
-    products.value = response?.data?.data || response?.data || []
-    totalRecords.value = response?.data?.total ?? products.value.length
+    // inventoryService returns the API body. Products are in response.data.data.
+    products.value = response?.data?.data || []
+    totalRecords.value = Number(response?.data?.total ?? products.value.length)
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load products', life: 3000 })
   } finally {
@@ -382,6 +404,14 @@ const getBranchAvailability = (product: any) => {
   return inventory ? `${inventory.quantity_available ?? 0}` : '0'
 }
 
+const getProductImages = (product: any) => {
+  const assets = Array.isArray(product?.assets) ? product.assets : []
+
+  return assets
+    .filter((asset: any) => ['Image_Main', 'Image_Gallery', 'Image_360'].includes(asset.asset_type) && asset.url)
+    .sort((a: any, b: any) => Number(b.is_primary) - Number(a.is_primary) || Number(a.display_order || 0) - Number(b.display_order || 0))
+}
+
 const getBranchAvailabilityStatus = (product: any) => {
   const inventory = Array.isArray(product.inventory) ? product.inventory[0] : null
   if (!inventory) return 'Not stocked in your branch'
@@ -393,8 +423,7 @@ const getBranchAvailabilityStatus = (product: any) => {
 const getTypeLabel = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const labels: Record<string, string> = {
-    finished_good: 'Finished Good',
-    raw_material: 'Raw Material',
+    finished_good: 'Product',
     supply: 'Supply'
   }
   return labels[normalized] || 'Product'
@@ -404,8 +433,7 @@ const getTypeSeverity = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const severities: Record<string, string> = {
     finished_good: 'success',
-    raw_material: 'info',
-    supply: 'warn'
+    supply: 'info'
   }
   return severities[normalized] || 'secondary'
 }
@@ -418,8 +446,22 @@ const getReorderLevel = (product: any) => {
   return product.inventory?.[0]?.reorder_point ?? product.reorder_point ?? 'N/A'
 }
 
-const getSupplierRecorded = (product: any) => {
-  return product.supplier_name?.trim() ? product.supplier_name : 'No Supplier'
+const getSupplierName = (data: any) => {
+  const product = data?.product || data
+  const linkedNames = Array.isArray(product?.supplier_names)
+    ? product.supplier_names.filter((name: any) => name && String(name).trim())
+    : []
+
+  if (linkedNames.length > 0) return [...new Set(linkedNames.map((name: string) => String(name).trim()))].join(', ')
+
+  const linkedSuppliers = Array.isArray(product?.suppliers) ? product.suppliers : []
+  const supplierNames = linkedSuppliers
+    .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
+    .filter((name: any) => name && String(name).trim())
+
+  if (supplierNames.length > 0) return [...new Set(supplierNames.map((name: string) => String(name).trim()))].join(', ')
+
+  return product?.supplier_name ? String(product.supplier_name).trim() : '-'
 }
 
 const formatPrice = (price: number) => {

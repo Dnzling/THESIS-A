@@ -52,7 +52,9 @@ export const useAuthStore = defineStore('auth', () => {
     // RBAC State
     const permissions = ref<string[]>(readStoredArray<string>('permissions'))
     const navigation = ref<NavigationItem[]>(readStoredArray<NavigationItem>('navigation'))
-    const permissionsLoaded = ref(permissions.value.length > 0 || navigation.value.length > 0)
+    // Cached permissions/navigation are used as a fallback only. Always refresh
+    // them once on a new app load so role changes are reflected in the sidebar.
+    const permissionsLoaded = ref(false)
     const isLoadingPermissions = ref(false)
     let permissionsPromise: Promise<void> | null = null
 
@@ -319,14 +321,14 @@ export const useAuthStore = defineStore('auth', () => {
     /**
      * Login user
      */
-    const login = async (login: string, password: string) => {
+    const login = async (login: string, password: string, endpoint = '/api/auth/login') => {
         loading.value = true
         error.value = null
 
         try {
             const location = await getCurrentLocation()
             // Make login request
-            const response = await axios.post('/api/auth/login', {
+            const response = await axios.post(endpoint, {
                 login,
                 password,
                 device_name: 'web_browser',

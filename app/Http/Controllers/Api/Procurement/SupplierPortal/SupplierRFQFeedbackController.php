@@ -202,6 +202,16 @@ class SupplierRFQFeedbackController extends Controller
             'rfq_id' => 'required|exists:request_for_quotations,id',
             'rfq_item_id' => 'required|exists:rfq_items,id',
             'quoted_price' => 'required|numeric|min:0.01',
+            'available_quantity' => 'required|numeric|min:0',
+            'length_cm' => 'required|numeric|min:0.01',
+            'width_cm' => 'required|numeric|min:0.01',
+            'height_cm' => 'required|numeric|min:0.01',
+            'weight_kg' => 'required|numeric|min:0.001',
+            'estimated_delivery_date' => 'required|date',
+            'quotation_valid_until' => 'required|date|after_or_equal:today',
+            'attachment' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx|max:5120',
+            'product_specifications' => 'nullable|string|max:2000',
+            'additional_notes' => 'nullable|string|max:2000',
             'description' => 'nullable|string|max:1000',
         ]);
 
@@ -257,6 +267,10 @@ class SupplierRFQFeedbackController extends Controller
             $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
 
             // Create or update feedback (use contract tax rate)
+            $attachmentPath = $request->hasFile('attachment')
+                ? $request->file('attachment')->store('supplier/rfq-attachments', 'public')
+                : null;
+
             $feedback = SupplierRFQFeedback::updateOrCreate(
                 [
                     'supplier_portal_id' => $portal->id,
@@ -265,6 +279,16 @@ class SupplierRFQFeedbackController extends Controller
                 [
                     'rfq_id' => $request->rfq_id,
                     'quoted_price' => $request->quoted_price,
+                    'available_quantity' => $request->available_quantity,
+                    'length_cm' => $request->length_cm,
+                    'width_cm' => $request->width_cm,
+                    'height_cm' => $request->height_cm,
+                    'weight_kg' => $request->weight_kg,
+                    'estimated_delivery_date' => $request->estimated_delivery_date,
+                    'quotation_valid_until' => $request->quotation_valid_until,
+                    'attachment_path' => $attachmentPath,
+                    'product_specifications' => $request->product_specifications,
+                    'additional_notes' => $request->additional_notes,
                     'tax_rate' => $contractTaxRate,
                     'description' => $request->description,
                     'status' => 'pending',
@@ -303,17 +327,21 @@ class SupplierRFQFeedbackController extends Controller
                             $subtotal = \App\Models\Procurement\RFQ\SupplierQuotationItem::where('quotation_id', $quotation->id)
                                 ->sum('line_total');
 
+                            $discountPercent = (float) ($contract?->discount_percentage ?? 0);
+                            $discountAmount = round((float) $subtotal * ($discountPercent / 100), 2);
+                            $taxableAmount = max(0, (float) $subtotal - $discountAmount);
                             $taxAmount = 0;
                             if (!empty($contractTaxRate)) {
-                                $taxAmount = bcmul((string)$subtotal, bcdiv((string)$contractTaxRate, '100', 4), 2);
+                                $taxAmount = bcmul((string)$taxableAmount, bcdiv((string)$contractTaxRate, '100', 4), 2);
                             }
 
-                            $total = bcadd($subtotal, $taxAmount, 2);
+                            $total = bcadd((string) $taxableAmount, $taxAmount, 2);
 
                             // Update columns if they exist
                             $updateData = [];
                             $cols = array_map(fn($c) => is_object($c) ? $c->Field : $c['Field'], DB::select("SHOW COLUMNS FROM supplier_quotations"));
                             if (in_array('subtotal', $cols, true)) $updateData['subtotal'] = $subtotal;
+                            if (in_array('discount_amount', $cols, true)) $updateData['discount_amount'] = $discountAmount;
                             if (in_array('tax_amount', $cols, true)) $updateData['tax_amount'] = $taxAmount;
                             if (in_array('total_amount', $cols, true)) $updateData['total_amount'] = $total;
 

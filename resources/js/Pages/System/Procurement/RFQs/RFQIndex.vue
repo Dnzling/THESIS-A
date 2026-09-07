@@ -4,9 +4,8 @@
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-lg font-bold text-gray-800">Request for Quotations</h1>
-        <p class="text-xs text-gray-600 mt-1">Manage RFQ lifecycle and supplier responses</p>
       </div>
-      <Button v-if="canManageRfq" label="Create RFQ" icon="pi pi-plus" severity="success"
+      <Button v-if="canManageRfq" label="Create RFQ" icon="pi pi-plus"
         @click="router.push({ name: 'procurement.rfqs.create' })" size="small" />
     </div>
   
@@ -16,10 +15,10 @@
         <template #content>
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-gray-600">Total RFQs</p>
-              <p class="text-3xl font-bold text-gray-900">{{ summary.total || 0 }}</p>
+              <p class="text-xs font-bold  uppercase tracking-wide">Total RFQs</p>
+              <p class="text-xl font-bold text-gray-900">{{ summary.total || 0 }}</p>
             </div>
-            <i class="pi pi-briefcase text-4xl text-blue-500 opacity-20"></i>
+            <i class="pi pi-briefcase text-4xl text-black-500"></i>
           </div>
         </template>
       </Card>
@@ -28,10 +27,10 @@
         <template #content>
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-gray-600">Draft</p>
-              <p class="text-3xl font-bold text-gray-600">{{ summary.draft || 0 }}</p>
+              <p class="text-xs font-bold  uppercase tracking-wide">Draft</p>
+              <p class="text-xl font-bold text-black-600">{{ summary.draft || 0 }}</p>
             </div>
-            <i class="pi pi-file text-4xl text-gray-500 opacity-20"></i>
+            <i class="pi pi-file text-4xl text-black-500"></i>
           </div>
         </template>
       </Card>
@@ -40,10 +39,10 @@
         <template #content>
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-gray-600">Active</p>
-              <p class="text-3xl font-bold text-blue-600">{{ summary.sent || 0 }}</p>
+              <p class="text-xs font-bold  uppercase tracking-wide">Active</p>
+              <p class="text-xl font-bold text-black">{{ summary.sent || 0 }}</p>
             </div>
-            <i class="pi pi-send text-4xl text-blue-500 opacity-20"></i>
+            <i class="pi pi-send text-4xl text-black"></i>
           </div>
         </template>
       </Card>
@@ -52,42 +51,42 @@
         <template #content>
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-gray-600">Awarded</p>
-              <p class="text-3xl font-bold text-green-600">{{ summary.awarded || 0 }}</p>
+              <p class="text-xs font-bold  uppercase tracking-wide">Approved</p>
+              <p class="text-xl font-bold text-black-600">{{ summary.approved || 0 }}</p>
             </div>
-            <i class="pi pi-check text-4xl text-green-500 opacity-20"></i>
+            <i class="pi pi-check text-4xl text-black"></i>
           </div>
         </template>
       </Card>
     </div>
   
-    <!-- Filters -->
-    <Card class="mb-6">
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+    <!-- DataTable -->
+    <Card>
+      <template #header>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end m-4 mt-6">
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold">Search</label>
-            <InputText v-model="searchQuery" placeholder="Search RFQ number or title..." @keyup="loadRFQs" />
+            <label class="text-xs font-medium text-gray-600">Search</label>
+            <InputText v-model="searchQuery" size="small" placeholder="Search RFQ number or title..." @keyup.enter="applyFilters" />
           </div>
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold">Filter by Status</label>
+            <label class="text-xs font-medium text-gray-600">Status</label>
             <Select v-model="filterStatus" :options="statusOptions" optionLabel="label" optionValue="value"
-              placeholder="All Statuses" clearable :change="loadRFQs" />
+              placeholder="All Statuses" showClear @change="applyFilters"  size="small"  />
           </div>
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold">Per Page</label>
-            <Select v-model="perPage" :options="[10, 15, 20, 50]" :change="loadRFQs" />
+            <label class="text-xs font-medium text-gray-600">Issue Date</label>
+            <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false"
+              placeholder="Issue date range" dateFormat="M d, yy"  size="small"  showButtonBar @date-select="applyFilters" show-icon />
+          </div>
+          <div class="flex justify-end">
+            <Button label="Clear Filters" severity="secondary"  size="small"  outlined @click="clearFilters" />
           </div>
         </div>
       </template>
-    </Card>
-  
-    <!-- DataTable -->
-    <Card>
       <template #content>
-        <DataTable :value="rfqs" :loading="loading" class="p-datatable-sm" stripedRows :expandedRows="expandedRows"
+        <DataTable :value="rfqs" :loading="loading" class="p-datatable-sm" rowHover :expandedRows="expandedRows"
           responsiveLayout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage"
-          @page="onPageChange">
+          @page="onPageChange" :rowsPerPageOptions="[15, 25, 50]" @row-click="onRowClick" :rowClass="rowClass">
   
           <Column header="Date" style="width: 120px">
             <template #body="{ data }">
@@ -115,14 +114,10 @@
             </template>
           </Column>
   
-  
-  
-  
-  
           <!-- Status -->
           <Column field="status" header="Status" style="width: 130px">
             <template #body="{ data }">
-              <Tag :value="data.status.toUpperCase()" :severity="statusSeverity(data.status)" />
+              <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
   
@@ -130,8 +125,7 @@
           <Column field="created_by" header="Created By" style="width: 150px">
             <template #body="{ data }">
               <div v-if="data.created_by">
-                <p class="font-medium text-gray-900">{{ data.created_by.fname }} {{ data.created_by.lname }}</p>
-                <p class="text-xs text-gray-600">{{ data.created_by.employee_number }}</p>
+                <p class="font-medium text-gray-900 text-sm">{{ getPersonName(data.created_by) }}</p>
               </div>
             </template>
           </Column>
@@ -141,7 +135,7 @@
           <Column header="Actions" style="width: 160px">
             <template #body="{ data }">
               <div class="flex gap-2 items-center justify-start">
-                <Button icon="pi pi-eye" outlined rounded severity="info"
+                <Button icon="pi pi-eye" outlined rounded 
                   @click="router.push({ name: 'procurement.rfqs.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
               </div>
@@ -251,29 +245,43 @@ const perPage = ref(15)
 const total = ref(0)
 const filterStatus = ref<string | null>(null)
 const searchQuery = ref('')
+const dateRange = ref<Date[] | null>(null)
 
 const summary = computed(() => {
   return {
     total: rfqs.value.length,
     draft: rfqs.value.filter(r => r.status === 'draft').length,
-    sent: rfqs.value.filter(r => r.status === 'sent').length,
-    awarded: rfqs.value.filter(r => r.status === 'awarded').length,
+    sent: rfqs.value.filter(r => r.status === 'sent_to_supplier').length,
+    approved: rfqs.value.filter(r => r.status === 'approved').length,
   }
 })
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Sent', value: 'sent' },
-  { label: 'Quotes Received', value: 'quotes_received' },
-  { label: 'Awarded', value: 'awarded' },
-  { label: 'Completed', value: 'completed' },
+  { label: 'Sent to Supplier', value: 'sent_to_supplier' },
+  { label: 'Approved', value: 'approved' },
+  { label: 'Partially Approved', value: 'partially_approved' },
   { label: 'Cancelled', value: 'cancelled' },
+   { label: 'Rejected', value: 'rejected' },
 ]
 
 const formatDate = (date: string | null): string => {
   if (!date) return 'N/A'
   const d = new Date(date)
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
+
+const onRowClick = (event: any) => {
+  const id = event?.data?.id
+  if (id) router.push({ name: 'procurement.rfqs.detail', params: { id } })
+}
+
+const getPersonName = (person: any): string => {
+  const source = person?.user || person
+  const name = [source?.fname, source?.lname].filter(Boolean).join(' ').trim()
+  return name || source?.full_name || 'N/A'
 }
 
 const formatDateTime = (date: string | null): string => {
@@ -290,14 +298,17 @@ const capitalizeWords = (str: string | null): string => {
     .join(' ')
 }
 
+const formatStatus = (status: string | null): string => {
+  return status ? capitalizeWords(status) : 'Unknown'
+}
+
 
 const statusSeverity = (status: string): string => {
   const severityMap: Record<string, string> = {
     draft: 'secondary',
-    sent: 'info',
-    quotes_received: 'warning',
-    awarded: 'success',
-    completed: 'success',
+    partially_approved: 'warn',
+    pending: 'info',
+    approved: 'success',
     cancelled: 'danger',
   }
   return severityMap[status] || 'secondary'
@@ -319,6 +330,13 @@ const loadRFQs = async (page: number = 1) => {
       params.search = searchQuery.value
     }
 
+    if (dateRange.value?.[0]) {
+      params.date_from = formatFilterDate(dateRange.value[0])
+    }
+    if (dateRange.value?.[1]) {
+      params.date_to = formatFilterDate(dateRange.value[1])
+    }
+
     const response = await procurementService.getRFQs(params)
     rfqs.value = response.data?.data || []
     total.value = response.data?.total || 0
@@ -334,6 +352,25 @@ const loadRFQs = async (page: number = 1) => {
   } finally {
     loading.value = false
   }
+}
+
+const formatFilterDate = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const applyFilters = () => {
+  currentPage.value = 1
+  loadRFQs(1)
+}
+
+const clearFilters = () => {
+  searchQuery.value = ''
+  filterStatus.value = null
+  dateRange.value = null
+  applyFilters()
 }
 
 const onPageChange = (event: any) => {

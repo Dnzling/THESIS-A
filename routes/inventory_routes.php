@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\Inventory\EcommerceDeliveryVehicleController;
 use App\Http\Controllers\Api\Inventory\InventoryActivityLogController;
 use App\Http\Controllers\Api\Inventory\StockOrderRequestController;
 use App\Http\Controllers\Api\Inventory\Requisition\PurchaseRequisitionController as InventoryPurchaseRequisitionController;
+use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 use App\Http\Controllers\Api\Store\BranchController;
 
 // ============================================
@@ -88,8 +89,8 @@ Route::prefix('inventory')->group(function () {
     });
 
     // Branch Inventory
-    Route::get('/branches', [BranchController::class, 'index'])->middleware('can:inventory.branch_inventory.view');
-    Route::prefix('branch/{branchId}')->middleware('can:inventory.branch_inventory.view')->group(function () {
+    Route::get('/branches', [BranchController::class, 'index']);
+    Route::prefix('branch/{branchId}')->group(function () {
         Route::get('/', [BranchInventoryController::class, 'index']);
         Route::get('/summary', [BranchInventoryController::class, 'summary']);
         Route::get('/low-stock', [BranchInventoryController::class, 'lowStock']);
@@ -216,40 +217,33 @@ Route::prefix('inventory')->group(function () {
 
     // Products Management
     Route::prefix('products')->group(function () {
-        Route::get('/', [ProductController::class, 'index'])->middleware('can:inventory.master_data.view');
-        Route::get('/{id}', [ProductController::class, 'show'])->middleware('can:inventory.master_data.view');
-        Route::post('/', [ProductController::class, 'store'])->middleware('can:inventory.master_data.manage');
-        Route::put('/{id}', [ProductController::class, 'update'])->middleware('can:inventory.master_data.manage');
-        Route::delete('/{id}', [ProductController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
-        Route::get('/{id}/variations', [ProductController::class, 'getVariations'])->middleware('can:inventory.master_data.view');
-        Route::get('/{id}/stock-history', [ProductController::class, 'getStockHistory'])->middleware('can:inventory.master_data.view');
+        Route::get('/', [ProductController::class, 'index'])->middleware('can:inventory.products.view');
+        Route::get('/{id}', [ProductController::class, 'show'])->middleware('can:inventory.products.view');
+        Route::post('/', [ProductController::class, 'store'])->middleware('can:inventory.products.manage');
+        Route::put('/{id}', [ProductController::class, 'update'])->middleware('can:inventory.products.manage');
+        Route::delete('/{id}', [ProductController::class, 'destroy'])->middleware('can:inventory.products.delete');
+        Route::get('/{id}/variations', [ProductController::class, 'getVariations'])->middleware('can:inventory.products.view');
+        Route::get('/{id}/stock-history', [ProductController::class, 'getStockHistory'])->middleware('can:inventory.products.view');
     });
 
     // Supplies Management
     Route::prefix('supplies')->group(function () {
-        Route::get('/', [SupplyController::class, 'index'])->middleware('can:inventory.master_data.view');
-        Route::get('/{id}', [SupplyController::class, 'show'])->middleware('can:inventory.master_data.view');
-        Route::post('/', [SupplyController::class, 'store'])->middleware('can:inventory.master_data.manage');
-        Route::put('/{id}', [SupplyController::class, 'update'])->middleware('can:inventory.master_data.manage');
-        Route::delete('/{id}', [SupplyController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
+        Route::get('/', [SupplyController::class, 'index']);
+        Route::get('/{id}', [SupplyController::class, 'show']);
+        Route::post('/', [SupplyController::class, 'store']);
+        Route::put('/{id}', [SupplyController::class, 'update']);
+        Route::delete('/{id}', [SupplyController::class, 'destroy']);
     });
 
     // Categories Management
     Route::prefix('categories')->group(function () {
-        Route::get('/', [CategoryController::class, 'index'])->middleware('can:inventory.master_data.view');
-        Route::post('/', [CategoryController::class, 'store'])->middleware('can:inventory.master_data.manage');
-        Route::put('/{id}', [CategoryController::class, 'update'])->middleware('can:inventory.master_data.manage');
-        Route::delete('/{id}', [CategoryController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
-        Route::get('/{id}/products', [CategoryController::class, 'getProducts'])->middleware('can:inventory.master_data.view');
+        Route::get('/', [CategoryController::class, 'index']);
+        Route::post('/', [CategoryController::class, 'store']);
+        Route::put('/{id}', [CategoryController::class, 'update']);
+        Route::delete('/{id}', [CategoryController::class, 'destroy']);
+        Route::get('/{id}/products', [CategoryController::class, 'getProducts']);
     });
 
-    // Units Management
-    Route::prefix('units')->group(function () {
-        Route::get('/', [UnitController::class, 'index'])->middleware('can:inventory.master_data.view');
-        Route::post('/', [UnitController::class, 'store'])->middleware('can:inventory.master_data.manage');
-        Route::put('/{id}', [UnitController::class, 'update'])->middleware('can:inventory.master_data.manage');
-        Route::delete('/{id}', [UnitController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
-    });
 
     // Stock Issues
     Route::prefix('issues')->group(function () {
@@ -270,19 +264,6 @@ Route::prefix('inventory')->group(function () {
         Route::get('/types', [WarehouseController::class, 'getTypes'])->middleware('can:inventory.master_data.view');
         Route::get('/stats', [WarehouseController::class, 'getStats'])->middleware('can:inventory.master_data.view');
         Route::get('/capacity-utilization', [WarehouseController::class, 'getCapacityUtilization'])->middleware('can:inventory.master_data.view');
-    });
-
-    // Locations Management
-    Route::prefix('locations')->group(function () {
-        Route::get('/', [LocationController::class, 'index'])->middleware('can:inventory.master_data.view');
-        Route::post('/', [LocationController::class, 'store'])->middleware('can:inventory.master_data.manage');
-        Route::get('/{location}', [LocationController::class, 'show'])->middleware('can:inventory.master_data.view');
-        Route::put('/{location}', [LocationController::class, 'update'])->middleware('can:inventory.master_data.manage');
-        Route::delete('/{location}', [LocationController::class, 'destroy'])->middleware('can:inventory.master_data.delete');
-        Route::get('/types', [LocationController::class, 'getTypes'])->middleware('can:inventory.master_data.view');
-        Route::get('/available', [LocationController::class, 'getAvailable'])->middleware('can:inventory.master_data.view');
-        Route::post('/{location}/update-stock', [LocationController::class, 'updateStock'])->middleware('can:inventory.master_data.manage');
-        Route::get('/needing-check', [LocationController::class, 'getNeedingCheck'])->middleware('can:inventory.master_data.view');
     });
 
     // Reorder Rules Management
@@ -391,5 +372,16 @@ Route::prefix('inventory')->group(function () {
         Route::post('/', [EcommerceDeliveryVehicleController::class, 'store'])->middleware('can:inventory.ecommerce_deliveries.manage');
         Route::get('/{id}', [EcommerceDeliveryVehicleController::class, 'show'])->middleware('can:inventory.ecommerce_deliveries.view');
         Route::put('/{id}', [EcommerceDeliveryVehicleController::class, 'update'])->middleware('can:inventory.ecommerce_deliveries.manage');
+    });
+
+      // Goods Receipts
+    Route::prefix('goods-receipts')->middleware('can:inventory.receiving.view')->group(function () {
+        Route::get('/', [GoodsReceiptController::class, 'index']);
+        Route::get('/summary', [GoodsReceiptController::class, 'summary']);
+        Route::get('/{id}/print', [GoodsReceiptController::class, 'print']);
+        Route::get('/{id}', [GoodsReceiptController::class, 'show']);
+        Route::post('/', [GoodsReceiptController::class, 'store'])->middleware('can:inventory.receiving.manage');
+        Route::post('/{id}/verify', [GoodsReceiptController::class, 'verify'])->middleware('can:inventory.receiving.manage');
+        Route::post('/{id}/supplier-evaluation', [GoodsReceiptController::class, 'saveSupplierEvaluation'])->middleware('can:inventory.receiving.manage');
     });
 });

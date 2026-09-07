@@ -2,16 +2,13 @@
   <footer class="footer">
     <div class="container footer-grid">
       <div>
-        <Link  class="brand-logo" href="/super-admin/login">FURNISYNC</Link>
-        <p>Modern furniture operations powered by 3D, and human-friendly workflows.</p>
-      </div>
-      <div>
         <div class="footer-title">Explore</div>
         <Link href="/business">Business</Link>
         <Link href="/pricing">Pricing</Link>
         <Link href="/about">About</Link>
-        <a href="/job-portal">Jobs</a>
-        <a href="/">Shop</a>
+        <Link href="/supplier/register">Become a Supplier</Link>
+        <Link href="/job-portal">Find Jobs</Link>
+        <Link href="/super-admin/login">Admin</Link>
       </div>
       <div>
         <div class="footer-title">Support</div>
@@ -70,8 +67,8 @@ import { Link } from '@inertiajs/vue3'
 
 .brand-logo {
   font-family: 'Barabara';
-  font-size: 1.4rem;
-  color: #000000  ;
+  font-size: 5rem;
+  color: orange  ;
 }
 
 .footer-bottom {
@@ -85,6 +82,6 @@ import { Link } from '@inertiajs/vue3'
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  color: #94a3b8;
+  color: #000000;
 }
 </style>

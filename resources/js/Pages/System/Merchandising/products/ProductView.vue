@@ -17,8 +17,9 @@
       <div class="flex gap-2">
         <Button 
           v-if="primary3DModel"
-          label="View 3D" 
-          icon="pi pi-cube" 
+          label=" 3D" 
+          icon="pi pi-box" 
+          size="small"
           severity="info"
           @click="openView3DModal" 
         />
@@ -26,13 +27,15 @@
           label="Edit" 
           icon="pi pi-pencil" 
           severity="warning"
+          size=small
           @click="router.push({ name: 'merchandising.products.edit', params: { id: productId } })" 
         />
         <Button 
-          label="Delete" 
-          icon="pi pi-trash" 
+          label="Archive" 
+          icon="pi pi-briefcase" 
           severity="danger"
           outlined
+          size="small"
           @click="confirmDelete" 
         />
       </div>

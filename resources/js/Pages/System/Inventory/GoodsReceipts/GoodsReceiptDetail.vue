@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="mx-auto max-w-7xl space-y-6 pb-8">
     <div v-if="loading" class="py-12 text-center text-gray-500 space-y-2">
       <p class="text-lg font-semibold">Loading receipt...</p>
       <p class="text-sm text-gray-500">Please wait while we fetch the latest information.</p>
@@ -7,38 +7,37 @@
     <div v-else-if="!receipt" class="py-12 text-center text-gray-500 space-y-3">
       <p class="text-lg font-semibold">Receipt not found.</p>
       <p class="text-sm text-gray-500">It may have been removed or the identifier is invalid.</p>
-      <Button label="Back to Receipts" icon="pi pi-arrow-left" severity="secondary" class="mt-4" @click="goBack" />
+      <Button label="Back to Receipts" severity="secondary" class="mt-4" @click="goBack" />
     </div>
     <div v-else class="space-y-6">
       <!-- Header -->
-      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div class="flex items-center gap-3">
-          <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
+      <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div>
+          <Button label="Back to receipts" text class="mb-2 px-0" @click="goBack" />
           <div>
-            <h1 class="text-3xl font-bold text-gray-900">{{ receipt.grn_number }}</h1>
-            <p class="text-gray-500 mt-1">Goods Receipt for {{ receipt.po_number || '-' }}</p>
+            <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">{{ receipt.grn_number }}</h1>
+            <p class="mt-1 text-sm text-gray-500">Goods receipt for purchase order {{ receipt.po_number || '-' }}</p>
           </div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <Button
-            icon="pi pi-print"
+            v-if="canRateSupplier"
+            :label="receipt.supplier_evaluation ? 'Update Supplier Rating' : 'Rate Supplier'"
+            icon="pi pi-star"
+            @click="openSupplierRating"
+          />
+          <Button
             label="Print PDF"
             severity="secondary"
             :loading="printing"
             @click="printReceipt"
           />
-          <Button
-            label="Back"
-            icon="pi pi-arrow-left"
-            severity="secondary"
-            @click="goBack"
-          />
         </div>
       </div>
 
       <!-- Status Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Card class="border border-slate-200 shadow-sm">
           <template #content>
             <div>
               <p class="text-gray-500 text-sm">Status</p>
@@ -46,7 +45,7 @@
             </div>
           </template>
         </Card>
-        <Card>
+        <Card class="border border-slate-200 shadow-sm">
           <template #content>
             <div>
               <p class="text-gray-500 text-sm">Quality Check</p>
@@ -54,7 +53,7 @@
             </div>
           </template>
         </Card>
-        <Card>
+        <Card class="border border-slate-200 shadow-sm">
           <template #content>
             <div>
               <p class="text-gray-500 text-sm">Total Items</p>
@@ -62,7 +61,7 @@
             </div>
           </template>
         </Card>
-        <Card>
+        <Card class="border border-slate-200 shadow-sm">
           <template #content>
             <div>
               <p class="text-gray-500 text-sm">Received Date</p>
@@ -70,14 +69,23 @@
             </div>
           </template>
         </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #content>
+            <div>
+              <p class="text-gray-500 text-sm">Supplier Rating</p>
+              <p class="mt-2 text-xl font-bold text-gray-800">
+                {{ receipt.supplier_evaluation ? `${Number(receipt.supplier_evaluation.overall_rating).toFixed(2)}/5` : 'Not rated' }}
+              </p>
+            </div>
+          </template>
+        </Card>
       </div>
 
       <!-- Main Tabs -->
-      <TabView v-model:activeIndex="activeTab">
+      <TabView v-model:activeIndex="activeTab" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <!-- Receipt Details -->
-        <TabPanel header="Details" headerIcon="pi pi-file" value="0">
+        <TabPanel header="Details" value="0">
           <template #header>
-            <i class="pi pi-file mr-2"></i>
             <span>Details</span>
           </template>
 
@@ -91,11 +99,11 @@
               </template>
               <template #content>
                 <div class="space-y-3">
-                  <div class="flex justify-between">
+                  <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">GRN Number</span>
                     <span class="font-semibold">{{ receipt.grn_number }}</span>
                   </div>
-                  <div class="flex justify-between">
+                  <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Reference PO</span>
                     <RouterLink
                       :to="`/procurement/purchase-orders/${receipt.po_id}`"
@@ -104,16 +112,16 @@
                       {{ receipt.po_number }}
                     </RouterLink>
                   </div>
-                  <div class="flex justify-between">
+                  <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Received Date</span>
                     <span class="font-semibold">{{ formatDate(receipt.receipt_date) }}</span>
                   </div>
                   <Divider />
-                  <div class="flex justify-between">
-                    <span class="text-gray-600">Expected Delivery</span>
+                  <div class="flex items-start justify-between gap-4">
+                    <span class="text-gray-600">Expected Pickup</span>
                     <span class="font-semibold">{{ formatDate(receipt.expected_delivery_date) }}</span>
                   </div>
-                  <div class="flex justify-between">
+                  <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600 font-semibold">
                       {{ isLate ? 'Days Late' : 'Days Early' }}
                     </span>
@@ -134,7 +142,7 @@
               </template>
               <template #content>
                 <div class="space-y-3">
-                  <div class="flex justify-between">
+                  <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Supplier</span>
                     <RouterLink
                       :to="`/procurement/suppliers/${receipt.supplier_id}`"
@@ -143,7 +151,7 @@
                       {{ receipt.supplier_name }}
                     </RouterLink>
                   </div>
-                  <div class="flex justify-between">
+                  <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Contact</span>
                     <span class="font-semibold">{{ receipt.contact_person }}</span>
                   </div>
@@ -154,11 +162,11 @@
                     </a>
                   </div>
                   <Divider />
-                <div class="flex justify-between">
+                <div class="flex items-start justify-between gap-4">
                   <span class="text-gray-600">Received By</span>
                   <span class="font-semibold">{{ personName(receipt.received_by) }}</span>
                 </div>
-                <div class="flex justify-between">
+                <div class="flex items-start justify-between gap-4">
                   <span class="text-gray-600">Verified By</span>
                   <span class="font-semibold">{{ personName(receipt.verified_by) || '-' }}</span>
                 </div>
@@ -252,9 +260,8 @@
         </TabPanel>
 
         <!-- Quality Check -->
-        <TabPanel header="Quality Check" headerIcon="pi pi-search" value="1">
+        <TabPanel header="Quality Check" value="1">
           <template #header>
-            <i class="pi pi-search mr-2"></i>
             <span>Quality Check</span>
             <Badge :value="displayQualityStatus" :severity="qualitySeverity(displayQualityStatus)" class="ml-2" />
           </template>
@@ -328,7 +335,6 @@
                   <Button label="Cancel" severity="secondary" @click="goBack" />
                   <Button
                     label="Save Quality Check"
-                    icon="pi pi-save"
                     @click="saveQualityCheck"
                     :loading="saving"
                   />
@@ -339,9 +345,8 @@
         </TabPanel>
 
         <!-- Timeline -->
-        <TabPanel header="Timeline" headerIcon="pi pi-timeline" value="2">
+        <TabPanel header="Timeline" value="2">
           <template #header>
-            <i class="pi pi-timeline mr-2"></i>
             <span>Timeline</span>
           </template>
 
@@ -362,6 +367,38 @@
         </TabPanel>
       </TabView>
     </div>
+
+    <Dialog v-model:visible="supplierRatingVisible" modal :header="receipt?.supplier_evaluation ? 'Update Supplier Rating' : 'Rate Supplier Performance'" class="w-full max-w-2xl">
+      <div class="space-y-5">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p class="font-semibold text-slate-900">{{ receipt?.supplier_name || 'Supplier' }}</p>
+          <p class="mt-1 text-sm text-slate-500">Based on {{ receipt?.grn_number }} for {{ receipt?.po_number }}</p>
+        </div>
+
+        <div v-for="criterion in ratingCriteria" :key="criterion.field" class="flex flex-col gap-2 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="font-medium text-slate-900">{{ criterion.label }}</p>
+            <p class="text-xs text-slate-500">{{ criterion.description }}</p>
+          </div>
+          <Rating v-model="ratingForm[criterion.field]" :cancel="false" />
+        </div>
+
+        <div>
+          <label class="mb-2 block text-sm font-medium text-slate-700">Remarks (optional)</label>
+          <Textarea v-model="ratingForm.remarks" rows="4" class="w-full" placeholder="Add observations about this delivery or the received items" />
+        </div>
+
+        <div class="flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3">
+          <span class="text-sm font-medium text-blue-900">Overall rating</span>
+          <span class="text-xl font-bold text-blue-700">{{ overallSupplierRating.toFixed(2) }}/5</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="supplierRatingVisible = false" />
+        <Button label="Save Rating" icon="pi pi-check" :loading="ratingSaving" @click="saveSupplierRating" />
+      </template>
+    </Dialog>
     <Toast />
   </div>
 </template>
@@ -372,10 +409,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
 import InputText from 'primevue/inputtext'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 
 // State
 const receipt = ref<any>(null)
@@ -384,6 +423,22 @@ const saving = ref(false)
 const loading = ref(false)
 const printing = ref(false)
 const timeline = ref<any[]>([])
+const supplierRatingVisible = ref(false)
+const ratingSaving = ref(false)
+const ratingForm = ref<Record<string, any>>({
+  quality_score: 5,
+  quantity_accuracy_score: 5,
+  delivery_timeliness_score: 5,
+  packaging_condition_score: 5,
+  remarks: '',
+})
+
+const ratingCriteria = [
+  { field: 'quality_score', label: 'Item Quality', description: 'Condition and conformity of received items' },
+  { field: 'quantity_accuracy_score', label: 'Quantity Accuracy', description: 'Accuracy against the quantities ordered' },
+  { field: 'delivery_timeliness_score', label: 'Delivery Timeliness', description: 'Performance against the expected pickup date' },
+  { field: 'packaging_condition_score', label: 'Packaging & Condition', description: 'Protection and condition upon arrival' },
+]
 
 const qualityOptions = ref([
   { label: 'Good', value: 'good' },
@@ -393,6 +448,15 @@ const qualityOptions = ref([
 
 const displayQualityStatus = computed(() => {
   return receipt.value?.quality_status || receipt.value?.receipt_status || 'pending'
+})
+
+const canRateSupplier = computed(() => Boolean(
+  receipt.value?.supplier_id && authStore.hasPermission('inventory.receiving.manage')
+))
+
+const overallSupplierRating = computed(() => {
+  const fields = ratingCriteria.map(({ field }) => Number(ratingForm.value[field] || 0))
+  return fields.reduce((sum, score) => sum + score, 0) / fields.length
 })
 
 // Computed
@@ -438,7 +502,7 @@ function buildTimeline() {
       color: '#3b82f6',
     },
     {
-      label: 'Expected Delivery',
+      label: 'Expected Pickup',
       date: formatDate(receipt.value?.expected_delivery_date),
       color: '#f59e0b',
     },
@@ -479,6 +543,43 @@ async function saveQualityCheck() {
     })
   } finally {
     saving.value = false
+  }
+}
+
+function openSupplierRating() {
+  const current = receipt.value?.supplier_evaluation
+  ratingForm.value = {
+    quality_score: Number(current?.quality_score ?? 5),
+    quantity_accuracy_score: Number(current?.quantity_accuracy_score ?? 5),
+    delivery_timeliness_score: Number(current?.delivery_timeliness_score ?? 5),
+    packaging_condition_score: Number(current?.packaging_condition_score ?? 5),
+    remarks: current?.remarks || '',
+  }
+  supplierRatingVisible.value = true
+}
+
+async function saveSupplierRating() {
+  if (!receipt.value?.id || ratingSaving.value) return
+  ratingSaving.value = true
+  try {
+    const response = await procurementService.saveSupplierEvaluation(receipt.value.id, ratingForm.value as any)
+    receipt.value.supplier_evaluation = response?.data ?? response
+    supplierRatingVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Rating saved',
+      detail: 'The supplier performance record is now available in Procurement.',
+      life: 3500,
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to save rating',
+      detail: error?.response?.data?.message || 'Please check the ratings and try again.',
+      life: 4000,
+    })
+  } finally {
+    ratingSaving.value = false
   }
 }
 

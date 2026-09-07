@@ -1,17 +1,15 @@
 <template>
   <div class="min-h-screen p-4">
-    <div class="max-w-6xl mx-auto">
+    <div class=" mx-auto">
       <div class="mb-4 flex items-center justify-between gap-3">
         <div>
           <h1 class="text-lg font-bold text-gray-800">Purchase Requisitions</h1>
-      
         </div>
         <div class="flex items-center gap-2">
           <Button
             v-if="canManage"
             label="Receipts"
-            severity="secondary"
-            outlined
+            severity="info"
             size="small"
             @click="router.push({ name: 'inventory.goods-receipts' })"
           />
@@ -40,6 +38,19 @@
               placeholder="All Statuses"
               showClear
               size="small"
+            />
+            <DatePicker
+              v-model="filters.date_range"
+              selectionMode="range"
+              dateFormat="M dd, yy"
+              placeholder="Date range"
+              showIcon
+              :maxDate="new Date()"
+              showButtonBar
+              class="w-full"
+              size="small"
+              @date-select="onDateRangeChange"
+              @clear="onDateRangeChange"
             />
             <div v-if="hasActiveFilters">
               <Button label="Clear All" severity="danger" size="small" @click="resetFilters" />
@@ -101,15 +112,23 @@
               </template>
             </Column>
 
-            <Column field="pr_number" header="PR No." style="width: 170px">
+            <Column field="pr_number" header="PR No." style="width: 200px">
               <template #body="{ data }">
                 <span class="font-semibold text-gray-900">{{ data.pr_number || `PR #${data.id}` }}</span>
               </template>
             </Column>
 
+        <Column header="Requested By" style="min-width: 180px">
+          <template #body="{ data }">
+            <span class="text-gray-700">
+              {{ data.requestedBy?.user?.full_name || data.requested_by_name || '—' }}
+            </span>
+          </template>
+        </Column>
+
             <Column header="Status" style="width: 170px">
               <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+                <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
             </Column>
 
@@ -124,7 +143,6 @@
                 <span class="text-gray-700">{{ String(data.reason || '—') }}</span>
               </template>
             </Column>
-
           </DataTable>
           </template>
       </Card>
@@ -154,11 +172,12 @@ const sortField = ref('created_at')
 const sortOrder = ref(-1)
 
 const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
-const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.status))
+const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.status || filters.date_range?.length))
 
-const filters = reactive<{ search: string; status: string | null }>({
+const filters = reactive<{ search: string; status: string | null; date_range: Date[] | null }>({
   search: '',
   status: null,
+  date_range: null,
 })
 
 const statusOptions = [
@@ -171,9 +190,10 @@ const statusOptions = [
 
 const statusSeverity = (status: string) => {
   const s = String(status || '').toLowerCase()
-  if (s === 'procurement_processing' || s === 'approved') return 'success'
+  if (s === 'procurement_processing' || s === 'approved') return 'info'
   if (s === 'rejected' || s === 'cancelled') return 'danger'
   if (s === 'draft') return 'secondary'
+  if (s === 'po_created') return 'success'
   return 'warning'
 }
 
@@ -201,6 +221,24 @@ const formatTime = (value: any) => {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+const formatDateParam = (value: Date | null | undefined) => {
+  if (!value) return undefined
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const onDateRangeChange = () => {
+  if (filters.date_range?.length === 2) {
+    page.value = 1
+    load()
+  } else if (!filters.date_range?.length) {
+    page.value = 1
+    load()
+  }
+}
+
 const load = async () => {
   loading.value = true
   try {
@@ -211,6 +249,8 @@ const load = async () => {
       sort_order: sortOrder.value === 1 ? 'asc' : 'desc',
       status: filters.status || undefined,
       search: filters.search || undefined,
+      date_from: formatDateParam(filters.date_range?.[0]),
+      date_to: formatDateParam(filters.date_range?.[1]),
     })
 
     if (response?.success) {
@@ -242,6 +282,7 @@ const onPageChange = (e: any) => {
 const resetFilters = () => {
   filters.search = ''
   filters.status = null
+  filters.date_range = null
   page.value = 1
   perPage.value = 15
   sortField.value = 'created_at'

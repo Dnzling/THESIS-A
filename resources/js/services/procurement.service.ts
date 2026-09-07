@@ -154,6 +154,7 @@ export interface SupplierPayment {
 
 class ProcurementService {
   private baseUrl = '/api/procurement'
+  private inventoryBaseUrl = '/api/inventory'
 
   // ==================== DASHBOARD & ANALYTICS ====================
   async getDashboardStats(params?: any) {
@@ -168,6 +169,11 @@ class ProcurementService {
 
   async getReorderSuggestions(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/analytics/reorder-suggestions`, { params })
+    return response.data
+  }
+
+  async getForecasting(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/analytics/forecasting`, { params })
     return response.data
   }
 
@@ -643,32 +649,43 @@ class ProcurementService {
 
   // ==================== GOODS RECEIPTS ====================
   async getGoodsReceipts(params?: any) {
-    const response = await axiosClient.get(`${this.baseUrl}/goods-receipts`, { params })
+    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts`, { params })
     return response.data
   }
 
   async getGoodsReceipt(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/goods-receipts/${id}`)
+    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts/${id}`)
     return response.data
   }
 
   async createGoodsReceipt(data: GoodsReceipt) {
-    const response = await axiosClient.post(`${this.baseUrl}/goods-receipts`, data)
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts`, data)
     return response.data
   }
 
   async updateGoodsReceipt(id: number, data: Partial<GoodsReceipt>) {
-    const response = await axiosClient.put(`${this.baseUrl}/goods-receipts/${id}`, data)
+    const response = await axiosClient.put(`${this.inventoryBaseUrl}/goods-receipts/${id}`, data)
     return response.data
   }
 
   async deleteGoodsReceipt(id: number) {
-    const response = await axiosClient.delete(`${this.baseUrl}/goods-receipts/${id}`)
+    const response = await axiosClient.delete(`${this.inventoryBaseUrl}/goods-receipts/${id}`)
     return response.data
   }
 
   async verifyGoodsReceipt(id: number) {
-    const response = await axiosClient.post(`${this.baseUrl}/goods-receipts/${id}/verify`)
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts/${id}/verify`)
+    return response.data
+  }
+
+  async saveSupplierEvaluation(id: number, data: {
+    quality_score: number
+    quantity_accuracy_score: number
+    delivery_timeliness_score: number
+    packaging_condition_score: number
+    remarks?: string | null
+  }) {
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts/${id}/supplier-evaluation`, data)
     return response.data
   }
 
@@ -748,8 +765,15 @@ class ProcurementService {
     return response.data
   }
 
-  async terminateSupplierContract(id: string | number) {
-    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/terminate`)
+  async terminateSupplierContract(id: string | number, reason?: string) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/terminate`, { reason })
+    return response.data
+  }
+
+  async reportSupplierContract(id: string | number, data: FormData | Record<string, any>) {
+    const response = await axiosClient.post(`${this.baseUrl}/supplier-contracts/${id}/report`, data, {
+      headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {}
+    })
     return response.data
   }
 
@@ -783,7 +807,7 @@ class ProcurementService {
   }
 
   async generateGRPdf(id: number) {
-    const response = await axiosClient.get(`${this.baseUrl}/goods-receipts/${id}/print`, {
+    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts/${id}/print`, {
       responseType: 'blob'
     })
     return response

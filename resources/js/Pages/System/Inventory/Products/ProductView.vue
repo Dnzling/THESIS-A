@@ -1,24 +1,27 @@
 ﻿<template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6 pb-6">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div class="flex items-center gap-3">
-        <Button
-          icon="pi pi-arrow-left"
-          text
-          severity="warn"
-          size="small"
-          @click="goBack"
-        />
+        <button @click="goBack" class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200">
+          <i class="pi pi-chevron-left text-lg text-gray-600"></i>
+        </button>
         <div>
-          <h2 class="text-xl font-bold text-gray-800">Product Details</h2>
-  
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-3xl font-semibold tracking-tight text-gray-900">{{ product?.product_name || 'Product Details' }}</h2>
+            <Badge v-if="product?.is_active" value="Active" severity="success" />
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <Tag :value="product?.sku || '-'" severity="secondary" class="font-mono" />
+            <Tag v-for="tag in product?.tags || []" :key="tag.id" :value="tag.tag_name" severity="info" />
+          </div>
         </div>
       </div>
       <div class="flex gap-2">
         <Button
           v-if="primary3DModel"
-          label="View 3D"
-          icon="pi pi-cube"
+          label="3D"
+          icon="pi pi-box"
           severity="info"
           size="small"
           @click="openView3DModal"
@@ -31,13 +34,32 @@
           @click="goToEdit"
         />
         <Button
-          label="Delete"
-          icon="pi pi-trash"
+          label="Archive"
+          icon="pi pi-briefcase"
           severity="danger"
           outlined
           size="small"
           @click="confirmDelete"
         />
+      </div>
+    </div>
+
+    <div v-if="product" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Item Type</span><i class="pi pi-tag text-gray-400"></i></div>
+        <span class="text-base font-semibold text-gray-900">{{ productTypeLabel }}</span>
+      </div>
+      <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Available Stock</span><i class="pi pi-box text-gray-400"></i></div>
+        <span class="text-base font-semibold text-gray-900">{{ branchInventory?.quantity_available ?? 0 }}</span>
+      </div>
+      <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <span class="mb-3 block text-sm font-medium ">Cost per Unit</span>
+        <span class="text-2xl font-bold tracking-tight text-green-600">₱{{ formatPrice(unitCost) }}</span>
+      </div>
+            <div v-if="product?.product_type === 'finished_good'" class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg">
+        <span class="mb-3 block text-sm font-medium text-gray-400">Selling Price</span>
+        <span class="text-2xl font-bold tracking-tight text-white">₱{{ formatPrice(product.base_price) }}</span>
       </div>
     </div>
 
@@ -48,60 +70,10 @@
     </div>
 
     <div v-else-if="product" class="space-y-6">
-      <Card>
-        <template #content>
-          <div class="space-y-4">
-            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-              <div>
-                <h1 class="text-3xl font-bold text-gray-900">{{ product.product_name }}</h1>
-                <div class="flex flex-wrap items-center gap-2 mt-2">
-                  <Tag :value="product.sku" severity="secondary" class="font-mono" />
-                  <Tag :value="productTypeLabel" :severity="productTypeSeverity" />
-                  <Tag :value="product.is_active ? 'Active' : 'Inactive'" :severity="product.is_active ? 'success' : 'secondary'" />
-                  <Tag v-if="product.is_featured" value="Featured" severity="warning" />
-                  <Tag v-if="product.is_new_arrival" value="New Arrival" severity="info" />
-                  <Tag v-if="product.is_bestseller" value="Bestseller" icon="pi pi-star-fill" severity="success" />
-                </div>
-              </div>
-              <div class="text-left lg:text-right">
-                <p class="text-3xl font-bold text-green-600">₱{{ formatPrice(product.base_price) }}</p>
-                <p class="text-sm text-gray-500 mt-1">{{ priceLabel }}</p>
-                <p class="mt-3 text-xs text-gray-500">Cost Price per Unit</p>
-                <p class="text-lg font-semibold text-gray-800">
-                  {{ product.cost_price != null ? `₱${formatPrice(product.cost_price)}` : 'N/A' }}
-                </p>
-              </div>
-            </div>
+      
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Category</p>
-                <p class="text-sm font-semibold text-gray-900">{{ product.category?.category_name || 'N/A' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Type</p>
-                <p class="text-sm font-semibold text-gray-900">{{ productTypeLabel }}</p>
-              </div>
-              <div v-if="product?.product_type === 'finished_good'">
-                <p class="text-xs text-gray-600 mb-1">Variations</p>
-                <p class="text-sm font-semibold text-gray-900">{{ variations.length }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Stock</p>
-                <p class="text-sm font-semibold text-gray-900">{{ branchInventory?.quantity_available ?? 0 }}</p>
-              </div>
-            </div>
-
-            <div v-if="product.description">
-              <h3 class="text-sm font-semibold text-gray-700 mb-2">Description</h3>
-              <p class="text-gray-700 leading-relaxed">{{ product.description }}</p>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <div class="grid grid-cols-1 xl:grid-cols-[1.4fr_0.8fr] gap-6">
-      <Card>
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
           <span class="text-sm font-semibold text-gray-800">Item Details</span>
         </template>
@@ -111,10 +83,10 @@
                 <p class="text-xs text-gray-600 mb-1">Unit of Measurement</p>
                 <p class="text-lg capitalize font-semibold text-gray-900">{{ product.unit_of_measurement || 'N/A' }}</p>
               </div>
-              <div>
+              <div v-show="product.product_type === 'finished_good'">
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
                 <div class="flex items-center gap-2">
-                  <p class="text-lg font-semibold text-gray-900">{{ product.supplier_name || '' }}</p>
+                  <p class="text-lg font-semibold text-gray-900">{{ supplierNames || 'No Supplier' }}</p>
                   <Button
                     v-if="!hasSupplier"
                     label="Create PR"
@@ -129,7 +101,7 @@
               <div>
                 <p class="text-xs text-gray-600 mb-1">Cost Price per Unit</p>
                 <p class="text-lg font-semibold text-gray-900">
-                  {{ product.cost_price != null ? `₱${formatPrice(product.cost_price)}` : 'N/A' }}
+                  ₱{{ formatPrice(unitCost) }}
                 </p>
               </div>
               <div>
@@ -148,11 +120,15 @@
                 <p class="text-xs text-gray-600 mb-1">Created</p>
                 <p class="text-lg font-semibold text-gray-900">{{ formatDate(product.created_at) }}</p>
               </div>
+              <!-- <div>
+                <p class="text-xs text-gray-600 mb-1">Created By</p>
+                <p class="text-lg font-semibold text-gray-900">{{ product.created_by_name || 'N/A' }}</p>
+              </div> -->
             </div>
           </template>
         </Card>
 
-      <Card>
+      <!-- <Card class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
           <span class="text-sm font-semibold text-gray-800">Stock Summary</span>
         </template>
@@ -172,10 +148,74 @@
               </div>
             </div>
           </template>
-        </Card>
+        </Card> -->
+
+            <Card v-if="productImages.length > 0" class="rounded-2xl border border-gray-100 shadow-sm">
+        <template #title>
+          <span class="text-sm font-semibold text-gray-800">Attachments</span>
+        </template>
+        <template #content>
+          <Carousel
+            v-if="productImages.length > 1"
+            :value="productImages"
+            :numVisible="1"
+            :numScroll="1"
+            :showNavigators="true"
+            :showIndicators="true"
+            class="product-view-carousel"
+          >
+            <template #item="{ data: image }">
+              <div class="relative mx-2 aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 group cursor-pointer">
+                <img
+                  :src="image.auth_url || image.url"
+                  :alt="image.file_name"
+                  class="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform"
+                  @error="handleImageError"
+                />
+                <Badge v-if="image.is_primary" value="Primary" severity="success" class="absolute top-2 left-2" />
+                <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <Button icon="pi pi-search-plus" rounded severity="info" text @click="openImagePreview(image)" />
+                  <Button icon="pi pi-download" rounded severity="info" text @click.stop="downloadImageAsset(image)" />
+                </div>
+              </div>
+            </template>
+          </Carousel>
+          <div v-else class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div
+              v-for="image in productImages"
+              :key="image.id"
+              class="relative mx-auto aspect-square max-w-md overflow-hidden rounded-xl bg-white group cursor-pointer"
+            >
+              <img
+                :src="image.auth_url || image.url"
+                :alt="image.file_name"
+                class="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform"
+                @error="handleImageError"
+              />
+              <Badge v-if="image.is_primary" value="Primary" severity="success" class="absolute top-2 left-2" />
+              <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <Button
+                  icon="pi pi-search-plus"
+                  rounded
+                  severity="info"
+                  text
+                  @click="openImagePreview(image)"
+                />
+                <Button
+                  icon="pi pi-download"
+                  rounded
+                  severity="info"
+                  text
+                  @click.stop="downloadImageAsset(image)"
+                />
+              </div>
+            </div>
+          </div>
+        </template>
+      </Card>
       </div>
 
-      <Card v-if="product?.product_type === 'finished_good' && variations.length > 0" class="border border-gray-200 shadow-sm">
+      <Card v-if="product?.product_type === 'finished_good' && variations.length > 0" class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
           <span class="text-sm font-semibold text-gray-800">Product Variations</span>
         </template>
@@ -216,45 +256,7 @@
         </template>
       </Card>
 
-      <Card v-if="productImages.length > 0">
-        <template #title>
-          <span class="text-sm font-semibold text-gray-800">Attachments</span>
-        </template>
-        <template #content>
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <div
-              v-for="image in productImages"
-              :key="image.id"
-              class="relative rounded-lg overflow-hidden bg-gray-100 group cursor-pointer"
-              style="aspect-ratio: 1 / 1;"
-            >
-              <img
-                :src="image.auth_url || image.url"
-                :alt="image.file_name"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                @error="handleImageError"
-              />
-              <Badge v-if="image.is_primary" value="Primary" severity="success" class="absolute top-2 left-2" />
-              <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <Button
-                  icon="pi pi-search-plus"
-                  rounded
-                  severity="info"
-                  text
-                  @click="openImagePreview(image)"
-                />
-                <Button
-                  icon="pi pi-download"
-                  rounded
-                  severity="info"
-                  text
-                  @click.stop="downloadImageAsset(image)"
-                />
-              </div>
-            </div>
-          </div>
-        </template>
-      </Card>
+  
 
       <Dialog
         v-model:visible="view3DModalVisible"
@@ -337,6 +339,7 @@
       </template>
     </Dialog>
   </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -353,6 +356,7 @@ import Badge from 'primevue/badge'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
+import Carousel from 'primevue/carousel'
 import Skeleton from 'primevue/skeleton'
 import Model3DPreview from '../../../../Components/merchandising/Model3DPreview.vue'
 
@@ -384,7 +388,7 @@ const showActionResponse = (severity: 'success' | 'error' | 'info' | 'warn', tit
 
 const productTypeLabel = computed(() => {
   const type = product.value?.product_type
-  return type === 'raw_material' ? 'Raw Material' : type === 'supply' ? 'Supply' : 'Finished Good'
+  return type === 'raw_material' ? 'Raw Material' : type === 'supply' ? 'Supply' : 'Product'
 })
 
 const productTypeSeverity = computed(() => {
@@ -395,7 +399,32 @@ const productTypeSeverity = computed(() => {
 })
 
 const hasSupplier = computed(() => {
-  return Boolean(product.value?.supplier_name && String(product.value.supplier_name).trim())
+  return supplierNames.value.length > 0
+})
+
+const supplierNames = computed(() => {
+  const normalized = Array.isArray(product.value?.supplier_names)
+    ? product.value.supplier_names.filter((name: any) => name && String(name).trim())
+    : []
+  if (normalized.length > 0) return [...new Set(normalized.map((name: string) => String(name).trim()))].join(', ')
+
+  const linked = Array.isArray(product.value?.suppliers) ? product.value.suppliers : []
+  const names = linked
+    .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
+    .filter((name: any) => name && String(name).trim())
+
+  if (names.length > 0) return [...new Set(names.map((name: string) => String(name).trim()))].join(', ')
+  return product.value?.supplier_name ? String(product.value.supplier_name).trim() : ''
+})
+
+// Keep the detail view consistent with the product index/API fallback order.
+const unitCost = computed(() => {
+  return Number(
+    product.value?.cost_price
+      ?? product.value?.inventory_cost_price
+      ?? product.value?.base_price
+      ?? 0
+  )
 })
 
 const branchInventory = computed(() => {

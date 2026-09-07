@@ -18,7 +18,7 @@ class StoreModuleController extends Controller
     public function stores(): JsonResponse
     {
         $stores = DB::table('stores')
-            ->select('id', 'store_name', 'store_code', 'subscription_tier', 'status', 'email', 'phone')
+            ->select('id', 'store_name', 'store_code', 'status', 'subscription_tier', 'email', 'phone')
             ->orderBy('store_name')
             ->get();
 

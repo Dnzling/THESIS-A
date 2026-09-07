@@ -107,7 +107,7 @@
         <div class="p-6 pt-2">
           <TabView>
             <TabPanel header="Payables" value="0">
-              <DataTable :value="filteredPayables" :loading="loading" stripedRows responsiveLayout="scroll"
+              <DataTable :value="filteredPayables" :loading="loading"  responsiveLayout="scroll"
                 class="p-datatable-sm" paginator :rows="10" :rowsPerPageOptions="[5, 10, 20, 50]">
                 <Column field="reference" header="Invoice #" style="min-width: 130px">
                   <template #body="{ data }">
@@ -131,14 +131,18 @@
                 </Column>
                 <Column field="status" header="Status" style="width: 130px">
                   <template #body="{ data }">
-                    <Tag :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)" size="small" />
+                    <div class="flex flex-col gap-1">
+                      <Badge :value="formatStatus(data.status)" :severity="paymentSeverity(data.status)"/>
+                      <span v-if="data.payment_date" class="text-xs text-gray-500">{{ formatDate(data.payment_date)
+                        }}</span>
+                    </div>
                   </template>
                 </Column>
                 <Column header="Actions" style="width: 110px" headerStyle="text-align: center">
                   <template #body="{ data }">
                     <div class="flex justify-center gap-1">
                       <Button icon="pi pi-eye" text rounded size="small" @click="viewInvoice(data)" />
-                     
+  
                     </div>
                   </template>
                 </Column>
@@ -227,6 +231,7 @@ const statusOptions = [
   { label: 'All Statuses', value: '' },
   { label: 'Pending Approval', value: 'pending_approval' },
   { label: 'Approved', value: 'approved' },
+  { label: 'Paid', value: 'paid' },
   { label: 'Completed', value: 'completed' },
 ]
 
@@ -274,7 +279,7 @@ const stats = computed(() => {
   const approvedInvoices = payables.value.filter((row) => normalize(row?.status) === 'approved').length
   const pendingPayments = supplierPayments.value.filter((row) => normalize(row?.status) === 'pending_approval').length
   const outstandingAmount = payables.value
-    .filter((row) => normalize(row?.status) !== 'completed')
+    .filter((row) => normalize(row?.payment_status) !== 'paid' && normalize(row?.status) !== 'paid')
     .reduce((sum, row) => sum + Number(row?.amount || 0), 0)
 
   return {
@@ -312,6 +317,15 @@ const paymentSeverity = (status: string) => {
   return 'secondary'
 }
 
+const paymentStatusSeverity = (status: string) => {
+  const normalized = normalize(status)
+  if (normalized === 'paid') return 'success'
+  if (normalized === 'partial') return 'info'
+  if (normalized === 'pending') return 'warn'
+  if (normalized === 'failed' || normalized === 'cancelled') return 'danger'
+  return 'secondary'
+}
+
 const approvePayment = async (id: number) => {
   await financeService.approveSupplierPayment(id)
   loadSupplierPayments()
@@ -336,6 +350,15 @@ const formatStatus = (status: string) => {
   if (!status) return '-'
   if (status === 'pending_approval') return 'Pending'
   return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+const formatPaymentStatus = (status: string) => {
+  const normalized = normalize(status)
+  if (normalized === 'paid') return 'Paid'
+  if (normalized === 'pending') return 'Unpaid'
+  if (normalized === 'partial') return 'Partially Paid'
+  if (normalized === 'failed') return 'Payment Failed'
+  return formatStatus(status)
 }
 
 const reloadAll = () => {

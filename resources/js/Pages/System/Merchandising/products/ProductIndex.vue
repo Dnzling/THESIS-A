@@ -3,13 +3,7 @@
     <!-- Header -->
     <div class="mb-6 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Products</h1>
-      </div>
-      <div class="flex items-center gap-2">
-        <Button @click="$router.push({ name: 'merchandising.products.logs' })" icon="pi pi-history" label="Logs"
-          severity="info" outlined />
-        <Button @click="$router.push({ name: 'merchandising.products.create' })" icon="pi pi-plus" label="Add Product"
-          severity="success" />
+        <h1 class="text-2xl font-bold text-gray-800">Products</h1>
       </div>
     </div>
   

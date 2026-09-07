@@ -9,7 +9,7 @@
           <p class="text-xs text-gray-500 mt-0.5">Request replenishment for your branch inventory with multiple items.</p>
         </div>
       </div>
-
+  
       <Card>
         <template #content>
           <form class="space-y-4" @submit.prevent="submit">
@@ -24,26 +24,19 @@
                 <Textarea v-model="form.notes" rows="2" class="w-full" placeholder="Why do you need this stock?" />
               </div>
             </div>
-
+  
             <div class="border rounded-lg p-3">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-semibold text-gray-800">Line Items</h3>
-                <Button type="button" label="Add Item" icon="pi pi-plus" size="small" outlined @click="addItem" />
+                <Button type="button" label="Add Item" icon="pi pi-plus" size="small" @click="addItem" />
               </div>
-
+  
               <DataTable :value="form.items" responsiveLayout="scroll" class="text-sm">
-                <Column header="Inventory Item" >
+                <Column header="Inventory Item">
                   <template #body="slotProps">
-                    <Select
-                      v-model="slotProps.data.branch_inventory_id"
-                      :options="inventoryOptions"
-                      optionLabel="searchText"
-                      optionValue="value"
-                      filter fluid
-                      :loading="loadingInventory"
-                      placeholder="Select product"
-                      @change="onInventoryChange(slotProps.index, $event)"
-                    >
+                    <Select v-model="slotProps.data.branch_inventory_id" :options="inventoryOptions"
+                      optionLabel="searchText" optionValue="value" filter fluid :loading="loadingInventory"
+                      placeholder="Select product" @change="onInventoryChange(slotProps.index, $event)">
                       <template #option="optionProps">
                         <div class="flex flex-col">
                           <span class="text-sm text-gray-800">{{ optionProps.option.title }}</span>
@@ -52,75 +45,63 @@
                       </template>
                       <template #value="valueProps">
                         <div v-if="getInventoryOptionByValue(valueProps.value)" class="flex flex-col">
-                          <span class="text-sm text-gray-800">{{ getInventoryOptionByValue(valueProps.value)?.title }}</span>
-                          <span class="text-xs text-gray-500">{{ getInventoryOptionByValue(valueProps.value)?.subtitle }}</span>
+                          <span class="text-sm text-gray-800">{{ getInventoryOptionByValue(valueProps.value)?.title
+                            }}</span>
+                          <span class="text-xs text-gray-500">{{ getInventoryOptionByValue(valueProps.value)?.subtitle
+                            }}</span>
                         </div>
                         <span v-else class="text-sm text-gray-500">{{ valueProps.placeholder }}</span>
                       </template>
                     </Select>
                   </template>
                 </Column>
-
+  
                 <Column header="Available" style="width: 110px">
                   <template #body="slotProps">
                     {{ getInventoryById(slotProps.data.branch_inventory_id)?.quantity_available ?? '-' }}
                   </template>
                 </Column>
-
+  
                 <Column header="Requested Qty" style="width: 150px">
                   <template #body="slotProps">
-                    <InputNumber v-model="slotProps.data.requested_quantity" :min="1" :useGrouping="false" class="w-full" />
+                    <InputNumber v-model="slotProps.data.requested_quantity" :min="1" :useGrouping="false"
+                      class="w-full" />
                   </template>
                 </Column>
-
+  
+                <Column header="Unit" style="width: 150px">
+                  <template #body="slotProps">
+                    {{ getInventoryById(slotProps.data.branch_inventory_id)?.product?.unit_of_measurement || '-' }}
+                  </template>
+                </Column>
+  
                 <Column header="Unit Cost" style="width: 140px">
                   <template #body="slotProps">
                     {{ formatMoney(resolveUnitCost(getInventoryById(slotProps.data.branch_inventory_id))) }}
                   </template>
                 </Column>
-
+  
                 <Column header="Supplier (Optional)" style="min-width: 240px">
                   <template #body="slotProps">
-                    <Select
-                      v-model="slotProps.data.selected_supplier_id"
-                      :options="getSupplierOptionsForRow(slotProps.data)"
-                      optionLabel="label"
-                      optionValue="value"
-                      filter fluid
-                      showClear
-                      placeholder="Auto-resolve"
-                      :disabled="!slotProps.data.branch_inventory_id"
-                      @change="onSupplierChange(slotProps.index, $event)"
-                    />
+                    <Select v-model="slotProps.data.selected_supplier_id"
+                      :options="getSupplierOptionsForRow(slotProps.data)" optionLabel="label" optionValue="value" filter
+                      fluid showClear placeholder="None" :disabled="!slotProps.data.branch_inventory_id"
+                      @change="onSupplierChange(slotProps.index, $event)" />
                   </template>
                 </Column>
-
-                <Column header="Actions" style="width: 160px">
+  
+                <Column style="width: 160px">
                   <template #body="slotProps">
                     <div class="flex gap-2">
-                      <Button
-                        type="button"
-                        icon="pi pi-bolt"
-                        severity="info"
-                        text
-                        :disabled="!getInventoryById(slotProps.data.branch_inventory_id)?.reorder_quantity"
-                        @click="applyReorderQty(slotProps.index)"
-                      />
-                      <Button
-                        type="button"
-                        icon="pi pi-trash"
-                        severity="danger"
-                        text
-                        :disabled="form.items.length === 1"
-                        @click="removeItem(slotProps.index)"
-                      />
+                      <Button type="button" icon="pi pi-trash" severity="danger" text :disabled="form.items.length === 1"
+                        @click="removeItem(slotProps.index)" />
                     </div>
                   </template>
                 </Column>
               </DataTable>
-
+  
               <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
-              <small v-if="hasMixedSupplierSelection" class="p-error mt-2 block">
+              <small v-if="hasMixedSupplierSelection" class="p-error mt-2 block bg-red-100 p-2 rounded outline-red-300">
                 You cannot create a request with mixed items (some with supplier and some without supplier).
                 Please create two separate requests: one with suppliers (PO) and one without suppliers (RFQ).
               </small>
@@ -128,7 +109,7 @@
                 All items with selected supplier must use the same supplier in one request.
                 Please split by supplier and create separate requests.
               </small>
-
+  
               <div v-if="previewItems.length" class="mt-4">
                 <div class="text-sm font-semibold text-gray-800 mb-2">Product List Preview</div>
                 <DataTable :value="previewItems" class="p-datatable-sm text-xs" responsiveLayout="scroll">
@@ -145,6 +126,12 @@
                       <span class="font-semibold text-gray-900">{{ data.quantity_requested }}</span>
                     </template>
                   </Column>
+                  <Column header="Unit" style="width: 120px">
+                    <template #body="{ data }">
+                      {{ data.unit_of_measurement || '-' }}
+                    </template>
+                  </Column>
+  
                   <Column header="Unit Cost" style="width: 140px">
                     <template #body="{ data }">
                       {{ formatMoney(data.estimated_unit_cost) }}
@@ -158,16 +145,11 @@
                 </DataTable>
               </div>
             </div>
-
+  
             <div class="flex justify-end gap-2 pt-3 border-t">
               <Button type="button" label="Cancel" severity="secondary" size="small" @click="goBack" />
-              <Button
-                type="submit"
-                label="Create Request"
-                size="small"
-                :loading="saving"
-                :disabled="!canManage || validItems.length === 0 || hasMixedSupplierSelection || hasDifferentSelectedSuppliers"
-              />
+              <Button type="submit" label="Create Request" size="small" :loading="saving"
+                :disabled="!canManage || validItems.length === 0 || hasMixedSupplierSelection || hasDifferentSelectedSuppliers" />
             </div>
           </form>
         </template>
@@ -239,6 +221,7 @@ const previewItems = computed(() => {
     return {
       product_name: inventoryRow?.product?.product_name || inventoryRow?.product_name || 'N/A',
       sku: inventoryRow?.variation?.variation_sku || inventoryRow?.product?.sku || inventoryRow?.sku || '-',
+      unit_of_measurement: inventoryRow?.product?.unit_of_measurement || inventoryRow?.unit_of_measurement || '-',
       quantity_requested: Number(item.requested_quantity || 0),
       estimated_unit_cost: resolveUnitCost(inventoryRow),
     }
@@ -543,7 +526,7 @@ const submit = async () => {
 onMounted(async () => {
   try {
     if (!authStore.user) await authStore.fetchCurrentUser()
-  } catch {}
+  } catch { }
 
   if (!currentBranchId.value) {
     toast.add({

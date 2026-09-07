@@ -1,89 +1,56 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <!-- Header -->
-    <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'procurement.purchase-orders' })" />
-      <div>
-        <h2 class="text-2xl font-bold text-gray-800">{{ isEditing ? 'Edit' : 'Create' }} Purchase Order</h2>
-        <p class="text-sm text-gray-500 mt-1">{{ isEditing ? 'Update PO details' : 'Use smart automation to speed up PO creation' }}</p>
+    <div class="flex items-center gap-3 px-5 py-4 shadow-sm">
+      <Button icon="pi pi-arrow-left" text rounded severity="secondary" @click="router.push({ name: 'procurement.purchase-orders' })" />
+      <div class="min-w-0">
+        <h2 class="text-2xl font-bold text-slate-900">{{ isEditing ? 'Edit' : 'Create' }} Purchase Order</h2>
+        <p class="mt-1 text-sm text-slate-500">Review the assigned supplier, destination branch, items, and totals before submission.</p>
       </div>
     </div>
   
     <!-- Alert for supplier issues -->
     <Toast />
-    <Message v-if="supplierWarning.show" :severity="supplierWarning.severity" :text="supplierWarning.message"
-      class="w-full" />
+    <!-- <Message v-if="supplierWarning.show" :severity="supplierWarning.severity" :text="supplierWarning.message"/> -->
   
     <!-- Main Form -->
-    <Card>
+    <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
       <template #content>
         <form class="space-y-6" @submit.prevent="submitForm">
-          <!-- Section 1: Basic Information -->
-          <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-info-circle text-blue-600"></i>
-              Purchase Order Information
-            </h3>
-  
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <!-- Currency (Pre-filled from store settings) -->
-              <div class="md:col-span-3">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Currency</label>
-                <InputText v-model="storeCurrency" disabled class="w-full bg-gray-100" />
+          <!-- Order context is determined by the source PR/RFQ. -->
+          <div class="border-b border-slate-200 pb-6">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-semibold text-slate-900">Order Information</h3>
+                <p class="mt-1 text-sm text-slate-500">Supplier and branch are assigned from the approved procurement request.</p>
               </div>
-  
-              <!-- Branch Selection -->
-              <div class="md:col-span-3">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Branch
-                </label>
-                <Select v-model="form.branch_id" :options="branches" option-label="name" option-value="id"
-                  placeholder="Select branch" class="w-full" />
+              <Tag v-if="form.purchase_requisition_id" value="From Purchase Requisition" severity="info" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Supplier</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ selectedSupplierName }}</p>
+                <p v-if="splitPoMode" class="mt-1 text-xs text-blue-600">Separate PO will be created for each supplier.</p>
               </div>
-  
-              <!-- Order Date -->
-              <div class="md:col-span-3">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span class="text-red-500">*</span> Order Date
-                </label>
-                <DatePicker v-model="form.order_date" date-format="yy-mm-dd" class="w-full" fluid />
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Destination Branch</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ selectedBranchName }}</p>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Currency</p>
+                <p class="mt-1 font-semibold text-slate-900">{{ storeCurrency }}</p>
               </div>
             </div>
           </div>
-  
-          <!-- Section 2: Supplier Information -->
-          <div class="border-b pb-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <i class="pi pi-building text-purple-600"></i>
-              Supplier Information
-            </h3>
-  
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4">
-              <!-- Supplier Selection -->
-              <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">
-                  <span v-if="!splitPoMode" class="text-red-500">*</span> Supplier
-                </label>
-                <Select v-model="form.supplier_id" :options="suppliers" option-label="supplier_name" option-value="id"
-                  placeholder="Select supplier" class="w-full" filter @change="onSupplierChange"
-                  :loading="loadingSuppliers" :disabled="splitPoMode" />
-                <p class="text-xs text-gray-500 mt-1" v-if="!splitPoMode">Auto-populates supplier details when selected</p>
-                <p class="text-xs text-blue-600 mt-1" v-else>
-                  Split mode active: PR has {{ splitPoSupplierGroups }} supplier groups. System will create one PO per supplier automatically.
-                </p>
-              </div>
-  
-              <div class="md:col-span-6">
-                <label class="text-sm font-semibold text-gray-700 block mb-2">Contract Discount Amount</label>
-                <InputNumber v-model="form.discount_amount" :min="0" mode="currency" currency="PHP" fluid
-                  disabled />
-                <p class="text-xs text-gray-500 mt-1">Auto-calculated from contract discount %</p>
-              </div>
-            </div>
+
+          <!-- Supplier Information -->
+          <div class="border-b border-slate-200 pb-6">
+            <h3 class="mb-4 text-lg font-semibold text-slate-900">Supplier Information</h3>
   
             <!-- Supplier Details Card (Auto-populated) -->
-            <div v-if="selectedSupplier" class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+            <div v-if="selectedSupplier" class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+              <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
                 <div>
                   <p class="text-gray-600 font-semibold">Contact Person</p>
                   <p class="text-gray-800">{{ selectedSupplier.contact_person || '-' }}</p>
@@ -111,29 +78,22 @@
               </div>
             </div>
   
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4"></div>
+            <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              {{ splitPoMode ? 'Supplier details will be applied separately to each generated purchase order.' : 'Supplier details are being loaded from the source request.' }}
+            </div>
           </div>
   
           <!-- Section 3: Line Items -->
           <div class="border-b pb-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <i class="pi pi-list text-green-600"></i>
+              
                 Purchase Items
               </h3>
-              <Button label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"
-                v-tooltip="'Or select from Quick Add below'" />
+              <Button label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"/>
             </div>
   
-            <!-- Quick Add Frequently Purchased Products -->
-            <div v-if="frequentProducts.length > 0" class="mb-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded">
-              <p class="text-sm font-semibold text-gray-700 mb-3">Quick Add (Top Products)</p>
-              <div class="flex gap-2 flex-wrap">
-                <Button v-for="product in frequentProducts" :key="product.id"
-                  :label="`${product.product_name} (${product.quantity_ordered})`" size="small" severity="secondary"
-                  outlined @click="addQuickProduct(product)" class="text-xs" />
-              </div>
-            </div>
+           
   
             <!-- Line Items Table -->
             <Transition name="slide-fade" mode="out-in">
@@ -157,7 +117,7 @@
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                      <div class="md:col-span-6">
+                      <div class="md:col-span-5">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product</label>
                         <Select
                           :model-value="item.product_id"
@@ -183,6 +143,9 @@
                         <p v-if="budgetWarnings[index]" class="text-xs text-red-500 mt-1">
                           Warning: {{ budgetWarnings[index] }}
                         </p>
+                      </div>     <div class="md:col-span-1">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Qty</label>
+                        <label>{{ item.product?.unit_of_measurement }}</label>
                       </div>
 
                       <div class="md:col-span-4">
@@ -220,20 +183,11 @@
           </div>
   
           <!-- Section 4: Running Totals -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card class="bg-linear-to-br from-blue-50 to-blue-100 border border-blue-200">
               <template #content>
                 <p class="text-xs text-blue-600 font-semibold">Subtotal</p>
                 <p class="text-2xl font-bold text-blue-900">{{ formatCurrency(totals.subtotal) }}</p>
-              </template>
-            </Card>
-
-            <Card class="bg-linear-to-br from-orange-50 to-orange-100 border border-orange-200">
-              <template #content>
-                <p class="text-xs text-orange-600 font-semibold">Supplier Discount</p>
-                <p class="text-2xl font-bold text-orange-900">
-                  {{ formatCurrency(form.discount_amount || 0) }}
-                </p>
               </template>
             </Card>
 
@@ -265,9 +219,9 @@
           <div class="pt-4 flex justify-end gap-3 border-t">
             <Button label="Cancel" severity="secondary" text type="button"
               @click="router.push({ name: 'procurement.purchase-orders' })" />
-            <Button label="Save as Draft" icon="pi pi-download" severity="info" :loading="saving"
+            <Button label="Save as Draft" severity="secondary" :loading="saving"
               @click="openSplitPoPreview('draft')" />
-            <Button label="Create & Submit" icon="pi pi-check" severity="success" :loading="saving"
+            <Button label="Create & Submit" :loading="saving"
               @click="openSplitPoPreview('submit')" />
           </div>
         </form>
@@ -372,6 +326,22 @@ const supplierTaxRate = computed(() =>
 )
 const supplierTaxRateDisplay = computed(() => `${Number(supplierTaxRate.value || 0).toFixed(2)}%`)
 const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
+const selectedBranchName = computed(() => {
+  const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
+  return branch?.name || branch?.branch_name || (form.branch_id ? `Branch #${form.branch_id}` : 'Not assigned')
+})
+const selectedSupplierName = computed(() => {
+  if (splitPoMode.value) {
+    return `${splitPoSupplierGroups.value} assigned suppliers`
+  }
+
+  const supplier = selectedSupplier.value
+    || suppliers.value.find((item: any) => Number(item.id) === Number(form.supplier_id))
+
+  return supplier?.supplier_name
+    || supplier?.company_name
+    || (loadingSuppliers.value ? 'Loading supplier...' : form.supplier_id ? `Supplier #${form.supplier_id}` : 'Not assigned')
+})
 const splitPoSummary = computed(() => {
   const groups = new Map<number, {
     supplier_id: number
@@ -477,7 +447,7 @@ const loadInitialData = async () => {
   try {
     loadingSuppliers.value = true
     const [suppliersRes, branchesRes] = await Promise.all([
-      procurementService.getSuppliers({ per_page: 100 }),
+      procurementService.getSuppliers({ per_page: 100, active_contract_only: true }),
       procurementService.getBranches ? procurementService.getBranches() : Promise.resolve({ data: [] })
     ])
 
@@ -612,8 +582,12 @@ const prefillFromRFQ = async (rfqId: number) => {
     const approvedFeedbacks = Array.isArray(rfq.supplier_portal_feedbacks)
       ? rfq.supplier_portal_feedbacks.filter((f: any) => f.status === 'approved')
       : []
+    const targetRfqItemId = Number(route.query.rfq_item_id || 0)
+    const selectedApprovedFeedbacks = targetRfqItemId > 0
+      ? approvedFeedbacks.filter((f: any) => Number(f.rfq_item_id || f.rfqItem?.id) === targetRfqItemId)
+      : approvedFeedbacks
 
-    const supplierIds = approvedFeedbacks
+    const supplierIds = selectedApprovedFeedbacks
       .map((f: any) => f?.supplier_portal?.supplier_id || f?.supplier_portal?.supplier?.id)
       .filter((id: any) => !!id)
 
@@ -631,18 +605,32 @@ const prefillFromRFQ = async (rfqId: number) => {
       })
     }
 
-      const rfqItemsRaw =
-        rfq.items?.data || rfq.items || rfq.rfq_items || rfq.rfqItems || []
+      const rfqItemsRaw = selectedApprovedFeedbacks.length > 0
+        ? selectedApprovedFeedbacks.map((feedback: any) => ({
+            ...feedback.rfq_item,
+            id: feedback.rfq_item_id || feedback.rfq_item?.id,
+            product: feedback.rfq_item?.product,
+            quantity: feedback.rfq_item?.quantity,
+            selected_supplier_id: feedback.supplier_portal?.supplier_id || feedback.supplier_portal?.supplier?.id,
+            approved_unit_price: feedback.quoted_price,
+            length_cm: feedback.length_cm,
+            width_cm: feedback.width_cm,
+            height_cm: feedback.height_cm,
+            weight_kg: feedback.weight_kg,
+          }))
+        : []
 
       if (Array.isArray(rfqItemsRaw)) {
         form.items = rfqItemsRaw.map((item: any) => {
           const product = item.product || {}
           return {
             id: `rfq-item-${item.id || Date.now()}`,
+            rfq_item_id: item.id || null,
             product_id: item.product_id || product.id || null,
             product_name: product.product_name || item.product_name || '',
             quantity_ordered: item.quantity || 1,
-            unit_cost: 0,
+            unit_cost: Number(item.approved_unit_price || 0),
+            selected_supplier_id: item.selected_supplier_id || null,
             line_total: 0,
             stock_level: 0
           }
@@ -1024,6 +1012,7 @@ const submitForm = async (confirmedSplitMode = false) => {
       }
       : {
         supplier_id: form.supplier_id,
+        rfq_id: Number(route.query.rfq_id || 0) || null,
         branch_id: form.branch_id,
         purchase_requisition_id: form.purchase_requisition_id,
         order_date: orderDate,
@@ -1031,6 +1020,7 @@ const submitForm = async (confirmedSplitMode = false) => {
         notes: form.notes,
         items: form.items.map((item) => ({
           product_id: item.product_id,
+          rfq_item_id: item.rfq_item_id || null,
           quantity_ordered: item.quantity_ordered,
           unit_cost: item.unit_cost
         })),

@@ -35,6 +35,7 @@ Route::prefix('sales')->group(function () {
 
     Route::prefix('pos')->group(function () {
         Route::get('/products', [SalesPosController::class, 'products'])->middleware('can:sales.pos.view');
+        Route::post('/delivery-fee/estimate', [SalesPosController::class, 'estimateDeliveryFee'])->middleware('can:sales.pos.view');
         Route::post('/checkout', [SalesPosController::class, 'checkout'])->middleware('can:sales.pos.manage');
         Route::get('/orders', [SalesPosController::class, 'orders'])->middleware('can:sales.pos.view');
         Route::get('/orders/{id}', [SalesPosController::class, 'show'])->middleware('can:sales.pos.view');

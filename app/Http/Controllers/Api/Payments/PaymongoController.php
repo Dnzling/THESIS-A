@@ -22,6 +22,7 @@ use App\Services\Finance\CashflowService;
 use App\Services\Finance\FinanceExpenseService;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
+use App\Services\Sales\OrderCommissionService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,7 +45,8 @@ class PaymongoController extends Controller
 
     public function __construct(
         private PaymongoService $service,
-        private SalesOrderSettlementService $salesSettlementService
+        private SalesOrderSettlementService $salesSettlementService,
+        private OrderCommissionService $commissionService
     )
     {
     }
@@ -762,6 +764,7 @@ class PaymongoController extends Controller
                         'payment_intent_id' => $intent->payment_intent_id,
                     ]
                 );
+                $this->commissionService->record($order->fresh(), true);
             } catch (\Throwable $e) {
                 Log::error('Failed to record ecommerce cashflow after payment success.', [
                     'order_id' => $order->id,
@@ -802,7 +805,7 @@ class PaymongoController extends Controller
                 $variationId = $row['variation_id'] ?? null;
                 $quantity = (int) ($row['quantity'] ?? 0);
                 $unitPrice = (float) ($row['unit_price'] ?? 0);
-                $taxRate = (float) ($row['tax_rate'] ?? 0);
+                $taxRate = 12.0;
                 $variationName = $row['variation_name'] ?? null;
 
                 if ($productId <= 0 || $quantity <= 0) {
@@ -839,6 +842,7 @@ class PaymongoController extends Controller
                 $variation = $variationId ? ProductVariation::query()->find((int) $variationId) : null;
 
                 $lineSubtotal = $unitPrice * $quantity;
+                $lineTax = round($lineSubtotal - ($lineSubtotal / 1.12), 2);
                 $fresh->items()->create([
                     'product_id' => $productId,
                     'branch_inventory_id' => $inventory->id,
@@ -850,7 +854,7 @@ class PaymongoController extends Controller
                     'unit_price' => $unitPrice,
                     'tax_rate' => $taxRate,
                     'line_subtotal' => round($lineSubtotal, 2),
-                    'line_tax' => 0,
+                    'line_tax' => $lineTax,
                     'line_total' => round($lineSubtotal, 2),
                 ]);
 
@@ -870,7 +874,17 @@ class PaymongoController extends Controller
                     ->delete();
             }
 
+            $vatInclusiveProductTotal = max(
+                0,
+                (float) $fresh->subtotal - (float) $fresh->discount_amount
+            );
+            $taxAmount = round(
+                $vatInclusiveProductTotal - ($vatInclusiveProductTotal / 1.12),
+                2
+            );
+
             $fresh->update([
+                'tax_amount' => $taxAmount,
                 'pending_snapshot' => null,
                 'pending_cart_id' => null,
             ]);

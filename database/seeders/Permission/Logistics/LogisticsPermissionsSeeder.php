@@ -19,6 +19,8 @@ class LogisticsPermissionsSeeder extends Seeder
             ['name' => 'logistics.fleet.manage', 'display_name' => 'Manage Fleet', 'module' => 'logistics'],
             ['name' => 'logistics.zones.view', 'display_name' => 'View Delivery Zones', 'module' => 'logistics'],
             ['name' => 'logistics.zones.manage', 'display_name' => 'Manage Delivery Zones', 'module' => 'logistics'],
+            ['name' => 'logistics.settings.view', 'display_name' => 'View Delivery Settings', 'module' => 'logistics'],
+            ['name' => 'logistics.settings.manage', 'display_name' => 'Manage Delivery Settings', 'module' => 'logistics'],
             ['name' => 'logistics.admin', 'display_name' => 'Logistics Admin', 'module' => 'logistics'],
         ];
 
@@ -36,4 +38,3 @@ class LogisticsPermissionsSeeder extends Seeder
         }
     }
 }
-

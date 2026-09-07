@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\Procurement\DashboardController as ProcurementDashb
 use App\Http\Controllers\Api\Procurement\Inventory\ProcurementInventoryController;
 use App\Http\Controllers\Api\Procurement\StockOrder\StockOrderRequestController;
 use App\Http\Controllers\Api\ProductCatalog\ProductController;
+use App\Http\Controllers\Api\Procurement\ProductController as ProcurementProductController;
 use App\Http\Controllers\Api\Procurement\AnalyticsController;
 use App\Http\Controllers\Api\Procurement\BudgetController;
 
@@ -40,6 +41,7 @@ Route::prefix('procurement')->group(function () {
         Route::get('/receiving-accuracy', [AnalyticsController::class, 'getReceivingAccuracy']);
         Route::get('/budget', [AnalyticsController::class, 'getBudgetTracking']);
         Route::get('/lead-time', [AnalyticsController::class, 'getLeadTimeAnalysis']);
+        Route::get('/forecasting', [AnalyticsController::class, 'getForecasting']);
     });
 
     // Dedicated Budget endpoints
@@ -83,10 +85,10 @@ Route::prefix('procurement')->group(function () {
 
     // Purchase Requisitions (Procurement module)
     // Inventory has its own "stock-order-requests" endpoints under /api/inventory.
+    // Purchase order creation needs branch inventory even when the user does
+    // not have the requisition-view permission.
+    Route::get('/requisitions/branch/{branchId}/inventory', [BranchInventoryController::class, 'index']);
     Route::prefix('requisitions')->middleware('can:procurement.requisitions.view')->group(function () {
-        // Branch-scoped inventory for procurement requisition UI (RBAC: procurement.requisitions.view)
-        Route::get('/branch/{branchId}/inventory', [BranchInventoryController::class, 'index']);
-
         Route::get('/', [PurchaseRequisitionController::class, 'index']);
         Route::get('/{id}', [PurchaseRequisitionController::class, 'show']);
         Route::post('/', [PurchaseRequisitionController::class, 'store'])->middleware('can:procurement.requisitions.manage');
@@ -149,6 +151,9 @@ Route::prefix('procurement')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index']);
         Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders']);
         Route::get('/{id}', [PurchaseOrderController::class, 'show']);
+        Route::get('/{id}/pickup-vehicles', [PurchaseOrderController::class, 'pickupVehicles']);
+        Route::get('/{id}/pickup-drivers', [PurchaseOrderController::class, 'pickupDrivers']);
+        Route::post('/{id}/pickup', [PurchaseOrderController::class, 'assignPickup'])->middleware('can:procurement.purchase_orders.manage');
         Route::post('/', [PurchaseOrderController::class, 'store'])->middleware('can:procurement.purchase_orders.manage');
         Route::put('/{id}', [PurchaseOrderController::class, 'update'])->middleware('can:procurement.purchase_orders.manage');
         Route::delete('/{id}', [PurchaseOrderController::class, 'destroy'])->middleware('can:procurement.purchase_orders.manage');
@@ -165,16 +170,6 @@ Route::prefix('procurement')->group(function () {
 
         // Pending receipt
         Route::get('/{poId}/pending-receipt', [GoodsReceiptController::class, 'pendingForPO']);
-    });
-
-    // Goods Receipts
-    Route::prefix('goods-receipts')->middleware('can:procurement.receiving.view')->group(function () {
-        Route::get('/', [GoodsReceiptController::class, 'index']);
-        Route::get('/{id}/print', [GoodsReceiptController::class, 'print']);
-        Route::get('/{id}', [GoodsReceiptController::class, 'show']);
-        Route::post('/', [GoodsReceiptController::class, 'store'])->middleware('can:procurement.receiving.manage');
-        Route::post('/{id}/verify', [GoodsReceiptController::class, 'verify'])->middleware('can:procurement.receiving.approve');
-        Route::get('/summary', [GoodsReceiptController::class, 'summary']);
     });
 
     // Invoices
@@ -249,8 +244,8 @@ Route::prefix('procurement')->group(function () {
     });
 
     Route::prefix('products')->middleware('can:procurement.products.view')->group(function () {
-        Route::get('/', [ProductController::class, 'index']);
-        Route::get('/{id}', [ProductController::class, 'show']);
+        Route::get('/', [ProcurementProductController::class, 'index']);
+        Route::get('/{id}', [ProcurementProductController::class, 'show']);
         Route::post('/', [ProductController::class, 'store'])->middleware('can:procurement.products.manage');
         Route::put('/{id}', [ProductController::class, 'update'])->middleware('can:procurement.products.manage');
         Route::delete('/{id}', [ProductController::class, 'destroy'])->middleware('can:procurement.products.manage');

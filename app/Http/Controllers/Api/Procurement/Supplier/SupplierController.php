@@ -141,6 +141,12 @@ class SupplierController extends Controller
     {
         $query = Supplier::where('store_id', Auth::user()->store_id);
 
+        if ($request->boolean('active_contract_only')) {
+            $query->whereHas('contracts', function ($contractQuery) {
+                $contractQuery->active();
+            });
+        }
+
         // Filters
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -336,7 +342,7 @@ class SupplierController extends Controller
 
             \Log::info('[Supplier] Attempting to create user account for contact person', [
                 'email' => $validated['email'],
-                'user_id' => $supplierCode,
+                'user_id' => User::generateUserId(),
                 'fname' => $contactFirstName,
                 'lname' => $contactLastName
             ]);
@@ -651,9 +657,27 @@ class SupplierController extends Controller
      * Get supplier performance metrics
      * GET /api/procurement/suppliers/{id}/performance
      */
-    public function performance(int $id): JsonResponse
+    public function performance(Request $request, int $id): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
+        $evaluations = $supplier->performanceEvaluations();
+        $evaluationAverages = (clone $evaluations)->selectRaw('
+            AVG(quality_score) as quality,
+            AVG(quantity_accuracy_score) as quantity_accuracy,
+            AVG(delivery_timeliness_score) as delivery_timeliness,
+            AVG(packaging_condition_score) as packaging_condition,
+            AVG(overall_rating) as overall
+        ')->first();
+
+        $recentEvaluations = (clone $evaluations)
+            ->with([
+                'goodsReceipt:id,grn_number,receipt_date',
+                'purchaseOrder:id,po_number',
+                'evaluator:id,fname,lname',
+            ])
+            ->latest()
+            ->limit(10)
+            ->get();
 
         $performance = [
             'rating' => $supplier->rating,
@@ -667,6 +691,15 @@ class SupplierController extends Controller
             'credit_limit' => $supplier->credit_limit,
             'credit_available' => $supplier->credit_limit - $supplier->current_balance,
             'active_contracts' => $supplier->contracts()->active()->count(),
+            'evaluation_count' => (clone $evaluations)->count(),
+            'evaluation_averages' => [
+                'quality' => $evaluationAverages?->quality !== null ? round((float) $evaluationAverages->quality, 2) : null,
+                'quantity_accuracy' => $evaluationAverages?->quantity_accuracy !== null ? round((float) $evaluationAverages->quantity_accuracy, 2) : null,
+                'delivery_timeliness' => $evaluationAverages?->delivery_timeliness !== null ? round((float) $evaluationAverages->delivery_timeliness, 2) : null,
+                'packaging_condition' => $evaluationAverages?->packaging_condition !== null ? round((float) $evaluationAverages->packaging_condition, 2) : null,
+                'overall' => $evaluationAverages?->overall !== null ? round((float) $evaluationAverages->overall, 2) : null,
+            ],
+            'recent_evaluations' => $recentEvaluations,
         ];
 
         return response()->json([

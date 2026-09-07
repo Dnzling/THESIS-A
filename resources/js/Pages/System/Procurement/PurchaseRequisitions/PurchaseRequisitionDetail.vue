@@ -117,7 +117,7 @@
       </div>
 
       <!-- Delivery Status & Logs -->
-      <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered'].includes(shipmentStatus || '') || deliveryLogs.length" class="space-y-4">
+      <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered', 'goods_received', 'received'].includes(shipmentStatus || '') || deliveryLogs.length || goodsReceipts.length" class="space-y-4">
         <div class="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4">
           <div class="flex items-center justify-between text-sm font-semibold text-slate-600">
             <div class="flex items-center gap-2" v-for="step in steps" :key="step.key">
@@ -151,17 +151,57 @@
           </div>
           <div class="divide-y divide-slate-100">
             <div v-for="log in deliveryLogs" :key="log.id" class="py-3 px-6 flex items-start gap-3">
-              <div class="w-2 h-2 rounded-full mt-2" :class="logDotColor(log.event_type)"></div>
+              <div :class="['w-10 h-10 rounded-full flex items-center justify-center shrink-0', logIconClass(log.event_type)]">
+                <i :class="logIcon(log.event_type)"></i>
+              </div>
               <div class="flex-1">
                 <div class="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  {{ log.event_type }}
+                  {{ deliveryLogLabel(log.event_type) }}
                   <Tag :value="formatDateTime(log.created_at)" severity="secondary" class="text-xs" />
                 </div>
                 <div class="text-xs text-slate-500">
                   By {{ shipmentInfo?.driver_name || 'Driver' }}<span v-if="log.receiver_name"> • Receiver: {{ log.receiver_name }}</span>
                 </div>
+                <p class="text-sm text-slate-600 mt-2">{{ deliveryLogDescription(log.event_type) }}</p>
                 <p v-if="log.notes" class="text-sm text-slate-700 mt-1">{{ log.notes }}</p>
+                <p v-if="logAddress(log)" class="text-xs text-slate-500 mt-2 flex items-start gap-1"><i class="pi pi-map-marker mt-0.5"></i><span>{{ logAddress(log) }}</span></p>
+                <div v-if="proofAttachments(log).length" class="mt-3 border-t border-slate-100 pt-3">
+                  <p class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{{ proofLabel(log.event_type) }}</p>
+                  <div class="flex flex-wrap gap-3">
+                    <a v-for="attachment in proofAttachments(log)" :key="attachment.id" :href="attachment.public_url || undefined" target="_blank" rel="noopener" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                      <img v-if="attachment.public_url" :src="attachment.public_url" :alt="proofLabel(log.event_type)" class="h-32 w-40 object-cover transition group-hover:scale-105" />
+                      <span v-else class="flex h-32 w-40 items-center justify-center px-2 text-center text-xs text-slate-500">Attachment unavailable</span>
+                      <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View attachment</span>
+                    </a>
+                  </div>
+                </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="goodsReceipts.length" class="bg-white rounded-2xl border border-emerald-200/70 shadow-sm">
+          <div class="px-6 py-4 border-b border-emerald-100 bg-emerald-50/50 flex items-center gap-2">
+            <i class="pi pi-inbox text-emerald-600"></i>
+            <h3 class="font-semibold text-slate-800">Goods Received</h3>
+          </div>
+          <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div v-for="receipt in goodsReceipts" :key="receipt.id" class="rounded-xl border border-slate-200 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="font-semibold text-slate-900">{{ receipt.grn_number || receipt.gr_number || `Receipt #${receipt.id}` }}</p>
+                  <p class="text-xs text-slate-500 mt-1">{{ formatDate(receipt.receipt_date || receipt.received_date) }}</p>
+                </div>
+                <Tag :value="formatStatus(receipt.receipt_status || receipt.status || 'received')" :severity="receiptStatusSeverity(receipt.receipt_status || receipt.status)" />
+              </div>
+              <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
+                <div><span class="text-slate-500">Items</span><p class="font-medium">{{ receipt.items?.length || 0 }}</p></div>
+                <div><span class="text-slate-500">Delivery note</span><p class="font-medium">{{ receipt.delivery_note_number || '-' }}</p></div>
+                <div><span class="text-slate-500">Vehicle</span><p class="font-medium">{{ receipt.vehicle_number || '-' }}</p></div>
+                <div><span class="text-slate-500">Driver</span><p class="font-medium">{{ receipt.driver_name || '-' }}</p></div>
+              </div>
+              <p v-if="receipt.discrepancy_notes || receipt.quality_notes" class="text-xs text-slate-600 mt-3">{{ receipt.discrepancy_notes || receipt.quality_notes }}</p>
+              <Button label="View Receipt" icon="pi pi-eye" text size="small" class="mt-3 px-0" @click="router.push({ name: 'inventory.goods-receipts.detail', params: { id: receipt.id } })" />
             </div>
           </div>
         </div>
@@ -179,8 +219,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
             <div>
               <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Requested By</p>
-              <p class="font-semibold text-gray-900">{{ detail?.requested_by?.fname || '' }} {{ detail?.requested_by?.lname || '' }}</p>
-              <p class="text-sm text-gray-600 mt-1">{{ detail?.requested_by?.employee_number || '' }}</p>
+              <p class="font-semibold text-gray-900">{{ getPersonName(detail?.requested_by) }}</p>
             </div>
             <div>
               <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Branch</p>
@@ -211,6 +250,8 @@
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product</p>
                   <p class="font-semibold text-gray-900">{{ item?.product?.product_name || 'Unknown' }}</p>
                   <p class="text-xs text-gray-500 mt-1">SKU: {{ item?.product?.sku || 'N/A' }}</p>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mt-3 mb-1">Linked Supplier</p>
+                  <p class="text-sm text-gray-700">{{ getItemSupplierNames(item) }}</p>
                 </div>
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Quantity</p>
@@ -221,13 +262,10 @@
                   <p class="font-semibold text-gray-900">₱{{ formatNumber(parseFloat(item?.estimated_unit_cost || 0)) }}</p>
                 </div>
                 <div>
-                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product Cost</p>
-                  <p class="text-sm text-gray-700">₱{{ formatNumber(Number(item?.product?.cost_price ?? 0)) }}</p>
+                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Unit</p>
+                  <p class="text-sm text-gray-700 font-bold uppercase">{{ (item?.product?.unit_of_measurement ?? 0) }}</p>
                 </div>
-                <div>
-                  <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Tax Rate</p>
-                  <p class="text-sm text-gray-700">{{ Number(item?.product?.tax_rate ?? 0).toFixed(2) }}%</p>
-                </div>
+              
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Total</p>
                   <p class="text-lg font-semibold text-blue-600">₱{{ formatNumber((item?.quantity_requested || 0) * parseFloat(item?.estimated_unit_cost || 0)) }}</p>
@@ -414,10 +452,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Response Dialog -->
-    <!-- response dialog removed: success now shows toast and navigates; errors still use toast -->
-
     <Toast />
   </div>
 </template>
@@ -457,14 +491,20 @@ const responseSeverity = ref<'success' | 'error' | 'info'>('info')
 const shipmentStatus = ref<string | null>(null)
 const shipmentInfo = ref<any>(null)
 const deliveryLogs = ref<any[]>([])
+const goodsReceipts = computed(() => {
+  const orders = Array.isArray(detail.value?.purchase_orders) ? detail.value.purchase_orders : []
+  return orders.flatMap((po: any) => Array.isArray(po?.goods_receipts) ? po.goods_receipts : [])
+})
 const steps = computed(() => {
   const sent = shipmentStatus.value === 'sent_to_supplier' || shipmentStatus.value === 'supplier_accepted'
   const inTransit = shipmentStatus.value === 'in_transit'
   const delivered = shipmentStatus.value === 'delivered'
+  const received = goodsReceipts.value.length > 0 || ['goods_received', 'received'].includes(normalize(detail.value?.status))
   return [
     { key: 'supplier', label: 'Supplier Approval', index: 1, active: sent || inTransit || delivered },
     { key: 'transit', label: 'In Transit', index: 2, active: inTransit || delivered },
     { key: 'delivered', label: 'Order Delivered', index: 3, active: delivered },
+    { key: 'received', label: 'Goods Received', index: 4, active: received },
   ]
 })
 
@@ -554,6 +594,12 @@ const capitalizeWords = (str: string): string => {
   return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
+const getPersonName = (person: any): string => {
+  const source = person?.user || person
+  const name = [source?.fname, source?.lname].filter(Boolean).join(' ').trim()
+  return name || source?.full_name || 'N/A'
+}
+
 const formatDate = (date: string | null): string => {
   if (!date) return 'N/A'
   const d = new Date(date)
@@ -565,6 +611,15 @@ const formatDateTime = (date: string | null): string => {
   const d = new Date(date)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
          d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
+
+const getItemSupplierNames = (item: any): string => {
+  const linked = Array.isArray(item?.product?.suppliers) ? item.product.suppliers : []
+  const names = linked
+    .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
+    .filter((name: any) => name && String(name).trim())
+
+  return names.length > 0 ? names.join(', ') : 'No linked supplier'
 }
 
 const formatNumber = (value: number): string => {
@@ -597,7 +652,9 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
     procurement_processing: 'info',
     rfq_sent: 'info',
     quotes_received: 'warn',
-    supplier_selected: 'success',
+    delivered: 'success',
+    in_transit: 'info',
+    supplier_selected: 'contrast',
     po_created: 'success',
     rejected: 'danger',
     cancelled: 'danger',
@@ -638,6 +695,40 @@ const logDotColor = (eventType: string) => {
     'Issue': 'bg-red-500',
   }
   return map[eventType] || 'bg-slate-300'
+}
+
+const normalizeEventType = (eventType?: string) => String(eventType || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+const deliveryLogLabel = (eventType?: string) => ({
+  pickup_assigned: 'Pickup Assigned',
+  in_transit: 'Supplies Picked Up',
+  delivered: 'Arrived at Store',
+  cancelled: 'Pickup Cancelled',
+  note: 'Driver Location Update',
+}[normalizeEventType(eventType)] || formatStatus(eventType || 'pickup_update'))
+const deliveryLogDescription = (eventType?: string) => ({
+  pickup_assigned: 'A driver and vehicle were assigned to this purchase order.',
+  in_transit: 'The supplies were collected from the supplier and are now in transit.',
+  delivered: 'The driver arrived at the store with the supplies.',
+  cancelled: 'The assigned supplier pickup was cancelled.',
+  note: 'The driver shared a pickup location update.',
+}[normalizeEventType(eventType)] || 'Pickup activity was recorded.')
+const logIcon = (eventType?: string) => ({
+  pickup_assigned: 'pi pi-user-plus', in_transit: 'pi pi-truck', delivered: 'pi pi-check-circle',
+  cancelled: 'pi pi-times-circle', note: 'pi pi-map-marker',
+}[normalizeEventType(eventType)] || 'pi pi-info-circle')
+const logIconClass = (eventType?: string) => ({
+  pickup_assigned: 'bg-blue-100 text-blue-600', in_transit: 'bg-amber-100 text-amber-700',
+  delivered: 'bg-emerald-100 text-emerald-700', cancelled: 'bg-red-100 text-red-700', note: 'bg-sky-100 text-sky-700',
+}[normalizeEventType(eventType)] || 'bg-slate-100 text-slate-600')
+const proofAttachments = (log: any) => ['in_transit', 'delivered'].includes(normalizeEventType(log?.event_type)) ? (log?.attachments || []) : []
+const proofLabel = (eventType?: string) => normalizeEventType(eventType) === 'delivered' ? 'Arrival proof' : 'Supplier pickup proof'
+const logAddress = (log: any) => log?.location_address || ''
+const receiptStatusSeverity = (status?: string) => {
+  const value = normalize(status)
+  if (['completed', 'complete', 'received', 'approved'].includes(value)) return 'success'
+  if (['partial', 'damaged', 'pending'].includes(value)) return 'warn'
+  if (['rejected', 'cancelled'].includes(value)) return 'danger'
+  return 'secondary'
 }
 
 const loadDeliveryLogs = async () => {

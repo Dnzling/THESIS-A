@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\DB;
 
 class SalesOrderSettlementService
 {
+    public function __construct(
+        private readonly OrderCommissionService $commissionService
+    ) {
+    }
+
     public function settlePaid(
         SalesOrder $order,
         string $paymentMethod,
@@ -25,6 +30,10 @@ class SalesOrderSettlementService
                 ->findOrFail($order->id);
 
             if ($lockedOrder->payment_status === 'paid') {
+                $this->commissionService->record(
+                    $lockedOrder,
+                    in_array(strtolower($paymentMethod), ['card', 'gcash', 'e_wallet', 'paymongo'], true)
+                );
                 return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);
             }
 
@@ -123,6 +132,11 @@ class SalesOrderSettlementService
                     'order_number' => $lockedOrder->order_number,
                     'payment_reference' => $paymentReference,
                 ]
+            );
+
+            $this->commissionService->record(
+                $lockedOrder->fresh(),
+                in_array(strtolower($paymentMethod), ['card', 'gcash', 'e_wallet', 'paymongo'], true)
             );
 
             return $lockedOrder->fresh(['items', 'payment', 'receipt', 'branch']);

@@ -1,12 +1,14 @@
 <template>
-  <div class="min-h-screen p-4">
-    <div class="max-w-5xl mx-auto space-y-4">
+  <div class="min-h-screenpx-4 py-6 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-7xl space-y-6">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-          <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
+          <button @click="goBack" class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200">
+            <i class="pi pi-chevron-left text-lg text-gray-600"></i>
+          </button>
           <div>
-            <h1 class="text-xl font-bold text-gray-800">Purchase Requisition</h1>
-            <p class="text-xs text-gray-500 mt-0.5">{{ headerSubtitle }}</p>
+            <h1 class="text-3xl font-semibold tracking-tight text-gray-900">{{ detail?.pr_number || (detail?.id ? `PR #${detail.id}` : 'Purchase Requisition') }}</h1>
+            <p class="mt-1 text-sm text-gray-500">{{ headerSubtitle }}</p>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -29,12 +31,40 @@
             :loading="approving"
             @click="confirmApprove"
           />
-          <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
+           <div v-if="canGenerateReceipt" class="flex justify-end">
+          <Button
+            label="Generate Receipt"
+            icon="pi pi-receipt"
+            severity="success"
+            size="small"
+            @click="generateReceipt"
+          />
+        </div>
+          <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" class="rounded-full px-3 py-1" />
+        </div>
+      </div>
+
+      <div v-if="detail" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Status</span><span :class="statusDotClass(detail.status)" class="h-2 w-2 rounded-full"></span></div>
+          <span class="text-base font-semibold text-gray-900">{{ formatStatus(detail.status) }}</span>
+        </div>
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Priority</span><i class="pi pi-flag text-gray-400"></i></div>
+          <span class="text-base font-semibold text-gray-900">{{ priorityLabel(detail.priority) }}</span>
+        </div>
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Requested Items</span><i class="pi pi-box text-gray-400"></i></div>
+          <span class="text-base font-semibold text-gray-900">{{ (detail.items || []).length }}</span>
+        </div>
+        <div class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg">
+          <span class="mb-3 block text-sm font-medium text-gray-400">Estimated Amount</span>
+          <span class="text-2xl font-bold tracking-tight text-white">{{ formatMoney(detail.estimated_amount) }}</span>
         </div>
       </div>
   
       <div v-if="loading">
-        <Card>
+        <Card class="rounded-2xl border border-gray-100 shadow-sm">
           <template #content>
             <div class="space-y-3">
               <Skeleton height="16px" width="220px" />
@@ -48,28 +78,28 @@
       <template v-else-if="detail">
         <Card>
           <template #content>
-            <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
               <div>
                 <div class="text-xs text-gray-500">PR No.</div>
-                <div class="text-lg font-bold text-gray-900">{{ detail.pr_number || `PR #${detail.id}` }}</div>
-                <div class="text-xs text-gray-500 mt-0.5">Created {{ formatDateTime(detail.created_at) }}</div>
+                <div class="text-lg font-bold text-gray-900">Purchase Requisition Details</div>
+                <div class="mt-0.5 text-xs text-gray-500">Created {{ formatDateTime(detail.created_at) }}</div>
               </div>
             </div>
   
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-              <div class="rounded-lg border border-gray-100 p-3">
+            <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 text-sm">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Branch</div>
                 <div class="font-semibold text-gray-900">{{ detail.branch?.name || branchLabel }}</div>
               </div>
-              <div class="rounded-lg border border-gray-100 p-3">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Requester</div>
                 <div class="font-semibold text-gray-900">{{ requesterName }}</div>
               </div>
-              <div class="rounded-lg border border-gray-100 p-3">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Type</div>
                 <div class="font-semibold text-gray-900">{{ String(detail.requisition_type || 'regular') }}</div>
               </div>
-              <div class="rounded-lg border border-gray-100 p-3">
+              <div class="rounded-xl bg-gray-50/70 p-4">
                 <div class="text-gray-500">Estimated Amount</div>
                 <div class="font-semibold text-gray-900">{{ formatMoney(detail.estimated_amount) }}</div>
               </div>
@@ -77,16 +107,16 @@
   
             <div class="mt-4">
               <div class="text-xs font-semibold text-gray-700 mb-1.5">Reason</div>
-              <div class="rounded-lg border border-gray-100 p-3 text-sm text-gray-800 bg-white whitespace-pre-line">
+              <div class="rounded-xl bg-gray-50/70 p-4 text-sm text-gray-800 whitespace-pre-line">
                 {{ detail.reason || '—' }}
               </div>
             </div>
           </template>
         </Card>
   
-        <Card>
+        <Card class="rounded-2xl border border-gray-100 shadow-sm">
           <template #content>
-            <div class="text-sm font-semibold text-gray-800 mb-3">Items</div>
+            <div class="mb-4 flex items-center justify-between"><div><h2 class="text-sm font-semibold uppercase tracking-wider text-gray-900">Line Items</h2><p class="mt-1 text-xs text-gray-500">Products and quantities requested for this requisition.</p></div><i class="pi pi-list text-xl text-gray-400"></i></div>
             <DataTable :value="detail.items || []" class="p-datatable-sm text-xs" responsiveLayout="scroll">
               <Column header="Product" style="min-width: 260px">
                 <template #body="{ data }">
@@ -108,6 +138,11 @@
                   {{ formatMoney(data.estimated_unit_cost) }}
                 </template>
               </Column>
+                  <Column header="Unit" style="width: 140px">
+                <template #body="{ data }">
+                  <b>{{ (data.product?.unit_of_measurement || '—') }}</b>
+                </template>
+              </Column>
               <Column header="Line Total" style="width: 160px">
                 <template #body="{ data }">
                   {{ formatMoney((Number(data.quantity_requested || 0) * Number(data.estimated_unit_cost || 0))) }}
@@ -117,15 +152,7 @@
           </template>
         </Card>
 
-        <div v-if="canGenerateReceipt" class="flex justify-end">
-          <Button
-            label="Generate Receipt"
-            icon="pi pi-receipt"
-            severity="success"
-            size="small"
-            @click="generateReceipt"
-          />
-        </div>
+       
       </template>
     </div>
   </div>
@@ -191,8 +218,10 @@ const branchLabel = computed(() => {
 })
 
 const requesterName = computed(() => {
-  const emp = detail.value?.requested_by
-  if (emp?.fname || emp?.lname) return `${emp?.fname || ''} ${emp?.lname || ''}`.trim()
+  if (detail.value?.requested_by_name) return detail.value.requested_by_name
+  const user = detail.value?.requestedBy?.user
+  const name = user?.full_name || [user?.fname, user?.lname].filter(Boolean).join(' ')
+  if (name) return name
   return '—'
 })
 
@@ -218,6 +247,19 @@ const statusSeverity = (status: string) => {
   if (['rejected', 'cancelled'].includes(s)) return 'danger'
   if (s === 'draft') return 'secondary'
   return 'warning'
+}
+
+const statusDotClass = (status: string) => {
+  const severity = statusSeverity(status)
+  return severity === 'success' ? 'bg-green-500' : severity === 'danger' ? 'bg-red-500' : severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+}
+
+const priorityLabel = (priority: any) => {
+  const value = Number(priority)
+  if (value === 1) return 'Urgent'
+  if (value === 2) return 'High'
+  if (value === 3) return 'Normal'
+  return 'Low'
 }
 
 const formatStatus = (status: any) => {

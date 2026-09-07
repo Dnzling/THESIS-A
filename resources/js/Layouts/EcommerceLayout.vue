@@ -4,20 +4,22 @@
     <Toast />
     <ConfirmDialog />
     <header class="sticky top-0 z-20 hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
-      <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-2 py-1.5 sm:px-3 sm:py-2 md:px-4">
+      <div
+        class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-2 py-1.5 sm:px-3 sm:py-2 md:px-4">
         <button link severity="secondary" @click="router.push({name: 'ecommerce.products'})"
           class="flex items-center justify-center rounded-lg">
-          <span class="portal-brand text-orange-500 text-base sm:text-lg">FURNISYNC SHOP</span>
+          <span class="portal-brand text-orange-500 text-base sm:text-lg">FURNISYNC</span>
         </button>
-      
-      <div class="hidden md:flex items-center gap-1">
-        <Button label="Stores" icon="pi pi-shop" severity="warn" outlined rounded class="compact-button !text-xs !px-2 !py-1.5" @click="router.push({ name: 'ecommerce.stores' })" />
-        <Button label="Cart" icon="pi pi-shopping-cart" :badge="cartCount.toString()" severity="warn"
-          badgeSeverity="secondary" class="compact-button !text-xs !px-2 !py-1.5" rounded @click="goCart" />
-        <Button v-if="!isLoggedIn" icon="pi pi-sign-in" label="Login" rounded outlined severity="warn" class="compact-button !text-sm" size="small" @click="goLogin" />
-        <Button v-else icon="pi pi-user" rounded severity="warn" class="!w-8 !h-8 sm:!w-9 sm:!h-9" v-tooltip.bottom="'Profile'"
-          @click="toggleProfilePopover" />
-      </div>
+  
+        <div class="hidden md:flex items-center gap-1">
+          <!-- <Button label="Stores" text rounded class="compact-button !text-xs !px-2 !py-1.5" @click="router.push({ name: 'ecommerce.stores' })" /> -->
+          <Button icon="pi pi-shopping-cart" text :badge="cartCount.toString()" badgeSeverity="secondary"
+            class="compact-button !text-xs !px-2 !py-1.5" rounded @click="goCart" fluid />
+          <Button v-if="!isLoggedIn" label="Login" rounded class="compact-button !text-sm" size="small" fluid
+            @click="goLogin" />
+          <Button v-else icon="pi pi-user" rounded text fluid v-tooltip.bottom="'Profile'"
+            @click="toggleProfilePopover" />
+        </div>
       </div>
     </header>
   
@@ -27,28 +29,36 @@
   
     <!-- <ScrollTop /> -->
   
-    <Popover ref="profilePopoverRef">
-      <div class="min-w-44 space-y-2">
-        <p class="text-sm font-semibold text-slate-900">{{ customerFullName }}</p>
+    <Popover ref="profilePopoverRef" class="w-64 p-3">
+  
+      <div class="">
+        <p class="text-base font-semibold leading-5 text-slate-900">{{ customerFullName }}</p>
+        <p class="mt-1 mb-3 truncate text-xs text-slate-500">{{ customerEmail }}</p>
         <div v-if="chatThreads.length" class="rounded-md border border-slate-200 p-2">
           <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Recent Chats</p>
-          <button
-            v-for="thread in chatThreads"
-            :key="thread.id"
-            type="button"
+          <button v-for="thread in chatThreads" :key="thread.id" type="button"
             class="flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-100"
-            @click="goChatThread(thread.store_id)"
-          >
+            @click="goChatThread(thread.store_id)">
             <span class="truncate">{{ thread.store_name }}</span>
             <Tag v-if="thread.unread_count" :value="thread.unread_count" severity="warn" />
           </button>
         </div>
         <div class="space-y-1 border-t border-slate-200 pt-2">
-          <Button label="Profile" text severity="secondary" class="w-full justify-start" @click="goProfile" />
-          <Button label="Notifications" text severity="secondary" class="w-full justify-start" @click="goNotifications" />
-          <Button label="Orders" text severity="secondary" class="w-full justify-start" @click="goOrders" />
-          <Button label="Chats" text severity="secondary" class="w-full justify-start" @click="goChats" />
-          <Button label="Logout" text severity="danger" class="w-full justify-start" @click="logoutCustomer" />
+          <Button label="Profile" icon="pi pi-user" text severity="secondary"
+            class="w-full !justify-start !px-2 !py-2 text-left"
+            :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goProfile" />
+          <Button label="Notifications" icon="pi pi-bell" text severity="secondary"
+            class="w-full !justify-start !px-2 !py-2 text-left"
+            :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goNotifications" />
+          <Button label="Orders" icon="pi pi-shopping-bag" text severity="secondary"
+            class="w-full !justify-start !px-2 !py-2 text-left"
+            :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goOrders" />
+          <Button label="Chats" icon="pi pi-comments" text severity="secondary"
+            class="w-full !justify-start !px-2 !py-2 text-left"
+            :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goChats" />
+          <Button label="Logout" icon="pi pi-sign-out" text severity="danger"
+            class="w-full !justify-start !px-2 !py-2 text-left"
+            :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="logoutCustomer" />
         </div>
       </div>
     </Popover>
@@ -80,10 +90,11 @@ const isLoggedIn = computed(() => authStore.isAuthenticated)
 const profilePopoverRef = ref()
 const chatThreads = ref<any[]>([])
 const customerFullName = computed(() => {
-  const first = authStore.user?.first_name || ''
-  const last = authStore.user?.last_name || ''
+  const first = authStore.user?.first_name || authStore.user?.fname || ''
+  const last = authStore.user?.last_name || authStore.user?.lname || ''
   return `${first} ${last}`.trim() || 'Customer'
 })
+const customerEmail = computed(() => authStore.user?.email || 'No email available')
 
 async function loadCartCount() {
   if (!isLoggedIn.value) {
@@ -148,7 +159,6 @@ async function logoutCustomer() {
   confirm.require({
     message: 'Are you sure you want to log out?',
     header: 'Confirm Logout',
-    icon: 'pi pi-sign-out',
     rejectProps: {
       label: 'Cancel',
       severity: 'secondary',
@@ -202,7 +212,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-
 @font-face {
   font-family: 'Barabara';
   src: url('/fonts/BARABARA-final.otf') format('opentype');
@@ -219,6 +228,7 @@ onUnmounted(() => {
   .compact-button :deep(.p-button-label) {
     display: none;
   }
+
   .compact-button :deep(.p-button-icon) {
     margin-right: 0;
   }

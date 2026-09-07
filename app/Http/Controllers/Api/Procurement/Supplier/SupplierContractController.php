@@ -321,6 +321,7 @@ class SupplierContractController extends Controller
         }
 
         $validated['contract_number'] = $contractNumber;
+        $validated['tax_rate'] = 12;
         $validated['store_id'] = $storeId;
         $validated['status'] = $validated['status'] ?? ($isSupplierPortal ? 'pending' : 'draft');
         $validated['created_by'] = $employeeId ? (int) $employeeId : null;
@@ -381,6 +382,7 @@ class SupplierContractController extends Controller
             $validated['contract_file_path'] = $request->file('contract_file')->store('supplier-contracts', 'public');
         }
 
+        $validated['tax_rate'] = 12;
         $contract->update($validated);
 
         return response()->json([

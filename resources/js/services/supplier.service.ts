@@ -60,6 +60,11 @@ export interface SupplierRFQFeedback {
   rfq_id: number
   rfq_item_id: number
   quoted_price: number
+  available_quantity?: number
+  length_cm?: number
+  width_cm?: number
+  height_cm?: number
+  weight_kg?: number
   description?: string
   submitted_at: string
   created_at: string
@@ -71,6 +76,7 @@ export interface SupplierPOFeedback {
   supplier_portal_id: number
   purchase_order_id: number
   response: 'accepted' | 'rejected'
+  fulfillment_method?: 'store_pickup' | 'supplier_delivery'
   rejection_reason?: string
   receipt_status: 'pending' | 'confirmed'
   expected_delivery_date?: string
@@ -329,9 +335,23 @@ class SupplierService {
     rfq_id: number
     rfq_item_id: number
     quoted_price: number
+    available_quantity: number
+    length_cm: number
+    width_cm: number
+    height_cm: number
+    weight_kg: number
+    estimated_delivery_date: string
+    quotation_valid_until: string
+    attachment?: File | null
+    product_specifications?: string
+    additional_notes?: string
     description?: string
   }) {
-    const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, data)
+    const formData = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') formData.append(key, value instanceof File ? value : String(value))
+    })
+    const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, formData)
     return response.data
   }
 
@@ -369,6 +389,7 @@ class SupplierService {
   async submitPOFeedback(data: {
     purchase_order_id: number
     response: 'accepted' | 'rejected'
+    fulfillment_method?: 'store_pickup' | 'supplier_delivery'
     rejection_reason?: string
     expected_delivery_date?: string
     delivery_quantity?: number

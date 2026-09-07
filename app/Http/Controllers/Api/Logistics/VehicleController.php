@@ -66,6 +66,7 @@ class VehicleController extends Controller
             'model' => 'nullable|string|max:100',
             'color' => 'nullable|string|max:50',
             'capacity_kg' => 'nullable|numeric|min:0',
+            'cost_per_km' => 'required|numeric|min:0.01',
             'max_orders_per_trip' => 'required|integer|min:1|max:999',
             'status' => 'required|in:active,maintenance,inactive',
             'notes' => 'nullable|string|max:1000',
@@ -122,6 +123,7 @@ class VehicleController extends Controller
             'model' => 'nullable|string|max:100',
             'color' => 'nullable|string|max:50',
             'capacity_kg' => 'nullable|numeric|min:0',
+            'cost_per_km' => 'required|numeric|min:0.01',
             'max_orders_per_trip' => 'required|integer|min:1|max:999',
             'status' => 'required|in:active,maintenance,inactive',
             'notes' => 'nullable|string|max:1000',
@@ -187,6 +189,7 @@ class VehicleController extends Controller
                 'model',
                 'color',
                 'capacity_kg',
+                'cost_per_km',
                 'max_orders_per_trip',
                 'status',
                 'is_active',
@@ -260,6 +263,7 @@ class VehicleController extends Controller
                 'model',
                 'color',
                 'capacity_kg',
+                'cost_per_km',
                 'max_orders_per_trip',
                 'status',
                 'is_active',
@@ -292,4 +296,3 @@ class VehicleController extends Controller
         return response()->json(['success' => false, 'message' => $message], $statusCode);
     }
 }
-

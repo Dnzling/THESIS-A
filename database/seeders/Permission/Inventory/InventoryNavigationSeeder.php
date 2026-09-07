@@ -66,6 +66,17 @@ class InventoryNavigationSeeder extends Seeder
                 'meta' => json_encode(['subtitle' => 'Track stock issues and deductions'])
             ],
             [
+                'name' => 'inventory.supply-issuance',
+                'display_name' => 'Supply Issuance',
+                'module' => 'inventory',
+                'route_name' => 'inventory.supply-issuance.create',
+                'route_path' => '/inventory/supply-issuance/create',
+                'icon' => 'pi pi-send',
+                'parent_id' => null,
+                'display_order' => 6,
+                'meta' => json_encode(['subtitle' => 'Issue office and operational supplies'])
+            ],
+            [
                 'name' => 'inventory.stock-returns',
                 'display_name' => 'Stock Returns',
                 'module' => 'inventory',
@@ -180,6 +191,7 @@ class InventoryNavigationSeeder extends Seeder
             'inventory.categories' => ['inventory.categories.view'],
             'inventory.units' => ['inventory.units.view'],
             'inventory.stock-issues' => ['inventory.stock-issues.view'],
+            'inventory.supply-issuance' => ['inventory.stock-issues.view'],
             'inventory.stock-returns' => ['inventory.stock-returns.view'],
             'inventory.stock-counts' => ['inventory.stock-counts.view'],
             'inventory.warehouses' => ['inventory.warehouses.view'],

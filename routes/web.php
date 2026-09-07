@@ -31,12 +31,8 @@ Route::get('/business', function () {
     ]);
 });
 
-Route::get('/about', function () {
+Route::get('/business/about', function () {
     return Inertia::render('Marketing/About');
-});
-
-Route::get('/pricing', function () {
-    return Inertia::render('Marketing/Pricing');
 });
 
 Route::get('/subscription-plans', function () {
@@ -46,6 +42,12 @@ Route::get('/subscription-plans', function () {
 Route::get('/subscription-checkout', function () {
     return Inertia::render('Auth/SubscriptionCheckout');
 })->name('subscription.checkout');
+
+Route::get('/business/pricing', function () {
+    return Inertia::render('Marketing/Pricing');
+})->name('pricing');
+
+
 
 Route::get('/store/registration', function () {
     return Inertia::render('Auth/StoreRegistration');

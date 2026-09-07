@@ -24,6 +24,7 @@ class EcommerceActiveStockProductsController extends Controller
             'store_id',
             'sku',
             'product_name',
+            'product_type',
             'description',
             'category_id',
             'base_price',
@@ -40,6 +41,7 @@ class EcommerceActiveStockProductsController extends Controller
                 'category:id,category_name',
                 'assets:id,product_id,file_path,asset_type,is_primary,display_order,created_at',
             ])
+            ->where('product_type', 'finished_good')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('store', function ($storeQuery) {
@@ -108,6 +110,7 @@ class EcommerceActiveStockProductsController extends Controller
                 'store_id' => $product->store_id,
                 'sku' => $product->sku,
                 'product_name' => $product->product_name,
+                'product_type' => $product->product_type,
                 'description' => $product->description,
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,

@@ -77,7 +77,15 @@ class RolePermissionController extends Controller
         $authUser = Auth::user();
         $isSuperAdmin = (bool) $authUser?->role && (string) $authUser->role->name === 'super_admin';
 
-        $protectedRoles = ['super_admin', 'unassigned_role'];
+        $protectedRoles = [
+            'super_admin',
+            'store_admin',
+            'driver',
+            'applicant',
+            'supplier',
+            'customer',
+            'unassigned_role',
+        ];
         if (in_array((string) $role->name, $protectedRoles, true)) {
             return response()->json([
                 'message' => 'This role is protected and cannot be deleted.',
@@ -165,7 +173,7 @@ class RolePermissionController extends Controller
     public function updateRolePermissions(Request $request, $roleId)
     {
         $request->validate([
-            'permissions' => 'required|array',
+            'permissions' => 'present|array',
             'permissions.*' => 'exists:permissions,id'
         ]);
 

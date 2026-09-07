@@ -54,6 +54,17 @@ class LogisticsNavigationSeeder extends Seeder
                 'display_order' => 4,
                 'meta' => json_encode(['subtitle' => 'Service areas and pricing']),
             ],
+            [
+                'name' => 'logistics.settings',
+                'display_name' => 'Delivery Settings',
+                'module' => 'logistics',
+                'route_name' => 'logistics.delivery-fees',
+                'route_path' => '/logistics/delivery-fees',
+                'icon' => 'pi pi-cog',
+                'parent_id' => null,
+                'display_order' => 5,
+                'meta' => json_encode(['subtitle' => 'Delivery pricing and operating limits']),
+            ],
         ];
 
         foreach ($items as $item) {
@@ -67,6 +78,11 @@ class LogisticsNavigationSeeder extends Seeder
             );
         }
 
+        DB::table('navigation_items')->where('name', 'logistics.zones')->update([
+            'is_active' => false,
+            'updated_at' => now(),
+        ]);
+
         $this->linkNavigationPermissions();
     }
 
@@ -77,6 +93,7 @@ class LogisticsNavigationSeeder extends Seeder
             'logistics.trips' => ['logistics.deliveries.view'],
             'logistics.vehicles' => ['logistics.fleet.view'],
             'logistics.zones' => ['logistics.zones.view'],
+            'logistics.settings' => ['logistics.settings.view'],
         ];
 
         foreach ($mappings as $navName => $permissionNames) {

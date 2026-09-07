@@ -272,6 +272,7 @@ class EmployeeController extends Controller
                 'fname' => $validated['fname'],
                 'lname' => $validated['lname'],
                 'email' => $validated['email'],
+                'birthday' => $validated['date_of_birth'] ?? null,
                 'password' => Hash::make($temporaryPassword),
                 'role_id' => $validated['role_id'],
                 'store_id' => $storeId, // Using the authenticated user's store_id
@@ -735,9 +736,6 @@ class EmployeeController extends Controller
             'branch_id',
             'role_id',
             'employee_number',
-            'fname',
-            'lname',
-            'date_of_birth',
             'gender',
             'hire_date',
             'department',
@@ -746,7 +744,6 @@ class EmployeeController extends Controller
             'salary',
             'bank_account',
             'tax_id',
-            'phone',
             'address',
             'city',
             'province',
@@ -756,6 +753,7 @@ class EmployeeController extends Controller
             'contract_path',
         ])
             ->with([
+                'user:id,fname,lname,email,birthday,phone_number,role_id,branch_id',
                 'branch:id,name',
                 'role:id,name'
             ])

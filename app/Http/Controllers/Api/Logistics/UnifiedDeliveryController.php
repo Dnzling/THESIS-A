@@ -11,17 +11,27 @@ use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
+use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
+use App\Services\Sales\OrderCommissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UnifiedDeliveryController extends Controller
 {
+    public function __construct(
+        private readonly OrderCommissionService $commissionService
+    ) {
+    }
+
     private const DELIVERY_STATUSES = [
         'assigned',
         'packed',
@@ -32,16 +42,19 @@ class UnifiedDeliveryController extends Controller
         'cancelled',
     ];
 
-    private const ORDER_SOURCES = ['ecommerce', 'sales'];
+    private const ORDER_SOURCES = ['ecommerce', 'sales', 'pickup'];
 
     // Ecommerce orders must be reviewed by Sales before Logistics can dispatch them.
     private const PENDING_ORDER_STATUSES = ['ready_for_dispatch'];
 
     public function orders(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $isDriver = (string) ($user?->role?->name ?? $user?->role_name ?? '') === 'driver';
         $source = (string) $request->input('source', 'all');
         $search = trim((string) $request->input('search', ''));
         $statusFilter = strtolower((string) $request->input('status', ''));
+        $assignedDriverOnly = $request->boolean('assigned_driver_only') || $isDriver;
 
         $rows = collect();
 
@@ -51,6 +64,15 @@ class UnifiedDeliveryController extends Controller
 
         if (in_array($source, ['all', 'sales'], true)) {
             $rows = $rows->merge($this->getSalesOrderRows($request));
+        }
+
+        if (in_array($source, ['all', 'pickup'], true)) {
+            $rows = $rows->merge($this->getPickupSupplyRows($request));
+        }
+
+        if ($assignedDriverOnly) {
+            $driverId = (int) $request->user()->id;
+            $rows = $rows->filter(fn (array $row) => (int) ($row['driver_user_id'] ?? $row['driver_id'] ?? 0) === $driverId);
         }
 
         if ($search !== '') {
@@ -104,11 +126,56 @@ class UnifiedDeliveryController extends Controller
         ]);
     }
 
+    private function getPickupSupplyRows(Request $request): Collection
+    {
+        return PurchaseOrderShipment::with(['purchaseOrder.supplier', 'purchaseOrder.branch', 'purchaseOrder.items.product'])
+            ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $request->user()->store_id))
+            ->get()
+            ->map(function (PurchaseOrderShipment $pickup): array {
+                $po = $pickup->purchaseOrder;
+                return [
+                    'source_type' => 'pickup',
+                    'order_id' => $po?->id,
+                    'order_number' => $po?->po_number ?? ('PO-' . $pickup->purchase_order_id),
+                    'branch_name' => $po?->branch?->name ?? $po?->branch?->branch_name,
+                    'customer_name' => $po?->supplier?->supplier_name ?? 'Supplier',
+                    'customer_contact' => $pickup->driver_contact,
+                    'delivery_address' => $pickup->origin_address ?? $po?->supplier?->address,
+                    'order_status' => $po?->status,
+                    'delivery_status' => $pickup->status ?: 'pending',
+                    'total_amount' => $po?->total_amount ?? 0,
+                    'created_at' => $pickup->created_at,
+                    'delivery_date' => $pickup->delivered_at ?? $pickup->created_at,
+                    'expected_pickup_date' => $pickup->expected_delivery_date,
+                    'quantity_items' => $this->orderItemsQuantity($po?->items ?? []),
+                    'weight_kg' => $this->orderItemsWeight($po?->items ?? []),
+                    'pickup_id' => $pickup->id,
+                    'driver_user_id' => $pickup->driver_user_id,
+                    'driver_employee_id' => $pickup->driver_employee_id,
+                    'vehicle_id' => $pickup->vehicle_id,
+                ];
+            });
+    }
+
     public function orderDetail(Request $request, string $source, int $orderId): JsonResponse
     {
         $source = strtolower($source);
         if (!in_array($source, self::ORDER_SOURCES, true)) {
             return response()->json(['success' => false, 'message' => 'Invalid source type.'], 422);
+        }
+
+        if ($source === 'pickup') {
+            $pickup = $this->resolvePickupShipment($request, $orderId);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'source_type' => 'pickup',
+                    'order' => $pickup->purchaseOrder,
+                    'delivery' => $pickup,
+                    'logs' => $pickup->logs,
+                ],
+            ]);
         }
 
         if ($source === 'ecommerce') {
@@ -214,7 +281,7 @@ class UnifiedDeliveryController extends Controller
             ->values();
 
         $employees = User::query()
-            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,phone,status'])
+            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->when($roleIds->isNotEmpty(), fn ($query) => $query->whereIn('role_id', $roleIds))
@@ -520,19 +587,97 @@ class UnifiedDeliveryController extends Controller
 
     public function updateStatus(Request $request, string $source, int $orderId): JsonResponse
     {
+        $source = strtolower($source);
+        $pickupProofRequired = $source === 'pickup'
+            && in_array(strtolower((string) $request->input('status')), ['in_transit', 'delivered'], true);
+
         $validated = $request->validate([
             'status' => ['required', Rule::in(self::DELIVERY_STATUSES)],
             'failed_reason' => 'nullable|string|max:1000',
             'notes' => 'nullable|string|max:1000',
+            'latitude' => $pickupProofRequired ? 'required|numeric|between:-90,90' : 'nullable|numeric|between:-90,90',
+            'longitude' => $pickupProofRequired ? 'required|numeric|between:-180,180' : 'nullable|numeric|between:-180,180',
+            'location_address' => 'nullable|string|max:2000',
+            'photo' => $pickupProofRequired ? 'required|image|max:8192' : 'nullable|image|max:8192',
         ]);
 
-        $source = strtolower($source);
+        if ($source === 'pickup') {
+            if (!in_array($validated['status'], ['in_transit', 'delivered', 'cancelled'], true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid supplier pickup status.'], 422);
+            }
+
+            $pickup = $this->resolvePickupShipment($request, $orderId);
+            $from = (string) $pickup->status;
+            $allowedTransitions = [
+                'pending' => ['in_transit', 'cancelled'],
+                'in_transit' => ['delivered', 'cancelled'],
+            ];
+            if (!in_array($validated['status'], $allowedTransitions[$from] ?? [], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Supplier pickup cannot move from {$from} to {$validated['status']}.",
+                ], 422);
+            }
+
+            $locationAddress = trim((string) ($validated['location_address'] ?? ''));
+            if ($pickupProofRequired && $locationAddress === '') {
+                $locationAddress = $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']);
+            }
+            if ($pickupProofRequired && !$locationAddress) {
+                $locationAddress = $validated['status'] === 'delivered'
+                    ? ($pickup->destination_address ?: $pickup->purchaseOrder?->branch?->address)
+                    : ($pickup->origin_address ?: $pickup->purchaseOrder?->supplier?->address);
+            }
+            $pickup->status = $validated['status'];
+            $pickup->current_latitude = $validated['latitude'] ?? $pickup->current_latitude;
+            $pickup->current_longitude = $validated['longitude'] ?? $pickup->current_longitude;
+            $pickup->current_address = $locationAddress ?: $pickup->current_address;
+            if ($validated['status'] === 'in_transit' && !$pickup->dispatched_at) {
+                $pickup->dispatched_at = now();
+            }
+            if ($validated['status'] === 'delivered' && !$pickup->delivered_at) {
+                $pickup->delivered_at = now();
+            }
+            $pickup->save();
+
+            if ($validated['status'] === 'in_transit') {
+                $pickup->purchaseOrder?->markInTransit();
+            } elseif ($validated['status'] === 'delivered') {
+                $pickup->purchaseOrder?->markDelivered();
+            }
+
+            $log = PurchaseOrderDeliveryLog::create([
+                'shipment_id' => $pickup->id,
+                'created_by' => $request->user()->id,
+                'event_type' => $validated['status'],
+                'notes' => $validated['notes'] ?? "Pickup status updated from {$from} to {$validated['status']}.",
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'location_address' => $locationAddress ?: null,
+                'logged_at' => now(),
+            ]);
+
+            if ($photo = $request->file('photo')) {
+                $path = $photo->store('procurement/pickup-proofs', 'public');
+                PurchaseOrderDeliveryLogAttachment::create([
+                    'delivery_log_id' => $log->id,
+                    'file_path' => $path,
+                    'mime_type' => (string) $photo->getMimeType(),
+                    'size' => (int) $photo->getSize(),
+                ]);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Supplier pickup status updated.', 'data' => $pickup->fresh()->load('logs.attachments')]);
+        }
 
         if ($source === 'ecommerce') {
             $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
             $delivery = $order->delivery;
             if (!$delivery) {
                 return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
+            }
+            if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
 
             $from = (string) $delivery->status;
@@ -564,7 +709,13 @@ class UnifiedDeliveryController extends Controller
 
             if ($validated['status'] === 'delivered') {
                 $order->status = 'delivered';
+                if ($order->payment_method === 'cod' && $order->payment_status === 'unpaid') {
+                    $order->payment_status = 'paid';
+                }
                 $order->save();
+                if ($order->payment_method === 'cod' && $order->payment_status === 'paid') {
+                    $this->commissionService->record($order, false);
+                }
             }
 
             return response()->json(['success' => true, 'message' => 'Delivery status updated.']);
@@ -606,6 +757,72 @@ class UnifiedDeliveryController extends Controller
         return response()->json(['success' => true, 'message' => 'Delivery status updated.']);
     }
 
+    /**
+     * Update the current GPS position without creating a delivery log entry.
+     * The map reads the latest position from the shipment record.
+     */
+    public function updateLocation(Request $request, string $source, int $orderId): JsonResponse
+    {
+        $validated = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'location_address' => 'nullable|string|max:2000',
+        ]);
+
+        $source = strtolower($source);
+
+        if ($source === 'ecommerce') {
+            $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
+            $delivery = $order->delivery;
+            if (!$delivery) {
+                return response()->json(['success' => false, 'message' => 'No delivery found for order.'], 404);
+            }
+            if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
+                return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
+            }
+            if (!in_array(strtolower((string) $delivery->status), ['in_transit', 'out_for_delivery', 'on_the_way'], true)) {
+                return response()->json(['success' => false, 'message' => 'Live tracking is only available while the order is in transit.'], 422);
+            }
+
+            $address = trim((string) ($validated['location_address'] ?? ''));
+            $delivery->update([
+                'current_latitude' => $validated['latitude'],
+                'current_longitude' => $validated['longitude'],
+                'current_address' => $address !== '' ? $address : $delivery->current_address,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Live location updated.',
+                'data' => $delivery->fresh(['vehicle']),
+            ]);
+        }
+
+        if ($source !== 'pickup') {
+            return response()->json(['success' => false, 'message' => 'Live location is not available for this delivery type.'], 422);
+        }
+
+        $pickup = $this->resolvePickupShipment($request, $orderId);
+        if (strtolower((string) $pickup->status) !== 'in_transit') {
+            return response()->json(['success' => false, 'message' => 'Live tracking is only available while the pickup is in transit.'], 422);
+        }
+
+        $address = trim((string) ($validated['location_address'] ?? ''))
+            ?: $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']);
+
+        $pickup->update([
+            'current_latitude' => $validated['latitude'],
+            'current_longitude' => $validated['longitude'],
+            'current_address' => $address ?: $pickup->current_address,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Live location updated.',
+            'data' => $pickup->fresh(['vehicle']),
+        ]);
+    }
+
     public function delivered(Request $request, string $source, int $orderId): JsonResponse
     {
         $validated = $request->validate([
@@ -635,7 +852,13 @@ class UnifiedDeliveryController extends Controller
             $delivery->save();
 
             $order->status = 'delivered';
+            if ($order->payment_method === 'cod' && $order->payment_status === 'unpaid') {
+                $order->payment_status = 'paid';
+            }
             $order->save();
+            if ($order->payment_method === 'cod' && $order->payment_status === 'paid') {
+                $this->commissionService->record($order, false);
+            }
 
             EcommerceDeliveryLog::query()->create([
                 'delivery_id' => $delivery->id,
@@ -694,6 +917,11 @@ class UnifiedDeliveryController extends Controller
     {
         $source = strtolower($source);
 
+        if ($source === 'pickup') {
+            $pickup = $this->resolvePickupShipment($request, $orderId);
+            return response()->json(['success' => true, 'data' => $pickup->logs]);
+        }
+
         if ($source === 'ecommerce') {
             $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
             if (!$order->delivery) {
@@ -727,9 +955,34 @@ class UnifiedDeliveryController extends Controller
     {
         $validated = $request->validate([
             'message' => 'required|string|max:1000',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'location_address' => 'nullable|string|max:2000',
         ]);
 
         $source = strtolower($source);
+
+        if ($source === 'pickup') {
+            $pickup = $this->resolvePickupShipment($request, $orderId);
+            $log = PurchaseOrderDeliveryLog::create([
+                'shipment_id' => $pickup->id,
+                'created_by' => $request->user()->id,
+                'event_type' => 'note',
+                'notes' => $validated['message'],
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'location_address' => $validated['location_address'] ?? null,
+                'logged_at' => now(),
+            ]);
+            if (isset($validated['latitude'], $validated['longitude'])) {
+                $pickup->update([
+                    'current_latitude' => $validated['latitude'],
+                    'current_longitude' => $validated['longitude'],
+                    'current_address' => $validated['location_address'] ?? $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']),
+                ]);
+            }
+            return response()->json(['success' => true, 'data' => $log->load('creator:id,fname,lname,email')], 201);
+        }
 
         if ($source === 'ecommerce') {
             $order = $this->resolveEcommerceOrder($request, $orderId, withDelivery: true);
@@ -782,8 +1035,8 @@ class UnifiedDeliveryController extends Controller
     {
         $query = EcommerceOrder::query()
             ->with([
-                'assignedBranch:id,name,latitude,longitude',
-                'delivery:id,order_id,tracking_number,status,driver_user_id,vehicle_id,created_at,updated_at',
+                'assignedBranch:id,name,address,latitude,longitude',
+                'delivery:id,order_id,tracking_number,status,driver_user_id,vehicle_id,estimated_delivery_at,delivered_at,created_at,updated_at',
                 'items:id,order_id,product_id,quantity',
                 'items.product:id,weight_kg',
             ])
@@ -831,7 +1084,11 @@ class UnifiedDeliveryController extends Controller
                 'tracking_number' => $delivery?->tracking_number,
                 'can_create_delivery' => $canCreate,
                 'weight_kg' => $this->orderItemsWeight($order->items ?? []),
+                'quantity_items' => $this->orderItemsQuantity($order->items ?? []),
+                'delivery_date' => $delivery?->delivered_at ?? $order->created_at,
+                'expected_pickup_date' => $delivery?->estimated_delivery_at,
                 'created_at' => $order->created_at,
+                'driver_user_id' => $delivery?->driver_user_id,
             ];
         });
     }
@@ -841,7 +1098,7 @@ class UnifiedDeliveryController extends Controller
         $query = SalesOrder::query()
             ->with([
                 'branch:id,name,latitude,longitude',
-                'delivery:id,sales_order_id,tracking_number,status,driver_user_id,created_at,updated_at',
+                'delivery:id,sales_order_id,tracking_number,status,driver_user_id,scheduled_delivery_at,delivered_at,created_at,updated_at',
                 'items:id,order_id,product_id,quantity',
                 'items.product:id,weight_kg',
             ])
@@ -891,7 +1148,11 @@ class UnifiedDeliveryController extends Controller
                 'tracking_number' => $delivery?->tracking_number,
                 'can_create_delivery' => $canCreate,
                 'weight_kg' => $this->orderItemsWeight($order->items ?? []),
+                'quantity_items' => $this->orderItemsQuantity($order->items ?? []),
+                'delivery_date' => $delivery?->delivered_at ?? $order->created_at,
+                'expected_pickup_date' => $delivery?->scheduled_delivery_at,
                 'created_at' => $order->created_at,
+                'driver_user_id' => $delivery?->driver_user_id,
             ];
         });
     }
@@ -990,6 +1251,47 @@ class UnifiedDeliveryController extends Controller
         return $query->findOrFail($orderId);
     }
 
+    private function resolvePickupShipment(Request $request, int $orderId): PurchaseOrderShipment
+    {
+        $query = PurchaseOrderShipment::query()
+            ->with([
+                'purchaseOrder.items.product',
+                'purchaseOrder.items.variation',
+                'purchaseOrder.supplier',
+                'purchaseOrder.branch',
+                'driverUser:id,fname,lname,email,phone_number',
+                'driverEmployee:id,user_id,employee_number',
+                'vehicle',
+                'logs' => fn ($query) => $query->with(['creator:id,fname,lname,email', 'attachments'])->orderByDesc('logged_at'),
+            ])
+            ->where('purchase_order_id', $orderId)
+            ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $request->user()->store_id));
+
+        if ($request->user()->hasRole('driver')) {
+            $query->where('driver_user_id', $request->user()->id);
+        }
+
+        return $query->firstOrFail();
+    }
+
+    private function reverseGeocode(float $latitude, float $longitude): ?string
+    {
+        try {
+            $response = Http::timeout(8)
+                ->withHeaders(['User-Agent' => config('app.name', 'FurnitureStoresPlatform') . ' PickupTracker'])
+                ->get('https://nominatim.openstreetmap.org/reverse', [
+                    'format' => 'jsonv2',
+                    'lat' => $latitude,
+                    'lon' => $longitude,
+                    'accept-language' => 'en',
+                ]);
+
+            return $response->successful() ? ($response->json('display_name') ?: null) : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     private function nextTrackingNumber(): string
     {
         $prefix = 'LGS-' . now()->format('Ymd') . '-';
@@ -1074,9 +1376,17 @@ class UnifiedDeliveryController extends Controller
         $total = 0.0;
         foreach ($items as $item) {
             $weight = (float) ($item->product?->weight_kg ?? 0);
-            $total += $weight * (int) ($item->quantity ?? 0);
+            $quantity = (int) ($item->quantity ?? $item->quantity_ordered ?? 0);
+            $total += $weight * $quantity;
         }
         return $total;
+    }
+
+    private function orderItemsQuantity($items): int
+    {
+        return (int) collect($items)->sum(
+            fn ($item) => (int) ($item->quantity ?? $item->quantity_ordered ?? 0)
+        );
     }
 
     private function publicUrl(?string $path): ?string

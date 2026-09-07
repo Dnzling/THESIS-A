@@ -79,8 +79,7 @@ class Store35August2026Seeder extends Seeder
         foreach ($userIds as $i => $userId) {
             $number = 'S35-DEMO-' . str_pad((string) ($i + 1), 3, '0', STR_PAD_LEFT);
             DB::table('employees')->updateOrInsert(['store_id' => self::STORE_ID, 'employee_number' => $number], [
-                'user_id' => $userId, 'branch_id' => $branchId, 'fname' => DB::table('users')->where('id', $userId)->value('fname'),
-                'lname' => DB::table('users')->where('id', $userId)->value('lname'), 'phone' => '09170000' . str_pad((string) ($i + 35), 3, '0', STR_PAD_LEFT),
+                'user_id' => $userId, 'branch_id' => $branchId,
                 'city' => 'Manila', 'hire_date' => '2025-01-06', 'role_id' => $roleId, 'department' => ['Sales', 'Inventory', 'Logistics', 'Finance', 'HR', 'Store Operations'][$i],
                 'employment_type' => 'full_time', 'salary' => 28000 + ($i * 1500), 'status' => 'active', 'deleted_at' => null,
                 'created_at' => $now, 'updated_at' => $now,

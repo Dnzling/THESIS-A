@@ -4,7 +4,7 @@
       <div class="flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text rounded @click="goBack" />
         <div>
-          <h1 class="text-lg font-bold text-gray-800">{{ isEditMode ? 'Edit Product' : 'Create Product' }}</h1>
+          <h1 class="text-lg font-bold text-gray-800">{{ isEditMode ? 'Edit Item' : 'Create Item' }}</h1>
         </div>
       </div>
      
@@ -17,7 +17,7 @@
             <div class="rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 p-4">
               <div class="flex items-center justify-between gap-2">
                 <div>
-                  <p class="text-sm font-semibold text-gray-800">Product Image</p>
+                  <p class="text-sm font-semibold text-gray-800">Item Image</p>
                   <p class="text-xs text-gray-500">Simple square preview</p>
                 </div>
                 <Button
@@ -45,20 +45,33 @@
                   </div>
                 </div>
               </div>
+              <div v-if="imageFile && imagePreview" class="mt-3 flex justify-end">
+                <Button type="button" label="Remove Photo" icon="pi pi-trash" severity="danger" outlined size="small" @click="openRemovePhotoPopover" />
+              </div>
               <p class="mt-2 text-xs text-gray-500">Square preview only for now. Image storage can be connected next.</p>
+              <Popover ref="removePhotoPopover">
+                <div class="max-w-xs space-y-3">
+                  <p class="text-sm font-medium text-gray-800">Remove this selected photo?</p>
+                  <p class="text-xs text-gray-500">The photo will not be uploaded when you save this item.</p>
+                  <div class="flex justify-end gap-2">
+                    <Button type="button" label="Keep Photo" text size="small" @click="removePhotoPopover?.hide()" />
+                    <Button type="button" label="Remove" severity="danger" size="small" @click="removeSelectedPhoto" />
+                  </div>
+                </div>
+              </Popover>
             </div>
           </div>
 
           <div class="space-y-4">
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div class="md:col-span-2">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Product Name <span class="text-red-500">*</span></label>
+                <label class="mb-1 block text-sm font-medium text-gray-700">Item Name <span class="text-red-500">*</span></label>
                 <InputText v-model="form.product_name" class="w-full text-sm" size="small" placeholder="e.g. Modern Chair" />
                 <small v-if="errors.product_name" class="text-red-500">{{ errors.product_name }}</small>
               </div>
 
                <div class="md:col-span-1">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Product Type <span class="text-red-500">*</span></label>
+                <label class="mb-1 block text-sm font-medium text-gray-700">Item Type <span class="text-red-500">*</span></label>
                 <Select
                   v-model="form.product_type"
                   :options="productTypeOptions"
@@ -119,7 +132,7 @@
                 <small v-if="errors.unit_of_measurement" class="text-red-500">{{ errors.unit_of_measurement }}</small>
               </div>
 
-              <div>
+              <div v-if="!isEditMode">
                 <label class="mb-1 block text-sm font-medium text-gray-700">Available Stock</label>
                 <InputNumber v-model="form.initial_stock" :min="0" class="w-full text-sm" fluid size="small" />
               </div>
@@ -127,12 +140,6 @@
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">Reorder Point</label>
                 <InputNumber v-model="form.reorder_point" :min="0" class="w-full text-sm" fluid size="small" placeholder="10" />
-              </div>
-
-              <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">Base Price</label>
-                <InputNumber v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0" class="w-full text-sm" fluid size="small" placeholder="₱0.00"/>
-                <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
               </div>
 
               <div>
@@ -152,10 +159,10 @@
             </div>
 
             <div class="flex justify-end gap-2 pt-2">
-              <Button label="Cancel" severity="secondary" outlined size="small" class="text-sm" @click="goBack" type="button" />
+              <Button label="Cancel" severity="secondary" outlined size="small" class="text-sm" @click="goBack" />
               <Button
                 type="submit"
-                :label="isEditMode ? 'Update Product' : 'Create Product'"
+                :label="isEditMode ? 'Update Item' : 'Create Item'"
                 icon="pi pi-check"
                 :loading="submitting"
                 severity="warn"
@@ -172,8 +179,7 @@
       <div class="space-y-3">
         <div>
           <label class="mb-1 block text-sm font-medium text-gray-700">Category Name</label>
-          <InputText v-model="newCategoryName" class="w-full text-sm" size="small" placeholder="e.g. Living Room" />
-          <small class="text-xs text-gray-500">Ctrl+Enter will also create it if typed in the field.</small>
+          <InputText v-model="newCategoryName" class="w-full text-sm" size="small" placeholder="e.g. Table" />
         </div>
         <small v-if="categoryDialogError" class="text-red-500">{{ categoryDialogError }}</small>
       </div>
@@ -194,6 +200,7 @@ import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import Chip from 'primevue/chip'
 import Dialog from 'primevue/dialog'
+import Popover from 'primevue/popover'
 
 const route = useRoute()
 const router = useRouter()
@@ -215,9 +222,9 @@ const isEditMode = computed(() => Boolean(route.params.id))
 const imageInput = ref<HTMLInputElement | null>(null)
 const imagePreview = ref<string | null>(null)
 const imageFile = ref<File | null>(null)
+const removePhotoPopover = ref<any>(null)
 const productTypeOptions = [
-  { label: 'Finished Good', value: 'finished_good' },
-  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Product', value: 'finished_good' },
   { label: 'Supply', value: 'supply' },
 ]
 const unitMeasureOptions = ['pcs', 'set', 'piece', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
@@ -227,7 +234,6 @@ const form = reactive({
   category_id: null as number | null,
   description: '',
   product_type: 'finished_good',
-  base_price: null as number | null,
   cost_price: null as number | null,
   unit_of_measurement: '',
   initial_stock: null as number | null,
@@ -256,16 +262,14 @@ const loadProduct = async (id: number) => {
     form.category_id = product.category_id || null
     form.description = product.description || ''
     form.product_type = product.product_type || 'finished_good'
-    form.base_price = product.base_price ?? null
     form.cost_price = product.inventory_cost_price ?? product.cost_price ?? null
     form.unit_of_measurement = product.unit_of_measurement || ''
-    form.initial_stock = product.initial_stock ?? null
     form.reorder_point = product.reorder_point ?? 10
     form.is_active = product.is_active !== false
     form.category_id = product.category_id || null
     imagePreview.value = product.primary_3d_model?.url || product.assets?.[0]?.thumbnail_url || null
   } catch (error) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load product', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load Item', life: 3000 })
   }
 }
 
@@ -336,14 +340,24 @@ const onImageSelected = (event: Event) => {
   imagePreview.value = URL.createObjectURL(file)
 }
 
+const openRemovePhotoPopover = (event: MouseEvent) => {
+  removePhotoPopover.value?.toggle(event)
+}
+
+const removeSelectedPhoto = () => {
+  imageFile.value = null
+  imagePreview.value = null
+  if (imageInput.value) imageInput.value.value = ''
+  removePhotoPopover.value?.hide()
+}
+
 const validate = () => {
   errors.value = {}
   submitError.value = ''
-  if (!form.product_name) errors.value.product_name = 'Product name is required'
+  if (!form.product_name) errors.value.product_name = 'Item name is required'
   if (!form.category_id) errors.value.category_id = 'Category is required'
-  if (!form.product_type) errors.value.product_type = 'Product type is required'
+  if (!form.product_type) errors.value.product_type = 'Item type is required'
   if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
-  if (form.base_price != null && form.base_price < 0) errors.value.base_price = 'Base price must be 0 or greater'
   return Object.keys(errors.value).length === 0
 }
 
@@ -357,10 +371,11 @@ const handleSubmit = async () => {
     payload.append('category_id', String(Number(form.category_id)))
     if (form.description) payload.append('description', form.description)
     payload.append('product_type', form.product_type)
-    payload.append('base_price', String(form.base_price ?? 0))
     if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
-    if (form.initial_stock != null) payload.append('initial_stock', String(form.initial_stock))
+    if (!isEditMode.value && form.initial_stock != null) {
+      payload.append('initial_stock', String(form.initial_stock))
+    }
     if (form.reorder_point != null) payload.append('reorder_point', String(form.reorder_point))
     payload.append('is_active', form.is_active ? '1' : '0')
     if (imageFile.value) {
@@ -369,12 +384,11 @@ const handleSubmit = async () => {
 
     if (isEditMode.value) {
       await inventoryService.updateProduct(Number(route.params.id), payload)
-      toast.add({ severity: 'success', summary: 'Saved', detail: 'Product updated successfully', life: 3000 })
+      toast.add({ severity: 'success', summary: 'Saved', detail: 'Item updated successfully', life: 3000 })
       goBack()
     } else {
       await inventoryService.createProduct(payload)
-      toast.add({ severity: 'success', summary: 'Saved', detail: 'Product created successfully', life: 3000 })
-      router.push({ name: 'inventory.adjustments.create' })
+      router.push({ name: 'inventory.products.index' })
     }
   } catch (error: any) {
     const apiErrors = error.response?.data?.errors || {}
@@ -396,7 +410,7 @@ const handleSubmit = async () => {
         ? Object.entries(apiErrors)
             .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
             .join('\n')
-        : 'Failed to save product')
+        : 'Failed to save Item')
 
     toast.add({ severity: 'error', summary: 'Error', detail: submitError.value, life: 4000 })
   } finally {

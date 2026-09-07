@@ -30,7 +30,7 @@ class RequestForQuotationController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = RequestForQuotation::with(['createdBy', 'purchaseRequisition'])
+        $query = RequestForQuotation::with(['createdBy.user', 'purchaseRequisition'])
             ->where('store_id', auth()->user()->store_id);
 
         // Filters
@@ -44,6 +44,27 @@ class RequestForQuotationController extends Controller
 
         if ($request->has('closed')) {
             $query->closed();
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('rfq_number', 'like', "%{$search}%")
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('createdBy.user', function ($userQuery) use ($search) {
+                        $userQuery->where('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('issue_date', '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('issue_date', '<=', $request->input('date_to'));
         }
 
         $rfqs = $query->orderBy('created_at', 'desc')
@@ -71,7 +92,7 @@ class RequestForQuotationController extends Controller
             'supplierPortalFeedbacks.rfqItem.product',
             'supplierPortalFeedbacks.rfqItem.variation',
             'supplierPortalFeedbacks.negotiations',
-            'createdBy',
+            'createdBy.user',
             'awardedToSupplier'
         ])->findOrFail($id);
 
@@ -119,21 +140,10 @@ class RequestForQuotationController extends Controller
 
             // Use relation to get supplier_id; the attribute supplier_portal is just the FK
             $approvedSupplierId = $feedback->supplierPortal?->supplier_id;
-            if ($approvedSupplierId) {
-                DB::table('rfq_suppliers')
-                    ->where('rfq_id', $rfq->id)
-                    ->where('supplier_id', '!=', $approvedSupplierId)
-                    ->whereIn('status', ['pending', 'submitted'])
-                    ->update([
-                        'status' => 'declined',
-                        'responded_at' => now(),
-                        'decline_reason' => 'Another supplier was approved for this RFQ.',
-                    ]);
-            }
-
-            // Update supplier_quotations: mark winner quotation accepted and others rejected
+            // Keep supplier invitations open while other RFQ items are still unresolved.
+            // Supplier selection is handled per approved feedback/item for partial approvals.
             try {
-                if (\Schema::hasTable('supplier_quotations')) {
+                if ($this->isRfqCompleted($rfq->id) && \Schema::hasTable('supplier_quotations')) {
                     $winnerQuotation = \App\Models\Procurement\RFQ\SupplierQuotation::where('rfq_id', $rfq->id)
                         ->where('supplier_id', $approvedSupplierId)
                         ->first();

@@ -46,6 +46,19 @@
               </template>
             </Column>
             <Column field="users_count" header="Users" style="width: 90px" />
+            <Column header="Actions" style="width: 70px">
+              <template #body="{ data }">
+                <Button
+                  icon="pi pi-ellipsis-v"
+                  text
+                  rounded
+                  size="small"
+                  severity="secondary"
+                  @click="openRoleActions($event, data)"
+                  aria-label="Role actions"
+                />
+              </template>
+            </Column>
           </DataTable>
         </template>
       </Card>
@@ -155,7 +168,14 @@
     </div>
 
     <!-- Create Role Dialog -->
-    <Dialog v-model:visible="createRoleDialog" header="Create Role" :modal="true" :style="{ width: '480px' }">
+    <Popover ref="roleActionsPopover">
+      <div class="flex min-w-32 flex-col gap-1">
+        <Button label="Edit" icon="pi pi-pencil" text severity="secondary" class="!justify-start" @click="openEditRoleDialog" />
+        <Button label="Delete" icon="pi pi-trash" text severity="danger" class="!justify-start" @click="confirmDeleteRole" />
+      </div>
+    </Popover>
+
+    <Dialog v-model:visible="createRoleDialog" :header="editingRole ? 'Edit Role' : 'Create Role'" :modal="true" :style="{ width: '480px' }">
       <div class="space-y-4">
         <div class="flex flex-col gap-2">
           <label class="text-sm font-semibold text-gray-700">Display Name *</label>
@@ -172,7 +192,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" text @click="createRoleDialog = false" />
-        <Button label="Create Role" icon="pi pi-check" :loading="savingRole" @click="createRole" />
+        <Button :label="editingRole ? 'Save Changes' : 'Create Role'" icon="pi pi-check" :loading="savingRole" @click="saveRole" />
       </template>
     </Dialog>
   </div>
@@ -187,6 +207,7 @@ import Dialog from 'primevue/dialog'
 import Textarea from 'primevue/textarea'
 import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
+import Popover from 'primevue/popover'
 import { useAuthStore } from '@/stores/auth'
 
 const roles = ref<any[]>([])
@@ -201,6 +222,9 @@ const loadingRoles = ref(false)
 const loadingPermissions = ref(false)
 const savingPermissions = ref(false)
 const createRoleDialog = ref(false)
+const editingRole = ref<any | null>(null)
+const roleActionsPopover = ref()
+const roleForAction = ref<any | null>(null)
 const savingRole = ref(false)
 const roleForm = ref({
   display_name: '',
@@ -460,6 +484,7 @@ onMounted(async () => {
 })
 
 const openCreateRoleDialog = () => {
+  editingRole.value = null
   roleForm.value = {
     display_name: '',
     description: '',
@@ -468,7 +493,49 @@ const openCreateRoleDialog = () => {
   createRoleDialog.value = true
 }
 
-const createRole = async () => {
+const openRoleActions = (event: Event, role: any) => {
+  roleForAction.value = role
+  roleActionsPopover.value?.toggle(event)
+}
+
+const openEditRoleDialog = () => {
+  const role = roleForAction.value
+  if (!role) return
+  editingRole.value = role
+  roleForm.value = {
+    display_name: role.display_name || role.name || '',
+    description: role.description || '',
+    is_active: Boolean(role.is_active),
+  }
+  roleActionsPopover.value?.hide()
+  createRoleDialog.value = true
+}
+
+const confirmDeleteRole = () => {
+  const role = roleForAction.value
+  if (!role) return
+  roleActionsPopover.value?.hide()
+  const employeeCount = Number(role.employees_count || role.users_count || 0)
+  const message = employeeCount > 0
+    ? `This role is assigned to ${employeeCount} employee(s). Deleting it may affect their access. Continue?`
+    : `Are you sure you want to delete "${role.display_name || role.name}"?`
+
+  if (!window.confirm(message)) return
+  deleteRole(role)
+}
+
+const deleteRole = async (role: any) => {
+  try {
+    await axios.delete(`/api/store/roles/${role.id}`)
+    if (selectedRole.value?.id === role.id) selectedRole.value = null
+    await loadRoles()
+    toast.add({ severity: 'success', summary: 'Role Deleted', detail: 'The role was deleted successfully.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Delete Failed', detail: error.response?.data?.message || 'Unable to delete role.', life: 4000 })
+  }
+}
+
+const saveRole = async () => {
   if (!hasStore.value) {
     toast.add({
       severity: 'warn',
@@ -480,15 +547,22 @@ const createRole = async () => {
   }
   savingRole.value = true
   try {
+    const wasEditing = Boolean(editingRole.value)
     const payload = {
-      name: generatedRoleName.value,
+      name: editingRole.value?.name || generatedRoleName.value,
       display_name: roleForm.value.display_name,
       description: roleForm.value.description || null,
       is_active: roleForm.value.is_active,
     }
-    await axios.post('/api/store/roles', payload)
+    if (editingRole.value) {
+      await axios.put(`/api/store/roles/${editingRole.value.id}`, payload)
+    } else {
+      await axios.post('/api/store/roles', payload)
+    }
     createRoleDialog.value = false
+    editingRole.value = null
     await loadRoles()
+    toast.add({ severity: 'success', summary: wasEditing ? 'Role Updated' : 'Role Created', detail: 'Role saved successfully.', life: 3000 })
   } finally {
     savingRole.value = false
   }

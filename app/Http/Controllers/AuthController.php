@@ -33,6 +33,13 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class AuthController extends Controller
 {
+    public function superAdminLogin(Request $request)
+    {
+        $request->merge(['login_portal' => 'super_admin']);
+
+        return $this->login($request);
+    }
+
     private const STRONG_PASSWORD_RULE = 'required|string|min:8|max:255|regex:/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/';
 
     public function registerSupplier(Request $request)
@@ -63,48 +70,14 @@ class AuthController extends Controller
                     ]
                 );
 
-                $storeId = Store::query()->value('id');
-                if (!$storeId) {
-                    throw new \RuntimeException('No store available for supplier registration.');
-                }
-
-                $fullName = trim($validated['fname'] . ' ' . $validated['lname']);
-                $supplierCode = $this->generateSupplierCode();
-
-                $supplierName = trim((string) ($validated['supplier_name'] ?? ''));
-                if ($supplierName === '') {
-                    $supplierName = trim($validated['fname'] . ' ' . $validated['lname']);
-                }
-
-                $supplier = Supplier::create([
-                    'store_id' => $storeId,
-                    'supplier_code' => $supplierCode,
-                    'supplier_name' => $supplierName,
-                    'company_name' => $supplierName,
-                    'contact_person' => $fullName,
-                    'email' => $validated['email'],
-                    'phone' => $validated['phone'] ?? '',
-                    'country' => 'Philippines',
-                    'status' => 'inactive',
-                    'supplier_type' => 'wholesaler',
-                    'payment_terms' => 'net_30',
-                ]);
-
                 $user = User::create([
-                    'user_id' => $supplierCode,
+                    'user_id' => User::generateUserId(),
                     'fname' => $validated['fname'],
                     'lname' => $validated['lname'],
                     'email' => $validated['email'],
                     'password' => Hash::make($validated['password']),
                     'role_id' => (int) $supplierRole->id,
                     'is_active' => 1,
-                ]);
-
-                SupplierPortal::create([
-                    'user_id' => $user->id,
-                    'supplier_id' => $supplier->id,
-                    'status' => 'pending',
-                    'resubmission_count' => 0,
                 ]);
 
                 return $user;
@@ -175,9 +148,9 @@ class AuthController extends Controller
                 'password' => self::STRONG_PASSWORD_RULE,
                 'role_id' => 'nullable|integer|exists:roles,id',
                 'birthday' => 'nullable|date|before_or_equal:today',
-                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
                 'store_name' => 'nullable|string|max:255',
                 'store_type' => 'nullable|string|max:100',
+                'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
             $targetRoleId = (int) ($validated['role_id'] ?? 2);
@@ -349,6 +322,20 @@ class AuthController extends Controller
                 if (!$employee && is_numeric($identifier)) {
                     $employee = Employee::where('id', (int) $identifier)->first();
                 }
+                // Drivers may also sign in using their employee name. Resolve the
+                // employee first, then only accept it when the linked user is a driver.
+                if (!$employee) {
+                    $name = preg_replace('/\s+/', ' ', $identifier);
+                    $employee = Employee::query()
+                        ->with(['user.role'])
+                        ->whereHas('user', function ($query) use ($name) {
+                            $query->where(function ($query) use ($name) {
+                                $query->whereRaw("CONCAT_WS(' ', fname, lname) = ?", [$name])
+                                    ->orWhereRaw("CONCAT_WS(' ', lname, fname) = ?", [$name]);
+                            })->whereHas('role', fn ($query) => $query->where('name', 'driver'));
+                        })
+                        ->first();
+                }
                 if ($employee?->user?->email) {
                     $email = $employee->user->email;
                 } else {
@@ -376,6 +363,12 @@ class AuthController extends Controller
             if (!$user || !Hash::check($credentials['password'], (string) $user->password)) {
                 throw ValidationException::withMessages([
                     'login' => ['Invalid credentials.']
+                ]);
+            }
+
+            if ($request->input('login_portal') === 'super_admin' && !$user->isSuperAdmin()) {
+                throw ValidationException::withMessages([
+                    'login' => ['This account is not authorized for Super Admin access.']
                 ]);
             }
 
@@ -840,16 +833,16 @@ class AuthController extends Controller
     public static function generateUserId()
     {
         $currentYear = date('Y');
-        $yearPrefix = $currentYear . '-';
+        $yearPrefix = 'USR-' . $currentYear . '-';
 
         // Get max number for current year
         $maxId = DB::table('users')
-            ->select(DB::raw("MAX(CAST(SUBSTRING(user_id, 6) AS UNSIGNED)) as max_num"))
+            ->select(DB::raw("MAX(CAST(SUBSTRING(user_id, 10) AS UNSIGNED)) as max_num"))
             ->where('user_id', 'LIKE', $yearPrefix . '%')
             ->value('max_num');
 
         $nextNumber = ($maxId ?? 0) + 1;
-        $formattedNumber = str_pad($nextNumber, 7, '0', STR_PAD_LEFT);
+        $formattedNumber = str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
 
         return $yearPrefix . $formattedNumber;
     }
