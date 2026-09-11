@@ -18,10 +18,6 @@ Route::prefix('stores/{store}')->group(function () {
     Route::get('/verification/status', [StoreVerificationController::class, 'getStatus']);
 });
 
-Route::get('/', function () {
-    return Inertia::render('System/Ecommerce/EcommerceProducts');
-});
-
 Route::get('/business', function () {
     return Inertia::render('Marketing/Home', [
         'canLogin' => Route::has('login'),

@@ -23,6 +23,7 @@ Route::get('shifts/{id}/stats', [ShiftController::class, 'getStats']);
 Route::get('shift-management/templates', [ShiftController::class, 'index']);
 Route::get('holidays', [HolidayController::class, 'index']);
 Route::post('holidays', [HolidayController::class, 'store']);
+Route::put('holidays/{id}', [HolidayController::class, 'update']);
 Route::post('holidays/import', [HolidayController::class, 'import']);
 Route::post('holidays/import-ph', [HolidayController::class, 'importPh']);
 Route::delete('holidays/{id}', [HolidayController::class, 'destroy']);

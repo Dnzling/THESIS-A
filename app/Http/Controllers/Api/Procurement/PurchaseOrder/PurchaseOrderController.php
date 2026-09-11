@@ -35,6 +35,8 @@ class PurchaseOrderController extends Controller
             'driver_id' => 'required|integer',
             'vehicle_id' => 'required|integer',
             'expected_pickup_date' => 'required|date',
+            'assistant_user_ids' => 'nullable|array',
+            'assistant_user_ids.*' => 'integer|distinct|exists:users,id',
             'notes' => 'nullable|string|max:1000',
         ]);
 
@@ -57,6 +59,22 @@ class PurchaseOrderController extends Controller
             })
             ->findOrFail($validated['driver_id']);
 
+        $assistantIds = collect($validated['assistant_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
+        if ($assistantIds->contains((int) $driver->user_id)) {
+            throw ValidationException::withMessages(['assistant_user_ids' => 'The selected driver cannot also be a delivery assistant.']);
+        }
+        $validAssistantCount = Employee::query()->where('store_id', $storeId)->where('status', 'active')
+            ->whereIn('user_id', $assistantIds)
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->where(function ($query) {
+                $query->whereHas('role', fn ($role) => $role->where('name', 'driver'))
+                    ->orWhereHas('user.role', fn ($role) => $role->where('name', 'driver'));
+            })
+            ->count();
+        if ($validAssistantCount !== $assistantIds->count()) {
+            throw ValidationException::withMessages(['assistant_user_ids' => 'One or more delivery assistants are invalid.']);
+        }
+
         $shipment = PurchaseOrderShipment::updateOrCreate(
             ['purchase_order_id' => $po->id],
             [
@@ -68,6 +86,7 @@ class PurchaseOrderController extends Controller
                 'vehicle_id' => $vehicle->id,
                 'driver_name' => trim(($driver->user?->fname ?? '') . ' ' . ($driver->user?->lname ?? '')),
                 'driver_contact' => $driver->user?->phone_number ?? $driver->phone,
+                'assistant_user_ids' => $assistantIds->all(),
                 'truck_type' => $vehicle->vehicle_type,
                 'truck_brand' => trim(($vehicle->brand ? $vehicle->brand . ' ' : '') . ($vehicle->model ?? '')) ?: $vehicle->vehicle_name,
                 'plate_number' => $vehicle->plate_number,
@@ -108,20 +127,15 @@ class PurchaseOrderController extends Controller
     public function pickupDrivers(Request $request, int $id): JsonResponse
     {
         $po = PurchaseOrder::where('store_id', (int) Auth::user()->store_id)->findOrFail($id);
-        $drivers = Employee::with(['user:id,fname,lname,email,phone_number,is_active', 'branch:id,name', 'role:id,name'])
+        $currentBranchId = (int) (Auth::user()->employee?->branch_id ?? Auth::user()->branch_id ?? 0);
+        $employees = Employee::with(['user:id,fname,lname,email,phone_number,is_active,role_id', 'user.role:id,name', 'branch:id,name', 'role:id,name'])
             ->where('store_id', (int) Auth::user()->store_id)
             ->where('status', 'active')
-            ->when($po->branch_id, fn ($query) => $query->where(function ($q) use ($po) {
-                $q->whereNull('branch_id')->orWhere('branch_id', $po->branch_id);
-            }))
             ->whereHas('user', fn ($query) => $query->where('is_active', true))
-            ->where(function ($query) {
-                $query->whereHas('role', fn ($role) => $role->where('name', 'driver'))
-                    ->orWhereHas('user.role', fn ($role) => $role->where('name', 'driver'));
-            })
             ->orderBy('employee_number')->get()
             ->map(fn ($employee) => [
                 'id' => $employee->id,
+                'user_id' => $employee->user_id,
                 'name' => trim(($employee->user?->fname ?? '') . ' ' . ($employee->user?->lname ?? '')),
                 'contact' => $employee->user?->phone_number ?? $employee->phone,
                 'email' => $employee->user?->email ?? $employee->email,
@@ -131,10 +145,16 @@ class PurchaseOrderController extends Controller
                 'employment_type' => $employee->employment_type,
                 'status' => $employee->status,
                 'branch' => $employee->branch?->name,
-                'user_id' => $employee->user_id,
+                'branch_id' => $employee->branch_id,
+                'is_same_branch' => $currentBranchId && (int) $employee->branch_id === $currentBranchId,
+                'is_driver' => strtolower((string) ($employee->role?->name ?? $employee->user?->role?->name ?? '')) === 'driver',
             ])
+            ->sortBy(fn (array $employee) => [$employee['is_same_branch'] ? 0 : 1, strtolower($employee['name'])])
             ->values();
-        return response()->json(['success' => true, 'data' => $drivers]);
+        return response()->json(['success' => true, 'data' => [
+            'drivers' => $employees->where('is_driver', true)->values(),
+            'assistants' => $employees->where('is_driver', true)->values(),
+        ]]);
     }
 
     protected function userHasAnyPermission(array $permissions, $user = null): bool
@@ -577,6 +597,20 @@ class PurchaseOrderController extends Controller
                         'width_cm' => $approvedFeedback?->width_cm,
                         'height_cm' => $approvedFeedback?->height_cm,
                         'weight_kg' => $approvedFeedback?->weight_kg,
+                        'quoted_variant_snapshot' => $approvedFeedback?->has_variant ? [
+                            'proposal_id' => $approvedFeedback->id,
+                            'name' => $approvedFeedback->variant_name,
+                            'supplier_sku' => $approvedFeedback->supplier_sku,
+                            'size' => $approvedFeedback->variant_size,
+                            'color' => $approvedFeedback->variant_color,
+                            'texture' => $approvedFeedback->variant_texture,
+                            'finish' => $approvedFeedback->variant_finish,
+                            'material' => $approvedFeedback->variant_material,
+                            'unit_of_measurement' => $approvedFeedback->unit_of_measurement,
+                            'cost_price' => (float) $approvedFeedback->quoted_price,
+                            'image_paths' => $approvedFeedback->variant_image_paths,
+                            'merchandising_status' => $approvedFeedback->merchandising_status,
+                        ] : null,
                     ];
                 }
 

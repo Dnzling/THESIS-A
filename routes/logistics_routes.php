@@ -12,15 +12,15 @@ use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 
 Route::prefix('logistics')->group(function () {
     Route::prefix('settings/delivery-fees')->group(function () {
-        Route::get('/', [DeliveryFeeSettingController::class, 'show'])->middleware('can:logistics.settings.view');
-        Route::put('/', [DeliveryFeeSettingController::class, 'update'])->middleware('can:logistics.settings.manage');
-        Route::post('/estimate', [DeliveryFeeSettingController::class, 'estimate'])->middleware('can:logistics.settings.view');
+        Route::get('/', [DeliveryFeeSettingController::class, 'show']);
+        Route::put('/', [DeliveryFeeSettingController::class, 'update']);
+        Route::post('/estimate', [DeliveryFeeSettingController::class, 'estimate']);
     });
 
     Route::prefix('delivery-orders')->group(function () {
-        Route::get('/logistics-employees', [UnifiedDeliveryController::class, 'logisticsEmployees'])->middleware('can:logistics.deliveries.view');
-        Route::post('/distance-estimate', [UnifiedDeliveryController::class, 'estimateDistance'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/assign', [UnifiedDeliveryController::class, 'assign'])->middleware('can:logistics.deliveries.manage');
+        Route::get('/logistics-employees', [UnifiedDeliveryController::class, 'logisticsEmployees']);
+        Route::post('/distance-estimate', [UnifiedDeliveryController::class, 'estimateDistance']);
+        Route::post('/assign', [UnifiedDeliveryController::class, 'assign']);
         // Drivers are authorized inside the controller and are restricted to their own assignments.
         Route::get('/', [UnifiedDeliveryController::class, 'orders']);
         Route::get('/{source}/{orderId}', [UnifiedDeliveryController::class, 'orderDetail']);
@@ -35,53 +35,53 @@ Route::prefix('logistics')->group(function () {
 
     // Delivery Management
     Route::prefix('deliveries')->group(function () {
-        Route::get('/drivers', [DeliveryController::class, 'drivers'])->middleware('can:logistics.deliveries.view');
-        Route::get('/', [DeliveryController::class, 'index'])->middleware('can:logistics.deliveries.view');
-        Route::get('/{id}', [DeliveryController::class, 'show'])->middleware('can:logistics.deliveries.view');
-        Route::put('/{id}/status', [DeliveryController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{id}/assign-driver', [DeliveryController::class, 'assignDriver'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{id}/proof', [DeliveryController::class, 'uploadProof'])->middleware('can:logistics.deliveries.manage');
-        Route::get('/{id}/logs', [DeliveryController::class, 'logs'])->middleware('can:logistics.deliveries.view');
-        Route::post('/{id}/logs', [DeliveryController::class, 'addLog'])->middleware('can:logistics.deliveries.manage');
+        Route::get('/drivers', [DeliveryController::class, 'drivers']);
+        Route::get('/', [DeliveryController::class, 'index']);
+        Route::get('/{id}', [DeliveryController::class, 'show']);
+        Route::put('/{id}/status', [DeliveryController::class, 'updateStatus']);
+        Route::post('/{id}/assign-driver', [DeliveryController::class, 'assignDriver']);
+        Route::post('/{id}/proof', [DeliveryController::class, 'uploadProof']);
+        Route::get('/{id}/logs', [DeliveryController::class, 'logs']);
+        Route::post('/{id}/logs', [DeliveryController::class, 'addLog']);
     });
 
     // Fleet Management (in-house)
     Route::prefix('vehicles')->group(function () {
-        Route::get('/', [VehicleController::class, 'index'])->middleware('can:logistics.fleet.view');
-        Route::post('/', [VehicleController::class, 'store'])->middleware('can:logistics.fleet.manage');
-        Route::get('/{id}', [VehicleController::class, 'show'])->middleware('can:logistics.fleet.view');
-        Route::put('/{id}', [VehicleController::class, 'update'])->middleware('can:logistics.fleet.manage');
+        Route::get('/', [VehicleController::class, 'index']);
+        Route::post('/', [VehicleController::class, 'store']);
+        Route::get('/{id}', [VehicleController::class, 'show']);
+        Route::put('/{id}', [VehicleController::class, 'update']);
     });
 
     // Delivery Zones & Pricing
     Route::prefix('zones')->group(function () {
-        Route::get('/', [DeliveryZoneController::class, 'index'])->middleware('can:logistics.zones.view');
-        Route::post('/', [DeliveryZoneController::class, 'store'])->middleware('can:logistics.zones.manage');
-        Route::get('/{id}', [DeliveryZoneController::class, 'show'])->middleware('can:logistics.zones.view');
-        Route::put('/{id}', [DeliveryZoneController::class, 'update'])->middleware('can:logistics.zones.manage');
+        Route::get('/', [DeliveryZoneController::class, 'index']);
+        Route::post('/', [DeliveryZoneController::class, 'store']);
+        Route::get('/{id}', [DeliveryZoneController::class, 'show']);
+        Route::put('/{id}', [DeliveryZoneController::class, 'update']);
 
-        Route::get('/{zoneId}/rates', [DeliveryZoneController::class, 'rates'])->middleware('can:logistics.zones.view');
-        Route::post('/{zoneId}/rates', [DeliveryZoneController::class, 'addRate'])->middleware('can:logistics.zones.manage');
-        Route::put('/{zoneId}/rates/{rateId}', [DeliveryZoneController::class, 'updateRate'])->middleware('can:logistics.zones.manage');
-        Route::delete('/{zoneId}/rates/{rateId}', [DeliveryZoneController::class, 'deleteRate'])->middleware('can:logistics.zones.manage');
+        Route::get('/{zoneId}/rates', [DeliveryZoneController::class, 'rates']);
+        Route::post('/{zoneId}/rates', [DeliveryZoneController::class, 'addRate']);
+        Route::put('/{zoneId}/rates/{rateId}', [DeliveryZoneController::class, 'updateRate']);
+        Route::delete('/{zoneId}/rates/{rateId}', [DeliveryZoneController::class, 'deleteRate']);
     });
 
     // Delivery Trips
     Route::prefix('trips')->group(function () {
-        Route::get('/', [DeliveryTripController::class, 'index'])->middleware('can:logistics.deliveries.view');
-        Route::post('/', [DeliveryTripController::class, 'store'])->middleware('can:logistics.deliveries.manage');
-        Route::get('/{id}', [DeliveryTripController::class, 'show'])->middleware('can:logistics.deliveries.view');
-        Route::put('/{id}/status', [DeliveryTripController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{id}/orders', [DeliveryTripController::class, 'addOrders'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{id}/orders/remove', [DeliveryTripController::class, 'removeOrders'])->middleware('can:logistics.deliveries.manage');
+        Route::get('/', [DeliveryTripController::class, 'index']);
+        Route::post('/', [DeliveryTripController::class, 'store']);
+        Route::get('/{id}', [DeliveryTripController::class, 'show']);
+        Route::put('/{id}/status', [DeliveryTripController::class, 'updateStatus']);
+        Route::post('/{id}/orders', [DeliveryTripController::class, 'addOrders']);
+        Route::post('/{id}/orders/remove', [DeliveryTripController::class, 'removeOrders']);
     });
 
     // Return Pickups (Customer Returns)
     Route::prefix('return-pickups')->group(function () {
-        Route::get('/', [ReturnPickupController::class, 'index'])->middleware('can:logistics.deliveries.view');
-        Route::get('/{pickup}', [ReturnPickupController::class, 'show'])->middleware('can:logistics.deliveries.view');
-        Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{pickup}/assign-driver', [ReturnPickupController::class, 'assignDriver'])->middleware('can:logistics.deliveries.manage');
-        Route::post('/{pickup}/proof', [ReturnPickupController::class, 'uploadProof'])->middleware('can:logistics.deliveries.manage');
+        Route::get('/', [ReturnPickupController::class, 'index']);
+        Route::get('/{pickup}', [ReturnPickupController::class, 'show']);
+        Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus']);
+        Route::post('/{pickup}/assign-driver', [ReturnPickupController::class, 'assignDriver']);
+        Route::post('/{pickup}/proof', [ReturnPickupController::class, 'uploadProof']);
     });
 });

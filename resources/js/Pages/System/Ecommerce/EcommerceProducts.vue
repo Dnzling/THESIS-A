@@ -60,10 +60,34 @@
       </aside>
   
       <main class="lg:col-span-9">
+        <section v-if="activeCategoryId" class="mb-8">
+          <div class="mb-4">
+            <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-600">Recommended sellers</p>
+            <h2 class="mt-1 text-xl font-bold text-slate-900">Top shops for {{ activeCategoryName || 'this category' }}</h2>
+            <p class="mt-1 text-xs text-slate-500">Ranked by monthly sales and available products in this category.</p>
+          </div>
+
+          <div v-if="loadingStores" class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <Skeleton v-for="index in 5" :key="index" height="150px" borderRadius="1rem" />
+          </div>
+          <div v-else-if="topStores.length" class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <button v-for="store in topStores" :key="store.id" type="button"
+              class="group rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg"
+              @click="goStore(store.id)">
+              <div class="mx-auto h-16 w-16 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                <img :src="normalizeImageUrl(store.store_logo) || '/F.svg'" :alt="`${store.store_name} logo`" class="h-full w-full object-cover" @error="onImageError" />
+              </div>
+              <p class="mt-3 truncate text-center text-xs font-semibold text-slate-900 group-hover:text-orange-600">{{ store.store_name }}</p>
+              <p class="mt-1 text-center text-[10px] text-slate-400">{{ store.matching_products_count }} products · {{ store.monthly_sales }} sold</p>
+            </button>
+          </div>
+          <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-center text-xs text-slate-500">No matching shops are currently available.</div>
+        </section>
+
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 mb-5 md:mb-8">
           <div>
-            <h2 class="text-xl md:text-2xl font-bold text-slate-900">Featured Products</h2>
-            <p class="text-slate-500 text-sm">Showing {{ filteredProducts.length }} items</p>
+            <h2 class="text-xl md:text-2xl font-bold text-slate-900">{{ activeCategoryId ? `${activeCategoryName || 'Category'} products` : 'Featured Products' }}</h2>
+            <p class="text-slate-500 text-sm">{{ activeCategoryId ? `${totalProducts} available items` : `Showing ${filteredProducts.length} items` }}</p>
           </div>
           <Button
             label="View Trending"
@@ -135,6 +159,7 @@
               <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
                 class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                 @error="onImageError" />
+              <Badge v-if="product.has_discount" :value="`${product.discount_percentage}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
   
             </div>
   
@@ -152,7 +177,11 @@
               </h3>
               <div class="flex items-center justify-between">
                 <div>
-                  <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.price) }}</span>
+                  <div v-if="product.has_discount" class="flex flex-wrap items-baseline gap-2">
+                    <span class="text-md font-semibold text-rose-600">₱{{ formatMoney(product.discounted_price) }}</span>
+                    <span class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
+                  </div>
+                  <span v-else class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.base_price) }}</span>
                   <p class="text-[10px] text-slate-400">VAT included</p>
                 </div>
                 <span class="text-[10px] text-slate-400 font-medium">{{ product.rating_count || 0 }} reviews</span>
@@ -167,6 +196,17 @@
           <Button label="Clear Filters" link @click="search = ''; selectedCategory = 'all'" />
         </div>
 
+        <Paginator
+          v-if="activeCategoryId && totalProducts > perPage"
+          :first="(currentPage - 1) * perPage"
+          :rows="perPage"
+          :totalRecords="totalProducts"
+          template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport"
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} products"
+          class="mt-6 !justify-center !text-xs"
+          @page="onProductPage"
+        />
+
       </main>
     </div>
   </div>
@@ -174,8 +214,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -184,16 +224,25 @@ import InputNumber from 'primevue/inputnumber'
 import Carousel from '@/Components/Ecommerce/carousel.vue'
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import MarketingFooter from '@/Components/MarketingFooter.vue'
+import Paginator from 'primevue/paginator'
 
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
 
 const router = useRouter()
+const route = useRoute()
 
 const loading = ref(false)
+const loadingStores = ref(false)
 const products = ref<any[]>([])
-const search = ref('')
+const topStores = ref<any[]>([])
+const activeCategoryName = ref('')
+const currentPage = ref(1)
+const perPage = 12
+const totalProducts = ref(0)
+const activeCategoryId = computed(() => Number(route.query.category_id || 0))
+const search = ref(String(route.query.search || ''))
 const selectedCategory = ref<string>('all')
 const sort = ref<'popular' | 'latest' | 'price_asc' | 'price_desc'>('popular')
 const dssLoading = ref(false)
@@ -265,7 +314,7 @@ const filteredProducts = computed(() => {
   if (sort.value === 'price_asc') rows.sort((a, b) => Number(a.price || 0) - Number(b.price || 0))
   else if (sort.value === 'price_desc') rows.sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
   else if (sort.value === 'latest') rows.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-  else rows.sort((a, b) => Number(b.rating_count || 0) - Number(a.rating_count || 0))
+  else rows.sort((a, b) => Number(b.monthly_sales || 0) - Number(a.monthly_sales || 0))
 
   return rows
 })
@@ -343,18 +392,78 @@ function goTrending() {
   router.push({ name: 'ecommerce.trending.view' })
 }
 
+function goStore(storeId: number) {
+  router.push({ name: 'ecommerce.store-profile', params: { storeId } })
+}
+
+function onProductPage(event: any) {
+  currentPage.value = Number(event.page) + 1
+  loadProducts()
+}
+
+async function loadTopStores() {
+  if (!activeCategoryId.value) {
+    topStores.value = []
+    activeCategoryName.value = ''
+    return
+  }
+
+  loadingStores.value = true
+  try {
+    const response = await ecommerceService.getTopStoresByCategory(activeCategoryId.value)
+    const payload = response.data?.data || {}
+    topStores.value = Array.isArray(payload.stores) ? payload.stores.slice(0, 10) : []
+    activeCategoryName.value = String(payload.category?.name || '')
+  } finally {
+    loadingStores.value = false
+  }
+}
+
 async function loadProducts() {
   loading.value = true
   try {
-    const response = await ecommerceService.getActiveStockProducts({ per_page: 80 })
+    const response = await ecommerceService.getActiveStockProducts({
+      per_page: activeCategoryId.value ? perPage : 80,
+      page: activeCategoryId.value ? currentPage.value : 1,
+      search: search.value.trim() || undefined,
+      sort: sort.value,
+      category_id: route.query.category_id || undefined,
+      discounted_only: route.query.deals ? true : undefined,
+    })
     const rows = response.data?.data?.data || response.data?.data || []
     products.value = Array.isArray(rows)
       ? rows.filter((product: any) => product.product_type === 'finished_good')
       : []
+    const pagination = response.data?.data || {}
+    totalProducts.value = Number(pagination.total ?? products.value.length)
   } finally {
     loading.value = false
   }
 }
 
-onMounted(loadProducts)
+onMounted(() => {
+  loadProducts()
+  loadTopStores()
+})
+
+watch(() => route.query.search, (value) => {
+  search.value = String(value || '')
+  sort.value = 'popular'
+  selectedCategory.value = 'all'
+  dssResults.value = []
+  loadProducts()
+})
+
+watch(() => route.query.category_id, () => {
+  selectedCategory.value = 'all'
+  dssResults.value = []
+  currentPage.value = 1
+  loadProducts()
+  loadTopStores()
+})
+
+watch(() => route.query.deals, () => {
+  currentPage.value = 1
+  loadProducts()
+})
 </script>

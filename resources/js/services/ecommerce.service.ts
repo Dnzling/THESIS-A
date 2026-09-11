@@ -48,6 +48,14 @@ const ecommerceService = {
     return ecommerceClient.get('/api/ecommerce/products/active-stock', { params })
   },
 
+  getActiveStockCategories() {
+    return ecommerceClient.get('/api/ecommerce/categories/active-stock')
+  },
+
+  getTopStoresByCategory(categoryId: number | string) {
+    return ecommerceClient.get(`/api/ecommerce/categories/${categoryId}/top-stores`)
+  },
+
   getProduct(id: number | string) {
     return ecommerceClient.get(`/api/ecommerce/products/${id}`)
   },

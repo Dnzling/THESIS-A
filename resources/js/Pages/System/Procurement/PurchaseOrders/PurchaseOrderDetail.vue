@@ -217,6 +217,14 @@
                   <div>
                     <p class="font-medium text-gray-900">{{ item.product?.product_name || '-' }}</p>
                     <p class="text-xs text-gray-500 mt-1">SKU: {{ item.product?.sku || '-' }}</p>
+                    <div v-if="item.quoted_variant_snapshot" class="mt-2 rounded-xl border border-orange-100 bg-orange-50 p-2 text-xs">
+                      <p class="font-semibold text-orange-800">Quoted variant: {{ item.quoted_variant_snapshot.name }}</p>
+                      <p class="mt-1 text-slate-600">{{ [item.quoted_variant_snapshot.size, item.quoted_variant_snapshot.color, item.quoted_variant_snapshot.material, item.quoted_variant_snapshot.texture, item.quoted_variant_snapshot.finish].filter(Boolean).join(' · ') || 'No additional attributes' }}</p>
+                      <p class="text-slate-600">Supplier SKU: {{ item.quoted_variant_snapshot.supplier_sku || '—' }} · UOM: {{ item.quoted_variant_snapshot.unit_of_measurement || item.product?.unit_of_measurement || '—' }}</p>
+                      <div v-if="item.quoted_variant_snapshot.image_paths?.length" class="mt-2 flex gap-2">
+                        <a v-for="path in item.quoted_variant_snapshot.image_paths" :key="path" :href="supplierImageUrl(path)" target="_blank"><img :src="supplierImageUrl(path)" class="h-16 w-20 rounded-lg border object-cover" alt="Quoted variant" /></a>
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td class="px-6 py-4 text-center font-medium">{{ Number(item?.quantity_ordered || 0).toLocaleString() }} {{ item.product?.unit_of_measurement || 'unit' }}</td>
@@ -813,6 +821,7 @@ const formatCurrency = (value: number) => {
     maximumFractionDigits: 2
   }).format(value)
 }
+const supplierImageUrl = (path: string) => path?.startsWith('http') ? path : `/storage/${String(path || '').replace(/^\/+/, '')}`
 
 const formatDecimal = (value: any, digits = 2) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: digits })
 const formatDimensions = (item: any) => item?.length_cm && item?.width_cm && item?.height_cm

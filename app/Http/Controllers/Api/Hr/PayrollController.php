@@ -162,7 +162,7 @@ class PayrollController extends Controller
             })->values();
             return ['employee_id' => $employee->id, 'employee_name' => trim($employee->fname . ' ' . $employee->lname), 'days' => $records->count(), 'absent' => $records->where('status', 'absent')->count(), 'on_leave' => $records->where('status', 'on_leave')->count(), 'break_minutes' => (int) $records->sum('break_minutes'), 'allowances' => 0, 'incentives' => 0, 'late_minutes' => $lateMinutes, 'late_deduction' => $lateDeduction, 'ot_hours' => $otHours, 'ot_pay' => round($otHours * ($dailyRate / 8) * 1.25, 2), 'gross' => $gross, 'deductions' => $deductions, 'net_pay' => round($gross - $deductions, 2), 'details' => $details];
         })->values();
-        return response()->json(['success' => true, 'data' => ['start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'employees' => $rows, 'summary' => ['employees' => $rows->count(), 'gross' => $rows->sum('gross'), 'incentives' => $rows->sum('incentives'), 'deductions' => $rows->sum('deductions'), 'net_pay' => $rows->sum('net_pay')]]);
+        return response()->json(['success' => true, 'data' => ['start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'employees' => $rows, 'summary' => ['employees' => $rows->count(), 'gross' => $rows->sum('gross'), 'incentives' => $rows->sum('incentives'), 'deductions' => $rows->sum('deductions'), 'net_pay' => $rows->sum('net_pay')]]]);
     }
     public function generate(Request $request)
     {

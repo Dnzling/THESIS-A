@@ -79,28 +79,32 @@
   
           <Column field="sku" header="SKU" style="width: 12%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ data.product?.sku || data.sku || 'N/A' }}</span>
+              <span class="text-xs text-gray-700">{{ data.variation?.variation_sku || data.product?.sku || 'N/A' }}</span>
             </template>
           </Column>
   
           <Column field="product_name" header="Product Name" style="width: 18%">
             <template #body="{ data }">
               <div class="space-y-0.5 text-xs">
-                <div class="font-medium text-gray-900">{{ data.product?.product_name || data.product_name || 'N/A' }}
-                </div>
+                <div class="font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
+                <div v-if="data.variation" class="text-[11px] text-orange-600">{{ data.variation.variation_name }}</div>
               </div>
             </template>
           </Column>
-  
-          
-  
-          <Column header="Cost/Unit" style="width: 12%">
+
+          <Column header="Supplier" style="width: 14%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.unit_of_measurement }}</b></span>
+              <span class="text-xs text-gray-700">{{ getSupplierName(data) || 'No supplier' }}</span>
             </template>
           </Column>
   
-          <Column header="Reorder Level" style="width: 5%">
+          <Column header="Cost/Unit" style="width: 12%">
+            <template #body="{ data }">
+              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.variation?.unit_of_measurement || data.product?.unit_of_measurement || 'unit' }}</b></span>
+            </template>
+          </Column>
+  
+          <Column header="Reorder Level" style="width: 3%">
             <template #body="{ data }">
               <span class="text-xs text-gray-700">{{ getReorderLevel(data) }}</span>
             </template>
@@ -113,13 +117,13 @@
             </template>
           </Column>
   
-          <Column header="Stock Value" style="width: 12%">
+          <Column header="Stock Value" style="width: 8%">
             <template #body="{ data }">
               <span class="text-xs text-gray-700">{{ formatMoney(getStockValue(data)) }}</span>
             </template>
           </Column>
   
-          <Column header="Reorder" style="width: 8%">
+          <Column header="Reorder" style="width: 4%">
             <template #body="{ data }">
               <Badge :value="needsReorder(data) ? 'Yes' : 'No'" :severity="needsReorder(data) ? 'danger' : 'success'"
                 class="text-xs" />
@@ -237,11 +241,14 @@ const loadItems = async () => {
     params.sort_by = sortField.value
     params.sort_order = sortOrder.value === 1 ? 'asc' : 'desc'
 
-    const response = await inventoryService.getProducts(params)
+    const targetBranchId = Number(filters.branch_id || currentUserBranchId.value || branches.value[0]?.id || 0)
+    const response = targetBranchId
+      ? await inventoryService.getBranchInventory(targetBranchId, params)
+      : await inventoryService.getInventoryItems(params)
 
     if (response?.data) {
-      items.value = response.data.data || response.data || []
-      totalRecords.value = response.data.total ?? items.value.length
+      items.value = Array.isArray(response.data) ? response.data : (response.data.data || [])
+      totalRecords.value = response.meta?.total ?? response.data?.total ?? items.value.length
     } else {
       items.value = []
       totalRecords.value = 0
@@ -309,11 +316,11 @@ const getTypeLabel = (type?: string) => {
 }
 
 const getUnitCost = (data: any) => {
-  return Number(data.inventory_cost_price ?? data.cost_price ?? data.product?.inventory_cost_price ?? data.product?.cost_price ?? 0)
+  return Number(data.variation?.cost_price ?? data.product?.inventory_cost_price ?? data.product?.cost_price ?? 0)
 }
 
 const getReorderLevel = (data: any) => {
-  return Number(data.reorder_point ?? data.inventory?.[0]?.reorder_point ?? 0)
+  return Number(data.reorder_point ?? data.variation?.reorder_point ?? 0)
 }
 
 const needsReorder = (data: any) => {
@@ -326,9 +333,7 @@ const getStockValue = (data: any) => {
 }
 
 const getSupplierName = (data: any) => {
-  return (
-   data.product?.supplier_name
-  )
+  return data.variation?.supplier_name || data.product?.supplier_name || data.product?.suppliers?.[0]?.supplier_name || data.product?.suppliers?.[0]?.company_name
 }
 
 const getBranchName = (data: any) => {
@@ -341,8 +346,17 @@ const onItemRowClick = (event: any) => {
   const target = event?.originalEvent?.target as HTMLElement | null
   if (target?.closest('button, input, a')) return
 
-  const id = event?.data?.id
-  if (id) router.push({ name: 'inventory.products.detail', params: { id } })
+  const id = event?.data?.product_id || event?.data?.product?.id
+  if (!id) return
+
+  const variation = event?.data?.variation
+  router.push({
+    name: 'inventory.products.detail',
+    params: { id },
+    query: variation?.id
+      ? { variation_id: variation.id, sku: variation.variation_sku }
+      : { sku: event?.data?.product?.sku },
+  })
 }
 
 onMounted(async () => {

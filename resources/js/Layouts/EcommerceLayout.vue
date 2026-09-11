@@ -6,10 +6,24 @@
     <header class="sticky top-0 z-20 hidden border-b border-slate-200/70 bg-white/90 backdrop-blur-sm md:block">
       <div
         class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 px-2 py-1.5 sm:px-3 sm:py-2 md:px-4">
-        <button link severity="secondary" @click="router.push({name: 'ecommerce.products'})"
+        <button link severity="secondary" @click="router.push({name: 'ecommerce.home'})"
           class="flex items-center justify-center rounded-lg">
           <span class="portal-brand text-orange-500 text-base sm:text-lg">FURNISYNC</span>
         </button>
+
+        <form class="mx-4 min-w-0 max-w-xl flex-1" role="search" @submit.prevent="submitProductSearch">
+          <IconField class="w-full">
+            <InputIcon class="pi pi-search text-slate-400" />
+            <InputText
+              v-model="productSearch"
+              type="search"
+              placeholder="Search furniture products"
+              aria-label="Search all available furniture products"
+              size="small"
+              class="w-full !rounded-full !border-slate-200 !bg-slate-50 !text-sm focus:!border-orange-400 focus:!ring-orange-100"
+            />
+          </IconField>
+        </form>
   
         <div class="hidden md:flex items-center gap-1">
           <!-- <Button label="Stores" text rounded class="compact-button !text-xs !px-2 !py-1.5" @click="router.push({ name: 'ecommerce.stores' })" /> -->
@@ -22,6 +36,22 @@
         </div>
       </div>
     </header>
+
+    <div class="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 px-3 py-2 backdrop-blur-sm md:hidden">
+      <form role="search" @submit.prevent="submitProductSearch">
+        <IconField class="w-full">
+          <InputIcon class="pi pi-search text-slate-400" />
+          <InputText
+            v-model="productSearch"
+            type="search"
+            placeholder="Search furniture products"
+            aria-label="Search all available furniture products"
+            size="small"
+            class="w-full !rounded-full !border-slate-200 !bg-slate-50 !text-sm focus:!border-orange-400 focus:!ring-orange-100"
+          />
+        </IconField>
+      </form>
+    </div>
   
     <main class="mx-auto w-full max-w-7xl px-3 pb-6 pt-3 sm:px-4 md:px-6 md:pb-8 md:pt-4">
       <slot />
@@ -75,6 +105,9 @@ import Popover from 'primevue/popover'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import InputText from 'primevue/inputtext'
 import { useConfirm } from 'primevue/useconfirm'
 
 const route = useRoute()
@@ -84,6 +117,7 @@ const authStore = useAuthStore()
 const toast = useToast()
 const confirm = useConfirm()
 const pageTitle = computed(() => String(page.props?.title || ''))
+const productSearch = ref('')
 
 const cartCount = ref(0)
 const isLoggedIn = computed(() => authStore.isAuthenticated)
@@ -113,6 +147,19 @@ async function loadCartCount() {
 
 function goCart() {
   router.push({ name: 'ecommerce.cart' })
+}
+
+function searchFromUrl() {
+  const query = String(page.url || '').split('?')[1] || ''
+  return new URLSearchParams(query).get('search') || ''
+}
+
+function submitProductSearch() {
+  const search = productSearch.value.trim()
+  router.push({
+    name: 'ecommerce.products',
+    query: search ? { search } : {},
+  })
 }
 
 function goLogin() {
@@ -171,7 +218,7 @@ async function logoutCustomer() {
     accept: async () => {
       await authStore.logout({ redirect: false })
       toast.add({ severity: 'success', summary: 'Logged out', detail: 'See you again soon!', life: 1600 })
-      router.push({ name: 'ecommerce.products' })
+      router.push({ name: 'ecommerce.home' })
     },
   })
 }
@@ -195,6 +242,9 @@ async function loadChatThreads() {
 }
 
 watch(() => route.fullPath, loadCartCount)
+watch(() => page.url, () => {
+  productSearch.value = searchFromUrl()
+}, { immediate: true })
 watch(isLoggedIn, () => {
   loadCartCount()
   loadChatThreads()

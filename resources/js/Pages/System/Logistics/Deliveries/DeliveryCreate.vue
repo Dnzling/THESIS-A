@@ -1,17 +1,16 @@
 <template>
-  <div class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl border border-slate-200/80 bg-linear-to-br from-cyan-50 via-white to-emerald-50 p-6 shadow-sm">
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-2">
-          <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
-          <div>
-            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Create Delivery Assignment</h1>
-            <p class="mt-1 text-sm text-slate-600">Assign logistics staff and set transport charges for this order.</p>
-          </div>
+  <div class="mx-auto space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Create Delivery Assignment</h1>
+          <p class="mt-1 text-sm text-slate-600">Assign logistics staff and set transport charges for this order.</p>
         </div>
       </div>
     </div>
-
+  
+  
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Order Summary</template>
       <template #content>
@@ -22,84 +21,109 @@
           <div><span class="text-slate-500">Order #:</span> <strong>{{ order.order_number }}</strong></div>
           <div><span class="text-slate-500">Customer:</span> <strong>{{ customerName }}</strong></div>
           <div><span class="text-slate-500">Contact:</span> <strong>{{ customerContact }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong></div>
-          <div><span class="text-slate-500">Order Status:</span> <Tag :value="formattedOrderStatus" severity="secondary" /></div>
+          <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong>
+          </div>
+          <div><span class="text-slate-500">Order Status:</span>
+            <Tag :value="formattedOrderStatus" severity="secondary" />
+          </div>
           <div><span class="text-slate-500">Total:</span> <strong>{{ formatCurrency(order?.total_amount) }}</strong></div>
-          <div><span class="text-slate-500">Shipping Fee:</span> <strong>{{ formatCurrency(order?.shipping_fee) }}</strong></div>
+          <div><span class="text-slate-500">Shipping Fee:</span> <strong>{{ formatCurrency(order?.shipping_fee)
+              }}</strong></div>
         </div>
       </template>
     </Card>
-
+  
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Delivery Assignment Form</template>
       <template #content>
         <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="submitAssignment">
           <div>
-            <label class="mb-1 block text-sm text-slate-600">Logistics Employee</label>
-            <Select
-              v-model="form.driver_user_id"
-              :options="employees"
-              optionLabel="name"
-              optionValue="id"
-              fluid
-              filter
-              placeholder="Select logistics employee"
-            />
+            <label class="mb-1 block text-sm text-slate-600">Driver *</label>
+            <Select v-model="form.driver_user_id" :options="drivers" optionLabel="name" optionValue="id" fluid filter placeholder="Select driver">
+              <template #option="{ option }"><div><p class="text-sm font-medium text-slate-800">{{ option.name }}</p><p class="text-xs text-slate-500">{{ option.branch }}</p></div></template>
+            </Select>
+            <small class="text-xs text-slate-500">Drivers from your branch appear first.</small>
           </div>
 
+          <div>
+            <label class="mb-1 block text-sm text-slate-600">Delivery Assistants</label>
+            <MultiSelect v-model="form.assistant_user_ids" :options="availableAssistants" optionLabel="name" optionValue="id" fluid filter display="chip" placeholder="Select employees (optional)">
+              <template #option="{ option }"><div><p class="text-sm font-medium text-slate-800">{{ option.name }}</p><p class="text-xs text-slate-500">{{ option.branch }}</p></div></template>
+            </MultiSelect>
+          </div>
+  
           <div v-if="selectedEmployee" class="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-            <div class="mb-3 flex items-center justify-between"><h3 class="font-semibold text-slate-900">Driver Information</h3><Tag value="Active" severity="success" /></div>
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="font-semibold text-slate-900">Driver Information</h3>
+              <Tag value="Active" severity="success" />
+            </div>
             <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <div><span class="text-slate-500">Full Name</span><p class="font-medium text-slate-900">{{ selectedEmployee.name || '-' }}</p></div>
-              <div><span class="text-slate-500">Employee Number</span><p class="font-medium text-slate-900">{{ selectedEmployee.employee_number || '-' }}</p></div>
-              <div><span class="text-slate-500">Contact</span><p class="font-medium text-slate-900">{{ selectedEmployee.contact || form.courier_contact || '-' }}</p></div>
-              <div><span class="text-slate-500">Email</span><p class="font-medium text-slate-900">{{ selectedEmployee.email || '-' }}</p></div>
-              <div><span class="text-slate-500">Department</span><p class="font-medium text-slate-900">{{ selectedEmployee.department || '-' }}</p></div>
-              <div><span class="text-slate-500">Position</span><p class="font-medium text-slate-900">{{ selectedEmployee.position || 'Driver' }}</p></div>
+              <div><span class="text-slate-500">Full Name</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.name || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Employee Number</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.employee_number || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Contact</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.contact || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Email</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.email || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Department</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.department || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Position</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.position || 'Driver' }}</p>
+              </div>
             </div>
           </div>
-
+  
           <div>
             <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
-            <Select
-              v-model="form.vehicle_id"
-              :options="vehicles"
-              optionLabel="label"
-              optionValue="id"
-              fluid
-              filter
-              placeholder="Select vehicle"
-            />
+            <Select v-model="form.vehicle_id" :options="vehicles" optionLabel="label" optionValue="id" fluid filter
+              placeholder="Select vehicle" />
           </div>
-
+  
           <div v-if="selectedVehicle" class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-            <div class="mb-3 flex items-center justify-between"><h3 class="font-semibold text-slate-900">Vehicle Details</h3><Tag :value="selectedVehicle.status || 'Active'" severity="success" /></div>
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="font-semibold text-slate-900">Vehicle Details</h3>
+              <Tag :value="selectedVehicle.status || 'Active'" severity="success" />
+            </div>
             <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <div><span class="text-slate-500">Vehicle Name</span><p class="font-medium text-slate-900">{{ selectedVehicle.vehicle_name || '-' }}</p></div>
-              <div><span class="text-slate-500">Type</span><p class="font-medium capitalize text-slate-900">{{ selectedVehicle.vehicle_type || '-' }}</p></div>
-              <div><span class="text-slate-500">Plate Number</span><p class="font-medium text-slate-900">{{ selectedVehicle.plate_number || '-' }}</p></div>
-              <div><span class="text-slate-500">Brand / Model</span><p class="font-medium text-slate-900">{{ [selectedVehicle.brand, selectedVehicle.model].filter(Boolean).join(' ') || '-' }}</p></div>
-              <div><span class="text-slate-500">Capacity</span><p class="font-medium text-slate-900">{{ selectedVehicle.capacity_kg ? `${selectedVehicle.capacity_kg} kg` : '-' }}</p></div>
+              <div><span class="text-slate-500">Vehicle Name</span>
+                <p class="font-medium text-slate-900">{{ selectedVehicle.vehicle_name || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Type</span>
+                <p class="font-medium capitalize text-slate-900">{{ selectedVehicle.vehicle_type || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Plate Number</span>
+                <p class="font-medium text-slate-900">{{ selectedVehicle.plate_number || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Brand / Model</span>
+                <p class="font-medium text-slate-900">{{ [selectedVehicle.brand,
+                  selectedVehicle.model].filter(Boolean).join(' ') || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Capacity</span>
+                <p class="font-medium text-slate-900">{{ selectedVehicle.capacity_kg ? `${selectedVehicle.capacity_kg} kg`
+                  : '-' }}</p>
+              </div>
             </div>
           </div>
-
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Courier Contact Number</label>
-            <InputText v-model="form.courier_contact" fluid placeholder="09xxxxxxxxx" />
-          </div>
-
+  
           <div>
             <label class="mb-1 block text-sm text-slate-600">Estimated Delivery Time</label>
             <DatePicker v-model="form.estimated_delivery_at" :minDate="new Date()" showTime hourFormat="12" fluid />
           </div>
-
+  
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Notes</label>
             <Textarea v-model="form.notes" rows="3" fluid placeholder="Optional logistics notes" />
           </div>
-
+  
           <div class="md:col-span-2 flex flex-wrap gap-2">
-            <Button type="submit" icon="pi pi-check" label="Assign Delivery" :loading="submitting" :disabled="!canManageDeliveries || !canSubmit" />
+            <Button type="submit" icon="pi pi-check" label="Assign Delivery" :loading="submitting"
+              :disabled="!canManageDeliveries || !canSubmit" />
           </div>
         </form>
       </template>
@@ -114,7 +138,7 @@ import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
-import InputText from 'primevue/inputtext'
+import MultiSelect from 'primevue/multiselect'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
@@ -136,18 +160,20 @@ const estimating = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
 
-const employees = ref<any[]>([])
+const drivers = ref<any[]>([])
+const assistants = ref<any[]>([])
 const vehicles = ref<any[]>([])
 const zones = ref<any[]>([])
 const selectedZone = ref<any>(null)
 const selectedRate = ref<any>(null)
-const selectedEmployee = computed(() => employees.value.find((employee: any) => Number(employee.id) === Number(form.driver_user_id)))
+const selectedEmployee = computed(() => drivers.value.find((employee: any) => Number(employee.id) === Number(form.driver_user_id)))
+const availableAssistants = computed(() => assistants.value.filter((employee: any) => Number(employee.id) !== Number(form.driver_user_id)))
 const selectedVehicle = computed(() => vehicles.value.find((vehicle: any) => Number(vehicle.id) === Number(form.vehicle_id)))
 
 const form = reactive({
   driver_user_id: null as number | null,
   vehicle_id: null as number | null,
-  courier_contact: '',
+  assistant_user_ids: [] as number[],
   distance_km: 0,
   per_km_charge: 0,
   base_fee: 0,
@@ -190,7 +216,7 @@ const selectedRateLabel = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return !!form.driver_user_id && !!form.vehicle_id && !!form.courier_contact && Number(form.per_km_charge) >= 0
+  return !!form.driver_user_id && !!form.vehicle_id && Number(form.per_km_charge) >= 0
 })
 
 const loadOptions = async () => {
@@ -200,7 +226,8 @@ const loadOptions = async () => {
     logisticsService.getZones({ per_page: 200, is_active: true }),
   ])
 
-  employees.value = employeeRes?.data || []
+  drivers.value = employeeRes?.data?.drivers || []
+  assistants.value = employeeRes?.data?.assistants || []
 
   const vehicleRows = vehicleRes?.data?.data || []
   vehicles.value = vehicleRows.map((vehicle: any) => ({
@@ -331,8 +358,8 @@ const submitAssignment = async () => {
       source_type: source.value,
       order_id: orderId.value,
       driver_user_id: form.driver_user_id,
+      assistant_user_ids: form.assistant_user_ids,
       vehicle_id: form.vehicle_id,
-      courier_contact: form.courier_contact,
       distance_km: Number(form.distance_km || 0),
       per_km_charge: Number(form.per_km_charge || 0),
       base_fee: Number(form.base_fee || 0),
@@ -365,6 +392,10 @@ watch(
     applyZoneRate()
   }
 )
+
+watch(() => form.driver_user_id, (driverId) => {
+  form.assistant_user_ids = form.assistant_user_ids.filter((id) => Number(id) !== Number(driverId))
+})
 
 onMounted(async () => {
   if (!orderId.value) {

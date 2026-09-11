@@ -13,8 +13,8 @@
           <button
             type="button"
             class="relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
-            :class="isActive(['ecommerce.products']) ? 'text-orange-600' : 'hover:text-slate-900'"
-            @click="goTo('ecommerce.products')"
+            :class="isActive(['ecommerce.home']) ? 'text-orange-600' : 'hover:text-slate-900'"
+            @click="goTo('ecommerce.home')"
           >
             <i class="pi pi-home text-lg" />
             <span>Home</span>

@@ -189,16 +189,15 @@ class UnifiedDeliveryController extends Controller
                     ->get()
                 : collect();
 
+            $deliveryData = $delivery ? $this->monitoringDeliveryData($delivery, $request, $order->id, 'ecommerce') : null;
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'source_type' => 'ecommerce',
                     'order' => $order,
-                    'delivery' => $delivery ? array_merge($delivery->toArray(), [
-                        'proof_photo_url' => url("/api/logistics/delivery-orders/ecommerce/{$order->id}/proof/photo"),
-                        'proof_signature_url' => url("/api/logistics/delivery-orders/ecommerce/{$order->id}/proof/signature"),
-                    ]) : null,
-                    'logs' => $logs,
+                    'delivery' => $deliveryData,
+                    'logs' => $this->monitoringLogs($logs, $deliveryData),
                 ],
             ]);
         }
@@ -212,17 +211,15 @@ class UnifiedDeliveryController extends Controller
                 ->orderByDesc('created_at')
                 ->get()
             : collect();
+        $deliveryData = $delivery ? $this->monitoringDeliveryData($delivery, $request, $order->id, 'sales') : null;
 
         return response()->json([
             'success' => true,
             'data' => [
                 'source_type' => 'sales',
                 'order' => $order,
-                'delivery' => $delivery ? array_merge($delivery->toArray(), [
-                    'proof_photo_url' => url("/api/logistics/delivery-orders/sales/{$order->id}/proof/photo"),
-                    'proof_signature_url' => url("/api/logistics/delivery-orders/sales/{$order->id}/proof/signature"),
-                ]) : null,
-                'logs' => $logs,
+                'delivery' => $deliveryData,
+                'logs' => $this->monitoringLogs($logs, $deliveryData),
             ],
         ]);
     }
@@ -273,34 +270,34 @@ class UnifiedDeliveryController extends Controller
 
         $branchId = $this->resolveBranchId($request);
 
-        $roleIds = DB::table('role_permissions')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->whereIn('permissions.name', ['logistics.deliveries.view', 'logistics.deliveries.manage'])
-            ->pluck('role_permissions.role_id')
-            ->unique()
-            ->values();
-
         $employees = User::query()
-            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,status'])
+            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,role_id,employee_number,status', 'employee.branch:id,name', 'employee.role:id,name,display_name'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
-            ->when($roleIds->isNotEmpty(), fn ($query) => $query->whereIn('role_id', $roleIds))
-            ->when($branchId, fn ($query) => $query->whereHas('employee', fn ($employee) => $employee->where('branch_id', $branchId)))
+            ->whereHas('employee', fn ($query) => $query->where('status', 'active'))
             ->orderBy('fname')
             ->orderBy('lname')
             ->get()
-            ->filter(fn (User $employee) => $employee->hasAnyPermission(['logistics.deliveries.view', 'logistics.deliveries.manage'], $storeId))
             ->map(fn (User $employee) => [
                 'id' => $employee->id,
                 'name' => trim(($employee->fname ?? '') . ' ' . ($employee->lname ?? '')),
                 'email' => $employee->email,
                 'contact' => $employee->employee?->phone ?? $employee->phone_number,
                 'branch_id' => $employee->employee?->branch_id,
+                'branch' => $employee->employee?->branch?->name ?? 'No branch assigned',
+                'employee_number' => $employee->employee?->employee_number,
                 'role' => $employee->role?->display_name ?? $employee->role?->name ?? 'N/A',
+                'is_driver' => strtolower((string) ($employee->role?->name ?? '')) === 'driver'
+                    || strtolower((string) ($employee->employee?->role?->name ?? '')) === 'driver',
+                'is_same_branch' => $branchId && (int) $employee->employee?->branch_id === $branchId,
             ])
+            ->sortBy(fn (array $employee) => [$employee['is_same_branch'] ? 0 : 1, strtolower($employee['name'])])
             ->values();
 
-        return response()->json(['success' => true, 'data' => $employees]);
+        return response()->json(['success' => true, 'data' => [
+            'drivers' => $employees->where('is_driver', true)->values(),
+            'assistants' => $employees->where('is_driver', true)->values(),
+        ]]);
     }
 
     public function estimateDistance(Request $request): JsonResponse
@@ -338,7 +335,8 @@ class UnifiedDeliveryController extends Controller
             'source_type' => ['required', Rule::in(self::ORDER_SOURCES)],
             'order_id' => 'required|integer|min:1',
             'driver_user_id' => 'required|exists:users,id',
-            'courier_contact' => 'required|string|max:50',
+            'assistant_user_ids' => 'nullable|array',
+            'assistant_user_ids.*' => 'integer|distinct|exists:users,id',
             'vehicle_id' => 'required|exists:ecommerce_delivery_vehicles,id',
             'distance_km' => 'nullable|numeric|min:0',
             'per_km_charge' => 'required|numeric|min:0',
@@ -358,14 +356,34 @@ class UnifiedDeliveryController extends Controller
         }
 
         $driver = User::query()
+            ->with(['role:id,name', 'employee:id,user_id,role_id,phone,status', 'employee.role:id,name'])
             ->where('id', (int) $validated['driver_user_id'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->firstOrFail();
 
-        if (!$driver->hasAnyPermission(['logistics.deliveries.view', 'logistics.deliveries.manage'], $storeId)) {
-            return response()->json(['success' => false, 'message' => 'Selected employee does not have logistics permissions.'], 422);
+        $isDriver = strtolower((string) $driver->role?->name) === 'driver'
+            || strtolower((string) $driver->employee?->role?->name) === 'driver';
+        if (!$isDriver || $driver->employee?->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
         }
+
+        $assistantIds = collect($validated['assistant_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
+        if ($assistantIds->contains($driver->id)) {
+            return response()->json(['success' => false, 'message' => 'The selected driver cannot also be a delivery assistant.'], 422);
+        }
+        $validAssistantCount = User::query()->where('store_id', $storeId)->where('is_active', true)
+            ->whereIn('id', $assistantIds)
+            ->whereHas('employee', fn ($query) => $query->where('status', 'active'))
+            ->where(function ($query) {
+                $query->whereHas('role', fn ($role) => $role->where('name', 'driver'))
+                    ->orWhereHas('employee.role', fn ($role) => $role->where('name', 'driver'));
+            })
+            ->count();
+        if ($validAssistantCount !== $assistantIds->count()) {
+            return response()->json(['success' => false, 'message' => 'One or more delivery assistants are invalid.'], 422);
+        }
+        $driverContact = (string) ($driver->employee?->phone ?? $driver->phone_number ?? '');
 
         $vehicle = EcommerceDeliveryVehicle::query()
             ->where('id', (int) $validated['vehicle_id'])
@@ -397,7 +415,8 @@ class UnifiedDeliveryController extends Controller
                     'driver_user_id' => $driver->id,
                     'tracking_number' => $delivery->tracking_number ?: $this->nextTrackingNumber(),
                     'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
-                    'courier_contact' => (string) $validated['courier_contact'],
+                    'courier_contact' => $driverContact,
+                    'assistant_user_ids' => $assistantIds->all(),
                     'status' => 'assigned',
                     'estimated_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
@@ -426,7 +445,8 @@ class UnifiedDeliveryController extends Controller
                     'driver_user_id' => $driver->id,
                     'tracking_number' => $this->nextTrackingNumber(),
                     'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
-                    'courier_contact' => (string) $validated['courier_contact'],
+                    'courier_contact' => $driverContact,
+                    'assistant_user_ids' => $assistantIds->all(),
                     'status' => 'assigned',
                     'estimated_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
@@ -497,7 +517,8 @@ class UnifiedDeliveryController extends Controller
                 'driver_user_id' => $driver->id,
                 'tracking_number' => $delivery->tracking_number ?: $this->nextTrackingNumber(),
                 'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
-                'courier_contact' => (string) $validated['courier_contact'],
+                'courier_contact' => $driverContact,
+                'assistant_user_ids' => $assistantIds->all(),
                 'status' => 'assigned',
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
@@ -526,7 +547,8 @@ class UnifiedDeliveryController extends Controller
                 'driver_user_id' => $driver->id,
                 'tracking_number' => $this->nextTrackingNumber(),
                 'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
-                'courier_contact' => (string) $validated['courier_contact'],
+                'courier_contact' => $driverContact,
+                'assistant_user_ids' => $assistantIds->all(),
                 'status' => 'assigned',
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                 'distance_km' => $distance,
@@ -1224,8 +1246,9 @@ class UnifiedDeliveryController extends Controller
             $query->with([
                 'assignedBranch:id,name,latitude,longitude',
                 'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
-                'items.product:id,product_name,sku,weight_kg',
-                'delivery',
+                'items.product:id,product_name,sku,weight_kg,unit_of_measurement',
+                'delivery.driver:id,fname,lname,email,phone_number',
+                'delivery.vehicle',
             ]);
         }
 
@@ -1241,14 +1264,59 @@ class UnifiedDeliveryController extends Controller
             $query->with([
                 'branch:id,name,latitude,longitude',
                 'items:id,order_id,product_id,product_name,sku,quantity,unit_price,line_total',
-                'items.product:id,product_name,sku,weight_kg',
-                'delivery',
+                'items.product:id,product_name,sku,weight_kg,unit_of_measurement',
+                'delivery.driver:id,fname,lname,email,phone_number',
+                'delivery.vehicle',
             ]);
         }
 
         $this->applySalesTenantScope($request, $query);
 
         return $query->findOrFail($orderId);
+    }
+
+    private function monitoringDeliveryData($delivery, Request $request, int $orderId, string $source): array
+    {
+        $assistantIds = collect($delivery->assistant_user_ids ?? [])->map(fn ($id) => (int) $id)->filter()->values();
+        $assistants = User::query()
+            ->with('employee.branch:id,name')
+            ->where('store_id', $request->user()->store_id)
+            ->whereIn('id', $assistantIds)
+            ->get()
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'name' => trim(($user->fname ?? '') . ' ' . ($user->lname ?? '')),
+                'branch' => $user->employee?->branch?->name,
+            ])->values();
+
+        return array_merge($delivery->toArray(), [
+            'assistants' => $assistants,
+            'proof_photo_url' => url("/api/logistics/delivery-orders/{$source}/{$orderId}/proof/photo"),
+            'proof_signature_url' => url("/api/logistics/delivery-orders/{$source}/{$orderId}/proof/signature"),
+        ]);
+    }
+
+    private function monitoringLogs(Collection $logs, ?array $delivery): Collection
+    {
+        return $logs->map(function ($log) use ($delivery): array {
+            $data = $log->toArray();
+            $meta = is_array($log->meta) ? $log->meta : [];
+            $attachments = collect([
+                $meta['proof_photo_url'] ?? null,
+                $meta['proof_signature_url'] ?? null,
+            ])->filter()->map(fn (string $url, int $index) => [
+                'id' => "{$log->id}-{$index}",
+                'public_url' => $url,
+            ])->values();
+
+            if ($attachments->isEmpty() && $log->event_type === 'proof_uploaded' && $delivery) {
+                $attachments = collect([$delivery['proof_photo_url'] ?? null, $delivery['proof_signature_url'] ?? null])
+                    ->filter()->map(fn (string $url, int $index) => ['id' => "{$log->id}-proof-{$index}", 'public_url' => $url])->values();
+            }
+
+            $data['attachments'] = $attachments;
+            return $data;
+        });
     }
 
     private function resolvePickupShipment(Request $request, int $orderId): PurchaseOrderShipment

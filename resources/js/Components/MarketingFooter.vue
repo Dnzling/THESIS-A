@@ -1,87 +1,25 @@
 <template>
-  <footer class="footer">
-    <div class="container footer-grid">
+  <footer class="relative left-1/2 -mb-6 w-screen -translate-x-1/2 bg-orange-500 px-6 py-10 text-white sm:px-8 md:-mb-8">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-start justify-between gap-10">
       <div>
-        <div class="footer-title">Explore</div>
-        <Link href="/business">Business</Link>
-        <Link href="/pricing">Pricing</Link>
-        <Link href="/about">About</Link>
-        <Link href="/supplier/register">Become a Supplier</Link>
-        <Link href="/job-portal">Find Jobs</Link>
-        <Link href="/super-admin/login">Admin</Link>
+        <div class="text-lg font-bold text-white">Quick Links</div>
+        <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <Link href="/business" class="text-white transition hover:text-orange-100">Business</Link>
+          <Link href="/pricing" class="text-white transition hover:text-orange-100">Pricing</Link>
+          <Link href="/about" class="text-white transition hover:text-orange-100">About</Link>
+          <Link href="/supplier/register" class="text-white transition hover:text-orange-100">Become a Supplier</Link>
+          <Link href="/job-portal" class="text-white transition hover:text-orange-100">Find Jobs</Link>
+          <Link href="/super-admin/login" class="text-white transition hover:text-orange-100">Admin</Link>
+        </div>
       </div>
       <div>
-        <div class="footer-title">Support</div>
+        <div class="text-sm font-semibold text-white">Support</div>
       </div>
     </div>
-    <div class="footer-bottom">2026 FurniSync. All rights reserved.</div>
+    <div class="mx-auto mt-8 max-w-7xl border-t border-white/25 pt-5 text-center text-xs text-orange-50">2026 FurniSync. All rights reserved.</div>
   </footer>
 </template>
 
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3'
 </script>
-
-<style scoped>
-@font-face {
-  font-family: 'Barabara';
-  src: url('../../fonts/BARABARA-final.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-.footer {
-  color: #d1d5db;
-  padding: 56px 0 32px;
-}
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-.footer-grid {
-  display: grid;
-  gap: 28px;
-}
-
-@media (min-width: 900px) {
-  .footer-grid {
-    grid-template-columns: 2fr 1fr 1fr;
-  }
-}
-
-.footer a {
-  display: block;
-  color: #000000;
-  margin-top: 8px;
-  text-decoration: none;
-}
-
-.footer-title {
-  font-weight: 600;
-  color: #000000;
-}
-
-.brand-logo {
-  font-family: 'Barabara';
-  font-size: 5rem;
-  color: orange  ;
-}
-
-.footer-bottom {
-  text-align: center;
-  margin-top: 28px;
-  font-size: 0.85rem;
-  color: #090909;
-}
-
-.staff-link {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: #000000;
-}
-</style>

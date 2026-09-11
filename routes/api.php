@@ -26,6 +26,8 @@ use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
 use App\Http\Controllers\Api\Store\StoreScopedRoleController;
 use App\Http\Controllers\Api\Payments\PaymongoController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
+use App\Http\Controllers\Api\Admin\HomepageContentController;
+use App\Http\Controllers\Api\Admin\EcommerceCategoryController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
@@ -54,12 +56,16 @@ Route::prefix('auth')->group(function () {
     Route::post('resend-otp', [VerifyEmailController::class, 'resendOtpApi']);
 });
 
+Route::get('/public/home-content', [HomepageContentController::class, 'publicIndex']);
+
 require __DIR__ . '/job_portal_routes.php';
 
 // Public ecommerce browsing (guest-friendly)
 Route::prefix('ecommerce')->group(function () {
     Route::get('/products', [EcommerceController::class, 'products']);
     Route::get('/products/active-stock', [EcommerceActiveStockProductsController::class, 'index']);
+    Route::get('/categories/active-stock', [EcommerceActiveStockProductsController::class, 'categories']);
+    Route::get('/categories/{categoryId}/top-stores', [EcommerceActiveStockProductsController::class, 'topStores']);
     Route::get('/products/{id}', [EcommerceController::class, 'productShow']);
     Route::get('/stores', [EcommerceController::class, 'storeDirectory']);
     Route::get('/stores/{storeId}', [EcommerceController::class, 'storeProfile']);
@@ -141,6 +147,13 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
         // Customer Management
         Route::get('/customers', [CustomerManagementController::class, 'index']);
+        Route::get('/home-content', [HomepageContentController::class, 'index']);
+        Route::post('/home-content/modules', [HomepageContentController::class, 'storeModule']);
+        Route::post('/home-content/modules/{module}', [HomepageContentController::class, 'updateModule']);
+        Route::delete('/home-content/modules/{module}', [HomepageContentController::class, 'destroyModule']);
+        Route::post('/home-content/furniture/{furniture}', [HomepageContentController::class, 'updateFurniture']);
+        Route::get('/ecommerce-categories', [EcommerceCategoryController::class, 'index']);
+        Route::post('/ecommerce-categories/{category}', [EcommerceCategoryController::class, 'update']);
         Route::get('/subscriptions', [SubscriptionManagementController::class, 'index']);
         Route::get('/subscriptions/stats', [SubscriptionManagementController::class, 'stats']);
         Route::put('/subscriptions/{store}', [SubscriptionManagementController::class, 'update']);
@@ -244,8 +257,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // =========== HR ==============
     Route::post('/employees/invite', [EmployeeController::class, 'storeInvite']);
-    Route::apiResource('employees', EmployeeController::class);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
+    Route::apiResource('employees', EmployeeController::class);
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);
     Route::get('/employees/{id}/details/{year}', [EmployeeController::class, 'getEmployeeDetails']);
     Route::post('/employees/id-preview', [EmployeeController::class, 'previewGovernmentId']);

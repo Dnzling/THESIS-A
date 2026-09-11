@@ -85,7 +85,7 @@
           <div class="flex gap-2"><input ref="holidayFileInput" type="file" accept=".csv,text/csv" class="hidden" @change="importHolidays" /><Button label="Import CSV" icon="pi pi-upload" severity="secondary" outlined size="small" @click="holidayFileInput?.click()" /><Button label="Add Holiday" icon="pi pi-plus" severity="warn" size="small" @click="holidayDialogVisible = true" /></div>
         </div>
         <div class="flex items-center gap-2"><Select v-model="holidayYear" :options="holidayYears" class="w-32" size="small" @change="loadHolidays" /><span class="text-xs text-slate-500">CSV columns: name, holiday_date, holiday_type, is_working_holiday, rate_multiplier, description</span></div>
-        <Card><template #content><DataTable :value="holidays" :loading="holidaysLoading" size="small" class="text-sm"><template #loading><div class="space-y-2"><Skeleton v-for="n in 5" :key="n" height="2rem" /></div></template><template #empty><div class="py-10 text-center text-sm text-slate-500">No holidays recorded for {{ holidayYear }}.</div></template><Column field="name" header="Holiday" /><Column field="holiday_date" header="Date" /><Column field="holiday_type" header="Type"><template #body="{ data }"><Tag :value="data.holiday_type" severity="info" /></template></Column><Column header="Work status"><template #body="{ data }"><Tag :value="data.is_working_holiday ? 'Working holiday' : 'Non-working'" :severity="data.is_working_holiday ? 'warn' : 'success'" /></template></Column><Column header="Actions"><template #body="{ data }"><Button icon="pi pi-trash" text severity="danger" size="small" @click="deleteHoliday(data)" /></template></Column></DataTable></template></Card>
+        <Card><template #content><DataTable :value="holidays" :loading="holidaysLoading" size="small" class="text-sm"><template #loading><div class="space-y-2"><Skeleton v-for="n in 5" :key="n" height="2rem" /></div></template><template #empty><div class="py-10 text-center text-sm text-slate-500">No holidays recorded for {{ holidayYear }}.</div></template><Column field="name" header="Holiday" /><Column field="holiday_date" header="Date"><template #body="{ data }">{{ formatHolidayDate(data.holiday_date) }}</template></Column><Column field="holiday_type" header="Type"><template #body="{ data }"><Tag :value="holidayTypeLabel(data)" :severity="holidayTypeSeverity(data)" class="text-xs" /></template></Column><Column header="Work status"><template #body="{ data }"><Tag :value="data.is_working_holiday ? 'Working holiday' : 'Non-working'" :severity="data.is_working_holiday ? 'warn' : 'success'" class="text-xs" /></template></Column><Column header="Actions"><template #body="{ data }"><Button icon="pi pi-trash" text severity="danger" size="small" @click="deleteHoliday(data)" /></template></Column></DataTable></template></Card>
       </div>
 
       <Dialog v-model:visible="holidayDialogVisible" modal header="Add Holiday" :style="{ width: '32rem' }">
@@ -306,6 +306,19 @@ const holidayFileInput = ref<HTMLInputElement | null>(null)
 const holidayYear = ref(new Date().getFullYear())
 const holidayYears = Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - 2 + index)
 const holidayTypes = [{ label: 'Regular', value: 'regular' }, { label: 'Special', value: 'special' }, { label: 'Company', value: 'company' }]
+const formatHolidayDate = (value: string) => value
+  ? new Intl.DateTimeFormat('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(`${value.slice(0, 10)}T00:00:00`))
+  : '-'
+const holidayTypeLabel = (holiday: any) => holiday.holiday_type === 'regular'
+  ? 'Regular'
+  : holiday.holiday_type === 'company'
+    ? 'Company'
+    : holiday.is_working_holiday ? 'Special Working' : 'Special Non-working'
+const holidayTypeSeverity = (holiday: any) => holiday.holiday_type === 'regular'
+  ? 'danger'
+  : holiday.holiday_type === 'company'
+    ? 'info'
+    : holiday.is_working_holiday ? 'warn' : 'success'
 const holidayForm = ref({ name: '', dates: [] as Date[], holiday_type: 'regular', is_working_holiday: false })
 const attendanceSearch = ref('')
 const attendanceMapEl = ref<HTMLElement | null>(null)

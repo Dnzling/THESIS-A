@@ -33,6 +33,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
         $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
         $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
+        $inertia('/admin/home-content', 'System/Admin/HomeContent', 'admin.home-content', 'Home Content');
+        $inertia('/admin/ecommerce-categories', 'System/Admin/EcommerceCategories', 'admin.ecommerce-categories', 'Ecommerce Categories');
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
@@ -98,11 +100,12 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
 
     // Store role permissions accessible by store admins and HR
     $inertia('/store/role-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
+    $inertia('/employee-profile', 'Profile/Edit', 'employee.profile', 'Employee Profile');
     // HR
     $inertia('/hr/index', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');
     $inertia('/hr/employees/view/{id?}', 'System/HR/EmployeeView', 'hr.employees.view', 'View Employee');
-    Route::get('/hr/profile', fn() => redirect('/profile'));
+    Route::get('/hr/profile', fn() => redirect('/employee-profile'));
     $inertia('/hr/shifts', 'System/HR/ShiftIndex', 'hr.shifts', 'Shift Management');
     $inertia('/hr/shifts/employees', 'System/HR/EmployeeShifts', 'hr.shifts.employees', 'Employee Shifts');
     $inertia('/hr/shifts/create', 'System/HR/ShiftCreate', 'hr.shifts.create', 'Create Shift');
@@ -330,7 +333,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/merchandising/products/{id}/edit', 'System/Merchandising/products/ProductForm', 'merchandising.products.edit', 'Edit Product', 'Update product information');
     $inertia('/merchandising/products/{id}', 'System/Merchandising/products/ProductView', 'merchandising.products.view', 'Product Details', 'View detailed product information and 3D model');
     $inertia('/merchandising/variations', 'System/Merchandising/variations/VariationsList', 'merchandising.variations', 'Product Variations', 'Manage colors, sizes, and materials');
-    $inertia('/merchandising/variations/new', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.create', 'Add New Variation', 'Create a new product variation');
+    $inertia('/merchandising/variations/new', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.create', 'Add Variation', 'Create a product variation');
     $inertia('/merchandising/variations/{id}/edit', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.edit', 'Edit Variation', 'Update variation details');
     $inertia('/merchandising/assets', 'System/Merchandising/assets/AssetsList', 'merchandising.assets', '3D Models & Assets', 'Upload and manage 3D models, images, and videos');
     $inertia('/merchandising/assets/upload', 'System/Merchandising/assets/AssetUpload', 'merchandising.assets.upload', 'Upload Asset', 'Upload new 3D model or image');
@@ -381,7 +384,8 @@ $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-por
 
 
 // Ecommerce storefront
-$inertia('/', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
+$inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Shopping');
+$inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
 $inertia('/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
 $inertia('/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
 $inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');

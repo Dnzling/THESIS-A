@@ -421,6 +421,14 @@ class InventoryService {
     return response.data
   }
 
+  async createProductVariation(productId: number, data: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/variations`, {
+      ...data,
+      product_id: productId,
+    })
+    return response.data
+  }
+
   async createProduct(data: any) {
     const response = await axiosClient.post(`${this.baseUrl}/products`, data)
     return response.data

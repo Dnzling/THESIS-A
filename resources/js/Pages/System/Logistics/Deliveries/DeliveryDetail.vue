@@ -1,681 +1,103 @@
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl p-6 shadow-sm">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
-          <div>
-            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Delivery Detail</h1>
-            <p class="mt-1 text-sm text-slate-600">{{ sourceLabel }} • {{ order?.order_number || '-' }}</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadAll" />
-          <Button
-            v-if="canAssignDelivery"
-            icon="pi pi-send"
-            label="Assign Delivery"
-            severity="success"
-            @click="openAssign"
-          />
-        </div>
+  <div class="mx-auto max-w-7xl space-y-4 px-4 py-5 text-sm sm:px-6 lg:px-8">
+    <header class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <Button icon="pi pi-arrow-left" text rounded size="small" severity="secondary" @click="goBack" />
+        <div><p class="text-xs font-medium uppercase tracking-wide text-orange-600">{{ sourceLabel }} delivery</p><h1 class="text-xl font-semibold text-slate-900">{{ order?.order_number || order?.po_number || 'Delivery Details' }}</h1></div>
       </div>
-    </div>
+      <div class="flex items-center gap-2">
+        <Tag :value="formatStatus(delivery?.status || 'pending')" :severity="deliverySeverity(delivery?.status)" class="text-xs" />
+        <Button icon="pi pi-refresh" label="Refresh" outlined severity="secondary" size="small" :loading="loading" @click="loadAll" />
+        <Button v-if="canAssignDelivery" icon="pi pi-send" label="Assign Delivery" severity="warn" size="small" @click="openAssign" />
+      </div>
+    </header>
 
-    <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>Order & Delivery Snapshot</template>
-      <template #content>
-        <div v-if="loading" class="text-sm text-slate-500">Loading details...</div>
-        <div v-else-if="!order" class="text-sm text-slate-500">No order data found.</div>
-        <div v-else class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <div><span class="text-slate-500">Customer:</span> <strong>{{ customerName }}</strong></div>
-          <div><span class="text-slate-500">Contact:</span> <strong>{{ customerContact }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong></div>
-          <div><span class="text-slate-500">Order Status:</span> <Tag :value="formatStatus(order?.status)" severity="secondary" /></div>
-          <div>
-            <span class="text-slate-500">Delivery Status:</span>
-            <Tag :value="formatStatus(delivery?.status || 'pending')" :severity="deliverySeverity(delivery?.status || 'pending')" />
-          </div>
-          <div><span class="text-slate-500">Tracking #:</span> <strong>{{ delivery?.tracking_number || '-' }}</strong></div>
-          <div v-if="delivery?.trip_id">
-            <span class="text-slate-500">Trip:</span>
-            <Button
-              text
-              severity="info"
-              class="p-0"
-              :label="`#${delivery.trip_id}`"
-              @click="openTrip(delivery.trip_id)"
-            />
-          </div>
-          <div><span class="text-slate-500">Courier Contact:</span> <strong>{{ delivery?.courier_contact || '-' }}</strong></div>
-          <div><span class="text-slate-500">Driver:</span> <strong>{{ driverName }}</strong></div>
-          <div><span class="text-slate-500">Delivered At:</span> <strong>{{ delivery?.delivered_at ? formatDateTime(delivery.delivered_at) : '-' }}</strong></div>
-          <div><span class="text-slate-500">Order Total:</span> <strong>₱ {{ totalAmount }}</strong></div>
-        </div>
-      </template>
-    </Card>
+    <div v-if="loading && !order" class="grid gap-4 lg:grid-cols-3"><Skeleton v-for="item in 6" :key="item" height="8rem" borderRadius="16px" /></div>
+    <template v-else-if="order">
+      <section class="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+        <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
+          <template #title><span class="text-base">Order Overview</span></template>
+          <template #content><div class="grid gap-4 sm:grid-cols-2">
+            <Info label="Customer" :value="customerName || '-'" /><Info label="Contact" :value="customerContact || '-'" />
+            <Info label="Delivery Address" :value="deliveryAddress || '-'" class="sm:col-span-2" />
+            <Info label="Order Status" :value="formatStatus(order.status)" /><Info label="Order Total" :value="formatCurrency(order.total_amount || order.grand_total)" />
+            <Info label="Tracking Number" :value="delivery?.tracking_number || '-'" /><Info label="Expected Delivery" :value="formatDateTime(delivery?.estimated_delivery_at || delivery?.scheduled_delivery_at || delivery?.expected_delivery_date)" />
+          </div></template>
+        </Card>
 
-    <Card v-if="delivery" class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>
-        <div class="flex flex-wrap items-center justify-between gap-3"><span>Live Delivery Tracking</span><Tag :value="isDelivered ? 'Tracking completed' : currentPoint ? 'Live location available' : 'Waiting for location'" :severity="isDelivered ? 'secondary' : currentPoint ? 'success' : 'warn'" /></div>
-      </template>
-      <template #content>
-        <div ref="mapElement" class="h-[360px] w-full overflow-hidden rounded-2xl border border-slate-200 sm:h-[440px]"></div>
-        <p v-if="!currentPoint" class="mt-3 text-sm text-amber-700">Waiting for the driver’s live GPS location.</p>
-      </template>
-    </Card>
+        <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
+          <template #title><span class="text-base">Courier Details</span></template>
+          <template #content><div v-if="delivery" class="space-y-4">
+            <div><p class="font-semibold text-slate-900">{{ driverName }}</p><p class="text-xs text-slate-500">Primary driver</p></div>
+            <div class="grid grid-cols-2 gap-3"><Info label="Contact" :value="delivery.courier_contact || delivery.driver_contact || delivery.driver?.phone_number || '-'" /><Info label="Plate Number" :value="delivery.vehicle?.plate_number || delivery.plate_number || '-'" /><Info label="Vehicle" :value="vehicleLabel" class="col-span-2" /></div>
+            <div v-if="delivery.assistants?.length" class="border-t border-slate-100 pt-3"><p class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Delivery Assistants</p><div class="flex flex-wrap gap-2"><Chip v-for="assistant in delivery.assistants" :key="assistant.id" :label="assistant.branch ? `${assistant.name} - ${assistant.branch}` : assistant.name" class="text-xs" /></div></div>
+          </div><p v-else class="text-slate-500">No courier has been assigned.</p></template>
+        </Card>
+      </section>
 
-    <Card v-if="order?.items?.length" class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>Order Items</template>
-      <template #content>
-        <DataTable :value="order.items" size="small" stripedRows responsiveLayout="scroll">
-          <Column field="product_name" header="Product" style="min-width: 14rem" />
-          <Column field="sku" header="SKU" style="min-width: 10rem" />
-          <Column field="quantity" header="Qty" style="width: 6rem" />
-          <Column field="unit_price" header="Unit Price" style="width: 10rem">
-            <template #body="{ data }">₱ {{ formatMoney(data.unit_price) }}</template>
-          </Column>
-          <Column field="line_total" header="Line Total" style="width: 10rem">
-            <template #body="{ data }">₱ {{ formatMoney(data.line_total) }}</template>
-          </Column>
-        </DataTable>
-      </template>
-    </Card>
-
-    <div v-if="delivery" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-        <template #title>Status Logs</template>
-        <template #content>
-          <div v-if="isDelivered" class="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            Delivery is already marked as delivered. Inputs are now read-only.
-          </div>
-
-          <div class="space-y-3">
-            <div v-if="nextStatus">
-              <label class="mb-1 block text-sm text-slate-600">Delivery Steps</label>
-              <Button icon="pi pi-check-circle" :label="nextStatusLabel" severity="success" :loading="statusUpdating || delivering" :disabled="!canManageDeliveries" @click="advanceDelivery" />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm text-slate-600">Update Delivery Status</label>
-              <Select
-                v-model="statusForm.status"
-                :options="statusOptions"
-                optionLabel="label"
-                optionValue="value"
-                fluid
-                :disabled="!canManageDeliveries || isDelivered"
-              />
-            </div>
-            <Textarea
-              v-model="statusForm.notes"
-              rows="3"
-              fluid
-              placeholder="Status notes (optional)"
-              :disabled="!canManageDeliveries || isDelivered"
-            />
-            <Button
-              icon="pi pi-save"
-              label="Save Status"
-              :loading="statusUpdating"
-              :disabled="!canManageDeliveries || isDelivered || !statusForm.status"
-              @click="saveStatus"
-            />
-          </div>
-        </template>
+      <Card v-if="delivery" class="rounded-2xl border border-slate-200/80 shadow-sm">
+        <template #title><div class="flex items-center justify-between gap-2"><div><p class="text-base">Live Delivery Tracking</p><p class="text-xs font-normal text-slate-500">Latest driver location and destination</p></div><Tag :value="currentPoint ? 'Location available' : 'Waiting for location'" :severity="currentPoint ? 'success' : 'warn'" class="text-xs" /></div></template>
+        <template #content><div ref="mapElement" class="h-[340px] w-full overflow-hidden rounded-xl border border-slate-200"></div><p v-if="!currentPoint" class="mt-2 text-xs text-amber-700">The map updates after the driver shares a GPS location.</p></template>
       </Card>
 
-      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-        <template #title>Delivered Proof</template>
+      <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
+        <template #title><span class="text-base">Order Items ({{ orderItems.length }})</span></template>
+        <template #content><DataTable :value="orderItems" size="small" stripedRows responsiveLayout="scroll" class="text-xs">
+          <template #empty><div class="py-8 text-center text-slate-500">No order items recorded.</div></template>
+          <Column header="Product" style="min-width:15rem"><template #body="{ data }"><p class="font-medium text-slate-900">{{ itemName(data) }}</p><p class="text-xs text-slate-500">SKU: {{ itemSku(data) }}</p></template></Column>
+          <Column header="Quantity / UOM"><template #body="{ data }"><span class="font-medium">{{ formatQuantity(itemQuantity(data)) }} {{ itemUom(data) }}</span></template></Column>
+          <Column header="Unit Price"><template #body="{ data }">{{ formatCurrency(itemUnitPrice(data)) }}</template></Column>
+          <Column header="Line Total"><template #body="{ data }"><span class="font-semibold">{{ formatCurrency(itemLineTotal(data)) }}</span></template></Column>
+        </DataTable></template>
+      </Card>
+
+      <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
+        <template #title><div><p class="text-base">Delivery Logs</p><p class="text-xs font-normal text-slate-500">Read-only progress from the assigned delivery team</p></div></template>
         <template #content>
-          <div v-if="delivery?.proof_photo_url || delivery?.proof_signature_url" class="mb-3 flex flex-wrap gap-2">
-            <Button v-if="delivery?.proof_photo_url" icon="pi pi-image" label="View Proof Photo" outlined @click="openMedia(delivery.proof_photo_url)" />
-            <Button v-if="delivery?.proof_signature_url" icon="pi pi-pencil" label="View Signature" outlined @click="openMedia(delivery.proof_signature_url)" />
-          </div>
-
-          <div class="space-y-3">
-            <Message v-if="isDelivered" severity="success" :closable="false">This delivery is finalized.</Message>
-
-            <template v-else>
-              <Button
-                icon="pi pi-check-circle"
-                label="Mark Delivered"
-                severity="success"
-                :disabled="!canManageDeliveries"
-                @click="openDeliveredDialog"
-              />
-            </template>
-          </div>
+          <div v-if="!logs.length" class="py-10 text-center text-slate-500">No delivery activity has been recorded.</div>
+          <div v-else class="space-y-3"><article v-for="entry in logs" :key="entry.id" class="rounded-xl border border-slate-200 p-4">
+            <div class="flex flex-wrap items-start justify-between gap-2"><div><Tag :value="formatStatus(entry.event_type || 'update')" :severity="logSeverity(entry.event_type)" class="text-xs" /><p class="mt-2 text-slate-800">{{ entry.message || entry.notes || 'Delivery activity recorded.' }}</p><p v-if="entry.creator" class="mt-1 text-xs text-slate-500">Recorded by {{ personName(entry.creator) }}</p></div><time class="text-xs text-slate-500">{{ formatDateTime(entry.logged_at || entry.created_at) }}</time></div>
+            <div v-if="entry.status_from || entry.status_to" class="mt-2 text-xs text-slate-500">{{ formatStatus(entry.status_from) }} to {{ formatStatus(entry.status_to) }}</div>
+            <div v-if="entry.attachments?.length" class="mt-3 flex flex-wrap gap-3 border-t border-slate-100 pt-3"><button v-for="attachment in entry.attachments" :key="attachment.id || attachment.public_url" type="button" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50" @click="openMedia(attachment.public_url)"><img :src="attachment.public_url" alt="Delivery attachment" class="h-28 w-36 object-cover transition group-hover:scale-105" /><span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View attachment</span></button></div>
+          </article></div>
         </template>
       </Card>
-    </div>
+    </template>
+    <Message v-else severity="warn" :closable="false">Delivery order was not found.</Message>
 
-    <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>
-        <div class="flex items-center justify-between gap-3">
-          <span>Timeline</span>
-          <Button
-            v-if="canRecordTransitLog"
-            icon="pi pi-plus"
-            label="Record a Log"
-            size="small"
-            outlined
-            @click="recordLogDialogVisible = true"
-          />
-        </div>
-      </template>
-      <template #content>
-        <div v-if="!logs.length" class="text-sm text-slate-500">No timeline entries yet.</div>
-        <div v-else class="space-y-3">
-          <div v-for="entry in logs" :key="entry.id" class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <Tag :value="formatStatus(entry.event_type || 'note')" severity="info" />
-              <span class="text-xs text-slate-500">{{ formatDateTime(entry.created_at) }}</span>
-            </div>
-            <p class="mt-2 text-sm text-slate-800">{{ entry.message }}</p>
-            <p v-if="entry.status_from || entry.status_to" class="mt-1 text-xs text-slate-500">
-              {{ entry.status_from || '-' }} → {{ entry.status_to || '-' }}
-            </p>
-            <div v-if="entry.attachments?.length" class="mt-3 flex flex-wrap gap-3">
-              <button v-for="attachment in entry.attachments" :key="attachment.id || attachment.public_url" type="button" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-white" @click="openMedia(attachment.public_url)">
-                <img :src="attachment.public_url" alt="Delivery attachment" class="h-28 w-36 object-cover transition group-hover:scale-105" />
-                <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-xs text-white">View attachment</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </template>
-    </Card>
-
-    <Dialog v-model:visible="recordLogDialogVisible" modal header="Record Delivery Log" class="w-full max-w-xl">
-      <div class="space-y-3">
-        <Textarea
-          v-model="recordLogMessage"
-          rows="4"
-          fluid
-          placeholder="Enter delivery log message (e.g., Arrived at checkpoint, traffic delay, unloading started)."
-        />
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="recordLogDialogVisible = false" />
-        <Button
-          icon="pi pi-check"
-          label="Save Log"
-          :loading="savingLog"
-          :disabled="!recordLogMessage.trim()"
-          @click="saveTransitLog"
-        />
-      </template>
-    </Dialog>
-
-    <Dialog v-model:visible="deliveredDialogVisible" modal header="Upload Proof of Delivery" class="w-full max-w-xl">
-      <div class="space-y-3">
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Proof Photo</label>
-          <input type="file" accept="image/*" class="block w-full text-sm" @change="onPhotoChange" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Signature</label>
-          <div class="rounded-2xl border border-slate-200 bg-white p-2">
-            <canvas
-              ref="signatureCanvas"
-              class="h-40 w-full touch-none rounded-xl border border-slate-200"
-              @pointerdown="startSignature"
-              @pointermove="drawSignature"
-              @pointerup="endSignature"
-              @pointerleave="endSignature"
-            ></canvas>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <Button label="Clear" severity="secondary" outlined size="small" @click="clearSignature" />
-            </div>
-          </div>
-        </div>
-        <Textarea v-model="deliveredNotes" rows="3" fluid placeholder="Proof notes (optional)" />
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="deliveredDialogVisible = false" />
-        <Button
-          icon="pi pi-check-circle"
-          label="Submit and Deliver"
-          severity="success"
-          :loading="delivering"
-          :disabled="!photoFile"
-          @click="markDelivered"
-        />
-      </template>
-    </Dialog>
-
-    <Dialog v-model:visible="mediaPreviewVisible" modal :header="mediaPreviewTitle" class="w-full max-w-4xl">
-      <div class="max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
-        <div v-if="mediaLoading" class="flex h-[50vh] items-center justify-center text-slate-500">Loading proof...</div>
-        <div v-else-if="mediaError" class="flex h-[50vh] items-center justify-center text-red-500">{{ mediaError }}</div>
-        <img
-          v-else-if="mediaIsImage && mediaPreviewObjectUrl"
-          :src="mediaPreviewObjectUrl"
-          alt="Proof preview"
-          class="mx-auto max-h-[70vh] w-auto rounded-lg object-contain"
-        />
-        <iframe
-          v-else
-          :src="mediaPreviewObjectUrl || mediaPreviewUrl"
-          class="h-[70vh] w-full rounded-lg border-0 bg-white"
-        />
-      </div>
-      <template #footer>
-        <Button label="Close" severity="secondary" outlined @click="closeMediaPreview" />
-      </template>
-    </Dialog>
+    <Dialog v-model:visible="mediaPreviewVisible" modal header="Delivery Attachment" class="w-full max-w-4xl"><div class="flex min-h-72 items-center justify-center rounded-xl bg-slate-50 p-3"><img :src="mediaPreviewUrl" alt="Delivery attachment preview" class="max-h-[70vh] max-w-full rounded-lg object-contain" /></div></Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import Card from 'primevue/card'
-import Button from 'primevue/button'
-import Tag from 'primevue/tag'
-import Select from 'primevue/select'
-import Textarea from 'primevue/textarea'
-import Message from 'primevue/message'
-import Dialog from 'primevue/dialog'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
+import Button from 'primevue/button'; import Card from 'primevue/card'; import Chip from 'primevue/chip'; import Column from 'primevue/column'; import DataTable from 'primevue/datatable'; import Dialog from 'primevue/dialog'; import Message from 'primevue/message'; import Skeleton from 'primevue/skeleton'; import Tag from 'primevue/tag'
+import L from 'leaflet'; import 'leaflet/dist/leaflet.css'; import markerIcon from 'leaflet/dist/images/marker-icon.png'; import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'; import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
-const route = useRoute()
-const router = useRouter()
-const toast = useToast()
-const authStore = useAuthStore()
-const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage')
+const Info = defineComponent({ props: { label: { type: String, required: true }, value: { type: [String, Number], default: '-' } }, setup: (props) => () => h('div', [h('p', { class: 'text-xs text-slate-500' }, props.label), h('p', { class: 'mt-1 font-medium text-slate-900' }, String(props.value || '-'))]) })
+const route = useRoute(); const router = useRouter(); const toast = useToast(); const authStore = useAuthStore()
+const loading = ref(false); const order = ref<any>(null); const delivery = ref<any>(null); const logs = ref<any[]>([]); const mapElement = ref<HTMLElement | null>(null); const mediaPreviewVisible = ref(false); const mediaPreviewUrl = ref(''); let trackingMap: L.Map | null = null
+const source = computed<'ecommerce' | 'sales' | 'pickup'>(() => { const value = String(route.params.source || '').toLowerCase(); return value === 'sales' || value === 'pickup' ? value : 'ecommerce' })
+const orderId = computed(() => Number(route.params.orderId || 0)); const sourceLabel = computed(() => source.value === 'pickup' ? 'Supplier pickup' : source.value === 'sales' ? 'Sales' : 'Ecommerce')
+const canAssignDelivery = computed(() => authStore.hasPermission('logistics.deliveries.manage') && !delivery.value && source.value !== 'pickup'); const orderItems = computed(() => order.value?.items || [])
+const customerName = computed(() => source.value === 'pickup' ? order.value?.supplier?.supplier_name : source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name)
+const customerContact = computed(() => source.value === 'pickup' ? order.value?.supplier?.phone : source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone)
+const deliveryAddress = computed(() => source.value === 'pickup' ? order.value?.branch?.address : source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address)
+const personName = (person: any) => person ? [person.fname, person.lname].filter(Boolean).join(' ').trim() : ''
+const driverName = computed(() => personName(delivery.value?.driver || delivery.value?.driver_user) || delivery.value?.driver_name || delivery.value?.courier_name || '-')
+const vehicleLabel = computed(() => [delivery.value?.vehicle?.vehicle_name, delivery.value?.vehicle?.brand, delivery.value?.vehicle?.model].filter(Boolean).join(' ') || delivery.value?.truck_brand || '-')
+const point = (lat: any, lng: any): [number, number] | null => Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) && Number(lat) !== 0 && Number(lng) !== 0 ? [Number(lat), Number(lng)] : null
+const currentPoint = computed<[number, number] | null>(() => point(delivery.value?.current_latitude, delivery.value?.current_longitude)); const destinationPoint = computed<[number, number] | null>(() => source.value === 'sales' ? point(order.value?.delivery_latitude, order.value?.delivery_longitude) : source.value === 'ecommerce' ? point(order.value?.customer_latitude, order.value?.customer_longitude) : point(order.value?.branch?.latitude, order.value?.branch?.longitude))
+const formatStatus = (value: any) => String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()); const formatDateTime = (value: any) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-'; const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0); const formatQuantity = (value: any) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })
+const deliverySeverity = (status: any) => String(status) === 'delivered' ? 'success' : ['failed_delivery', 'cancelled'].includes(String(status)) ? 'danger' : ['in_transit', 'out_for_delivery'].includes(String(status)) ? 'warn' : 'info'; const logSeverity = (type: any) => String(type).includes('deliver') ? 'success' : String(type).includes('cancel') || String(type).includes('fail') ? 'danger' : String(type).includes('transit') ? 'warn' : 'info'
+const itemName = (item: any) => item.product?.product_name || item.product_name || '-'; const itemSku = (item: any) => item.product?.sku || item.sku || '-'; const itemQuantity = (item: any) => item.quantity_ordered ?? item.quantity ?? 0; const itemUom = (item: any) => item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || 'unit'; const itemUnitPrice = (item: any) => item.unit_cost ?? item.unit_price ?? 0; const itemLineTotal = (item: any) => item.line_total ?? Number(itemUnitPrice(item)) * Number(itemQuantity(item))
 
-const formatMoney = (value: any) => {
-  const num = Number(value || 0)
-  return num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-const source = computed(() => (String(route.params.source || '').toLowerCase() === 'sales' ? 'sales' : 'ecommerce'))
-const orderId = computed(() => Number(route.params.orderId || 0))
-const sourceLabel = computed(() => (source.value === 'sales' ? 'Sales' : 'Ecommerce'))
-
-const loading = ref(false)
-const statusUpdating = ref(false)
-const delivering = ref(false)
-const deliveredDialogVisible = ref(false)
-const mediaPreviewVisible = ref(false)
-const mediaPreviewUrl = ref('')
-const mediaPreviewObjectUrl = ref('')
-const mediaPreviewTitle = ref('Proof Preview')
-const mediaLoading = ref(false)
-const mediaError = ref('')
-const recordLogDialogVisible = ref(false)
-const recordLogMessage = ref('')
-const savingLog = ref(false)
-
-const order = ref<any>(null)
-const delivery = ref<any>(null)
-const logs = ref<any[]>([])
-const mapElement = ref<HTMLElement | null>(null)
-let trackingMap: L.Map | null = null
-let truckMarker: L.Marker | null = null
-let destinationMarker: L.Marker | null = null
-let routeLine: L.Polyline | null = null
-let tileLayerAdded = false
-
-const photoFile = ref<File | null>(null)
-const signatureCanvas = ref<HTMLCanvasElement | null>(null)
-const signatureDrawing = ref(false)
-const signatureHasInk = ref(false)
-const deliveredNotes = ref('')
-
-const statusForm = reactive({
-  status: '',
-  notes: '',
-})
-
-const statusOptions = [
-  { label: 'Assigned', value: 'assigned' },
-  { label: 'Packed', value: 'packed' },
-  { label: 'In Transit', value: 'in_transit' },
-  { label: 'Out For Delivery', value: 'out_for_delivery' },
-  { label: 'Failed Delivery', value: 'failed_delivery' },
-  { label: 'Cancelled', value: 'cancelled' },
-]
-
-const customerName = computed(() => (source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
-const customerContact = computed(() => (source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
-const deliveryAddress = computed(() => (source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
-const totalAmount = computed(() => Number(order.value?.total_amount || 0).toFixed(2))
-const driverName = computed(() => {
-  const d = delivery.value?.driver
-  return d ? `${d.fname || ''} ${d.lname || ''}`.trim() : delivery.value?.courier_name || '-'
-})
-const isDelivered = computed(() => String(delivery.value?.status || '').toLowerCase() === 'delivered')
-const canRecordTransitLog = computed(() => {
-  const status = String(delivery.value?.status || '').toLowerCase()
-  return ['in_transit', 'out_for_delivery'].includes(status) && canManageDeliveries
-})
-const canAssignDelivery = computed(() => canManageDeliveries && !delivery.value && !!order.value)
-const nextStatus = computed(() => ({ assigned: 'in_transit', packed: 'in_transit', in_transit: 'out_for_delivery', out_for_delivery: 'delivered' } as Record<string, string>)[String(delivery.value?.status || '').toLowerCase()] || null)
-const nextStatusLabel = computed(() => nextStatus.value === 'delivered' ? 'Arrival / Mark Delivered' : nextStatus.value === 'in_transit' ? 'Start Delivery' : 'Start Pickup')
-const currentPoint = computed<[number, number] | null>(() => {
-  const lat = Number(delivery.value?.current_latitude); const lng = Number(delivery.value?.current_longitude)
-  return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0 ? [lat, lng] : null
-})
-const destinationPoint = computed<[number, number] | null>(() => {
-  const lat = Number(source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
-  const lng = Number(source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
-  return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0 ? [lat, lng] : null
-})
-
-const loadAll = async () => {
-  if (!orderId.value) return
-  loading.value = true
-  try {
-    const response = await logisticsService.getDeliveryOrderDetail(source.value as 'ecommerce' | 'sales', orderId.value)
-    const payload = response?.data || {}
-    order.value = payload.order || null
-    delivery.value = payload.delivery || null
-    logs.value = payload.logs || []
-
-    if (delivery.value) {
-      statusForm.status = delivery.value.status || 'assigned'
-    }
-    await renderTrackingMap()
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load detail.', life: 3500 })
-  } finally {
-    loading.value = false
-  }
-}
-
-async function renderTrackingMap() {
-  if (!mapElement.value) return
-  const center = currentPoint.value || destinationPoint.value || [14.5995, 120.9842] as [number, number]
-  if (!trackingMap) trackingMap = L.map(mapElement.value).setView(center, currentPoint.value || destinationPoint.value ? 13 : 10)
-  if (!tileLayerAdded) {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trackingMap)
-    tileLayerAdded = true
-  }
-  const destinationIcon = L.icon({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41], shadowSize: [41, 41] })
-  const truckIcon = L.icon({ iconUrl: '/images/truck-map-marker-orange.png', iconSize: [85, 85], iconAnchor: [42, 42] })
-  if (currentPoint.value) truckMarker ? truckMarker.setLatLng(currentPoint.value) : truckMarker = L.marker(currentPoint.value, { icon: truckIcon }).addTo(trackingMap).bindTooltip('Truck location')
-  if (destinationPoint.value) destinationMarker ? destinationMarker.setLatLng(destinationPoint.value) : destinationMarker = L.marker(destinationPoint.value, { icon: destinationIcon }).addTo(trackingMap).bindTooltip('Destination')
-  if (currentPoint.value && destinationPoint.value) {
-    const coords = `${currentPoint.value[1]},${currentPoint.value[0]};${destinationPoint.value[1]},${destinationPoint.value[0]}`
-    let points: [number, number][] = [currentPoint.value, destinationPoint.value]
-    try { const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`); const data = await response.json(); const road = data?.routes?.[0]?.geometry?.coordinates || []; if (road.length > 1) points = road.map((p: number[]) => [p[1], p[0]]) } catch { /* fallback */ }
-    routeLine ? routeLine.setLatLngs(points) : routeLine = L.polyline(points, { color: '#2563eb', weight: 5, opacity: 0.8 }).addTo(trackingMap)
-    trackingMap.fitBounds(L.latLngBounds(points).pad(0.15), { maxZoom: 15 })
-  }
-  window.setTimeout(() => trackingMap?.invalidateSize(), 100)
-}
-
-const advanceDelivery = async () => {
-  if (!nextStatus.value) return
-  if (nextStatus.value === 'delivered') { openDeliveredDialog(); return }
-  statusForm.status = nextStatus.value
-  await saveStatus()
-}
-
-const saveStatus = async () => {
-  if (!delivery.value) return
-
-  statusUpdating.value = true
-  try {
-    await logisticsService.updateUnifiedDeliveryStatus(source.value as 'ecommerce' | 'sales', orderId.value, {
-      status: statusForm.status,
-      notes: statusForm.notes || null,
-    })
-
-    toast.add({ severity: 'success', summary: 'Updated', detail: 'Delivery status updated.', life: 2500 })
-    await loadAll()
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Update Failed', detail: error?.response?.data?.message || 'Failed to update delivery status.', life: 3500 })
-  } finally {
-    statusUpdating.value = false
-  }
-}
-
-const saveTransitLog = async () => {
-  if (!recordLogMessage.value.trim()) return
-
-  savingLog.value = true
-  try {
-    await logisticsService.addUnifiedDeliveryLog(source.value as 'ecommerce' | 'sales', orderId.value, {
-      message: recordLogMessage.value.trim(),
-    })
-    toast.add({ severity: 'success', summary: 'Logged', detail: 'Delivery log recorded.', life: 2200 })
-    recordLogMessage.value = ''
-    recordLogDialogVisible.value = false
-    await loadAll()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Log Failed',
-      detail: error?.response?.data?.message || 'Unable to record delivery log.',
-      life: 3000,
-    })
-  } finally {
-    savingLog.value = false
-  }
-}
-
-const markDelivered = async () => {
-  if (!photoFile.value) return
-
-  delivering.value = true
-  try {
-    const formData = new FormData()
-    formData.append('photo', photoFile.value)
-    const signatureBlob = await signatureToBlob()
-    if (!signatureBlob) {
-      throw new Error('Missing signature')
-    }
-    formData.append('signature', signatureBlob, 'signature.png')
-    formData.append('notes', deliveredNotes.value)
-
-    await logisticsService.markUnifiedDelivered(source.value as 'ecommerce' | 'sales', orderId.value, formData)
-
-    toast.add({ severity: 'success', summary: 'Delivered', detail: 'Proof uploaded and marked as delivered.', life: 2500 })
-
-    photoFile.value = null
-    clearSignature()
-    deliveredNotes.value = ''
-    deliveredDialogVisible.value = false
-
-    await loadAll()
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Deliver Failed', detail: error?.response?.data?.message || 'Failed to mark as delivered.', life: 3500 })
-  } finally {
-    delivering.value = false
-  }
-}
-
-const onPhotoChange = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  photoFile.value = target.files?.[0] || null
-}
-
-const setupSignatureCanvas = () => {
-  if (!signatureCanvas.value) return
-  const canvas = signatureCanvas.value
-  const rect = canvas.getBoundingClientRect()
-  const scale = window.devicePixelRatio || 1
-  canvas.width = Math.max(1, Math.floor(rect.width * scale))
-  canvas.height = Math.max(1, Math.floor(rect.height * scale))
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  ctx.scale(scale, scale)
-  ctx.lineWidth = 2
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = '#0f172a'
-}
-
-const getSignaturePoint = (event: PointerEvent) => {
-  const canvas = signatureCanvas.value
-  if (!canvas) return null
-  const rect = canvas.getBoundingClientRect()
-  return {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
-  }
-}
-
-const startSignature = (event: PointerEvent) => {
-  if (!signatureCanvas.value) return
-  signatureDrawing.value = true
-  signatureCanvas.value.setPointerCapture(event.pointerId)
-  const ctx = signatureCanvas.value.getContext('2d')
-  const point = getSignaturePoint(event)
-  if (!ctx || !point) return
-  ctx.beginPath()
-  ctx.moveTo(point.x, point.y)
-}
-
-const drawSignature = (event: PointerEvent) => {
-  if (!signatureDrawing.value || !signatureCanvas.value) return
-  const ctx = signatureCanvas.value.getContext('2d')
-  const point = getSignaturePoint(event)
-  if (!ctx || !point) return
-  ctx.lineTo(point.x, point.y)
-  ctx.stroke()
-  signatureHasInk.value = true
-}
-
-const endSignature = (event: PointerEvent) => {
-  if (!signatureDrawing.value || !signatureCanvas.value) return
-  signatureDrawing.value = false
-  signatureCanvas.value.releasePointerCapture(event.pointerId)
-}
-
-const clearSignature = () => {
-  const canvas = signatureCanvas.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  signatureHasInk.value = false
-}
-
-const signatureToBlob = () => {
-  const canvas = signatureCanvas.value
-  if (!canvas) return Promise.resolve(null)
-  return new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), 'image/png')
-  })
-}
-
-const goBack = () => router.push({ name: 'logistics.deliveries' })
-
-const openDeliveredDialog = () => {
-  deliveredDialogVisible.value = true
-}
-
-const openAssign = () => {
-  router.push({
-    name: 'logistics.deliveries.create',
-    query: { source: source.value, order_id: String(orderId.value) },
-  })
-}
-
-const normalizeMediaUrl = (raw: string) => {
-  if (!raw) return ''
-  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
-  if (raw.startsWith('/storage/')) return raw
-  if (raw.startsWith('storage/')) return `/${raw}`
-  return `/storage/${raw.replace(/^\//, '')}`
-}
-
-const openMedia = async (url: string) => {
-  const targetUrl = normalizeMediaUrl(url)
-  if (!targetUrl) return
-
-  // cleanup previous object URL
-  if (mediaPreviewObjectUrl.value) {
-    URL.revokeObjectURL(mediaPreviewObjectUrl.value)
-    mediaPreviewObjectUrl.value = ''
-  }
-
-  mediaPreviewUrl.value = targetUrl
-  mediaPreviewTitle.value = targetUrl.includes('/signature') ? 'Signature Preview' : 'Proof Photo Preview'
-  mediaPreviewVisible.value = true
-  mediaLoading.value = true
-  mediaError.value = ''
-
-  try {
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('access_token') || ''
-    const response = await fetch(targetUrl, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      credentials: 'include',
-    })
-
-    if (!response.ok) {
-      throw new Error('Unable to load attached proof file.')
-    }
-
-    const blob = await response.blob()
-    mediaPreviewObjectUrl.value = URL.createObjectURL(blob)
-  } catch (error: any) {
-    mediaError.value = error?.message || 'Unable to load attached proof file.'
-  } finally {
-    mediaLoading.value = false
-  }
-}
-
-const mediaIsImage = computed(() => {
-  const value = String(mediaPreviewUrl.value || '').toLowerCase()
-  return value.includes('.jpg')
-    || value.includes('.jpeg')
-    || value.includes('.png')
-    || value.includes('.webp')
-    || value.includes('.gif')
-    || value.includes('/proof/photo')
-    || value.includes('/proof/signature')
-})
-
-const closeMediaPreview = () => {
-  mediaPreviewVisible.value = false
-  mediaLoading.value = false
-  mediaError.value = ''
-  mediaPreviewUrl.value = ''
-  if (mediaPreviewObjectUrl.value) {
-    URL.revokeObjectURL(mediaPreviewObjectUrl.value)
-    mediaPreviewObjectUrl.value = ''
-  }
-}
-
-const openTrip = (tripId: number) => {
-  router.push({ name: 'logistics.trips.detail', params: { id: String(tripId) } })
-}
-
-const formatStatus = (value: string) => value?.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) || '-'
-
-const deliverySeverity = (status: string) => {
-  if (status === 'delivered') return 'success'
-  if (status === 'failed_delivery' || status === 'cancelled') return 'danger'
-  if (status === 'out_for_delivery') return 'warning'
-  if (status === 'pending') return 'warn'
-  return 'info'
-}
-
-const formatDateTime = (value: string) => (value ? new Date(value).toLocaleString('en-PH') : '-')
-
-onMounted(() => {
-  loadAll()
-  setupSignatureCanvas()
-  window.addEventListener('resize', setupSignatureCanvas)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', setupSignatureCanvas)
-  if (trackingMap) trackingMap.remove()
-  trackingMap = null
-})
+const renderMap = async () => { await nextTick(); if (!mapElement.value) return; trackingMap?.remove(); const center = currentPoint.value || destinationPoint.value || [14.5995, 120.9842]; trackingMap = L.map(mapElement.value).setView(center, currentPoint.value || destinationPoint.value ? 13 : 9); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trackingMap); const icon = L.icon({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] }); const points: [number, number][] = []; if (currentPoint.value) { L.marker(currentPoint.value, { icon }).addTo(trackingMap).bindTooltip('Driver location'); points.push(currentPoint.value) } if (destinationPoint.value) { L.marker(destinationPoint.value, { icon }).addTo(trackingMap).bindTooltip('Destination'); points.push(destinationPoint.value) } if (points.length > 1) { L.polyline(points, { color: '#f97316', weight: 4 }).addTo(trackingMap); trackingMap.fitBounds(points, { padding: [40, 40] }) } }
+const loadAll = async () => { if (!orderId.value) return; loading.value = true; try { const response = await logisticsService.getDeliveryOrderDetail(source.value, orderId.value); const payload = response?.data || {}; order.value = payload.order || null; delivery.value = payload.delivery || null; logs.value = payload.logs || []; await renderMap() } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load delivery', detail: error?.response?.data?.message || 'Please try again.', life: 3500 }) } finally { loading.value = false } }
+const openMedia = (url: string) => { if (url) { mediaPreviewUrl.value = url; mediaPreviewVisible.value = true } }; const openAssign = () => router.push({ name: 'logistics.deliveries.create', query: { source: source.value, order_id: String(orderId.value) } }); const goBack = () => router.push({ name: 'logistics.deliveries' })
+onMounted(loadAll); onBeforeUnmount(() => { trackingMap?.remove(); trackingMap = null })
 </script>

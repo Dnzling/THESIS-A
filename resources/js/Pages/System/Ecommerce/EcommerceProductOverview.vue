@@ -16,7 +16,7 @@
           </div>
         </div>
       </div>
-  
+
       <div class="rounded-2xl border border-slate-200 bg-white p-4">
         <div class="flex gap-2 pb-4">
           <Skeleton width="180px" height="34px" />
@@ -95,27 +95,21 @@
                   class="text-slate-300">•</span>
                 <span v-if="product.category">{{ product.category }}</span>
               </div>
-              <p class="text-xs text-slate-500">
-                SKU: <span class="font-mono font-semibold text-slate-700">{{ product.sku || '—' }}</span>
-              </p>
+
             </div>
   
             <div class="space-y-1">
-              <p class="text-3xl font-bold text-orange-600">{{ formatCurrency(product.price) }}</p>
+              <div v-if="hasProductDiscount" class="flex flex-wrap items-center gap-2">
+                <span class="text-lg font-medium text-slate-400 line-through">{{ formatCurrency(displayBasePrice) }}</span>
+                <Tag :value="`${productDiscountPercentage}% OFF`" severity="danger" class="text-xs" />
+              </div>
+              <p class="text-3xl font-bold text-orange-600">{{ formatCurrency(displaySellingPrice) }}</p>
               <p class="text-xs font-medium text-slate-500">VAT included</p>
               <p class="text-sm text-slate-500">
                 {{ product.quantity_available || 0 }} stocks available
                 <span v-if="product.assembly_required" class="mx-2 text-slate-300">•</span>
                 <span v-if="product.assembly_required">Assembly required</span>
               </p>
-            </div>
-  
-            <div class="space-y-2">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
-              <div v-if="product.description"
-                class="text-sm leading-7 text-slate-600 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
-                v-html="displayDescriptionHtml"></div>
-              <p v-else class="text-sm leading-7 text-slate-600">No description available.</p>
             </div>
   
             <div class="space-y-2">
@@ -161,12 +155,23 @@
               </p>
             </div>
   
-            <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-3">
-              <InputNumber v-model="quantity" :min="1" :max="maxPurchasableQty" showButtons class="w-full sm:w-auto" />
-              <div class="grid grid-cols-2 gap-2 sm:w-auto">
-                <Button label="Add to Cart" severity="warn" outlined fluid :disabled="!canPurchase" @click="addToCart" />
-                <Button label="Buy Now" fluid :disabled="!canPurchase" @click="buyNow" />
+            <div class="flex w-full flex-col gap-2 pt-2 sm:flex-row sm:items-stretch sm:gap-3">
+              <div
+                class="flex min-w-0 flex-1 items-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <Button type="button" icon="pi pi-minus" severity="secondary" text size="small"
+                  class="!h-10 !w-10 !rounded-none !border-0 !p-0 !text-slate-500 hover:!bg-orange-50 hover:!text-orange-600"
+                  aria-label="Decrease quantity" :disabled="quantity <= 1" @click="decreaseQuantity" />
+                <InputNumber v-model="quantity" :min="1" :max="maxPurchasableQty" :useGrouping="false"
+                  inputId="product-quantity"
+                  inputClass="!w-full !border-0 !text-center !text-sm !font-semibold !text-slate-900 !shadow-none"
+                  class="min-w-0 flex-1" aria-label="Quantity" @update:modelValue="normalizeQuantity" />
+                <Button type="button" icon="pi pi-plus" severity="secondary" text size="small"
+                  class="!h-10 !w-10 !rounded-none !border-0 !p-0 !text-slate-500 hover:!bg-orange-50 hover:!text-orange-600"
+                  aria-label="Increase quantity" :disabled="quantity >= maxPurchasableQty" @click="increaseQuantity" />
               </div>
+              <Button label="Add to Cart" severity="warn" outlined fluid class="flex-1" :disabled="!canPurchase"
+                @click="addToCart" />
+              <Button label="Buy Now" fluid class="flex-1" :disabled="!canPurchase" @click="buyNow" />
             </div>
           </div>
         </div>
@@ -200,7 +205,7 @@
         </button>
         <div class="mt-2 justify-between flex gap-3">
           <!-- <Button label="Report" icon="pi pi-exclamation-triangle" severity="danger" text size="small"
-              @click="openReportDialog" /> -->
+                  @click="openReportDialog" /> -->
   
         </div>
       </template>
@@ -208,11 +213,11 @@
   
     <div v-if="product" class="mt-6 rounded-2xl border border-slate-200 bg-white">
       <div class="flex flex-wrap gap-2 border-b border-slate-200 p-3">
-        <Button label="Product Description" size="small" :severity="activeTab === 'description' ? 'info' : 'secondary'"
+        <Button label="Product Description" size="small" :severity="activeTab === 'description' ? 'warn' : 'secondary'"
           :outlined="activeTab !== 'description'" @click="activeTab = 'description'" />
-        <Button label="Reviews" size="small" :severity="activeTab === 'reviews' ? 'info' : 'secondary'"
+        <Button label="Reviews" size="small" :severity="activeTab === 'reviews' ? 'warn' : 'secondary'"
           :outlined="activeTab !== 'reviews'" @click="activeTab = 'reviews'" />
-        <Button label="Recommended" size="small" :severity="activeTab === 'recommended' ? 'info' : 'secondary'"
+        <Button label="Recommended" size="small" :severity="activeTab === 'recommended' ? 'warn' : 'secondary'"
           :outlined="activeTab !== 'recommended'" @click="activeTab = 'recommended'" />
       </div>
   
@@ -396,6 +401,15 @@ const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
 const productHasVariations = computed(() => Array.isArray(product.value?.variations) && product.value.variations.length > 0)
+const displayBasePrice = computed(() => Number(selectedVariation.value?.base_price ?? product.value?.base_price ?? product.value?.price ?? 0))
+const displaySellingPrice = computed(() => Number(selectedVariation.value?.final_price ?? product.value?.price ?? 0))
+const hasProductDiscount = computed(() => {
+  return displayBasePrice.value > 0 && displaySellingPrice.value > 0 && displaySellingPrice.value < displayBasePrice.value
+})
+const productDiscountPercentage = computed(() => {
+  if (!hasProductDiscount.value) return 0
+  return Math.round(((displayBasePrice.value - displaySellingPrice.value) / displayBasePrice.value) * 100)
+})
 
 function isVariationSelectable(variation: any): boolean {
   if (!variation) return false
@@ -417,6 +431,20 @@ const purchasableQty = computed(() => {
 
 const maxPurchasableQty = computed(() => Math.max(1, purchasableQty.value || 1))
 const canPurchase = computed(() => purchasableQty.value > 0)
+
+const decreaseQuantity = () => {
+  quantity.value = Math.max(1, Number(quantity.value || 1) - 1)
+}
+
+const increaseQuantity = () => {
+  quantity.value = Math.min(maxPurchasableQty.value, Number(quantity.value || 1) + 1)
+}
+
+const normalizeQuantity = (value: number | null) => {
+  const nextQuantity = Number(value || 1)
+  quantity.value = Math.min(maxPurchasableQty.value, Math.max(1, nextQuantity))
+}
+
 const selectedModel3D = computed(() => {
   const v: any = selectedVariation.value
   // Only fall back to parent when the selected variation has no own media/specs.
@@ -621,7 +649,11 @@ function selectVariation(variationId: number) {
 
 watch(selectedVariationId, () => {
   selectedImage.value = null
-  show3DViewer.value = false
+  const variation: any = selectedVariation.value
+  const hasVariationImage = Array.isArray(variation?.images)
+    ? variation.images.some((image: any) => Boolean(typeof image === 'string' ? image : image?.url))
+    : Boolean(variation?.image)
+  show3DViewer.value = Boolean(variation?.model_3d) && !hasVariationImage
   if (Number(quantity.value || 1) > maxPurchasableQty.value) {
     quantity.value = maxPurchasableQty.value
   }

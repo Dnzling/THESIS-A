@@ -18,9 +18,9 @@ Route::prefix('finance')->group(function () {
     Route::get('/dashboard', [FinanceDashboardController::class, 'index']);
 
     Route::prefix('refunds')->group(function () {
-        Route::get('/', [SalesRefundController::class, 'index'])->middleware('can:finance.refunds.view');
-        Route::get('/{refund}', [SalesRefundController::class, 'show'])->middleware('can:finance.refunds.view');
-        Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus'])->middleware('can:finance.refunds.approve');
+        Route::get('/', [SalesRefundController::class, 'index']);
+        Route::get('/{refund}', [SalesRefundController::class, 'show']);
+        Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus']);
     });
 
     Route::get('/payables', [FinancePayablesController::class, 'index']);

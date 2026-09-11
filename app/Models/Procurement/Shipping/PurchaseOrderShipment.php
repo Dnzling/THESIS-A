@@ -29,6 +29,7 @@ class PurchaseOrderShipment extends Model
         'plate_number',
         'driver_name',
         'driver_contact',
+        'assistant_user_ids',
         'origin_address',
         'destination_address',
         'current_latitude',
@@ -45,6 +46,7 @@ class PurchaseOrderShipment extends Model
     ];
 
     protected $casts = [
+        'assistant_user_ids' => 'array',
         'wheel_count' => 'integer',
         'current_latitude' => 'decimal:7',
         'current_longitude' => 'decimal:7',

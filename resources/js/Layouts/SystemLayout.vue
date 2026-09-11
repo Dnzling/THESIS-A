@@ -561,32 +561,15 @@ const groupedNavigation = computed(() => {
     ? [...authStore.navigation]
     : []
 
+  baseNavigation = baseNavigation.filter((item: any) => {
+    const name = String(item?.name || '').toLowerCase()
+    const path = String(item?.route_path || '').toLowerCase()
+    return name !== 'account.profile' && !['/profile', '/shop/profile', '/supplier-portal/profile'].includes(path)
+  })
+
   if (baseNavigation.length === 0) {
     // Navigation is supplied by the backend permission response.
     // Keep the list empty when no permitted items are returned.
-  }
-
-  if (!isCustomerRole) {
-    const profileItem = {
-      id: -901,
-      name: 'account.profile',
-      display_name: 'Profile',
-      module: 'account',
-      route_name: isSupplierRole ? 'supplier.profile' : 'profile.edit',
-      route_path: isSupplierRole ? '/supplier-portal/profile' : '/profile',
-      icon: 'pi pi-user',
-      parent_id: null,
-      display_order: 999,
-      section: 'General',
-      meta: null,
-      is_active: true,
-      badge_count: 0,
-    }
-
-    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
-    if (!existingPaths.has(profileItem.route_path)) {
-      baseNavigation = [...baseNavigation, profileItem]
-    }
   }
 
   if (isSuperAdminRole) {
@@ -680,9 +663,6 @@ const groupedNavigation = computed(() => {
     })
   }
 
-  const itemsById = new Map<number, any>()
-  activeItems.forEach((item: any) => itemsById.set(item.id, item))
-
   const childrenByParent: Record<number, any[]> = {}
   activeItems.forEach((item: any) => {
     if (item.parent_id) {
@@ -697,10 +677,7 @@ const groupedNavigation = computed(() => {
     children.sort((a, b) => a.display_order - b.display_order)
   })
 
-  const parents = activeItems.filter((item: any) => !item.parent_id)
-  const orphans = activeItems.filter((item: any) => item.parent_id && !itemsById.has(item.parent_id))
-
-  const filtered = [...parents, ...orphans].map((item: any) => ({
+  const filtered = activeItems.map((item: any) => ({
     ...item,
     children: childrenByParent[item.id] || [],
   }))
@@ -708,7 +685,9 @@ const groupedNavigation = computed(() => {
       if (item.meta?.is_group && (!item.children || item.children.length === 0)) {
         return false
       }
-      return true
+
+      const routePath = String(item.route_path || '').trim()
+      return routePath !== '' && !routePath.startsWith('#')
     })
 
   const grouped: Array<{ module: string; items: any[] }> = []
@@ -717,7 +696,7 @@ const groupedNavigation = computed(() => {
   const moduleOrder = ['admin', 'supplier', 'inventory', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'account']
 
   for (const module of moduleOrder) {
-    if (itemsByModule[module]) {
+    if (itemsByModule[module]?.length) {
       grouped.push({
         module,
         items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
@@ -727,7 +706,7 @@ const groupedNavigation = computed(() => {
 
   // Add any custom modules not in moduleOrder
   for (const module in itemsByModule) {
-    if (!moduleOrder.includes(module)) {
+    if (!moduleOrder.includes(module) && itemsByModule[module]?.length) {
       grouped.push({
         module,
         items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)

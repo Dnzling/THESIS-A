@@ -276,7 +276,11 @@ class ProductController extends Controller
                 'category',
                 'suppliers:id,supplier_code,supplier_name,company_name',
                 'tags:id,tag_name',
-                'variations',
+                'variations.inventory' => function ($query) use ($context) {
+                    $query->where('branch_id', $context['branch_id']);
+                },
+                'variations.custom3dModel',
+                'variations.customImage',
                 'assets',
                 'inventory' => function ($query) use ($context) {
                     $query->where('branch_id', $context['branch_id']);
@@ -288,6 +292,12 @@ class ProductController extends Controller
             // The Product model protects cost_price through an accessor. Return a scoped
             // inventory field so product editing can still load the saved cost.
             $product->setAttribute('inventory_cost_price', $product->getRawOriginal('cost_price'));
+            $product->variations->each(function (ProductVariation $variation) use ($product) {
+                $finalPrice = $variation->discounted_price
+                    ?? $variation->base_price
+                    ?? ((float) ($product->discounted_price ?? $product->base_price ?? 0) + (float) $variation->price_adjustment);
+                $variation->setAttribute('final_price', round((float) $finalPrice, 2));
+            });
             $employee = Employee::with('user:id,fname,lname')->find($product->getRawOriginal('created_by'));
             $creatorName = trim(($employee?->user?->fname ?? '') . ' ' . ($employee?->user?->lname ?? ''));
             $product->setAttribute('created_by_name', $creatorName !== '' ? $creatorName : null);

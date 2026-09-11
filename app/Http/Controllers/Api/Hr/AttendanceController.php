@@ -53,8 +53,12 @@ class AttendanceController extends Controller
         // Search by employee name
         if ($request->has('search') && $request->search) {
             $query->whereHas('employee', function ($q) use ($request) {
-                $q->where('fname', 'like', "%{$request->search}%")
-                    ->orWhere('lname', 'like', "%{$request->search}%");
+                $search = trim((string) $request->search);
+                $q->whereHas('user', function ($userQuery) use ($search) {
+                    $userQuery->where('fname', 'like', "%{$search}%")
+                        ->orWhere('lname', 'like', "%{$search}%")
+                        ->orWhereRaw("TRIM(CONCAT(COALESCE(fname, ''), ' ', COALESCE(lname, ''))) LIKE ?", ["%{$search}%"]);
+                });
             });
         }
 

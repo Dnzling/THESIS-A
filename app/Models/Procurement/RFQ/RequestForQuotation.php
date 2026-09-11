@@ -23,6 +23,7 @@ class RequestForQuotation extends Model
         'title',
         'description',
         'issue_date',
+        'deadline_date',
         'rfq_type',
         'currency',
         'shipping_terms',
@@ -41,6 +42,7 @@ class RequestForQuotation extends Model
 
     protected $casts = [
         'issue_date' => 'date',
+        'deadline_date' => 'date',
         'sent_date' => 'datetime',
         'awarded_date' => 'datetime',
     ];

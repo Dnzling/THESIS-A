@@ -472,6 +472,8 @@ class EcommerceController extends Controller
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
+                'base_price' => round((float) ($product->base_price ?? 0), 2),
+                'discounted_price' => $product->discounted_price !== null ? round((float) $product->discounted_price, 2) : null,
                 'image' => $this->toAssetUrl($productImages[$product->id] ?? null),
                 'has_3d_model' => isset($product3dModels[$product->id]),
                 'rating_avg' => $rating['rating_avg'],
@@ -647,7 +649,10 @@ class EcommerceController extends Controller
                 'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order,model_format,file_name,default_camera_angle_x,default_camera_angle_y,default_zoom_level',
                 'variations' => function ($query) {
                     $query->where('is_active', true)
-                        ->with(['custom3dModel:id,product_id,file_name,model_format,default_camera_angle_x,default_camera_angle_y,default_zoom_level'])
+                        ->with([
+                            'custom3dModel:id,product_id,file_name,file_path,model_format,default_camera_angle_x,default_camera_angle_y,default_zoom_level',
+                            'customImage:id,product_id,file_name,file_path,asset_type,is_primary,display_order',
+                        ])
                         ->orderBy('variation_name');
                 },
             ])
@@ -787,12 +792,17 @@ class EcommerceController extends Controller
                 ] : null,
                 'variations' => $product->variations->map(function ($variation) use ($price, $variationInventoryMap) {
                     $variationModel = $variation->custom3dModel;
+                    $variationImage = $variation->customImage;
                     $variationInventory = $variationInventoryMap[(int) $variation->id] ?? [
                         'quantity_available' => 0,
                         'stock_status' => 'out_of_stock',
                     ];
                     $isSelectable = ((int) $variationInventory['quantity_available']) > 0
                         && ((string) $variationInventory['stock_status']) !== 'out_of_stock';
+                    $variationPrice = (float) ($variation->discounted_price
+                        ?? $variation->base_price
+                        ?? ($price + (float) ($variation->price_adjustment ?? 0)));
+
                     return [
                         'id' => (int) $variation->id,
                         'variation_name' => $variation->variation_name,
@@ -801,10 +811,14 @@ class EcommerceController extends Controller
                         'size' => $variation->size,
                         'material' => $variation->material,
                         'price_adjustment' => (float) ($variation->price_adjustment ?? 0),
-                        'final_price' => round($price + (float) ($variation->price_adjustment ?? 0), 2),
+                        'base_price' => round((float) ($variation->base_price ?? $variationPrice), 2),
+                        'discounted_price' => $variation->discounted_price !== null ? round((float) $variation->discounted_price, 2) : null,
+                        'final_price' => round($variationPrice, 2),
                         'quantity_available' => (int) ($variationInventory['quantity_available'] ?? 0),
                         'stock_status' => (string) ($variationInventory['stock_status'] ?? 'out_of_stock'),
                         'is_selectable' => (bool) $isSelectable,
+                        'image' => $variationImage?->url,
+                        'images' => $variationImage?->url ? [$variationImage->url] : [],
                         'model_3d' => $variationModel ? [
                             'id' => $variationModel->id,
                             'file_name' => $variationModel->file_name,
@@ -1019,16 +1033,6 @@ class EcommerceController extends Controller
             ->orderByDesc('quantity_available')
             ->first();
 
-        // Fallback: if no variation-specific inventory row exists, use product-level inventory.
-        if (!$inventory && $variation) {
-            $inventory = BranchInventory::query()
-                ->where('store_id', $storeId)
-                ->where('product_id', $product->id)
-                ->whereNull('variation_id')
-                ->orderByDesc('quantity_available')
-                ->first();
-        }
-
         if (!$inventory || $inventory->quantity_available < $validated['quantity']) {
             return response()->json([
                 'success' => false,
@@ -1038,7 +1042,9 @@ class EcommerceController extends Controller
 
         $basePrice = (float) ($product->discounted_price ?? $product->base_price ?? 0);
         $price = $variation
-            ? round($basePrice + (float) ($variation->price_adjustment ?? 0), 2)
+            ? round((float) ($variation->discounted_price
+                ?? $variation->base_price
+                ?? ($basePrice + (float) ($variation->price_adjustment ?? 0))), 2)
             : $basePrice;
         $variationName = $variation
             ? ($variation->variation_name ?: trim(collect([$variation->color, $variation->size, $variation->material])->filter()->join(' / ')))
@@ -1119,15 +1125,6 @@ class EcommerceController extends Controller
             ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
             ->orderByDesc('quantity_available')
             ->first();
-
-        if (!$inventory && $item->variation_id) {
-            $inventory = BranchInventory::query()
-                ->where('store_id', $cart->store_id)
-                ->where('product_id', $item->product_id)
-                ->whereNull('variation_id')
-                ->orderByDesc('quantity_available')
-                ->first();
-        }
 
         if (!$inventory || $inventory->quantity_available < $validated['quantity']) {
             return response()->json([
@@ -1639,18 +1636,6 @@ class EcommerceController extends Controller
                     ->orderByDesc('quantity_available')
                     ->lockForUpdate()
                     ->first();
-
-                if (!$inventory && $item->variation_id) {
-                    $inventory = BranchInventory::query()
-                        ->where('store_id', $cart->store_id)
-                        ->where('branch_id', $fulfillmentBranch->id)
-                        ->where('product_id', $item->product_id)
-                        ->whereNull('variation_id')
-                        ->where('quantity_available', '>=', $item->quantity)
-                        ->orderByDesc('quantity_available')
-                        ->lockForUpdate()
-                        ->first();
-                }
 
                 if (!$inventory) {
                     throw new \RuntimeException("Insufficient stock for {$item->product?->product_name}");
@@ -3282,15 +3267,6 @@ class EcommerceController extends Controller
                     ->where('product_id', $item->product_id)
                     ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
                     ->first();
-
-                if (!$inventory && $item->variation_id) {
-                    $inventory = BranchInventory::query()
-                        ->where('store_id', $storeId)
-                        ->where('branch_id', $branch->id)
-                        ->where('product_id', $item->product_id)
-                        ->whereNull('variation_id')
-                        ->first();
-                }
 
                 $available = (int) ($inventory?->quantity_available ?? 0);
                 $totalAvailable += $available;

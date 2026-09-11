@@ -379,17 +379,14 @@
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
                 <h2 class="text-xl font-semibold text-gray-900">Variations</h2>
-                <p class="text-sm text-gray-500 mt-1">Create and manage this product variants</p>
+                <p class="text-sm text-gray-500 mt-1">Edit how existing inventory variants appear in the shop</p>
               </div>
               <Message v-if="!isEditMode" severity="info" :closable="false">
-                Save this product first, then you can create and manage variations here.
+                Variants can be added from the product view in Inventory after the product is created.
               </Message>
   
               <template v-else>
-                <div class="flex items-center justify-between">
-                  <p class="text-sm text-gray-500">Manage this product variations in one place.</p>
-                  <Button label="Add Variation" size=small icon="pi pi-plus" class="rounded-xl" @click="openCreateVariationDialog" />
-                </div>
+                <p class="text-sm text-gray-500">SKU and stock creation stays in Inventory. Merchandising can edit presentation details only.</p>
   
                 <DataTable :value="variations" :loading="loadingVariations" dataKey="id" stripedRows
                   class="p-datatable-xs rounded-xl overflow-hidden border border-gray-100 text-xs">
@@ -429,7 +426,6 @@
                       <div class="flex items-center gap-1">
                         <Button icon="pi pi-pencil" text rounded severity="warning"
                           @click="openEditVariationDialog(data)" />
-                        <Button icon="pi pi-trash" text rounded severity="danger" @click="removeVariation(data)" />
                       </div>
                     </template>
                   </Column>
@@ -642,7 +638,7 @@
       </template>
     </Dialog>
   
-    <Dialog v-model:visible="variationDialogVisible" :header="editingVariationId ? 'Edit Variation' : 'Add Variation'"
+    <Dialog v-model:visible="variationDialogVisible" header="Edit Variation"
       :modal="true" :style="{ width: '680px', maxWidth: '95vw' }">
       <VariationFormDialog embedded :embedded-product="{
             id: Number(route.params.id),
@@ -1540,11 +1536,6 @@ const loadVariations = async () => {
   }
 }
 
-const openCreateVariationDialog = () => {
-  resetVariationForm()
-  variationDialogVisible.value = true
-}
-
 const openEditVariationDialog = (row: any) => {
   editingVariationId.value = Number(row.id)
   variationErrors.value = {}
@@ -1662,16 +1653,13 @@ const saveVariation = async () => {
       if (assetId) submitData.custom_image_id = Number(assetId)
     }
 
-    if (editingVariationId.value) {
-      await merchandisingService.updateVariation(editingVariationId.value, submitData)
-    } else {
-      await merchandisingService.createVariation(submitData as any)
-    }
+    if (!editingVariationId.value) return
+    await merchandisingService.updateVariation(editingVariationId.value, submitData)
 
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: editingVariationId.value ? 'Variation updated successfully' : 'Variation created successfully',
+      detail: 'Variation updated successfully',
       life: 2500
     })
     variationDialogVisible.value = false
@@ -1688,29 +1676,6 @@ const saveVariation = async () => {
     })
   } finally {
     variationSubmitting.value = false
-  }
-}
-
-const removeVariation = async (row: any) => {
-  if (!row?.id) return
-  if (!window.confirm('Delete this variation?')) return
-
-  try {
-    await merchandisingService.deleteVariation(Number(row.id))
-    toast.add({
-      severity: 'success',
-      summary: 'Deleted',
-      detail: 'Variation removed',
-      life: 2200
-    })
-    await loadVariations()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error?.response?.data?.message || 'Failed to delete variation',
-      life: 3200
-    })
   }
 }
 

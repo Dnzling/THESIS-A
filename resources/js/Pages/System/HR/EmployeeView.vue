@@ -529,6 +529,8 @@ const savingEdit = ref(false)
 const editDialogError = ref('')
 const activeEditStep = ref(0)
 const shiftOptions = ref<{ label: string; value: number; daysLabel: string }[]>([])
+const payrollScheduleDefaults = ref({ workStart: '08:00', paidHours: 8 })
+const maximumDailyShiftHours = computed(() => Math.min(24, Math.max(1, Number(payrollScheduleDefaults.value.paidHours) || 8)))
 const showGovernmentIdDialog = ref(false)
 const showCreditCardDialog = ref(false)
 const savingGovernmentId = ref(false)
@@ -577,6 +579,7 @@ const editForm = ref({
   address: '',
   branch_id: null as number | null,
   department_id: null as number | null,
+  role_id: null as number | null,
   pay_type: 'monthly',
   salary: 0,
   shift_id: null as number | null,
@@ -602,11 +605,7 @@ const payTypeOptions = [
   { label: 'Hybrid', value: 'hybrid' },
 ]
 const filteredRoleOptions = computed(() => {
-  if (!editForm.value.department_id) return roleOptions.value
-  return roleOptions.value.filter((role) => {
-    const departmentName = (role.department || '').toLowerCase()
-    return departmentName && departmentName === String(selectedDepartmentName.value || '').toLowerCase()
-  })
+  return roleOptions.value
 })
 const selectedDepartmentName = computed(() => {
   const selected = departmentOptions.value.find((department) => Number(department.value) === Number(editForm.value.department_id || 0))
@@ -697,6 +696,19 @@ const loadBranches = async () => {
     branchOptions.value = Array.isArray(raw) ? raw : []
   } catch (err) {
     console.error('Failed to load branches', err)
+  }
+}
+
+const loadPayrollScheduleDefaults = async () => {
+  try {
+    const response = await hrService.getHrSettings()
+    const configuration = response?.data?.payroll_configuration || {}
+    payrollScheduleDefaults.value = {
+      workStart: configuration.workStart || '08:00',
+      paidHours: Number(configuration.paidHours) || 8,
+    }
+  } catch (err) {
+    console.error('Failed to load payroll schedule defaults', err)
   }
 }
 
@@ -930,6 +942,7 @@ const openEditDialog = () => {
     address: employeeInfo.value?.contact_info?.address || '',
     branch_id: employeeInfo.value?.employment_details?.branch_id || null,
     department_id: departmentOptions.value.find((department) => department.name === employeeInfo.value?.employment_details?.department)?.value || null,
+    role_id: null,
     pay_type: employeeInfo.value?.employment_details?.pay_type || 'monthly',
     salary: Number(employeeInfo.value?.employment_details?.monthly_salary || 0),
     shift_id: employeeInfo.value?.current_shift?.shift_id || null,
@@ -1025,8 +1038,8 @@ const onEditStartTimeChange = (row: any, value: string) => {
   }
 
   row.is_off = false
-  row.end_time = formatMinutesToTime12h(startMinutes + 9 * 60)
-  row.hours = 9
+  row.end_time = formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60)
+  row.hours = maximumDailyShiftHours.value
 }
 
 const onEditEndTimeChange = (row: any, value: string) => {
@@ -1038,11 +1051,11 @@ const onEditEndTimeChange = (row: any, value: string) => {
 const onEditWorkingToggle = (row: any, checked: boolean) => {
   row.is_off = !checked
   if (checked) {
-    const defaultStart = formatShiftTime(row.start_time || '09:00 AM')
+    const defaultStart = formatShiftTime(row.start_time || payrollScheduleDefaults.value.workStart)
     row.start_time = defaultStart
     const startMinutes = parseTimeToMinutes(defaultStart)
-    row.end_time = startMinutes === null ? '06:00 PM' : formatMinutesToTime12h(startMinutes + 9 * 60)
-    row.hours = calculateHours(row.start_time, row.end_time) || 9
+    row.end_time = startMinutes === null ? '' : formatMinutesToTime12h(startMinutes + maximumDailyShiftHours.value * 60)
+    row.hours = calculateHours(row.start_time, row.end_time) || maximumDailyShiftHours.value
     return
   }
 
@@ -1307,8 +1320,8 @@ const validateEditWeeklySchedule = () => {
       return false
     }
 
-    if (hours > 9) {
-      editDialogError.value = `${row.day_label} cannot exceed 9 hours.`
+    if (hours > maximumDailyShiftHours.value) {
+      editDialogError.value = `${row.day_label} cannot exceed ${maximumDailyShiftHours.value} paid hours.`
       return false
     }
   }
@@ -1490,6 +1503,7 @@ onMounted(() => {
   fetchEmployeeData()
   loadDepartments().then(() => loadRoles())
   loadBranches()
+  loadPayrollScheduleDefaults()
   loadShifts()
   loadGovernmentIdTypes()
 })

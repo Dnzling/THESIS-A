@@ -5,6 +5,7 @@ namespace App\Models\Sales;
 use App\Models\Core\User;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -22,6 +23,7 @@ class SalesOrderDelivery extends Model
         'tracking_number',
         'courier_name',
         'courier_contact',
+        'assistant_user_ids',
         'status',
         'scheduled_delivery_at',
         'distance_km',
@@ -39,6 +41,7 @@ class SalesOrderDelivery extends Model
     ];
 
     protected $casts = [
+        'assistant_user_ids' => 'array',
         'scheduled_delivery_at' => 'datetime',
         'distance_km' => 'decimal:2',
         'per_km_charge' => 'decimal:2',
@@ -66,6 +69,11 @@ class SalesOrderDelivery extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_user_id');
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(EcommerceDeliveryVehicle::class, 'vehicle_id');
     }
 
     public function logs(): HasMany

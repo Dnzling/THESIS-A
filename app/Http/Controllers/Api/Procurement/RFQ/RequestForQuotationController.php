@@ -127,6 +127,37 @@ class RequestForQuotationController extends Controller
         ]);
 
         if ($validated['status'] === 'approved') {
+            if ($feedback->has_variant) {
+                $feedback->update(['merchandising_status' => 'pending']);
+                $permissionNames = ['merchandising.variations.edit', 'merchandising.products.edit', 'merchandising.products.create'];
+                $recipientIds = DB::table('users')
+                    ->join('role_permissions', 'users.role_id', '=', 'role_permissions.role_id')
+                    ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
+                    ->where('users.store_id', $rfq->store_id)
+                    ->where('users.is_active', true)
+                    ->whereIn('permissions.name', $permissionNames)
+                    ->distinct()
+                    ->pluck('users.id');
+
+                foreach ($recipientIds as $recipientId) {
+                    DB::table('system_notifications')->insert([
+                        'store_id' => $rfq->store_id,
+                        'user_id' => $recipientId,
+                        'module' => 'merchandising',
+                        'entity_type' => 'supplier_variant_proposal',
+                        'entity_id' => $feedback->id,
+                        'action' => 'variant_creation_required',
+                        'title' => 'Variant Creation Required',
+                        'message' => "An approved supplier quote includes the variant {$feedback->variant_name}.",
+                        'data' => json_encode(['feedback_id' => $feedback->id, 'product_id' => $feedback->rfqItem?->product_id]),
+                        'link' => '/merchandising/variations?tab=requests',
+                        'severity' => 'info',
+                        'is_read' => false,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
             // Reject other feedbacks for the same RFQ item
             SupplierRFQFeedback::where('rfq_item_id', $feedback->rfq_item_id)
                 ->where('id', '!=', $feedback->id)

@@ -822,18 +822,6 @@ class PaymongoController extends Controller
                     ->lockForUpdate()
                     ->first();
 
-                if (!$inventory && $variationId) {
-                    $inventory = BranchInventory::query()
-                        ->where('store_id', $fresh->store_id)
-                        ->where('branch_id', $branchId)
-                        ->where('product_id', $productId)
-                        ->whereNull('variation_id')
-                        ->where('quantity_available', '>=', $quantity)
-                        ->orderByDesc('quantity_available')
-                        ->lockForUpdate()
-                        ->first();
-                }
-
                 if (!$inventory) {
                     throw new \RuntimeException("Insufficient stock for product_id={$productId} (variation_id={$variationId})");
                 }

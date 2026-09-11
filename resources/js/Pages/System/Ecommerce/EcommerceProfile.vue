@@ -9,15 +9,15 @@
             <div>
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">MyAccount</p>
               <div class="space-y-1">
-                <Button label="Basic Information" text fluid :severity="activeSection === 'basic' ? 'info' : 'secondary'"
+                <Button label="Basic Information" text fluid :severity="activeSection === 'basic' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'basic'" />
-                <Button label="Address Book" text fluid :severity="activeSection === 'address' ? 'info' : 'secondary'"
+                <Button label="Address Book" text fluid :severity="activeSection === 'address' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'address'" />
-                <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'info' : 'secondary'"
+                <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'payment'" />
-                <Button label="Verification" text fluid :severity="activeSection === 'verification' ? 'info' : 'secondary'"
+                <Button label="Verification" text fluid :severity="activeSection === 'verification' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'verification'" />
-                <Button label="Notifications" text fluid :severity="activeSection === 'notifications' ? 'info' : 'secondary'"
+                <Button label="Notifications" text fluid :severity="activeSection === 'notifications' ? 'warn' : 'secondary'"
                   class="justify-start" @click="openNotificationsSection" />
               </div>
             </div>
@@ -25,10 +25,10 @@
             <div>
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">My Orders</p>
               <div class="space-y-1">
-                <Button label="Returns" text fluid :severity="activeSection === 'returns' ? 'info' : 'secondary'"
+                <Button label="Returns" text fluid :severity="activeSection === 'returns' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'returns'" />
                 <Button label="Cancellations" text fluid
-                  :severity="activeSection === 'cancellations' ? 'info' : 'secondary'" class="justify-start"
+                  :severity="activeSection === 'cancellations' ? 'warn' : 'secondary'" class="justify-start"
                   @click="activeSection = 'cancellations'" />
               </div>
             </div>
@@ -88,8 +88,8 @@
               </div>
   
               <div class="flex flex-wrap gap-2">
-                <Button label="Edit" severity="info" outlined @click="editDialogVisible = true" />
-                <Button label="Change Password" severity="info" outlined @click="passwordDialogVisible = true" />
+                <Button label="Edit" outlined @click="editDialogVisible = true" />
+                <Button label="Change Password" outlined @click="passwordDialogVisible = true" />
                 <Button label="Change Email (Verify)" severity="secondary" outlined @click="emailDialogVisible = true" />
                 <Button label="Change Mobile (Verify)" severity="secondary" outlined
                   @click="mobileDialogVisible = true" />
@@ -99,7 +99,7 @@
             <div v-else-if="activeSection === 'address'" class="space-y-4">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-2xl font-semibold text-slate-900">Address Book</h3>
-                <Button label="Add Address" severity="info" text @click="openAddAddressDialog" />
+                <Button label="Add Address"  text @click="openAddAddressDialog" />
               </div>
               <p v-if="!addressTemplates.length" class="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">
                 No address preset yet. Add one to speed up checkout.
@@ -112,7 +112,7 @@
                     <p class="text-xs text-slate-600">{{ template.province }}, {{ template.city }}, {{ template.barangay
                       }}, {{ template.address_line }}</p>
                   </div>
-                  <Button label="Edit" text severity="info" @click="startEditAddress(template)" />
+                  <Button label="Edit" text  @click="startEditAddress(template)" />
                 </div>
                 <div v-else class="space-y-2">
                   <InputText v-model="addressEditForm.full_name" fluid placeholder="Full name" />
@@ -129,7 +129,7 @@
                     :disabled="!editAddressSelection.cityId" />
                   <Textarea v-model="addressEditForm.address_line" fluid rows="2" placeholder="Address line" />
                   <div class="flex gap-2">
-                    <Button label="Save" size="small" severity="info" :loading="savingAddress"
+                    <Button label="Save" size="small"  :loading="savingAddress"
                       @click="saveAddressEdit(template.id)" />
                     <Button label="Cancel" size="small" severity="secondary" outlined @click="editingAddressId = null" />
                   </div>
@@ -205,7 +205,7 @@
               <Button
                 v-if="!isVerificationApproved"
                 label="Submit Verification"
-                severity="info"
+                
                 :loading="submittingVerification"
                 @click="submitCustomerVerification"
               />
@@ -252,7 +252,7 @@
         <InputText v-model="editForm.fname" fluid placeholder="First name" />
         <InputText v-model="editForm.lname" fluid placeholder="Last name" />
         <DatePicker v-model="editForm.birthday" :maxDate="new Date()" fluid showIcon dateFormat="mm/dd/yy" />
-        <Button label="Save Changes" severity="info" :loading="savingProfile" @click="saveBasicInfo" />
+        <Button label="Save Changes"  :loading="savingProfile" @click="saveBasicInfo" />
       </div>
     </Dialog>
   
@@ -263,7 +263,7 @@
         <Password v-model="passwordForm.password" :feedback="true" fluid toggleMask placeholder="New password" />
         <Password v-model="passwordForm.password_confirmation" :feedback="false" fluid toggleMask
           placeholder="Confirm new password" />
-        <Button label="Update Password" severity="info" :loading="changingPassword" @click="changePassword" />
+        <Button label="Update Password"  :loading="changingPassword" @click="changePassword" />
       </div>
     </Dialog>
   
@@ -275,7 +275,7 @@
           <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
           <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
         </div>
-        <Button label="Verify and Change Email" severity="info" :loading="savingContactChange"
+        <Button label="Verify and Change Email"  :loading="savingContactChange"
           @click="verifyAndChangeEmail" />
       </div>
     </Dialog>
@@ -288,7 +288,7 @@
           <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
           <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
         </div>
-        <Button label="Verify and Change Mobile" severity="info" :loading="savingContactChange"
+        <Button label="Verify and Change Mobile"  :loading="savingContactChange"
           @click="verifyAndChangeMobile" />
       </div>
     </Dialog>
@@ -304,7 +304,7 @@
         <Select v-model="addAddressSelection.barangayCode" :options="barangayOptions" optionLabel="label"
           optionValue="value" filter fluid placeholder="Select Barangay" :disabled="!addAddressSelection.cityId" />
         <Textarea v-model="addAddressForm.address_line" fluid rows="2" placeholder="Address line" />
-        <Button label="Save Address" severity="info" :loading="savingNewAddress" @click="createAddressTemplate" />
+        <Button label="Save Address"  :loading="savingNewAddress" @click="createAddressTemplate" />
       </div>
     </Dialog>
 

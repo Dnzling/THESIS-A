@@ -134,70 +134,149 @@
       </section>
 
 
-      <section ref="overviewSection" class="bg-[#fff7ed] py-20">
+      <section class="bg-[#fff7ed] py-20 sm:py-24">
         <div class="mx-auto max-w-7xl px-4 lg:px-8">
-          <div class="mx-auto max-w-3xl text-center">
-         
-            <h2 class="mt-5 text-3xl font-black tracking-tight sm:text-4xl">A sharper funnel from interest to store registration</h2>
-            <p class="mt-4 text-lg text-slate-600">
-              Keep the experience simple: get attention, capture sign-up, route users to store registration, then let them choose a plan with confidence.
+          <div class="max-w-3xl">
+            <span class="text-sm font-bold uppercase tracking-[0.22em] text-orange-600">One connected platform</span>
+            <h2 class="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-5xl">
+              Every team sees what they need. Every workflow stays connected.
+            </h2>
+            <p class="mt-5 text-lg leading-8 text-slate-600">
+              Replace scattered spreadsheets and disconnected tools with purpose-built modules that move your furniture business from sourcing to delivery.
             </p>
           </div>
 
-          <div class="mt-12 grid gap-6 lg:grid-cols-3">
-            <Card v-for="feature in features" :key="feature.title" class="h-full border border-orange-100 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-              <template #content>
-                <div class="flex h-14 w-14 items-center justify-center rounded-xl text-orange-600" v-html="feature.icon"></div>
-                <h3 class="mt-5 text-xl font-bold">{{ feature.title }}</h3>
-                <p class="mt-3 text-sm leading-6 text-slate-600">{{ feature.description }}</p>
-              </template>
-            </Card>
+          <Carousel
+            :value="modules"
+            :numVisible="1"
+            :numScroll="1"
+            :circular="true"
+            :autoplayInterval="6500"
+            class="mt-12"
+          >
+            <template #item="{ data, index }">
+              <article class="mx-2 grid min-h-[430px] overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-[0_24px_70px_rgba(124,45,18,0.10)] lg:grid-cols-[0.8fr_1.2fr]">
+                <div class="flex flex-col justify-center p-8 sm:p-12 lg:p-14">
+                  <div class="flex items-center gap-3">
+                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Module {{ String(index + 1).padStart(2, '0') }}</span>
+                    <span class="h-px w-10 bg-orange-300"></span>
+                  </div>
+                  <h3 class="mt-6 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{{ data.name }}</h3>
+                  <p class="mt-5 text-base leading-8 text-slate-600">{{ data.description }}</p>
+                  <div class="mt-8 flex items-center gap-3 text-sm font-semibold text-slate-700">
+                    <span class="flex h-7 w-7 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                      <i class="pi pi-check text-xs"></i>
+                    </span>
+                    {{ data.benefits?.[0] || data.outcome }}
+                  </div>
+                </div>
+
+                <div class="relative flex min-h-[300px] items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 p-6 sm:p-10">
+                  <div class="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-orange-500/20 blur-3xl"></div>
+                  <div class="absolute -bottom-20 left-12 h-52 w-52 rounded-full bg-amber-300/10 blur-3xl"></div>
+                  <div class="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-white shadow-2xl">
+                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                      <div class="flex gap-2"><span class="h-2.5 w-2.5 rounded-full bg-orange-400"></span><span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span><span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span></div>
+                      <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{{ data.name }} UI</span>
+                    </div>
+                    <img v-if="data.image_url" :src="data.image_url" :alt="`${data.name} interface preview`" class="aspect-[16/9] w-full object-cover" />
+                    <div v-else class="flex aspect-[16/9] flex-col items-center justify-center bg-slate-50 p-8 text-center">
+                      <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
+                        <i class="pi pi-image text-xl"></i>
+                      </div>
+                      <p class="mt-4 font-bold text-slate-800">{{ data.name }} preview</p>
+                      <p class="mt-1 text-xs text-slate-400">Screenshot will be added here</p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </template>
+          </Carousel>
+        </div>
+      </section>
+
+      <section class="bg-white py-20 sm:py-24">
+        <div class="mx-auto max-w-7xl px-4 lg:px-8">
+          <div class="mx-auto max-w-3xl text-center">
+            <span class="text-sm font-bold uppercase tracking-[0.22em] text-orange-600">Interactive 3D commerce</span>
+            <h2 class="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-5xl">Let customers inspect furniture before they commit.</h2>
+            <p class="mt-5 text-lg leading-8 text-slate-600">
+              Give shoppers a clearer sense of shape, proportion, and detail. Select an item below, then drag the preview to explore it from every angle.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-stretch">
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                v-for="item in furnitureItems"
+                :key="item.name"
+                type="button"
+                class="group min-h-40 rounded-2xl border p-5 text-left transition duration-300"
+                :class="selectedFurniture.name === item.name ? 'border-orange-500 bg-orange-50 shadow-lg shadow-orange-100' : 'border-slate-200 bg-white hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg'"
+                @click="selectedFurniture = item"
+              >
+                <div class="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                  <img v-if="item.thumbnailUrl" :src="item.thumbnailUrl" :alt="item.name" class="h-full w-full object-cover" />
+                  <div v-else class="flex h-full w-full items-center justify-center text-lg font-black text-orange-500">{{ item.name.charAt(0) }}</div>
+                </div>
+                <p class="mt-7 text-lg font-bold text-slate-900">{{ item.name }}</p>
+                <p class="mt-1 text-xs leading-5 text-slate-500">{{ item.caption }}</p>
+              </button>
+            </div>
+
+            <div class="relative min-h-[460px] overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-50 shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
+              <div class="absolute left-5 top-5 z-10 rounded-full bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
+                <p class="text-xs font-bold uppercase tracking-wider text-orange-600">Now viewing</p>
+                <p class="font-bold text-slate-900">{{ selectedFurniture.name }}</p>
+              </div>
+              <Model3DPreview
+                :key="selectedFurniture.name"
+                :model-url="selectedFurniture.modelUrl"
+                :model-format="selectedFurniture.modelFormat"
+                :camera-y="12"
+                :zoom="1.8"
+                height="100%"
+              />
+              <div class="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/80 px-4 py-2 text-xs font-medium text-white backdrop-blur">
+                Drag to rotate &middot; Scroll to zoom
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="bg-white py-20">
-        <div class="mx-auto max-w-7xl px-4 lg:px-8">
-          <div class="mx-auto max-w-3xl text-center">
-            <span class="inline-flex rounded-full bg-orange-100 px-4 py-2 text-sm font-semibold text-orange-700">
-              What You Get
-            </span>
-            <h2 class="mt-5 text-3xl font-black tracking-tight sm:text-4xl">
-              Deliverables that make this system worth buying
-            </h2>
-            <p class="mt-4 text-lg text-slate-600">
-              Instead of selling generic software, we deliver a complete furniture selling workflow that helps stores attract shoppers, improve buying confidence, and move faster to revenue.
+      <section class="relative overflow-hidden bg-slate-950 py-20 text-white sm:py-24">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(249,115,22,0.18),transparent_35%)]"></div>
+        <div class="relative mx-auto grid max-w-7xl gap-14 px-4 lg:grid-cols-2 lg:items-center lg:px-8">
+          <div>
+            <span class="text-sm font-bold uppercase tracking-[0.22em] text-orange-400">Decision Support System</span>
+            <h2 class="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Know what to reorder before shelves run empty.</h2>
+            <p class="mt-5 max-w-xl text-lg leading-8 text-slate-300">
+              FurniSync turns sales history and changing demand into practical reorder suggestions, helping teams buy with evidence instead of guesswork.
             </p>
-          </div>
-
-          <div class="mt-12 overflow-hidden rounded-[2rem] border border-slate-200 shadow-sm">
-            <div class="grid grid-cols-12 bg-slate-900 px-5 py-4 text-sm font-semibold text-white">
-              <div class="col-span-12 md:col-span-4">Deliverable</div>
-              <div class="col-span-12 md:col-span-4 md:text-center">Common Furniture Management System</div>
-              <div class="col-span-12 md:col-span-4 md:text-center porta">Furnisync</div>
-            </div>
-
-            <div v-for="row in comparisonRows" :key="row.feature" class="grid grid-cols-12 border-t border-slate-200 bg-white px-5 py-4 text-sm">
-              <div class="col-span-12 md:col-span-4">
-                <p class="font-semibold text-slate-900">{{ row.feature }}</p>
-              </div>
-              <div class="col-span-12 mt-2 md:col-span-4 md:mt-0 md:text-center">
-                <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
-                  {{ row.typical }}
-                </span>
-              </div>
-              <div class="col-span-12 mt-2 md:col-span-4 md:mt-0 md:text-center">
-                <span
-                  class="inline-flex rounded-full px-3 py-1 font-semibold"
-                  :class="row.highlight ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'"
-                >
-                  {{ row.advanced }}
-                </span>
+            <div class="mt-9 space-y-5">
+              <div v-for="insight in dssInsights" :key="insight.title" class="flex gap-4">
+                <span class="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white"><i class="pi pi-check text-xs"></i></span>
+                <div><h3 class="font-bold text-white">{{ insight.title }}</h3><p class="mt-1 text-sm leading-6 text-slate-400">{{ insight.description }}</p></div>
               </div>
             </div>
           </div>
 
-          
+          <div class="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur sm:p-7">
+            <div class="flex items-start justify-between gap-4">
+              <div><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Demand forecast</p><h3 class="mt-1 text-xl font-bold">Next 30 days</h3></div>
+              <span class="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-bold text-emerald-300">Confidence 89%</span>
+            </div>
+            <div class="mt-8 flex h-48 items-end gap-3 border-b border-l border-white/10 px-3 pt-4">
+              <div v-for="bar in forecastBars" :key="bar.label" class="flex flex-1 flex-col items-center justify-end gap-2">
+                <div class="w-full rounded-t-lg bg-gradient-to-t from-orange-600 to-amber-300 transition hover:brightness-110" :style="{ height: `${bar.value}%` }"></div>
+                <span class="pb-2 text-[10px] text-slate-500">{{ bar.label }}</span>
+              </div>
+            </div>
+            <div class="mt-6 rounded-2xl border border-orange-400/20 bg-orange-400/10 p-4">
+              <div class="flex items-center justify-between gap-4"><div><p class="text-xs text-orange-200">Recommended action</p><p class="mt-1 font-bold">Reorder 18 dining chairs</p></div><span class="rounded-xl bg-orange-500 px-4 py-2 text-xs font-bold text-white">Review suggestion</span></div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
@@ -208,14 +287,13 @@
 
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import Button from 'primevue/button'
-import Card from 'primevue/card'
+import Carousel from 'primevue/carousel'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import TopNav from '@/Components/MarketingHeader.vue'
 import MarketingFooter from '@/Components/MarketingFooter.vue'
-
-const overviewSection = ref<HTMLElement | null>(null)
+import axiosClient from '@/axios'
 
 const stats = [
   { value: '1 path', title: 'Less user confusion', sub: 'Register, verify, set up store, then subscribe' },
@@ -223,60 +301,111 @@ const stats = [
   { value: 'CTA-first', title: 'Higher intent clicks', sub: 'Primary action is visible right away' },
 ]
 
-const features = [
+const fallbackModules = [
   {
-    title: 'Sales-ready storefront',
-    description: 'A polished home page, clear CTA path, and strong product presentation that turn visitors into store sign-ups.',
-    icon: '<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19h16"/><path d="M7 16V8l5-4 5 4v8"/><path d="M10 19V11h4v8"/></svg>',
+    name: 'Store Management Module',
+    description: 'Control branches, store profiles, user roles, permissions, verification, and operating settings from one secure workspace.',
+    outcome: 'Keep every branch governed and consistent.',
   },
   {
-    title: 'Store setup workflow',
-    description: 'Guided registration, OTP verification, store details, and subscription selection without confusing extra steps.',
-    icon: '<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10v16H7z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>',
+    name: 'Inventory Module',
+    description: 'See stock by branch, monitor reorder levels, record adjustments, and move products with a complete audit trail.',
+    outcome: 'Reduce stockouts and avoid excess inventory.',
   },
   {
-    title: 'DSS + 3D viewer package',
-    description: 'Built-in decision support and a 3D sofa preview that help customers buy faster and help stores sell smarter.',
-    icon: '<svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 5l7 7-7 7"/><path d="M20 12H4"/></svg>',
+    name: 'Procurement Module',
+    description: 'Create purchase requisitions, collect supplier quotations, compare offers, issue purchase orders, and track receiving.',
+    outcome: 'Buy the right stock from the right supplier.',
+  },
+  {
+    name: 'Human Resources Module',
+    description: 'Manage employees, departments, attendance, shifts, leave, payroll records, and workforce policies in one place.',
+    outcome: 'Give your people team a reliable source of truth.',
+  },
+  {
+    name: 'Job Hiring Module',
+    description: 'Publish openings, organize applicants, schedule interviews, evaluate candidates, and move successful hires into onboarding.',
+    outcome: 'Turn recruitment into a clear, repeatable process.',
+  },
+  {
+    name: 'Sales Module',
+    description: 'Handle customer orders, payments, receipts, fulfillment status, returns, and sales visibility across every branch.',
+    outcome: 'Keep each sale traceable from order to completion.',
+  },
+  {
+    name: 'Merchandising Module',
+    description: 'Organize catalogs, pricing, promotions, product media, variations, and immersive 3D assets for stronger product presentation.',
+    outcome: 'Make furniture easier to discover and trust.',
+  },
+  {
+    name: 'Logistics Module',
+    description: 'Coordinate delivery zones, vehicles, drivers, trips, proof of delivery, and return pickups from one operational view.',
+    outcome: 'Deliver customer orders with fewer handoff errors.',
   },
 ]
 
-const steps = [
-  { index: '01', title: 'Get attention fast', sub: 'A strong headline and a single primary CTA keep visitors moving.' },
-  { index: '02', title: 'Register without friction', sub: 'No trial or subscription is forced during the sign-up step.' },
-  { index: '03', title: 'Guide the next action', sub: 'Store registration comes first, then the plan selection screen.' },
+type FurnitureItem = {
+  name: string
+  caption: string
+  modelUrl: string
+  modelFormat: string
+  thumbnailUrl?: string | null
+}
+
+const fallbackFurniture: FurnitureItem[] = [
+  { name: 'Chair', caption: 'Seating details and proportions', modelUrl: '/storage/platform/sofa.glb', modelFormat: 'glb' },
+  { name: 'Table', caption: 'Surface, legs, and full silhouette', modelUrl: '/storage/platform/sofa.glb', modelFormat: 'glb' },
+  { name: 'Cabinet', caption: 'Storage form and finish', modelUrl: '/storage/platform/sofa.glb', modelFormat: 'glb' },
+  { name: 'Bed', caption: 'Frame scale and room presence', modelUrl: '/storage/platform/sofa.glb', modelFormat: 'glb' },
 ]
 
-const comparisonRows = [
+const modules = ref<any[]>(fallbackModules)
+const furnitureItems = ref<FurnitureItem[]>(fallbackFurniture)
+const selectedFurniture = ref<FurnitureItem>(fallbackFurniture[0])
+
+const loadHomepageContent = async () => {
+  try {
+    const response = await axiosClient.get('/api/public/home-content')
+    const content = response.data?.data || {}
+    if (Array.isArray(content.modules)) modules.value = content.modules
+    if (Array.isArray(content.furniture) && content.furniture.length) {
+      furnitureItems.value = content.furniture.map((item: any) => ({
+        name: item.label,
+        caption: item.description || '',
+        thumbnailUrl: item.thumbnail_url,
+        modelUrl: item.model_url || '/storage/platform/sofa.glb',
+        modelFormat: item.model_format || 'glb',
+      }))
+      selectedFurniture.value = furnitureItems.value[0]
+    }
+  } catch {
+    // Keep the bundled fallback content when the public content service is unavailable.
+  }
+}
+
+const dssInsights = [
   {
-    feature: 'Furniture visualization',
-    typical: 'Static product photos',
-    advanced: 'Interactive 3D sofa preview customers can rotate',
-    highlight: true,
+    title: 'Sales-based reorder suggestions',
+    description: 'Recommend quantities using actual sales velocity, current stock, and configured reorder levels.',
   },
   {
-    feature: 'Buying confidence',
-    typical: 'Customers still guess before ordering',
-    advanced: 'Price, rating, specs, and stock shown clearly',
-    highlight: false,
+    title: 'Demand over time',
+    description: 'Expose rising, falling, and seasonal demand so purchasing teams can react before patterns become problems.',
   },
   {
-    feature: 'Decision support',
-    typical: 'Generic reports only',
-    advanced: 'DSS insights that guide better store decisions',
-    highlight: true,
-  },
-  {
-    feature: 'Sales conversion',
-    typical: 'Browse and hope',
-    advanced: 'Browse, compare, preview, and buy with confidence',
-    highlight: false,
-  },
-  {
-    feature: 'Business fit',
-    typical: 'One-size-fits-all software',
-    advanced: 'Built for furniture stores that need to sell faster',
-    highlight: true,
+    title: 'Forecasting teams can explain',
+    description: 'Present forecasts with confidence indicators and clear recommended actions instead of opaque predictions.',
   },
 ]
+
+const forecastBars = [
+  { label: 'W1', value: 38 },
+  { label: 'W2', value: 52 },
+  { label: 'W3', value: 45 },
+  { label: 'W4', value: 68 },
+  { label: 'W5', value: 76 },
+  { label: 'W6', value: 88 },
+]
+
+onMounted(loadHomepageContent)
 </script>

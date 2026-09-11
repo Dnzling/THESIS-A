@@ -346,9 +346,23 @@ class SupplierService {
     product_specifications?: string
     additional_notes?: string
     description?: string
+    has_variant?: boolean
+    variant_name?: string
+    supplier_sku?: string
+    variant_size?: string
+    variant_color?: string
+    variant_texture?: string
+    variant_finish?: string
+    variant_material?: string
+    unit_of_measurement?: string
+    variant_images?: File[]
   }) {
     const formData = new FormData()
     Object.entries(data).forEach(([key, value]) => {
+      if (key === 'variant_images' && Array.isArray(value)) {
+        value.forEach((file) => formData.append('variant_images[]', file))
+        return
+      }
       if (value !== undefined && value !== null && value !== '') formData.append(key, value instanceof File ? value : String(value))
     })
     const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, formData)

@@ -8,11 +8,11 @@
         </button>
         <div>
           <div class="flex flex-wrap items-center gap-2">
-            <h2 class="text-3xl font-semibold tracking-tight text-gray-900">{{ product?.product_name || 'Product Details' }}</h2>
+            <h2 class="text-3xl font-semibold tracking-tight text-gray-900">{{ detailTitle }}</h2>
             <Badge v-if="product?.is_active" value="Active" severity="success" />
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-2">
-            <Tag :value="product?.sku || '-'" severity="secondary" class="font-mono" />
+            <Tag :value="displayItem?.variation_sku || product?.sku || '-'" severity="secondary" class="font-mono" />
             <Tag v-for="tag in product?.tags || []" :key="tag.id" :value="tag.tag_name" severity="info" />
           </div>
         </div>
@@ -27,6 +27,7 @@
           @click="openView3DModal"
         />
         <Button
+          v-if="!selectedVariation"
           label="Edit"
           icon="pi pi-pencil"
           severity="warn"
@@ -51,7 +52,7 @@
       </div>
       <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
         <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Available Stock</span><i class="pi pi-box text-gray-400"></i></div>
-        <span class="text-base font-semibold text-gray-900">{{ branchInventory?.quantity_available ?? 0 }}</span>
+        <span class="text-base font-semibold text-gray-900">{{ availableStock }}</span>
       </div>
       <div class="rounded-2xl bg-white p-5 shadow-sm">
         <span class="mb-3 block text-sm font-medium ">Cost per Unit</span>
@@ -59,7 +60,7 @@
       </div>
             <div v-if="product?.product_type === 'finished_good'" class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg">
         <span class="mb-3 block text-sm font-medium text-gray-400">Selling Price</span>
-        <span class="text-2xl font-bold tracking-tight text-white">₱{{ formatPrice(product.base_price) }}</span>
+        <span class="text-2xl font-bold tracking-tight text-white">₱{{ formatPrice(displaySellingPrice) }}</span>
       </div>
     </div>
 
@@ -81,7 +82,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <p class="text-xs text-gray-600 mb-1">Unit of Measurement</p>
-                <p class="text-lg capitalize font-semibold text-gray-900">{{ product.unit_of_measurement || 'N/A' }}</p>
+                <p class="text-lg capitalize font-semibold text-gray-900">{{ displayItem?.unit_of_measurement || product.unit_of_measurement || 'N/A' }}</p>
               </div>
               <div v-show="product.product_type === 'finished_good'">
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
@@ -106,19 +107,16 @@
               </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Reorder Level</p>
-                <p class="text-lg font-semibold text-gray-900">{{ branchInventory?.reorder_point ?? 'N/A' }}</p>
+                <p class="text-lg font-semibold text-gray-900">{{ displayReorderLevel }}</p>
               </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Available Stock</p>
-                <p class="text-lg font-semibold text-gray-900">{{ branchInventory?.quantity_available ?? 0 }}</p>
-              </div>
-              <div v-if="product.length_cm || product.width_cm || product.height_cm || product.weight_kg">
+
+              <div v-if="hasDimensions">
                 <p class="text-xs text-gray-600 mb-1">Dimensions</p>
                 <p class="text-lg font-semibold text-gray-900">{{ dimensionsLabel }}</p>
               </div>
               <div>
                 <p class="text-xs text-gray-600 mb-1">Created</p>
-                <p class="text-lg font-semibold text-gray-900">{{ formatDate(product.created_at) }}</p>
+                <p class="text-lg font-semibold text-gray-900">{{ formatDate(displayItem?.created_at || product.created_at) }}</p>
               </div>
               <!-- <div>
                 <p class="text-xs text-gray-600 mb-1">Created By</p>
@@ -215,12 +213,17 @@
       </Card>
       </div>
 
-      <Card v-if="product?.product_type === 'finished_good' && variations.length > 0" class="rounded-2xl border border-gray-100 shadow-sm">
+      <Card v-if="product?.product_type === 'finished_good'" class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>
           <span class="text-sm font-semibold text-gray-800">Product Variations</span>
         </template>
         <template #content>
           <DataTable :value="variations" class="p-datatable-sm text-xs">
+            <template #empty>
+              <div class="py-8 text-center text-xs text-gray-500">
+                No variants yet. This product currently uses its own SKU and stock.
+              </div>
+            </template>
             <Column field="variation_name" header="Variation">
               <template #body="{ data }">
                 <div class="flex items-center gap-2 text-xs">
@@ -250,6 +253,33 @@
             <Column field="final_price" header="Price">
               <template #body="{ data }">
                 <span class="font-semibold text-xs">₱{{ formatPrice(data.final_price || 0) }}</span>
+              </template>
+            </Column>
+            <Column header="Stock">
+              <template #body="{ data }">
+                <span class="text-xs font-semibold">{{ data.inventory?.[0]?.quantity_available ?? 0 }}</span>
+              </template>
+            </Column>
+            <Column header="Reorder Level">
+              <template #body="{ data }">
+                <span class="text-xs">{{ data.reorder_point ?? 0 }}</span>
+              </template>
+            </Column>
+            <Column header="Supplier">
+              <template #body="{ data }">
+                <span class="text-xs">{{ data.supplier_name || 'No supplier' }}</span>
+              </template>
+            </Column>
+            <Column header="Action" style="width: 6rem">
+              <template #body="{ data }">
+                <Button
+                  label="Edit"
+                  icon="pi pi-pencil"
+                  severity="warn"
+                  size="small"
+                  text
+                  @click.stop="goToEditVariation(data)"
+                />
               </template>
             </Column>
           </DataTable>
@@ -378,6 +408,18 @@ const allAssets = ref<any[]>([])
 const primary3DModel = ref<any>(null)
 const productImages = ref<any[]>([])
 
+const selectedVariationId = computed(() => Number(route.query.variation_id || 0))
+const selectedVariation = computed(() => {
+  if (!selectedVariationId.value) return null
+  return variations.value.find((variation: any) => Number(variation.id) === selectedVariationId.value) || null
+})
+const displayItem = computed(() => selectedVariation.value || product.value)
+const detailTitle = computed(() => {
+  if (!product.value) return 'Product Details'
+  if (!selectedVariation.value) return product.value.product_name
+  return `${product.value.product_name} - ${selectedVariation.value.variation_name}`
+})
+
 const showActionResponse = (severity: 'success' | 'error' | 'info' | 'warn', title: string, message: string) => {
   showResponseDialog({
     severity,
@@ -420,7 +462,8 @@ const supplierNames = computed(() => {
 // Keep the detail view consistent with the product index/API fallback order.
 const unitCost = computed(() => {
   return Number(
-    product.value?.cost_price
+    selectedVariation.value?.cost_price
+      ?? product.value?.cost_price
       ?? product.value?.inventory_cost_price
       ?? product.value?.base_price
       ?? 0
@@ -428,9 +471,29 @@ const unitCost = computed(() => {
 })
 
 const branchInventory = computed(() => {
+  if (selectedVariation.value) {
+    return Array.isArray(selectedVariation.value.inventory) ? selectedVariation.value.inventory[0] || null : null
+  }
   const inventory = Array.isArray(product.value?.inventory) ? product.value.inventory[0] : null
   return inventory || null
 })
+
+const availableStock = computed(() => {
+  if (selectedVariation.value) {
+    return Number(branchInventory.value?.quantity_available || 0)
+  }
+  if (variations.value.length > 0) {
+    return variations.value.reduce(
+      (total: number, variation: any) => total + Number(variation.inventory?.[0]?.quantity_available || 0),
+      0,
+    )
+  }
+  return Number(branchInventory.value?.quantity_available || 0)
+})
+
+const displaySellingPrice = computed(() => selectedVariation.value?.final_price ?? product.value?.base_price ?? 0)
+const displayReorderLevel = computed(() => selectedVariation.value?.reorder_point ?? branchInventory.value?.reorder_point ?? product.value?.reorder_point ?? 'N/A')
+const hasDimensions = computed(() => ['length_cm', 'width_cm', 'height_cm', 'weight_kg'].some((key) => displayItem.value?.[key]))
 
 const priceLabel = computed(() => {
   const type = product.value?.product_type
@@ -440,10 +503,10 @@ const priceLabel = computed(() => {
 
 const dimensionsLabel = computed(() => {
   const parts = [
-    product.value?.length_cm ? `${product.value.length_cm} cm` : null,
-    product.value?.width_cm ? `${product.value.width_cm} cm` : null,
-    product.value?.height_cm ? `${product.value.height_cm} cm` : null,
-    product.value?.weight_kg ? `${product.value.weight_kg} kg` : null,
+    displayItem.value?.length_cm ? `${displayItem.value.length_cm} cm` : null,
+    displayItem.value?.width_cm ? `${displayItem.value.width_cm} cm` : null,
+    displayItem.value?.height_cm ? `${displayItem.value.height_cm} cm` : null,
+    displayItem.value?.weight_kg ? `${displayItem.value.weight_kg} kg` : null,
   ].filter(Boolean)
 
   return parts.length > 0 ? parts.join(' × ') : 'N/A'
@@ -514,11 +577,16 @@ const loadAssets = async () => {
     allAssets.value = assets
 
     const models = assets.filter((asset: any) => asset.asset_type === '3D_Model')
-    primary3DModel.value = models.find((asset: any) => asset.is_primary) || models[0] || null
+    primary3DModel.value = selectedVariation.value?.custom_3d_model
+      || models.find((asset: any) => asset.is_primary)
+      || models[0]
+      || null
 
     const mainImages = assets.filter((asset: any) => asset.asset_type === 'Image_Main')
     const galleryImages = assets.filter((asset: any) => asset.asset_type === 'Image_Gallery')
-    productImages.value = [...mainImages, ...galleryImages]
+    productImages.value = selectedVariation.value?.custom_image
+      ? [selectedVariation.value.custom_image]
+      : [...mainImages, ...galleryImages]
 
     for (const image of productImages.value) {
       if (image?.url) {
@@ -531,7 +599,26 @@ const loadAssets = async () => {
 }
 
 const goToEdit = () => {
+  if (selectedVariation.value) {
+    goToEditVariation(selectedVariation.value)
+    return
+  }
   router.push({ name: 'inventory.products.edit', params: { id: productId.value } })
+}
+
+const goToAddVariant = () => {
+  router.push({
+    name: 'inventory.products.variants.create',
+    params: { productId: productId.value },
+    query: { product_id: productId.value },
+  })
+}
+
+const goToEditVariation = (variation: any) => {
+  router.push({
+    name: 'inventory.products.variants.edit',
+    params: { productId: productId.value, id: variation.id },
+  })
 }
 
 const goBack = () => {

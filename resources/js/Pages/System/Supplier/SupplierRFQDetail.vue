@@ -183,6 +183,24 @@
             </div>
             </div>
 
+            <div class="mt-4 rounded-2xl border border-orange-100 bg-orange-50/50 p-4">
+              <label class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800">
+                <input v-model="quoteData[item.id].has_variant" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-orange-600" />
+                This quote includes a product variant
+              </label>
+              <div v-if="quoteData[item.id].has_variant" class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                <div><label class="mb-1 block text-xs font-medium">Variant Name *</label><InputText v-model="quoteData[item.id].variant_name" fluid placeholder="e.g. Oak Finish - Large" /></div>
+                <div><label class="mb-1 block text-xs font-medium">Supplier SKU / Model</label><InputText v-model="quoteData[item.id].supplier_sku" fluid /></div>
+                <div><label class="mb-1 block text-xs font-medium">Unit of Measurement</label><InputText v-model="quoteData[item.id].unit_of_measurement" fluid placeholder="piece, set, box" /></div>
+                <div><label class="mb-1 block text-xs font-medium">Size</label><InputText v-model="quoteData[item.id].variant_size" fluid /></div>
+                <div><label class="mb-1 block text-xs font-medium">Color</label><InputText v-model="quoteData[item.id].variant_color" fluid /></div>
+                <div><label class="mb-1 block text-xs font-medium">Material</label><InputText v-model="quoteData[item.id].variant_material" fluid /></div>
+                <div><label class="mb-1 block text-xs font-medium">Texture</label><InputText v-model="quoteData[item.id].variant_texture" fluid /></div>
+                <div><label class="mb-1 block text-xs font-medium">Finish</label><InputText v-model="quoteData[item.id].variant_finish" fluid /></div>
+                <div class="md:col-span-2 lg:col-span-3"><label class="mb-1 block text-xs font-medium">Variant Images (up to 5)</label><input type="file" accept="image/png,image/jpeg,image/webp" multiple class="w-full text-sm" @change="setVariantImages(item.id, $event)" /></div>
+              </div>
+            </div>
+
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 mt-3">
               <div class="md:col-span-2">
                 <p class="mb-2 text-sm font-semibold text-slate-700">Per-unit shipping specifications</p>
@@ -361,6 +379,7 @@ const loadRFQDetail = async () => {
           product_specifications: '',
           additional_notes: '',
           description: '',
+          has_variant: false, variant_name: '', supplier_sku: '', variant_size: '', variant_color: '', variant_texture: '', variant_finish: '', variant_material: '', unit_of_measurement: item.product?.unit_of_measurement || '', variant_images: [],
         }
       }
     })
@@ -382,6 +401,7 @@ const loadRFQDetail = async () => {
         product_specifications: f.product_specifications || '',
         additional_notes: f.additional_notes || '',
         description: f.description || '',
+        has_variant: Boolean(f.has_variant), variant_name: f.variant_name || '', supplier_sku: f.supplier_sku || '', variant_size: f.variant_size || '', variant_color: f.variant_color || '', variant_texture: f.variant_texture || '', variant_finish: f.variant_finish || '', variant_material: f.variant_material || '', unit_of_measurement: f.unit_of_measurement || item?.product?.unit_of_measurement || '', variant_images: [],
       }
     })
 
@@ -433,6 +453,7 @@ const validateAllQuotes = () => {
     if (!quote.quotation_valid_until) {
       itemErrors.quotation_valid_until = 'Select the quotation validity date.'
     }
+    if (quote.has_variant && !String(quote.variant_name || '').trim()) itemErrors.variant_name = 'Enter the proposed variant name.'
 
     if (Object.keys(itemErrors).length > 0) {
       errors[item.id] = itemErrors
@@ -510,6 +531,16 @@ const performQuoteSubmission = async () => {
         product_specifications: quote.product_specifications,
         additional_notes: quote.additional_notes,
         description: quote.description,
+        has_variant: quote.has_variant,
+        variant_name: quote.variant_name,
+        supplier_sku: quote.supplier_sku,
+        variant_size: quote.variant_size,
+        variant_color: quote.variant_color,
+        variant_texture: quote.variant_texture,
+        variant_finish: quote.variant_finish,
+        variant_material: quote.variant_material,
+        unit_of_measurement: quote.unit_of_measurement,
+        variant_images: quote.variant_images,
       })
     }
 
@@ -547,6 +578,9 @@ const getAttachmentUrl = (path: string) => path.startsWith('http') ? path : `/st
 
 const calculateQuoteTotal = (item: any, quote: any) => {
   return (Number(item?.quantity || 0) * Number(quote?.quoted_price || 0)).toFixed(2)
+}
+const setVariantImages = (itemId: number, event: Event) => {
+  quoteData.value[itemId].variant_images = Array.from((event.target as HTMLInputElement).files || []).slice(0, 5)
 }
 
 const quoteDimensions = (quote: any) => {

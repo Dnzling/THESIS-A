@@ -77,7 +77,10 @@ class BranchInventoryController extends Controller
 
             $query = BranchInventory::with(['product.suppliers', 'variation', 'branch', 'lastCountedBy'])
                 ->where('store_id', $context['store_id'])
-                ->where('branch_id', $targetBranchId);
+                ->where('branch_id', $targetBranchId)
+                ->whereHas('product', function ($productQuery) {
+                    $productQuery->where('product_type', '!=', 'raw_material');
+                });
 
             // Filters
             if ($request->has('stock_status')) {
@@ -148,7 +151,11 @@ class BranchInventoryController extends Controller
 
             $items = $itemsRaw->map(function (BranchInventory $row) use ($rulesByProduct) {
                 $rule = $rulesByProduct->get((int) $row->product_id);
-                $row->reorder_point = $rule?->reorder_point ?? $row->reorder_point ?? 0;
+                $row->reorder_point = $row->variation
+                    ? ((int) ($row->variation->reorder_point ?? 0) > 0
+                        ? $row->variation->reorder_point
+                        : ($row->reorder_point ?? 0))
+                    : ($rule?->reorder_point ?? $row->reorder_point ?? 0);
                 $row->reorder_quantity = $rule?->reorder_quantity ?? $row->reorder_quantity ?? 0;
 
                 // Procurement needs the product's default cost even when the Product

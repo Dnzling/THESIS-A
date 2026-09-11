@@ -488,7 +488,11 @@ const formatDayOfWeek = (dateString: string): string => {
 // Transform API data to UI format
 const transformAttendance = (item: any): any => {
   const employee = item.employee || {}
+  const employeeUser = employee.user || {}
   const shift = item.shift || {}
+  const firstName = employeeUser.fname || employee.fname || ''
+  const lastName = employeeUser.lname || employee.lname || ''
+  const employeeName = `${firstName} ${lastName}`.trim()
 
   return {
     id: item.id,
@@ -497,9 +501,7 @@ const transformAttendance = (item: any): any => {
     dayOfWeek: formatDayOfWeek(item.attendance_date),
     employee: {
       id: employee.id,
-      name: employee.fname && employee.lname
-        ? `${employee.fname} ${employee.lname}`.trim()
-        : 'Unknown',
+      name: employeeName || employeeUser.email || employee.email || 'Unknown Employee',
       department: employee.department || 'N/A'
     },
     clockIn: formatTime(item.clock_in),

@@ -203,6 +203,17 @@ class SupplierRFQFeedbackController extends Controller
             'rfq_item_id' => 'required|exists:rfq_items,id',
             'quoted_price' => 'required|numeric|min:0.01',
             'available_quantity' => 'required|numeric|min:0',
+            'has_variant' => 'nullable|boolean',
+            'variant_name' => 'required_if:has_variant,1|nullable|string|max:200',
+            'supplier_sku' => 'nullable|string|max:100',
+            'variant_size' => 'nullable|string|max:100',
+            'variant_color' => 'nullable|string|max:100',
+            'variant_texture' => 'nullable|string|max:100',
+            'variant_finish' => 'nullable|string|max:100',
+            'variant_material' => 'nullable|string|max:100',
+            'unit_of_measurement' => 'nullable|string|max:50',
+            'variant_images' => 'nullable|array|max:5',
+            'variant_images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
             'length_cm' => 'required|numeric|min:0.01',
             'width_cm' => 'required|numeric|min:0.01',
             'height_cm' => 'required|numeric|min:0.01',
@@ -270,6 +281,10 @@ class SupplierRFQFeedbackController extends Controller
             $attachmentPath = $request->hasFile('attachment')
                 ? $request->file('attachment')->store('supplier/rfq-attachments', 'public')
                 : null;
+            $variantImagePaths = collect($request->file('variant_images', []))
+                ->map(fn ($image) => $image->store('supplier/rfq-variant-images', 'public'))
+                ->values()
+                ->all();
 
             $feedback = SupplierRFQFeedback::updateOrCreate(
                 [
@@ -280,6 +295,15 @@ class SupplierRFQFeedbackController extends Controller
                     'rfq_id' => $request->rfq_id,
                     'quoted_price' => $request->quoted_price,
                     'available_quantity' => $request->available_quantity,
+                    'has_variant' => $request->boolean('has_variant'),
+                    'variant_name' => $request->boolean('has_variant') ? $request->variant_name : null,
+                    'supplier_sku' => $request->boolean('has_variant') ? $request->supplier_sku : null,
+                    'variant_size' => $request->boolean('has_variant') ? $request->variant_size : null,
+                    'variant_color' => $request->boolean('has_variant') ? $request->variant_color : null,
+                    'variant_texture' => $request->boolean('has_variant') ? $request->variant_texture : null,
+                    'variant_finish' => $request->boolean('has_variant') ? $request->variant_finish : null,
+                    'variant_material' => $request->boolean('has_variant') ? $request->variant_material : null,
+                    'unit_of_measurement' => $request->boolean('has_variant') ? $request->unit_of_measurement : null,
                     'length_cm' => $request->length_cm,
                     'width_cm' => $request->width_cm,
                     'height_cm' => $request->height_cm,
@@ -287,6 +311,8 @@ class SupplierRFQFeedbackController extends Controller
                     'estimated_delivery_date' => $request->estimated_delivery_date,
                     'quotation_valid_until' => $request->quotation_valid_until,
                     'attachment_path' => $attachmentPath,
+                    'variant_image_paths' => $variantImagePaths ?: null,
+                    'merchandising_status' => $request->boolean('has_variant') ? 'awaiting_procurement_approval' : null,
                     'product_specifications' => $request->product_specifications,
                     'additional_notes' => $request->additional_notes,
                     'tax_rate' => $contractTaxRate,

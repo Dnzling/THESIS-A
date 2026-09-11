@@ -21,6 +21,7 @@ class EcommerceOrderDelivery extends Model
         'tracking_number',
         'courier_name',
         'courier_contact',
+        'assistant_user_ids',
         'current_latitude',
         'current_longitude',
         'current_address',
@@ -41,6 +42,7 @@ class EcommerceOrderDelivery extends Model
     ];
 
     protected $casts = [
+        'assistant_user_ids' => 'array',
         'estimated_delivery_at' => 'datetime',
         'current_latitude' => 'decimal:7',
         'current_longitude' => 'decimal:7',

@@ -112,15 +112,6 @@
               <div class="flex gap-2">
                 <Button icon="pi pi-eye" severity="info" text rounded v-tooltip.top="'View Details'"
                   @click="viewProduct(data.id)" />
-                <Button
-                  v-if="authStore.hasPermission('merchandising.variations.create')"
-                  icon="pi pi-sparkles"
-                  severity="info"
-                  text
-                  rounded
-                  v-tooltip.top="'Add Variant'"
-                  @click="addVariant(data.id)"
-                />
                 <Button v-if="authStore.hasPermission('merchandising.products.update')" icon="pi pi-pencil"
                   severity="warning" text rounded v-tooltip.top="'Edit'" @click="editProduct(data.id)" />
                 <!-- <Button v-if="authStore.hasPermission('merchandising.products.delete')" icon="pi pi-trash"
@@ -286,13 +277,6 @@ const editProduct = (productId: number) => {
   router.push({
     name: 'merchandising.products.edit',
     params: { id: productId }
-  })
-}
-
-const addVariant = (productId: number) => {
-  router.push({
-    name: 'merchandising.variations.create',
-    query: { product_id: String(productId) }
   })
 }
 

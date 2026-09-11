@@ -65,6 +65,13 @@ export interface ProductVariation {
     size?: string
     material?: string
     price_adjustment: number
+    base_price?: number | null
+    discounted_price?: number | null
+    cost_price?: number | null
+    reorder_point?: number
+    supplier_name?: string
+    unit_of_measurement?: string
+    initial_stock?: number
     custom_3d_model_id?: number
     custom_image_id?: number
     length_cm?: number | null
@@ -245,6 +252,11 @@ class MerchandisingService {
         return response.data
     }
 
+    async getVariationRequests() {
+        const response = await axiosClient.get(`${this.baseUrl}/variation-requests`)
+        return response.data
+    }
+
     async getVariation(id: number) {
         const response = await axiosClient.get(`${this.baseUrl}/variations/${id}`)
         return response.data
@@ -265,15 +277,8 @@ class MerchandisingService {
         return response.data
     }
 
-    async deleteVariation(id: number) {
-        const response = await axiosClient.delete(`${this.baseUrl}/variations/${id}`)
-        return response.data
-    }
-
-    async bulkUpdateStock(variations: Array<{ id: number; stock_quantity: number }>) {
-        const response = await axiosClient.post(`${this.baseUrl}/variations/bulk/stock`, {
-            variations
-        })
+    async archiveVariation(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/variations/${id}/archive`)
         return response.data
     }
 

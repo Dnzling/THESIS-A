@@ -7,7 +7,7 @@ use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
 {
-    protected function refreshDatabase(): void
+    protected function refreshDatabase()
     {
         $environment = app()->environment();
         $connectionName = config('database.default');
