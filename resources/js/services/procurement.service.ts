@@ -658,6 +658,16 @@ class ProcurementService {
     return response.data
   }
 
+  async getGoodsReceiptResolution(id: number) {
+    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts/${id}/resolution`)
+    return response.data
+  }
+
+  async flagGoodsReceiptResolution(id: number, data: any) {
+    const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts/${id}/resolution`, data)
+    return response.data
+  }
+
   async createGoodsReceipt(data: GoodsReceipt) {
     const response = await axiosClient.post(`${this.inventoryBaseUrl}/goods-receipts`, data)
     return response.data

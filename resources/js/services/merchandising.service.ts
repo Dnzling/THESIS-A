@@ -2,7 +2,7 @@ import axiosClient from '../axios'
 
 export interface Product {
     id?: number
-    sku: string
+    sku?: string | null
     product_name: string
     description?: string
     category_id: number
@@ -264,6 +264,11 @@ class MerchandisingService {
 
     async getVariationsByProduct(productId: number) {
         const response = await axiosClient.get(`${this.baseUrl}/products/${productId}/variations`)
+        return response.data
+    }
+
+    async initializeStandardVariation(productId: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/products/${productId}/variations/initialize-standard`)
         return response.data
     }
 

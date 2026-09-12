@@ -254,7 +254,9 @@ const statusOptions = [
 ]
 const productTypeOptions = [
   { label: 'Product', value: 'finished_good' },
-  { label: 'Supply', value: 'supply' }
+  { label: 'Supplies', value: 'supply' },
+  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Others', value: 'others' }
 ]
 
 const hasActiveFilters = computed(() => {
@@ -424,22 +426,27 @@ const getTypeLabel = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const labels: Record<string, string> = {
     finished_good: 'Product',
-    supply: 'Supply'
+    supply: 'Supplies',
+    raw_material: 'Raw Material'
   }
-  return labels[normalized] || 'Product'
+  return labels[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) || 'Other'
 }
 
 const getTypeSeverity = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const severities: Record<string, string> = {
     finished_good: 'success',
-    supply: 'info'
+    supply: 'info',
+    raw_material: 'warn'
   }
   return severities[normalized] || 'secondary'
 }
 
 const getUnitCost = (product: any) => {
-  return Number(product.cost_price ?? product.inventory_cost_price ?? product.base_price ?? 0)
+  // Inventory API exposes the saved cost through inventory_cost_price because
+  // cost_price is protected on the shared Product model. Prefer that field so
+  // a serialized fallback value of 0.00 cannot mask the actual inventory cost.
+  return Number(product.inventory_cost_price ?? product.cost_price ?? product.base_price ?? 0)
 }
 
 const getReorderLevel = (product: any) => {

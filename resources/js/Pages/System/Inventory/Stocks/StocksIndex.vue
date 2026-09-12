@@ -58,8 +58,8 @@
           </div>
         </div>
   
-        <DataTable v-else :value="items" paginator :rows="filters.per_page" :totalRecords="totalRecords" :lazy="true"
-          @page="onPage" @sort="onSort" :sortField="sortField" :sortOrder="sortOrder" dataKey="id"
+        <DataTable v-else v-model:expandedRows="expandedRows" :value="groupedItems" paginator :rows="filters.per_page"
+          :totalRecords="groupedItems.length" @sort="onSort" :sortField="sortField" :sortOrder="sortOrder" dataKey="group_key"
           @row-click="onItemRowClick" :rowClass="itemRowClass"
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
@@ -71,6 +71,8 @@
             </div>
           </template>
   
+          <Column expander style="width: 3rem" />
+
           <Column v-if="showBranchColumn" field="branch.name" header="Branch" style="width: 12%">
             <template #body="{ data }">
               <span class="text-xs text-gray-700">{{ getBranchName(data) }}</span>
@@ -79,7 +81,7 @@
   
           <Column field="sku" header="SKU" style="width: 12%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ data.variation?.variation_sku || data.product?.sku || 'N/A' }}</span>
+              <span class="text-xs text-gray-700">{{ data.product?.sku || 'N/A' }}</span>
             </template>
           </Column>
   
@@ -87,20 +89,20 @@
             <template #body="{ data }">
               <div class="space-y-0.5 text-xs">
                 <div class="font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
-                <div v-if="data.variation" class="text-[11px] text-orange-600">{{ data.variation.variation_name }}</div>
+                <div v-if="data.variant_rows?.length" class="text-[11px] text-orange-600">{{ data.variant_rows.length }} variants</div>
               </div>
             </template>
           </Column>
 
           <Column header="Supplier" style="width: 14%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getSupplierName(data) || 'No supplier' }}</span>
+              <span class="text-xs text-gray-700">{{ getSupplierName(data) || '-' }}</span>
             </template>
           </Column>
   
           <Column header="Cost/Unit" style="width: 12%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.variation?.unit_of_measurement || data.product?.unit_of_measurement || 'unit' }}</b></span>
+              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.product?.unit_of_measurement || 'unit' }}</b></span>
             </template>
           </Column>
   
@@ -112,14 +114,13 @@
   
           <Column header="Quantity on Hand" style="width: 8%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ data.quantity_available ?? data.inventory?.[0]?.quantity_available ??
-                0 }}</span>
+              <span class="font-semibold text-gray-900">{{ data.quantity_available || 0 }}</span>
             </template>
           </Column>
   
           <Column header="Stock Value" style="width: 8%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatMoney(getStockValue(data)) }}</span>
+              <span class="text-xs text-gray-700">{{ formatMoney(data.stock_value || 0) }}</span>
             </template>
           </Column>
   
@@ -136,7 +137,20 @@
             </template>
           </Column>
   
-         
+          <template #expansion="{ data }">
+            <div class="m-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Variant Stock</p>
+              <DataTable :value="data.variant_rows" dataKey="id" class="p-datatable-sm text-xs">
+                <template #empty><div class="py-4 text-center text-slate-500">This product has no variants.</div></template>
+                <Column header="Variant"><template #body="{ data: row }"><span class="font-medium">{{ row.variation?.variation_name || 'Standard' }}</span></template></Column>
+                <Column header="SKU"><template #body="{ data: row }"><span class="font-mono">{{ row.variation?.variation_sku || row.product?.sku }}</span></template></Column>
+                <Column header="UOM"><template #body="{ data: row }">{{ row.variation?.unit_of_measurement || row.product?.unit_of_measurement || 'unit' }}</template></Column>
+                <Column header="On Hand"><template #body="{ data: row }">{{ row.quantity_on_hand ?? 0 }}</template></Column>
+                <Column header="Available"><template #body="{ data: row }">{{ row.quantity_available ?? 0 }}</template></Column>
+                <Column header="Stock Value"><template #body="{ data: row }">{{ formatMoney(getStockValue(row)) }}</template></Column>
+              </DataTable>
+            </div>
+          </template>
         </DataTable>
         </template>
     </Card>
@@ -153,6 +167,7 @@ import { useAuthStore } from '../../../../stores/auth'
 
 const loading = ref(true)
 const items = ref<any[]>([])
+const expandedRows = ref<Record<string, boolean>>({})
 const totalRecords = ref(0)
 const toast = useToast()
 const router = useRouter()
@@ -165,6 +180,30 @@ const canViewWarehouseStock = computed(() => authStore.hasPermission('inventory.
 const branchCount = ref(0)
 const branches = ref<any[]>([])
 const showBranchColumn = computed(() => branchCount.value >= 2)
+const groupedItems = computed(() => {
+  const groups = new Map<number, any>()
+  for (const row of items.value) {
+    const productId = Number(row.product_id || row.product?.id || 0)
+    if (!productId) continue
+    if (!groups.has(productId)) {
+      groups.set(productId, {
+        ...row,
+        group_key: `product-${productId}`,
+        variation: null,
+        variant_rows: [],
+        quantity_on_hand: 0,
+        quantity_available: 0,
+        stock_value: 0,
+      })
+    }
+    const group = groups.get(productId)
+    group.quantity_on_hand += Number(row.quantity_on_hand || 0)
+    group.quantity_available += Number(row.quantity_available || 0)
+    group.stock_value += getStockValue(row)
+    if (row.variation) group.variant_rows.push(row)
+  }
+  return Array.from(groups.values())
+})
 const currentUserBranchId = computed<number | null>(() => {
   const user: any = authStore.user || {}
   return Number(
@@ -199,8 +238,10 @@ const hasActiveFilters = computed(() => {
 })
 
 const productTypeOptions = [
-  { label: 'Product', value: 'finished_good' },
-  { label: 'Supply', value: 'supply' }
+  { label: 'Supplies', value: 'supply' },
+  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Others', value: 'others' },
+  { label: 'Product', value: 'finished_good' }
 ]
 
 const stockStatuses = [
@@ -230,8 +271,8 @@ const loadItems = async () => {
   loading.value = true
   try {
     const params: any = {
-      page: filters.page,
-      per_page: filters.per_page
+      page: 1,
+      per_page: 500
     }
 
     if (filters.search) params.search = filters.search
@@ -248,7 +289,7 @@ const loadItems = async () => {
 
     if (response?.data) {
       items.value = Array.isArray(response.data) ? response.data : (response.data.data || [])
-      totalRecords.value = response.meta?.total ?? response.data?.total ?? items.value.length
+      totalRecords.value = groupedItems.value.length
     } else {
       items.value = []
       totalRecords.value = 0
@@ -309,10 +350,11 @@ const formatMoney = (value: number | string) => {
 const getTypeLabel = (type?: string) => {
   const normalized = String(type || '').toLowerCase()
   const labels: Record<string, string> = {
-    supply: 'Supply',
+    supply: 'Supplies',
+    raw_material: 'Raw Material',
     finished_good: 'Product'
   }
-  return labels[normalized] || 'Product'
+  return labels[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) || 'Other'
 }
 
 const getUnitCost = (data: any) => {

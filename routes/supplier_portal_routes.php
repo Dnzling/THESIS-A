@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierVerificationCont
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierRFQFeedbackController;
 use App\Http\Controllers\Api\Procurement\SupplierPortal\SupplierPOFeedbackController;
 use App\Http\Controllers\Api\Procurement\Supplier\SupplierContractController;
+use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
 use Illuminate\Support\Facades\Route;
 
 // ============================================
@@ -50,6 +51,10 @@ Route::prefix('supplier-portal')->group(function () {
         Route::post('/po-feedbacks', [SupplierPOFeedbackController::class, 'submitFeedback']);
         Route::post('/po-feedbacks/{id}/confirm-receipt', [SupplierPOFeedbackController::class, 'confirmReceipt']);
         Route::get('/po-feedbacks', [SupplierPOFeedbackController::class, 'getMyFeedbacks']);
+        Route::get('/pos/{id}/receipt-resolutions', [GoodsReceiptResolutionController::class, 'supplierForPurchaseOrder']);
+        Route::post('/receipt-resolutions/{id}/accept', [GoodsReceiptResolutionController::class, 'accept']);
+        Route::post('/receipt-resolutions/{id}/reject', [GoodsReceiptResolutionController::class, 'reject']);
+        Route::post('/receipt-resolutions/{id}/delivery', [GoodsReceiptResolutionController::class, 'submitDelivery']);
 
     });
 });

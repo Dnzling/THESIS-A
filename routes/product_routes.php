@@ -51,6 +51,7 @@ Route::prefix('product-catalog')->group(function () {
         ;
     Route::post('variations/{id}/archive', [ProductVariationController::class, 'archive']);
     Route::get('products/{productId}/variations', [ProductVariationController::class, 'getByProduct']);
+    Route::post('products/{productId}/variations/initialize-standard', [ProductVariationController::class, 'initializeStandard']);
 
     // Product Assets (3D models, images, etc.)
     Route::prefix('assets')->group(function () {

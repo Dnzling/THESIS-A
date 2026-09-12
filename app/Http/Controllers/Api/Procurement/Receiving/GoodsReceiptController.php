@@ -6,8 +6,12 @@ namespace App\Http\Controllers\Api\Procurement\Receiving;
 use App\Http\Controllers\Controller;
 use App\Models\Procurement\Receiving\GoodsReceipt;
 use App\Models\Procurement\Receiving\GoodsReceiptItem;
+use App\Models\Procurement\Receiving\GoodsReceiptResolution;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
+use App\Models\Procurement\Invoice\Invoice;
+use App\Models\Procurement\Invoice\InvoiceItem;
+use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
@@ -17,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GoodsReceiptController extends Controller
 {
@@ -27,7 +32,7 @@ class GoodsReceiptController extends Controller
     public function index(Request $request): JsonResponse
     {
         $storeId = (int) ($request->user()?->store_id ?? 0);
-        $query = GoodsReceipt::with(['purchaseOrder.supplier', 'branch', 'receivedBy', 'verifiedBy'])
+        $query = GoodsReceipt::with(['purchaseOrder.supplier', 'purchaseOrder.purchaseRequisition', 'branch', 'receivedBy.user', 'verifiedBy.user'])
             ->withCount('items');
 
         if ($storeId > 0) {
@@ -82,12 +87,13 @@ class GoodsReceiptController extends Controller
     {
         $receipt = GoodsReceipt::with([
             'purchaseOrder.supplier',
+            'purchaseOrder.purchaseRequisition',
             'branch',
             'items.product',
             'items.variation',
             'items.purchaseOrderItem',
-            'receivedBy',
-            'verifiedBy',
+            'receivedBy.user',
+            'verifiedBy.user',
             'supplierEvaluation.evaluator:id,fname,lname',
         ])->whereHas('purchaseOrder', function ($query) use ($request) {
             $query->where('store_id', $request->user()->store_id);
@@ -245,6 +251,7 @@ class GoodsReceiptController extends Controller
 
         DB::beginTransaction();
         try {
+            $autoCreatedInvoice = null;
             $actorEmployeeId = $this->resolveActorEmployeeId();
             if (!$actorEmployeeId) {
                 return response()->json([
@@ -469,6 +476,12 @@ class GoodsReceiptController extends Controller
                     'purchase_order',
                     $po->id
                 );
+
+                // Finance should receive a payable as soon as Inventory confirms
+                // that the entire PO has been received. The PO-level lookup makes
+                // this idempotent even if a GRN is retried or a follow-up GRN closes
+                // a deficiency.
+                $autoCreatedInvoice = $this->createFinanceInvoiceForCompletedReceipt($po, $grn);
             } else {
                 $po->markInTransit();
 
@@ -482,7 +495,59 @@ class GoodsReceiptController extends Controller
             }
             } // end not draft
 
+            // A posted GRN for the same PO completes the active supplier
+            // deficiency resolution once the PO quantities are fully received.
+            if (!$isDraft) {
+                $activeResolution = GoodsReceiptResolution::query()
+                    ->where('purchase_order_id', $po->id)
+                    ->where('status', 'delivery_submitted')
+                    ->lockForUpdate()
+                    ->latest('id')
+                    ->first();
+
+                $po->load('items');
+                if ($activeResolution && $po->items->every(fn ($item) => $item->isFullyReceived())) {
+                    $activeResolution->update([
+                        'follow_up_goods_receipt_id' => $grn->id,
+                        'status' => 'resolved',
+                        'resolved_at' => now(),
+                    ]);
+                }
+            }
+
             DB::commit();
+
+            if ($autoCreatedInvoice) {
+                $this->notifyUsersByPermissions(
+                    (int) $po->store_id,
+                    [
+                        'finance.invoices.view',
+                        'finance.invoices.manage',
+                        'finance.invoices.approve',
+                        'finance.payables.view',
+                        'finance.payables.manage',
+                        'finance.payables.approve',
+                    ],
+                    [
+                        'store_id' => (int) $po->store_id,
+                        'branch_id' => (int) $po->branch_id,
+                        'module' => 'finance',
+                        'entity_type' => 'invoice',
+                        'entity_id' => (int) $autoCreatedInvoice->id,
+                        'action' => 'goods_received_invoice_created',
+                        'title' => 'Supplier Invoice Ready for Review',
+                        'message' => "Invoice {$autoCreatedInvoice->invoice_number} was created after PO {$po->po_number} was fully received.",
+                        'severity' => 'info',
+                        'link' => "/finance/invoices/{$autoCreatedInvoice->id}",
+                        'data' => [
+                            'invoice_id' => (int) $autoCreatedInvoice->id,
+                            'invoice_number' => (string) $autoCreatedInvoice->invoice_number,
+                            'purchase_order_id' => (int) $po->id,
+                            'goods_receipt_id' => (int) $grn->id,
+                        ],
+                    ]
+                );
+            }
 
             return response()->json([
                 'success' => true,
@@ -504,6 +569,110 @@ class GoodsReceiptController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Create the Finance payable for a fully received PO once only.
+     *
+     * The invoice uses the complete PO quantity, rather than only the closing
+     * GRN, because a deficient delivery may be completed by a later GRN.
+     */
+    private function createFinanceInvoiceForCompletedReceipt(PurchaseOrder $po, GoodsReceipt $grn): ?Invoice
+    {
+        if (Invoice::query()->where('purchase_order_id', $po->id)->lockForUpdate()->exists()) {
+            return null;
+        }
+
+        $po->loadMissing('items');
+        $items = [];
+        $invoiceAmount = 0.0;
+
+        foreach ($po->items as $poItem) {
+            $quantity = (int) ($poItem->quantity_ordered ?? 0);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $unitPrice = (float) ($poItem->unit_cost ?? 0);
+            $lineAmount = round($unitPrice * $quantity, 2);
+            $items[] = [
+                'product_id' => $poItem->product_id,
+                'quantity_invoiced' => $quantity,
+                'unit_price' => $unitPrice,
+                'line_amount' => $lineAmount,
+            ];
+            $invoiceAmount += $lineAmount;
+        }
+
+        if (empty($items)) {
+            Log::warning('Skipped automatic invoice because PO has no invoiceable items.', [
+                'purchase_order_id' => $po->id,
+                'goods_receipt_id' => $grn->id,
+            ]);
+            return null;
+        }
+
+        $contract = SupplierContract::query()
+            ->where('store_id', $po->store_id)
+            ->where('supplier_id', $po->supplier_id)
+            ->active()
+            ->latest('end_date')
+            ->first();
+
+        $taxRate = $contract && !$contract->is_tax_exempt ? (float) ($contract->tax_rate ?? 0) : 0.0;
+        $discountRate = (float) ($contract->discount_percentage ?? 0);
+        $taxAmount = round(($invoiceAmount * $taxRate) / 100, 2);
+        $discountAmount = round(($invoiceAmount * $discountRate) / 100, 2);
+        $shippingCost = (float) ($po->shipping_cost ?? 0);
+
+        $invoice = Invoice::create([
+            'store_id' => $po->store_id,
+            'invoice_number' => 'INV-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4)),
+            'supplier_id' => $po->supplier_id,
+            'purchase_order_id' => $po->id,
+            'goods_receipt_id' => $grn->id,
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays($this->paymentDaysFor($po->payment_terms))->toDateString(),
+            'invoice_amount' => $invoiceAmount,
+            'tax_amount' => $taxAmount,
+            'shipping_cost' => $shippingCost,
+            'discount_amount' => $discountAmount,
+            'net_amount' => $invoiceAmount + $taxAmount + $shippingCost - $discountAmount,
+            'currency' => $po->currency ?? 'PHP',
+            'status' => 'pending_approval',
+            'match_status' => 'pending',
+            'payment_status' => 'pending',
+            'remarks' => "Auto-created from completed GRN {$grn->grn_number}",
+        ]);
+
+        foreach ($items as $item) {
+            InvoiceItem::create(array_merge($item, ['invoice_id' => $invoice->id]));
+        }
+
+        $invoice->load(['purchaseOrder.items', 'items']);
+        $invoice->performThreeWayMatch();
+
+        ActivityLog::record(
+            'invoice_auto_created_from_goods_receipt',
+            "Invoice {$invoice->invoice_number} automatically sent to Finance for PO {$po->po_number}.",
+            ['invoice_id' => $invoice->id, 'goods_receipt_id' => $grn->id, 'po_number' => $po->po_number],
+            'invoice',
+            $invoice->id
+        );
+
+        return $invoice;
+    }
+
+    private function paymentDaysFor(?string $term): int
+    {
+        return match ($term) {
+            'net_7' => 7,
+            'net_15' => 15,
+            'net_30' => 30,
+            'net_60' => 60,
+            'advance_payment', 'cash_on_delivery' => 0,
+            default => 30,
+        };
     }
 
     /**

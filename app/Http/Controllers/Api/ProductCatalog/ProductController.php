@@ -15,6 +15,7 @@ use App\Models\Inventory\ReorderRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ProductController extends BaseController
@@ -28,6 +29,10 @@ class ProductController extends BaseController
             $query = Product::byStore($this->getStoreId())
                            ->with(['category:id,category_name', 'subcategory:id,category_name'])
                            ->withCount(['variations', 'assets']);
+
+            if ($request->boolean('include_variations')) {
+                $query->with('variations:id,product_id,variation_name');
+            }
 
             // Filters
             if ($request->has('category_id')) {
@@ -114,7 +119,7 @@ class ProductController extends BaseController
     {
         try {
             $validated = $this->validateRequest($request, [
-                'sku' => 'required|string|max:50',
+                'sku' => 'nullable|string|max:50',
                 'product_name' => 'required|string|max:200',
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:categories,id',
@@ -151,6 +156,10 @@ class ProductController extends BaseController
             DB::beginTransaction();
 
             try {
+                $validated['sku'] = filled($validated['sku'] ?? null)
+                    ? strtoupper(trim($validated['sku']))
+                    : $this->generateUniqueProductSku((int) $this->getStoreId());
+
                 // Check if SKU is unique for this store
                 $exists = Product::byStore($this->getStoreId())
                                 ->where('sku', $validated['sku'])
@@ -259,6 +268,18 @@ class ProductController extends BaseController
                 $e
             );
         }
+    }
+
+    private function generateUniqueProductSku(int $storeId): string
+    {
+        do {
+            $sku = 'FG-' . Str::upper(Str::random(6)) . '-' . now()->format('YmdHis');
+        } while (Product::withTrashed()
+            ->where('store_id', $storeId)
+            ->where('sku', $sku)
+            ->exists());
+
+        return $sku;
     }
 
     /**

@@ -5,6 +5,7 @@
       <div>
         <h1 class="text-2xl font-bold text-gray-800">Products</h1>
       </div>
+      <Button label="Create Product" icon="pi pi-plus" @click="createProduct" />
     </div>
   
     <!-- Filters Card -->
@@ -41,7 +42,7 @@
           :totalRecords="totalRecords" :lazy="true" @page="onPage" @sort="onSort" dataKey="id"
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          class="p-datatable-sm" stripedRows>
+          class="p-datatable-sm" rowHover>
   
           <template #empty>
             <div class="text-center py-8">
@@ -103,14 +104,14 @@
   
           <Column header="Variations">
             <template #body="{ data }">
-              <Badge :value="data.variations_count || 0" severity="info" />
+              <Badge :value="data.variations_count || 0"  />
             </template>
           </Column>
   
           <Column header="Actions" :frozen="true" alignFrozen="right">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button icon="pi pi-eye" severity="info" text rounded v-tooltip.top="'View Details'"
+                <Button icon="pi pi-eye"  text rounded v-tooltip.top="'View Details'"
                   @click="viewProduct(data.id)" />
                 <Button v-if="authStore.hasPermission('merchandising.products.update')" icon="pi pi-pencil"
                   severity="warning" text rounded v-tooltip.top="'Edit'" @click="editProduct(data.id)" />
@@ -271,6 +272,10 @@ const viewProduct = (productId: number) => {
     name: 'merchandising.products.view',
     params: { id: productId }
   })
+}
+
+const createProduct = () => {
+  router.push({ name: 'merchandising.products.create' })
 }
 
 const editProduct = (productId: number) => {

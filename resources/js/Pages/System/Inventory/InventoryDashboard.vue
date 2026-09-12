@@ -379,9 +379,11 @@ const onInventoryRowClick = ({ data }: { data: any }) => {
 const getProductTypeLabel = (type?: string) => {
   const labels: Record<string, string> = {
     finished_good: 'Product',
-    supply: 'Supply'
+    supply: 'Supplies',
+    raw_material: 'Raw Material'
   }
-  return labels[String(type || '').toLowerCase()] || 'Product'
+  const normalized = String(type || '').toLowerCase()
+  return labels[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) || 'Other'
 }
 
 const getProductTypeSeverity = (type?: string) => {

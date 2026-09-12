@@ -160,10 +160,6 @@ class ProductController extends Controller
                     },
                 ])
                 ->where('store_id', $context['store_id'])
-                // Raw materials are outside the current inventory MVP. Keep
-                // existing records available through direct detail links, but
-                // do not include them in the product catalog list.
-                ->whereIn('product_type', ['finished_good', 'supply'])
                 ->where('is_active', true);
 
             // Filters
@@ -172,7 +168,11 @@ class ProductController extends Controller
             }
 
             if ($request->filled('product_type')) {
-                $query->byProductType($request->product_type);
+                if ($request->product_type === 'others') {
+                    $query->whereNotIn('product_type', ['finished_good', 'supply', 'raw_material']);
+                } else {
+                    $query->byProductType($request->product_type);
+                }
             }
 
             if ($request->filled('status')) {
@@ -233,6 +233,14 @@ class ProductController extends Controller
                 ->paginate($request->get('per_page', 15));
 
             $products->getCollection()->transform(function (Product $product) {
+                // cost_price is hidden on the Product model for general API
+                // responses. Inventory screens need the raw cost through a
+                // deliberately named, inventory-only alias.
+                $product->setAttribute(
+                    'inventory_cost_price',
+                    $product->getRawOriginal('cost_price')
+                );
+
                 $supplierNames = $product->suppliers
                     ->map(fn ($supplier) => $supplier->supplier_name ?: $supplier->company_name)
                     ->filter()
@@ -329,7 +337,7 @@ class ProductController extends Controller
                 'sku' => 'nullable|string|max:100|unique:products,sku,NULL,id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
                 'category_id' => 'nullable|exists:categories,id',
-                'product_type' => 'nullable|in:finished_good,supply',
+                'product_type' => 'nullable|string|max:100',
                 'base_price' => 'nullable|numeric|min:0',
                 'unit_cost' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
@@ -484,7 +492,7 @@ class ProductController extends Controller
                 'sku' => 'nullable|string|max:100|unique:products,sku,' . $id . ',id,store_id,' . $context['store_id'],
                 'description' => 'nullable|string',
                 'category_id' => 'nullable|exists:categories,id',
-                'product_type' => 'nullable|in:raw_material,finished_good,supply',
+                'product_type' => 'nullable|string|max:100',
                 'base_price' => 'nullable|numeric|min:0',
                 'unit_cost' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',

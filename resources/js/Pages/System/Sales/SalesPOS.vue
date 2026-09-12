@@ -51,7 +51,7 @@
               <template #body="{ data }">
                 <Button 
                   text 
-                  severity="info" 
+                  
                   icon="pi pi-plus" 
                   :disabled="!canManagePos" 
                   @click="addToCart(data)"
@@ -66,7 +66,6 @@
       <Card>
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-shopping-cart text-blue-500"></i>
             <span>Cart</span>
             <Badge v-if="cart.length" :value="cart.length" class="ml-auto" />
           </div>
@@ -151,7 +150,7 @@
           />
 
           <!-- GCash Info -->
-          <Message v-if="paymentMethod === 'gcash'" severity="info" class="mb-3">
+          <Message v-if="paymentMethod === 'gcash'" class="mb-3">
             <i class="pi pi-info-circle mr-2"></i>
             GCash checkout opens after you submit. We will auto-refresh payment status.
           </Message>
@@ -194,7 +193,7 @@
 
           <!-- Checkout Button -->
           <Button 
-            severity="info" 
+            
             fluid 
             :loading="checkingOut" 
             :disabled="!canManagePos || !cart.length || deliveryFeeLoading"

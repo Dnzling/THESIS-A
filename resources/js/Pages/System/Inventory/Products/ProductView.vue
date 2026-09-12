@@ -463,8 +463,8 @@ const supplierNames = computed(() => {
 const unitCost = computed(() => {
   return Number(
     selectedVariation.value?.cost_price
-      ?? product.value?.cost_price
       ?? product.value?.inventory_cost_price
+      ?? product.value?.cost_price
       ?? product.value?.base_price
       ?? 0
   )

@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\Inventory\InventoryActivityLogController;
 use App\Http\Controllers\Api\Inventory\StockOrderRequestController;
 use App\Http\Controllers\Api\Inventory\Requisition\PurchaseRequisitionController as InventoryPurchaseRequisitionController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
+use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
 use App\Http\Controllers\Api\Store\BranchController;
 
 // ============================================
@@ -251,7 +252,9 @@ Route::prefix('inventory')->group(function () {
         Route::get('/', [StockIssueController::class, 'index']);
         Route::get('/{id}', [StockIssueController::class, 'show']);
         Route::post('/', [StockIssueController::class, 'store']);
-        Route::post('/{id}/approve', [StockIssueController::class, 'approve']);
+        Route::put('/{id}', [StockIssueController::class, 'update']);
+        Route::post('/{id}/approve', [StockIssueController::class, 'approve'])
+            ->middleware('can:stock_issues.approve');
         Route::get('/reasons', [StockIssueController::class, 'getReasons']);
     });
 
@@ -384,5 +387,7 @@ Route::prefix('inventory')->group(function () {
         Route::post('/', [GoodsReceiptController::class, 'store']);
         Route::post('/{id}/verify', [GoodsReceiptController::class, 'verify']);
         Route::post('/{id}/supplier-evaluation', [GoodsReceiptController::class, 'saveSupplierEvaluation']);
+        Route::get('/{id}/resolution', [GoodsReceiptResolutionController::class, 'showForReceipt']);
+        Route::post('/{id}/resolution', [GoodsReceiptResolutionController::class, 'store']);
     });
 });

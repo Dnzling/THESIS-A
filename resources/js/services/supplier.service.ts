@@ -395,6 +395,28 @@ class SupplierService {
     return response.data
   }
 
+  async getReceiptResolutions(poId: number) {
+    const response = await axiosClient.get(`${this.portalBaseUrl}/pos/${poId}/receipt-resolutions`)
+    return response.data
+  }
+
+  async acceptReceiptResolution(id: number) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/accept`)
+    return response.data
+  }
+
+  async rejectReceiptResolution(id: number, reason: string) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/reject`, { reason })
+    return response.data
+  }
+
+  async submitResolutionDelivery(id: number, data: FormData) {
+    const response = await axiosClient.post(`${this.portalBaseUrl}/receipt-resolutions/${id}/delivery`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
   async createInvoiceFromGoodsReceipt(data: { purchase_order_id: number; goods_receipt_id?: number | null; submitted_by_supplier?: boolean }) {
     const response = await axiosClient.post(`/api/procurement/invoices/from-grn`, data)
     return response.data

@@ -148,6 +148,7 @@ class Product extends Model
     public function tags()
     {
         return $this->belongsToMany(Tag::class, 'product_tags')
+            ->withPivot('store_id')
             ->withTimestamps();
     }
 

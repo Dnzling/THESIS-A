@@ -298,8 +298,8 @@ const formatMoney = (value: any) => {
 
 const resolveUnitCost = (inventoryRow: any): number => {
   return Number(
-    inventoryRow?.product?.cost_price ??
     inventoryRow?.product?.inventory_cost_price ??
+    inventoryRow?.product?.cost_price ??
     inventoryRow?.cost_price ??
     inventoryRow?.unit_cost ??
     inventoryRow?.average_cost ??

@@ -21,6 +21,14 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <Button
+            v-if="isProcurement && receipt.receipt_status !== 'full' && !resolution"
+            label="Flag Deficiency"
+            icon="pi pi-flag"
+            severity="danger"
+            size="small"
+            @click="openResolutionDialog"
+          />
+          <Button
             v-if="canRateSupplier"
             :label="receipt.supplier_evaluation ? 'Update Supplier Rating' : 'Rate Supplier'"
             icon="pi pi-star"
@@ -34,6 +42,24 @@
           />
         </div>
       </div>
+
+      <Card v-if="resolution" class="border border-amber-200 bg-amber-50/40 shadow-sm">
+        <template #content>
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <i class="pi pi-flag text-amber-600"></i>
+                <p class="font-semibold text-gray-900">{{ resolution.resolution_number }}</p>
+                <Badge :value="formatResolutionStatus(resolution.status)" :severity="resolutionSeverity(resolution.status)" />
+              </div>
+              <p class="mt-1 text-sm text-gray-600">{{ formatResolutionStatus(resolution.resolution_type) }}</p>
+              <p v-if="resolution.procurement_notes" class="mt-1 text-sm text-gray-600">{{ resolution.procurement_notes }}</p>
+              <p v-if="resolution.supplier_rejection_reason" class="mt-1 text-sm text-red-600">Supplier reason: {{ resolution.supplier_rejection_reason }}</p>
+            </div>
+            <p class="text-xs text-gray-500">Follow-up GRN: {{ resolution.follow_up_receipt?.grn_number || 'Pending' }}</p>
+          </div>
+        </template>
+      </Card>
 
       <!-- Status Cards -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -128,8 +154,33 @@
                     <span :class="isLate ? 'text-red-600' : 'text-green-600'" class="font-bold">
                       {{ Math.abs(daysVariance) }} days
                     </span>
-                  </div>
-                </div>
+    </div>
+
+    <Dialog v-model:visible="resolutionDialog" modal header="Resolve Goods Receipt Deficiency" :style="{ width: 'min(92vw, 680px)' }">
+      <div class="space-y-5">
+        <div>
+          <label class="mb-2 block text-sm font-medium text-gray-700">Resolution</label>
+          <Select v-model="resolutionForm.resolution_type" :options="resolutionTypes" optionLabel="label" optionValue="value" fluid />
+        </div>
+        <div class="rounded-xl border border-gray-200 overflow-hidden">
+          <DataTable :value="deficientItems" size="small" class="text-sm">
+            <Column field="description" header="Item" />
+            <Column header="Expected"><template #body="{ data }">{{ data.po_quantity }} {{ data.unit }}</template></Column>
+            <Column header="Received"><template #body="{ data }">{{ data.received_quantity }} {{ data.unit }}</template></Column>
+            <Column header="Due"><template #body="{ data }"><span class="font-semibold text-red-600">{{ data.quantity_due }} {{ data.unit }}</span></template></Column>
+          </DataTable>
+        </div>
+        <div>
+          <label class="mb-2 block text-sm font-medium text-gray-700">Instructions to supplier</label>
+          <Textarea v-model="resolutionForm.procurement_notes" rows="4" fluid placeholder="Describe the required replacement or remaining delivery." />
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text size="small" @click="resolutionDialog = false" />
+        <Button label="Send Resolution" icon="pi pi-send" size="small" :loading="resolutionSaving" @click="submitResolution" />
+      </template>
+    </Dialog>
+  </div>
               </template>
             </Card>
 
@@ -425,6 +476,17 @@ const printing = ref(false)
 const timeline = ref<any[]>([])
 const supplierRatingVisible = ref(false)
 const ratingSaving = ref(false)
+const isProcurement = window.location.pathname.startsWith('/procurement/')
+const resolution = ref<any>(null)
+const resolutionDialog = ref(false)
+const resolutionSaving = ref(false)
+const resolutionForm = ref({ resolution_type: 'remaining_delivery', procurement_notes: '' })
+const resolutionTypes = [
+  { label: 'Request Remaining Delivery', value: 'remaining_delivery' },
+  { label: 'Request Replacement', value: 'replacement' },
+  { label: 'Accept Partial Delivery', value: 'partial_acceptance' },
+  { label: 'Reject Delivery', value: 'reject_delivery' },
+]
 const ratingForm = ref<Record<string, any>>({
   quality_score: 5,
   quantity_accuracy_score: 5,
@@ -480,6 +542,8 @@ async function loadReceipt() {
     const payload = response?.data ?? response
     const raw = payload?.data ?? payload
     receipt.value = normalizeReceipt(raw)
+    const resolutionResponse = await procurementService.getGoodsReceiptResolution(Number(route.params.id))
+    resolution.value = resolutionResponse?.data ?? null
     buildTimeline()
   } catch (error) {
     toast.add({
@@ -612,11 +676,13 @@ function normalizeReceipt(raw: any) {
         const product = item.product || {}
         return {
           id: item.id,
+          product_id: item.product_id,
           po_line_number: item.purchase_order_item_id || poItem.id,
           description: product.product_name || 'Unknown Product',
           po_quantity: Number(poItem.quantity_ordered ?? item.quantity_expected ?? 0),
           received_quantity: Number(item.quantity_received ?? 0),
-          unit: product.unit || '',
+          damaged_quantity: Number(item.quantity_damaged ?? 0),
+          unit: product.unit_of_measurement || product.unit || '',
           quality_status: item.condition || 'pending',
           defect_notes: item.notes || '',
         }
@@ -649,7 +715,44 @@ function personName(person: any) {
 }
 
 function goBack() {
-  router.push({ name: 'inventory.goods-receipts' })
+  router.push({ name: isProcurement ? 'procurement.goods-receipts' : 'inventory.goods-receipts' })
+}
+
+const deficientItems = computed(() => (receipt.value?.items || [])
+  .map((item: any) => ({ ...item, quantity_due: Math.max(0, item.po_quantity - item.received_quantity) + item.damaged_quantity }))
+  .filter((item: any) => item.quantity_due > 0))
+
+function openResolutionDialog() {
+  resolutionDialog.value = true
+}
+
+async function submitResolution() {
+  if (!receipt.value?.id || deficientItems.value.length === 0) return
+  resolutionSaving.value = true
+  try {
+    const response = await procurementService.flagGoodsReceiptResolution(receipt.value.id, {
+      ...resolutionForm.value,
+      items: deficientItems.value.map((item: any) => ({ goods_receipt_item_id: item.id, product_id: item.product_id, quantity_due: item.quantity_due })),
+    })
+    resolution.value = response.data
+    resolutionDialog.value = false
+    toast.add({ severity: 'success', summary: 'Resolution Sent', detail: 'The supplier can now respond from the PO details.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to Flag', detail: error.response?.data?.message || 'Failed to create resolution', life: 4000 })
+  } finally {
+    resolutionSaving.value = false
+  }
+}
+
+function formatResolutionStatus(value: string) {
+  return String(value || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function resolutionSeverity(status: string) {
+  if (status === 'resolved') return 'success'
+  if (status === 'rejected') return 'danger'
+  if (status === 'delivery_submitted') return 'info'
+  return 'warn'
 }
 
 async function printReceipt() {

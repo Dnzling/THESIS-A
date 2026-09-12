@@ -95,6 +95,9 @@
                   class="text-slate-300">•</span>
                 <span v-if="product.category">{{ product.category }}</span>
               </div>
+              <div v-if="product.tags?.length" class="flex flex-wrap gap-2 pt-1">
+                <Tag v-for="tag in product.tags" :key="`ecommerce-tag-${tag.id}`" :value="tag.tag_name" severity="info" />
+              </div>
 
             </div>
   

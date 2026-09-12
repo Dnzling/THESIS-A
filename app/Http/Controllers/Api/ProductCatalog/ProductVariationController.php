@@ -12,10 +12,46 @@ use App\Models\Store\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class ProductVariationController extends BaseController
 {
+    public function initializeStandard(int $productId)
+    {
+        $product = Product::byStore($this->getStoreId())->find($productId);
+        if (!$product) {
+            return $this->errorResponse('Product not found or does not belong to this store', 404);
+        }
+
+        $result = DB::transaction(function () use ($product) {
+            $lockedProduct = Product::byStore($this->getStoreId())
+                ->lockForUpdate()
+                ->findOrFail($product->id);
+
+            $existing = $lockedProduct->variations()
+                ->whereRaw('LOWER(variation_name) = ?', ['standard'])
+                ->first();
+
+            if ($existing) {
+                return ['variation' => $existing, 'created' => false];
+            }
+
+            if ($lockedProduct->variations()->exists()) {
+                return ['variation' => null, 'created' => false];
+            }
+
+            return [
+                'variation' => $this->convertProductInventoryToBaselineVariation($lockedProduct),
+                'created' => true,
+            ];
+        });
+
+        return $this->successResponse($result, $result['created']
+            ? 'Standard variant created from the product and existing stock.'
+            : 'Product variants are already initialized.');
+    }
+
     public function requests(Request $request)
     {
         $requests = SupplierRFQFeedback::query()
@@ -106,6 +142,8 @@ class ProductVariationController extends BaseController
                 'material' => 'nullable|string|max:100',
                 'texture' => 'nullable|string|max:100',
                 'finish' => 'nullable|string|max:100',
+                'base_price' => 'required|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
                 'cost_price' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'unit_of_measurement' => 'nullable|string|max:50',
@@ -198,8 +236,8 @@ class ProductVariationController extends BaseController
                     }
                 }
                 $data['store_id'] = $this->getStoreId();
-                $data['base_price'] = $product->base_price;
-                $data['discounted_price'] = $product->discounted_price;
+                $data['base_price'] = $data['base_price'] ?? $product->base_price;
+                $data['discounted_price'] = $data['discounted_price'] ?? null;
                 $data['price_adjustment'] = 0;
                 $data['cost_price'] = $data['cost_price'] ?? $product->getRawOriginal('cost_price');
                 $data['reorder_point'] = $data['reorder_point'] ?? (int) ($product->reorder_point ?? 0);
@@ -209,6 +247,7 @@ class ProductVariationController extends BaseController
                 $data['width_cm'] = $data['width_cm'] ?? $product->width_cm;
                 $data['height_cm'] = $data['height_cm'] ?? $product->height_cm;
                 $data['weight_kg'] = $data['weight_kg'] ?? $product->weight_kg;
+                $data = $this->onlyExistingVariationColumns($data);
                 
                 $variation = ProductVariation::create($data);
                 $this->ensureVariationInventoryRows($product, $variation);
@@ -317,6 +356,8 @@ class ProductVariationController extends BaseController
                 'material' => 'nullable|string|max:100',
                 'texture' => 'nullable|string|max:100',
                 'finish' => 'nullable|string|max:100',
+                'base_price' => 'sometimes|numeric|min:0',
+                'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
                 'cost_price' => 'nullable|numeric|min:0',
                 'reorder_point' => 'nullable|integer|min:0',
                 'unit_of_measurement' => 'nullable|string|max:50',
@@ -365,13 +406,11 @@ class ProductVariationController extends BaseController
                 // Inventory edits must not change ecommerce pricing or supplier ownership.
                 unset(
                     $validated['price_adjustment'],
-                    $validated['base_price'],
-                    $validated['discounted_price'],
                     $validated['price_change_reason']
                 );
                 $validated['supplier_name'] = $variation->product->supplier_name;
                 
-                $variation->update($validated);
+                $variation->update($this->onlyExistingVariationColumns($validated));
                 if ((bool) $variation->is_active) {
                     $this->ensureVariationInventoryRows($variation->product, $variation);
                     BranchInventory::query()
@@ -564,6 +603,12 @@ class ProductVariationController extends BaseController
 
     private function convertProductInventoryToBaselineVariation(Product $product): ProductVariation
     {
+        $product->loadMissing(['assets' => function ($query) {
+            $query->orderByDesc('is_primary')->orderBy('display_order');
+        }]);
+
+        $standardImage = $product->assets->first(fn ($asset) => in_array($asset->asset_type, ['Image_Main', 'Image_Gallery'], true));
+        $standardModel = $product->assets->firstWhere('asset_type', '3D_Model');
         $baselineSku = (string) $product->sku;
         if (ProductVariation::withTrashed()->where('store_id', $this->getStoreId())->where('variation_sku', $baselineSku)->exists()) {
             $baseCandidate = $baselineSku . '-STD';
@@ -574,7 +619,7 @@ class ProductVariationController extends BaseController
             }
         }
 
-        $baseline = ProductVariation::create([
+        $baseline = ProductVariation::create($this->onlyExistingVariationColumns([
             'store_id' => $this->getStoreId(),
             'product_id' => $product->id,
             'variation_sku' => $baselineSku,
@@ -586,9 +631,14 @@ class ProductVariationController extends BaseController
             'reorder_point' => (int) ($product->reorder_point ?? 0),
             'supplier_name' => $product->supplier_name,
             'unit_of_measurement' => $product->unit_of_measurement,
-            'is_baseline' => true,
+            'length_cm' => $product->length_cm,
+            'width_cm' => $product->width_cm,
+            'height_cm' => $product->height_cm,
+            'weight_kg' => $product->weight_kg,
+            'custom_image_id' => $standardImage?->id,
+            'custom_3d_model_id' => $standardModel?->id,
             'is_active' => true,
-        ]);
+        ]));
 
         BranchInventory::query()
             ->where('store_id', $this->getStoreId())
@@ -602,6 +652,13 @@ class ProductVariationController extends BaseController
         $this->ensureVariationInventoryRows($product, $baseline);
 
         return $baseline;
+    }
+
+    private function onlyExistingVariationColumns(array $data): array
+    {
+        $columns = array_flip(Schema::getColumnListing('product_variations'));
+
+        return array_intersect_key($data, $columns);
     }
 
     private function seedVariationOpeningStock(ProductVariation $variation, int $quantity): void

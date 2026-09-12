@@ -426,6 +426,7 @@ class EcommerceController extends Controller
             ])
             ->with([
                 'category:id,category_name',
+                'tags:id,tag_name',
             ])
             ->where('products.store_id', $storeId)
             ->where('products.product_type', 'finished_good')
@@ -757,6 +758,10 @@ class EcommerceController extends Controller
                 'description' => $product->description,
                 'brand' => $product->brand,
                 'collection_name' => $product->collection_name,
+                'tags' => $product->tags->map(fn ($tag) => [
+                    'id' => (int) $tag->id,
+                    'tag_name' => $tag->tag_name,
+                ])->values(),
                 'store_id' => $product->store_id,
                 'store_name' => $product->store?->name,
                 'store_logo' => $this->toAssetUrl($storeLogo),

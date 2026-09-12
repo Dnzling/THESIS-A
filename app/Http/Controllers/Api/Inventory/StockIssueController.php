@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\StockIssue;
 use App\Models\Inventory\StockIssueItem;
+use App\Services\Core\PermissionService;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
 use Illuminate\Http\Request;
@@ -36,7 +37,7 @@ class StockIssueController extends Controller
         try {
             $context = $this->getUserContext();
 
-            $query = StockIssue::with(['branch', 'requester', 'approver'])
+            $query = StockIssue::with(['branch', 'requester', 'approver', 'creator'])
                 ->where('store_id', $context['store_id']);
 
             // Filters
@@ -50,8 +51,21 @@ class StockIssueController extends Controller
                 $query->where('status', $request->status);
             }
 
-            if ($request->has('issue_type')) {
+            if ($request->filled('movement_type')) {
+                $query->where('movement_type', $request->movement_type);
+            }
+
+            if ($request->filled('issue_type')) {
                 $query->where('issue_type', $request->issue_type);
+            }
+
+            if ($request->filled('search')) {
+                $search = trim((string) $request->search);
+                $query->where(function ($builder) use ($search) {
+                    $builder->where('issue_number', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhere('remarks', 'like', "%{$search}%");
+                });
             }
 
             if ($request->has('date_from')) {
@@ -121,15 +135,13 @@ class StockIssueController extends Controller
             $context = $this->getUserContext();
 
             $validated = $request->validate([
-                'issue_date' => 'required|date|before_or_equal:today',
-                'issue_type' => 'required|in:damaged,lost,expired,theft,other',
+                'issue_type' => 'required|string|max:50',
+                'movement_type' => 'required|in:add,deduct',
                 'description' => 'nullable|string',
                 'remarks' => 'nullable|string',
                 'items' => 'required|array|min:1',
                 'items.*.inventory_item_id' => 'required|exists:branch_inventory,id',
                 'items.*.quantity' => 'required|integer|min:1',
-                'items.*.reason' => 'nullable|string',
-                'items.*.remarks' => 'nullable|string',
             ]);
 
             DB::beginTransaction();
@@ -141,13 +153,15 @@ class StockIssueController extends Controller
                 'store_id' => $context['store_id'],
                 'branch_id' => $context['branch_id'],
                 'issue_number' => $issueNumber,
-                'issue_date' => $validated['issue_date'],
+                'issue_date' => now()->toDateString(),
                 'issue_type' => $validated['issue_type'],
+                'movement_type' => $validated['movement_type'],
                 'description' => $validated['description'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
-                'status' => 'draft',
-                'requested_by' => EmployeeContext::currentEmployeeId(),
-                'created_by' => EmployeeContext::currentEmployeeId(),
+                'status' => 'submitted',
+                // These columns reference users.id, not employees.id.
+                'requested_by' => auth()->id(),
+                'created_by' => auth()->id(),
             ]);
 
             $totalValue = 0;
@@ -157,7 +171,7 @@ class StockIssueController extends Controller
                 $inventoryItem = BranchInventory::findOrFail($itemData['inventory_item_id']);
 
                 // Validate quantity doesn't exceed available stock
-                if ($itemData['quantity'] > $inventoryItem->quantity_on_hand) {
+                if (($validated['movement_type'] ?? 'deduct') === 'deduct' && $itemData['quantity'] > $inventoryItem->quantity_on_hand) {
                     DB::rollBack();
                     return response()->json([
                         'success' => false,
@@ -184,6 +198,49 @@ class StockIssueController extends Controller
             // Update total value
             $issue->update(['total_value' => $totalValue]);
 
+            // Users who can approve issuances may approve their own creation.
+            // Apply the stock change in this same transaction so the record and
+            // inventory cannot become out of sync.
+            $authUser = $request->user();
+            if ($authUser) {
+                // Role permissions may have just been updated by an administrator;
+                // refresh this decision instead of relying on the 30-minute cache.
+                app(PermissionService::class)->clearUserCache($authUser);
+            }
+
+            if ($authUser?->hasPermissionTo('stock_issues.approve', $context['store_id'])) {
+                $issue->load('items');
+
+                foreach ($issue->items as $issueItem) {
+                    $inventoryItem = BranchInventory::query()
+                        ->where('store_id', $context['store_id'])
+                        ->where('branch_id', $issue->branch_id)
+                        ->lockForUpdate()
+                        ->findOrFail($issueItem->inventory_item_id);
+
+                    $quantity = (int) $issueItem->quantity;
+                    $isDeduction = $issue->movement_type === 'deduct';
+
+                    if ($isDeduction && $quantity > (int) $inventoryItem->quantity_on_hand) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Insufficient stock to approve this issuance.',
+                        ], 422);
+                    }
+
+                    $inventoryItem->quantity_on_hand += $isDeduction ? -$quantity : $quantity;
+                    $inventoryItem->quantity_available += $isDeduction ? -$quantity : $quantity;
+                    $inventoryItem->updateStockStatus();
+                }
+
+                $issue->update([
+                    'status' => 'approved',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                ]);
+            }
+
             DB::commit();
 
             return response()->json([
@@ -196,6 +253,95 @@ class StockIssueController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create stock issue',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Update a draft stock issuance.
+     * PUT /api/inventory/issues/{id}
+     */
+    public function update(Request $request, int $id): JsonResponse
+    {
+        try {
+            $context = $this->getUserContext();
+            $issue = StockIssue::query()
+                ->where('store_id', $context['store_id'])
+                ->where('branch_id', $context['branch_id'])
+                ->findOrFail($id);
+
+            if ($issue->status !== 'draft') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only draft stock issuances can be edited.',
+                ], 422);
+            }
+
+            $validated = $request->validate([
+                'issue_type' => 'required|string|max:50',
+                'movement_type' => 'required|in:add,deduct',
+                'description' => 'nullable|string',
+                'remarks' => 'nullable|string',
+                'items' => 'required|array|min:1',
+                'items.*.inventory_item_id' => 'required|exists:branch_inventory,id',
+                'items.*.quantity' => 'required|integer|min:1',
+            ]);
+
+            DB::beginTransaction();
+
+            $totalValue = 0;
+            $newItems = [];
+            foreach ($validated['items'] as $itemData) {
+                $inventoryItem = BranchInventory::query()
+                    ->with('product')
+                    ->where('store_id', $context['store_id'])
+                    ->where('branch_id', $context['branch_id'])
+                    ->findOrFail($itemData['inventory_item_id']);
+
+                if ($validated['movement_type'] === 'deduct' && $itemData['quantity'] > $inventoryItem->quantity_on_hand) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Insufficient stock for {$inventoryItem->product->product_name}.",
+                    ], 422);
+                }
+
+                $unitCost = (float) $inventoryItem->product?->getRawOriginal('cost_price');
+                $itemTotal = $itemData['quantity'] * $unitCost;
+                $totalValue += $itemTotal;
+                $newItems[] = [
+                    'inventory_item_id' => $itemData['inventory_item_id'],
+                    'quantity' => $itemData['quantity'],
+                    'unit_cost' => $unitCost,
+                    'total_value' => $itemTotal,
+                ];
+            }
+
+            $issue->update([
+                'movement_type' => $validated['movement_type'],
+                'issue_type' => $validated['issue_type'],
+                'description' => $validated['description'] ?? null,
+                'remarks' => $validated['remarks'] ?? null,
+                'total_value' => $totalValue,
+                'updated_by' => auth()->id(),
+            ]);
+
+            $issue->items()->delete();
+            $issue->items()->createMany($newItems);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $issue->fresh()->load(['creator', 'items.inventoryItem.product']),
+                'message' => 'Stock issuance updated successfully',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update stock issuance',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -226,12 +372,38 @@ class StockIssueController extends Controller
 
             DB::beginTransaction();
 
+            // Apply the issuance atomically when it is approved. Locking the
+            // rows prevents two approvals from consuming the same stock.
+            $issue->load('items');
+            foreach ($issue->items as $issueItem) {
+                $inventoryItem = BranchInventory::query()
+                    ->where('store_id', $context['store_id'])
+                    ->where('branch_id', $issue->branch_id)
+                    ->lockForUpdate()
+                    ->findOrFail($issueItem->inventory_item_id);
+
+                $quantity = (int) $issueItem->quantity;
+                $isDeduction = $issue->movement_type === 'deduct';
+
+                if ($isDeduction && $quantity > (int) $inventoryItem->quantity_on_hand) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient stock to approve this issuance.',
+                    ], 422);
+                }
+
+                $inventoryItem->quantity_on_hand += $isDeduction ? -$quantity : $quantity;
+                $inventoryItem->quantity_available += $isDeduction ? -$quantity : $quantity;
+                $inventoryItem->updateStockStatus();
+            }
+
             $issue->update([
                 'status' => 'approved',
-                'approved_by' => EmployeeContext::currentEmployeeId(),
+                'approved_by' => auth()->id(),
                 'approved_at' => now(),
                 'approval_notes' => $validated['notes'] ?? null,
-                'updated_by' => EmployeeContext::currentEmployeeId(),
+                'updated_by' => auth()->id(),
             ]);
 
             DB::commit();

@@ -16,17 +16,7 @@
       </div>
       <div class="flex items-center gap-2">
         <Button
-          v-if="canCreateInvoice"
-          :loading="invoiceCreating"
-          :disabled="invoiceCreating"
-          label="Create Invoice"
-          icon="pi pi-file"
-          severity="success"
-          text
-          @click="createInvoiceFromReceipt"
-        />
-        <Button
-          v-else-if="existingInvoice"
+          v-if="existingInvoice"
           label="View Invoice"
           icon="pi pi-eye"
           severity="info"
@@ -397,6 +387,44 @@
           </template>
         </Card>
 
+        <Card v-for="resolution in receiptResolutions" :key="resolution.id" class="rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+          <template #header>
+            <div class="flex items-center justify-between px-6 pt-6">
+              <div class="flex items-center gap-2"><i class="pi pi-flag text-amber-600"></i><h3 class="font-semibold text-gray-900">Receipt Resolution</h3></div>
+              <Tag :value="formatStatus(resolution.status)" :severity="resolutionSeverity(resolution.status)" />
+            </div>
+          </template>
+          <template #content>
+            <div class="space-y-4 p-6 pt-0 text-sm">
+              <div class="grid grid-cols-2 gap-3 rounded-xl bg-amber-50 p-4">
+                <div><p class="text-xs text-gray-500">Reference</p><p class="font-semibold">{{ resolution.resolution_number }}</p></div>
+                <div><p class="text-xs text-gray-500">Required Action</p><p class="font-semibold">{{ formatStatus(resolution.resolution_type) }}</p></div>
+              </div>
+              <p v-if="resolution.procurement_notes" class="text-gray-600">{{ resolution.procurement_notes }}</p>
+              <div class="overflow-hidden rounded-xl border border-gray-200">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50"><tr><th class="p-3 text-left">Item</th><th class="p-3 text-right">Quantity Due</th></tr></thead>
+                  <tbody><tr v-for="item in resolution.items || []" :key="`${resolution.id}-${item.product_id}`" class="border-t"><td class="p-3">{{ resolutionProductName(resolution, item.product_id) }}</td><td class="p-3 text-right font-semibold">{{ item.quantity_due }}</td></tr></tbody>
+                </table>
+              </div>
+              <div v-if="resolution.status === 'pending_supplier'" class="flex justify-end gap-2">
+                <Button label="Reject" severity="danger" outlined size="small" @click="openRejectResolution(resolution)" />
+                <Button label="Accept" severity="success" size="small" @click="confirmAcceptResolution(resolution)" />
+              </div>
+              <div v-if="['accepted', 'delivery_submitted'].includes(resolution.status)" class="space-y-4 rounded-xl border border-gray-200 p-4">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div><label class="mb-2 block font-medium">Promised delivery date</label><DatePicker v-model="deliveryForms[resolution.id].promised_delivery_date" :minDate="new Date()" dateFormat="M d, yy" fluid /></div>
+                  <div><label class="mb-2 block font-medium">Delivery note number</label><InputText v-model="deliveryForms[resolution.id].delivery_note_number" fluid /></div>
+                </div>
+                <div><label class="mb-2 block font-medium">Delivery notes</label><Textarea v-model="deliveryForms[resolution.id].supplier_delivery_notes" rows="3" fluid /></div>
+                <div><label class="mb-2 block font-medium">Proof attachment</label><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="block w-full rounded-lg border border-gray-200 p-2 text-sm" @change="onResolutionProof($event, resolution.id)" /></div>
+                <div class="flex justify-end"><Button label="Confirm Delivery Details" icon="pi pi-send" size="small" :loading="resolutionSavingId === resolution.id" @click="submitResolutionDelivery(resolution)" /></div>
+              </div>
+              <p v-if="resolution.supplier_rejection_reason" class="rounded-lg bg-red-50 p-3 text-red-700">Rejected: {{ resolution.supplier_rejection_reason }}</p>
+            </div>
+          </template>
+        </Card>
+
         <Card v-if="existingInvoice" class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <template #header>
             <div class="px-6 pt-6">
@@ -421,6 +449,19 @@
         </Card>
       </div>
     </div>
+
+    <ConfirmDialog />
+    <Dialog v-model:visible="rejectResolutionVisible" modal header="Reject Receipt Resolution" :style="{ width: 'min(92vw, 480px)' }">
+      <div class="space-y-2">
+        <label class="block text-sm font-medium">Reason for rejection</label>
+        <Textarea v-model="resolutionRejectReason" rows="5" fluid autofocus />
+        <small v-if="resolutionRejectError" class="text-red-500">{{ resolutionRejectError }}</small>
+      </div>
+      <template #footer>
+        <Button label="No" severity="secondary" text @click="rejectResolutionVisible = false" />
+        <Button label="Reject" severity="danger" :loading="resolutionSavingId === selectedResolution?.id" @click="confirmRejectResolution" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -428,21 +469,29 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import supplierService from '../../../services/supplier.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const confirm = useConfirm()
 
 const loading = ref(false)
 const po = ref<any>(null)
 const shipment = ref<any>(null)
 const goodsReceipt = ref<any>(null)
 const existingInvoice = ref<any>(null)
-const invoiceCreating = ref(false)
 const rejectionReason = ref<string | null>(null)
 const contractTaxRate = ref(0)
 const contractDiscountPercent = ref(0)
+const receiptResolutions = ref<any[]>([])
+const deliveryForms = ref<Record<number, any>>({})
+const resolutionSavingId = ref<number | null>(null)
+const rejectResolutionVisible = ref(false)
+const selectedResolution = ref<any>(null)
+const resolutionRejectReason = ref('')
+const resolutionRejectError = ref('')
 
 // Computed properties
 const deliveryCharge = computed(() => {
@@ -474,15 +523,6 @@ const isDeclined = computed(() => {
   const status = po.value?.status
   return status === 'declined_supplier' || status === 'declined_by_supplier'
 })
-
-const canCreateInvoice = computed(() => {
-  const eligibleStatuses = ['approved', 'sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered', 'goods_received']
-  return (
-    eligibleStatuses.includes(String(po.value?.status || '')) &&
-    !existingInvoice.value
-  )
-})
-
 
 const goodsReceiptItems = computed(() => goodsReceipt.value?.items || [])
 
@@ -615,6 +655,16 @@ const goToInvoice = () => {
       existingInvoice.value = payload?.data?.invoice || null
       contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0)
       contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || po.value?.contract_discount_percentage || 0)
+      const resolutionResponse = await supplierService.getReceiptResolutions(id)
+      receiptResolutions.value = resolutionResponse?.data || []
+      receiptResolutions.value.forEach((resolution: any) => {
+        deliveryForms.value[resolution.id] = {
+          promised_delivery_date: resolution.promised_delivery_date ? new Date(resolution.promised_delivery_date) : null,
+          delivery_note_number: resolution.delivery_note_number || '',
+          supplier_delivery_notes: resolution.supplier_delivery_notes || '',
+          proof: null,
+        }
+      })
 
       if (!isDeclined.value && po.value?.id && !shipment.value) {
         const shipmentRes = await supplierService.getPOShipment(id)
@@ -633,40 +683,74 @@ const goToInvoice = () => {
     }
   }
 
-  const createInvoiceFromReceipt = async () => {
-    if (!po.value?.id) return
-    invoiceCreating.value = true
+const resolutionSeverity = (status: string) => status === 'resolved' ? 'success' : status === 'rejected' ? 'danger' : status === 'delivery_submitted' ? 'info' : 'warn'
+const resolutionProductName = (resolution: any, productId: number) => resolution.original_receipt?.items?.find((item: any) => Number(item.product_id) === Number(productId))?.product?.product_name || `Product #${productId}`
+
+const confirmAcceptResolution = (resolution: any) => confirm.require({
+  header: 'Accept Resolution',
+  message: `Accept ${resolution.resolution_number} and prepare the required delivery?`,
+  rejectLabel: 'No',
+  acceptLabel: 'Accept',
+  acceptClass: 'p-button-success',
+  accept: async () => {
+    resolutionSavingId.value = resolution.id
     try {
-      const response = await supplierService.createInvoiceFromGoodsReceipt({
-        purchase_order_id: po.value.id,
-        goods_receipt_id: goodsReceipt.value?.id || null,
-        submitted_by_supplier: true,
-      })
-
-      const invoicePayload = response?.data || response
-      existingInvoice.value = invoicePayload?.data || invoicePayload
-
-      toast.add({
-        severity: 'success',
-        summary: 'Invoice Submitted',
-        detail: 'Invoice has been submitted to finance accounts payable.',
-        life: 4000,
-      })
-
-      if (existingInvoice.value?.id) {
-        router.push({ name: 'supplier.pos.invoice-view', params: { id: po.value.id } })
-      }
+      await supplierService.acceptReceiptResolution(resolution.id)
+      await loadDetail()
+      toast.add({ severity: 'success', summary: 'Accepted', detail: 'Resolution accepted.', life: 3000 })
     } catch (error: any) {
-      toast.add({
-        severity: 'error',
-        summary: 'Invoice Error',
-        detail: error.response?.data?.message || 'Failed to create invoice.',
-        life: 4000,
-      })
-    } finally {
-      invoiceCreating.value = false
-    }
+      toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Unable to accept resolution', life: 4000 })
+    } finally { resolutionSavingId.value = null }
+  },
+})
+
+const openRejectResolution = (resolution: any) => {
+  selectedResolution.value = resolution
+  resolutionRejectReason.value = ''
+  resolutionRejectError.value = ''
+  rejectResolutionVisible.value = true
+}
+
+const confirmRejectResolution = async () => {
+  if (resolutionRejectReason.value.trim().length < 5) {
+    resolutionRejectError.value = 'Please provide at least 5 characters.'
+    return
   }
+  resolutionSavingId.value = selectedResolution.value.id
+  try {
+    await supplierService.rejectReceiptResolution(selectedResolution.value.id, resolutionRejectReason.value.trim())
+    rejectResolutionVisible.value = false
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Rejected', detail: 'The store has been informed.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Unable to reject resolution', life: 4000 })
+  } finally { resolutionSavingId.value = null }
+}
+
+const onResolutionProof = (event: Event, resolutionId: number) => {
+  deliveryForms.value[resolutionId].proof = (event.target as HTMLInputElement).files?.[0] || null
+}
+
+const submitResolutionDelivery = async (resolution: any) => {
+  const form = deliveryForms.value[resolution.id]
+  if (!form?.promised_delivery_date || !form?.proof) {
+    toast.add({ severity: 'warn', summary: 'Required', detail: 'Select the delivery date and proof attachment.', life: 3000 })
+    return
+  }
+  const payload = new FormData()
+  payload.append('promised_delivery_date', new Date(form.promised_delivery_date).toISOString().slice(0, 10))
+  if (form.delivery_note_number) payload.append('delivery_note_number', form.delivery_note_number)
+  if (form.supplier_delivery_notes) payload.append('supplier_delivery_notes', form.supplier_delivery_notes)
+  payload.append('proof', form.proof)
+  resolutionSavingId.value = resolution.id
+  try {
+    await supplierService.submitResolutionDelivery(resolution.id, payload)
+    await loadDetail()
+    toast.add({ severity: 'success', summary: 'Submitted', detail: 'Delivery details and proof submitted.', life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Unable to submit delivery details', life: 4000 })
+  } finally { resolutionSavingId.value = null }
+}
 
 onMounted(loadDetail)
 </script>

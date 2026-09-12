@@ -84,40 +84,10 @@
                 <small v-if="errors.product_type" class="text-red-500">{{ errors.product_type }}</small>
               </div>
 
-              <div class="md:col-span-1">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Category <span class="text-red-500">*</span></label>
-                <div class="flex items-start gap-2">
-                  <Select
-                    v-model="form.category_id"
-                    :options="categories"
-                    optionLabel="category_name"
-                    optionValue="id"
-                    class="w-full text-sm"
-                    placeholder="Select category"
-                    filter
-                    showClear
-                    size="small"
-                    :pt="{
-                      overlay: { class: 'text-sm' }
-                    }"
-                  />
-  
-                  <Button
-                    type="button"
-                    icon="pi pi-plus"
-                    label="New"
-                    severity="warn"
-                    outlined
-                    size="small"
-                    class="text-sm"
-                    @click="categoryDialogVisible = true"
-                  />
-                </div>
-                <div class="mt-2">
-         
-                  <small v-if="!selectedCategoryLabel" class="text-xs text-gray-500">Search and select a stored category.</small>
-                </div>
-                <small v-if="errors.category_id" class="text-red-500">{{ errors.category_id }}</small>
+              <div v-if="form.product_type === 'others'" class="md:col-span-1">
+                <label class="mb-1 block text-sm font-medium text-gray-700">Custom Item Type <span class="text-red-500">*</span></label>
+                <InputText v-model="form.custom_product_type" class="w-full text-sm" size="small" placeholder="e.g. Packaging, Equipment" />
+                <small v-if="errors.custom_product_type" class="text-red-500">{{ errors.custom_product_type }}</small>
               </div>
 
               <div>
@@ -143,7 +113,7 @@
               </div>
 
               <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">Cost Price</label>
+                <label class="mb-1 block text-sm font-medium text-gray-700">Cost Price/Unit</label>
                 <InputNumber v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0" class="w-full text-sm" fluid size="small" placeholder="₱0.00" />
               </div>
 
@@ -175,20 +145,6 @@
       </template>
     </Card>
 
-    <Dialog v-model:visible="categoryDialogVisible" header="Create Category" :modal="true" class="w-full max-w-md">
-      <div class="space-y-3">
-        <div>
-          <label class="mb-1 block text-sm font-medium text-gray-700">Category Name</label>
-          <InputText v-model="newCategoryName" class="w-full text-sm" size="small" placeholder="e.g. Table" />
-        </div>
-        <small v-if="categoryDialogError" class="text-red-500">{{ categoryDialogError }}</small>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" text size="small" @click="categoryDialogVisible = false" />
-        <Button label="Create" severity="warn" size="small" @click="createCategoryFromDialog" />
-      </template>
-    </Dialog>
-
   </div>
 </template>
 
@@ -197,25 +153,14 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
-import { useAuthStore } from '../../../../stores/auth'
 import Chip from 'primevue/chip'
-import Dialog from 'primevue/dialog'
 import Popover from 'primevue/popover'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const authStore = useAuthStore()
 
 const submitting = ref(false)
-const categories = ref<any[]>([])
-const categoryDialogVisible = ref(false)
-const newCategoryName = ref('')
-const categoryDialogError = ref('')
-const selectedCategoryLabel = computed(() => {
-  const matched = categories.value.find((category: any) => Number(category.id) === Number(form.category_id))
-  return matched?.category_name || ''
-})
 const errors = ref<Record<string, string>>({})
 const submitError = ref('')
 const isEditMode = computed(() => Boolean(route.params.id))
@@ -224,16 +169,17 @@ const imagePreview = ref<string | null>(null)
 const imageFile = ref<File | null>(null)
 const removePhotoPopover = ref<any>(null)
 const productTypeOptions = [
-  { label: 'Product', value: 'finished_good' },
-  { label: 'Supply', value: 'supply' },
+  { label: 'Supplies', value: 'supply' },
+  { label: 'Raw Material', value: 'raw_material' },
+  { label: 'Others', value: 'others' },
 ]
-const unitMeasureOptions = ['pcs', 'set', 'piece', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
+const unitMeasureOptions = ['piece', 'set', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
 
 const form = reactive({
   product_name: '',
-  category_id: null as number | null,
   description: '',
-  product_type: 'finished_good',
+  product_type: 'supply',
+  custom_product_type: '',
   cost_price: null as number | null,
   unit_of_measurement: '',
   initial_stock: null as number | null,
@@ -241,91 +187,23 @@ const form = reactive({
   is_active: true,
 })
 
-const loadCategories = async () => {
-  try {
-    const storeId = authStore.user?.store_id
-    const response = await inventoryService.getCategories({
-      active_only: true,
-      store_id: storeId || undefined
-    })
-    categories.value = response?.data?.data || response?.data || []
-  } catch (error) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load categories', life: 3000 })
-  }
-}
-
 const loadProduct = async (id: number) => {
   try {
     const response = await inventoryService.getProduct(id)
     const product = response.data
     form.product_name = product.product_name || ''
-    form.category_id = product.category_id || null
     form.description = product.description || ''
-    form.product_type = product.product_type || 'finished_good'
+    const knownTypes = ['supply', 'raw_material']
+    form.product_type = knownTypes.includes(product.product_type) ? product.product_type : 'others'
+    form.custom_product_type = knownTypes.includes(product.product_type) ? '' : (product.product_type || '')
     form.cost_price = product.inventory_cost_price ?? product.cost_price ?? null
     form.unit_of_measurement = product.unit_of_measurement || ''
     form.reorder_point = product.reorder_point ?? 10
     form.is_active = product.is_active !== false
-    form.category_id = product.category_id || null
     imagePreview.value = product.primary_3d_model?.url || product.assets?.[0]?.thumbnail_url || null
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load Item', life: 3000 })
   }
-}
-
-const toTitleCase = (value: string) => {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-const capitalizePascal = (value: string) => {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-const createCategoryFromDialog = async () => {
-  const rawName = capitalizePascal(newCategoryName.value)
-  categoryDialogError.value = ''
-
-  if (!rawName) {
-    categoryDialogError.value = 'Category name is required.'
-    return
-  }
-
-  const existing = categories.value.find((category: any) => category.category_name === rawName)
-  if (existing) {
-    categoryDialogError.value = 'That category already exists in this store.'
-    return
-  }
-
-  try {
-    const response = await inventoryService.createCategory({ category_name: rawName, is_active: true })
-    const created = response?.data || response
-    await loadCategories()
-    form.category_id = Number(created?.id || 0) || null
-    newCategoryName.value = ''
-    categoryDialogVisible.value = false
-    toast.add({ severity: 'success', summary: 'Created', detail: 'Category created successfully', life: 3000 })
-  } catch (error: any) {
-    categoryDialogError.value =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message ||
-      'Failed to create category'
-  }
-}
-
-const clearCategory = (event: Event) => {
-  event.stopPropagation()
-  form.category_id = null
 }
 
 const triggerImagePicker = () => {
@@ -355,8 +233,10 @@ const validate = () => {
   errors.value = {}
   submitError.value = ''
   if (!form.product_name) errors.value.product_name = 'Item name is required'
-  if (!form.category_id) errors.value.category_id = 'Category is required'
   if (!form.product_type) errors.value.product_type = 'Item type is required'
+  if (form.product_type === 'others' && !form.custom_product_type.trim()) {
+    errors.value.custom_product_type = 'Custom item type is required'
+  }
   if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
   return Object.keys(errors.value).length === 0
 }
@@ -368,9 +248,8 @@ const handleSubmit = async () => {
   try {
     const payload = new FormData()
     payload.append('product_name', form.product_name)
-    payload.append('category_id', String(Number(form.category_id)))
     if (form.description) payload.append('description', form.description)
-    payload.append('product_type', form.product_type)
+    payload.append('product_type', form.product_type === 'others' ? form.custom_product_type.trim() : form.product_type)
     if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
     if (!isEditMode.value && form.initial_stock != null) {
@@ -421,7 +300,6 @@ const handleSubmit = async () => {
 const goBack = () => router.push({ name: 'inventory.items' })
 
 onMounted(async () => {
-  await loadCategories()
   if (isEditMode.value) {
     await loadProduct(Number(route.params.id))
   }

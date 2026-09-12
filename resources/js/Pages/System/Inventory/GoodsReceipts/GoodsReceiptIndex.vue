@@ -5,7 +5,7 @@
         <h1 class="text-xl font-bold text-gray-900">Goods Receipts</h1>
         <p class="text-xs text-gray-600 mt-1">Track received supplies and inventory receiving records</p>
       </div>
-      <Button label="New Receipt" icon="pi pi-plus" size="small" @click="$router.push('/inventory/goods-receipts/create')" />
+      <Button label="New Receipt" icon="pi pi-plus" size="small" @click="$router.push(isProcurement ? '/procurement/goods-receipts/create' : '/inventory/goods-receipts/create')" />
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -65,6 +65,11 @@
             </template>
           </Column>
           <Column field="grn_number" header="GRN" />
+          <Column header="PR">
+            <template #body="{ data }">
+              {{ data.purchase_order?.purchase_requisition?.pr_number || '—' }}
+            </template>
+          </Column>
           <Column
             field="purchase_order.po_number"
             header="Purchase Order"
@@ -84,6 +89,11 @@
           <Column header="Qty Items">
             <template #body="{ data }">
               {{ data.items_count ?? data.items?.length ?? 0 }}
+            </template>
+          </Column>
+          <Column header="Received By">
+            <template #body="{ data }">
+              {{ data.received_by?.user?.full_name || data.received_by?.user?.name || '—' }}
             </template>
           </Column>
           <Column header="Actions" style="width: 180px">
@@ -113,6 +123,7 @@ import { useRouter } from 'vue-router'
 import procurementService from '../../../../services/procurement.service'
 import InputText from 'primevue/inputtext'
 const loading = ref(false)
+const isProcurement = window.location.pathname.startsWith('/procurement/')
 
 const receipts = ref<any[]>([])
 const searchTerm = ref('')
@@ -201,7 +212,7 @@ const formatDate = (value: string | null | undefined): string => {
 
 const router = useRouter()
 const goToDetail = (id: number) => {
-  router.push({ name: 'inventory.goods-receipts.detail', params: { id } })
+  router.push({ name: isProcurement ? 'procurement.goods-receipts.detail' : 'inventory.goods-receipts.detail', params: { id } })
 }
 
 const printPdf = async (id: number) => {

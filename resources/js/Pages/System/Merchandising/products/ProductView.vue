@@ -66,6 +66,7 @@
                     <Tag v-if="product.is_featured" value="Featured" severity="warning" />
                     <Tag v-if="product.is_new_arrival" value="New Arrival" severity="info" />
                     <Tag v-if="product.is_bestseller" value="Bestseller" icon="pi pi-star-fill" severity="success" />
+                    <Tag v-for="tag in (product.tags || [])" :key="`product-tag-${tag.id}`" :value="tag.tag_name" severity="info" />
                   </div>
                 </div>
                 <div class="text-right">

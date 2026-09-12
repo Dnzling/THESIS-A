@@ -175,24 +175,26 @@
         </template>
       </Card>
 
-      <!-- Inventory Card -->
+      <!-- Pricing Card -->
       <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
-            <span>Inventory</span>
+            <span>Pricing</span>
           </div>
         </template>
         <template #content>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="flex flex-col gap-2">
-              <label for="cost_price" class="text-sm font-semibold text-gray-700">Cost per Unit</label>
-              <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" />
-              <small class="text-slate-500">Inherited from the standard product; edit only when this variant costs differently.</small>
+              <label for="base_price" class="text-sm font-semibold text-gray-700">Selling Price <span class="text-red-500">*</span></label>
+              <InputNumber id="base_price" v-model="form.base_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" :class="{ 'p-invalid': errors.base_price }" />
+              <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
+              <small class="text-slate-500">Defaults to the parent product selling price.</small>
             </div>
             <div class="flex flex-col gap-2">
-              <label for="reorder_point" class="text-sm font-semibold text-gray-700">Reorder Level</label>
-              <InputNumber id="reorder_point" v-model="form.reorder_point" :min="0" fluid size="small" />
-              <small class="text-slate-500">Starts with the standard product's reorder level.</small>
+              <label for="discounted_price" class="text-sm font-semibold text-gray-700">Discounted Price</label>
+              <InputNumber id="discounted_price" v-model="form.discounted_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" :class="{ 'p-invalid': errors.discounted_price }" />
+              <small v-if="errors.discounted_price" class="text-red-500">{{ errors.discounted_price }}</small>
+              <small class="text-slate-500">Optional and must be lower than the selling price.</small>
             </div>
             <div class="flex flex-col gap-2">
               <label for="unit_of_measurement" class="text-sm font-semibold text-gray-700">Unit of Measurement</label>
@@ -204,14 +206,11 @@
                 optionValue="value"
                 placeholder="Select unit"
                 filter
+                disabled
                 size="small"
                 class="w-full"
               />
-            </div>
-            <div v-if="!isEditMode" class="flex flex-col gap-2 md:col-span-2">
-              <label for="initial_stock" class="text-sm font-semibold text-gray-700">Opening Stock</label>
-              <InputNumber id="initial_stock" v-model="form.initial_stock" :min="0" fluid size="small" />
-              <small class="text-gray-500">Applied to your current branch. Other branches start at zero.</small>
+              <small class="text-slate-500">Inherited from the parent product.</small>
             </div>
           </div>
         </template>
@@ -503,10 +502,9 @@ const form = reactive({
   material: '',
   texture: '',
   finish: '',
-  cost_price: null as number | null,
-  reorder_point: 0,
+  base_price: null as number | null,
+  discounted_price: null as number | null,
   unit_of_measurement: '',
-  initial_stock: 0,
   custom_3d_model_id: null as number | null,
   custom_image_id: null as number | null,
   default_camera_angle_x: 0,
@@ -562,8 +560,8 @@ watch(() => form.product_id, (newVal) => {
     selectedProduct.value = products.value.find((p: any) => p.id === newVal)
       || (Number(embeddedProduct.value?.id) === Number(newVal) ? embeddedProduct.value : null)
     if (!isEditMode.value && selectedProduct.value) {
-      form.cost_price = Number(selectedProduct.value.inventory_cost_price ?? selectedProduct.value.cost_price ?? 0)
-      form.reorder_point = Number(selectedProduct.value.reorder_point || 0)
+      form.base_price = Number(selectedProduct.value.base_price ?? 0)
+      form.discounted_price = selectedProduct.value.discounted_price == null ? null : Number(selectedProduct.value.discounted_price)
       form.unit_of_measurement = selectedProduct.value.unit_of_measurement || ''
       form.length_cm = selectedProduct.value.length_cm == null ? null : Number(selectedProduct.value.length_cm)
       form.width_cm = selectedProduct.value.width_cm == null ? null : Number(selectedProduct.value.width_cm)
@@ -653,8 +651,8 @@ const loadVariation = async () => {
       material: variation.material || '',
       texture: variation.texture || '',
       finish: variation.finish || '',
-      cost_price: Number(variation.cost_price ?? variation.product?.inventory_cost_price ?? variation.product?.cost_price ?? 0),
-      reorder_point: Number(variation.reorder_point ?? variation.product?.reorder_point ?? 0),
+      base_price: Number(variation.base_price ?? variation.product?.base_price ?? 0),
+      discounted_price: variation.discounted_price == null ? null : Number(variation.discounted_price),
       unit_of_measurement: variation.unit_of_measurement || variation.product?.unit_of_measurement || '',
       custom_3d_model_id: variation.custom_3d_model_id || null,
       custom_image_id: variation.custom_image_id || null,
@@ -899,6 +897,14 @@ const validateForm = () => {
     errors.value.variation_sku = 'Variation SKU is required'
   }
 
+  if (form.base_price == null || Number(form.base_price) < 0) {
+    errors.value.base_price = 'Selling price is required'
+  }
+
+  if (form.discounted_price != null && Number(form.discounted_price) >= Number(form.base_price || 0)) {
+    errors.value.discounted_price = 'Discounted price must be lower than the selling price'
+  }
+
   if (!isEditMode.value && !variantImageFile.value && !proposal.value?.image_urls?.length) {
     errors.value.custom_image_id = 'Variation photo is required'
   }
@@ -1026,7 +1032,7 @@ onMounted(() => {
         form.material = p.variant_material || ''
         form.texture = p.variant_texture || ''
         form.finish = p.variant_finish || ''
-        form.cost_price = Number(p.quoted_price || 0)
+        form.base_price = Number(selectedProduct.value?.base_price || 0)
         form.unit_of_measurement = p.unit_of_measurement || ''
         form.length_cm = Number(p.length_cm || 0) || null
         form.width_cm = Number(p.width_cm || 0) || null

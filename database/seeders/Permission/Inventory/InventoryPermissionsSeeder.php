@@ -92,7 +92,7 @@ class InventoryPermissionsSeeder extends Seeder
             ['name' => 'inventory.stock-issues.create', 'display_name' => 'Create Stock Issues', 'module' => 'inventory'],
             ['name' => 'inventory.stock-issues.edit', 'display_name' => 'Edit Stock Issues', 'module' => 'inventory'],
             ['name' => 'inventory.stock-issues.update', 'display_name' => 'Update Stock Issues', 'module' => 'inventory'],
-            ['name' => 'inventory.stock-issues.approve', 'display_name' => 'Approve Stock Issues', 'module' => 'inventory'],
+            ['name' => 'stock_issues.approve', 'display_name' => 'Approve Stock Issues', 'module' => 'inventory'],
 
             // Stock returns
             ['name' => 'inventory.stock-returns.view', 'display_name' => 'View Stock Returns', 'module' => 'inventory'],

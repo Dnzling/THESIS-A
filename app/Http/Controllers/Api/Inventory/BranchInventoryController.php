@@ -77,10 +77,7 @@ class BranchInventoryController extends Controller
 
             $query = BranchInventory::with(['product.suppliers', 'variation', 'branch', 'lastCountedBy'])
                 ->where('store_id', $context['store_id'])
-                ->where('branch_id', $targetBranchId)
-                ->whereHas('product', function ($productQuery) {
-                    $productQuery->where('product_type', '!=', 'raw_material');
-                });
+                ->where('branch_id', $targetBranchId);
 
             // Filters
             if ($request->has('stock_status')) {

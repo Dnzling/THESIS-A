@@ -23,7 +23,6 @@ class EcommerceDeliveryVehicle extends Model
         'model',
         'color',
         'capacity_kg',
-        'cost_per_km',
         'max_orders_per_trip',
         'status',
         'is_active',
@@ -34,7 +33,6 @@ class EcommerceDeliveryVehicle extends Model
 
     protected $casts = [
         'capacity_kg' => 'decimal:2',
-        'cost_per_km' => 'decimal:2',
         'max_orders_per_trip' => 'integer',
         'is_active' => 'boolean',
     ];
