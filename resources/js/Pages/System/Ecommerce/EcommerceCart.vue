@@ -59,23 +59,33 @@
 
               <Column field="quantity" header="Qty">
                 <template #body="{ data }">
-                  <InputNumber
-                    :modelValue="Number(data.quantity)"
-                    :inputId="`qty-${data.id}`"
-                    showButtons
-                    buttonLayout="horizontal"
-                    :step="1"
-                    :min="1"
-                    fluid
-                    @update:modelValue="(value) => updateQty(group.store_id, data, Number(value || 1))"
-                  >
-                    <template #incrementbuttonicon>
-                      <span class="pi pi-plus" />
-                    </template>
-                    <template #decrementbuttonicon>
-                      <span class="pi pi-minus" />
-                    </template>
-                  </InputNumber>
+                  <div class="flex min-w-40 items-stretch" role="group" :aria-label="`Quantity for ${data.product_name}`">
+                    <Button
+                      icon="pi pi-minus"
+                      severity="secondary"
+                      outlined
+                      class="shrink-0 rounded-r-none"
+                      :disabled="Number(data.quantity) <= 1"
+                      :aria-label="`Decrease ${data.product_name} quantity`"
+                      @click="updateQty(group.store_id, data, Number(data.quantity) - 1)"
+                    />
+                    <InputNumber
+                      :modelValue="Number(data.quantity)"
+                      :inputId="`qty-${data.id}`"
+                      :min="1"
+                      :useGrouping="false"
+                      inputClass="w-full text-center rounded-none"
+                      class="min-w-0 flex-1 [&_.p-inputnumber-input]:rounded-none"
+                      @update:modelValue="(value) => updateQty(group.store_id, data, Number(value || 1))"
+                    />
+                    <Button
+                      icon="pi pi-plus"
+                      severity="info"
+                      class="shrink-0 rounded-l-none"
+                      :aria-label="`Increase ${data.product_name} quantity`"
+                      @click="updateQty(group.store_id, data, Number(data.quantity) + 1)"
+                    />
+                  </div>
                 </template>
               </Column>
 
