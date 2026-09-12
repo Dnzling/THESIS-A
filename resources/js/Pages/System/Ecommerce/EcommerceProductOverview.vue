@@ -100,9 +100,6 @@
                 <span v-if="(product.brand || product.collection_name) && product.category" class="text-slate-300">•</span>
                 <span v-if="product.category">{{ product.category }}</span>
               </div>
-              <p class="text-xs text-slate-500">
-                SKU: <span class="font-mono font-semibold text-slate-700">{{ product.sku || '—' }}</span>
-              </p>
             </div>
 
             <div class="space-y-1">
@@ -165,8 +162,34 @@
             </div>
 
             <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-3">
-              <InputNumber v-model="quantity" :min="1" :max="maxPurchasableQty"
-                showButtons class="w-full sm:w-auto" />
+              <div class="flex w-full items-stretch sm:w-48" role="group" aria-label="Product quantity">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  outlined
+                  class="shrink-0 rounded-r-none"
+                  :disabled="quantity <= 1"
+                  aria-label="Decrease quantity"
+                  @click="changeProductQuantity(-1)"
+                />
+                <InputNumber
+                  v-model="quantity"
+                  :min="1"
+                  :max="maxPurchasableQty"
+                  :useGrouping="false"
+                  inputClass="w-full text-center rounded-none"
+                  class="min-w-0 flex-1 [&_.p-inputnumber-input]:rounded-none"
+                  @update:model-value="normalizeProductQuantity"
+                />
+                <Button
+                  icon="pi pi-plus"
+                  severity="info"
+                  class="shrink-0 rounded-l-none"
+                  :disabled="!canPurchase || quantity >= maxPurchasableQty"
+                  aria-label="Increase quantity"
+                  @click="changeProductQuantity(1)"
+                />
+              </div>
               <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
                 <Button label="Add to Cart" severity="info" class="w-full"
                   :disabled="!canPurchase" @click="addToCart" />
@@ -396,6 +419,15 @@ const purchasableQty = computed(() => {
 
 const maxPurchasableQty = computed(() => Math.max(1, purchasableQty.value || 1))
 const canPurchase = computed(() => purchasableQty.value > 0)
+
+function normalizeProductQuantity() {
+  quantity.value = Math.max(1, Math.min(maxPurchasableQty.value, Number(quantity.value || 1)))
+}
+
+function changeProductQuantity(amount: number) {
+  quantity.value = Number(quantity.value || 1) + amount
+  normalizeProductQuantity()
+}
 const selectedModel3D = computed(() => {
   const v: any = selectedVariation.value
   // Only fall back to parent when the selected variation has no own media/specs.

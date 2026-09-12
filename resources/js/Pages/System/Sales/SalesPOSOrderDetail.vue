@@ -8,26 +8,23 @@
           <p class="text-sm text-gray-500">Order details and delivery status</p>
         </div>
       </div>
-      <Button
-        v-if="canSendToLogistics"
-        icon="pi pi-send"
-        severity="success"
-        label="Send To Logistics"
-        :loading="sendingToLogistics"
-        :disabled="sendDisabled"
-        @click="sendToLogistics"
-      />
-      <Button
-        icon="pi pi-print"
-        severity="secondary"
-        label="Print Receipt"
-        @click="printReceipt"
-      />
+      <div class="flex items-center gap-2">
+        <Button
+          v-if="canSendToLogistics"
+          icon="pi pi-send"
+          severity="success"
+          label="Send To Logistics"
+          :loading="sendingToLogistics"
+          :disabled="sendDisabled"
+          @click="sendToLogistics"
+        />
+        <Button icon="pi pi-print" severity="secondary" label="Print Receipt" @click="printReceipt" />
+      </div>
     </div>
 
     <Card v-if="order">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <p class="text-xs text-gray-500">Customer</p>
             <p class="font-semibold">{{ order.customer_name || '-' }}</p>
@@ -37,8 +34,65 @@
             <p class="font-semibold">{{ order.customer_phone || '-' }}</p>
           </div>
           <div>
-            <p class="text-xs text-gray-500">Total</p>
-            <p class="font-semibold">{{ money(order.total_amount) }}</p>
+            <p class="text-xs text-gray-500">Fulfillment</p>
+            <Tag :value="order.delivery_required ? 'Delivery' : 'Pickup'" :severity="order.delivery_required ? 'info' : 'secondary'" />
+          </div>
+          <div>
+            <p class="text-xs text-gray-500">Payment</p>
+            <p class="font-semibold">{{ formatLabel(order.payment_method) }}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500">Payment Status</p>
+            <Tag :value="formatLabel(order.payment_status)" :severity="paymentStatusSeverity(order.payment_status)" />
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <Card v-if="order">
+      <template #content>
+        <h3 class="mb-4 text-lg font-semibold text-gray-800">Order Summary</h3>
+        <div class="ml-auto max-w-md space-y-2 text-sm">
+          <div class="flex justify-between"><span class="text-slate-500">Subtotal</span><span>{{ money(order.subtotal) }}</span></div>
+          <div v-if="Number(order.discount_amount || 0) > 0" class="flex justify-between"><span class="text-slate-500">Discount</span><span>-{{ money(order.discount_amount) }}</span></div>
+          <div v-if="Number(order.tax_amount || 0) > 0" class="flex justify-between"><span class="text-slate-500">Tax</span><span>{{ money(order.tax_amount) }}</span></div>
+          <div v-if="order.delivery_required" class="flex justify-between"><span class="text-slate-500">Shipping Fee</span><span>{{ money(order.shipping_fee) }}</span></div>
+          <Divider />
+          <div class="flex justify-between text-base font-bold"><span>Total</span><span class="text-blue-600">{{ money(order.total_amount) }}</span></div>
+          <div v-if="hasCommission" class="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+            Store plan commission: {{ formatRate(order.commission_rate) }} ({{ money(order.commission_amount) }}). This is not added to the customer total.
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <Card v-if="order">
+      <template #content>
+        <h3 class="mb-4 text-lg font-semibold text-gray-800">Payment</h3>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Payment Method</p>
+            <p class="font-semibold">{{ formatLabel(order.payment?.payment_method || order.payment_method) }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Payment Status</p>
+            <Tag :value="formatLabel(order.payment?.status || order.payment_status)" :severity="paymentStatusSeverity(order.payment?.status || order.payment_status)" />
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Reference</p>
+            <p class="break-all font-mono text-sm font-semibold">{{ order.payment_reference || order.payment?.provider_reference || '-' }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Amount Tendered</p>
+            <p class="font-semibold">{{ money(order.amount_tendered) }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Change</p>
+            <p class="font-semibold text-emerald-600">{{ money(order.change_amount) }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-gray-500">Paid At</p>
+            <p class="font-semibold">{{ formatDateTime(order.paid_at || order.payment?.paid_at) }}</p>
           </div>
         </div>
       </template>
@@ -66,9 +120,9 @@
 
     <Card v-if="order">
       <template #content>
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">Delivery</h3>
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">{{ order.delivery_required ? 'Delivery' : 'Pickup' }}</h3>
         <div v-if="!order.delivery_required" class="text-sm text-gray-500">
-          This order is for pickup (no delivery).
+          This order is marked for pickup. No shipping fee applies.
         </div>
         <div v-else-if="order.delivery" class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -101,8 +155,10 @@
 
           <Divider />
         </div>
-        <div v-else class="text-sm text-gray-500">
-          Delivery record not found for this order.
+        <div v-else class="space-y-2 text-sm">
+          <Tag value="Awaiting Logistics" severity="warning" />
+          <div><span class="text-gray-500">Address:</span> <span class="font-semibold">{{ order.delivery_address || '-' }}</span></div>
+          <div><span class="text-gray-500">Shipping Fee:</span> <span class="font-semibold">{{ money(order.shipping_fee) }}</span></div>
         </div>
       </template>
     </Card>
@@ -135,6 +191,22 @@ const loadOrder = async () => {
 }
 
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
+const formatLabel = (value: string) => {
+  if (value === 'card') return 'Online Payment'
+  if (value === 'gcash') return 'GCash'
+  return String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+const formatRate = (value: number | string) => `${Number(value || 0).toFixed(2).replace(/\.00$/, '')}%`
+const formatDateTime = (value: string | null) => value
+  ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  : '-'
+const hasCommission = computed(() => Number(order.value?.commission_rate || 0) > 0)
+const paymentStatusSeverity = (value: string) => {
+  if (value === 'paid') return 'success'
+  if (value === 'failed' || value === 'cancelled') return 'danger'
+  if (value === 'processing') return 'info'
+  return 'warning'
+}
 const statusSeverity = (value: string) => {
   if (value === 'delivered') return 'success'
   if (value === 'out_for_delivery' || value === 'in_transit') return 'info'

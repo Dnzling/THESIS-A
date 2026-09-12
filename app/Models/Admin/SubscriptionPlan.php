@@ -16,6 +16,7 @@ class SubscriptionPlan extends Model
         'description',
         'monthly_price',
         'yearly_price',
+        'commission_rate',
         'features',
         'is_featured',
         'is_active',
@@ -25,6 +26,7 @@ class SubscriptionPlan extends Model
     protected $casts = [
         'monthly_price' => 'decimal:2',
         'yearly_price' => 'decimal:2',
+        'commission_rate' => 'decimal:2',
         'features' => 'array',
         'is_featured' => 'boolean',
         'is_active' => 'boolean',

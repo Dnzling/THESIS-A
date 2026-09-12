@@ -37,7 +37,7 @@
             <Column field="quantity_available" header="Stock">
               <template #body="{ data }">
                 <Tag 
-                  :value="data.quantity_available" 
+                  :value="`${Number(data.quantity_available || 0)} available`"
                   :severity="getStockSeverity(data.quantity_available)" 
                 />
               </template>
@@ -53,7 +53,7 @@
                   text 
                   severity="info" 
                   icon="pi pi-plus" 
-                  :disabled="!canManagePos" 
+                  :disabled="!canManagePos || cartQuantity(data.id) >= Number(data.quantity_available || 0)"
                   @click="addToCart(data)"
                 />
               </template>
@@ -82,6 +82,7 @@
                 <div>
                   <p class="font-medium">{{ item.product_name }}</p>
                   <p class="text-sm text-gray-600">{{ money(item.unit_price) }}</p>
+                  <p class="text-xs text-slate-500">{{ item.stock_available }} in inventory</p>
                 </div>
                 <Button 
                   text 
@@ -92,15 +93,34 @@
                   size="small"
                 />
               </div>
-              <InputNumber 
-                v-model="item.quantity" 
-                :min="1" 
-                showButtons
-                buttonLayout="horizontal"
-                :step="1"
-                fluid
-                @update:model-value="updateCartTotal"
-              />
+              <div class="flex w-full items-stretch" role="group" :aria-label="`Quantity for ${item.product_name}`">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  outlined
+                  class="shrink-0 rounded-r-none"
+                  :disabled="!canManagePos || item.quantity <= 1"
+                  :aria-label="`Decrease ${item.product_name} quantity`"
+                  @click="changeCartQuantity(item, -1)"
+                />
+                <InputNumber
+                  v-model="item.quantity"
+                  :min="1"
+                  :max="item.stock_available"
+                  :useGrouping="false"
+                  inputClass="w-full text-center rounded-none"
+                  class="min-w-0 flex-1 [&_.p-inputnumber-input]:rounded-none"
+                  @update:model-value="normalizeCartQuantity(item)"
+                />
+                <Button
+                  icon="pi pi-plus"
+                  severity="info"
+                  class="shrink-0 rounded-l-none"
+                  :disabled="!canManagePos || item.quantity >= item.stock_available"
+                  :aria-label="`Increase ${item.product_name} quantity`"
+                  @click="changeCartQuantity(item, 1)"
+                />
+              </div>
             </div>
           </div>
 
@@ -129,7 +149,9 @@
           </div>
 
           <!-- Payment Method -->
+          <label for="payment-mode" class="mb-1 block text-sm font-medium text-gray-700">Payment Mode</label>
           <Select 
+            inputId="payment-mode"
             v-model="paymentMethod" 
             :options="paymentOptions" 
             optionLabel="label" 
@@ -161,6 +183,10 @@
             <div class="flex justify-between py-1 text-sm">
               <span>Subtotal</span>
               <span class="font-medium">{{ money(subtotal) }}</span>
+            </div>
+            <div v-if="deliveryRequired" class="flex justify-between py-1 text-sm">
+              <span>Shipping fee</span>
+              <span class="font-medium">{{ estimatingShipping ? 'Calculating...' : money(shippingFee) }}</span>
             </div>
             <div class="flex justify-between py-1 text-base font-semibold border-t mt-1 pt-2">
               <span>Total</span>
@@ -203,7 +229,13 @@
         </div>
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Phone</label>
-          <InputText v-model="customerForm.phone" fluid placeholder="Contact number" />
+          <InputMask
+            v-model="customerForm.phone"
+            mask="0999 999 9999"
+            placeholder="09XX XXX XXXX"
+            :autoClear="false"
+            fluid
+          />
         </div>
         <div>
           <label class="text-sm font-medium text-gray-700 block mb-1">Province</label>
@@ -271,6 +303,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
 import ecommerceService from '@/services/ecommerce.service'
 import Card from 'primevue/card'
@@ -278,6 +311,7 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Divider from 'primevue/divider'
@@ -300,6 +334,7 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
 const toast = useToast()
 const confirm = useConfirm()
+const router = useRouter()
 const authStore = useAuthStore()
 const search = ref('')
 const products = ref<any[]>([])
@@ -309,6 +344,8 @@ const cart = ref<any[]>([])
 const paymentMethod = ref('cash')
 const amountTendered = ref<number | null>(null)
 const deliveryRequired = ref(false)
+const shippingFee = ref(0)
+const estimatingShipping = ref(false)
 const customerDialog = ref(false)
 const customerForm = ref({
   name: '',
@@ -335,12 +372,10 @@ const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label:
 const mapEl = ref<HTMLDivElement | null>(null)
 let map: L.Map | null = null
 let marker: L.Marker | null = null
-const paymentOptions = [
+const paymentOptions = ref([
   { label: 'Cash', value: 'cash' },
-  { label: 'Card', value: 'card' },
-  { label: 'GCash', value: 'gcash' },
-  { label: 'Cash On Delivery', value: 'cod' },
-]
+  { label: 'Online Payment', value: 'card' },
+])
 const canManagePos = authStore.hasPermission('sales.pos.manage')
 
 const getStockSeverity = (stock: number) => {
@@ -361,10 +396,23 @@ const updateCartTotal = () => {
   cart.value = [...cart.value]
 }
 
+const normalizeCartQuantity = (item: any) => {
+  item.quantity = Math.max(1, Math.min(Number(item.stock_available || 1), Number(item.quantity || 1)))
+  updateCartTotal()
+}
+
+const changeCartQuantity = (item: any, amount: number) => {
+  item.quantity = Number(item.quantity || 1) + amount
+  normalizeCartQuantity(item)
+}
+
+const cartQuantity = (inventoryId: number) => Number(cart.value.find((item) => item.branch_inventory_id === inventoryId)?.quantity || 0)
+
 const addToCart = (row: any) => {
   const id = row.id
   const existing = cart.value.find((i) => i.branch_inventory_id === id)
   if (existing) { 
+    if (existing.quantity >= existing.stock_available) return
     existing.quantity += 1
     updateCartTotal()
     return 
@@ -374,6 +422,7 @@ const addToCart = (row: any) => {
     product_name: row.product?.product_name || 'Product',
     unit_price: Number(row.product?.discounted_price || row.product?.base_price || 0),
     quantity: 1,
+    stock_available: Number(row.quantity_available || 0),
   })
   updateCartTotal()
   
@@ -405,8 +454,36 @@ const removeCart = (item: any) => {
 }
 
 const subtotal = computed(() => cart.value.reduce((s, i) => s + (Number(i.unit_price) * Number(i.quantity || 0)), 0))
-const total = computed(() => subtotal.value)
+const total = computed(() => subtotal.value + (deliveryRequired.value ? shippingFee.value : 0))
 const changeAmount = computed(() => Math.max(0, Number(amountTendered.value || 0) - total.value))
+
+let shippingEstimateRequest = 0
+const updateShippingFee = async () => {
+  const requestId = ++shippingEstimateRequest
+  if (!deliveryRequired.value || !cart.value.length) {
+    shippingFee.value = 0
+    return
+  }
+
+  estimatingShipping.value = true
+  try {
+    const response = await salesService.estimatePosShipping({
+      subtotal: subtotal.value,
+      delivery_latitude: customerForm.value.latitude,
+      delivery_longitude: customerForm.value.longitude,
+    })
+    if (requestId === shippingEstimateRequest) {
+      shippingFee.value = Number(response?.data?.shipping_fee || 0)
+    }
+  } catch (error: any) {
+    if (requestId === shippingEstimateRequest) {
+      shippingFee.value = 0
+      toast.add({ severity: 'error', summary: 'Shipping fee', detail: error?.response?.data?.message || 'Unable to calculate shipping fee.', life: 2500 })
+    }
+  } finally {
+    if (requestId === shippingEstimateRequest) estimatingShipping.value = false
+  }
+}
 
 const checkout = async () => {
   if (!cart.value.length) {
@@ -454,6 +531,7 @@ const checkout = async () => {
       delivery_email: deliveryRequired.value ? customerForm.value.email : undefined,
       items: cart.value.map((i) => ({ branch_inventory_id: i.branch_inventory_id, quantity: i.quantity })),
     })
+    const orderId = Number(response?.data?.id || 0)
 
     if (response?.checkout_url) {
       openCheckout(response.checkout_url)
@@ -467,7 +545,11 @@ const checkout = async () => {
     deliveryRequired.value = false
     customerForm.value = { name: '', email: '', phone: '', addressLine: '', latitude: null, longitude: null, deliveryNotes: '' }
     addressSelection.value = { provinceId: null, cityId: null, barangayCode: null }
-    loadProducts()
+    if (orderId) {
+      await router.push({ name: 'sales.pos.order-detail', params: { id: orderId } })
+    } else {
+      loadProducts()
+    }
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Checkout failed', detail: error?.response?.data?.message || 'Failed checkout.', life: 3000 })
   } finally { checkingOut.value = false }
@@ -481,8 +563,15 @@ const openCheckout = (url: string) => {
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 
 watch(search, () => loadProducts())
+watch([deliveryRequired, subtotal, () => customerForm.value.latitude, () => customerForm.value.longitude], updateShippingFee)
 onMounted(async () => {
   loadProducts()
+  try {
+    const response = await salesService.getPosPaymentOptions()
+    if (response?.data?.gcash) paymentOptions.value.push({ label: 'GCash', value: 'gcash' })
+  } catch {
+    // Cash and Card remain available when payment configuration cannot be loaded.
+  }
   await fetchProvinces()
 })
 
@@ -499,6 +588,7 @@ function initMap() {
     return
   }
 
+  delete (L.Icon.Default.prototype as any)._getIconUrl
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: markerIcon2x,
     iconUrl: markerIcon,
