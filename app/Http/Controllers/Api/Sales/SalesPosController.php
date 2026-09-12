@@ -9,23 +9,19 @@ use App\Models\Sales\SalesOrderItem;
 use App\Models\Sales\SalesPayment;
 use App\Models\Hr\Employee;
 use App\Models\Store\Branch;
-use App\Models\Store\Store;
 use App\Models\Store\StoreDeliveryFeeSetting;
+use App\Models\Store\Store;
 use App\Services\Payment\PaymongoService;
 use App\Services\Sales\SalesOrderSettlementService;
-use App\Services\Sales\OrderCommissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SalesPosController extends Controller
 {
-    private const VAT_RATE = 12.0;
-
     public function __construct(
         private readonly SalesOrderSettlementService $settlementService,
-        private readonly PaymongoService $paymongoService,
-        private readonly OrderCommissionService $commissionService
+        private readonly PaymongoService $paymongoService
     ) {
     }
 
@@ -36,7 +32,7 @@ class SalesPosController extends Controller
         $branchId = (int) ($request->input('branch_id', $user->branch_id ?? 0));
 
         $query = BranchInventory::query()
-            ->with(['product:id,product_name,sku,base_price,discounted_price,weight_kg,is_active', 'variation:id,variation_name'])
+            ->with(['product:id,product_name,sku,base_price,discounted_price,is_active', 'variation:id,variation_name'])
             ->where('store_id', $storeId)
             ->when($branchId > 0, fn($q) => $q->where('branch_id', $branchId))
             ->where('quantity_available', '>', 0)
@@ -56,51 +52,39 @@ class SalesPosController extends Controller
         return response()->json(['success' => true, 'data' => $rows]);
     }
 
-    public function estimateDeliveryFee(Request $request): JsonResponse
+    public function shippingEstimate(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'subtotal' => 'required|numeric|min:0',
             'branch_id' => 'nullable|exists:branches,id',
-            'delivery_latitude' => 'required|numeric|between:-90,90',
-            'delivery_longitude' => 'required|numeric|between:-180,180',
-            'items' => 'required|array|min:1',
-            'items.*.branch_inventory_id' => 'required|exists:branch_inventory,id',
-            'items.*.quantity' => 'required|integer|min:1',
+            'delivery_latitude' => 'nullable|numeric|between:-90,90',
+            'delivery_longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
-        $user = $request->user();
-        $storeId = (int) ($user->store_id ?? 0);
-        $branchId = (int) ($validated['branch_id'] ?? $user->branch_id ?? 0);
-        if (!$storeId) {
-            return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
-        }
-
-        [$subtotal, $totalWeight] = $this->resolveCartMetrics($validated['items'], $storeId, $branchId);
-        [$originLatitude, $originLongitude] = $this->resolveDeliveryOrigin($storeId, $branchId);
-        if ($originLatitude === null || $originLongitude === null) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The selected branch or store does not have coordinates for delivery calculation.',
-            ], 422);
-        }
-
-        $distanceKm = $this->haversineKm(
-            $originLatitude,
-            $originLongitude,
-            (float) $validated['delivery_latitude'],
-            (float) $validated['delivery_longitude']
-        );
-        $estimate = $this->calculateStoreDeliveryFee($storeId, $subtotal, $distanceKm, $totalWeight);
-
-        if (!($estimate['delivery_available'] ?? true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The delivery address is outside this store\'s maximum delivery distance.',
-            ], 422);
-        }
+        $storeId = (int) ($request->user()->store_id ?? 0);
+        $branchId = (int) ($validated['branch_id'] ?? $request->user()->branch_id ?? 0);
 
         return response()->json([
             'success' => true,
-            'data' => $estimate,
+            'data' => $this->calculateShippingFee(
+                $storeId,
+                $branchId,
+                (float) $validated['subtotal'],
+                isset($validated['delivery_latitude']) ? (float) $validated['delivery_latitude'] : null,
+                isset($validated['delivery_longitude']) ? (float) $validated['delivery_longitude'] : null,
+            ),
+        ]);
+    }
+
+    public function paymentOptions(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'cash' => true,
+                'card' => true,
+                'gcash' => $this->paymongoService->isConfigured(),
+            ],
         ]);
     }
 
@@ -110,7 +94,7 @@ class SalesPosController extends Controller
             'branch_id' => 'nullable|exists:branches,id',
             'customer_name' => 'nullable|string|max:150',
             'customer_phone' => 'nullable|string|max:50',
-            'payment_method' => 'required|in:cash,card,gcash,cod',
+            'payment_method' => 'required|in:cash,card,gcash',
             'discount_amount' => 'nullable|numeric|min:0',
             'amount_tendered' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:1000',
@@ -122,8 +106,8 @@ class SalesPosController extends Controller
             'delivery_city' => 'nullable|string|max:150',
             'delivery_barangay' => 'nullable|string|max:150',
             'delivery_address_line' => 'nullable|string|max:255',
-            'delivery_latitude' => 'nullable|numeric|between:-90,90',
-            'delivery_longitude' => 'nullable|numeric|between:-180,180',
+            'delivery_latitude' => 'nullable|numeric',
+            'delivery_longitude' => 'nullable|numeric',
             'delivery_email' => 'nullable|email|max:150',
             'items' => 'required|array|min:1',
             'items.*.branch_inventory_id' => 'required|exists:branch_inventory,id',
@@ -137,19 +121,10 @@ class SalesPosController extends Controller
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
         }
 
-        if (($validated['delivery_required'] ?? false)
-            && (!is_numeric($validated['delivery_latitude'] ?? null) || !is_numeric($validated['delivery_longitude'] ?? null))) {
+        if ($validated['payment_method'] === 'gcash' && !$this->paymongoService->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Pin the customer delivery location before checkout so the shipping fee can be calculated.',
-            ], 422);
-        }
-
-        [$originLatitude, $originLongitude] = $this->resolveDeliveryOrigin($storeId, $branchId);
-        if (($validated['delivery_required'] ?? false) && ($originLatitude === null || $originLongitude === null)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The selected branch or store does not have coordinates for delivery calculation.',
+                'message' => 'GCash is temporarily unavailable because PayMongo is not configured. Please select Cash or Online Payment.',
             ], 422);
         }
 
@@ -157,11 +132,13 @@ class SalesPosController extends Controller
         $creatorEmployeeId = $user->employee?->id
             ?? Employee::where('user_id', $user->id)->value('id')
             ?? config('app.system_employee_id', 1);
+        $commissionRate = (float) (Store::query()
+            ->with('subscriptionPlan:id,commission_rate')
+            ->find($storeId)?->subscriptionPlan?->commission_rate ?? 0);
 
-        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $creatorEmployeeId, $originLatitude, $originLongitude) {
+        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $creatorEmployeeId, $commissionRate) {
             $subtotal = 0.0;
             $tax = 0.0;
-            $totalWeight = 0.0;
             $discount = (float) ($validated['discount_amount'] ?? 0);
 
             // Resolve employee id for created_by (InventoryTransaction.created_by references employees.id)
@@ -182,8 +159,8 @@ class SalesPosController extends Controller
                 'discount_amount' => $discount,
                 'tax_amount' => 0,
                 'shipping_fee' => 0,
-                'delivery_distance_km' => null,
-                'delivery_weight_kg' => 0,
+                'commission_rate' => $commissionRate > 0 ? $commissionRate : null,
+                'commission_amount' => 0,
                 'total_amount' => 0,
                 'amount_tendered' => (float) ($validated['amount_tendered'] ?? 0),
                 'change_amount' => 0,
@@ -203,7 +180,7 @@ class SalesPosController extends Controller
 
             foreach ($validated['items'] as $itemRow) {
                 $inv = BranchInventory::query()
-                    ->with(['product:id,product_name,sku,base_price,discounted_price,weight_kg'])
+                    ->with(['product:id,product_name,sku,base_price,discounted_price'])
                     ->lockForUpdate()
                     ->findOrFail((int) $itemRow['branch_inventory_id']);
 
@@ -218,10 +195,8 @@ class SalesPosController extends Controller
 
                 $unitPrice = (float) ($inv->product?->discounted_price ?? $inv->product?->base_price ?? 0);
                 $lineSubtotal = $qty * $unitPrice;
-                // POS selling prices are VAT-inclusive. Extract VAT for
-                // reporting without increasing the amount paid by the buyer.
-                $lineTax = $this->extractIncludedVat($lineSubtotal);
-                $lineTotal = $lineSubtotal;
+                $lineTax = 0.0;
+                $lineTotal = $lineSubtotal + $lineTax;
 
                 SalesOrderItem::create([
                     'order_id' => $order->id,
@@ -239,55 +214,30 @@ class SalesPosController extends Controller
 
                 $subtotal += $lineSubtotal;
                 $tax += $lineTax;
-                $totalWeight += (float) ($inv->product?->weight_kg ?? 0) * $qty;
             }
 
-            $netProductTotal = max(0, $subtotal - $discount);
-            $tax = $this->extractIncludedVat($netProductTotal);
-            $shippingFee = 0.0;
-            $deliveryDistanceKm = null;
-
-            if ((bool) ($validated['delivery_required'] ?? false)) {
-                $deliveryDistanceKm = $this->haversineKm(
-                    (float) $originLatitude,
-                    (float) $originLongitude,
-                    (float) $validated['delivery_latitude'],
-                    (float) $validated['delivery_longitude']
-                );
-                $deliveryEstimate = $this->calculateStoreDeliveryFee(
+            $shipping = (bool) ($validated['delivery_required'] ?? false)
+                ? $this->calculateShippingFee(
                     $storeId,
-                    $netProductTotal,
-                    $deliveryDistanceKm,
-                    $totalWeight
-                );
-                if (!($deliveryEstimate['delivery_available'] ?? true)) {
-                    abort(response()->json([
-                        'success' => false,
-                        'message' => 'The delivery address is outside this store\'s maximum delivery distance.',
-                    ], 422));
-                }
-                $shippingFee = (float) $deliveryEstimate['shipping_fee'];
-            }
-
-            $total = $netProductTotal + $shippingFee;
-            $commission = $this->commissionService->calculate(
-                $storeId,
-                $subtotal,
-                $discount,
-                $total
-            );
+                    $branchId,
+                    $subtotal,
+                    isset($validated['delivery_latitude']) ? (float) $validated['delivery_latitude'] : null,
+                    isset($validated['delivery_longitude']) ? (float) $validated['delivery_longitude'] : null,
+                )['shipping_fee']
+                : 0.0;
+            $total = max(0, $subtotal + $tax + $shipping - $discount);
+            $commissionAmount = $commissionRate > 0 ? round($subtotal * ($commissionRate / 100), 2) : 0.0;
             $tendered = (float) ($order->amount_tendered ?? 0);
             $change = max(0, $tendered - $total);
 
-            $order->update(array_merge([
+            $order->update([
                 'subtotal' => $subtotal,
                 'tax_amount' => $tax,
-                'shipping_fee' => $shippingFee,
-                'delivery_distance_km' => $deliveryDistanceKm,
-                'delivery_weight_kg' => $totalWeight,
+                'shipping_fee' => $shipping,
+                'commission_amount' => $commissionAmount,
                 'total_amount' => $total,
                 'change_amount' => $change,
-            ], $commission));
+            ]);
 
             $order = $order->fresh(['items', 'branch']);
 
@@ -316,7 +266,7 @@ class SalesPosController extends Controller
             report($exception);
         }
 
-        if (in_array($validated['payment_method'], ['cash', 'card', 'cod'], true)) {
+        if (in_array($validated['payment_method'], ['cash', 'card'], true)) {
             $manualPayment = SalesPayment::create([
                 'store_id' => $storeId,
                 'branch_id' => $branchId ?: null,
@@ -770,136 +720,6 @@ class SalesPosController extends Controller
         ]);
     }
 
-    private function resolveCartMetrics(array $items, int $storeId, int $branchId): array
-    {
-        $subtotal = 0.0;
-        $totalWeight = 0.0;
-
-        foreach ($items as $itemRow) {
-            $inventory = BranchInventory::query()
-                ->with(['product:id,base_price,discounted_price,weight_kg'])
-                ->where('store_id', $storeId)
-                ->when($branchId > 0, fn($query) => $query->where('branch_id', $branchId))
-                ->find((int) $itemRow['branch_inventory_id']);
-
-            if (!$inventory) {
-                abort(response()->json([
-                    'success' => false,
-                    'message' => 'A selected product is not available in this store branch.',
-                ], 422));
-            }
-
-            $quantity = (int) $itemRow['quantity'];
-            $unitPrice = (float) ($inventory->product?->discounted_price ?? $inventory->product?->base_price ?? 0);
-            $subtotal += $unitPrice * $quantity;
-            $totalWeight += (float) ($inventory->product?->weight_kg ?? 0) * $quantity;
-        }
-
-        return [round($subtotal, 2), round($totalWeight, 2)];
-    }
-
-    private function resolveDeliveryOrigin(int $storeId, int $branchId): array
-    {
-        if ($branchId > 0) {
-            $branch = Branch::query()
-                ->where('store_id', $storeId)
-                ->find($branchId);
-
-            if ($branch && is_numeric($branch->latitude) && is_numeric($branch->longitude)) {
-                return [(float) $branch->latitude, (float) $branch->longitude];
-            }
-        }
-
-        $store = Store::query()->find($storeId);
-        if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
-            return [(float) $store->latitude, (float) $store->longitude];
-        }
-
-        return [null, null];
-    }
-
-    private function calculateStoreDeliveryFee(
-        int $storeId,
-        float $subtotal,
-        float $distanceKm,
-        float $totalWeightKg
-    ): array {
-        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first()
-            ?? new StoreDeliveryFeeSetting([
-                'store_id' => $storeId,
-                'is_active' => true,
-                'base_fee' => 100,
-                'per_km_fee' => 10,
-                'per_kg_fee' => 0,
-                'min_delivery_fee' => 80,
-                'free_shipping_min_order' => null,
-                'max_delivery_distance_km' => null,
-            ]);
-
-        $maxDistance = $setting->max_delivery_distance_km;
-        if (!is_null($maxDistance) && $distanceKm > (float) $maxDistance) {
-            return [
-                'delivery_available' => false,
-                'shipping_fee' => 0.0,
-                'distance_km' => round($distanceKm, 2),
-                'total_weight_kg' => round($totalWeightKg, 2),
-                'max_delivery_distance_km' => (float) $maxDistance,
-            ];
-        }
-
-        if (!(bool) $setting->is_active) {
-            return [
-                'delivery_available' => true,
-                'shipping_fee' => 0.0,
-                'distance_km' => round($distanceKm, 2),
-                'total_weight_kg' => round($totalWeightKg, 2),
-                'breakdown' => [
-                    'base_fee' => 0.0,
-                    'distance_fee' => 0.0,
-                    'weight_fee' => 0.0,
-                    'minimum_applied' => false,
-                    'free_shipping_applied' => false,
-                ],
-            ];
-        }
-
-        $baseFee = (float) $setting->base_fee;
-        $distanceFee = round($distanceKm * (float) $setting->per_km_fee, 2);
-        $weightFee = round($totalWeightKg * (float) $setting->per_kg_fee, 2);
-        $freeShippingApplied = !is_null($setting->free_shipping_min_order)
-            && $subtotal >= (float) $setting->free_shipping_min_order;
-        $rawFee = $baseFee + $distanceFee + $weightFee;
-        $minimumApplied = !$freeShippingApplied && $rawFee < (float) $setting->min_delivery_fee;
-        $shippingFee = $freeShippingApplied
-            ? 0.0
-            : max($rawFee, (float) $setting->min_delivery_fee);
-
-        return [
-            'delivery_available' => true,
-            'shipping_fee' => round($shippingFee, 2),
-            'distance_km' => round($distanceKm, 2),
-            'total_weight_kg' => round($totalWeightKg, 2),
-            'breakdown' => [
-                'base_fee' => round($baseFee, 2),
-                'distance_fee' => $distanceFee,
-                'weight_fee' => $weightFee,
-                'minimum_applied' => $minimumApplied,
-                'free_shipping_applied' => $freeShippingApplied,
-            ],
-        ];
-    }
-
-    private function haversineKm(float $fromLatitude, float $fromLongitude, float $toLatitude, float $toLongitude): float
-    {
-        $earthRadiusKm = 6371;
-        $latitudeDelta = deg2rad($toLatitude - $fromLatitude);
-        $longitudeDelta = deg2rad($toLongitude - $fromLongitude);
-        $a = sin($latitudeDelta / 2) ** 2
-            + cos(deg2rad($fromLatitude)) * cos(deg2rad($toLatitude)) * sin($longitudeDelta / 2) ** 2;
-
-        return round($earthRadiusKm * 2 * atan2(sqrt($a), sqrt(1 - $a)), 2);
-    }
-
     private function applyStoreScope(Request $request, $query): void
     {
         $user = $request->user();
@@ -913,6 +733,56 @@ class SalesPosController extends Controller
         }
     }
 
+    private function calculateShippingFee(int $storeId, int $branchId, float $subtotal, ?float $latitude, ?float $longitude): array
+    {
+        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first()
+            ?? new StoreDeliveryFeeSetting([
+                'is_active' => true,
+                'base_fee' => 100,
+                'per_km_fee' => 10,
+                'min_delivery_fee' => 80,
+                'free_shipping_min_order' => null,
+                'max_delivery_distance_km' => null,
+            ]);
+
+        if (!(bool) $setting->is_active) {
+            return ['shipping_fee' => 0.0, 'distance_km' => 0.0, 'free_shipping_applied' => false];
+        }
+
+        $distanceKm = 0.0;
+        if ($branchId > 0 && $latitude !== null && $longitude !== null) {
+            $branch = Branch::query()->where('store_id', $storeId)->find($branchId);
+            if ($branch?->latitude !== null && $branch?->longitude !== null) {
+                $distanceKm = $this->distanceKm((float) $branch->latitude, (float) $branch->longitude, $latitude, $longitude);
+            }
+        }
+
+        if ($setting->max_delivery_distance_km !== null && $distanceKm > (float) $setting->max_delivery_distance_km) {
+            abort(response()->json(['success' => false, 'message' => 'The delivery address is outside the store delivery range.'], 422));
+        }
+
+        if ($setting->free_shipping_min_order !== null && $subtotal >= (float) $setting->free_shipping_min_order) {
+            return ['shipping_fee' => 0.0, 'distance_km' => round($distanceKm, 2), 'free_shipping_applied' => true];
+        }
+
+        $fee = max(
+            (float) $setting->min_delivery_fee,
+            (float) $setting->base_fee + ($distanceKm * (float) $setting->per_km_fee)
+        );
+
+        return ['shipping_fee' => round($fee, 2), 'distance_km' => round($distanceKm, 2), 'free_shipping_applied' => false];
+    }
+
+    private function distanceKm(float $fromLat, float $fromLng, float $toLat, float $toLng): float
+    {
+        $latDelta = deg2rad($toLat - $fromLat);
+        $lngDelta = deg2rad($toLng - $fromLng);
+        $a = sin($latDelta / 2) ** 2
+            + cos(deg2rad($fromLat)) * cos(deg2rad($toLat)) * sin($lngDelta / 2) ** 2;
+
+        return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
     private function nextOrderNumber(): string
     {
         $prefix = 'POS-' . now()->format('Ymd') . '-';
@@ -922,15 +792,6 @@ class SalesPosController extends Controller
             $seq = ((int) $m[1]) + 1;
         }
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
-    }
-
-    private function extractIncludedVat(float $vatInclusiveAmount): float
-    {
-        if ($vatInclusiveAmount <= 0) {
-            return 0.0;
-        }
-
-        return round($vatInclusiveAmount - ($vatInclusiveAmount / (1 + (self::VAT_RATE / 100))), 2);
     }
 
 }

@@ -51,6 +51,16 @@ class SalesService {
     return res.data
   }
 
+  async estimatePosShipping(payload: any) {
+    const res = await axiosClient.post('/api/sales/pos/shipping-estimate', payload)
+    return res.data
+  }
+
+  async getPosPaymentOptions() {
+    const res = await axiosClient.get('/api/sales/pos/payment-options')
+    return res.data
+  }
+
   async getPaymentAnalytics(params?: any) {
     const res = await axiosClient.get('/api/sales/analytics/payments', { params })
     return res.data

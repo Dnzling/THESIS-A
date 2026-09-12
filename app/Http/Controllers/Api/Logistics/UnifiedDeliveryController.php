@@ -506,6 +506,8 @@ class UnifiedDeliveryController extends Controller
         }
 
         $order = $this->resolveSalesOrder($request, (int) $validated['order_id'], withDelivery: true);
+        $overrideFee = $order->shipping_fee !== null ? (float) $order->shipping_fee : null;
+        $finalEstimatedFee = is_null($overrideFee) ? $estimatedFee : round($overrideFee, 2);
 
         $delivery = $order->delivery;
         if ($delivery && strtolower((string) $delivery->status) !== 'pending') {
@@ -521,23 +523,23 @@ class UnifiedDeliveryController extends Controller
                 'assistant_user_ids' => $assistantIds->all(),
                 'status' => 'assigned',
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
-                    'distance_km' => $distance,
-                    'per_km_charge' => $perKmCharge,
-                    'estimated_fee' => $estimatedFee,
-                    'notes' => $this->composeAssignmentNotes(
-                        $validated['notes'] ?? null,
-                        $distance,
-                        $perKmCharge,
-                        $estimatedFee,
-                        $vehicle,
-                        $baseFee,
-                        $perKgFee,
-                        $weightKg,
-                        $zoneLabel,
-                        $validated['zone_rate_id'] ?? null
-                    ),
-                    'updated_by' => $request->user()->id,
-                ]);
+                'distance_km' => $distance,
+                'per_km_charge' => $perKmCharge,
+                'estimated_fee' => $finalEstimatedFee,
+                'notes' => $this->composeAssignmentNotes(
+                    $validated['notes'] ?? null,
+                    $distance,
+                    $perKmCharge,
+                    $finalEstimatedFee,
+                    $vehicle,
+                    $baseFee,
+                    $perKgFee,
+                    $weightKg,
+                    $zoneLabel,
+                    $validated['zone_rate_id'] ?? null
+                ),
+                'updated_by' => $request->user()->id,
+            ]);
             $delivery->save();
         } else {
             $delivery = SalesOrderDelivery::query()->create([
@@ -558,7 +560,7 @@ class UnifiedDeliveryController extends Controller
                     $validated['notes'] ?? null,
                     $distance,
                     $perKmCharge,
-                    $estimatedFee,
+                    $finalEstimatedFee,
                     $vehicle,
                     $baseFee,
                     $perKgFee,

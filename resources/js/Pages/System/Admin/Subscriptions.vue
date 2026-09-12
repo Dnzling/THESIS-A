@@ -1,63 +1,73 @@
 <template>
   <div class="space-y-6">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <Card class="border border-slate-200 shadow-none col-span-2">
-        <template #content>
-          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 class="mt-1 text-lg font-semibold text-slate-900">Subscription Plans</h2>
-            </div>
-            <Button label="Add Plan" icon="pi pi-plus" size="small" @click="openCreatePlanDialog" />
+    <Card class="border border-slate-200 shadow-none">
+      <template #content>
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Platform Billing</p>
+            <h1 class="mt-1 text-2xl font-semibold text-slate-900">Subscription Management</h1>
+            <p class="text-sm text-slate-500">Manage store plans, renewals, and expiration timeline.</p>
           </div>
-          <DataTable :value="plans" :loading="plansLoading" rowHover dataKey="id" @row-click="onPlanRowClick"
-            class="cursor-pointer">
-            <Column field="name" header="Plan" />
-            <Column field="plan_key" header="Key" />
-            <Column header="Pricing">
-              <template #body="{ data }">
-                <div class="text-sm">Monthly: ₱{{ Number(data.monthly_price || 0).toFixed(2) }}</div>
-                <div class="text-xs text-slate-500">Yearly: ₱{{ Number(data.yearly_price || 0).toFixed(2) }}</div>
-              </template>
-            </Column>
-            <Column header="Active">
-              <template #body="{ data }">
-                <Tag :value="data.is_active ? 'Active' : 'Inactive'"
-                  :severity="data.is_active ? 'success' : 'secondary'" />
-              </template>
-            </Column>
-          </DataTable>
+          <Button icon="pi pi-refresh" label="Refresh" severity="info" outlined @click="loadAll" />
+        </div>
+      </template>
+    </Card>
+
+    <Card class="border border-slate-200 shadow-none">
+      <template #content>
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Plans</p>
+            <h2 class="mt-1 text-lg font-semibold text-slate-900">Subscription Plans</h2>
+            <p class="text-sm text-slate-500">Edit pricing and features shown on the marketing pricing page.</p>
+          </div>
+          <Button label="Add Plan" icon="pi pi-plus" severity="info" outlined @click="openCreatePlanDialog" />
+        </div>
+        <DataTable :value="plans" :loading="plansLoading" rowHover dataKey="id" @row-click="onPlanRowClick" class="cursor-pointer">
+          <Column field="name" header="Plan" />
+          <Column field="plan_key" header="Key" />
+          <Column header="Pricing">
+            <template #body="{ data }">
+              <div class="text-sm">Monthly: ₱{{ Number(data.monthly_price || 0).toFixed(2) }}</div>
+              <div class="text-xs text-slate-500">Yearly: ₱{{ Number(data.yearly_price || 0).toFixed(2) }}</div>
+            </template>
+          </Column>
+          <Column header="Active">
+            <template #body="{ data }">
+              <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+            </template>
+          </Column>
+        </DataTable>
+      </template>
+    </Card>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Card class="border border-slate-200 shadow-none">
+        <template #content>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Total Stores</p>
+          <p class="mt-2 text-3xl font-semibold text-slate-900">{{ stats.total_stores }}</p>
         </template>
       </Card>
-  
-      <div class="grid grid-cols-2 gap-4">
-        <Card class="border border-slate-200 shadow-none">
-          <template #content>
-            <p class="text-xs uppercase tracking-wide text-slate-500">Total Stores</p>
-            <p class="mt-2 text-3xl font-semibold text-slate-900">{{ stats.total_stores }}</p>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-none">
-          <template #content>
-            <p class="text-xs uppercase tracking-wide text-slate-500">Paid</p>
-            <p class="mt-2 text-3xl font-semibold text-emerald-600">{{ stats.paid }}</p>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-none">
-          <template #content>
-            <p class="text-xs uppercase tracking-wide text-slate-500">Overdue</p>
-            <p class="mt-2 text-3xl font-semibold text-rose-600">{{ stats.overdue }}</p>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-none">
-          <template #content>
-            <p class="text-xs uppercase tracking-wide text-slate-500">Unpaid</p>
-            <p class="mt-2 text-3xl font-semibold text-amber-600">{{ stats.unpaid }}</p>
-          </template>
-        </Card>
-      </div>
+      <Card class="border border-slate-200 shadow-none">
+        <template #content>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Paid</p>
+          <p class="mt-2 text-3xl font-semibold text-emerald-600">{{ stats.paid }}</p>
+        </template>
+      </Card>
+      <Card class="border border-slate-200 shadow-none">
+        <template #content>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Overdue</p>
+          <p class="mt-2 text-3xl font-semibold text-rose-600">{{ stats.overdue }}</p>
+        </template>
+      </Card>
+      <Card class="border border-slate-200 shadow-none">
+        <template #content>
+          <p class="text-xs uppercase tracking-wide text-slate-500">Unpaid</p>
+          <p class="mt-2 text-3xl font-semibold text-amber-600">{{ stats.unpaid }}</p>
+        </template>
+      </Card>
     </div>
-  
-  
+
     <Card class="border border-slate-200 shadow-none">
       <template #content>
         <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-12">
@@ -68,20 +78,33 @@
             </IconField>
           </div>
           <div class="md:col-span-3">
-            <Select v-model="filters.tier" :options="tierOptions" optionLabel="label" optionValue="value"
-              placeholder="Plan Tier" showClear fluid />
+            <Select
+              v-model="filters.tier"
+              :options="tierOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Plan Tier"
+              showClear
+              fluid
+            />
           </div>
           <div class="md:col-span-3">
-            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-              placeholder="Store Status" showClear fluid />
+            <Select
+              v-model="filters.status"
+              :options="statusOptions"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Store Status"
+              showClear
+              fluid
+            />
           </div>
           <div class="md:col-span-1 flex items-center justify-end">
             <Button icon="pi pi-filter-slash" text severity="secondary" @click="clearFilters" />
           </div>
         </div>
-  
-        <DataTable :value="stores" :loading="loading" stripedRows dataKey="id" paginator :rows="10"
-          :rowsPerPageOptions="[10, 20, 50]">
+
+        <DataTable :value="stores" :loading="loading" stripedRows dataKey="id" paginator :rows="10" :rowsPerPageOptions="[10, 20, 50]">
           <Column field="store_name" header="Store" sortable>
             <template #body="{ data }">
               <div>
@@ -115,16 +138,21 @@
           </Column>
           <Column field="subscription_status" header="Billing Status" sortable>
             <template #body="{ data }">
-              <Tag :value="toTitle(data.subscription_status)"
-                :severity="subscriptionStatusSeverity(data.subscription_status)" />
+              <Tag :value="toTitle(data.subscription_status)" :severity="subscriptionStatusSeverity(data.subscription_status)" />
             </template>
           </Column>
           <Column field="status" header="Store Status" sortable>
             <template #body="{ data }">
               <div class="flex items-center gap-2">
                 <Tag :value="toTitle(data.status)" :severity="storeStatusSeverity(data.status)" />
-                <Button v-if="showStatusInfoButton(data)" icon="pi pi-info-circle" text rounded severity="secondary"
-                  @click="openStatusInfoDialog(data)" />
+                <Button
+                  v-if="showStatusInfoButton(data)"
+                  icon="pi pi-info-circle"
+                  text
+                  rounded
+                  severity="secondary"
+                  @click="openStatusInfoDialog(data)"
+                />
               </div>
             </template>
           </Column>
@@ -144,7 +172,7 @@
         </DataTable>
       </template>
     </Card>
-  
+
     <Dialog v-model:visible="manageDialog" header="Manage Subscription" :style="{ width: '560px' }" modal>
       <div class="space-y-4" v-if="selectedStore">
         <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -154,12 +182,23 @@
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Plan Tier</label>
-            <Select v-model="editForm.subscription_tier" :options="tierOptions" optionLabel="label" optionValue="value"
-              fluid />
+            <Select
+              v-model="editForm.subscription_tier"
+              :options="tierOptions"
+              optionLabel="label"
+              optionValue="value"
+              fluid
+            />
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Store Status</label>
-            <Select v-model="editForm.status" :options="statusOptions" optionLabel="label" optionValue="value" fluid />
+            <Select
+              v-model="editForm.status"
+              :options="statusOptions"
+              optionLabel="label"
+              optionValue="value"
+              fluid
+            />
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">Subscription End Date</label>
@@ -167,10 +206,8 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Button label="Extend 30 days" icon="pi pi-calendar-plus" severity="secondary" outlined
-            @click="extendInDialog(30)" />
-          <Button label="Extend 365 days" icon="pi pi-calendar-plus" severity="secondary" outlined
-            @click="extendInDialog(365)" />
+          <Button label="Extend 30 days" icon="pi pi-calendar-plus" severity="secondary" outlined @click="extendInDialog(30)" />
+          <Button label="Extend 365 days" icon="pi pi-calendar-plus" severity="secondary" outlined @click="extendInDialog(365)" />
         </div>
       </div>
       <template #footer>
@@ -178,9 +215,8 @@
         <Button label="Save" icon="pi pi-check" severity="info" :loading="saving" @click="saveSubscription" />
       </template>
     </Dialog>
-  
-    <Dialog v-model:visible="planDialog" :header="creatingPlan ? 'Add Plan' : 'Edit Plan'" :style="{ width: '600px' }"
-      modal>
+
+    <Dialog v-model:visible="planDialog" :header="creatingPlan ? 'Add Plan' : 'Edit Plan'" :style="{ width: '600px' }" modal>
       <div class="space-y-4" v-if="activePlan || creatingPlan">
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
@@ -199,24 +235,10 @@
             <label class="mb-1 block text-sm font-medium text-slate-700">Yearly Price</label>
             <InputNumber v-model="planForm.yearly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
           </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Online Store Commission (%)</label>
-            <InputNumber v-model="planForm.commission_percentage" :min="0" :max="3" :minFractionDigits="2" suffix="%"
-              fluid />
-            <small class="text-xs text-slate-500">Applied only to completed customer purchases through the online
-              store.</small>
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Total Accounts (Admin + Employees)</label>
-            <InputNumber v-model="planForm.max_user_accounts" :min="1" placeholder="Unlimited" fluid />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Branches</label>
-            <InputNumber v-model="planForm.max_branches" :min="1" placeholder="Unlimited" fluid />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Products</label>
-            <InputNumber v-model="planForm.max_products" :min="1" placeholder="Unlimited" fluid />
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">Sales Commission Rate (optional)</label>
+            <InputNumber v-model="planForm.commission_rate" suffix="%" :min="0" :max="100" :minFractionDigits="0" :maxFractionDigits="2" fluid />
+            <p class="mt-1 text-xs text-slate-500">Leave empty or set to 0 when this plan does not charge a sales commission.</p>
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">Description</label>
@@ -228,17 +250,30 @@
           </div>
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">Modules Included</label>
-            <MultiSelect v-model="planForm.modules" :options="modulesOptions" optionLabel="label" optionValue="value"
-              display="chip" :loading="modulesLoading" placeholder="Select modules" class="w-full" />
+            <MultiSelect
+              v-model="planForm.modules"
+              :options="modulesOptions"
+              optionLabel="label"
+              optionValue="value"
+              display="chip"
+              :loading="modulesLoading"
+              placeholder="Select modules"
+              class="w-full"
+            />
             <div class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-              <div v-for="mod in modulesOptions" :key="mod.value"
-                class="flex items-center justify-between rounded border border-slate-200 px-3 py-2">
+              <div
+                v-for="mod in modulesOptions"
+                :key="mod.value"
+                class="flex items-center justify-between rounded border border-slate-200 px-3 py-2"
+              >
                 <div>
                   <p class="font-semibold text-sm text-slate-900">{{ mod.label }}</p>
                   <p class="text-xs text-slate-500 truncate">{{ mod.description }}</p>
                 </div>
-                <InputSwitch :modelValue="planForm.modules.includes(mod.value)"
-                  @update:modelValue="(val:boolean)=>toggleModule(mod.value,val)" />
+                <InputSwitch
+                  :modelValue="planForm.modules.includes(mod.value)"
+                  @update:modelValue="(val:boolean)=>toggleModule(mod.value,val)"
+                />
               </div>
             </div>
           </div>
@@ -261,7 +296,7 @@
         <Button label="Save" icon="pi pi-check" severity="info" :loading="savingPlan" @click="savePlan" />
       </template>
     </Dialog>
-  
+
     <Dialog v-model:visible="statusInfoDialog" header="Store Status Details" :style="{ width: '520px' }" modal>
       <div v-if="statusInfoStore" class="space-y-3">
         <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -279,8 +314,7 @@
           </div>
           <div v-if="statusInfoStore.status === 'suspended'" class="md:col-span-2">
             <p class="text-xs uppercase tracking-wide text-slate-500">Suspension Remaining</p>
-            <p class="text-sm font-semibold text-amber-600">{{ suspensionRemainingLabel(statusInfoStore?.status_details)
-              }}</p>
+            <p class="text-sm font-semibold text-amber-600">{{ suspensionRemainingLabel(statusInfoStore?.status_details) }}</p>
           </div>
           <div v-if="statusInfoStore.status === 'banned'" class="md:col-span-2">
             <p class="text-xs uppercase tracking-wide text-slate-500">Ban Duration</p>
@@ -299,7 +333,7 @@
       </template>
     </Dialog>
   </div>
-  
+
   <ConfirmDialog />
 </template>
 
@@ -355,10 +389,7 @@ const planForm = reactive({
   description: '',
   monthly_price: 0,
   yearly_price: 0,
-  commission_percentage: 0,
-  max_user_accounts: null as number | null,
-  max_branches: null as number | null,
-  max_products: null as number | null,
+  commission_rate: null as number | null,
   features: '',
   is_featured: false,
   is_active: true,
@@ -567,10 +598,7 @@ const openPlanDialog = async (plan: any) => {
   planForm.description = String(plan.description || '')
   planForm.monthly_price = Number(plan.monthly_price || 0)
   planForm.yearly_price = Number(plan.yearly_price || 0)
-  planForm.commission_percentage = Number(plan.commission_percentage || 0)
-  planForm.max_user_accounts = plan.max_user_accounts == null ? null : Number(plan.max_user_accounts)
-  planForm.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
-  planForm.max_products = plan.max_products == null ? null : Number(plan.max_products)
+  planForm.commission_rate = Number(plan.commission_rate || 0) || null
   planForm.features = Array.isArray(plan.features) ? plan.features.join('\n') : ''
   planForm.is_featured = !!plan.is_featured
   planForm.is_active = plan.is_active !== false
@@ -596,10 +624,7 @@ const openCreatePlanDialog = () => {
   planForm.description = ''
   planForm.monthly_price = 0
   planForm.yearly_price = 0
-  planForm.commission_percentage = 0
-  planForm.max_user_accounts = null
-  planForm.max_branches = null
-  planForm.max_products = null
+  planForm.commission_rate = null
   planForm.features = ''
   planForm.is_featured = false
   planForm.is_active = true
@@ -627,10 +652,7 @@ const savePlan = async () => {
           description: planForm.description || null,
           monthly_price: planForm.monthly_price,
           yearly_price: planForm.yearly_price,
-          commission_percentage: planForm.commission_percentage,
-          max_user_accounts: planForm.max_user_accounts,
-          max_branches: planForm.max_branches,
-          max_products: planForm.max_products,
+          commission_rate: planForm.commission_rate || null,
           features,
           is_featured: planForm.is_featured,
           is_active: planForm.is_active,

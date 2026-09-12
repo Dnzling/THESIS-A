@@ -16,7 +16,7 @@
           </div>
         </div>
       </div>
-
+  
       <div class="rounded-2xl border border-slate-200 bg-white p-4">
         <div class="flex gap-2 pb-4">
           <Skeleton width="180px" height="34px" />
@@ -32,40 +32,42 @@
     <Card v-else-if="product" class="plain-card overflow-hidden">
       <template #content>
         <div class="grid grid-cols-1 gap-5 md:gap-8 md:grid-cols-2">
-          <div class="overflow-visible rounded-2xl border border-slate-200 bg-slate-50">
+          <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
             <div class="flex items-center justify-between p-3">
               <div class="flex flex-wrap gap-2">
                 <Tag v-if="product?.is_new_arrival" value="New" severity="info" />
                 <Tag v-if="product?.is_bestseller" value="Bestseller" severity="success" />
                 <Tag v-if="product?.is_featured" value="Featured" severity="warning" />
               </div>
-              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : '3D'" @click="toggle3DViewer" />
+              <Button
+                v-if="selectedModel3D"
+                :label="show3DViewer ? 'Show Photo' : '3D'"
+                icon="pi pi-cube"
+                size="small"
+                severity="info"
+                raised
+                @click="toggle3DViewer"
+              />
             </div>
   
             <div v-if="show3DViewer && selectedModel3D" class="relative w-full aspect-square">
-              <Model3DPreview :model-url="selectedModel3D.url" :model-format="selectedModel3D.model_format"
+              <Model3DPreview
+                :model-url="selectedModel3D.url"
+                :model-format="selectedModel3D.model_format"
                 :camera-x="selectedModel3D?.camera_settings?.angle_x ?? 0"
                 :camera-y="selectedModel3D?.camera_settings?.angle_y ?? 15"
-                :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5" height="100%" />
+                :zoom="selectedModel3D?.camera_settings?.zoom ?? 1.5"
+                height="100%"
+              />
             </div>
   
-            <div v-else-if="primaryImage" class="group relative w-full aspect-square cursor-zoom-in"
-              @click="openImageZoom(primaryImage)" @mouseenter="startHoverZoom" @mousemove="updateHoverZoom"
-              @mouseleave="stopHoverZoom">
-              <img :src="primaryImage" :alt="product.product_name" class="absolute inset-0 h-full w-full object-cover"
-                @error="handleImageError" />
-              <div v-if="hoverZoomVisible"
-                class="pointer-events-none absolute z-20 hidden aspect-square w-[36%] border border-slate-500/50 bg-white/25 shadow-inner backdrop-brightness-105 md:block"
-                :style="hoverLensStyle" aria-hidden="true" />
-              <div v-if="hoverZoomVisible"
-                class="pointer-events-none absolute left-full top-0 z-30 ml-4 hidden aspect-square w-[min(42vw,28rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:block"
-                aria-hidden="true">
-                <div
-                  class="absolute left-0 right-0 top-0 z-10 bg-white/90 px-3 py-2 text-xs font-medium text-slate-500 backdrop-blur">
-                  Move over the image to inspect details
-                </div>
-                <div class="h-full w-full bg-no-repeat" :style="hoverZoomStyle" />
-              </div>
+            <div v-else-if="primaryImage" class="relative w-full aspect-square">
+              <img
+                :src="primaryImage"
+                :alt="product.product_name"
+                class="absolute inset-0 h-full w-full object-cover"
+                @error="handleImageError"
+              />
             </div>
             <div v-else class="flex aspect-square items-center justify-center text-slate-400">
               <i class="pi pi-image text-5xl opacity-30" />
@@ -73,10 +75,14 @@
   
             <div v-if="!show3DViewer && galleryImages.length > 1" class="border-t border-slate-200 bg-white p-3">
               <div class="flex gap-2 overflow-x-auto pb-1">
-                <button v-for="(img, idx) in galleryImages" :key="`${img}-${idx}`" type="button"
+                <button
+                  v-for="(img, idx) in galleryImages"
+                  :key="`${img}-${idx}`"
+                  type="button"
                   class="shrink-0 h-16 w-16 overflow-hidden rounded-xl border transition"
                   :class="img === primaryImage ? 'border-blue-500' : 'border-slate-200 hover:border-slate-300'"
-                  @click="selectedImage = img">
+                  @click="selectedImage = img"
+                >
                   <img :src="img" alt="Product image" class="h-full w-full object-cover" @error="handleImageError" />
                 </button>
               </div>
@@ -91,28 +97,28 @@
                 <span v-if="product.brand">{{ product.brand }}</span>
                 <span v-if="product.brand && product.collection_name" class="text-slate-300">•</span>
                 <span v-if="product.collection_name">{{ product.collection_name }}</span>
-                <span v-if="(product.brand || product.collection_name) && product.category"
-                  class="text-slate-300">•</span>
+                <span v-if="(product.brand || product.collection_name) && product.category" class="text-slate-300">•</span>
                 <span v-if="product.category">{{ product.category }}</span>
               </div>
-              <div v-if="product.tags?.length" class="flex flex-wrap gap-2 pt-1">
-                <Tag v-for="tag in product.tags" :key="`ecommerce-tag-${tag.id}`" :value="tag.tag_name" severity="info" />
-              </div>
-
             </div>
-  
+
             <div class="space-y-1">
-              <div v-if="hasProductDiscount" class="flex flex-wrap items-center gap-2">
-                <span class="text-lg font-medium text-slate-400 line-through">{{ formatCurrency(displayBasePrice) }}</span>
-                <Tag :value="`${productDiscountPercentage}% OFF`" severity="danger" class="text-xs" />
-              </div>
-              <p class="text-3xl font-bold text-orange-600">{{ formatCurrency(displaySellingPrice) }}</p>
-              <p class="text-xs font-medium text-slate-500">VAT included</p>
+              <p class="text-3xl font-bold text-slate-900">{{ formatCurrency(product.price) }}</p>
               <p class="text-sm text-slate-500">
-                {{ product.quantity_available || 0 }} stocks available
+                {{ product.quantity_available || 0 }} items available
                 <span v-if="product.assembly_required" class="mx-2 text-slate-300">•</span>
                 <span v-if="product.assembly_required">Assembly required</span>
               </p>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
+              <div
+                v-if="product.description"
+                class="text-sm leading-7 text-slate-600 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
+                v-html="displayDescriptionHtml"
+              ></div>
+              <p v-else class="text-sm leading-7 text-slate-600">No description available.</p>
             </div>
   
             <div class="space-y-2">
@@ -120,23 +126,19 @@
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <p class="text-[11px] text-slate-500">L</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.length_cm ?? '—' }}<span
-                      v-if="displayDimensions?.length_cm"> cm</span></p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.length_cm ?? '—' }}<span v-if="displayDimensions?.length_cm"> cm</span></p>
                 </div>
                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <p class="text-[11px] text-slate-500">W</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.width_cm ?? '—' }}<span
-                      v-if="displayDimensions?.width_cm"> cm</span></p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.width_cm ?? '—' }}<span v-if="displayDimensions?.width_cm"> cm</span></p>
                 </div>
                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <p class="text-[11px] text-slate-500">H</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.height_cm ?? '—' }}<span
-                      v-if="displayDimensions?.height_cm"> cm</span></p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.height_cm ?? '—' }}<span v-if="displayDimensions?.height_cm"> cm</span></p>
                 </div>
                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <p class="text-[11px] text-slate-500">Weight</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.weight_kg ?? '—' }}<span
-                      v-if="displayDimensions?.weight_kg"> kg</span></p>
+                  <p class="font-semibold text-slate-900">{{ displayDimensions?.weight_kg ?? '—' }}<span v-if="displayDimensions?.weight_kg"> kg</span></p>
                 </div>
               </div>
             </div>
@@ -146,7 +148,8 @@
               <div class="flex flex-wrap gap-2">
                 <Button v-for="variation in product.variations" :key="variation.id" size="small"
                   :severity="selectedVariationId === variation.id ? 'info' : 'secondary'"
-                  :outlined="selectedVariationId !== variation.id" :disabled="!isVariationSelectable(variation)"
+                  :outlined="selectedVariationId !== variation.id"
+                  :disabled="!isVariationSelectable(variation)"
                   @click="selectVariation(variation.id)">
                   {{ variationLabel(variation) }}
                 </Button>
@@ -157,24 +160,42 @@
                 <span v-if="selectedModel3D" class="ml-2 text-xs text-emerald-600">(Has 3D model)</span>
               </p>
             </div>
-  
-            <div class="flex w-full flex-col gap-2 pt-2 sm:flex-row sm:items-stretch sm:gap-3">
-              <div
-                class="flex min-w-0 flex-1 items-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <Button type="button" icon="pi pi-minus" severity="secondary" text size="small"
-                  class="!h-10 !w-10 !rounded-none !border-0 !p-0 !text-slate-500 hover:!bg-orange-50 hover:!text-orange-600"
-                  aria-label="Decrease quantity" :disabled="quantity <= 1" @click="decreaseQuantity" />
-                <InputNumber v-model="quantity" :min="1" :max="maxPurchasableQty" :useGrouping="false"
-                  inputId="product-quantity"
-                  inputClass="!w-full !border-0 !text-center !text-sm !font-semibold !text-slate-900 !shadow-none"
-                  class="min-w-0 flex-1" aria-label="Quantity" @update:modelValue="normalizeQuantity" />
-                <Button type="button" icon="pi pi-plus" severity="secondary" text size="small"
-                  class="!h-10 !w-10 !rounded-none !border-0 !p-0 !text-slate-500 hover:!bg-orange-50 hover:!text-orange-600"
-                  aria-label="Increase quantity" :disabled="quantity >= maxPurchasableQty" @click="increaseQuantity" />
+
+            <div class="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:gap-3">
+              <div class="flex w-full items-stretch sm:w-48" role="group" aria-label="Product quantity">
+                <Button
+                  icon="pi pi-minus"
+                  severity="secondary"
+                  outlined
+                  class="shrink-0 rounded-r-none"
+                  :disabled="quantity <= 1"
+                  aria-label="Decrease quantity"
+                  @click="changeProductQuantity(-1)"
+                />
+                <InputNumber
+                  v-model="quantity"
+                  :min="1"
+                  :max="maxPurchasableQty"
+                  :useGrouping="false"
+                  inputClass="w-full text-center rounded-none"
+                  class="min-w-0 flex-1 [&_.p-inputnumber-input]:rounded-none"
+                  @update:model-value="normalizeProductQuantity"
+                />
+                <Button
+                  icon="pi pi-plus"
+                  severity="info"
+                  class="shrink-0 rounded-l-none"
+                  :disabled="!canPurchase || quantity >= maxPurchasableQty"
+                  aria-label="Increase quantity"
+                  @click="changeProductQuantity(1)"
+                />
               </div>
-              <Button label="Add to Cart" severity="warn" outlined fluid class="flex-1" :disabled="!canPurchase"
-                @click="addToCart" />
-              <Button label="Buy Now" fluid class="flex-1" :disabled="!canPurchase" @click="buyNow" />
+              <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                <Button label="Add to Cart" severity="info" class="w-full"
+                  :disabled="!canPurchase" @click="addToCart" />
+                <Button label="Buy Now" severity="success" class="w-full"
+                  :disabled="!canPurchase" @click="buyNow" />
+              </div>
             </div>
           </div>
         </div>
@@ -192,43 +213,42 @@
             <div v-else
               class="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
               {{ (storeInfo?.name || product.store_name || 'S').slice(0, 1).toUpperCase() }}
-  
             </div>
             <div>
+              <p class="text-sm text-slate-500">Store</p>
               <p class="text-base font-semibold text-slate-900">{{ storeInfo?.name || product.store_name || 'Store' }}</p>
-  
-            </div>
-            <div class="text-left">
-              <p class="text-sm font-semibold text-amber-500">★ {{ storeRating.toFixed(2) }}</p>
-              <p class="text-xs text-slate-500">{{ storeRatingCount }} reviews</p>
             </div>
           </div>
-  
-          <Button label="Chat" icon="pi pi-comments" severity="help" text size="small" @click="goChatStore" />
+          <div class="text-right">
+            <p class="text-sm font-semibold text-amber-500">★ {{ storeRating.toFixed(2) }}</p>
+            <p class="text-xs text-slate-500">{{ storeRatingCount }} reviews</p>
+          </div>
         </button>
         <div class="mt-2 justify-between flex gap-3">
-          <!-- <Button label="Report" icon="pi pi-exclamation-triangle" severity="danger" text size="small"
-                  @click="openReportDialog" /> -->
-  
+          <Button label="Report" icon="pi pi-exclamation-triangle" severity="danger" text size="small"
+            @click="openReportDialog" />
+          <Button label="Chat Store" icon="pi pi-comments" severity="help" text size="small" @click="goChatStore" />
         </div>
       </template>
     </Card>
   
     <div v-if="product" class="mt-6 rounded-2xl border border-slate-200 bg-white">
       <div class="flex flex-wrap gap-2 border-b border-slate-200 p-3">
-        <Button label="Product Description" size="small" :severity="activeTab === 'description' ? 'warn' : 'secondary'"
+        <Button label="Product Description" size="small" :severity="activeTab === 'description' ? 'info' : 'secondary'"
           :outlined="activeTab !== 'description'" @click="activeTab = 'description'" />
-        <Button label="Reviews" size="small" :severity="activeTab === 'reviews' ? 'warn' : 'secondary'"
+        <Button label="Reviews" size="small" :severity="activeTab === 'reviews' ? 'info' : 'secondary'"
           :outlined="activeTab !== 'reviews'" @click="activeTab = 'reviews'" />
-        <Button label="Recommended" size="small" :severity="activeTab === 'recommended' ? 'warn' : 'secondary'"
+        <Button label="Recommended" size="small" :severity="activeTab === 'recommended' ? 'info' : 'secondary'"
           :outlined="activeTab !== 'recommended'" @click="activeTab = 'recommended'" />
       </div>
   
       <div v-if="activeTab === 'description'" class="p-5">
         <h3 class="text-lg font-semibold text-slate-900">Product Description</h3>
-        <div v-if="product.description"
+        <div
+          v-if="product.description"
           class="mt-3 text-sm leading-7 text-slate-600 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-blue-600 [&_a]:underline"
-          v-html="displayDescriptionHtml"></div>
+          v-html="displayDescriptionHtml"
+        ></div>
         <p v-else class="mt-3 text-sm leading-7 text-slate-600">No description available for this product yet.</p>
       </div>
   
@@ -296,26 +316,7 @@
     <div v-else class="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">
       Product not found.
     </div>
-  
-    <Dialog v-model:visible="imageZoomDialog" modal header="Product Image" class="w-full max-w-5xl"
-      @hide="resetImageZoom">
-      <div class="flex max-h-[75vh] flex-col items-center gap-4 overflow-hidden">
-        <div class="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto rounded-xl bg-slate-100 p-3">
-          <img v-if="zoomedImage" :src="zoomedImage" :alt="product?.product_name || 'Product image'"
-            class="max-h-[65vh] max-w-full object-contain transition-transform duration-200"
-            :style="{ transform: `scale(${imageZoom})` }" @error="handleImageError" />
-        </div>
-        <div class="flex items-center gap-2">
-          <Button type="button" icon="pi pi-minus" severity="secondary" outlined rounded :disabled="imageZoom <= 1"
-            @click="zoomOut" v-tooltip="'Zoom out'" />
-          <span class="min-w-16 text-center text-sm font-medium text-slate-600">{{ Math.round(imageZoom * 100) }}%</span>
-          <Button type="button" icon="pi pi-plus" severity="secondary" outlined rounded :disabled="imageZoom >= 3"
-            @click="zoomIn" v-tooltip="'Zoom in'" />
-          <Button type="button" label="Reset" text size="small" @click="resetImageZoom" />
-        </div>
-      </div>
-    </Dialog>
-  
+
     <Dialog v-model:visible="reportDialog" modal header="Report Store" class="w-full max-w-xl">
       <div class="space-y-3">
         <div>
@@ -324,8 +325,7 @@
         </div>
         <div>
           <label class="text-sm text-slate-600">Details (optional)</label>
-          <Textarea v-model="reportForm.details" rows="4" fluid
-            placeholder="Share what happened and any order/product context..." />
+          <Textarea v-model="reportForm.details" rows="4" fluid placeholder="Share what happened and any order/product context..." />
         </div>
         <div>
           <label class="text-sm text-slate-600">Evidence images (optional, up to 5)</label>
@@ -379,12 +379,6 @@ const recommendedProducts = ref<any[]>([])
 const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_avg: number; rating_count: number } | null>(null)
 const show3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
-const imageZoomDialog = ref(false)
-const zoomedImage = ref<string | null>(null)
-const imageZoom = ref(1)
-const hoverZoomVisible = ref(false)
-const hoverZoomStyle = ref<Record<string, string>>({})
-const hoverLensStyle = ref<Record<string, string>>({})
 const brokenImages = ref<string[]>([])
 const reportDialog = ref(false)
 const reporting = ref(false)
@@ -404,15 +398,6 @@ const selectedVariation = computed(() =>
   (product.value?.variations || []).find((v: any) => Number(v.id) === Number(selectedVariationId.value)) || null
 )
 const productHasVariations = computed(() => Array.isArray(product.value?.variations) && product.value.variations.length > 0)
-const displayBasePrice = computed(() => Number(selectedVariation.value?.base_price ?? product.value?.base_price ?? product.value?.price ?? 0))
-const displaySellingPrice = computed(() => Number(selectedVariation.value?.final_price ?? product.value?.price ?? 0))
-const hasProductDiscount = computed(() => {
-  return displayBasePrice.value > 0 && displaySellingPrice.value > 0 && displaySellingPrice.value < displayBasePrice.value
-})
-const productDiscountPercentage = computed(() => {
-  if (!hasProductDiscount.value) return 0
-  return Math.round(((displayBasePrice.value - displaySellingPrice.value) / displayBasePrice.value) * 100)
-})
 
 function isVariationSelectable(variation: any): boolean {
   if (!variation) return false
@@ -435,19 +420,14 @@ const purchasableQty = computed(() => {
 const maxPurchasableQty = computed(() => Math.max(1, purchasableQty.value || 1))
 const canPurchase = computed(() => purchasableQty.value > 0)
 
-const decreaseQuantity = () => {
-  quantity.value = Math.max(1, Number(quantity.value || 1) - 1)
+function normalizeProductQuantity() {
+  quantity.value = Math.max(1, Math.min(maxPurchasableQty.value, Number(quantity.value || 1)))
 }
 
-const increaseQuantity = () => {
-  quantity.value = Math.min(maxPurchasableQty.value, Number(quantity.value || 1) + 1)
+function changeProductQuantity(amount: number) {
+  quantity.value = Number(quantity.value || 1) + amount
+  normalizeProductQuantity()
 }
-
-const normalizeQuantity = (value: number | null) => {
-  const nextQuantity = Number(value || 1)
-  quantity.value = Math.min(maxPurchasableQty.value, Math.max(1, nextQuantity))
-}
-
 const selectedModel3D = computed(() => {
   const v: any = selectedVariation.value
   // Only fall back to parent when the selected variation has no own media/specs.
@@ -517,49 +497,6 @@ const galleryImages = computed<string[]>(() => {
 const primaryImage = computed(() => {
   return selectedImage.value || galleryImages.value[0] || product.value?.image || null
 })
-
-const startHoverZoom = (event: MouseEvent) => {
-  if (!primaryImage.value) return
-  hoverZoomVisible.value = true
-  updateHoverZoom(event)
-}
-
-const updateHoverZoom = (event: MouseEvent) => {
-  if (!primaryImage.value) return
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) return
-
-  const rect = target.getBoundingClientRect()
-  const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-  const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
-  const lensCenterX = Math.max(18, Math.min(82, x * 100))
-  const lensCenterY = Math.max(18, Math.min(82, y * 100))
-
-  hoverZoomStyle.value = {
-    backgroundImage: `url("${primaryImage.value}")`,
-    backgroundSize: '220%',
-    backgroundPosition: `${x * 100}% ${y * 100}%`,
-  }
-  hoverLensStyle.value = {
-    left: `${lensCenterX}%`,
-    top: `${lensCenterY}%`,
-    transform: 'translate(-50%, -50%)',
-  }
-}
-
-const stopHoverZoom = () => {
-  hoverZoomVisible.value = false
-}
-
-const openImageZoom = (image: string | null) => {
-  if (!image) return
-  zoomedImage.value = image
-  imageZoom.value = 1
-  imageZoomDialog.value = true
-}
-const zoomIn = () => { imageZoom.value = Math.min(3, Number((imageZoom.value + 0.5).toFixed(1))) }
-const zoomOut = () => { imageZoom.value = Math.max(1, Number((imageZoom.value - 0.5).toFixed(1))) }
-const resetImageZoom = () => { imageZoom.value = 1 }
 const storeRating = computed(() => Number(storeInfo.value?.rating_avg ?? 0))
 const storeRatingCount = computed(() => Number(storeInfo.value?.rating_count ?? 0))
 const reviews = computed(() => product.value?.reviews?.data || [])
@@ -652,11 +589,7 @@ function selectVariation(variationId: number) {
 
 watch(selectedVariationId, () => {
   selectedImage.value = null
-  const variation: any = selectedVariation.value
-  const hasVariationImage = Array.isArray(variation?.images)
-    ? variation.images.some((image: any) => Boolean(typeof image === 'string' ? image : image?.url))
-    : Boolean(variation?.image)
-  show3DViewer.value = Boolean(variation?.model_3d) && !hasVariationImage
+  show3DViewer.value = false
   if (Number(quantity.value || 1) > maxPurchasableQty.value) {
     quantity.value = maxPurchasableQty.value
   }
@@ -752,6 +685,18 @@ async function buyNow() {
   }
   if (!requireCustomerLogin()) return
   try {
+    const profileResponse = await ecommerceService.getCustomerProfile()
+    const verificationStatus = String(profileResponse?.data?.data?.customer?.verification_status || 'unverified').toLowerCase()
+    if (verificationStatus !== 'verified') {
+      showAlert({
+        severity: 'warn',
+        summary: 'Verification required',
+        detail: 'You must complete account verification before using Buy Now.',
+      })
+      router.push({ name: 'ecommerce.profile', query: { section: 'verification' } })
+      return
+    }
+
     const confirmed = await confirmAlert({
       title: 'Proceed to checkout?',
       text: 'Are you sure you want to buy this item now? This will add it to your cart and take you to checkout.',
