@@ -2,10 +2,10 @@
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <ConfirmDialog />
     <div class="flex items-center gap-3">
-      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.transfers' })" />
+      <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })" />
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Create Stock Transfer</h2>
-        <p class="text-sm text-gray-500 mt-1">Prepare transfer request between branches</p>
+        <p class="text-sm text-gray-500 mt-1">Request available stock from a warehouse or another branch.</p>
       </div>
     </div>
 
@@ -16,55 +16,36 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
-                From Branch <span class="text-red-500">*</span>
+                From Location <span class="text-red-500">*</span>
               </label>
               <div>
                 <Skeleton v-if="autoFillBranchLoading" height="2.5rem" />
                 <Select 
                   v-else
                   v-model="form.from_branch_id" 
-                  :options="branches" 
+                  :options="sourceLocationOptions"
                   optionLabel="name" 
                   optionValue="id" 
-                  placeholder="Select source branch"
+                  placeholder="Select warehouse or branch"
                   :loading="loadingBranches"
                   fluid
                   @change="onFromBranchChange"
                   :class="{ 'p-invalid': errors.from_branch_id }"
                 />
               </div>
-              <small class="text-gray-500">Auto-filled from your assigned branch</small>
+              <small class="text-gray-500">Products and available stock are loaded from this location.</small>
               <small v-if="errors.from_branch_id" class="text-red-500">{{ errors.from_branch_id }}</small>
             </div>
 
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">
-                To Branch <span class="text-red-500">*</span>
+                Receiving Location
               </label>
-              <Select 
-                v-model="form.to_branch_id" 
-                :options="toBranchOptions" 
-                optionLabel="name" 
-                optionValue="id" 
-                placeholder="Select destination branch"
-                :disabled="!form.from_branch_id"
-                :class="{ 'p-invalid': errors.to_branch_id }"
-              />
+              <div class="flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700">
+                {{ receivingLocation?.name || 'No assigned branch' }}
+              </div>
+              <small class="text-gray-500">Your assigned inventory branch receives this request.</small>
               <small v-if="errors.to_branch_id" class="text-red-500">{{ errors.to_branch_id }}</small>
-            </div>
-
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Swap</label>
-              <Button
-                type="button"
-                label="Swap Branches"
-                icon="pi pi-sync"
-                severity="secondary"
-                outlined
-                :disabled="!form.from_branch_id || !form.to_branch_id"
-                @click="swapBranches"
-              />
-              <small class="text-gray-500">Switch source and destination branch</small>
             </div>
 
             <div class="flex flex-col gap-2">
@@ -129,7 +110,7 @@
                     <div class="flex flex-col">
                       <span class="font-medium">{{ option.product?.product_name || 'Unknown' }}</span>
                       <span class="text-xs text-gray-500">
-                        SKU: {{ option.product?.sku || 'N/A' }} | Available: {{ option.quantity_available || 0 }}
+                        {{ option.product?.sku || 'No SKU' }} · Stock: {{ Number(option.quantity_available || 0).toLocaleString() }} {{ getProductUnit(option.id) }}
                       </span>
                     </div>
                   </template>
@@ -149,11 +130,10 @@
               </div>
 
               <div class="flex flex-col gap-2 md:col-span-2">
-                <label class="text-sm text-gray-600">Notes</label>
-                <InputText 
-                  v-model="newItem.notes" 
-                  placeholder="Optional notes"
-                />
+                <label class="text-sm text-gray-600">Unit</label>
+                <div class="flex min-h-10 items-center rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700">
+                  {{ selectedProduct ? getProductUnit(selectedProduct.id) : '—' }}
+                </div>
               </div>
 
               <div class="flex flex-col gap-2 justify-end md:col-span-2">
@@ -178,7 +158,7 @@
                   'text-green-600 font-medium': selectedProduct.quantity_available > 0,
                   'text-red-600 font-medium': selectedProduct.quantity_available === 0
                 }">
-                  Available: {{ selectedProduct.quantity_available || 0 }} units
+                  Available: {{ Number(selectedProduct.quantity_available || 0).toLocaleString() }} {{ getProductUnit(selectedProduct.id) }}
                 </span>
               </div>
               <div v-if="newItem.quantity > (selectedProduct?.quantity_available || 0)" 
@@ -213,11 +193,8 @@
             </Column>
             
             <Column field="quantity" header="Quantity" style="width: 15%" />
-            
-            <Column field="notes" header="Notes" style="width: 25%">
-              <template #body="{ data }">
-                {{ data.notes || '-' }}
-              </template>
+            <Column header="Unit" style="width: 15%">
+              <template #body="{ data }">{{ getProductUnit(data.inventory_item_id) }}</template>
             </Column>
 
             <Column header="Actions" style="width: 20%">
@@ -236,14 +213,16 @@
           </DataTable>
 
           <!-- Summary -->
-          <div v-if="form.items.length > 0" class="bg-gray-50 p-4 rounded-lg">
-            <div class="flex justify-between items-center">
-              <span class="font-semibold">Total Items:</span>
-              <span>{{ form.items.length }}</span>
-            </div>
-            <div class="flex justify-between items-center mt-2">
-              <span class="font-semibold">Total Quantity:</span>
-              <span>{{ totalQuantity }}</span>
+          <div v-if="form.items.length > 0" class="ml-auto max-w-md rounded-xl border border-slate-200 bg-white p-4">
+            <h3 class="mb-3 text-sm font-semibold text-slate-800">Transfer Rundown</h3>
+            <div class="space-y-2 text-sm">
+              <div class="flex justify-between"><span class="text-slate-500">Items</span><span>{{ form.items.length }}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Total quantity</span><span>{{ totalQuantity.toLocaleString() }}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Goods value</span><span>{{ money(estimate.goods_value) }}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Route distance</span><span>{{ formatNumber(estimate.distance_km) }} km</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Shipping fee</span><span>{{ money(estimate.shipping_fee) }}</span></div>
+              <div class="border-t border-slate-200 pt-2 flex justify-between font-semibold text-slate-900"><span>Total transfer value</span><span>{{ money(estimate.total_value) }}</span></div>
+              <small v-if="estimating" class="block text-right text-slate-400">Calculating fee…</small>
             </div>
           </div>
 
@@ -297,6 +276,8 @@ const confirm = useConfirm()
 const saving = ref(false)
 const loadingBranches = ref(false)
 const loadingProducts = ref(false)
+const estimating = ref(false)
+let estimateTimer: number | null = null
 const autoFillBranchLoading = ref(true)
 const showCancelDialog = ref(false)
 const authStore = useAuthStore()
@@ -334,11 +315,11 @@ const errors = ref({
 // API data
 const branches = ref<any[]>([])
 const inventoryItems = ref<any[]>([])
+const estimate = reactive({ goods_value: 0, distance_km: 0, shipping_fee: 0, total_value: 0, cost_method: 'none' })
 
 // Computed
-const toBranchOptions = computed(() => {
-  return branches.value.filter(b => b.id !== form.from_branch_id)
-})
+const receivingLocation = computed(() => branches.value.find(branch => Number(branch.id) === Number(form.to_branch_id)) || null)
+const sourceLocationOptions = computed(() => branches.value.filter(branch => Number(branch.id) !== Number(form.to_branch_id)))
 
 const availableProducts = computed(() => {
   if (!form.from_branch_id) return []
@@ -371,6 +352,8 @@ const isFormValid = computed(() => {
 const totalQuantity = computed(() => {
   return form.items.reduce((sum, item) => sum + item.quantity, 0)
 })
+const money = (value: unknown) => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const formatNumber = (value: unknown) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })
 
 const resolveAssignedBranchId = (): number => {
   const user: any = authStore.user || {}
@@ -421,7 +404,6 @@ const loadBranches = async () => {
 }
 
 const onFromBranchChange = async () => {
-  form.to_branch_id = null
   form.items = [] // Clear items when source branch changes
   inventoryItems.value = []
   newItem.inventory_item_id = null
@@ -431,27 +413,14 @@ const onFromBranchChange = async () => {
   }
 }
 
-const swapBranches = async () => {
-  const from = form.from_branch_id
-  const to = form.to_branch_id
-  if (!from || !to) return
-
-  form.from_branch_id = to
-  form.to_branch_id = from
-  form.items = []
-  inventoryItems.value = []
-  newItem.inventory_item_id = null
-
-  await loadInventoryForBranch(form.from_branch_id)
-}
-
 const loadInventoryForBranch = async (branchId: number | null) => {
   if (!branchId) return
   
   loadingProducts.value = true
   try {
     const response = await inventoryService.getBranchInventory(branchId, { per_page: 100 })
-    inventoryItems.value = response.data?.data || response.data || []
+    const payload = response?.data ?? response
+    inventoryItems.value = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
     
     if (inventoryItems.value.length === 0) {
       toast.add({
@@ -482,6 +451,46 @@ const getProductName = (inventoryItemId: number): string => {
 const getProductSku = (inventoryItemId: number): string => {
   const item = inventoryItems.value.find(p => p.id === inventoryItemId)
   return item?.product?.sku || '-'
+}
+
+const getProductUnit = (inventoryItemId: number): string => {
+  const item = inventoryItems.value.find(p => p.id === inventoryItemId)
+  return item?.variation?.unit_of_measurement || item?.product?.unit_of_measurement || 'unit'
+}
+
+const estimatePayloadItems = () => form.items.map(item => {
+  const inventoryItem = inventoryItems.value.find(inv => inv.id === item.inventory_item_id)
+  return {
+    product_id: inventoryItem?.product_id,
+    variation_id: inventoryItem?.variation_id || null,
+    requested_quantity: item.quantity,
+  }
+})
+
+const loadEstimate = async () => {
+  if (!form.from_branch_id || !form.to_branch_id || !form.items.length) {
+    Object.assign(estimate, { goods_value: 0, distance_km: 0, shipping_fee: 0, total_value: 0, cost_method: 'none' })
+    return
+  }
+  estimating.value = true
+  try {
+    const response = await axios.post('/api/inventory/transfers/estimate', {
+      from_branch_id: form.from_branch_id,
+      to_branch_id: form.to_branch_id,
+      items: estimatePayloadItems(),
+    })
+    Object.assign(estimate, response.data?.data || {})
+  } catch (error: any) {
+    Object.assign(estimate, { goods_value: 0, distance_km: 0, shipping_fee: 0, total_value: 0, cost_method: 'none' })
+    toast.add({ severity: 'warn', summary: 'Fee unavailable', detail: error.response?.data?.message || 'Unable to calculate the transfer fee.', life: 3000 })
+  } finally {
+    estimating.value = false
+  }
+}
+
+const scheduleEstimate = () => {
+  if (estimateTimer !== null) window.clearTimeout(estimateTimer)
+  estimateTimer = window.setTimeout(loadEstimate, 250)
 }
 
 const addItem = () => {
@@ -580,7 +589,7 @@ const doCreateTransfer = async () => {
       life: 3000
     })
     
-    router.push({ name: 'inventory.transfers' })
+    router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })
   } catch (error: any) {
     console.error('Failed to create transfer', error)
     const responseData = error?.response?.data || {}
@@ -629,9 +638,12 @@ const submitTransfer = async () => {
   }
 
   confirm.require({
-    message: 'Submit this transfer now? You can still cancel before manager approval.',
-    header: 'Confirm Submit',
+    message: `Submit this request from ${branches.value.find(branch => branch.id === form.from_branch_id)?.name || 'the selected location'} to ${receivingLocation.value?.name || 'your branch'} with a ${money(estimate.shipping_fee)} shipping fee?`,
+    header: 'Confirm Transfer Request',
     icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'No',
+    acceptLabel: 'Confirm',
+    rejectProps: { severity: 'secondary', outlined: true },
     accept: async () => {
       await doCreateTransfer()
     }
@@ -642,13 +654,13 @@ const cancel = () => {
   if (form.items.length > 0 || form.remarks || form.expected_receive_date) {
     showCancelDialog.value = true
   } else {
-    router.push({ name: 'inventory.transfers' })
+    router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })
   }
 }
 
 const confirmCancel = () => {
   showCancelDialog.value = false
-  router.push({ name: 'inventory.transfers' })
+    router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })
 }
 
 // Watch for quantity validation
@@ -662,6 +674,8 @@ watch(() => newItem.quantity, (newVal) => {
     })
   }
 })
+
+watch(() => form.items.map(item => `${item.inventory_item_id}:${item.quantity}`).join('|'), scheduleEstimate)
 
 // Load initial data
 onMounted(async () => {
@@ -688,16 +702,13 @@ onMounted(async () => {
     await loadBranches()
 
     if (userBranchId) {
-      form.from_branch_id = userBranchId
-      await onFromBranchChange()
+      form.to_branch_id = userBranchId
     } else if (branches.value.length > 0) {
-      // Fallback so form is still usable even if branch is missing in user payload.
-      form.from_branch_id = Number(branches.value[0].id)
-      await onFromBranchChange()
+      form.to_branch_id = Number(branches.value[0].id)
       toast.add({
         severity: 'warn',
         summary: 'Branch Fallback',
-        detail: 'Unable to detect your assigned branch from profile. Using first available branch.',
+        detail: 'Unable to detect your assigned branch. Using the first available receiving location.',
         life: 4000
       })
     }

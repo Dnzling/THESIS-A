@@ -36,7 +36,7 @@
               </Button>
               <Button
                 as="router-link"
-                to="/pricing"
+                to="/business/pricing"
                 severity="secondary" rounded
                 class="!border-white/25 !bg-transparent !px-7 !py-4 !text-lg !font-bold !text-white hover:!bg-white/10"
               >

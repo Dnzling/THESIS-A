@@ -153,6 +153,49 @@ class RolePermissionController extends Controller
         return response()->json($permissions);
     }
 
+    /** Get the master module catalog used by permissions and navigation. */
+    public function getModules()
+    {
+        return response()->json(DB::table('modules')->orderBy('name')->get());
+    }
+
+    public function createModule(Request $request)
+    {
+        $validated = $request->validate([
+            'key' => 'required|string|max:50|alpha_dash|unique:modules,key',
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $id = DB::table('modules')->insertGetId([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Module created successfully', 'id' => $id], 201);
+    }
+
+    public function updateModule(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'key' => 'required|string|max:50|alpha_dash|unique:modules,key,' . $id,
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        DB::table('modules')->where('id', $id)->update([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Module updated successfully']);
+    }
+
     /**
      * Get role permissions
      */

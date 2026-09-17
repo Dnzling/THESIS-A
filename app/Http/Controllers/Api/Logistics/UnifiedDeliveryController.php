@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
@@ -282,7 +283,7 @@ class UnifiedDeliveryController extends Controller
                 'id' => $employee->id,
                 'name' => trim(($employee->fname ?? '') . ' ' . ($employee->lname ?? '')),
                 'email' => $employee->email,
-                'contact' => $employee->employee?->phone ?? $employee->phone_number,
+                'contact' => $employee->phone_number,
                 'branch_id' => $employee->employee?->branch_id,
                 'branch' => $employee->employee?->branch?->name ?? 'No branch assigned',
                 'employee_number' => $employee->employee?->employee_number,
@@ -356,7 +357,7 @@ class UnifiedDeliveryController extends Controller
         }
 
         $driver = User::query()
-            ->with(['role:id,name', 'employee:id,user_id,role_id,phone,status', 'employee.role:id,name'])
+            ->with(['role:id,name', 'employee:id,user_id,role_id,status', 'employee.role:id,name'])
             ->where('id', (int) $validated['driver_user_id'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
@@ -383,7 +384,13 @@ class UnifiedDeliveryController extends Controller
         if ($validAssistantCount !== $assistantIds->count()) {
             return response()->json(['success' => false, 'message' => 'One or more delivery assistants are invalid.'], 422);
         }
-        $driverContact = (string) ($driver->employee?->phone ?? $driver->phone_number ?? '');
+        $driverContact = (string) ($driver->phone_number ?? '');
+        $ecommerceAssistantData = Schema::hasColumn('ecommerce_order_deliveries', 'assistant_user_ids')
+            ? ['assistant_user_ids' => $assistantIds->all()]
+            : [];
+        $salesAssistantData = Schema::hasColumn('order_deliveries', 'assistant_user_ids')
+            ? ['assistant_user_ids' => $assistantIds->all()]
+            : [];
 
         $vehicle = EcommerceDeliveryVehicle::query()
             ->where('id', (int) $validated['vehicle_id'])
@@ -410,13 +417,12 @@ class UnifiedDeliveryController extends Controller
             $finalEstimatedFee = is_null($overrideFee) ? $estimatedFee : round($overrideFee, 2);
 
             if ($delivery) {
-                $delivery->fill([
+                $delivery->fill(array_merge([
                     'vehicle_id' => $vehicle->id,
                     'driver_user_id' => $driver->id,
                     'tracking_number' => $delivery->tracking_number ?: $this->nextTrackingNumber(),
                     'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                     'courier_contact' => $driverContact,
-                    'assistant_user_ids' => $assistantIds->all(),
                     'status' => 'assigned',
                     'estimated_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
@@ -435,10 +441,10 @@ class UnifiedDeliveryController extends Controller
                         $validated['zone_rate_id'] ?? null
                     ),
                     'updated_by' => $request->user()->id,
-                ]);
+                ], $ecommerceAssistantData));
                 $delivery->save();
             } else {
-                $delivery = EcommerceOrderDelivery::query()->create([
+                $delivery = EcommerceOrderDelivery::query()->create(array_merge([
                     'order_id' => $order->id,
                     'store_id' => $order->store_id,
                     'vehicle_id' => $vehicle->id,
@@ -446,7 +452,6 @@ class UnifiedDeliveryController extends Controller
                     'tracking_number' => $this->nextTrackingNumber(),
                     'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                     'courier_contact' => $driverContact,
-                    'assistant_user_ids' => $assistantIds->all(),
                     'status' => 'assigned',
                     'estimated_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                     'distance_km' => $distance,
@@ -466,7 +471,7 @@ class UnifiedDeliveryController extends Controller
                     ),
                     'created_by' => $request->user()->id,
                     'updated_by' => $request->user()->id,
-                ]);
+                ], $ecommerceAssistantData));
             }
 
             EcommerceDeliveryLog::query()->create([
@@ -515,12 +520,11 @@ class UnifiedDeliveryController extends Controller
         }
 
         if ($delivery) {
-            $delivery->fill([
+            $delivery->fill(array_merge([
                 'driver_user_id' => $driver->id,
                 'tracking_number' => $delivery->tracking_number ?: $this->nextTrackingNumber(),
                 'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                 'courier_contact' => $driverContact,
-                'assistant_user_ids' => $assistantIds->all(),
                 'status' => 'assigned',
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                 'distance_km' => $distance,
@@ -539,10 +543,10 @@ class UnifiedDeliveryController extends Controller
                     $validated['zone_rate_id'] ?? null
                 ),
                 'updated_by' => $request->user()->id,
-            ]);
+            ], $salesAssistantData));
             $delivery->save();
         } else {
-            $delivery = SalesOrderDelivery::query()->create([
+            $delivery = SalesOrderDelivery::query()->create(array_merge([
                 'sales_order_id' => $order->id,
                 'store_id' => $order->store_id,
                 'branch_id' => $order->branch_id,
@@ -550,7 +554,6 @@ class UnifiedDeliveryController extends Controller
                 'tracking_number' => $this->nextTrackingNumber(),
                 'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                 'courier_contact' => $driverContact,
-                'assistant_user_ids' => $assistantIds->all(),
                 'status' => 'assigned',
                 'scheduled_delivery_at' => $validated['estimated_delivery_at'] ?? null,
                 'distance_km' => $distance,
@@ -570,7 +573,7 @@ class UnifiedDeliveryController extends Controller
                 ),
                 'created_by' => $request->user()->id,
                 'updated_by' => $request->user()->id,
-            ]);
+            ], $salesAssistantData));
         }
 
         SalesOrderDeliveryLog::query()->create([
@@ -612,17 +615,20 @@ class UnifiedDeliveryController extends Controller
     public function updateStatus(Request $request, string $source, int $orderId): JsonResponse
     {
         $source = strtolower($source);
-        $pickupProofRequired = $source === 'pickup'
-            && in_array(strtolower((string) $request->input('status')), ['in_transit', 'delivered'], true);
+        $targetStatus = strtolower((string) $request->input('status'));
+        $proofRequired = in_array($targetStatus, ['in_transit', 'delivered'], true)
+            && in_array($source, ['pickup', 'ecommerce'], true);
+        $locationRequired = $proofRequired
+            || ($source === 'ecommerce' && $targetStatus === 'out_for_delivery');
 
         $validated = $request->validate([
             'status' => ['required', Rule::in(self::DELIVERY_STATUSES)],
             'failed_reason' => 'nullable|string|max:1000',
             'notes' => 'nullable|string|max:1000',
-            'latitude' => $pickupProofRequired ? 'required|numeric|between:-90,90' : 'nullable|numeric|between:-90,90',
-            'longitude' => $pickupProofRequired ? 'required|numeric|between:-180,180' : 'nullable|numeric|between:-180,180',
+            'latitude' => $locationRequired ? 'required|numeric|between:-90,90' : 'nullable|numeric|between:-90,90',
+            'longitude' => $locationRequired ? 'required|numeric|between:-180,180' : 'nullable|numeric|between:-180,180',
             'location_address' => 'nullable|string|max:2000',
-            'photo' => $pickupProofRequired ? 'required|image|max:8192' : 'nullable|image|max:8192',
+            'photo' => $proofRequired ? 'required|image|max:8192' : 'nullable|image|max:8192',
         ]);
 
         if ($source === 'pickup') {
@@ -644,10 +650,10 @@ class UnifiedDeliveryController extends Controller
             }
 
             $locationAddress = trim((string) ($validated['location_address'] ?? ''));
-            if ($pickupProofRequired && $locationAddress === '') {
+            if ($proofRequired && $locationAddress === '') {
                 $locationAddress = $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']);
             }
-            if ($pickupProofRequired && !$locationAddress) {
+            if ($proofRequired && !$locationAddress) {
                 $locationAddress = $validated['status'] === 'delivered'
                     ? ($pickup->destination_address ?: $pickup->purchaseOrder?->branch?->address)
                     : ($pickup->origin_address ?: $pickup->purchaseOrder?->supplier?->address);
@@ -705,9 +711,49 @@ class UnifiedDeliveryController extends Controller
             }
 
             $from = (string) $delivery->status;
+            if ($from === $validated['status']) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Delivery is already in this status.',
+                    'data' => $delivery->fresh(['vehicle']),
+                ]);
+            }
+            $allowedTransitions = [
+                'pending' => ['assigned', 'packed', 'in_transit', 'cancelled'],
+                'ready_for_dispatch' => ['assigned', 'packed', 'in_transit', 'cancelled'],
+                'assigned' => ['packed', 'in_transit', 'cancelled'],
+                'packed' => ['in_transit', 'out_for_delivery', 'cancelled'],
+                'shipped' => ['in_transit', 'out_for_delivery', 'cancelled'],
+                'in_transit' => ['out_for_delivery', 'cancelled'],
+                'out_for_delivery' => ['delivered', 'cancelled'],
+            ];
+            if (!in_array($validated['status'], $allowedTransitions[$from] ?? [], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Delivery cannot move from {$from} to {$validated['status']}.",
+                ], 422);
+            }
+
+            $locationAddress = trim((string) ($validated['location_address'] ?? ''));
+            if (isset($validated['latitude'], $validated['longitude']) && $locationAddress === '') {
+                $locationAddress = $this->reverseGeocode((float) $validated['latitude'], (float) $validated['longitude']) ?: '';
+            }
+            $proofPath = null;
+            if ($photo = $request->file('photo')) {
+                $proofPath = $photo->store('logistics/ecommerce/status-proofs', 'public');
+            }
+
             $delivery->status = $validated['status'];
             $delivery->failed_reason = $validated['failed_reason'] ?? $delivery->failed_reason;
             $delivery->notes = $validated['notes'] ?? $delivery->notes;
+            if (Schema::hasColumn('ecommerce_order_deliveries', 'current_latitude')) {
+                $delivery->current_latitude = $validated['latitude'] ?? $delivery->current_latitude;
+                $delivery->current_longitude = $validated['longitude'] ?? $delivery->current_longitude;
+                $delivery->current_address = $locationAddress ?: $delivery->current_address;
+            }
+            if ($validated['status'] === 'delivered' && $proofPath) {
+                $delivery->proof_of_delivery_path = $proofPath;
+            }
             $delivery->updated_by = $request->user()->id;
             if ($validated['status'] === 'in_transit' && !$delivery->dispatched_at) {
                 $delivery->dispatched_at = now();
@@ -724,22 +770,48 @@ class UnifiedDeliveryController extends Controller
                 'delivery_id' => $delivery->id,
                 'order_id' => $order->id,
                 'store_id' => $order->store_id,
+                // Keep event_type compatible with the ecommerce delivery log enum;
+                // the specific lifecycle state is stored in status_to.
                 'event_type' => 'status_updated',
                 'status_from' => $from,
                 'status_to' => $validated['status'],
-                'message' => "Delivery status updated from {$from} to {$validated['status']}",
+                'message' => $validated['notes'] ?? "Delivery status updated from {$from} to {$validated['status']}.",
+                'meta' => array_filter([
+                    'latitude' => $validated['latitude'] ?? null,
+                    'longitude' => $validated['longitude'] ?? null,
+                    'location_address' => $locationAddress ?: null,
+                    'proof_photo_url' => $proofPath ? $this->publicUrl($proofPath) : null,
+                ], fn ($value) => $value !== null && $value !== ''),
                 'created_by' => $request->user()->id,
             ]);
 
-            if ($validated['status'] === 'delivered') {
-                $order->status = 'delivered';
-                if ($order->payment_method === 'cod' && $order->payment_status === 'unpaid') {
-                    $order->payment_status = 'paid';
-                }
-                $order->save();
-                if ($order->payment_method === 'cod' && $order->payment_status === 'paid') {
-                    $this->commissionService->record($order, false);
-                }
+            // Keep the customer-facing order status synchronized with the
+            // driver's delivery milestone.
+            $orderStatus = match ($validated['status']) {
+                'packed' => 'packed',
+                'in_transit' => 'in_transit',
+                'out_for_delivery' => 'out_for_delivery',
+                'delivered' => 'delivered',
+                'cancelled' => 'cancelled',
+                default => null,
+            };
+
+            if ($orderStatus !== null) {
+                $order->status = $orderStatus;
+            }
+
+            if ($validated['status'] === 'delivered'
+                && $order->payment_method === 'cod'
+                && $order->payment_status === 'unpaid') {
+                $order->payment_status = 'paid';
+            }
+
+            $order->save();
+
+            if ($validated['status'] === 'delivered'
+                && $order->payment_method === 'cod'
+                && $order->payment_status === 'paid') {
+                $this->commissionService->record($order, false);
             }
 
             return response()->json(['success' => true, 'message' => 'Delivery status updated.']);
@@ -804,16 +876,29 @@ class UnifiedDeliveryController extends Controller
             if ($request->user()->hasRole('driver') && (int) $delivery->driver_user_id !== (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'This delivery is not assigned to you.'], 403);
             }
-            if (!in_array(strtolower((string) $delivery->status), ['in_transit', 'out_for_delivery', 'on_the_way'], true)) {
+            $deliveryStatus = strtolower((string) $delivery->status);
+            // A five-second GPS request can arrive just after the driver marks
+            // the order delivered. Treat that late update as harmless so it
+            // does not surface a false 422 to the driver.
+            if ($deliveryStatus === 'delivered') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Delivery already completed; location tracking is closed.',
+                    'data' => $delivery->fresh(['vehicle']),
+                ]);
+            }
+            if (!in_array($deliveryStatus, ['in_transit', 'out_for_delivery', 'on_the_way'], true)) {
                 return response()->json(['success' => false, 'message' => 'Live tracking is only available while the order is in transit.'], 422);
             }
 
             $address = trim((string) ($validated['location_address'] ?? ''));
-            $delivery->update([
-                'current_latitude' => $validated['latitude'],
-                'current_longitude' => $validated['longitude'],
-                'current_address' => $address !== '' ? $address : $delivery->current_address,
-            ]);
+            if (Schema::hasColumn('ecommerce_order_deliveries', 'current_latitude')) {
+                $delivery->update([
+                    'current_latitude' => $validated['latitude'],
+                    'current_longitude' => $validated['longitude'],
+                    'current_address' => $address !== '' ? $address : $delivery->current_address,
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -1317,6 +1402,9 @@ class UnifiedDeliveryController extends Controller
             }
 
             $data['attachments'] = $attachments;
+            $data['latitude'] = $data['latitude'] ?? ($meta['latitude'] ?? null);
+            $data['longitude'] = $data['longitude'] ?? ($meta['longitude'] ?? null);
+            $data['location_address'] = $data['location_address'] ?? ($meta['location_address'] ?? null);
             return $data;
         });
     }

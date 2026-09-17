@@ -43,7 +43,7 @@ importers:
         specifier: ^4.0.0
         version: 4.2.1(vite@7.3.1(@types/node@25.5.0)(jiti@1.21.7)(lightningcss@1.31.1)(sass-embedded@1.98.0)(sass@1.98.0))
       '@vitejs/plugin-vue':
-        specifier: ^5.0.0
+        specifier: ^5.2.4
         version: 5.2.4(vite@7.3.1(@types/node@25.5.0)(jiti@1.21.7)(lightningcss@1.31.1)(sass-embedded@1.98.0)(sass@1.98.0))(vue@3.5.29)
       autoprefixer:
         specifier: ^10.4.12

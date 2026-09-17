@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Ecommerce;
 
 use App\Http\Controllers\Controller;
-use App\Models\Ecommerce\EcommerceProductReview;
+use App\Models\CRM\EcommerceProductReview;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;

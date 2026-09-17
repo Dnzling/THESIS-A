@@ -7,14 +7,14 @@ use App\Models\Ecommerce\EcommerceCart;
 use App\Models\Ecommerce\EcommerceCartItem;
 use App\Models\Ecommerce\EcommerceFavorite;
 use App\Models\Ecommerce\EcommerceAddressTemplate;
-use App\Models\Ecommerce\EcommerceChatMessage;
-use App\Models\Ecommerce\EcommerceChatThread;
+use App\Models\CRM\EcommerceChatMessage;
+use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
-use App\Models\Ecommerce\EcommerceOrderReturn;
-use App\Models\Ecommerce\EcommerceProductReview;
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceProductReview;
 use App\Models\Ecommerce\EcommerceStoreFollow;
-use App\Models\Ecommerce\EcommerceVoucher;
+use App\Models\CRM\EcommerceVoucher;
 use App\Models\Admin\ViolationReport;
 use App\Models\Customer\Customer;
 use App\Models\Inventory\BranchInventory;
@@ -26,7 +26,7 @@ use App\Models\Store\Branch;
 use App\Models\Store\StoreDeliveryFeeSetting;
 use App\Models\Logistics\DeliveryZone;
 use App\Models\Logistics\DeliveryZoneRate;
-use App\Models\Sales\SalesReview;
+use App\Models\CRM\SalesReview;
 use App\Services\Sales\OrderCommissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -472,6 +472,8 @@ class EcommerceController extends Controller
                 'description' => $product->description,
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
+                'base_price' => round((float) ($product->base_price ?? 0), 2),
+                'discounted_price' => $product->discounted_price !== null ? round((float) $product->discounted_price, 2) : null,
                 'price' => round($price, 2),
                 'base_price' => round((float) ($product->base_price ?? 0), 2),
                 'discounted_price' => $product->discounted_price !== null ? round((float) $product->discounted_price, 2) : null,
@@ -647,11 +649,12 @@ class EcommerceController extends Controller
             ->with([
                 'category:id,category_name',
                 'store:id,name,settings',
-                'assets:id,product_id,file_path,asset_type,is_primary,created_at,display_order,model_format,file_name,default_camera_angle_x,default_camera_angle_y,default_zoom_level',
+                'assignedTags:id,tag_name',
+                'assets:id,product_id,file_path,asset_type,is_primary,created_at,updated_at,display_order,model_format,file_name,default_camera_angle_x,default_camera_angle_y,default_zoom_level',
                 'variations' => function ($query) {
                     $query->where('is_active', true)
                         ->with([
-                            'custom3dModel:id,product_id,file_name,file_path,model_format,default_camera_angle_x,default_camera_angle_y,default_zoom_level',
+                            'custom3dModel:id,product_id,file_name,file_path,model_format,updated_at,default_camera_angle_x,default_camera_angle_y,default_zoom_level',
                             'customImage:id,product_id,file_name,file_path,asset_type,is_primary,display_order',
                         ])
                         ->orderBy('variation_name');
@@ -758,7 +761,7 @@ class EcommerceController extends Controller
                 'description' => $product->description,
                 'brand' => $product->brand,
                 'collection_name' => $product->collection_name,
-                'tags' => $product->tags->map(fn ($tag) => [
+                'tags' => ($product->assignedTags ?? collect())->map(fn ($tag) => [
                     'id' => (int) $tag->id,
                     'tag_name' => $tag->tag_name,
                 ])->values(),
@@ -788,7 +791,7 @@ class EcommerceController extends Controller
                     'id' => $model3d->id,
                     'file_name' => $model3d->file_name,
                     'model_format' => strtolower((string) $model3d->model_format),
-                    'url' => url("/api/product-catalog/assets/{$model3d->id}/serve"),
+                    'url' => url("/api/product-catalog/assets/{$model3d->id}/serve").'?v='.($model3d->updated_at?->timestamp ?? time()),
                     'camera_settings' => [
                         'angle_x' => (float) ($model3d->default_camera_angle_x ?? 0),
                         'angle_y' => (float) ($model3d->default_camera_angle_y ?? 15),
@@ -828,7 +831,7 @@ class EcommerceController extends Controller
                             'id' => $variationModel->id,
                             'file_name' => $variationModel->file_name,
                             'model_format' => strtolower((string) $variationModel->model_format),
-                            'url' => url("/api/product-catalog/assets/{$variationModel->id}/serve"),
+                            'url' => url("/api/product-catalog/assets/{$variationModel->id}/serve").'?v='.($variationModel->updated_at?->timestamp ?? time()),
                             'camera_settings' => [
                                 'angle_x' => (float) ($variationModel->default_camera_angle_x ?? 0),
                                 'angle_y' => (float) ($variationModel->default_camera_angle_y ?? 15),
@@ -2434,7 +2437,7 @@ class EcommerceController extends Controller
                     'title' => 'New Customer Chat Message',
                     'message' => 'A customer sent a new message in chat.',
                     'severity' => 'info',
-                    'link' => '/sales/chats',
+                    'link' => '/CRM/chats',
                 ],
                 [(int) $user->id]
             );

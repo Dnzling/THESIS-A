@@ -18,7 +18,7 @@ class BranchController extends Controller
             
             // Get branches for the user's store
             $query = Branch::where('store_id', $user->store_id)
-                ->select('id', 'name', 'branch_code', 'address', 'status', 'contact_number', 'branch_type', 'latitude', 'longitude', 'geofence_radius_m', 'geofence_enabled')
+                ->select('id', 'name', 'branch_code', 'city', 'address', 'status', 'contact_number', 'branch_type', 'latitude', 'longitude', 'geofence_radius_m', 'geofence_enabled')
                 ->orderBy('name');
 
             if ($request->filled('branch_type')) {

@@ -2,7 +2,7 @@
   <div class="max-w-7xl mx-auto space-y-6 pb-6">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
-        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.transfers' })" />
+        <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'inventory.stock-movements' })" />
         <div>
           <h2 class="text-2xl font-bold text-gray-800">Transfer Details</h2>
           <p class="text-sm text-gray-500 mt-1">Review and process stock transfer</p>

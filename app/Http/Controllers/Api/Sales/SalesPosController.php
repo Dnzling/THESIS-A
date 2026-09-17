@@ -16,6 +16,7 @@ use App\Services\Sales\SalesOrderSettlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Ecommerce\EcommerceOrder;
 
 class SalesPosController extends Controller
 {
@@ -32,11 +33,14 @@ class SalesPosController extends Controller
         $branchId = (int) ($request->input('branch_id', $user->branch_id ?? 0));
 
         $query = BranchInventory::query()
-            ->with(['product:id,product_name,sku,base_price,discounted_price,is_active', 'variation:id,variation_name'])
+            ->with(['product:id,product_name,sku,base_price,discounted_price,is_active,product_type', 'variation:id,variation_name,variation_sku'])
             ->where('store_id', $storeId)
             ->when($branchId > 0, fn($q) => $q->where('branch_id', $branchId))
             ->where('quantity_available', '>', 0)
-            ->whereHas('product', fn($q) => $q->where('is_active', true)->whereNull('deleted_at'));
+            ->whereHas('product', fn($q) => $q
+                ->where('product_type', 'finished_good')
+                ->where('is_active', true)
+                ->whereNull('deleted_at'));
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -50,6 +54,104 @@ class SalesPosController extends Controller
             ->paginate((int) $request->input('per_page', 20));
 
         return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    /**
+     * Return one normalized list containing POS and ecommerce orders.
+     */
+    public function unifiedOrders(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $canView = $user?->hasAnyPermission([
+            'sales.pos.view',
+            'sales.pos.manage',
+            'sales.ecommerce-orders.view',
+            'sales.ecommerce-orders.manage',
+        ], $storeId);
+
+        if (! $canView) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized to view sales orders.'], 403);
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        $status = trim((string) $request->input('status', ''));
+        $channel = strtolower(trim((string) $request->input('channel', '')));
+
+        $orders = collect();
+
+        if ($channel === '' || in_array($channel, ['pos', 'in_store', 'in-store'], true)) {
+            $posQuery = SalesOrder::query()
+                ->with(['branch:id,name', 'payment:id,sales_order_id,payment_method,status', 'delivery:id,sales_order_id,status,tracking_number'])
+                ->withCount('items');
+            $this->applyStoreScope($request, $posQuery);
+            $posQuery->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search) {
+                $nested->where('order_number', 'like', "%{$search}%")
+                    ->orWhere('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_phone', 'like', "%{$search}%");
+            }));
+            $posQuery->when($status !== '', fn ($query) => $query->where('status', $status));
+
+            $orders = $orders->concat($posQuery->get()->map(fn (SalesOrder $order) => [
+                'key' => 'pos-' . $order->id,
+                'id' => (int) $order->id,
+                'order_number' => $order->order_number ?: ('POS-' . $order->id),
+                'customer_name' => $order->customer_name ?: 'Walk-in',
+                'customer_contact' => $order->customer_phone,
+                'payment_method' => $order->payment_method ?: $order->payment?->payment_method,
+                'payment_status' => $order->payment_status ?: $order->payment?->status,
+                'status' => $order->status ?: 'completed',
+                'total_amount' => (float) $order->total_amount,
+                'created_at' => $order->created_at,
+                'channel' => 'In-Store',
+                'order_type' => 'pos',
+                'branch_id' => $order->branch_id,
+                'branch_name' => $order->branch?->name,
+                'items_count' => (int) $order->items_count,
+                'delivery_required' => (bool) $order->delivery_required,
+                'delivery' => $order->delivery,
+                'route_name' => 'sales.pos.order-detail',
+            ]));
+        }
+
+        if ($channel === '' || in_array($channel, ['ecommerce', 'online'], true)) {
+            $ecommerceQuery = EcommerceOrder::query()
+                ->with(['assignedBranch:id,name', 'delivery:id,order_id,status,tracking_number'])
+                ->withCount('items');
+            $this->applyStoreScope($request, $ecommerceQuery);
+            $ecommerceQuery->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search) {
+                $nested->where('order_number', 'like', "%{$search}%")
+                    ->orWhere('shipping_name', 'like', "%{$search}%")
+                    ->orWhere('shipping_phone', 'like', "%{$search}%");
+            }));
+            $ecommerceQuery->when($status !== '', fn ($query) => $query->where('status', $status));
+
+            $orders = $orders->concat($ecommerceQuery->get()->map(fn (EcommerceOrder $order) => [
+                'key' => 'ecommerce-' . $order->id,
+                'id' => (int) $order->id,
+                'order_number' => $order->order_number ?: ('WEB-' . $order->id),
+                'customer_name' => $order->shipping_name,
+                'customer_contact' => $order->shipping_phone,
+                'payment_method' => $order->payment_method,
+                'payment_status' => $order->payment_status,
+                'status' => $order->status ?: 'pending',
+                'total_amount' => (float) $order->total_amount,
+                'created_at' => $order->placed_at ?: $order->created_at,
+                'channel' => 'Online',
+                'order_type' => 'ecommerce',
+                'branch_id' => $order->assigned_branch_id,
+                'branch_name' => $order->assignedBranch?->name,
+                'items_count' => (int) $order->items_count,
+                'delivery_required' => true,
+                'delivery' => $order->delivery,
+                'route_name' => 'sales.ecommerce-orders.detail',
+            ]));
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $orders->sortByDesc(fn (array $order) => (string) $order['created_at'])->values(),
+        ]);
     }
 
     public function shippingEstimate(Request $request): JsonResponse
@@ -180,12 +282,16 @@ class SalesPosController extends Controller
 
             foreach ($validated['items'] as $itemRow) {
                 $inv = BranchInventory::query()
-                    ->with(['product:id,product_name,sku,base_price,discounted_price'])
+                    ->with(['product:id,product_name,sku,base_price,discounted_price,product_type'])
                     ->lockForUpdate()
                     ->findOrFail((int) $itemRow['branch_inventory_id']);
 
                 if ((int) $inv->store_id !== $storeId) {
                     abort(response()->json(['success' => false, 'message' => 'Invalid inventory item for this store.'], 422));
+                }
+
+                if (($inv->product?->product_type ?? null) !== 'finished_good') {
+                    abort(response()->json(['success' => false, 'message' => 'Only finished goods can be sold through POS.'], 422));
                 }
 
                 $qty = (int) $itemRow['quantity'];
@@ -623,43 +729,6 @@ class SalesPosController extends Controller
                 'pending_payments' => (clone $paymentQuery)->whereIn('status', ['pending', 'processing', 'awaiting_payment_method'])->count() + $ecomPendingPayments,
                 'payments_by_method' => $paymentsByMethod,
                 'recent_orders' => (clone $query)->with('branch:id,name')->orderByDesc('created_at')->limit(8)->get(),
-            ],
-        ]);
-    }
-
-    public function paymentAnalytics(Request $request): JsonResponse
-    {
-        $paymentQuery = SalesPayment::query();
-        $this->applyStoreScope($request, $paymentQuery);
-
-        $from = $request->date('from', now()->subDays(30)->startOfDay())?->startOfDay() ?? now()->subDays(30)->startOfDay();
-        $to = $request->date('to', now()->endOfDay())?->endOfDay() ?? now()->endOfDay();
-
-        $rangeQuery = (clone $paymentQuery)->whereBetween('created_at', [$from, $to]);
-        $paidCount = (clone $rangeQuery)->where('status', 'paid')->count();
-        $allCount = (clone $rangeQuery)->count();
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'from' => $from->toDateString(),
-                'to' => $to->toDateString(),
-                'total_payments' => $allCount,
-                'paid_payments' => $paidCount,
-                'failed_payments' => (clone $rangeQuery)->where('status', 'failed')->count(),
-                'pending_payments' => (clone $rangeQuery)->whereIn('status', ['pending', 'processing', 'awaiting_payment_method'])->count(),
-                'paid_amount' => (float) (clone $rangeQuery)->where('status', 'paid')->sum('amount'),
-                'conversion_rate' => $allCount > 0 ? round(($paidCount / $allCount) * 100, 2) : 0,
-                'method_breakdown' => (clone $rangeQuery)
-                    ->select('payment_method', DB::raw('COUNT(*) as total'), DB::raw('SUM(CASE WHEN status = "paid" THEN amount ELSE 0 END) as paid_amount'))
-                    ->groupBy('payment_method')
-                    ->get(),
-                'daily_paid' => (clone $rangeQuery)
-                    ->where('status', 'paid')
-                    ->select(DB::raw('DATE(COALESCE(paid_at, created_at)) as date'), DB::raw('SUM(amount) as total'))
-                    ->groupBy(DB::raw('DATE(COALESCE(paid_at, created_at))'))
-                    ->orderBy('date')
-                    ->get(),
             ],
         ]);
     }

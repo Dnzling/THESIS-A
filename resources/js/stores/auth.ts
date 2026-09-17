@@ -29,6 +29,13 @@ interface NavigationItem {
     badge_count?: number
 }
 
+interface SystemModule {
+    id: number
+    key: string
+    name: string
+    description?: string | null
+}
+
 export const useAuthStore = defineStore('auth', () => {
     const readStoredArray = <T = any>(key: string): T[] => {
         try {
@@ -52,6 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
     // RBAC State
     const permissions = ref<string[]>(readStoredArray<string>('permissions'))
     const navigation = ref<NavigationItem[]>(readStoredArray<NavigationItem>('navigation'))
+    const systemModules = ref<SystemModule[]>(readStoredArray<SystemModule>('system_modules'))
     // Cached permissions/navigation are used as a fallback only. Always refresh
     // them once on a new app load so role changes are reflected in the sidebar.
     const permissionsLoaded = ref(false)
@@ -111,6 +119,7 @@ export const useAuthStore = defineStore('auth', () => {
         if (isCustomer.value || user.value?.role === 'super_admin') {
             permissions.value = []
             navigation.value = []
+            systemModules.value = []
             permissionsLoaded.value = true
             return
         }
@@ -137,11 +146,13 @@ export const useAuthStore = defineStore('auth', () => {
 
                 permissions.value = response.data.permissions || []
                 navigation.value = response.data.navigation || []
+                systemModules.value = response.data.modules || []
                 permissionsLoaded.value = true
                 const permissionsMeta = response.data.permissions_meta || null
 
                 localStorage.setItem('navigation', JSON.stringify(navigation.value))
                 localStorage.setItem('permissions', JSON.stringify(permissions.value))
+                localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
 
                 console.log('Permissions loaded:', permissions.value.length, 'permissions')
                 if (permissionsMeta) {
@@ -204,11 +215,13 @@ export const useAuthStore = defineStore('auth', () => {
             
             permissions.value = response.data.permissions || []
             navigation.value = response.data.navigation || []
+            systemModules.value = response.data.modules || []
             const permissionsMeta = response.data.permissions_meta || null
             
             // Update cache
             localStorage.setItem('navigation', JSON.stringify(navigation.value))
             localStorage.setItem('permissions', JSON.stringify(permissions.value))
+            localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
             
             console.log('Navigation refreshed:', navigation.value.length, 'items')
             if (permissionsMeta) {
@@ -443,6 +456,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.removeItem('user')
             localStorage.removeItem('navigation')
             localStorage.removeItem('permissions')
+            localStorage.removeItem('system_modules')
 
             delete axios.defaults.headers.common['Authorization']
             document.cookie = 'auth_token=; Max-Age=0; path=/; SameSite=Lax'
@@ -535,6 +549,7 @@ export const useAuthStore = defineStore('auth', () => {
         error,
         permissions,
         navigation,
+        systemModules,
         permissionsLoaded,
         isLoadingPermissions,
 

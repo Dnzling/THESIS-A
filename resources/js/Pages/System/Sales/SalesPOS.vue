@@ -30,13 +30,20 @@
               <template #body="{ data }">
                 <div>
                   <div class="font-medium">{{ data.product?.product_name }}</div>
-                  <div class="truncate text-xs text-slate-500">Variant: {{ data.variation?.variation_name || data.product?.sku || 'Standard' }}</div>
+                  <div v-if="data.variation?.variation_name" class="truncate text-xs text-slate-500">
+                    Variant: {{ data.variation.variation_name }}
+                  </div>
                 </div>
+              </template>
+            </Column>
+            <Column header="SKU">
+              <template #body="{ data }">
+                <span class="text-sm text-slate-600">{{ data.variation?.variation_sku || data.product?.sku || '—' }}</span>
               </template>
             </Column>
             <Column field="quantity_available" header="Stock">
               <template #body="{ data }">
-                <Tag 
+                <badge 
                   :value="`${Number(data.quantity_available || 0)} available`"
                   :severity="getStockSeverity(data.quantity_available)" 
                 />
@@ -51,7 +58,7 @@
               <template #body="{ data }">
                 <Button 
                   text 
-                  severity="info" 
+                   
                   icon="pi pi-plus" 
                   :disabled="!canManagePos || cartQuantity(data.id) >= Number(data.quantity_available || 0)"
                   @click="addToCart(data)"
@@ -66,7 +73,6 @@
       <Card>
         <template #title>
           <div class="flex items-center gap-2">
-            <i class="pi pi-shopping-cart text-blue-500"></i>
             <span>Cart</span>
             <Badge v-if="cart.length" :value="cart.length" class="ml-auto" />
           </div>
@@ -114,7 +120,7 @@
                 />
                 <Button
                   icon="pi pi-plus"
-                  severity="info"
+                  
                   class="shrink-0 rounded-l-none"
                   :disabled="!canManagePos || item.quantity >= item.stock_available"
                   :aria-label="`Increase ${item.product_name} quantity`"
@@ -173,7 +179,7 @@
           />
 
           <!-- GCash Info -->
-          <Message v-if="paymentMethod === 'gcash'" severity="info" class="mb-3">
+          <Message v-if="paymentMethod === 'gcash'"  class="mb-3">
             <i class="pi pi-info-circle mr-2"></i>
             GCash checkout opens after you submit. We will auto-refresh payment status.
           </Message>
@@ -200,7 +206,7 @@
 
           <!-- Checkout Button -->
           <Button 
-            severity="info" 
+             
             fluid 
             :loading="checkingOut" 
             :disabled="!canManagePos || !cart.length"

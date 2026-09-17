@@ -1,0 +1,822 @@
+<?php
+
+namespace App\Http\Controllers\Api\CRM;
+
+use App\Http\Controllers\Controller;
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\CRM\ReturnInvestigationTicket;
+use App\Models\Hr\Employee;
+use App\Models\Logistics\ReturnPickup;
+use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\InventoryTransaction;
+use App\Models\Sales\SalesRefund;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+
+class ReturnController extends Controller
+{
+    public function investigationAssignees(Request $request): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        if ($storeId <= 0) {
+            return response()->json(['success' => false, 'message' => 'A store context is required.'], 422);
+        }
+
+        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.view']);
+        $employees = Employee::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->whereIn('user_id', $crmViewerIds)
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->with('user:id,fname,lname,email')
+            ->orderBy('employee_number')
+            ->get(['id', 'user_id', 'employee_number', 'department', 'branch_id']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $employees->map(fn (Employee $employee) => [
+                'value' => (int) $employee->id,
+                'user_id' => (int) $employee->user_id,
+                'name' => trim(($employee->user?->fname ?? '') . ' ' . ($employee->user?->lname ?? '')) ?: 'Unnamed employee',
+                'employee_number' => $employee->employee_number,
+                'department' => $employee->department,
+                'email' => $employee->user?->email,
+            ])->values(),
+        ]);
+    }
+
+    public function createInvestigationTicket(Request $request, int $id): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        $return = EcommerceOrderReturn::query()->find($id);
+        if (!$return) {
+            return response()->json(['success' => false, 'message' => 'Return request not found.'], 404);
+        }
+        if ($storeId <= 0 || (int) $return->store_id !== $storeId) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized access to return request.'], 403);
+        }
+
+        $validated = $request->validate([
+            'assigned_employee_ids' => ['required', 'array', 'min:1'],
+            'assigned_employee_ids.*' => ['required', 'integer', 'distinct'],
+            'expected_investigation_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        if ((string) $return->status !== 'pending_verification') {
+            return response()->json([
+                'success' => false,
+                'message' => 'An investigation ticket can only be created while the return is pending verification.',
+            ], 422);
+        }
+        if ($return->investigationTicket()->exists()) {
+            return response()->json(['success' => false, 'message' => 'An investigation ticket already exists for this return.'], 409);
+        }
+
+        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.view']);
+        $employees = Employee::query()
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->whereIn('user_id', $crmViewerIds)
+            ->whereIn('id', $validated['assigned_employee_ids'])
+            ->whereHas('user', fn ($query) => $query->where('is_active', true))
+            ->with('user:id,fname,lname,email')
+            ->get(['id', 'user_id', 'employee_number', 'department', 'branch_id']);
+
+        if ($employees->count() !== count($validated['assigned_employee_ids'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'One or more selected employees are inactive, outside this store, or do not have crm.view permission.',
+            ], 422);
+        }
+
+        $ticket = DB::transaction(function () use ($return, $storeId, $validated, $employees): ReturnInvestigationTicket {
+            $lockedReturn = EcommerceOrderReturn::query()->whereKey($return->id)->lockForUpdate()->firstOrFail();
+            if ((string) $lockedReturn->status !== 'pending_verification') {
+                abort(422, 'An investigation ticket can only be created while the return is pending verification.');
+            }
+            if ($lockedReturn->investigationTicket()->exists()) {
+                abort(409, 'An investigation ticket already exists for this return.');
+            }
+
+            $ticket = ReturnInvestigationTicket::query()->create([
+                'return_id' => (int) $lockedReturn->id,
+                'store_id' => $storeId,
+                'created_by' => auth()->id(),
+                'expected_investigation_date' => $validated['expected_investigation_date'],
+                'notes' => $validated['notes'] ?? null,
+                'status' => 'open',
+            ]);
+
+            $ticket->assignees()->attach($employees->mapWithKeys(fn (Employee $employee) => [
+                (int) $employee->id => ['user_id' => (int) $employee->user_id],
+            ])->all());
+
+            return $ticket;
+        });
+
+        $ticket->load(['assignees.user:id,fname,lname,email', 'creator:id,fname,lname']);
+        $return->load('order:id,order_number');
+        $returnNumber = $return->return_number ?: 'Return #' . $return->id;
+        $link = '/crm/returns/' . (int) $return->id;
+        $notificationData = [
+            'ticket_id' => (int) $ticket->id,
+            'return_id' => (int) $return->id,
+            'return_number' => $return->return_number,
+            'expected_investigation_date' => $ticket->expected_investigation_date?->format('Y-m-d'),
+        ];
+        $assigneeUserIds = $employees->pluck('user_id')->map(fn ($userId) => (int) $userId)->unique()->values()->all();
+        $permissionUserIds = collect($this->userIdsWithAnyPermission($storeId, ['crm.view']))
+            ->diff($assigneeUserIds)
+            ->values()
+            ->all();
+        $permissionUserIds = DB::table('users')
+            ->whereIn('id', $permissionUserIds)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->map(fn ($userId) => (int) $userId)
+            ->all();
+
+        $this->notifyMany($assigneeUserIds, [
+            'store_id' => $storeId,
+            'module' => 'crm',
+            'entity_type' => 'crm_return_investigation',
+            'entity_id' => (int) $ticket->id,
+            'action' => 'investigation_assigned',
+            'title' => 'Return investigation assigned',
+            'message' => "You have been assigned to investigate {$returnNumber}. Expected date: " . $ticket->expected_investigation_date?->format('M j, Y') . '.',
+            'data' => $notificationData,
+            'link' => $link,
+            'severity' => 'info',
+        ]);
+
+        $this->notifyMany($permissionUserIds, [
+            'store_id' => $storeId,
+            'module' => 'crm',
+            'entity_type' => 'crm_return_investigation',
+            'entity_id' => (int) $ticket->id,
+            'action' => 'investigation_created',
+            'title' => 'Return investigation ticket created',
+            'message' => "An investigation ticket was opened for {$returnNumber}. Expected date: " . $ticket->expected_investigation_date?->format('M j, Y') . '.',
+            'data' => $notificationData,
+            'link' => $link,
+            'severity' => 'info',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Return investigation ticket created and the CRM team was notified.',
+            'data' => [
+                'ticket' => $ticket,
+                'return' => $return->fresh()->load([
+                    'investigationTicket.assignees.user:id,fname,lname,email',
+                    'investigationTicket.creator:id,fname,lname',
+                ]),
+            ],
+        ], 201);
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+
+        $query = EcommerceOrderReturn::query()
+            ->with([
+                'order:id,order_number,status,store_id,user_id,shipping_name,shipping_phone,shipping_address,created_at',
+                'orderItem:id,order_id,product_id,product_name,sku,quantity,unit_price',
+                'orderItem.product:id,product_name,sku',
+                'user:id,fname,lname,email',
+                'pickup:id,store_id,return_id,status,scheduled_at,driver_user_id,picked_up_at,created_at',
+                'pickup.driver:id,fname,lname,email',
+            ])
+            ->when($storeId > 0, fn ($q) => $q->where('store_id', $storeId));
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $query->whereBetween('created_at', [
+                $request->string('start_date')->toString() . ' 00:00:00',
+                $request->string('end_date')->toString() . ' 23:59:59',
+            ]);
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('return_number', 'like', "%{$search}%")
+                    ->orWhereHas('order', function ($oq) use ($search) {
+                        $oq->where('order_number', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('user', function ($uq) use ($search) {
+                        $uq->whereRaw("CONCAT_WS(' ', fname, lname) like ?", ["%{$search}%"])
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('orderItem.product', function ($pq) use ($search) {
+                        $pq->where('product_name', 'like', "%{$search}%")
+                            ->orWhere('sku', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('orderItem', function ($iq) use ($search) {
+                        $iq->where('product_name', 'like', "%{$search}%")
+                            ->orWhere('sku', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $sortBy = $request->string('sort_by', 'created_at')->toString();
+        $sortOrder = strtolower($request->string('sort_order', 'desc')->toString()) === 'asc' ? 'asc' : 'desc';
+
+        $allowedSorts = ['created_at', 'status', 'requested_quantity', 'id'];
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'created_at';
+        }
+
+        $query->orderBy($sortBy, $sortOrder);
+
+        $perPage = (int) $request->input('per_page', 15);
+        $returns = $query->paginate(max(1, min(100, $perPage)));
+
+        return response()->json([
+            'success' => true,
+            'data' => $returns->items(),
+            'meta' => [
+                'total' => $returns->total(),
+                'per_page' => $returns->perPage(),
+                'current_page' => $returns->currentPage(),
+                'last_page' => $returns->lastPage(),
+            ],
+        ]);
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $return = EcommerceOrderReturn::query()->find($id);
+        if (!$return) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Return request not found.',
+            ], 404);
+        }
+
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        if ($storeId > 0 && (int) $return->store_id !== $storeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access to return request.',
+            ], 403);
+        }
+
+        $return->load([
+            'order:id,order_number,status,store_id,user_id,shipping_name,shipping_phone,shipping_email,shipping_address,created_at',
+            'orderItem:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price',
+            'orderItem.product:id,product_name,sku,base_price,unit_of_measurement',
+            'orderItem.branchInventory:id,variation_id',
+            'orderItem.branchInventory.variation:id,variation_name,variation_sku,color,size,material,texture,finish,base_price',
+            'user:id,fname,lname,email',
+            'reviewer:id,fname,lname,email',
+            'inspector:id,fname,lname,email',
+            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup.driver:id,fname,lname,email',
+            'investigationTicket.assignees:id,user_id,employee_number,department,branch_id',
+            'investigationTicket.assignees.user:id,fname,lname,email',
+            'investigationTicket.creator:id,fname,lname',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $return,
+        ]);
+    }
+
+    public function updateStatus(Request $request, EcommerceOrderReturn $return): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        if ($storeId > 0 && (int) $return->store_id !== $storeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access to return request.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:approved,rejected'],
+            'return_type' => ['nullable', 'required_if:status,approved', 'in:refund,replacement'],
+            'review_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $newStatus = $validated['status'];
+        $currentStatus = (string) $return->status;
+
+        if ($newStatus === 'approved'
+            && $currentStatus === 'approved'
+            && $return->return_type
+            && $return->return_type !== $validated['return_type']
+            && in_array((string) $return->pickup?->status, ['picked_up', 'completed'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Return type can no longer be changed after the item has been picked up.',
+            ], 422);
+        }
+
+        if ($newStatus === 'rejected' && empty(trim((string) ($validated['review_notes'] ?? '')))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Review notes are required when rejecting a return.',
+            ], 422);
+        }
+
+        $allowedTransitions = [
+            'pending_verification' => ['approved', 'rejected'],
+            'approved' => ['rejected'],
+            'rejected' => [],
+            'received' => [],
+            'refunded' => [],
+        ];
+
+        $currentAllowed = $allowedTransitions[$currentStatus] ?? [];
+        if ($newStatus !== $currentStatus && !in_array($newStatus, $currentAllowed, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Invalid status transition from '{$currentStatus}' to '{$newStatus}'.",
+            ], 422);
+        }
+
+        DB::transaction(function () use ($return, $newStatus, $validated): void {
+            $return->status = $newStatus;
+            if (array_key_exists('review_notes', $validated)) {
+                $return->review_notes = $validated['review_notes'];
+            }
+            if ($newStatus === 'approved') {
+                $return->return_type = $validated['return_type'];
+            }
+
+            $return->reviewed_by = auth()->id();
+            $return->reviewed_at = Carbon::now();
+            $return->save();
+
+            // When approved, ensure a logistics pickup job exists (Logistics will schedule it).
+            if ($newStatus === 'approved') {
+                $return->loadMissing(['order']);
+                ReturnPickup::query()->firstOrCreate(
+                    ['return_id' => (int) $return->id],
+                    [
+                        'store_id' => (int) $return->store_id,
+                        'status' => 'scheduled',
+                        'scheduled_at' => null,
+                        'pickup_name' => $return->order?->shipping_name,
+                        'pickup_phone' => $return->order?->shipping_phone,
+                        'pickup_address' => $return->order?->shipping_address,
+                        'notes' => 'Created from approved return.',
+                        'created_by' => auth()->id(),
+                        'updated_by' => auth()->id(),
+                    ]
+                );
+
+                // Put refund resolutions in Finance immediately for visibility.
+                // Finance may only release it after Inventory changes the status
+                // from pending_inspection to pending.
+                if ($return->return_type === 'refund') {
+                    $return->loadMissing(['orderItem:id,order_id,unit_price']);
+                    SalesRefund::query()->firstOrCreate(
+                        [
+                            'store_id' => (int) $return->store_id,
+                            'order_type' => 'ecommerce_return',
+                            'order_id' => (int) $return->id,
+                        ],
+                        [
+                            'branch_id' => (int) (auth()->user()?->branch_id ?? 0) ?: null,
+                            'order_number' => $return->order?->order_number,
+                            'customer_name' => $return->order?->shipping_name,
+                            'reason' => 'Approved customer return #' . (int) $return->id,
+                            'amount' => round((float) ($return->orderItem?->unit_price ?? 0) * (int) $return->requested_quantity, 2),
+                            'status' => 'pending_inspection',
+                            'requested_by' => auth()->id(),
+                            'notes' => 'Awaiting Inventory inspection before Finance can release the refund.',
+                        ]
+                    );
+                }
+            } elseif ($newStatus === 'rejected') {
+                SalesRefund::query()
+                    ->where('store_id', (int) $return->store_id)
+                    ->where('order_type', 'ecommerce_return')
+                    ->where('order_id', (int) $return->id)
+                    ->where('status', 'pending_inspection')
+                    ->update([
+                        'status' => 'rejected',
+                        'notes' => $validated['review_notes'] ?? 'Return rejected by Sales.',
+                        'processed_by' => auth()->id(),
+                        'processed_at' => now(),
+                    ]);
+            }
+        });
+
+        if ($return->user_id) {
+            $this->notify((int) $return->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'ecommerce_order_return',
+                'entity_id' => (int) $return->id,
+                'title' => $newStatus === 'approved' ? 'Return request approved' : 'Return request rejected',
+                'message' => $newStatus === 'approved'
+                    ? 'Your ' . $return->return_type . ' return was approved and is ready for pickup scheduling.'
+                    : 'Your return request was rejected. Please review the store notes.',
+                'severity' => $newStatus === 'approved' ? 'success' : 'warn',
+                'store_id' => (int) $return->store_id,
+            ]);
+        }
+
+        $return->load([
+            'order:id,order_number,status,store_id,user_id,shipping_name,shipping_phone,shipping_address,created_at',
+            'orderItem:id,order_id,product_id,product_name,sku,quantity,unit_price',
+            'orderItem.product:id,product_name,sku',
+            'user:id,fname,lname,email',
+            'reviewer:id,fname,lname,email',
+            'inspector:id,fname,lname,email',
+            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup.driver:id,fname,lname,email',
+            'investigationTicket.assignees:id,user_id,employee_number,department,branch_id',
+            'investigationTicket.assignees.user:id,fname,lname,email',
+            'investigationTicket.creator:id,fname,lname',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Return status updated.',
+            'data' => $return,
+        ]);
+    }
+
+    public function createPickup(Request $request, EcommerceOrderReturn $return): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        if ($storeId > 0 && (int) $return->store_id !== $storeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access to return request.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'scheduled_at' => ['required', 'date'],
+            'pickup_name' => ['nullable', 'string', 'max:255'],
+            'pickup_phone' => ['nullable', 'string', 'max:255'],
+            'pickup_address' => ['nullable', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        if ((string) $return->status !== 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pickup can only be scheduled for approved returns.',
+            ], 422);
+        }
+
+        $pickup = null;
+        DB::transaction(function () use (&$pickup, $return, $validated): void {
+            $pickup = ReturnPickup::query()->firstOrCreate(
+                ['return_id' => (int) $return->id],
+                [
+                    'store_id' => (int) $return->store_id,
+                    'status' => 'scheduled',
+                    'scheduled_at' => null,
+                    'created_by' => auth()->id(),
+                    'updated_by' => auth()->id(),
+                ]
+            );
+
+            $pickup->scheduled_at = Carbon::parse($validated['scheduled_at']);
+            $pickup->pickup_name = $validated['pickup_name'] ?? $pickup->pickup_name;
+            $pickup->pickup_phone = $validated['pickup_phone'] ?? $pickup->pickup_phone;
+            $pickup->pickup_address = $validated['pickup_address'] ?? $pickup->pickup_address;
+            $pickup->notes = $validated['notes'] ?? $pickup->notes;
+            $pickup->updated_by = auth()->id();
+            $pickup->save();
+        });
+
+        $return->load([
+            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup.driver:id,fname,lname,email',
+        ]);
+
+        // Notify customer that pickup is scheduled.
+        if ($pickup && $return->user_id) {
+            $return->loadMissing(['order:id,order_number', 'user:id,email']);
+            $orderNumber = $return->order?->order_number ?? ('Order #' . (int) $return->order_id);
+            $this->notify((int) $return->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'return_pickup',
+                'entity_id' => (int) $pickup->id,
+                'title' => 'Return pickup scheduled',
+                'message' => "Your return pickup for {$orderNumber} has been scheduled on " . $pickup->scheduled_at?->format('M d, Y h:i A') . '.',
+                'severity' => 'info',
+                'store_id' => (int) $return->store_id,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pickup scheduled.',
+            'data' => [
+                'return' => $return,
+                'pickup' => $return->pickup,
+            ],
+        ]);
+    }
+
+    public function receive(Request $request, EcommerceOrderReturn $return): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        if ($storeId > 0 && (int) $return->store_id !== $storeId) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'received_quantity' => ['required', 'integer', 'min:1'],
+            'condition' => ['required', 'in:good,bad'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $maxQty = (int) ($return->requested_quantity ?? 1);
+        $receivedQty = (int) $validated['received_quantity'];
+        if ($receivedQty > $maxQty) {
+            return response()->json(['success' => false, 'message' => "Received quantity must be between 1 and {$maxQty}."], 422);
+        }
+
+        if ((string) $return->status !== 'approved') {
+            return response()->json(['success' => false, 'message' => 'Only an approved return can be inspected.'], 422);
+        }
+        if (!in_array((string) $return->return_type, ['refund', 'replacement'], true)) {
+            return response()->json(['success' => false, 'message' => 'Sales must select Refund or Replacement before Inventory inspection.'], 422);
+        }
+
+        $user = $request->user();
+        $employeeId = (int) ($user?->employee?->id ?? 0);
+        $branchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0);
+        if ($employeeId <= 0 || $branchId <= 0) {
+            return response()->json(['success' => false, 'message' => 'User must be linked to an employee + branch to post inventory receive.'], 422);
+        }
+
+        $return->loadMissing([
+            'order:id,order_number,shipping_name',
+            'orderItem:id,order_id,product_id,unit_price',
+        ]);
+        $productId = (int) ($return->orderItem?->product_id ?? 0);
+        if ($productId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Return item product is missing.'], 422);
+        }
+
+        $refund = null;
+        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $branchId, $employeeId, $user, &$refund): void {
+            $inventory = BranchInventory::query()
+                ->where('store_id', (int) $return->store_id)
+                ->where('branch_id', $branchId)
+                ->where('product_id', $productId)
+                ->whereNull('variation_id')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $inventory) {
+                $inventory = BranchInventory::query()->create([
+                    'store_id' => (int) $return->store_id,
+                    'branch_id' => $branchId,
+                    'product_id' => $productId,
+                    'variation_id' => null,
+                    'quantity_on_hand' => 0,
+                    'quantity_reserved' => 0,
+                    'quantity_available' => 0,
+                    'quantity_damaged' => 0,
+                    'quantity_incoming' => 0,
+                    'reorder_point' => 0,
+                    'reorder_quantity' => 0,
+                    'stock_status' => 'out_of_stock',
+                    'unit_cost' => $return->orderItem?->unit_price,
+                    'average_cost' => $return->orderItem?->unit_price,
+                    'total_value' => 0,
+                ]);
+            }
+
+            $quantityBefore = (int) $inventory->quantity_on_hand;
+            $availableBefore = (int) $inventory->quantity_available;
+
+            // A replacement is issued from existing sellable stock. The returned
+            // item is inspected separately and must not be used to satisfy it.
+            if ($return->return_type === 'replacement' && $availableBefore < $receivedQty) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'received_quantity' => ['Insufficient available stock to issue the replacement.'],
+                ]);
+            }
+
+            // Good returns go back to sellable stock. Bad returns are discarded,
+            // so they never inflate quantity-on-hand or available stock.
+            if ($validated['condition'] === 'good') {
+                $inventory->quantity_on_hand = $quantityBefore + $receivedQty;
+                $inventory->quantity_available = (int) $inventory->quantity_available + $receivedQty;
+            }
+
+            $receivedQuantityAfter = (int) $inventory->quantity_on_hand;
+            InventoryTransaction::query()->create([
+                'transaction_number' => 'INVTX-RET-' . (int) $return->id . '-' . now()->format('YmdHisv'),
+                'store_id' => (int) $return->store_id,
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+                'variation_id' => null,
+                'transaction_type' => $validated['condition'] === 'good' ? 'customer_return' : 'writeoff',
+                'quantity_before' => $quantityBefore,
+                'quantity_change' => $validated['condition'] === 'good' ? $receivedQty : 0,
+                'quantity_after' => $receivedQuantityAfter,
+                'reference_type' => 'ecommerce_order_return',
+                'reference_id' => (int) $return->id,
+                'notes' => $validated['notes'] ?? ($validated['condition'] === 'good' ? 'Returned item approved for resale.' : 'Returned item discarded after quality inspection.'),
+                'unit_cost' => $return->orderItem?->unit_price,
+                'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
+                'created_by' => $employeeId,
+                'transaction_date' => now(),
+            ]);
+
+            if ($return->return_type === 'replacement') {
+                $replacementBefore = (int) $inventory->quantity_on_hand;
+                $inventory->quantity_on_hand = $replacementBefore - $receivedQty;
+                $inventory->quantity_available = (int) $inventory->quantity_available - $receivedQty;
+
+                InventoryTransaction::query()->create([
+                    'transaction_number' => 'INVTX-REPL-' . (int) $return->id . '-' . now()->format('YmdHisv'),
+                    'store_id' => (int) $return->store_id,
+                    'branch_id' => $branchId,
+                    'product_id' => $productId,
+                    'variation_id' => null,
+                    'transaction_type' => 'sale',
+                    'quantity_before' => $replacementBefore,
+                    'quantity_change' => -$receivedQty,
+                    'quantity_after' => (int) $inventory->quantity_on_hand,
+                    'reference_type' => 'ecommerce_return_replacement',
+                    'reference_id' => (int) $return->id,
+                    'notes' => 'Replacement item issued to customer.',
+                    'unit_cost' => $return->orderItem?->unit_price,
+                    'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
+                    'created_by' => $employeeId,
+                    'transaction_date' => now(),
+                ]);
+            }
+
+            $available = (int) $inventory->quantity_available;
+            $reorderPoint = (int) ($inventory->reorder_point ?? 0);
+            $inventory->stock_status = $available <= 0 ? 'out_of_stock' : ($available <= $reorderPoint ? 'low_stock' : 'in_stock');
+            $inventory->total_value = round((float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0) * (int) $inventory->quantity_on_hand, 2);
+            $inventory->save();
+
+            if ($return->return_type === 'refund') {
+                $amount = round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty, 2);
+                $refund = SalesRefund::query()->updateOrCreate(
+                    [
+                        'store_id' => (int) $return->store_id,
+                        'order_type' => 'ecommerce_return',
+                        'order_id' => (int) $return->id,
+                    ],
+                    [
+                        'branch_id' => $branchId,
+                        'order_number' => $return->order?->order_number,
+                        'customer_name' => $return->order?->shipping_name,
+                        'reason' => 'Approved customer return #' . (int) $return->id,
+                        'amount' => $amount,
+                        'status' => 'pending',
+                        'requested_by' => (int) ($user?->id ?? 0) ?: null,
+                        'notes' => 'Inventory inspection complete. Ready for Finance approval.',
+                    ]
+                );
+                $return->status = 'refund_pending';
+            } else {
+                $return->status = 'replaced';
+                $return->resolved_at = now();
+            }
+            $return->product_condition = $validated['condition'];
+            $return->inventory_disposition = $validated['condition'] === 'good' ? 'resell' : 'discard';
+            $return->received_quantity = $receivedQty;
+            $return->inspected_by = auth()->id();
+            $return->inspected_at = now();
+            $return->inspection_notes = $validated['notes'] ?? null;
+            $return->save();
+        });
+
+        if ($return->user_id) {
+            $this->notify((int) $return->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'ecommerce_order_return',
+                'entity_id' => (int) $return->id,
+                'title' => $return->return_type === 'refund' ? 'Return sent to Finance' : 'Replacement issued',
+                'message' => $return->return_type === 'refund'
+                    ? 'Inventory inspected your item. Your refund request was sent to Finance.'
+                    : 'Inventory inspected your item and issued your replacement.',
+                'severity' => 'success',
+                'store_id' => (int) $return->store_id,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $return->return_type === 'refund'
+                ? 'Inspection complete. Refund request sent to Finance.'
+                : 'Inspection complete. Replacement issued and inventory adjusted.',
+            'data' => $return->fresh()->load(['inspector:id,fname,lname,email']),
+        ]);
+    }
+
+    public function refund(Request $request, EcommerceOrderReturn $return): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        if ($storeId > 0 && (int) $return->store_id !== $storeId) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
+        }
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'mark_as_approved' => ['nullable', 'boolean'],
+        ]);
+
+        if (!in_array((string) $return->status, ['received', 'refund_pending'], true)) {
+            return response()->json(['success' => false, 'message' => 'Return must be received before processing refund.'], 422);
+        }
+        if ($return->return_type && (string) $return->return_type !== 'refund') {
+            return response()->json(['success' => false, 'message' => 'A replacement return cannot be changed to a refund.'], 422);
+        }
+
+        $user = $request->user();
+        $branchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0);
+
+        $return->loadMissing(['order:id,order_number,shipping_name', 'orderItem:id,order_id,unit_price']);
+
+        $receivedQuantity = (int) InventoryTransaction::query()
+            ->where('reference_type', 'ecommerce_order_return')
+            ->where('reference_id', (int) $return->id)
+            ->whereIn('transaction_type', ['customer_return', 'damage'])
+            ->sum('quantity_change');
+        $maximumRefund = round((float) ($return->orderItem?->unit_price ?? 0) * max(1, $receivedQuantity), 2);
+        if ((float) $validated['amount'] > $maximumRefund) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Refund amount cannot exceed ₱' . number_format($maximumRefund, 2) . '.',
+            ], 422);
+        }
+
+        if (SalesRefund::query()
+            ->where('store_id', (int) $return->store_id)
+            ->where('order_type', 'ecommerce_return')
+            ->where('order_id', (int) $return->id)
+            ->whereIn('status', ['pending', 'approved'])
+            ->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A pending or approved refund already exists for this return.',
+            ], 422);
+        }
+
+        $refund = null;
+        DB::transaction(function () use (&$refund, $return, $validated, $branchId, $user): void {
+            $refund = SalesRefund::query()->create([
+                'store_id' => (int) $return->store_id,
+                'branch_id' => $branchId ?: null,
+                'order_type' => 'ecommerce_return',
+                'order_id' => (int) $return->id,
+                'order_number' => $return->order?->order_number,
+                'customer_name' => $return->order?->shipping_name,
+                'reason' => $validated['reason'] ?? null,
+                'amount' => (float) $validated['amount'],
+                'status' => !empty($validated['mark_as_approved']) ? 'approved' : 'pending',
+                'requested_by' => (int) ($user?->id ?? 0) ?: null,
+                'processed_by' => !empty($validated['mark_as_approved']) ? (int) ($user?->id ?? 0) : null,
+                'processed_at' => !empty($validated['mark_as_approved']) ? now() : null,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            if (!empty($validated['mark_as_approved'])) {
+                $return->status = 'refunded';
+                $return->save();
+            }
+        });
+
+        if (!empty($validated['mark_as_approved']) && $return->user_id) {
+            $this->notify((int) $return->user_id, [
+                'module' => 'ecommerce',
+                'entity_type' => 'ecommerce_order_return',
+                'entity_id' => (int) $return->id,
+                'title' => 'Refund approved',
+                'message' => 'Your refund of ₱' . number_format((float) $validated['amount'], 2) . ' has been approved.',
+                'severity' => 'success',
+                'store_id' => (int) $return->store_id,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Refund record created.',
+            'data' => [
+                'refund' => $refund,
+                'return' => $return->fresh(),
+            ],
+        ]);
+    }
+}

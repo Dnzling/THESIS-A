@@ -3,7 +3,7 @@
 namespace App\Models\Logistics;
 
 use App\Models\Core\User;
-use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceOrderReturn;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -43,4 +43,3 @@ class ReturnPickup extends Model
         return $this->belongsTo(User::class, 'driver_user_id');
     }
 }
-

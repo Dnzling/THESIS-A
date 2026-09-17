@@ -14,35 +14,45 @@ class DistanceService
         return $this->routeDistanceKm($originCoords['lat'], $originCoords['lon'], $destCoords['lat'], $destCoords['lon']);
     }
 
+    public function getDistanceKmToCoordinates(string $origin, float $destinationLatitude, float $destinationLongitude): float
+    {
+        $originCoords = $this->geocode($origin);
+
+        return $this->routeDistanceKm(
+            $originCoords['lat'],
+            $originCoords['lon'],
+            $destinationLatitude,
+            $destinationLongitude,
+        );
+    }
+
     protected function geocode(string $query): array
     {
-        $response = Http::withHeaders([
-            'User-Agent' => config('app.name', 'IMS') . ' DistanceService',
-        ])->get('https://nominatim.openstreetmap.org/search', [
-            'q' => $query,
-            'format' => 'json',
-            'limit' => 1,
-        ]);
+        $token = $this->accessToken();
+        $response = Http::get(
+            'https://api.mapbox.com/search/geocode/v6/forward',
+            ['q' => $query, 'limit' => 1, 'country' => 'PH', 'access_token' => $token],
+        );
 
         if (!$response->ok()) {
             throw new \RuntimeException('Failed to geocode address.');
         }
 
-        $data = $response->json();
-        if (!$data || !isset($data[0]['lat'], $data[0]['lon'])) {
+        $coordinates = $response->json('features.0.geometry.coordinates');
+        if (! is_array($coordinates) || count($coordinates) < 2) {
             throw new \RuntimeException('Unable to resolve address to coordinates.');
         }
 
         return [
-            'lat' => (float) $data[0]['lat'],
-            'lon' => (float) $data[0]['lon'],
+            'lat' => (float) $coordinates[1],
+            'lon' => (float) $coordinates[0],
         ];
     }
 
     protected function routeDistanceKm(float $lat1, float $lon1, float $lat2, float $lon2): float
     {
         $url = sprintf(
-            'https://router.project-osrm.org/route/v1/driving/%s,%s;%s,%s',
+            'https://api.mapbox.com/directions/v5/mapbox/driving/%s,%s;%s,%s',
             $lon1,
             $lat1,
             $lon2,
@@ -51,6 +61,7 @@ class DistanceService
 
         $response = Http::get($url, [
             'overview' => 'false',
+            'access_token' => $this->accessToken(),
         ]);
 
         if (!$response->ok()) {
@@ -63,5 +74,16 @@ class DistanceService
         }
 
         return round(((float) $data['routes'][0]['distance']) / 1000, 2);
+    }
+
+    protected function accessToken(): string
+    {
+        $token = (string) config('services.mapbox.access_token');
+
+        if ($token === '') {
+            throw new \RuntimeException('Mapbox is not configured. Set MAPBOX_ACCESS_TOKEN.');
+        }
+
+        return $token;
     }
 }

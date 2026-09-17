@@ -92,7 +92,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import axios from 'axios'
 import Button from 'primevue/button'
@@ -117,9 +117,11 @@ type MovementKind = 'adjustments' | 'returns' | 'transfers'
 type Pagination = { current_page: number; per_page: number; total: number }
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const authStore = useAuthStore()
-const activeTab = ref<MovementKind>('adjustments')
+const requestedTab = String(route.query.tab || '')
+const activeTab = ref<MovementKind>(['adjustments', 'returns', 'transfers'].includes(requestedTab) ? requestedTab as MovementKind : 'adjustments')
 
 const adjustmentStatuses = [
   { label: 'Draft', value: 'draft' },
@@ -158,8 +160,8 @@ const returns = newMovementState()
 const transfers = newMovementState()
 
 const canCreateActiveMovement = computed(() => activeTab.value === 'adjustments'
-  ? authStore.hasPermission('inventory.adjustments.manage')
-  : authStore.hasPermission('inventory.transfers.manage'))
+  ? authStore.hasPermission('adjustments.manage')
+  : authStore.hasPermission('transfers.manage'))
 
 const stateFor = (kind: MovementKind) => kind === 'adjustments' ? adjustments : kind === 'returns' ? returns : transfers
 const filtersFor = (kind: MovementKind) => kind === 'adjustments' ? adjustmentFilters : kind === 'returns' ? returnFilters : transferFilters
@@ -246,7 +248,7 @@ watch(activeTab, (kind) => {
   if (!state.rows.length && !state.loading) loadMovement(kind)
 })
 
-onMounted(() => loadMovement('adjustments'))
+onMounted(() => loadMovement(activeTab.value))
 
 const MovementFilters = defineComponent({
   props: {
@@ -332,7 +334,7 @@ const MovementTable = defineComponent({
               ]
             : props.kind === 'return'
               ? [['return_number', 'Reference'], ['return_type', 'Type'], ['requested_date', 'Date'], ['status', 'Status']]
-              : [['reference_no', 'Reference'], ['from_branch', 'From'], ['to_branch', 'To'], ['transfer_date', 'Date'], ['status', 'Status']]
+              : [['transfer_number', 'Transfer No.'], ['from_branch', 'From'], ['to_branch', 'To'], ['requested_date', 'Date'], ['status', 'Status']]
           return columns.map(([field, header]) => h(Column, { key: field, field, header, class: 'text-xs' }, {
             body: ({ data }: any) => field === 'status'
               ? h(Tag, { value: statusLabel(data[field]), severity: statusSeverity(data[field]), class: 'text-xs' })

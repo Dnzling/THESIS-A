@@ -15,8 +15,10 @@ class UserNavigationController extends Controller
 {
     private const ALL_STORE_MODULES = [
         'inventory',
+        'warehouse',
         'procurement',
         'sales',
+        'crm',
         'hr',
         'merchandising',
         'logistics',
@@ -52,12 +54,18 @@ class UserNavigationController extends Controller
             
             // Get navigation items user has access to
             $navigation = $this->getUserNavigationItems($user, $permissions);
+            $modules = DB::table('modules')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'key', 'name', 'description'])
+                ->values();
 
             return response()->json([
                 'success' => true,
                 'permissions' => $permissions,
                 'permissions_meta' => $permissionPayload['meta'],
-                'navigation' => $navigation
+                'navigation' => $navigation,
+                'modules' => $modules,
             ]);
 
         } catch (\Exception $e) {

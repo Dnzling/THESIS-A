@@ -607,6 +607,11 @@ class ProcurementService {
     return response.data
   }
 
+  async estimatePurchaseOrderShipping(data: any) {
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/shipping-estimate`, data)
+    return response.data
+  }
+
   async createPurchaseOrder(data: PurchaseOrder) {
     const response = await axiosClient.post(`${this.baseUrl}/purchase-orders`, data)
     return response.data

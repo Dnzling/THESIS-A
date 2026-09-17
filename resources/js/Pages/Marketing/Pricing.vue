@@ -92,34 +92,6 @@
       <section class="py-16">
         <div class="mx-auto max-w-7xl px-4 lg:px-8">
           <div class="mb-8 text-center">
-            <span class="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">Compare Plans</span>
-            <h2 class="mt-3 text-3xl font-bold sm:text-4xl">See the difference at a glance.</h2>
-          </div>
-
-          <div v-if="planComparison.length" class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div class="grid grid-cols-3 border-b border-slate-200 bg-slate-50 px-6 py-4 text-sm font-semibold text-slate-700">
-              <span>Feature</span>
-              <span v-for="plan in visiblePlans" :key="plan.id" class="text-center">{{ plan.name }}</span>
-            </div>
-
-            <div v-for="row in planComparison" :key="row.feature" class="grid grid-cols-3 border-b border-slate-100 px-6 py-4 text-sm last:border-b-0">
-              <span class="font-medium text-slate-700">{{ row.feature }}</span>
-              <span v-for="plan in visiblePlans" :key="plan.id" class="flex justify-center text-slate-600">
-                <span v-if="row.values[plan.plan_key] === true" class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                  <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                    <path fill-rule="evenodd" d="M16.704 5.297a1 1 0 0 1 0 1.414l-7.071 7.071a1 1 0 0 1-1.414 0L3.296 8.859A1 1 0 1 1 4.71 7.445l4.213 4.213 6.364-6.364a1 1 0 0 1 1.417.003Z" clip-rule="evenodd" />
-                  </svg>
-                </span>
-                <span v-else>{{ row.values[plan.plan_key] || '-' }}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="py-16">
-        <div class="mx-auto max-w-7xl px-4 lg:px-8">
-          <div class="mb-8 text-center">
             <span class="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">FAQ</span>
             <h2 class="mt-3 text-3xl font-bold sm:text-4xl">Questions? We have answers.</h2>
           </div>

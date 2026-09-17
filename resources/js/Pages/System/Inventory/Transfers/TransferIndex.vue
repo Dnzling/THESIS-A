@@ -4,7 +4,7 @@
       <div>
         <h1 class="text-lg font-bold text-gray-800">Stock Transfers</h1>
       </div>
-      <Button v-if="canCreateTransfers" label="Create Transfer" icon="pi pi-plus" severity="success"
+      <Button label="Create Transfer" icon="pi pi-plus" severity="success"
         @click="router.push({ name: 'inventory.transfers.create' })" size="small" />
     </div>
   
@@ -172,9 +172,9 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const transfers = ref<Transfer[]>([])
 
-const canViewTransfers = authStore.hasPermission('inventory.transfers.view')
-const canCreateTransfers = authStore.hasPermission('inventory.transfers.manage')
-const canCancelTransfers = authStore.hasPermission('inventory.transfers.manage')
+const canViewTransfers = authStore.hasPermission('transfers.view')
+const canCreateTransfers = authStore.hasPermission('transfers.manage')
+const canCancelTransfers = authStore.hasPermission('transfers.manage')
 
 const pagination = reactive<PaginationMeta>({
   current_page: 1,

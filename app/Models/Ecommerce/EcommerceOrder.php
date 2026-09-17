@@ -2,6 +2,8 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\CRM\EcommerceOrderReturn;
+
 use App\Models\Core\User;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;

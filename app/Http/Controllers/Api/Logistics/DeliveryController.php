@@ -174,7 +174,7 @@ class DeliveryController extends Controller
             ->values();
 
         $drivers = User::query()
-            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,phone,status'])
+            ->with(['role:id,name,display_name', 'employee:id,user_id,branch_id,status'])
             ->where('store_id', $storeId)
             ->where('is_active', true)
             ->whereHas('role', fn ($query) => $query->where('name', 'driver'))
@@ -188,7 +188,7 @@ class DeliveryController extends Controller
                 'id' => $driver->id,
                 'name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
                 'email' => $driver->email,
-                'contact' => $driver->employee?->phone ?? $driver->phone_number,
+                'contact' => $driver->phone_number,
                 'branch_id' => $driver->employee?->branch_id,
                 'role' => $driver->role?->display_name ?? $driver->role?->name ?? 'N/A',
             ])

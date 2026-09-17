@@ -76,14 +76,14 @@
               </div>
   
               <!-- Category, Subcategory & Unit -->
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">
                     Category <span class="text-red-500">*</span>
                   </label>
-                  <div class="flex gap-2">
+                  <div class="flex gap-2 ">
                     <Select v-model="form.category_id" :options="categories" optionLabel="category_name" optionValue="id"
-                      placeholder="Select a category" :class="{ 'p-invalid': errors.category_id }"
+                      placeholder="Select a category" :class="{ 'p-invalid': errors.category_id }" fluid
                       :loading="loadingCategories" class="min-w-0 flex-1 bg-gray-50 border-gray-200 rounded-xl" />
                     <Button type="button" icon="pi pi-plus" severity="secondary" outlined rounded
                       v-tooltip.top="'Add category'" @click="openCategoryDialog" />
@@ -797,7 +797,7 @@ const form = ref({
   tag_ids: [] as number[],
   stock_status: 'In Stock',
   description: '',
-  base_price: null,
+  base_price: 0.00,
   cost_price: '',
   discounted_price: null,
   tax_rate: null,
@@ -809,7 +809,7 @@ const form = ref({
   is_featured: false,
   is_new_arrival: false,
   is_bestseller: false,
-  is_active: true,
+  is_active: false,
   meta_title: '',
   meta_description: '',
   meta_keywords: '',
@@ -826,6 +826,7 @@ const form = ref({
 
 const errors = ref<Record<string, string>>({})
 const categories = ref([])
+const units = ref<any[]>([])
 const productTypeOptions = [
   { label: 'Finished Good', value: 'finished_good' }
 ]
@@ -1048,8 +1049,7 @@ onBeforeUnmount(() => {
   if (previewModelObjectUrl.value) URL.revokeObjectURL(previewModelObjectUrl.value)
 })
 
-// Hard-coded unit values for the select (UI-driven)
-const unitOptions = [
+const fallbackUnitOptions = [
   { label: 'Pieces (pcs)', value: 'pcs' },
   { label: 'Set (set)', value: 'set' },
   { label: 'Pair (pair)', value: 'pair' },
@@ -1063,6 +1063,45 @@ const unitOptions = [
   { label: 'Foot (ft)', value: 'ft' },
   { label: 'Inch (in)', value: 'in' }
 ]
+
+const unitOptions = computed(() => {
+  const options = units.value.length
+    ? units.value.map((unit: any) => ({
+        label: unit.unit_symbol ? `${unit.unit_name} (${unit.unit_symbol})` : unit.unit_name,
+        value: unit.unit_code || unit.unit_symbol || unit.unit_name,
+      }))
+    : [...fallbackUnitOptions]
+
+  const selectedUnit = form.value.unit_code
+  if (selectedUnit && !options.some((option: any) => option.value === selectedUnit)) {
+    options.unshift({ label: selectedUnit, value: selectedUnit })
+  }
+
+  return options
+})
+
+const resolveUnitId = (unitCode: string | null): number | null => {
+  if (!unitCode) return null
+
+  const matchedUnit = units.value.find((unit: any) =>
+    [unit.unit_code, unit.unit_symbol, unit.unit_name]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase() === String(unitCode).toLowerCase())
+  )
+
+  return matchedUnit?.id ? Number(matchedUnit.id) : null
+}
+
+const loadUnits = async () => {
+  try {
+    const response = await inventoryService.getUnits({ is_active: true })
+    const data = response?.data?.data || response?.data || []
+    units.value = Array.isArray(data) ? data : []
+  } catch (error) {
+    console.error('Failed to load units:', error)
+    units.value = []
+  }
+}
 
 
 const loadCategories = async () => {
@@ -1137,7 +1176,7 @@ const loadProduct = async () => {
       product_name: product.product_name || '',
       sku: product.sku || '',
       category_id: product.category_id,
-      unit_code: product.unit?.unit_symbol || product.unit?.unit_code || product.unit?.unit_name || null,
+      unit_code: product.unit?.unit_symbol || product.unit?.unit_code || product.unit?.unit_name || product.unit_of_measurement || null,
       product_type: product.product_type || 'finished_good',
       brand: product.brand || '',
       collection_name: product.collection_name || '',
@@ -1156,7 +1195,7 @@ const loadProduct = async () => {
       is_featured: product.is_featured || false,
       is_new_arrival: product.is_new_arrival || false,
       is_bestseller: product.is_bestseller || false,
-      is_active: product.is_active || true,
+      is_active: product.is_active,
       meta_title: product.meta_title || '',
       meta_description: product.meta_description || '',
       meta_keywords: product.meta_keywords || '',
@@ -1814,6 +1853,7 @@ const handleSubmit = async () => {
       sku: isEditMode.value ? form.value.sku : null,
       category_id: form.value.category_id,
       unit_id: resolveUnitId(form.value.unit_code),
+      unit_of_measurement: form.value.unit_code,
       product_type: 'finished_good',
       brand: form.value.brand,
       collection_name: form.value.collection_name,
@@ -2013,6 +2053,7 @@ onMounted(() => {
   }
   form.value.product_type = 'finished_good'
   loadCategories()
+  loadUnits()
   loadTags()
   loadProduct()
   loadVariations()

@@ -363,7 +363,9 @@ class SupplierService {
         value.forEach((file) => formData.append('variant_images[]', file))
         return
       }
-      if (value !== undefined && value !== null && value !== '') formData.append(key, value instanceof File ? value : String(value))
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, value instanceof File ? value : typeof value === 'boolean' ? (value ? '1' : '0') : String(value))
+      }
     })
     const response = await axiosClient.post(`${this.portalBaseUrl}/rfq-feedbacks`, formData)
     return response.data

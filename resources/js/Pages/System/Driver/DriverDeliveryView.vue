@@ -57,7 +57,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div>
                 <h3 class="font-semibold text-slate-900">Live Delivery Tracking</h3>
-                <p class="text-xs text-slate-500">The blue line shows the truck's recorded path to the store.</p>
+                <p class="text-xs text-slate-500">Your current GPS position refreshes the delivery is active.</p>
               </div>
               <Tag :value="trackingActive ? 'Live tracking active' : (isDelivered ? 'Tracking completed' : 'Tracking unavailable')"
                 :severity="trackingActive ? 'success' : (isDelivered ? 'secondary' : 'warn')" />
@@ -91,7 +91,7 @@
           </div>
   
           <div>
-            <h3 class="mb-3 font-semibold text-slate-900">Pickup Activity</h3>
+            <h3 class="mb-3 font-semibold text-slate-900">Delivery Activity</h3>
             <div v-if="detail.logs?.length" class="divide-y divide-slate-200">
               <div v-for="log in detail.logs" :key="log.id" class="space-y-2 py-4">
                 <div class="flex flex-wrap items-start justify-between gap-2">
@@ -105,8 +105,8 @@
                 <small v-else-if="log.latitude && log.longitude" class="text-slate-500">Location captured</small>
                 <div v-if="log.attachments?.length" class="flex flex-wrap gap-3"><a v-for="attachment in log.attachments"
                     :key="attachment.id" :href="attachment.public_url" target="_blank" rel="noopener"><img
-                      :src="attachment.public_url" alt="Pickup proof"
-                      class="h-28 w-36 rounded-xl border border-slate-200 object-cover" /></a></div>
+                      :src="attachment.public_url" alt="Delivery proof"
+                      class="h-28 w-36 rounded-xl border border-slate-200 object-cover transition hover:scale-105" /></a></div>
               </div>
             </div>
             <p v-else class="text-sm text-slate-500">No activity recorded.</p>
@@ -148,6 +148,7 @@ import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import { fetchMapboxRoadRoute, mapboxAttribution, mapboxTileUrl, reverseGeocodeMapbox } from '@/utils/mapbox'
 
 const route = useRoute(); const router = useRouter(); const toast = useToast()
 const loading = ref(false); const updating = ref(false); const sharingLocation = ref(false); const detail = ref<any>(null); const resolvedCurrentAddress = ref('')
@@ -160,6 +161,7 @@ let destinationMarker: L.Marker | null = null
 let trackingLine: L.Polyline | null = null
 let tileLayerAdded = false
 let locationWatcher: number | null = null
+let locationTimer: number | null = null
 let lastLocationSentAt = 0
 const source = computed(() => String(route.params.source || '').toLowerCase()); const orderId = computed(() => String(route.params.orderId))
 const label = (value: string) => String(value || 'Pending').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -182,27 +184,54 @@ const destinationPoint = computed<[number, number] | null>(() => {
 })
 const lastKnownAddress = computed(() => detail.value?.delivery?.current_address || resolvedCurrentAddress.value)
 const vehicleLabel = computed(() => `${detail.value?.delivery?.vehicle?.vehicle_name || detail.value?.delivery?.truck_brand || '-'} · ${detail.value?.delivery?.plate_number || detail.value?.delivery?.vehicle?.plate_number || '-'}`)
-const nextStatus = computed(() => source.value === 'pickup' ? ({ pending: 'in_transit', in_transit: 'delivered' } as any)[detail.value?.delivery?.status] : ({ assigned: 'in_transit', packed: 'in_transit', in_transit: 'out_for_delivery', out_for_delivery: 'delivered' } as any)[detail.value?.delivery?.status])
-const nextStatusLabel = computed(() => nextStatus.value === 'delivered' ? (source.value === 'pickup' ? 'Confirm Arrival at Store' : 'Mark Delivered') : (source.value === 'pickup' ? 'Start Supplier Pickup' : `Mark ${label(nextStatus.value)}`))
-const proofPhotoLabel = computed(() => nextStatus.value === 'delivered' ? 'Arrival at store photo' : 'Supplier pickup photo')
+const currentDeliveryStatus = computed(() => String(detail.value?.delivery?.status || '').toLowerCase())
+const nextStatus = computed(() => source.value === 'pickup'
+  ? ({ pending: 'in_transit', in_transit: 'delivered' } as any)[currentDeliveryStatus.value]
+  : ({ assigned: 'in_transit', packed: 'in_transit', shipped: 'in_transit', in_transit: 'out_for_delivery', on_the_way: 'out_for_delivery', out_for_delivery: 'delivered' } as any)[currentDeliveryStatus.value])
+const nextStatusLabel = computed(() => {
+  if (nextStatus.value === 'out_for_delivery') return 'Mark Out for Delivery'
+  if (nextStatus.value === 'delivered') return source.value === 'pickup' ? 'Confirm Arrival at Store' : 'Mark Delivered'
+  return source.value === 'pickup' ? 'Start Supplier Pickup' : `Mark ${label(nextStatus.value)}`
+})
+const proofPhotoLabel = computed(() => nextStatus.value === 'delivered'
+  ? (source.value === 'pickup' ? 'Arrival at store photo' : 'Delivered order photo')
+  : (source.value === 'pickup' ? 'Supplier pickup photo' : 'Dispatch pickup photo'))
 const proofInstruction = computed(() => nextStatus.value === 'delivered'
-  ? 'Attach a photo showing the supplies arriving at the store. Your live location will be captured and converted to an address before delivery is completed.'
-  : 'Attach a photo showing the supplies at the supplier pickup point. Your live location will be captured and converted to an address before the pickup is marked In Transit.')
-const proofSubmitLabel = computed(() => nextStatus.value === 'delivered' ? 'Capture Location & Mark Delivered' : 'Capture Location & Start Transit')
+  ? `Attach a photo showing the ${source.value === 'pickup' ? 'supplies arriving at the store' : 'order delivered to the customer'}. Your final GPS location will be captured before tracking stops.`
+  : `Attach a photo showing the ${source.value === 'pickup' ? 'supplies at the supplier pickup point' : 'order before dispatch'}. Your GPS location will be captured before marking it In Transit.`)
+const proofSubmitLabel = computed(() => nextStatus.value === 'delivered' ? 'Mark Delivered' : 'Mark In Transit')
 const money = (value: any) => Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); const formatDate = (value: any) => value ? new Date(value).toLocaleDateString() : '-'; const formatDateTime = (value: any) => value ? new Date(value).toLocaleString() : '-'
 const coordinates = () => new Promise<{ latitude: number; longitude: number }>((resolve, reject) => { if (!navigator.geolocation) return reject(new Error('Location is not supported by this browser.')); navigator.geolocation.getCurrentPosition(p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }), reject, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }) })
-const reverseGeocode = async (point: { latitude: number; longitude: number }) => { const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point.latitude}&lon=${point.longitude}&accept-language=en`); if (!response.ok) throw new Error('Unable to identify the current address.'); const data = await response.json(); return String(data?.display_name || '') }
-const load = async () => { loading.value = true; try { const response = await logisticsService.getDeliveryOrderDetail(source.value as any, orderId.value); detail.value = response?.data || null; const delivery = detail.value?.delivery; resolvedCurrentAddress.value = ''; if (!delivery?.current_address && delivery?.current_latitude && delivery?.current_longitude) { resolvedCurrentAddress.value = await reverseGeocode({ latitude: Number(delivery.current_latitude), longitude: Number(delivery.current_longitude) }).catch(() => '') } await nextTick(); renderTrackingMap(); updateTrackingState() } catch (error: any) { toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load delivery.', life: 3000 }) } finally { loading.value = false } }
+const reverseGeocode = async (point: { latitude: number; longitude: number }) => reverseGeocodeMapbox(point.latitude, point.longitude)
+const load = async () => { loading.value = true; try { const response = await logisticsService.getDeliveryOrderDetail(source.value as any, orderId.value); detail.value = response?.data || null; const delivery = detail.value?.delivery; resolvedCurrentAddress.value = ''; if (!delivery?.current_address && delivery?.current_latitude && delivery?.current_longitude) { resolvedCurrentAddress.value = await reverseGeocode({ latitude: Number(delivery.current_latitude), longitude: Number(delivery.current_longitude) }).catch(() => '') } updateTrackingState(); loading.value = false; await nextTick(); await renderTrackingMap() } catch (error: any) { toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load delivery.', life: 3000 }) } finally { loading.value = false } }
 const selectPhoto = (event: Event) => { const file = (event.target as HTMLInputElement).files?.[0] || null; proofPhoto.value = file; if (photoPreview.value) URL.revokeObjectURL(photoPreview.value); photoPreview.value = file ? URL.createObjectURL(file) : '' }
-const beginAdvance = async () => { if (!nextStatus.value) return; if (source.value === 'pickup') { proofPhoto.value = null; statusNotes.value = ''; capturedAddress.value = ''; if (photoPreview.value) URL.revokeObjectURL(photoPreview.value); photoPreview.value = ''; proofDialog.value = true; return } await updateRegularDelivery() }
-const updateRegularDelivery = async () => { updating.value = true; try { const point = await coordinates().catch(() => ({})); await logisticsService.updateUnifiedDeliveryStatus(source.value as any, orderId.value, { status: nextStatus.value, ...point }); await load(); toast.add({ severity: 'success', summary: 'Status Updated', detail: 'Delivery progress was saved.', life: 2500 }) } catch (error: any) { toast.add({ severity: 'error', summary: 'Update Failed', detail: error?.response?.data?.message || 'Failed to update delivery.', life: 3000 }) } finally { updating.value = false } }
-const submitPickupStatus = async () => { if (!proofPhoto.value || !nextStatus.value) return; const targetStatus = nextStatus.value; updating.value = true; try { const point = await coordinates(); capturedAddress.value = await reverseGeocode(point).catch(() => ''); const form = new FormData(); form.append('status', targetStatus); form.append('latitude', String(point.latitude)); form.append('longitude', String(point.longitude)); if (capturedAddress.value) form.append('location_address', capturedAddress.value); form.append('photo', proofPhoto.value); if (statusNotes.value.trim()) form.append('notes', statusNotes.value.trim()); await logisticsService.updateUnifiedDeliveryStatus('pickup', orderId.value, form); proofDialog.value = false; await load(); toast.add({ severity: 'success', summary: targetStatus === 'delivered' ? 'Supplies Arrived' : 'Pickup In Transit', detail: 'The proof photo and location address were recorded.', life: 3000 }) } catch (error: any) { toast.add({ severity: 'error', summary: 'Submission Failed', detail: error?.response?.data?.message || error?.message || 'Photo and current location are required.', life: 3500 }) } finally { updating.value = false } }
+const beginAdvance = async () => { if (!nextStatus.value) return; const needsProof = ['pickup', 'ecommerce'].includes(source.value) && ['in_transit', 'delivered'].includes(nextStatus.value); if (needsProof) { proofPhoto.value = null; statusNotes.value = ''; capturedAddress.value = ''; if (photoPreview.value) URL.revokeObjectURL(photoPreview.value); photoPreview.value = ''; proofDialog.value = true; return } await updateRegularDelivery() }
+const updateRegularDelivery = async () => {
+  const targetStatus = nextStatus.value
+  if (!targetStatus) return
+  updating.value = true
+  try {
+    const point = await coordinates()
+    const locationAddress = await reverseGeocode(point).catch(() => '')
+    await logisticsService.updateUnifiedDeliveryStatus(source.value as any, orderId.value, {
+      status: targetStatus,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      location_address: locationAddress || undefined,
+    })
+    await load()
+    toast.add({ severity: 'success', summary: 'Status Updated', detail: targetStatus === 'out_for_delivery' ? 'The order is now out for delivery.' : 'Delivery progress and GPS location were saved.', life: 2500 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Update Failed', detail: error?.response?.data?.message || error?.message || 'GPS access is required to update this delivery.', life: 3500 })
+  } finally { updating.value = false }
+}
+const submitPickupStatus = async () => { if (!proofPhoto.value || !nextStatus.value) return; const targetStatus = nextStatus.value; updating.value = true; try { const point = await coordinates(); capturedAddress.value = await reverseGeocode(point).catch(() => ''); const form = new FormData(); form.append('status', targetStatus); form.append('latitude', String(point.latitude)); form.append('longitude', String(point.longitude)); if (capturedAddress.value) form.append('location_address', capturedAddress.value); form.append('photo', proofPhoto.value); if (statusNotes.value.trim()) form.append('notes', statusNotes.value.trim()); await logisticsService.updateUnifiedDeliveryStatus(source.value as any, orderId.value, form); proofDialog.value = false; await load(); toast.add({ severity: 'success', summary: targetStatus === 'delivered' ? 'Delivery Completed' : 'Delivery In Transit', detail: 'The proof photo and GPS location were recorded.', life: 3000 }) } catch (error: any) { toast.add({ severity: 'error', summary: 'Submission Failed', detail: error?.response?.data?.message || error?.message || 'Photo and current location are required.', life: 3500 }) } finally { updating.value = false } }
 const shareLocation = async () => { sharingLocation.value = true; try { const point = await coordinates(); await sendLiveLocation(point, true) } catch (error: any) { toast.add({ severity: 'warn', summary: 'Location Unavailable', detail: error?.message || 'Could not access your location.', life: 3000 }) } finally { sharingLocation.value = false } }
 
 const sendLiveLocation = async (point: { latitude: number; longitude: number }, refresh = false) => {
   if (!['pickup', 'ecommerce'].includes(source.value) || isDelivered.value) return
   const now = Date.now()
-  if (!refresh && now - lastLocationSentAt < 10000) return
+  if (!refresh && now - lastLocationSentAt < 5000) return
   lastLocationSentAt = now
   const locationAddress = await reverseGeocode(point).catch(() => '')
   await logisticsService.updateUnifiedDeliveryLocation(source.value as 'pickup' | 'ecommerce', orderId.value, {
@@ -234,22 +263,20 @@ const startLocationTracking = () => {
     () => { trackingActive.value = false },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
   )
+  locationTimer = window.setInterval(() => {
+    coordinates().then(point => sendLiveLocation(point)).catch(() => undefined)
+  }, 5000)
 }
 
 const stopLocationTracking = () => {
   if (locationWatcher !== null) navigator.geolocation.clearWatch(locationWatcher)
+  if (locationTimer !== null) window.clearInterval(locationTimer)
   locationWatcher = null
+  locationTimer = null
   trackingActive.value = false
 }
 
-const fetchRoadRoute = async (start: [number, number], end: [number, number]): Promise<[number, number][]> => {
-  const coordinates = `${start[1]},${start[0]};${end[1]},${end[0]}`
-  const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`)
-  if (!response.ok) throw new Error('Road route unavailable')
-  const data = await response.json()
-  const geometry = data?.routes?.[0]?.geometry?.coordinates || []
-  return geometry.map((point: number[]) => [Number(point[1]), Number(point[0])] as [number, number])
-}
+const fetchRoadRoute = fetchMapboxRoadRoute
 
 const renderTrackingMap = async () => {
   if (!mapElement.value || !['pickup', 'ecommerce'].includes(source.value)) return
@@ -271,7 +298,7 @@ const renderTrackingMap = async () => {
   if (!trackingMap) trackingMap = L.map(mapElement.value).setView(destinationPoint.value || [14.5995, 120.9842], destinationPoint.value ? 13 : 10)
   if (!trackingMap) return
   if (!tileLayerAdded) {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trackingMap)
+    L.tileLayer(mapboxTileUrl(), { attribution: mapboxAttribution, tileSize: 512, zoomOffset: -1 }).addTo(trackingMap)
     tileLayerAdded = true
   }
 

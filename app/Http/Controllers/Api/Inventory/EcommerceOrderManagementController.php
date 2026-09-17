@@ -4,13 +4,13 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
-use App\Models\Ecommerce\EcommerceChatMessage;
-use App\Models\Ecommerce\EcommerceChatThread;
+use App\Models\CRM\EcommerceChatMessage;
+use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
-use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesRefund;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Store\Branch;
@@ -81,14 +81,17 @@ class EcommerceOrderManagementController extends Controller
                 'user:id,fname,lname,email',
                 'store',
                 'assignedBranch:id,name,branch_code,city,province',
-                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_total',
-                'items.product:id,product_name,sku',
+                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_subtotal,line_tax,line_total',
+                'items.product:id,product_name,sku,unit_of_measurement',
                 'items.branchInventory:id,branch_id,product_id,variation_id,quantity_available,stock_status',
                 'items.branchInventory.branch:id,name,branch_code,city,province',
+                'items.branchInventory.variation:id,variation_name,variation_sku',
                 'items.returnRequests',
                 'cancellationRequests',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type,status',
-                'delivery.driver:id,fname,lname,email',
+                'delivery.driver:id,fname,lname,email,phone_number,role_id',
+                'delivery.driver.employee:id,user_id,employee_number,status,department,employment_type',
+                'delivery.driver.role:id,name,display_name',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
             ]);
@@ -915,7 +918,7 @@ class EcommerceOrderManagementController extends Controller
     private function resolveDriver(int $storeId, int $driverUserId): User
     {
         return User::query()
-            ->with('employee:id,user_id,phone,status')
+            ->with('employee:id,user_id,status')
             ->where('id', $driverUserId)
             ->where('store_id', $storeId)
             ->where('is_active', true)
@@ -924,10 +927,7 @@ class EcommerceOrderManagementController extends Controller
 
     private function resolveDriverContact(User $driver): ?string
     {
-        $employeePhone = $driver->employee?->phone;
-        $userPhone = $driver->phone_number ?? null;
-
-        return $employeePhone ?: $userPhone;
+        return $driver->phone_number ?: null;
     }
 
     private function nextTrackingNumber(int $storeId): string

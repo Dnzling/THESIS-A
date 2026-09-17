@@ -51,6 +51,36 @@
           </div>
         </template>
       </Card>
+
+      <Card
+        v-if="rfq?.instructions || rfq?.qualification_requirements"
+        class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm"
+      >
+        <template #title>
+          <div class="flex items-center gap-2 text-base font-semibold text-slate-900">
+            <i class="pi pi-file-edit text-orange-600"></i>
+            Supplier Requirements
+          </div>
+        </template>
+        <template #content>
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div v-if="rfq?.instructions" class="rounded-xl border border-blue-100 bg-blue-50 p-4">
+              <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-900">
+                <i class="pi pi-info-circle"></i>
+                Special Instructions
+              </div>
+              <p class="whitespace-pre-line text-sm leading-6 text-blue-800">{{ rfq.instructions }}</p>
+            </div>
+            <div v-if="rfq?.qualification_requirements" class="rounded-xl border border-amber-100 bg-amber-50 p-4">
+              <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
+                <i class="pi pi-check-circle"></i>
+                Qualification Requirements
+              </div>
+              <p class="whitespace-pre-line text-sm leading-6 text-amber-800">{{ rfq.qualification_requirements }}</p>
+            </div>
+          </div>
+        </template>
+      </Card>
   
       <!-- RFQ Items -->
       <Card title="Requested Products" class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
@@ -553,10 +583,14 @@ const performQuoteSubmission = async () => {
     quoteDialogVisible.value = false
     await loadRFQDetail()
   } catch (error: any) {
+    const validationErrors = error.response?.data?.errors || {}
+    const firstValidationError = Object.values(validationErrors)
+      .flat()
+      .find((message: any) => typeof message === 'string') as string | undefined
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to submit quote',
+      detail: firstValidationError || error.response?.data?.message || 'Failed to submit quote',
       life: 3000,
     })
   } finally {
@@ -571,7 +605,12 @@ const setAttachment = (itemId: number, event: Event) => {
 const formatDateForApi = (value: Date | string | null) => {
   if (!value) return ''
   const date = value instanceof Date ? value : new Date(value)
-  return date.toISOString().slice(0, 10)
+  // DatePicker values are local calendar dates. Avoid toISOString(), which
+  // shifts a Philippine midnight date to the prior UTC day.
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 const getAttachmentUrl = (path: string) => path.startsWith('http') ? path : `/storage/${path.replace(/^\/+/, '')}`
@@ -672,4 +711,3 @@ onMounted(() => {
   padding: 16px;
 }
 </style>
-

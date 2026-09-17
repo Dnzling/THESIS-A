@@ -132,6 +132,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/permissions/export', [RolePermissionController::class, 'exportPermissions']);
         Route::post('/permissions/import', [RolePermissionController::class, 'importPermissions']);
 
+        // Master module catalog used by permissions and navigation.
+        Route::get('/modules', [RolePermissionController::class, 'getModules']);
+        Route::post('/modules', [RolePermissionController::class, 'createModule']);
+        Route::put('/modules/{id}', [RolePermissionController::class, 'updateModule']);
+
         // Navigation Items
         Route::get('/navigation-items', [RolePermissionController::class, 'getNavigationItems']);
         Route::post('/navigation-items', [RolePermissionController::class, 'createNavigationItem']);
@@ -396,9 +401,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/supplier-portals', [\App\Http\Controllers\Api\SupplierPortalsController::class, 'index']);
     Route::get('/supplier-portals/{id}', [\App\Http\Controllers\Api\SupplierPortalsController::class, 'show']);
     require __DIR__ . '/inventory_routes.php';
+    require __DIR__ . '/warehouse_routes.php';
     require __DIR__ . '/logistics_routes.php';
     require __DIR__ . '/ecommerce_routes.php';
     require __DIR__ . '/sales_routes.php';
+    require __DIR__ . '/crm_routes.php';
     require __DIR__ . '/job_hiring_routes.php';
     require __DIR__ . '/finance_routes.php';
 

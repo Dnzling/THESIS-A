@@ -95,6 +95,8 @@
                 <Select
                   v-model="form.unit_of_measurement"
                   :options="unitMeasureOptions"
+                  optionLabel="label"
+                  optionValue="value"
                   class="w-full text-sm"
                   placeholder="Select unit"
                   size="small"
@@ -173,7 +175,26 @@ const productTypeOptions = [
   { label: 'Raw Material', value: 'raw_material' },
   { label: 'Others', value: 'others' },
 ]
-const unitMeasureOptions = ['piece', 'set', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
+// const unitMeasureOptions = ['piece', 'set', 'box', 'kg', 'meter', 'liter', 'pack', 'roll']
+const unitMeasureOptions = [
+  { label: 'Pieces (pcs)', value: 'pcs' },
+  { label: 'Set (set)', value: 'set' },
+  { label: 'Pair (pair)', value: 'pair' },
+  { label: 'Box (box)', value: 'box' },
+  { label: 'Kilogram (kg)', value: 'kg' },
+  { label: 'Gram (g)', value: 'g' },
+  { label: 'Pound (lb)', value: 'lb' },
+  { label: 'Meter (m)', value: 'm' },
+  { label: 'Centimeter (cm)', value: 'cm' },
+  { label: 'Millimeter (mm)', value: 'mm' },
+  { label: 'Liter (L)', value: 'L' },
+  { label: 'Milliliter (mL)', value: 'mL' },
+  { label: 'Pack (pack)', value: 'pack' },
+  { label: 'Roll (roll)', value: 'roll' },
+  { label: 'Foot (ft)', value: 'ft' },
+  { label: 'Inch (in)', value: 'in' }
+]
+
 
 const form = reactive({
   product_name: '',

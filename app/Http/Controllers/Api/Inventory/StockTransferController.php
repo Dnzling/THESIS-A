@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class StockTransferController extends Controller
 {
@@ -162,6 +163,64 @@ class StockTransferController extends Controller
     }
 
     /**
+     * Preview the server-calculated transfer fee before submission.
+     * POST /api/inventory/transfers/estimate
+     */
+    public function estimate(Request $request): JsonResponse
+    {
+        $storeId = (int) (Auth::user()?->store_id ?? 0);
+        $validated = $request->validate([
+            'from_branch_id' => 'required|integer|different:to_branch_id',
+            'to_branch_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.variation_id' => 'nullable|integer|exists:product_variations,id',
+            'items.*.requested_quantity' => 'required|integer|min:1',
+        ]);
+
+        $branchCount = DB::table('branches')
+            ->where('store_id', $storeId)
+            ->whereIn('id', [$validated['from_branch_id'], $validated['to_branch_id']])
+            ->count();
+        abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
+
+        $goodsValue = 0.0;
+        foreach ($validated['items'] as $item) {
+            $inventory = BranchInventory::with('product')
+                ->where('store_id', $storeId)
+                ->where('branch_id', $validated['from_branch_id'])
+                ->where('product_id', $item['product_id'])
+                ->where('variation_id', $item['variation_id'] ?? null)
+                ->first();
+
+            abort_unless($inventory, 422, 'An item is not stocked at the selected source location.');
+            abort_if(
+                (int) $item['requested_quantity'] > (int) $inventory->quantity_available,
+                422,
+                "Requested quantity exceeds available stock for {$inventory->product?->product_name}."
+            );
+
+            $goodsValue += (float) ($inventory->product?->getRawOriginal('cost_price') ?? 0)
+                * (int) $item['requested_quantity'];
+        }
+
+        $distance = BranchDistance::getDistance($validated['from_branch_id'], $validated['to_branch_id']);
+        $settings = ProcurementSettings::where('store_id', $storeId)->first();
+        $transferCost = $settings?->calculateTransferCost($distance, $goodsValue) ?? 0;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'goods_value' => round($goodsValue, 2),
+                'distance_km' => round((float) $distance, 2),
+                'shipping_fee' => round((float) $transferCost, 2),
+                'total_value' => round($goodsValue + $transferCost, 2),
+                'cost_method' => $settings?->transfer_cost_method ?? 'none',
+            ],
+        ]);
+    }
+
+    /**
      * Create new stock transfer
      * POST /api/inventory/transfers
      */
@@ -182,6 +241,12 @@ class StockTransferController extends Controller
             'items.*.notes' => 'nullable|string',
         ]);
 
+        $branchCount = DB::table('branches')
+            ->where('store_id', $storeId)
+            ->whereIn('id', [$validated['from_branch_id'], $validated['to_branch_id']])
+            ->count();
+        abort_unless($branchCount === 2, 422, 'Both transfer locations must belong to your store.');
+
         DB::beginTransaction();
         try {
             // Get procurement settings
@@ -193,10 +258,17 @@ class StockTransferController extends Controller
             // Calculate goods value and distance
             $goodsValue = 0;
             foreach ($validated['items'] as $item) {
-                $inventory = BranchInventory::with('product')->where('branch_id', $validated['from_branch_id'])
+                $inventory = BranchInventory::with('product')->where('store_id', $storeId)
+                    ->where('branch_id', $validated['from_branch_id'])
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
+
+                if (! $inventory || (int) $item['requested_quantity'] > (int) $inventory->quantity_available) {
+                    throw ValidationException::withMessages([
+                        'items' => "Requested quantity exceeds the stock available at the selected source location for product #{$item['product_id']}.",
+                    ]);
+                }
 
                 $goodsValue += (float) ($inventory?->product?->getRawOriginal('cost_price') ?? 0) * $item['requested_quantity'];
             }
@@ -230,7 +302,8 @@ class StockTransferController extends Controller
 
             // Create items
             foreach ($validated['items'] as $item) {
-                $inventory = BranchInventory::with('product')->where('branch_id', $validated['from_branch_id'])
+                $inventory = BranchInventory::with('product')->where('store_id', $storeId)
+                    ->where('branch_id', $validated['from_branch_id'])
                     ->where('product_id', $item['product_id'])
                     ->where('variation_id', $item['variation_id'] ?? null)
                     ->first();
@@ -296,6 +369,9 @@ class StockTransferController extends Controller
                 'data' => $transfer->load('items.product'),
             ], 201);
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([

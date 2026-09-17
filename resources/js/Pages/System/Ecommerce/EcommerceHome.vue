@@ -123,6 +123,46 @@
       </div>
       <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No in-stock products are available yet.</div>
     </section>
+
+    <!-- About hero -->
+    <section class="group relative isolate overflow-hidden rounded-[2rem] bg-gradient-to-br from-orange-50 via-white to-slate-100 px-6 py-8 shadow-sm ring-1 ring-orange-100/80 transition duration-500 hover:shadow-xl hover:shadow-orange-100/60 sm:px-10 sm:py-12 lg:px-14 lg:py-14">
+      <div class="pointer-events-none absolute -right-24 -top-28 -z-10 h-80 w-80 rounded-full bg-orange-300/25 blur-3xl transition duration-700 group-hover:scale-125"></div>
+      <div class="pointer-events-none absolute -bottom-32 left-1/3 -z-10 h-72 w-72 rounded-full bg-amber-200/30 blur-3xl"></div>
+
+      <div class="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+        <div>
+      
+          <h2 class="mt-5 max-w-2xl text-3xl font-black leading-tight tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
+            More than a shop. A smarter way to move furniture forward.
+          </h2>
+          <p class="mt-5 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">
+            FurniSync connects the showroom, inventory, procurement, logistics, and customer experience in one operating system built around how furniture businesses really work.
+          </p>
+          <div class="mt-7 flex flex-wrap gap-3">
+            <Button label="Discover FurniSync" rounded class="!px-5" @click="goAbout" />
+            <Button label="Explore the shop" icon="pi pi-shopping-bag" severity="secondary" outlined rounded class="!px-5" @click="goShop" />
+          </div>
+        </div>
+
+        <div class="relative min-h-[250px]">
+          <div class="absolute left-2 top-4 w-[72%] rotate-[-5deg] rounded-3xl border border-orange-100 bg-white/90 p-5 shadow-xl shadow-orange-100/50 backdrop-blur transition duration-500 group-hover:rotate-[-8deg] group-hover:-translate-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-100 text-orange-600"><i class="pi pi-box text-lg"></i></div>
+              <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600">Connected</span>
+            </div>
+            <p class="mt-5 text-lg font-bold text-slate-900">One source of truth</p>
+            <p class="mt-1 text-xs leading-5 text-slate-500">Inventory, orders, and operations stay aligned.</p>
+            <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-4/5 rounded-full bg-gradient-to-r from-orange-400 to-orange-600"></div></div>
+          </div>
+          <div class="absolute bottom-2 right-0 w-[70%] rotate-[6deg] rounded-3xl border border-slate-200 bg-slate-900 p-5 text-white shadow-2xl transition duration-500 group-hover:rotate-[9deg] group-hover:translate-y-1">
+            <div class="flex items-center gap-3"><div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-orange-300"><i class="pi pi-chart-line"></i></div><span class="text-xs font-semibold text-slate-300">Built around your workflow</span></div>
+            <p class="mt-5 text-2xl font-black">Sell smarter.</p>
+            <p class="mt-1 text-sm text-slate-300">Operate with confidence.</p>
+            <div class="mt-5 flex gap-1.5"><span v-for="index in 6" :key="index" class="h-2 flex-1 rounded-full" :class="index < 5 ? 'bg-orange-400' : 'bg-white/15'"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
   <MarketingFooter />
 </template>
@@ -177,6 +217,10 @@ function goDeals() {
 
 function goProduct(productId: number) {
   router.push({ name: 'ecommerce.product', params: { id: productId } })
+}
+
+function goAbout() {
+  router.push('/business/about')
 }
 
 async function loadCategories() {

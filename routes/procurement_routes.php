@@ -149,6 +149,7 @@ Route::prefix('procurement')->group(function () {
     // Purchase Orders
     Route::prefix('purchase-orders')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index']);
+        Route::post('/shipping-estimate', [PurchaseOrderController::class, 'estimateShippingFee']);
         Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders']);
         Route::get('/{id}', [PurchaseOrderController::class, 'show']);
         Route::get('/{id}/pickup-vehicles', [PurchaseOrderController::class, 'pickupVehicles']);

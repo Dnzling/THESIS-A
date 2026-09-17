@@ -18,7 +18,10 @@ use App\Models\Core\ActivityLog;
 use App\Models\ProductCatalog\Product;
 use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Supplier\SupplierContract;
+use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Store\Branch;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
+use App\Services\Procurement\PurchaseOrderShippingFeeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -29,6 +32,20 @@ use Illuminate\Support\Str;
 
 class PurchaseOrderController extends Controller
 {
+    private const VAT_RATE = 12.00;
+
+    public function estimateShippingFee(Request $request, PurchaseOrderShippingFeeService $shippingFeeService): JsonResponse
+    {
+        $validated = $request->validate([
+            'supplier_id' => 'required|integer', 'branch_id' => 'required|integer', 'subtotal' => 'required|numeric|min:0',
+            'items' => 'required|array|min:1', 'items.*.product_id' => 'required|integer', 'items.*.quantity_ordered' => 'required|numeric|min:1',
+        ]);
+        $storeId = (int) auth()->user()->store_id;
+        $supplier = Supplier::where('store_id', $storeId)->findOrFail($validated['supplier_id']);
+        $branch = Branch::where('store_id', $storeId)->findOrFail($validated['branch_id']);
+        return response()->json(['success' => true, 'data' => $shippingFeeService->estimate($storeId, $supplier, $branch, $validated['items'], (float) $validated['subtotal'])]);
+    }
+
     public function assignPickup(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
@@ -333,6 +350,7 @@ class PurchaseOrderController extends Controller
             'rfq_id' => 'nullable|exists:request_for_quotations,id',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
+            'shipping_cost' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
             'status' => 'nullable|in:draft,pending_finance_approval',
@@ -351,6 +369,7 @@ class PurchaseOrderController extends Controller
             'order_date' => 'required|date',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'nullable|numeric|min:0',
+            'shipping_cost' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'terms_conditions' => 'nullable|string',
             'status' => 'nullable|in:draft,pending_finance_approval',
@@ -396,7 +415,7 @@ class PurchaseOrderController extends Controller
                     'message' => 'Cannot create purchase order: no active contract exists with the selected supplier.',
                 ], 422);
             }
-            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
             $contractDiscountPercent = (float) ($contract->discount_percentage ?? 0);
 
             if ($hasStockRequests) {
@@ -453,7 +472,7 @@ class PurchaseOrderController extends Controller
                     ];
                 }
 
-                $shippingCost = 0;
+                $shippingCost = (float) ($validated['shipping_cost'] ?? 0);
                 $discountAmount = round($subtotal * ($contractDiscountPercent / 100), 2);
                 $taxAmount = round(max(0, $subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
                 $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
@@ -614,7 +633,7 @@ class PurchaseOrderController extends Controller
                     ];
                 }
 
-                $shippingCost = 0;
+                $shippingCost = (float) ($validated['shipping_cost'] ?? 0);
                 $discountAmount = round($subtotal * ($contractDiscountPercent / 100), 2);
                 $taxAmount = round(max(0, $subtotal - $discountAmount) * ($headerTaxRate / 100), 2);
                 $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
@@ -806,7 +825,7 @@ class PurchaseOrderController extends Controller
                 ->active()
                 ->orderBy('end_date', 'desc')
                 ->first();
-            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
 
             // Update basic info
             $po->update([
@@ -815,6 +834,7 @@ class PurchaseOrderController extends Controller
                 'order_date' => $validated['order_date'] ?? $po->order_date,
                 'payment_terms' => $validated['payment_terms'] ?? $po->payment_terms,
                 'discount_amount' => $validated['discount_amount'] ?? $po->discount_amount,
+                'contract_tax_rate' => $headerTaxRate,
                 'notes' => $validated['notes'] ?? $po->notes,
                 'terms_conditions' => $validated['terms_conditions'] ?? $po->terms_conditions,
             ]);
@@ -866,7 +886,8 @@ class PurchaseOrderController extends Controller
                 // Update totals
                 $shippingCost = $po->shipping_cost ?? 0;
                 $discountAmount = $validated['discount_amount'] ?? $po->discount_amount;
-                $taxAmount = $subtotal * ($headerTaxRate / 100);
+                $taxableAmount = max(0, $subtotal - (float) $discountAmount);
+                $taxAmount = round($taxableAmount * ($headerTaxRate / 100), 2);
                 $totalAmount = $subtotal + $taxAmount + $shippingCost - $discountAmount;
 
                 $po->update([
@@ -1258,7 +1279,7 @@ class PurchaseOrderController extends Controller
                 ->orderBy('end_date', 'desc')
                 ->first();
 
-            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
+            $headerTaxRate = ($contract && !$contract->is_tax_exempt) ? self::VAT_RATE : 0;
 
             $subtotal = 0;
             $poItemsPayload = [];

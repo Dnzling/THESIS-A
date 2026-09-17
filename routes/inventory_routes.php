@@ -159,6 +159,7 @@ Route::prefix('inventory')->group(function () {
     // Stock Transfers
     Route::prefix('transfers')->group(function () {
         Route::get('/', [StockTransferController::class, 'index']);
+        Route::post('/estimate', [StockTransferController::class, 'estimate']);
         Route::get('/{id}', [StockTransferController::class, 'show']);
         Route::post('/', [StockTransferController::class, 'store']);
         Route::post('/{id}/approve', [StockTransferController::class, 'approve']);
@@ -244,6 +245,14 @@ Route::prefix('inventory')->group(function () {
         Route::put('/{id}', [CategoryController::class, 'update']);
         Route::delete('/{id}', [CategoryController::class, 'destroy']);
         Route::get('/{id}/products', [CategoryController::class, 'getProducts']);
+    });
+
+    // Units of Measurement
+    Route::prefix('units')->group(function () {
+        Route::get('/', [UnitController::class, 'index']);
+        Route::post('/', [UnitController::class, 'store']);
+        Route::put('/{id}', [UnitController::class, 'update']);
+        Route::delete('/{id}', [UnitController::class, 'destroy']);
     });
 
 

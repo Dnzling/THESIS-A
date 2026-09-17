@@ -15,7 +15,8 @@ class RoleController extends Controller
 {
     private function resolveStoreId(Request $request): ?int
     {
-        $storeId = Auth::user()?->store_id;
+        $user = Auth::user();
+        $storeId = $user?->store_id ?: $user?->employee?->store_id;
 
         if (empty($storeId)) {
             $fallbackStoreId = $request->input('user_store_id');
@@ -367,19 +368,34 @@ class RoleController extends Controller
             ], 422);
         }
 
-        DB::table('role_permissions')->where('role_id', $role->id)->delete();
+        $permissionIds = collect($request->permissions)
+            ->map(fn ($permissionId) => (int) $permissionId)
+            ->unique()
+            ->values();
 
-        $data = collect($request->permissions)->map(function ($permissionId) use ($role) {
-            return [
+        DB::transaction(function () use ($role, $permissionIds) {
+            DB::table('role_permissions')->where('role_id', $role->id)->delete();
+
+            if ($permissionIds->isEmpty()) {
+                return;
+            }
+
+            $now = now();
+            DB::table('role_permissions')->insert($permissionIds->map(fn ($permissionId) => [
                 'role_id' => $role->id,
                 'permission_id' => $permissionId,
-                'created_at' => now(),
-                'updated_at' => now()
-            ];
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->all());
         });
 
-        DB::table('role_permissions')->insert($data->toArray());
-
-        return response()->json(['message' => 'Permissions updated successfully']);
+        return response()->json([
+            'message' => 'Permissions updated successfully',
+            'permissions' => DB::table('permissions')
+                ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('role_permissions.role_id', $role->id)
+                ->select('permissions.*')
+                ->get(),
+        ]);
     }
 }

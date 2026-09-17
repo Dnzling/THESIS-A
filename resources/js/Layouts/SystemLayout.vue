@@ -6,7 +6,7 @@
     <aside class="sidebar bg-white flex flex-col z-30 overflow-y-auto shadow-lg"
       :class="{ 'open': sidebarOpen, 'closed': !sidebarOpen }">
       <!-- Logo section -->
-      <div class="px-5 py-4 border-b border-gray-200">
+      <div class="px-5 py-4">
         <div class="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -52,12 +52,12 @@
             <Accordion multiple :value="expandedModuleValues" class="system-navigation-accordion">
               <AccordionPanel v-for="moduleGroup in groupedNavigation" :key="moduleGroup.module" size="small"
                 :value="moduleGroup.module">
-                <AccordionHeader v-if="moduleGroup.items.length > 0" size="small">
+                <AccordionHeader size="small">
                   <span class="uppercase tracking-wider text-xs font-bold text-gray-700">
                     {{ formatModuleName(moduleGroup.module) }}
                   </span>
                 </AccordionHeader>
-                <AccordionContent v-if="moduleGroup.items.length > 0">
+                <AccordionContent>
                   <div class="space-y-1 mt-1">
                   <div v-for="item in moduleGroup.items" :key="item.id" class="space-y-1">
                     <Link v-if="item.route_path && !String(item.route_path).startsWith('#')" :href="item.route_path"
@@ -282,10 +282,12 @@ let responseDialogUnsub: (() => void) | null = null
 // Track expanded/collapsed modules
 const expandedModules = ref<Record<string, boolean>>({
   admin: true,
-  inventory: false,
-  procurement: false,
-  merchandising: false,
-  hr: false,
+  inventory: true,
+  warehouse: true,
+  procurement: true,
+  merchandising: true,
+  hr: true,
+  crm: true,
   supplier: true,
 })
 const expandedModuleValues = computed<string[]>({
@@ -302,6 +304,19 @@ const expandedModuleValues = computed<string[]>({
     localStorage.setItem('expandedModules', JSON.stringify(nextState))
   }
 })
+
+watch(
+  () => authStore.systemModules,
+  (modules) => {
+    modules.forEach((module: any) => {
+      const key = String(module?.key || '').trim().toLowerCase()
+      if (key && !(key in expandedModules.value)) {
+        expandedModules.value[key] = false
+      }
+    })
+  },
+  { immediate: true, deep: true }
+)
 
 // Load saved state on mount
 onMounted(async () => {
@@ -421,133 +436,6 @@ const handleKeyboardShortcut = (event: KeyboardEvent) => {
   }
 }
 
-// Group navigation items by module
-// const supplierFallbackNavigation = [
-//   {
-//     id: -101,
-//     name: 'supplier.dashboard',
-//     display_name: "Supplier's Dashboard",
-//     module: 'supplier',
-//     route_name: 'supplier.dashboard',
-//     route_path: '/supplier-portal/dashboard',
-//     icon: 'pi pi-home',
-//     parent_id: null,
-//     display_order: 1,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -102,
-//     name: 'supplier.purchase_orders',
-//     display_name: 'Purchase Orders',
-//     module: 'supplier',
-//     route_name: 'supplier.pos',
-//     route_path: '/supplier-portal/pos',
-//     icon: 'pi pi-shopping-cart',
-//     parent_id: null,
-//     display_order: 2,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -103,
-//     name: 'supplier.rfqs',
-//     display_name: 'RFQs',
-//     module: 'supplier',
-//     route_name: 'supplier.rfqs',
-//     route_path: '/supplier-portal/rfqs',
-//     icon: 'pi pi-file',
-//     parent_id: null,
-//     display_order: 3,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -104,
-//     name: 'supplier.transactions',
-//     display_name: 'Transactions',
-//     module: 'supplier',
-//     route_name: 'supplier.transactions',
-//     route_path: '/supplier-portal/transactions',
-//     icon: 'pi pi-credit-card',
-//     parent_id: null,
-//     display_order: 4,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -105,
-//     name: 'supplier.payment_account',
-//     display_name: 'Payment Account',
-//     module: 'supplier',
-//     route_name: 'supplier.payment-account',
-//     route_path: '/supplier-portal/payment-account',
-//     icon: 'pi pi-wallet',
-//     parent_id: null,
-//     display_order: 5,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-// ]
-
-// const storeFallbackNavigation = [
-//   {
-//     id: -201,
-//     name: 'store.dashboard',
-//     display_name: 'Store Dashboard',
-//     module: 'store',
-//     route_name: 'store.dashboard',
-//     route_path: '/store/index',
-//     icon: 'pi pi-home',
-//     parent_id: null,
-//     display_order: 1,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -202,
-//     name: 'store.registration',
-//     display_name: 'Store Registration',
-//     module: 'store',
-//     route_name: 'StoreVerification',
-//     route_path: '/store/store/verification',
-//     icon: 'pi pi-building',
-//     parent_id: null,
-//     display_order: 2,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-//   {
-//     id: -203,
-//     name: 'store.roles_permissions',
-//     display_name: 'Roles & Permissions',
-//     module: 'store',
-//     route_name: 'store.role-permissions',
-//     route_path: '/store/roles-permissions',
-//     icon: 'pi pi-shield',
-//     parent_id: null,
-//     display_order: 3,
-//     section: 'General',
-//     meta: null,
-//     is_active: true,
-//     badge_count: 0,
-//   },
-// ]
-
 const groupedNavigation = computed(() => {
   if (loadingNavigation.value && authStore.navigation.length === 0) {
     return []
@@ -566,6 +454,49 @@ const groupedNavigation = computed(() => {
     const path = String(item?.route_path || '').toLowerCase()
     return name !== 'account.profile' && !['/profile', '/shop/profile', '/supplier-portal/profile'].includes(path)
   })
+
+  // CRM is an independent module. Keep compatibility with the existing
+  // sales.crm permission/navigation record while rendering it outside Sales.
+  baseNavigation = baseNavigation.map((item: any) => {
+    const name = String(item?.name || '').toLowerCase()
+    const routeName = String(item?.route_name || '').toLowerCase()
+    const routePath = String(item?.route_path || '').toLowerCase()
+    const isCrmItem = name === 'sales.crm'
+      || name.startsWith('crm.')
+      || routeName === 'sales.crm'
+      || routeName.startsWith('crm.')
+      || routePath.startsWith('/crm')
+
+    if (!isCrmItem) return item
+
+    return {
+      ...item,
+      module: 'crm',
+      route_name: name === 'sales.crm' || routeName === 'sales.crm' ? 'crm.dashboard' : item.route_name,
+      route_path: name === 'sales.crm' || routeName === 'sales.crm' ? '/crm/dashboard' : item.route_path,
+      display_name: name === 'sales.crm' ? 'Dashboard' : item.display_name,
+      is_active: true,
+    }
+  })
+
+  const hasCrmNavigation = baseNavigation.some((item: any) => String(item?.module || '').toLowerCase() === 'crm')
+  if (!hasCrmNavigation && authStore.hasPermission('sales.crm.view')) {
+    baseNavigation.push({
+      id: -905,
+      name: 'crm.dashboard',
+      display_name: 'Dashboard',
+      module: 'crm',
+      route_name: 'crm.dashboard',
+      route_path: '/crm/dashboard',
+      icon: 'pi pi-users',
+      parent_id: null,
+      display_order: 1,
+      section: 'General',
+      meta: null,
+      is_active: true,
+      badge_count: 0,
+    })
+  }
 
   if (baseNavigation.length === 0) {
     // Navigation is supplied by the backend permission response.
@@ -651,6 +582,10 @@ const groupedNavigation = computed(() => {
 
   let activeItems = baseNavigation.filter((item: any) => item.is_active)
 
+  if (!isSupplierRole) {
+    activeItems = activeItems.filter((item: any) => String(item?.module || '').toLowerCase() !== 'supplier')
+  }
+
   if (isSupplierRole) {
     activeItems = activeItems.map((item: any) => {
       if (item?.name === 'supplier.payment_account' || item?.route_name === 'supplier.payment-account') {
@@ -693,20 +628,28 @@ const groupedNavigation = computed(() => {
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['admin', 'supplier', 'inventory', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'account']
+  const moduleOrder = ['admin', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'crm']
 
-  for (const module of moduleOrder) {
-    if (itemsByModule[module]?.length) {
-      grouped.push({
-        module,
-        items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
-      })
-    }
+  const catalogModules = authStore.systemModules
+    .map((module: any) => String(module?.key || '').trim().toLowerCase())
+    .filter(module => Boolean(module) && (module !== 'supplier' || isSupplierRole))
+  const orderedModules = [
+    ...moduleOrder.filter(module => catalogModules.includes(module) || Boolean(itemsByModule[module]?.length)),
+    ...catalogModules.filter(module => !moduleOrder.includes(module)),
+  ]
+
+  // The module catalog contains every system module, but the sidebar should
+  // only show groups that have at least one navigation item for this user.
+  for (const module of orderedModules.filter((module) => Boolean(itemsByModule[module]?.length))) {
+    grouped.push({
+      module,
+      items: [...(itemsByModule[module] || [])].sort((a, b) => a.display_order - b.display_order)
+    })
   }
 
-  // Add any custom modules not in moduleOrder
+  // Include legacy navigation modules that are not in the module catalog yet.
   for (const module in itemsByModule) {
-    if (!moduleOrder.includes(module) && itemsByModule[module]?.length) {
+    if (!orderedModules.includes(module) && itemsByModule[module]?.length) {
       grouped.push({
         module,
         items: (itemsByModule[module] as any[]).sort((a, b) => a.display_order - b.display_order)
@@ -721,6 +664,12 @@ const groupedNavigation = computed(() => {
 
 // Format module name
 const formatModuleName = (module: string): string => {
+  const catalogName = authStore.systemModules.find((item: any) => String(item?.key || '').toLowerCase() === module)?.name
+  if (catalogName) return catalogName
+  if (module === 'warehouse') return 'Warehouse'
+  if (module == 'hr') return 'Human Resources'
+  if (module === 'merchandising') return 'Merchandise'
+
   return module
     .replace(/_/g, ' ')
     .split(' ')

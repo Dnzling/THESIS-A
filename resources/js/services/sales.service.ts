@@ -1,38 +1,13 @@
 import axiosClient from '@/axios'
 
 class SalesService {
+  async getUnifiedOrders(params?: any) {
+    const res = await axiosClient.get('/api/sales/orders', { params })
+    return res.data
+  }
+
   async getDashboard(params?: any) {
     const res = await axiosClient.get('/api/sales/dashboard', { params })
-    return res.data
-  }
-
-  async getLeads(params?: any) {
-    const res = await axiosClient.get('/api/sales/crm/leads', { params })
-    return res.data
-  }
-
-  async createLead(payload: any) {
-    const res = await axiosClient.post('/api/sales/crm/leads', payload)
-    return res.data
-  }
-
-  async updateLead(id: number | string, payload: any) {
-    const res = await axiosClient.put(`/api/sales/crm/leads/${id}`, payload)
-    return res.data
-  }
-
-  async updateLeadStage(id: number | string, payload: any) {
-    const res = await axiosClient.post(`/api/sales/crm/leads/${id}/stage`, payload)
-    return res.data
-  }
-
-  async getLeadActivities(id: number | string, params?: any) {
-    const res = await axiosClient.get(`/api/sales/crm/leads/${id}/activities`, { params })
-    return res.data
-  }
-
-  async addLeadActivity(id: number | string, payload: any) {
-    const res = await axiosClient.post(`/api/sales/crm/leads/${id}/activities`, payload)
     return res.data
   }
 
@@ -58,11 +33,6 @@ class SalesService {
 
   async getPosPaymentOptions() {
     const res = await axiosClient.get('/api/sales/pos/payment-options')
-    return res.data
-  }
-
-  async getPaymentAnalytics(params?: any) {
-    const res = await axiosClient.get('/api/sales/analytics/payments', { params })
     return res.data
   }
 
@@ -186,66 +156,6 @@ class SalesService {
     return res.data
   }
 
-  async getChatThreads(params?: any) {
-    const res = await axiosClient.get('/api/sales/chats/threads', { params })
-    return res.data
-  }
-
-  async getChatMessages(threadId: number | string, params?: any) {
-    const res = await axiosClient.get(`/api/sales/chats/threads/${threadId}/messages`, { params })
-    return res.data
-  }
-
-  async sendChatMessage(threadId: number | string, payload: any) {
-    const res = await axiosClient.post(`/api/sales/chats/threads/${threadId}/messages`, payload)
-    return res.data
-  }
-
-  async updateChatMessage(threadId: number | string, messageId: number | string, payload: { message: string }) {
-    const res = await axiosClient.put(`/api/sales/chats/threads/${threadId}/messages/${messageId}`, payload)
-    return res.data
-  }
-
-  async unsendChatMessage(threadId: number | string, messageId: number | string) {
-    const res = await axiosClient.delete(`/api/sales/chats/threads/${threadId}/messages/${messageId}`)
-    return res.data
-  }
-
-  async getReviews(params?: any) {
-    const res = await axiosClient.get('/api/sales/reviews', { params })
-    return res.data
-  }
-
-  async getVouchers(params?: any) {
-    const res = await axiosClient.get('/api/sales/vouchers', { params })
-    return res.data
-  }
-
-  async createVoucher(payload: any) {
-    const res = await axiosClient.post('/api/sales/vouchers', payload)
-    return res.data
-  }
-
-  async getVoucher(id: number | string) {
-    const res = await axiosClient.get(`/api/sales/vouchers/${id}`)
-    return res.data
-  }
-
-  async updateVoucher(id: number | string, payload: any) {
-    const res = await axiosClient.put(`/api/sales/vouchers/${id}`, payload)
-    return res.data
-  }
-
-  async getReview(id: number | string) {
-    const res = await axiosClient.get(`/api/sales/reviews/${id}`)
-    return res.data
-  }
-
-  async replyReview(id: number | string, payload: { reply: string }) {
-    const res = await axiosClient.put(`/api/sales/reviews/${id}/reply`, payload)
-    return res.data
-  }
-
   async getRefunds(params?: any) {
     const res = await axiosClient.get('/api/sales/refunds', { params })
     return res.data
@@ -263,36 +173,6 @@ class SalesService {
 
   async updateRefundStatus(id: number | string, payload: { status: 'approved' | 'rejected'; notes?: string }) {
     const res = await axiosClient.put(`/api/sales/refunds/${id}/status`, payload)
-    return res.data
-  }
-
-  async getReturns(params?: any) {
-    const res = await axiosClient.get('/api/sales/returns', { params })
-    return res.data
-  }
-
-  async getReturn(id: number | string) {
-    const res = await axiosClient.get(`/api/sales/returns/${id}`)
-    return res.data
-  }
-
-  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected' | 'received' | 'refunded'; return_type?: 'refund' | 'replacement'; review_notes?: string }) {
-    const res = await axiosClient.put(`/api/sales/returns/${id}/status`, payload)
-    return res.data
-  }
-
-  async scheduleReturnPickup(id: number | string, payload: { scheduled_at: string; pickup_name?: string; pickup_phone?: string; pickup_address?: string; notes?: string }) {
-    const res = await axiosClient.post(`/api/sales/returns/${id}/pickup`, payload)
-    return res.data
-  }
-
-  async receiveReturn(id: number | string, payload: { received_quantity: number; condition: 'good' | 'bad'; notes?: string }) {
-    const res = await axiosClient.post(`/api/sales/returns/${id}/receive`, payload)
-    return res.data
-  }
-
-  async createReturnRefund(id: number | string, payload: { amount: number; reason?: string; notes?: string; mark_as_approved?: boolean }) {
-    const res = await axiosClient.post(`/api/sales/returns/${id}/refund`, payload)
     return res.data
   }
 

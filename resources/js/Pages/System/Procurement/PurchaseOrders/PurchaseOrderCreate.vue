@@ -1,8 +1,8 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 pb-8 sm:px-6 lg:px-8">
     <!-- Header -->
     <div class="flex items-center gap-3 px-5 py-4 shadow-sm">
-      <Button icon="pi pi-arrow-left" text rounded severity="secondary" @click="router.push({ name: 'procurement.purchase-orders' })" />
+      <Button icon="pi pi-arrow-left" text rounded severity="secondary" aria-label="Back to purchase orders" @click="router.push({ name: 'procurement.purchase-orders' })" />
       <div class="min-w-0">
         <h2 class="text-2xl font-bold text-slate-900">{{ isEditing ? 'Edit' : 'Create' }} Purchase Order</h2>
         <p class="mt-1 text-sm text-slate-500">Review the assigned supplier, destination branch, items, and totals before submission.</p>
@@ -14,11 +14,11 @@
     <!-- <Message v-if="supplierWarning.show" :severity="supplierWarning.severity" :text="supplierWarning.message"/> -->
   
     <!-- Main Form -->
-    <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+    <Card class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <template #content>
-        <form class="space-y-6" @submit.prevent="submitForm">
+        <form class="space-y-8" @submit.prevent="openSplitPoPreview('submit')">
           <!-- Order context is determined by the source PR/RFQ. -->
-          <div class="border-b border-slate-200 pb-6">
+          <section class="border-b border-slate-200 pb-7">
             <div class="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 class="text-lg font-semibold text-slate-900">Order Information</h3>
@@ -42,37 +42,40 @@
                 <p class="mt-1 font-semibold text-slate-900">{{ storeCurrency }}</p>
               </div>
             </div>
-          </div>
+          </section>
 
           <!-- Supplier Information -->
-          <div class="border-b border-slate-200 pb-6">
-            <h3 class="mb-4 text-lg font-semibold text-slate-900">Supplier Information</h3>
+          <section class="border-b border-slate-200 pb-7">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-slate-900">Supplier Information</h3>
+              <p class="mt-1 text-sm text-slate-500">Contact and contract terms applied to this purchase order.</p>
+            </div>
   
             <!-- Supplier Details Card (Auto-populated) -->
-            <div v-if="selectedSupplier" class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+            <div v-if="selectedSupplier" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
                 <div>
-                  <p class="text-gray-600 font-semibold">Contact Person</p>
-                  <p class="text-gray-800">{{ selectedSupplier.contact_person || '-' }}</p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contact Person</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.contact_person || '-' }}</p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Email</p>
-                  <p class="text-gray-800">{{ selectedSupplier.email || '-' }}</p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
+                  <p class="mt-1 break-all font-medium text-slate-900">{{ selectedSupplier.email || '-' }}</p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Phone</p>
-                  <p class="text-gray-800">{{ selectedSupplier.phone || '-' }}</p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.phone || '-' }}</p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Contract Discount</p>
-                  <p class="text-gray-800">
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contract Discount</p>
+                  <p class="mt-1 font-medium text-slate-900">
                     {{ contractDiscountDisplay }}
                   </p>
                 </div>
                 <div>
-                  <p class="text-gray-600 font-semibold">Tax Rate</p>
-                  <p class="text-gray-800">
-                    {{ supplierTaxRateDisplay }} <span v-if="selectedContract?.is_tax_exempt" class="text-xs text-orange-600">(Exempt)</span>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Tax Rate</p>
+                  <p class="mt-1 font-medium text-slate-900">
+                    {{ supplierTaxRateDisplay }} <span v-if="selectedContract?.is_tax_exempt" class="text-xs text-slate-500">(Exempt)</span>
                   </p>
                 </div>
               </div>
@@ -81,15 +84,15 @@
             <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
               {{ splitPoMode ? 'Supplier details will be applied separately to each generated purchase order.' : 'Supplier details are being loaded from the source request.' }}
             </div>
-          </div>
+          </section>
   
           <!-- Section 3: Line Items -->
-          <div class="border-b pb-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              
-                Purchase Items
-              </h3>
+          <section class="border-b border-slate-200 pb-7">
+            <div class="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-lg font-semibold text-slate-900">Purchase Items</h3>
+                <p class="mt-1 text-sm text-slate-500">Verify the ordered quantity and supplier-quoted cost for each item.</p>
+              </div>
               <Button label="Add Item" icon="pi pi-plus" size="small" @click="addLineItem"/>
             </div>
   
@@ -102,10 +105,10 @@
                   <div
                     v-for="(item, index) in form.items"
                     :key="item.id || index"
-                    class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 md:p-5"
+                    class="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
                   >
                     <div class="flex items-center justify-between mb-4">
-                      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Item {{ index + 1 }}</div>
+                      <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Item {{ index + 1 }}</div>
                       <Button
                         icon="pi pi-trash"
                         text
@@ -116,8 +119,8 @@
                       />
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                      <div class="md:col-span-5">
+                    <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
+                      <div class="lg:col-span-4">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product</label>
                         <Select
                           :model-value="item.product_id"
@@ -131,7 +134,7 @@
                         />
                       </div>
 
-                      <div class="md:col-span-2">
+                      <div class="lg:col-span-2">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Qty</label>
                         <InputNumber
                           v-model="item.quantity_ordered"
@@ -143,12 +146,15 @@
                         <p v-if="budgetWarnings[index]" class="text-xs text-red-500 mt-1">
                           Warning: {{ budgetWarnings[index] }}
                         </p>
-                      </div>     <div class="md:col-span-1">
-                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Qty</label>
-                        <label>{{ item.product?.unit_of_measurement }}</label>
+                      </div>
+                      <div class="lg:col-span-1">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit</label>
+                        <p class="min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700">
+                          {{ getItemUnitOfMeasurement(item) }}
+                        </p>
                       </div>
 
-                      <div class="md:col-span-4">
+                      <div class="lg:col-span-2">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Price</label>
                         <InputNumber
                           v-model="item.unit_cost"
@@ -160,14 +166,13 @@
                           @input="calculateItemTotal(index)"
                           class="w-full text-right"
                         />
-                        <p class="text-xs text-gray-500 mt-2">Cost price from products table</p>
                       </div>
 
-                      <div class="md:col-span-4">
-                        <div class="bg-gray-50 rounded-xl border border-gray-200 px-3 py-2">
+                      <div class="lg:col-span-3">
+                        <div class="rounded-lg border border-slate-200 bg-white px-3 py-2">
                           <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Line Total</label>
-                          <div class="text-lg font-semibold text-green-600">
-                            ₱ {{ item.line_total?.toFixed(2) || '0.00' }}
+                          <div class="text-lg font-semibold text-slate-900">
+                            {{ formatCurrency(Number(item.line_total) || 0) }}
                           </div>
                         </div>
                       </div>
@@ -175,54 +180,69 @@
                   </div>
                 </TransitionGroup>
               </div>
-              <div v-else class="text-center py-10 bg-gray-50 border border-dashed border-gray-300 rounded-2xl">
-                <i class="pi pi-inbox text-gray-400 text-3xl mb-2"></i>
-                <p class="text-gray-500">No items added yet. Click "Add Item" to start.</p>
+              <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-10 text-center">
+                <i class="pi pi-inbox mb-2 text-3xl text-slate-400"></i>
+                <p class="text-slate-500">No items added yet. Click "Add Item" to start.</p>
               </div>
             </Transition>
-          </div>
+          </section>
   
           <!-- Section 4: Running Totals -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card class="bg-linear-to-br from-blue-50 to-blue-100 border border-blue-200">
-              <template #content>
-                <p class="text-xs text-blue-600 font-semibold">Subtotal</p>
-                <p class="text-2xl font-bold text-blue-900">{{ formatCurrency(totals.subtotal) }}</p>
-              </template>
-            </Card>
-
-            <Card class="bg-linear-to-br from-yellow-50 to-yellow-100 border border-yellow-200">
-              <template #content>
-                <p class="text-xs text-amber-600 font-semibold">Tax</p>
-                <p class="text-2xl font-bold text-amber-900">
-                  {{ formatCurrency(totals.tax_amount) }}
-                </p>
-              </template>
-            </Card>
- 
-            <Card class="bg-linear-to-br from-green-50 to-green-100 border border-green-300 shadow-lg">
-              <template #content>
-                <p class="text-xs text-green-600 font-semibold">TOTAL AMOUNT</p>
-                <p class="text-3xl font-bold text-green-900">{{ formatCurrency(totals.total_amount) }}</p>
-              </template>
-            </Card>
+           
+           <div class="grid grid-cols-2 items-center gap-2">
+               <!-- Section 5: Notes -->
+          <section>
+            <label class="mb-2 block text-sm font-semibold text-slate-900">Notes / Special Instructions</label>
+            <p class="mb-3 text-sm text-slate-500">Add delivery instructions, packaging requirements, or other supplier notes.</p>
+            <Textarea v-model="form.notes" rows="4" auto-resize class="w-full"
+              placeholder="Add any special instructions or notes for this purchase order..." />
+          </section>
+              <div class="flex justify-end">
+            <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div class="space-y-3 text-sm">
+                <div class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Subtotal</span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(totals.subtotal) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Discount Amount</span>
+                  <span class="font-medium text-slate-900">- {{ formatCurrency(form.discount_amount) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Taxable Amount</span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, totals.subtotal - form.discount_amount)) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Tax ({{ supplierTaxRateDisplay }})</span>
+                  <span class="font-medium text-slate-900">{{ formatCurrency(totals.tax_amount) }}</span>
+                </div>
+                <template v-if="shippingEstimate?.breakdown">
+                  <div class="flex items-center justify-between gap-6 text-slate-600"><span>Supplier route</span><span class="font-medium text-slate-900">{{ shippingEstimate.breakdown.distance_km }} km</span></div>
+                  <div class="flex items-center justify-between gap-6 text-slate-600"><span>Base / distance / weight</span><span class="font-medium text-slate-900">{{ formatCurrency(shippingEstimate.breakdown.base_fee) }} / {{ formatCurrency(shippingEstimate.breakdown.distance_fee) }} / {{ formatCurrency(shippingEstimate.breakdown.weight_fee) }}</span></div>
+                  <div v-if="shippingEstimate.breakdown.bulky_item_surcharge || shippingEstimate.breakdown.remote_area_surcharge" class="flex items-center justify-between gap-6 text-slate-600"><span>Surcharges</span><span class="font-medium text-slate-900">{{ formatCurrency((shippingEstimate.breakdown.bulky_item_surcharge || 0) + (shippingEstimate.breakdown.remote_area_surcharge || 0)) }}</span></div>
+                </template>
+                <div class="flex items-center justify-between gap-6 text-slate-600"><span>Shipping Fee</span><span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span></div>
+                <p v-if="shippingEstimateError" class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{{ shippingEstimateError }}</p>
+              </div>
+              <div class="my-4 border-t border-slate-200"></div>
+              <div class="flex items-center justify-between gap-6 rounded-xl bg-slate-900 px-4 py-3 text-white">
+                <span class="font-semibold">Total Amount</span>
+                <span class="text-xl font-bold">{{ formatCurrency(totals.total_amount) }}</span>
+              </div>
+            </div>
           </div>
   
-          <!-- Section 5: Notes -->
-          <div>
-            <label class="text-sm font-semibold text-gray-700 block mb-2">Notes / Special Instructions</label>
-            <Textarea v-model="form.notes" rows="5" auto-resize class="w-full"
-              placeholder="Add any special instructions or notes for this purchase order..." />
-          </div>
+           </div>
+        
+       
   
           <!-- Section 6: Action Buttons -->
-          <div class="pt-4 flex justify-end gap-3 border-t">
+          <div class="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-end">
             <Button label="Cancel" severity="secondary" text type="button"
               @click="router.push({ name: 'procurement.purchase-orders' })" />
             <Button label="Save as Draft" severity="secondary" :loading="saving"
               @click="openSplitPoPreview('draft')" />
-            <Button label="Create & Submit" :loading="saving"
-              @click="openSplitPoPreview('submit')" />
+            <Button label="Create & Submit" type="submit" :loading="saving" />
           </div>
         </form>
       </template>
@@ -249,13 +269,23 @@
 
       <template #footer>
         <div class="flex justify-end gap-3">
-          <Button label="Cancel" severity="secondary" text @click="splitPoPreviewVisible = false" />
+          <Button label="No" severity="secondary" text @click="splitPoPreviewVisible = false" />
           <Button
-            :label="splitPoPreviewAction === 'draft' ? 'Confirm Save Draft' : 'Confirm Create & Submit'"
+            :label="splitPoPreviewAction === 'draft' ? 'Confirm' : 'Confirm'"
             icon="pi pi-check"
             severity="success"
             @click="confirmSplitPoPreview"
           />
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="submitConfirmationVisible" modal header="Submit Purchase Order" :style="{ width: '26rem' }">
+      <p class="text-sm text-slate-600">Submit this purchase order for finance approval?</p>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <Button label="No" severity="secondary" text @click="submitConfirmationVisible = false" />
+          <Button label="Confirm" icon="pi pi-check" :loading="saving" @click="confirmPurchaseOrderSubmission" />
         </div>
       </template>
     </Dialog>
@@ -314,15 +344,21 @@ const splitPoMode = ref(false)
 const splitPoSupplierGroups = ref<number>(0)
 const splitPoPreviewVisible = ref(false)
 const splitPoPreviewAction = ref<'draft' | 'submit'>('submit')
+const submitConfirmationVisible = ref(false)
 
 const totals = reactive({
   subtotal: 0,
   tax_amount: 0,
   total_amount: 0
 })
+const shippingEstimate = ref<any>(null)
+const shippingEstimateLoading = ref(false)
+const shippingEstimateError = ref('')
+const shippingFee = computed(() => Number(shippingEstimate.value?.shipping_fee || 0))
+let shippingEstimateTimer: ReturnType<typeof setTimeout> | null = null
 
 const supplierTaxRate = computed(() =>
-  selectedContract.value?.is_tax_exempt ? 0 : (contractTaxRate.value ?? 0)
+  selectedContract.value?.is_tax_exempt ? 0 : 12
 )
 const supplierTaxRateDisplay = computed(() => `${Number(supplierTaxRate.value || 0).toFixed(2)}%`)
 const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
@@ -408,6 +444,7 @@ onMounted(async () => {
               id: `req-${item.id}`,
               product_id: item.product_id,
               product_name: item.product?.product_name || item.product_name || '',
+              unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
               selected_supplier_id: item.selected_supplier_id || null,
               selected_supplier_name: item.selected_supplier_id ? (item.selected_supplier_name || null) : null,
               quantity_ordered: item.quantity_requested || 1,
@@ -516,6 +553,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
         id: `req-${item.id}`,
         product_id: item.product_id,
         product_name: item.product?.product_name || item.product_name || '',
+        unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         selected_supplier_id: item.selected_supplier_id || null,
         selected_supplier_name: item.selected_supplier_id
           ? (Array.isArray(item.product?.suppliers)
@@ -628,6 +666,7 @@ const prefillFromRFQ = async (rfqId: number) => {
             rfq_item_id: item.id || null,
             product_id: item.product_id || product.id || null,
             product_name: product.product_name || item.product_name || '',
+            unit_of_measurement: product.unit_of_measurement || item.unit_of_measurement || item.unit || '',
             quantity_ordered: item.quantity || 1,
             unit_cost: Number(item.approved_unit_price || 0),
             selected_supplier_id: item.selected_supplier_id || null,
@@ -693,6 +732,7 @@ const loadPOForEdit = async (poId: number) => {
       form.items = po.items.map((item: any) => ({
         product_id: item.product_id,
         variation_id: item.variation_id,
+        unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost
       }))
@@ -878,6 +918,7 @@ const onProductChange = (index: number, productId: any) => {
       if (product) {
         form.items[index].product_id = numericId
         form.items[index].product_name = product.product_name
+        form.items[index].unit_of_measurement = product.unit_of_measurement || product.unit || ''
         form.items[index].stock_level = product.stock_level || 0
         form.items[index].unit_cost = Number(product.cost_price ?? 0) || 0
       }
@@ -886,10 +927,19 @@ const onProductChange = (index: number, productId: any) => {
   calculateItemTotal(index)
 }
 
+const getItemUnitOfMeasurement = (item: any) => {
+  if (item?.unit_of_measurement) return item.unit_of_measurement
+  if (item?.product?.unit_of_measurement) return item.product.unit_of_measurement
+
+  const selectedProduct = products.value.find((product: any) => Number(product.id) === Number(item?.product_id))
+  return selectedProduct?.unit_of_measurement || selectedProduct?.unit || '-'
+}
+
 const addLineItem = () => {
   form.items.push({
     id: `item-${Date.now()}`,
     product_id: null,
+    unit_of_measurement: '',
     selected_supplier_id: null,
     selected_supplier_name: null,
     quantity_ordered: 1,
@@ -923,13 +973,40 @@ const calculateItemTotal = (index: number) => {
 
 const updateTotals = () => {
   const subtotal = form.items.reduce((sum, item) => sum + (Number(item.line_total) || 0), 0)
-  const taxRate = Number(supplierTaxRate.value || 0) / 100
-  const taxAmount = subtotal * taxRate
   const discount = subtotal * (Number(contractDiscountPercent.value || 0) / 100)
+  const taxableAmount = Math.max(0, subtotal - discount)
+  const taxRate = Number(supplierTaxRate.value || 0) / 100
+  const taxAmount = taxableAmount * taxRate
   form.discount_amount = discount
   totals.subtotal = subtotal
   totals.tax_amount = taxAmount
-  totals.total_amount = subtotal + taxAmount - discount
+  totals.total_amount = subtotal + taxAmount - discount + shippingFee.value
+  scheduleShippingEstimate(subtotal)
+}
+
+const scheduleShippingEstimate = (subtotal: number) => {
+  if (shippingEstimateTimer) clearTimeout(shippingEstimateTimer)
+  const hasCompleteItems = form.items.length > 0 && form.items.every((item) => Number(item.product_id) > 0 && Number(item.quantity_ordered) > 0)
+  if (!form.supplier_id || !form.branch_id || !hasCompleteItems) {
+    shippingEstimate.value = null
+    shippingEstimateError.value = ''
+    return
+  }
+  shippingEstimateTimer = setTimeout(async () => {
+    shippingEstimateLoading.value = true
+    shippingEstimateError.value = ''
+    try {
+      const response = await procurementService.estimatePurchaseOrderShipping({ supplier_id: form.supplier_id, branch_id: form.branch_id, subtotal, items: form.items.map(item => ({ product_id: item.product_id, quantity_ordered: item.quantity_ordered })) })
+      shippingEstimate.value = response?.data || null
+      totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount + shippingFee.value
+    } catch (error: any) {
+      shippingEstimate.value = null
+      shippingEstimateError.value = error?.response?.data?.errors?.shipping_fee?.[0]
+        || error?.response?.data?.message
+        || 'Shipping fee could not be calculated. Check the supplier and branch locations.'
+      totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount
+    } finally { shippingEstimateLoading.value = false }
+  }, 500)
 }
 
 const addQuickProduct = (product: any) => {
@@ -964,12 +1041,22 @@ const openSplitPoPreview = (action: 'draft' | 'submit') => {
     return
   }
 
+  if (action === 'submit') {
+    submitConfirmationVisible.value = true
+    return
+  }
+
   submitForm()
 }
 
 const confirmSplitPoPreview = () => {
   splitPoPreviewVisible.value = false
   submitForm(true)
+}
+
+const confirmPurchaseOrderSubmission = () => {
+  submitConfirmationVisible.value = false
+  submitForm()
 }
 
 const submitForm = async (confirmedSplitMode = false) => {
@@ -1017,6 +1104,7 @@ const submitForm = async (confirmedSplitMode = false) => {
         purchase_requisition_id: form.purchase_requisition_id,
         order_date: orderDate,
         discount_amount: form.discount_amount,
+        shipping_cost: shippingFee.value,
         notes: form.notes,
         items: form.items.map((item) => ({
           product_id: item.product_id,

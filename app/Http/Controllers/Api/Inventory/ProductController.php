@@ -27,6 +27,19 @@ class ProductController extends Controller
         $storeId = (int) ($user?->store_id ?? 0);
         $branchId = (int) ($user?->branch_id ?? 0);
 
+        // Merchandising resolves store ownership through the employee profile
+        // when users.store_id is not populated. Inventory must use the same
+        // source so products created in Merchandising are visible here.
+        $employee = null;
+        if ($user && (!$storeId || !$branchId)) {
+            $employee = Employee::query()
+                ->where('user_id', $user->id)
+                ->whereNull('deleted_at')
+                ->first(['store_id', 'branch_id']);
+            $storeId = $storeId ?: (int) ($employee?->store_id ?? 0);
+            $branchId = $branchId ?: (int) ($employee?->branch_id ?? 0);
+        }
+
         // Some store-level users are not assigned to a branch. Inventory still
         // needs a concrete branch, so use the store's main active branch first.
         if ($storeId && (!$branchId || !Branch::query()

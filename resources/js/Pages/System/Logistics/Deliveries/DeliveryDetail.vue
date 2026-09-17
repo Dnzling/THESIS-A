@@ -37,7 +37,12 @@
 
       <Card v-if="delivery" class="rounded-2xl border border-slate-200/80 shadow-sm">
         <template #title><div class="flex items-center justify-between gap-2"><div><p class="text-base">Live Delivery Tracking</p><p class="text-xs font-normal text-slate-500">Latest driver location and destination</p></div><Tag :value="currentPoint ? 'Location available' : 'Waiting for location'" :severity="currentPoint ? 'success' : 'warn'" class="text-xs" /></div></template>
-        <template #content><div ref="mapElement" class="h-[340px] w-full overflow-hidden rounded-xl border border-slate-200"></div><p v-if="!currentPoint" class="mt-2 text-xs text-amber-700">The map updates after the driver shares a GPS location.</p></template>
+        <template #content>
+          <div ref="mapElement" class="h-[340px] w-full overflow-hidden rounded-xl border border-slate-200"></div>
+          <p v-if="!currentPoint" class="mt-2 text-xs text-amber-700">The map updates after the driver shares a GPS location.</p>
+          <p v-else-if="!destinationPoint" class="mt-2 text-xs text-amber-700">A destination GPS location is not available for this order.</p>
+          <p v-if="routeUnavailable" class="mt-2 text-xs text-amber-700">Mapbox could not find a road route between the current location and destination.</p>
+        </template>
       </Card>
 
       <Card class="rounded-2xl border border-slate-200/80 shadow-sm">
@@ -45,7 +50,7 @@
         <template #content><DataTable :value="orderItems" size="small" stripedRows responsiveLayout="scroll" class="text-xs">
           <template #empty><div class="py-8 text-center text-slate-500">No order items recorded.</div></template>
           <Column header="Product" style="min-width:15rem"><template #body="{ data }"><p class="font-medium text-slate-900">{{ itemName(data) }}</p><p class="text-xs text-slate-500">SKU: {{ itemSku(data) }}</p></template></Column>
-          <Column header="Quantity / UOM"><template #body="{ data }"><span class="font-medium">{{ formatQuantity(itemQuantity(data)) }} {{ itemUom(data) }}</span></template></Column>
+          <Column header="Quantity / Unit"><template #body="{ data }"><span class="font-medium">{{ formatQuantity(itemQuantity(data)) }} {{ itemUom(data) }}</span></template></Column>
           <Column header="Unit Price"><template #body="{ data }">{{ formatCurrency(itemUnitPrice(data)) }}</template></Column>
           <Column header="Line Total"><template #body="{ data }"><span class="font-semibold">{{ formatCurrency(itemLineTotal(data)) }}</span></template></Column>
         </DataTable></template>
@@ -77,10 +82,11 @@ import Button from 'primevue/button'; import Card from 'primevue/card'; import C
 import L from 'leaflet'; import 'leaflet/dist/leaflet.css'; import markerIcon from 'leaflet/dist/images/marker-icon.png'; import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'; import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import logisticsService from '../../../../services/logistics.service'
 import { useAuthStore } from '../../../../stores/auth'
+import { fetchMapboxRoadRoute, mapboxAttribution, mapboxTileUrl } from '../../../../utils/mapbox'
 
 const Info = defineComponent({ props: { label: { type: String, required: true }, value: { type: [String, Number], default: '-' } }, setup: (props) => () => h('div', [h('p', { class: 'text-xs text-slate-500' }, props.label), h('p', { class: 'mt-1 font-medium text-slate-900' }, String(props.value || '-'))]) })
 const route = useRoute(); const router = useRouter(); const toast = useToast(); const authStore = useAuthStore()
-const loading = ref(false); const order = ref<any>(null); const delivery = ref<any>(null); const logs = ref<any[]>([]); const mapElement = ref<HTMLElement | null>(null); const mediaPreviewVisible = ref(false); const mediaPreviewUrl = ref(''); let trackingMap: L.Map | null = null
+const loading = ref(false); const order = ref<any>(null); const delivery = ref<any>(null); const logs = ref<any[]>([]); const mapElement = ref<HTMLElement | null>(null); const mediaPreviewVisible = ref(false); const mediaPreviewUrl = ref(''); const routeUnavailable = ref(false); let trackingMap: L.Map | null = null
 const source = computed<'ecommerce' | 'sales' | 'pickup'>(() => { const value = String(route.params.source || '').toLowerCase(); return value === 'sales' || value === 'pickup' ? value : 'ecommerce' })
 const orderId = computed(() => Number(route.params.orderId || 0)); const sourceLabel = computed(() => source.value === 'pickup' ? 'Supplier pickup' : source.value === 'sales' ? 'Sales' : 'Ecommerce')
 const canAssignDelivery = computed(() => authStore.hasPermission('logistics.deliveries.manage') && !delivery.value && source.value !== 'pickup'); const orderItems = computed(() => order.value?.items || [])
@@ -96,7 +102,51 @@ const formatStatus = (value: any) => String(value || '-').replace(/_/g, ' ').rep
 const deliverySeverity = (status: any) => String(status) === 'delivered' ? 'success' : ['failed_delivery', 'cancelled'].includes(String(status)) ? 'danger' : ['in_transit', 'out_for_delivery'].includes(String(status)) ? 'warn' : 'info'; const logSeverity = (type: any) => String(type).includes('deliver') ? 'success' : String(type).includes('cancel') || String(type).includes('fail') ? 'danger' : String(type).includes('transit') ? 'warn' : 'info'
 const itemName = (item: any) => item.product?.product_name || item.product_name || '-'; const itemSku = (item: any) => item.product?.sku || item.sku || '-'; const itemQuantity = (item: any) => item.quantity_ordered ?? item.quantity ?? 0; const itemUom = (item: any) => item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || 'unit'; const itemUnitPrice = (item: any) => item.unit_cost ?? item.unit_price ?? 0; const itemLineTotal = (item: any) => item.line_total ?? Number(itemUnitPrice(item)) * Number(itemQuantity(item))
 
-const renderMap = async () => { await nextTick(); if (!mapElement.value) return; trackingMap?.remove(); const center = currentPoint.value || destinationPoint.value || [14.5995, 120.9842]; trackingMap = L.map(mapElement.value).setView(center, currentPoint.value || destinationPoint.value ? 13 : 9); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trackingMap); const icon = L.icon({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] }); const points: [number, number][] = []; if (currentPoint.value) { L.marker(currentPoint.value, { icon }).addTo(trackingMap).bindTooltip('Driver location'); points.push(currentPoint.value) } if (destinationPoint.value) { L.marker(destinationPoint.value, { icon }).addTo(trackingMap).bindTooltip('Destination'); points.push(destinationPoint.value) } if (points.length > 1) { L.polyline(points, { color: '#f97316', weight: 4 }).addTo(trackingMap); trackingMap.fitBounds(points, { padding: [40, 40] }) } }
+const renderMap = async () => {
+  await nextTick()
+  if (!mapElement.value) return
+
+  trackingMap?.remove()
+  routeUnavailable.value = false
+
+  const current = currentPoint.value
+  const destination = destinationPoint.value
+  const center = current || destination || [14.5995, 120.9842]
+  trackingMap = L.map(mapElement.value).setView(center, current || destination ? 13 : 9)
+  L.tileLayer(mapboxTileUrl(), {
+    attribution: mapboxAttribution,
+    tileSize: 512,
+    zoomOffset: -1,
+  }).addTo(trackingMap)
+
+  const icon = L.icon({
+    iconRetinaUrl: markerIcon2x,
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+  })
+
+  if (current) L.marker(current, { icon }).addTo(trackingMap).bindTooltip('Driver location')
+  if (destination) L.marker(destination, { icon }).addTo(trackingMap).bindTooltip('Destination')
+
+  if (current && destination) {
+    try {
+      const roadPoints = await fetchMapboxRoadRoute(current, destination)
+      if (roadPoints.length > 1) {
+        L.polyline(roadPoints, { color: '#f97316', weight: 5, opacity: 0.9 }).addTo(trackingMap)
+        trackingMap.fitBounds(roadPoints, { padding: [40, 40] })
+      } else {
+        routeUnavailable.value = true
+        trackingMap.fitBounds([current, destination], { padding: [40, 40] })
+      }
+    } catch {
+      // Do not draw a misleading straight line when road routing is unavailable.
+      routeUnavailable.value = true
+      trackingMap.fitBounds([current, destination], { padding: [40, 40] })
+    }
+  }
+}
 const loadAll = async () => { if (!orderId.value) return; loading.value = true; try { const response = await logisticsService.getDeliveryOrderDetail(source.value, orderId.value); const payload = response?.data || {}; order.value = payload.order || null; delivery.value = payload.delivery || null; logs.value = payload.logs || []; await renderMap() } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load delivery', detail: error?.response?.data?.message || 'Please try again.', life: 3500 }) } finally { loading.value = false } }
 const openMedia = (url: string) => { if (url) { mediaPreviewUrl.value = url; mediaPreviewVisible.value = true } }; const openAssign = () => router.push({ name: 'logistics.deliveries.create', query: { source: source.value, order_id: String(orderId.value) } }); const goBack = () => router.push({ name: 'logistics.deliveries' })
 onMounted(loadAll); onBeforeUnmount(() => { trackingMap?.remove(); trackingMap = null })

@@ -67,22 +67,6 @@
 
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <span class="text-red-500 mr-1">*</span> Issue Date
-                  </label>
-                  <DatePicker 
-                    v-model="form.issue_date" fluid
-                    dateFormat="yy-mm-dd" 
-                    :invalid="errors.issue_date !== undefined"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl"
-                    showIcon
-                    iconDisplay="input"
-                  
-                  />
-                  <small class="text-red-500" v-if="errors.issue_date">{{ errors.issue_date }}</small>
-                </div>
-
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">
                     <span class="text-red-500 mr-1">*</span> Currency
                   </label>
                   <Select 
@@ -373,10 +357,6 @@
               <div class="flex justify-between">
                 <span class="text-gray-600">Type:</span>
                 <span class="font-medium text-gray-900">{{ getRfqTypeLabel(form.rfq_type) }}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-gray-600">Issue Date:</span>
-                <span class="font-medium text-gray-900">{{ formatDate(form.issue_date) }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-600">Currency:</span>

@@ -20,7 +20,7 @@
             :paginator="true"
             :rows="10"
             size="small"
-            stripedRows
+            rowHover
             dataKey="id"
             class="p-datatable-sm text-sm"
           >
@@ -36,7 +36,7 @@
             <Column field="address" header="Address" />
             <Column header="Action" style="width: 110px">
               <template #body="{ data }">
-                <Button label="View" text size="small" severity="warn" @click="viewBranch(data.id)" />
+                <Button icon="pi pi-eye" text size="small"  @click="viewBranch(data.id)" />
               </template>
             </Column>
           </DataTable>

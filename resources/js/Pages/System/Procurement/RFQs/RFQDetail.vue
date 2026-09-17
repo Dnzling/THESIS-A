@@ -37,7 +37,7 @@
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">RFQ Number</span>
-            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+            <div class="w-8 h-8 flex items-center justify-center">
               <i class="pi pi-file text-blue-600 text-sm"></i>
             </div>
           </div>
@@ -256,6 +256,8 @@
                       }}</p>
                     <p class="mt-1 text-xs text-slate-600">Estimated total: <strong class="text-slate-900">{{
                         detail?.currency || 'PHP' }} {{ item.estimated_total }}</strong></p>
+                    <p v-if="item.tax_rate !== null" class="mt-1 text-xs text-slate-500">Tax rate: {{
+                      formatPercentage(item.tax_rate) }}</p>
                     <p v-if="item.submitted_at" class="text-xs text-gray-500 mt-1">Submitted: {{
                       formatDateTime(item.submitted_at) }}</p>
                   </div>
@@ -266,7 +268,7 @@
                 </div>
   
                 <div
-                  class="mt-4 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 sm:grid-cols-3">
+                  class="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
                   <div><span class="text-slate-400">Available quantity</span>
                     <p class="font-medium text-slate-900">{{ formatWholeNumber(item.available_quantity) }} {{
                       item.unit_of_measurement || item.unit || '-' }}</p>
@@ -277,9 +279,44 @@
                   <div><span class="text-slate-400">Quotation valid until</span>
                     <p class="font-medium text-slate-900">{{ formatDate(item.quotation_valid_until) }}</p>
                   </div>
+                  <div><span class="text-slate-400">Shipping specifications</span>
+                    <p class="font-medium text-slate-900">{{ formatQuoteDimensions(item) }}</p>
+                    <p class="mt-0.5 text-slate-500">Weight: {{ formatQuoteWeight(item.weight_kg) }}</p>
+                  </div>
                 </div>
-                <div v-if="item.product_specifications || item.additional_notes || item.attachment_path"
+                <div v-if="item.has_variant" class="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-xs">
+                  <div class="mb-3 flex flex-wrap items-center gap-2">
+                    <p class="font-semibold text-indigo-900">Proposed Supplier Variant</p>
+                    <Tag v-if="item.merchandising_status" :value="formatLabel(item.merchandising_status)" severity="info" class="text-xs" />
+                    <Tag v-if="item.created_variation_id" :value="`Variation #${item.created_variation_id} created`" severity="success" class="text-xs" />
+                  </div>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-slate-600 sm:grid-cols-3 lg:grid-cols-4">
+                    <div><span class="text-slate-400">Variant name</span><p class="font-medium text-slate-900">{{ item.variant_name || '—' }}</p></div>
+                    <div><span class="text-slate-400">Supplier SKU</span><p class="font-medium text-slate-900">{{ item.supplier_sku || '—' }}</p></div>
+                    <div><span class="text-slate-400">Unit</span><p class="font-medium text-slate-900">{{ item.variant_unit_of_measurement || '—' }}</p></div>
+                    <div><span class="text-slate-400">Size</span><p class="font-medium text-slate-900">{{ item.variant_size || '—' }}</p></div>
+                    <div><span class="text-slate-400">Color</span><p class="font-medium text-slate-900">{{ item.variant_color || '—' }}</p></div>
+                    <div><span class="text-slate-400">Material</span><p class="font-medium text-slate-900">{{ item.variant_material || '—' }}</p></div>
+                    <div><span class="text-slate-400">Texture</span><p class="font-medium text-slate-900">{{ item.variant_texture || '—' }}</p></div>
+                    <div><span class="text-slate-400">Finish</span><p class="font-medium text-slate-900">{{ item.variant_finish || '—' }}</p></div>
+                  </div>
+                  <div v-if="item.variant_image_paths.length" class="mt-3 border-t border-indigo-100 pt-3">
+                    <p class="mb-2 text-xs font-medium uppercase tracking-wide text-indigo-700">Variant images</p>
+                    <div class="flex flex-wrap gap-3">
+                      <button v-for="(imagePath, imageIndex) in item.variant_image_paths" :key="`${item.feedback_id}-${imageIndex}`" type="button"
+                        class="group relative overflow-hidden rounded-xl border border-indigo-200 bg-white"
+                        @click="openAttachmentPreview(imagePath)">
+                        <img v-if="isAttachmentImage(imagePath)" :src="getAttachmentUrl(imagePath)" :alt="`${item.variant_name || 'Variant'} image ${imageIndex + 1}`"
+                          class="h-28 w-36 object-cover transition group-hover:scale-105" />
+                        <span v-else class="flex h-28 w-36 items-center justify-center bg-slate-100 text-slate-500"><i class="pi pi-file text-3xl"></i></span>
+                        <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View image</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="item.description || item.product_specifications || item.additional_notes || item.attachment_path"
                   class="mt-3 space-y-2 text-xs">
+                  <p v-if="item.description" class="text-gray-600"><span class="font-medium text-gray-800">Supplier description:</span> {{ item.description }}</p>
                   <p v-if="item.product_specifications" class="text-gray-600"><span
                       class="font-medium text-gray-800">Product specifications:</span> {{ item.product_specifications }}
                   </p>
@@ -326,7 +363,7 @@
                   </button>
   
                 </div>
-                <div v-if="item.status === 'approved' && canManagePurchaseOrders" class="mt-4 flex justify-end">
+                <div v-if="item.status === 'approved' && canManagePurchaseOrders && (hasMultipleApprovedSuppliers || detail?.status !== 'approved')" class="mt-4 flex justify-end">
                   <button @click="createPOFromApprovedItem(item)"
                     class="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-orange-600">
                     <i class="pi pi-shopping-cart"></i>
@@ -365,7 +402,7 @@
           <i class="pi pi-check text-sm"></i>
           <span>{{ processing ? 'Awarding...' : 'Award RFQ' }}</span>
         </button>
-        <button v-if="canManagePurchaseOrders && detail.status === 'approved'" @click="createPOFromRFQ"
+        <button v-if="canManagePurchaseOrders && detail.status === 'approved' && !hasMultipleApprovedSuppliers" @click="createPOFromRFQ"
           class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl text-sm transition-colors flex items-center gap-2 shadow-sm">
           <i class="pi pi-shopping-cart text-sm"></i>
           <span>Create PO</span>
@@ -397,8 +434,19 @@
   
         <div class="space-y-4">
           <p class="text-sm text-gray-600">Provide a reason for rejection. This will be visible to the supplier.</p>
-          <textarea v-model="rejectReason" rows="4" placeholder="Enter rejection reason..."
+          <div>
+            <label class="mb-1.5 block text-xs font-medium text-gray-700">Common reason</label>
+            <select v-model="selectedRejectionReason" @change="applySelectedRejectionReason"
+              class="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
+              <option value="">Select a common reason</option>
+              <option v-for="reason in rejectionReasonOptions" :key="reason" :value="reason">{{ reason }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-medium text-gray-700">Reason to supplier</label>
+            <textarea v-model="rejectReason" rows="4" placeholder="Add or revise the rejection reason..."
             class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"></textarea>
+          </div>
         </div>
   
         <div class="flex justify-end gap-3 mt-6">
@@ -476,12 +524,35 @@ const rfqId = Number(route.params.id)
 const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
 const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurement.purchase_orders.manage'))
 
+// A combined PO can only be created when every approved quote belongs to one supplier.
+// When awards are split between suppliers, each approved RFQ item needs its own PO flow.
+const hasMultipleApprovedSuppliers = computed(() => {
+  const supplierIds = new Set(
+    (detail.value?.supplier_portal_feedbacks || [])
+      .filter((feedback: any) => feedback?.status === 'approved')
+      .map((feedback: any) => feedback?.supplier_portal?.supplier_id || feedback?.supplier_portal_id)
+      .filter(Boolean),
+  )
+
+  return supplierIds.size > 1
+})
+
 const loading = ref(false)
 const processing = ref(false)
 const detail = ref<RFQDetail | null>(null)
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
 const rejectTargetFeedbackId = ref<number | null>(null)
+const selectedRejectionReason = ref('')
+const rejectionReasonOptions = [
+  'Quoted price exceeds the available budget.',
+  'Quoted quantity does not meet the requested quantity.',
+  'Estimated delivery date does not meet the required timeline.',
+  'Product specifications do not meet the RFQ requirements.',
+  'Quotation validity period is not acceptable.',
+  'Supplier documentation or attachment is incomplete.',
+  'A more suitable supplier quotation was selected.',
+]
 const attachmentPreviewVisible = ref(false)
 const attachmentPreviewUrl = ref('')
 const attachmentPreviewObjectUrl = ref('')
@@ -585,8 +656,26 @@ const portalFeedbackGroups = computed(() => {
       estimated_delivery_date: feedback?.estimated_delivery_date || null,
       quotation_valid_until: feedback?.quotation_valid_until || null,
       attachment_path: feedback?.attachment_path || null,
+      has_variant: Boolean(feedback?.has_variant),
+      variant_name: feedback?.variant_name || '',
+      supplier_sku: feedback?.supplier_sku || '',
+      variant_size: feedback?.variant_size || '',
+      variant_color: feedback?.variant_color || '',
+      variant_texture: feedback?.variant_texture || '',
+      variant_finish: feedback?.variant_finish || '',
+      variant_material: feedback?.variant_material || '',
+      variant_unit_of_measurement: feedback?.unit_of_measurement || '',
+      length_cm: feedback?.length_cm ?? null,
+      width_cm: feedback?.width_cm ?? null,
+      height_cm: feedback?.height_cm ?? null,
+      weight_kg: feedback?.weight_kg ?? null,
+      variant_image_paths: Array.isArray(feedback?.variant_image_paths) ? feedback.variant_image_paths.filter(Boolean) : [],
+      merchandising_status: feedback?.merchandising_status || '',
+      created_variation_id: feedback?.created_variation_id || null,
       product_specifications: feedback?.product_specifications || '',
       additional_notes: feedback?.additional_notes || '',
+      description: feedback?.description || '',
+      tax_rate: feedback?.tax_rate ?? null,
       submitted_at: feedback?.submitted_at || null,
       status: feedback?.status || 'pending',
       statusLabel: capitalizeWords(feedback?.status || 'pending'),
@@ -595,9 +684,6 @@ const portalFeedbackGroups = computed(() => {
       negotiations: feedback?.negotiations || [],
     })
 
-    if (feedback?.description) {
-      groups[supplierId].notes.push(feedback.description)
-    }
   })
 
   return Object.values(groups)
@@ -614,6 +700,28 @@ const formatWholeNumber = (value: unknown) => {
   if (value === null || value === undefined || value === '') return '-'
   return Math.round(Number(value)).toLocaleString('en-PH', { maximumFractionDigits: 0 })
 }
+
+const formatQuoteNumber = (value: unknown, maximumFractionDigits = 2) => {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0
+    ? number.toLocaleString('en-PH', { maximumFractionDigits })
+    : '—'
+}
+
+const formatQuoteDimensions = (item: any) => {
+  const dimensions = [item?.length_cm, item?.width_cm, item?.height_cm]
+  if (dimensions.some((value) => !Number.isFinite(Number(value)) || Number(value) <= 0)) return '—'
+  return `${dimensions.map((value) => formatQuoteNumber(value)).join(' × ')} cm`
+}
+
+const formatQuoteWeight = (value: unknown) => {
+  const formatted = formatQuoteNumber(value, 3)
+  return formatted === '—' ? formatted : `${formatted} kg`
+}
+
+const formatPercentage = (value: unknown) => `${formatQuoteNumber(value)}%`
+
+const formatLabel = (value: string) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
 const attachmentIsImage = computed(() => {
   if (attachmentPreviewMimeType.value.startsWith('image/')) return true
@@ -699,12 +807,20 @@ const approveFeedback = async (feedbackId: number) => {
 const openRejectDialog = (feedbackId: number) => {
   rejectTargetFeedbackId.value = feedbackId
   rejectReason.value = ''
+  selectedRejectionReason.value = ''
   rejectDialogVisible.value = true
+}
+
+const applySelectedRejectionReason = () => {
+  if (selectedRejectionReason.value) {
+    rejectReason.value = selectedRejectionReason.value
+  }
 }
 
 const closeRejectDialog = () => {
   rejectDialogVisible.value = false
   rejectReason.value = ''
+  selectedRejectionReason.value = ''
   rejectTargetFeedbackId.value = null
 }
 

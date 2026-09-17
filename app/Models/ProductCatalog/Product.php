@@ -152,6 +152,17 @@ class Product extends Model
             ->withTimestamps();
     }
 
+    /**
+     * Alias used when the legacy products.tags attribute would shadow the
+     * many-to-many tags relationship during serialization.
+     */
+    public function assignedTags()
+    {
+        return $this->belongsToMany(Tag::class, 'product_tags')
+            ->withPivot('store_id')
+            ->withTimestamps();
+    }
+
     public function relatedProducts()
     {
         return $this->hasMany(RelatedProduct::class, 'product_id');
@@ -229,7 +240,10 @@ class Product extends Model
             return null;
         }
 
-        if ($user instanceof User && $user->hasPermissionTo('finance.products.view.store', $this->store_id)) {
+        if ($user instanceof User && (
+            $user->hasPermissionTo('finance.products.view.store', $this->store_id)
+            || $user->hasPermissionTo('warehouse.stock.view', $this->store_id)
+        )) {
             return $value;
         }
 

@@ -1565,10 +1565,6 @@ function goShopping() {
   router.push({ name: 'ecommerce.products' })
 }
 
-function goToVerificationProfile() {
-  router.push({ name: 'ecommerce.profile', query: { section: 'verification' } })
-}
-
 onMounted(async () => {
   let paymongoOrderId = Number(route.query?.paymongo_order_id || 0)
   let paymongoResultStatus = ''

@@ -35,6 +35,11 @@ export const useRouter = () => {
         push: (to: any) => router.visit(resolveToUrl(to)),
         replace: (to: any) => router.visit(resolveToUrl(to), { replace: true }),
         back: () => window.history.back(),
+        resolve: (to: any) => {
+            const href = resolveToUrl(to);
+
+            return { href, fullPath: href };
+        },
     };
 };
 

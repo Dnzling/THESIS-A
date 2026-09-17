@@ -140,7 +140,7 @@
           <Column header="Actions" style="width: 160px">
             <template #body="{ data }">
               <div class="flex gap-2 items-center justify-start">
-                <Button icon="pi pi-eye" outlined rounded
+                <Button icon="pi pi-eye" text rounded
                   @click="router.push({ name: 'procurement.purchase-requisitions.detail', params: { id: data.id } })"
                   v-tooltip="'View Details'" />
               </div>

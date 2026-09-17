@@ -27,6 +27,20 @@ $inertia = function (string $uri, string $page, ?string $name = null, ?string $t
 
 Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($inertia) {
 
+    // Warehouse Operations
+    Route::redirect('/warehouse-operations', '/warehouse-operations/dashboard')->name('warehouse');
+    $inertia('/warehouse-operations/dashboard', 'System/WarehouseOperations/Dashboard', 'warehouse.dashboard', 'Warehouse Dashboard');
+    $inertia('/warehouse-operations/warehouses', 'System/WarehouseOperations/Warehouses/Index', 'warehouse.warehouses', 'Warehouses');
+    $inertia('/warehouse-operations/warehouses/{id}', 'System/WarehouseOperations/Warehouses/View', 'warehouse.warehouses.view', 'Warehouse Details');
+    $inertia('/warehouse-operations/stock', 'System/WarehouseOperations/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
+    $inertia('/warehouse-operations/stock/{id}', 'System/WarehouseOperations/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
+    $inertia('/warehouse-operations/stock/{id}/edit', 'System/WarehouseOperations/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
+    $inertia('/warehouse-operations/purchase-requisitions/create', 'System/WarehouseOperations/PurchaseRequisitions/Create', 'warehouse.purchase-requisitions.create', 'Create Purchase Requisition');
+    $inertia('/warehouse-operations/transfer-requests', 'System/WarehouseOperations/Transfers/RequestsIndex', 'warehouse.transfer-requests', 'Transfer Requests');
+    $inertia('/warehouse-operations/transfer-requests/{id}', 'System/WarehouseOperations/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
+    $inertia('/warehouse-operations/receiving', 'System/WarehouseOperations/Receiving/Index', 'warehouse.receiving', 'Receiving');
+    $inertia('/warehouse-operations/transfer-history', 'System/WarehouseOperations/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
+
 
     // Admin (Super Admin only)
     Route::middleware('role:super_admin')->group(function () use ($inertia) {
@@ -51,7 +65,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
         $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
         $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
-
     });
 
     // System (Store Admin)
@@ -102,7 +115,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/store/role-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
     $inertia('/employee-profile', 'Profile/Edit', 'employee.profile', 'Employee Profile');
     // HR
-    $inertia('/hr/index', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
+    $inertia('/hr/dashboard', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');
     $inertia('/hr/employees/view/{id?}', 'System/HR/EmployeeView', 'hr.employees.view', 'View Employee');
     Route::get('/hr/profile', fn() => redirect('/employee-profile'));
@@ -301,25 +314,28 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // Sales
     Route::redirect('/sales', '/sales/dashboard')->name('sales');
     $inertia('/sales/dashboard', 'System/Sales/SalesDashboard', 'sales.dashboard', 'Sales Dashboard');
-    $inertia('/sales/crm', 'System/Sales/SalesCRM', 'sales.crm', 'CRM Leads');
-    $inertia('/sales/chats', 'System/Sales/SalesChats', 'sales.chats', 'Customer Chats');
-    $inertia('/sales/orders', 'System/Sales/SalesOrdersUnified', 'sales.orders', 'Orders');
-    $inertia('/sales/orders-unified', 'System/Sales/SalesOrdersUnified', 'sales.orders-unified', 'Unified Orders');
+    $inertia('/sales/orders', 'System/Sales/SalesOrdersIndex', 'sales.orders', 'Orders');
     $inertia('/sales/pos/overview', 'System/Sales/SalesPOSOverview', 'sales.pos.overview', 'POS Overview');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
     $inertia('/sales/deliveries', 'System/Sales/SalesOrderDeliveriesIndex', 'sales.deliveries', 'Sales Deliveries');
     $inertia('/sales/deliveries/{id}', 'System/Sales/SalesOrderDeliveryDetail', 'sales.deliveries.detail', 'Delivery Detail');
-    $inertia('/sales/ecommerce-orders', 'System/Inventory/EcommerceOrders/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
-    $inertia('/sales/ecommerce-orders/{id}', 'System/Inventory/EcommerceOrders/EcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
-    $inertia('/sales/reviews', 'System/Sales/SalesReviews', 'sales.reviews', 'Reviews');
-    $inertia('/sales/reviews/{id}', 'System/Sales/SalesReviewDetail', 'sales.reviews.detail', 'Review Detail');
-    $inertia('/sales/vouchers', 'System/Sales/SalesVouchers', 'sales.vouchers', 'Vouchers');
-    $inertia('/sales/vouchers/create', 'System/Sales/SalesVoucherCreate', 'sales.vouchers.create', 'Create Voucher');
-    $inertia('/sales/vouchers/{id}', 'System/Sales/SalesVoucherShow', 'sales.vouchers.detail', 'Voucher Details');
+    $inertia('/sales/ecommerce-orders', 'System/Ecommerce/EcommerceOrders/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
+    $inertia('/sales/ecommerce-orders/{id}', 'System/Ecommerce/EcommerceOrders/EcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
     $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
-    $inertia('/sales/returns', 'System/Sales/SalesReturnsIndex', 'sales.returns', 'Returns');
-    $inertia('/sales/returns/{id}', 'System/Sales/SalesReturnDetail', 'sales.returns.detail', 'Return Detail');
+
+    // CRM
+    Route::redirect('/crm', '/crm/dashboard')->name('CRM');
+    $inertia('/crm/dashboard', 'System/CRM/Dashboard', 'crm.dashboard', 'CRM Dashboard');
+    $inertia('/crm/leads', 'System/CRM/Dashboard', 'crm.leads', 'CRM Leads');
+    $inertia('/crm/chats', 'System/CRM/Chats/Chats', 'crm.chats', 'Customer Chats');
+    $inertia('/crm/reviews', 'System/CRM/Review/ReviewIndex', 'crm.reviews', 'Reviews');
+    $inertia('/crm/reviews/{id}', 'System/CRM/Review/ReviewView', 'crm.reviews.view', 'Review Detail');
+    $inertia('/crm/vouchers', 'System/CRM/Vouchers/VoucherIndex', 'crm.vouchers', 'Vouchers');
+    $inertia('/crm/vouchers/create', 'System/CRM/Vouchers/VoucherCreate', 'crm.vouchers.create', 'Create Voucher');
+    $inertia('/crm/vouchers/{id}', 'System/CRM/Vouchers/VoucherView', 'crm.vouchers.view', 'Voucher Details');
+    $inertia('/crm/returns', 'System/CRM/Return/ReturnIndex', 'crm.returns', 'Returns');
+    $inertia('/crm/returns/{id}', 'System/CRM/Return/ReturnDetail', 'crm.returns.view', 'Return Detail');
 
     // Merchandising
     Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');

@@ -9,6 +9,9 @@ use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class SupplierRFQFeedbackController extends Controller
@@ -32,8 +35,13 @@ class SupplierRFQFeedbackController extends Controller
             }
 
             // Get all active RFQs (exclude drafts/cancelled)
+            $relations = ['items.product', 'store'];
+            if (Schema::hasTable('rfq_attachments')) {
+                $relations[] = 'attachments';
+            }
+
             $query = RequestForQuotation::whereNotIn('status', ['draft', 'cancelled'])
-                ->with(['items.product', 'attachments', 'store'])
+                ->with($relations)
                 ->orderBy('created_at', 'desc');
 
             // Filter by search
@@ -109,6 +117,11 @@ class SupplierRFQFeedbackController extends Controller
                 'data' => $rfqs,
             ]);
         } catch (\Exception $e) {
+            Log::error('Supplier RFQ index failed.', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching RFQs: ' . $e->getMessage(),

@@ -189,8 +189,10 @@
       <!-- Delivery Logs -->
   
   
+      <!-- Order Items and Cost Summary -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <!-- PO Items Table -->
-      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white lg:col-span-2">
         <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div class="flex items-center gap-2">
             <i class="pi pi-shopping-cart text-gray-500"></i>
@@ -238,40 +240,22 @@
           </table>
         </div>
       </div>
-  
-      <!-- Financial Summary -->
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Subtotal</p>
-          <p class="text-xl font-semibold text-gray-900 mt-1">{{ formatCurrency(parseFloat(detail?.subtotal || 0)) }}</p>
-        </div>
-  
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Tax ({{ formatDecimal(detail?.contract_tax_rate) }}%)</p>
-          <p class="text-xl font-semibold text-gray-900 mt-1">{{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}
-          </p>
-        </div>
-  
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Contract Discount ({{ formatDecimal(detail?.contract_discount_percentage) }}%)</p>
-          <p class="text-xl font-semibold text-gray-900 mt-1">{{ formatCurrency(parseFloat(detail?.discount_amount || 0))
-            }}</p>
-          <!-- <div v-if="parseFloat(detail?.shipping_cost || 0) > 0 || parseFloat(detail?.discount_amount || 0) > 0"
-                class="text-xs text-gray-500 mt-1">
-                <span v-if="parseFloat(detail?.discount_amount || 0) > 0" class="ml-2">Discount: {{
-                  formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</span>
-              </div> -->
-        </div>
 
-        <div class="bg-white p-4 rounded-lg border border-gray-200">
-          <p class="text-xs text-gray-500 font-medium uppercase tracking-wider">Shipping Fee</p>
-          <p class="text-xl font-semibold text-gray-900 mt-1">{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}</p>
+      <aside class="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
+        <div class="mb-5 flex items-center gap-2">
+          <i class="pi pi-calculator text-slate-500"></i>
+          <h3 class="font-semibold text-slate-900">Order Cost Summary</h3>
         </div>
-  
-        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <p class="text-xs text-blue-600 font-medium uppercase tracking-wider">Total Amount</p>
-          <p class="text-2xl font-bold text-blue-700 mt-1">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</p>
+        <div class="space-y-3 text-sm">
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Subtotal</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.subtotal || 0)) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Contract Discount ({{ formatDecimal(detail?.contract_discount_percentage) }}%)</span><span class="font-medium text-slate-900">- {{ formatCurrency(parseFloat(detail?.discount_amount || 0)) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Taxable Amount</span><span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, parseFloat(detail?.subtotal || 0) - parseFloat(detail?.discount_amount || 0))) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Tax ({{ formatDecimal(detail?.contract_tax_rate) }}%)</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.tax_amount || 0)) }}</span></div>
+          <div class="flex items-center justify-between gap-4 text-slate-600"><span>Shipping Fee</span><span class="font-medium text-slate-900">{{ formatCurrency(parseFloat(detail?.shipping_cost || 0)) }}</span></div>
         </div>
+        <div class="my-5 border-t border-slate-200"></div>
+        <div class="flex items-center justify-between gap-4 rounded-xl bg-slate-900 px-4 py-3 text-white"><span class="font-semibold">Total Amount</span><span class="text-xl font-bold">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</span></div>
+      </aside>
       </div>
   
       <!-- Notes -->
@@ -405,6 +389,7 @@ import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import { fetchMapboxRoadRoute, mapboxAttribution, mapboxTileUrl, reverseGeocodeMapbox } from '@/utils/mapbox'
 
 const route = useRoute()
 const router = useRouter()
@@ -656,10 +641,7 @@ const logAddress = (log: any) => log?.location_address || resolvedLogAddresses.v
 const currentPickupAddress = computed(() => shipmentInfo.value?.current_address || resolvedShipmentAddress.value || deliveryLogs.value.map(logAddress).find(Boolean) || '')
 
 const reverseGeocode = async (latitude: number, longitude: number) => {
-  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=en`)
-  if (!response.ok) return ''
-  const data = await response.json()
-  return String(data?.display_name || '')
+  return reverseGeocodeMapbox(latitude, longitude)
 }
 
 const resolveRecordedAddresses = async () => {
@@ -709,14 +691,7 @@ const loadDeliveryLogs = async () => {
   }
 }
 
-const fetchRoadRoute = async (start: [number, number], end: [number, number]): Promise<[number, number][]> => {
-  const coordinates = `${start[1]},${start[0]};${end[1]},${end[0]}`
-  const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`)
-  if (!response.ok) throw new Error('Road route unavailable')
-  const data = await response.json()
-  return (data?.routes?.[0]?.geometry?.coordinates || [])
-    .map((point: number[]) => [Number(point[1]), Number(point[0])] as [number, number])
-}
+const fetchRoadRoute = fetchMapboxRoadRoute
 
 const renderPickupMap = async () => {
   if (!pickupMapElement.value || !shipmentInfo.value || shipmentStatus.value !== 'in_transit') return
@@ -741,7 +716,7 @@ const renderPickupMap = async () => {
     : null
   if (!pickupMap) pickupMap = L.map(pickupMapElement.value).setView(destination || [14.5995, 120.9842], destination ? 13 : 10)
   if (!pickupTileLayerAdded) {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(pickupMap)
+    L.tileLayer(mapboxTileUrl(), { attribution: mapboxAttribution, tileSize: 512, zoomOffset: -1 }).addTo(pickupMap)
     pickupTileLayerAdded = true
   }
   const points: [number, number][] = deliveryLogs.value.slice().reverse()

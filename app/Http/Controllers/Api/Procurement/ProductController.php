@@ -25,6 +25,9 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            if ($denied = $this->productReadAccessResponse()) {
+                return $denied;
+            }
             $storeId = auth()->user()->store_id;
             // No branch filter by default: procurement lists every product
             // recorded in every branch of the current store.
@@ -202,6 +205,9 @@ class ProductController extends Controller
     public function show(int $id, Request $request): JsonResponse
     {
         try {
+            if ($denied = $this->productReadAccessResponse()) {
+                return $denied;
+            }
             $storeId = auth()->user()->store_id;
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
 
@@ -275,6 +281,29 @@ class ProductController extends Controller
                 'message' => 'Failed to retrieve product'
             ], 500);
         }
+    }
+
+    /**
+     * Product data is shared by procurement, inventory, and merchandising.
+     * Keep the API protected while allowing users with a read permission in
+     * any of those owning modules to consume the shared catalog.
+     */
+    private function productReadAccessResponse(): ?JsonResponse
+    {
+        $user = auth()->user();
+        $storeId = $user?->store_id;
+        $allowed = collect([
+            'procurement.products.view',
+            'inventory.products.view',
+            'merchandising.products.view',
+        ])->contains(fn (string $permission) => $user?->hasPermissionTo($permission, $storeId));
+
+        return $allowed
+            ? null
+            : response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to view procurement products.',
+            ], 403);
     }
 
     /**

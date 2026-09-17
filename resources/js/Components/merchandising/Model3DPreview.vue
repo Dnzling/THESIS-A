@@ -171,6 +171,14 @@ const loadModel = async () => {
       model = obj
     } else {
       const buffer = await response.arrayBuffer()
+      const signature = new TextDecoder('ascii').decode(buffer.slice(0, 4))
+      const firstBytes = new Uint8Array(buffer.slice(0, 8))
+      const isPng = firstBytes[0] === 0x89 && firstBytes[1] === 0x50 && firstBytes[2] === 0x4e && firstBytes[3] === 0x47
+      if (isPng || (format === 'glb' && signature !== 'glTF')) {
+        throw new Error(isPng
+          ? 'The 3D model URL returned a cached image. Refresh the product and try again.'
+          : 'The selected file is not a valid GLB model.')
+      }
       await new Promise<void>((resolve, reject) => {
         new GLTFLoader().parse(
           buffer,

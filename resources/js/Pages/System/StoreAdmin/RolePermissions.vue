@@ -29,18 +29,19 @@
           <DataTable
             v-else
             :value="roles"
-            class="p-datatable-sm"
+            class="p-datatable-sm "
             selectionMode="single"
             dataKey="id"
             v-model:selection="selectedRole"
             :loading="loadingRoles"
+            
           >
             <template #empty>
               <div class="py-6 text-center text-sm text-gray-500">No roles found.</div>
             </template>
             <Column field="display_name" header="Role">
               <template #body="{ data }">
-                <div class="text-sm">
+                <div class="text-sm ">
                   <div class="font-semibold text-gray-900">{{ data.display_name || data.name }}</div>
                 </div>
               </template>
@@ -282,13 +283,9 @@ const filteredPermissions = computed(() => {
 })
 
 const allowedPermissionIds = computed(() => {
-  if (enabledModules.value.length === 0) return new Set<number>()
-  const enabledSet = new Set(enabledModules.value)
-  return new Set(
-    permissions.value
-      .filter((p: any) => enabledSet.has(p.module))
-      .map((p: any) => p.id)
-  )
+  // The API already returns only permissions allowed by the store's enabled modules.
+  // Using that response avoids dropping newly enabled module permissions from stale UI state.
+  return new Set(permissions.value.map((permission: any) => Number(permission.id)))
 })
 
 const groupedPermissions = computed(() => {
@@ -448,8 +445,22 @@ const savePermissions = async () => {
       })
     }
 
-    await axios.post(`/api/store/roles/${selectedRole.value.id}/permissions`, {
+    const response = await axios.post(`/api/store/roles/${selectedRole.value.id}/permissions`, {
       permissions: selectedRolePermissions.value
+    })
+    selectedRolePermissions.value = (response.data?.permissions || []).map((permission: any) => Number(permission.id))
+    toast.add({
+      severity: 'success',
+      summary: 'Permissions Saved',
+      detail: response.data?.message || 'Role permissions were updated successfully.',
+      life: 3000
+    })
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to Save',
+      detail: error?.response?.data?.message || 'The role permissions could not be saved.',
+      life: 4500
     })
   } finally {
     savingPermissions.value = false

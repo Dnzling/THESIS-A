@@ -13,7 +13,11 @@
         </div>
       </div>
       <div>
-        <div class="text-sm font-semibold text-white">Support</div>
+        <div class="text-lg font-bold text-white">Contact Us</div>
+        <div class="mt-3 flex flex-col gap-2 text-sm">
+          <div>Phone: <a href="tel:+639123456789" class="text-white transition hover:text-orange-100">+63 912 345 6789</a></div>
+          <div>Email: <a href="mailto:info@furnisync.com" class="text-white transition hover:text-orange-100">info@furnisync.com</a></div>
+        </div>
       </div>
     </div>
     <div class="mx-auto mt-8 max-w-7xl border-t border-white/25 pt-5 text-center text-xs text-orange-50">2026 FurniSync. All rights reserved.</div>

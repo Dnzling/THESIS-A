@@ -398,7 +398,7 @@ class DeliveryTripController extends Controller
             return null;
         }
 
-        return User::query()->with('employee:id,user_id,phone')->find($driverUserId);
+        return User::query()->with('employee:id,user_id')->find($driverUserId);
     }
 
     private function resolveDriverContact(?User $driver): ?string
@@ -407,7 +407,7 @@ class DeliveryTripController extends Controller
             return null;
         }
 
-        return $driver->employee?->phone ?: $driver->phone_number;
+        return $driver->phone_number;
     }
 
     private function nextTrackingNumber(): string
