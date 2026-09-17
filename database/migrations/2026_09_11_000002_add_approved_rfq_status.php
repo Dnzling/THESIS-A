@@ -9,7 +9,7 @@ return new class extends Migration
     {
         DB::statement(
             "ALTER TABLE request_for_quotations
-             MODIFY status ENUM('draft','sent','receiving','partially_approved','approved','awarded','completed','rejected','cancelled')
+             MODIFY status ENUM('draft','pending','sent','receiving','partially_approved','approved','awarded','completed','rejected','cancelled')
              NOT NULL DEFAULT 'draft'"
         );
     }
@@ -18,7 +18,7 @@ return new class extends Migration
     {
         DB::statement(
             "ALTER TABLE request_for_quotations
-             MODIFY status ENUM('draft','sent','receiving','partially_approved','awarded','completed','rejected','cancelled')
+             MODIFY status ENUM('draft','pending','sent','receiving','partially_approved','awarded','completed','rejected','cancelled')
              NOT NULL DEFAULT 'draft'"
         );
     }
