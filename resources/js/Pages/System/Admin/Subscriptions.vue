@@ -236,6 +236,11 @@
             <InputNumber v-model="planForm.yearly_price" mode="currency" currency="PHP" locale="en-PH" fluid />
           </div>
           <div class="md:col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">Sales Commission Rate (optional)</label>
+            <InputNumber v-model="planForm.commission_rate" suffix="%" :min="0" :max="100" :minFractionDigits="0" :maxFractionDigits="2" fluid />
+            <p class="mt-1 text-xs text-slate-500">Leave empty or set to 0 when this plan does not charge a sales commission.</p>
+          </div>
+          <div class="md:col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">Description</label>
             <InputText v-model="planForm.description" fluid />
           </div>
@@ -384,6 +389,7 @@ const planForm = reactive({
   description: '',
   monthly_price: 0,
   yearly_price: 0,
+  commission_rate: null as number | null,
   features: '',
   is_featured: false,
   is_active: true,
@@ -592,6 +598,7 @@ const openPlanDialog = async (plan: any) => {
   planForm.description = String(plan.description || '')
   planForm.monthly_price = Number(plan.monthly_price || 0)
   planForm.yearly_price = Number(plan.yearly_price || 0)
+  planForm.commission_rate = Number(plan.commission_rate || 0) || null
   planForm.features = Array.isArray(plan.features) ? plan.features.join('\n') : ''
   planForm.is_featured = !!plan.is_featured
   planForm.is_active = plan.is_active !== false
@@ -617,6 +624,7 @@ const openCreatePlanDialog = () => {
   planForm.description = ''
   planForm.monthly_price = 0
   planForm.yearly_price = 0
+  planForm.commission_rate = null
   planForm.features = ''
   planForm.is_featured = false
   planForm.is_active = true
@@ -644,6 +652,7 @@ const savePlan = async () => {
           description: planForm.description || null,
           monthly_price: planForm.monthly_price,
           yearly_price: planForm.yearly_price,
+          commission_rate: planForm.commission_rate || null,
           features,
           is_featured: planForm.is_featured,
           is_active: planForm.is_active,
