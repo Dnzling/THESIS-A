@@ -31,7 +31,7 @@
             </label>
             <div class="flex justify-center space-x-2 mb-6">
               <input v-for="(_, index) in otpDigits" :key="index" ref="otpInputs" v-model="otpDigits[index]"
-                type="text" maxlength="1" @input="handleOtpInput(index, $event)"
+                type="number" maxlength="1" @input="handleOtpInput(index, $event)"
                 @keydown="handleOtpKeydown(index, $event)" @paste="handlePaste"
                 class="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition"
                 :class="{ 'border-red-300': errorMessage }" />

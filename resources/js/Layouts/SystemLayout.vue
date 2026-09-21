@@ -110,7 +110,7 @@
           <Button icon="pi pi-bell" severity="secondary" text rounded
             :badge="unreadCount > 0 ? unreadCount.toString() : undefined" badgeSeverity="danger"
             @click="toggleNotifications" />
-          <Popover ref="notificationPanel" class="w-[380px] p-0 rounded-2xl shadow-xl border border-gray-100">
+          <Popover ref="notificationPanel" class="w-[min(380px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0 rounded-2xl shadow-xl border border-gray-100">
             <div class="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div class="font-semibold text-gray-900">Notifications</div>
               <Button label="Mark all as read" size="small" text class="text-xs"
@@ -150,7 +150,7 @@
               </div>
   
               <button v-for="notif in filteredNotifications" :key="notif.id"
-                class="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-orange-50/50 transition"
+                class="w-full min-w-0 text-left px-4 py-3 flex items-start gap-3 hover:bg-orange-50/50 transition"
                 @click="openNotification(notif)">
                 <div class="relative">
                   <div
@@ -159,12 +159,12 @@
                   </div>
                   <span v-if="!notif.is_read" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
                 </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between gap-2">
-                    <p class="text-sm font-semibold text-gray-900 truncate">{{ notif.title }}</p>
-                    <span class="text-xs text-gray-400 whitespace-nowrap">{{ formatTimeAgo(notif.created_at) }}</span>
+                <div class="flex-1 min-w-0 overflow-hidden">
+                  <div class="flex items-start justify-between gap-2">
+                    <p class="min-w-0 flex-1 whitespace-normal break-words text-sm font-semibold leading-5 text-gray-900">{{ notif.title }}</p>
+                    <span class="shrink-0 whitespace-nowrap pt-0.5 text-xs text-gray-400">{{ formatTimeAgo(notif.created_at) }}</span>
                   </div>
-                  <p class="text-xs text-gray-600 truncate">{{ notif.message || 'Tap to view' }}</p>
+                  <p class="mt-1 whitespace-normal break-words text-xs leading-relaxed text-gray-600">{{ notif.message || 'Tap to view' }}</p>
                 </div>
               </button>
             </div>
@@ -733,7 +733,9 @@ const markAllNotificationsRead = async () => {
   if (!isAuthenticated.value) return
   if (notificationsLoading.value) return
   try {
-    await axiosClient.put('/api/notifications/mark-all-read')
+    await axiosClient.put('/api/notifications/mark-all-read', {}, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     notifications.value = notifications.value.map((n: any) => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
     unreadCount.value = 0
   } catch (error) {
@@ -745,7 +747,9 @@ const openNotification = async (notif: any) => {
   if (!isAuthenticated.value) return
   if (!notif.is_read) {
     try {
-      await axiosClient.put(`/api/notifications/${notif.id}/read`)
+      await axiosClient.put(`/api/notifications/${notif.id}/read`, {}, {
+        headers: { 'X-Suppress-Success-Dialog': '1' },
+      })
       notif.is_read = true
       unreadCount.value = Math.max(0, unreadCount.value - 1)
     } catch (error) {

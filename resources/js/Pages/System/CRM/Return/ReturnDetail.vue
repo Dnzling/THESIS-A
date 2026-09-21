@@ -507,38 +507,6 @@
       </template>
     </Dialog>
   
-    <Dialog v-model:visible="refundDialogVisible" header="Create Refund (Finance)" modal class="w-full max-w-xl">
-      <div class="space-y-3">
-        <p class="text-sm text-gray-600">This will create a finance refund record. Optionally mark as approved to set
-          return as refunded.</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-sm text-gray-600">Amount</label>
-            <InputNumber v-model="refundForm.amount" :min="0" mode="currency" currency="PHP" locale="en-PH"
-              class="w-full" />
-          </div>
-          <div class="flex items-end">
-            <div class="flex items-center gap-2">
-              <InputSwitch v-model="refundForm.mark_as_approved" />
-              <span class="text-sm text-gray-700">Mark as approved</span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-gray-600">Reason</label>
-          <Textarea v-model="refundForm.reason" rows="2" class="w-full" autoResize />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-gray-600">Notes</label>
-          <Textarea v-model="refundForm.notes" rows="2" class="w-full" autoResize />
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" outlined size="small" @click="refundDialogVisible = false" />
-        <Button icon="pi pi-check" label="Create Refund" size="small" :loading="refunding" @click="confirmRefund" />
-      </template>
-    </Dialog>
-  
     <Dialog v-model:visible="notesDialogVisible" header="Review Notes" modal class="w-full max-w-xl">
       <div class="space-y-3">
         <p class="text-sm text-gray-600">
@@ -918,7 +886,7 @@ watch(
 )
 
 const notesDialogVisible = ref(false)
-const pendingStatus = ref<'approved' | 'rejected' | 'received' | 'refunded'>('approved')
+const pendingStatus = ref<'approved' | 'rejected'>('approved')
 const pendingReviewNotes = ref('')
 const pendingReturnType = ref<'refund' | 'replacement' | null>(null)
 const returnTypeOptions = [
@@ -985,47 +953,6 @@ const postReceive = async () => {
   }
 }
 
-const refundDialogVisible = ref(false)
-const refunding = ref(false)
-const refundForm = reactive({
-  amount: 0,
-  reason: '',
-  notes: '',
-  mark_as_approved: true,
-})
-
-const confirmRefund = () => {
-  confirm.require({
-    header: 'Create refund record?',
-    message: refundForm.mark_as_approved ? 'This will create an approved refund and mark the return as refunded.' : 'This will create a pending refund record.',
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: 'Cancel', outlined: true, size: 'small' },
-    acceptProps: { label: 'Confirm', size: 'small' },
-    accept: async () => {
-      await postRefund()
-    },
-  })
-}
-
-const postRefund = async () => {
-  refunding.value = true
-  try {
-    const res = await crmService.createReturnRefund(id.value, {
-      amount: Number(refundForm.amount || 0),
-      reason: refundForm.reason || undefined,
-      notes: refundForm.notes || undefined,
-      mark_as_approved: !!refundForm.mark_as_approved,
-    })
-    returnRequest.value = res?.data?.return || returnRequest.value
-    toast.add({ severity: 'success', summary: 'Refund', detail: res?.message || 'Refund record created.', life: 2500 })
-    refundDialogVisible.value = false
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Failed to create refund.', life: 3000 })
-  } finally {
-    refunding.value = false
-  }
-}
-
 watch(
   () => receiveDialogVisible.value,
   (visible) => {
@@ -1033,19 +960,6 @@ watch(
     receiveForm.received_quantity = Number(returnRequest.value?.requested_quantity ?? 1)
     receiveForm.condition = 'good'
     receiveForm.notes = ''
-  },
-)
-
-watch(
-  () => refundDialogVisible.value,
-  (visible) => {
-    if (!visible) return
-    const unitPrice = Number(returnRequest.value?.order_item?.unit_price || 0)
-    const qty = Number(returnRequest.value?.requested_quantity ?? 1)
-    refundForm.amount = unitPrice * qty
-    refundForm.reason = `Refund for return #${id.value}`
-    refundForm.notes = ''
-    refundForm.mark_as_approved = true
   },
 )
 
@@ -1077,7 +991,7 @@ const closeNotesDialog = () => {
   notesDialogVisible.value = false
 }
 
-const confirmUpdate = (nextStatus: 'approved' | 'rejected' | 'received' | 'refunded') => {
+const confirmUpdate = (nextStatus: 'approved' | 'rejected') => {
   if (nextStatus === 'approved' && !pendingReturnType.value) {
     toast.add({ severity: 'warn', summary: 'Required', detail: 'Select Refund or Replacement.', life: 2500 })
     return
@@ -1094,14 +1008,10 @@ const confirmUpdate = (nextStatus: 'approved' | 'rejected' | 'received' | 'refun
   const labels: Record<string, string> = {
     approved: 'Approve this return?',
     rejected: 'Reject this return?',
-    received: 'Mark as received?',
-    refunded: 'Mark as refunded?',
   }
   const messages: Record<string, string> = {
     approved: 'This will set the return request to Approved.',
     rejected: 'This will set the return request to Rejected.',
-    received: 'This will set the return request to Received.',
-    refunded: 'This will set the return request to Refunded.',
   }
 
   confirm.require({
@@ -1120,7 +1030,7 @@ const confirmUpdate = (nextStatus: 'approved' | 'rejected' | 'received' | 'refun
   })
 }
 
-const updateStatus = async (nextStatus: 'approved' | 'rejected' | 'received' | 'refunded') => {
+const updateStatus = async (nextStatus: 'approved' | 'rejected') => {
   if (!id.value) return
   statusUpdating.value = true
   try {

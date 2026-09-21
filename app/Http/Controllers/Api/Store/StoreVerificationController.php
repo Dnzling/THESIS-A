@@ -373,7 +373,13 @@ class StoreVerificationController extends Controller
                 $storeOwner = User::where('email', $store->email)->first();
 
                 if ($storeOwner) {
-                    $storeAdminRoleId = (int) (\App\Models\Core\Role::query()->where('name', 'store_admin')->value('id') ?? 2);
+                    $storeAdminRoleId = (int) (\App\Models\Core\Role::query()
+                        ->where('name', 'store_admin')
+                        ->whereNull('store_id')
+                        ->value('id') ?? 0);
+                    if ($storeAdminRoleId <= 0) {
+                        throw new \RuntimeException('The global store_admin role is not configured.');
+                    }
                     $defaultBranchId = (int) (\App\Models\Store\Branch::query()
                         ->where('store_id', (int) $store->id)
                         ->orderByDesc('is_main_branch')

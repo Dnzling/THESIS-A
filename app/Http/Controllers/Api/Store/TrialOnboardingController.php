@@ -47,7 +47,7 @@ class TrialOnboardingController extends Controller
 
         $profile = null;
 
-        DB::transaction(function () use ($request, $validated, $employeeRange, $fixedModules, &$profile): void {
+        DB::transaction(function () use ($request, $validated, $employeeRange, $fixedModules, $selectedPlan, $setupMode, &$profile): void {
             $profile = TrialOnboardingProfile::updateOrCreate(
                 ['user_id' => $request->user()->id],
                 [
@@ -62,6 +62,14 @@ class TrialOnboardingController extends Controller
             );
 
             $user = $request->user();
+            $storeAdminRoleId = (int) (Role::query()
+                ->where('name', 'store_admin')
+                ->whereNull('store_id')
+                ->value('id') ?? 0);
+
+            if ($storeAdminRoleId <= 0) {
+                throw new \RuntimeException('The global store_admin role is not configured.');
+            }
 
             if (!$user->store_id) {
                 $storeCode = 'TRIAL-' . str_pad((string) $user->id, 6, '0', STR_PAD_LEFT);
@@ -104,13 +112,10 @@ class TrialOnboardingController extends Controller
                 $user->update([
                     'store_id' => $store->id,
                     'branch_id' => $branch->id,
+                    'role_id' => $storeAdminRoleId,
                 ]);
 
-                $storeAdminRoleId = (int) ($user->role_id ?: Role::query()
-                    ->where('name', 'store_admin')
-                    ->value('id') ?? 2);
-
-                Employee::query()->firstOrCreate(
+                Employee::query()->updateOrCreate(
                     ['user_id' => $user->id],
                     [
                         'store_id' => $store->id,
@@ -135,12 +140,10 @@ class TrialOnboardingController extends Controller
                     ->orderByDesc('is_main_branch')
                     ->orderBy('id')
                     ->first();
-                $storeAdminRoleId = (int) ($user->role_id ?: Role::query()
-                    ->where('name', 'store_admin')
-                    ->value('id') ?? 2);
+                $user->update(['role_id' => $storeAdminRoleId]);
 
                 if ($existingBranch) {
-                    Employee::query()->firstOrCreate(
+                    Employee::query()->updateOrCreate(
                         ['user_id' => $user->id],
                         [
                             'store_id' => $store->id,

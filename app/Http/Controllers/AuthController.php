@@ -144,23 +144,44 @@ class AuthController extends Controller
             $validated = $request->validate([
                 'fname' => 'required|string|max:255',
                 'lname' => 'required|string|max:255',
-                'email' => 'required|email|unique:users',
+                'email' => 'required|email',
                 'password' => self::STRONG_PASSWORD_RULE,
                 'role_id' => 'nullable|integer|exists:roles,id',
+                'account_type' => 'nullable|string|in:store_admin,customer',
                 'birthday' => 'nullable|date|before_or_equal:today',
                 'store_name' => 'nullable|string|max:255',
                 'store_type' => 'nullable|string|max:100',
                 'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
-            $targetRoleId = (int) ($validated['role_id'] ?? 2);
-            $isCustomerRegistration = $targetRoleId === 16;
+            $registrationType = $validated['account_type'] ?? null;
+            if (!$registrationType && !empty($validated['role_id'])) {
+                $requestedRoleName = Role::query()
+                    ->whereKey((int) $validated['role_id'])
+                    ->value('name');
+                $registrationType = strtolower((string) $requestedRoleName) === 'customer'
+                    ? 'customer'
+                    : 'store_admin';
+            }
+            $registrationType ??= 'store_admin';
+            $isCustomerRegistration = $registrationType === 'customer';
+            $targetRole = Role::query()
+                ->where('name', $registrationType)
+                ->whereNull('store_id')
+                ->first();
+
+            if (!$targetRole) {
+                throw ValidationException::withMessages([
+                    'account_type' => ["The {$registrationType} role is not configured."],
+                ]);
+            }
+
             $existingUser = User::query()->where('email', $validated['email'])->first();
 
             // A customer whose email has not been verified is still a pending
             // registration. Allow them to retry and receive a fresh OTP.
             if ($existingUser && (!$isCustomerRegistration
-                || (int) $existingUser->role_id !== 16
+                || (int) $existingUser->role_id !== (int) $targetRole->id
                 || $existingUser->email_verified_at !== null)) {
                 throw ValidationException::withMessages([
                     'email' => ['The email has already been taken.'],
@@ -183,13 +204,13 @@ class AuthController extends Controller
                 }
             }
 
-            $user = DB::transaction(function () use ($validated, $existingUser) {
+            $user = DB::transaction(function () use ($validated, $existingUser, $targetRole) {
                 $attributes = [
                     'fname' => $validated['fname'],
                     'lname' => $validated['lname'],
                     'birthday' => $validated['birthday'] ?? null,
                     'password' => Hash::make($validated['password']),
-                    'role_id' => $validated['role_id'] ?? 2,
+                    'role_id' => $targetRole->id,
                     'is_active' => 1,
                 ];
 
@@ -202,7 +223,7 @@ class AuthController extends Controller
 
                 $user->loadMissing('role');
 
-                if ($user->hasRole('customer') || (int) $user->role_id === 16) {
+                if ($user->hasRole('customer')) {
                     Customer::firstOrCreate(
                         ['user_id' => $user->id],
                         ['verification_status' => 'unverified']

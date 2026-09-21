@@ -207,7 +207,7 @@ async function submitRegister() {
       email: form.email,
       birthday: form.birthday ? new Date(form.birthday).toISOString().slice(0, 10) : null,
       password: form.password,
-      role_id: 16, //  role ID for customers
+      account_type: 'customer',
       device_name: 'web-browser',
     })
 

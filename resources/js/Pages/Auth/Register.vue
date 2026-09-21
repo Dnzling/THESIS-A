@@ -32,9 +32,8 @@ const handleRegister = async (formData: RegisterFormData) => {
       lname: formData.lname,
       email: formData.email,
       password: formData.password,
-      // /register is the business account entry point. Customer accounts use
-      // the dedicated /customer/register page.
-      role_id: 2,
+      // Resolve the system role by name server-side; numeric role IDs vary by DB.
+      account_type: 'store_admin',
       birthday: formData.birthday ? new Date(formData.birthday).toISOString().slice(0, 10) : null,
       device_name: 'web-browser'
     })

@@ -51,6 +51,5 @@ Route::prefix('crm')->group(function () {
         Route::put('/{return}/status', [ReturnController::class, 'updateStatus'])->middleware('can:crm.returns.manage');
         Route::post('/{return}/pickup', [ReturnController::class, 'createPickup'])->middleware('can:crm.returns.manage');
         Route::post('/{return}/receive', [ReturnController::class, 'receive'])->middleware('can:crm.returns.manage');
-        Route::post('/{return}/refund', [ReturnController::class, 'refund'])->middleware('can:crm.returns.manage');
     });
 });

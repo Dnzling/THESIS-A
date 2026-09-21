@@ -160,30 +160,12 @@ class User extends Authenticatable
     // ✅ Fixed: Role Check Methods
     public function isSuperAdmin(): bool
     {
-        // Method 1: Check role name directly
-        if ($this->relationLoaded('role') && $this->role) {
-            return $this->role->name === 'super_admin';
-        }
-
-        // Method 2: Check using role_id (assuming super_admin has ID = 1)
-        return $this->role_id === 1;
-
-        // Method 3: Use hasRole() method
-        // return $this->hasRole('super_admin');
+        return $this->hasRole('super_admin');
     }
 
     public function isStoreAdmin(): bool
     {
-        // Method 1: Check role name directly
-        if ($this->relationLoaded('role') && $this->role) {
-            return $this->role->name === 'store_admin';
-        }
-
-        // Method 2: Check using role_id (assuming store_admin has ID = 2)
-        return $this->role_id === 2;
-
-        // Method 3: Use hasRole() method
-        // return $this->hasRole('store_admin');
+        return $this->hasRole('store_admin');
     }
 
     public function isEmployee(): bool

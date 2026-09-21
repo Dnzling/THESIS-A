@@ -128,7 +128,7 @@ class CrmService {
     return res.data
   }
 
-  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected' | 'received' | 'refunded'; return_type?: 'refund' | 'replacement'; review_notes?: string }) {
+  async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected'; return_type?: 'refund' | 'replacement'; review_notes?: string }) {
     const res = await axiosClient.put(`/api/crm/returns/${id}/status`, payload)
     return res.data
   }
@@ -143,10 +143,6 @@ class CrmService {
     return res.data
   }
 
-  async createReturnRefund(id: number | string, payload: { amount: number; reason?: string; notes?: string; mark_as_approved?: boolean }) {
-    const res = await axiosClient.post(`/api/crm/returns/${id}/refund`, payload)
-    return res.data
-  }
 }
 
 export default new CrmService()

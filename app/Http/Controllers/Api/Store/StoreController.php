@@ -81,6 +81,22 @@ class StoreController extends Controller
                 'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
 
+            $storeAdminRole = null;
+            if ($request->user()) {
+                $storeAdminRole = Role::query()
+                    ->whereNull('store_id')
+                    ->where(function ($query) {
+                        $query->whereRaw('LOWER(name) = ?', ['store_admin'])
+                            ->orWhereRaw('LOWER(display_name) = ?', ['store administrator'])
+                            ->orWhereRaw('LOWER(display_name) = ?', ['store admin']);
+                    })
+                    ->first();
+
+                if (!$storeAdminRole) {
+                    throw new \RuntimeException('The global store_admin role is not configured.');
+                }
+            }
+
             $payload = [
                 'name' => $validated['store_name'],
                 'type' => $validated['business_type'] ?? 'retail',
@@ -139,13 +155,7 @@ class StoreController extends Controller
             if ($request->user()) {
                 $request->user()->update(['branch_id' => $branch->id]);
 
-                $storeAdminRole = Role::query()
-                    ->where(function ($query) {
-                        $query->whereRaw('LOWER(name) = ?', ['store_admin'])
-                            ->orWhereRaw('LOWER(display_name) = ?', ['store admin']);
-                    })
-                    ->first();
-                $storeAdminRoleId = (int) ($storeAdminRole?->id ?? 2);
+                $storeAdminRoleId = (int) $storeAdminRole->id;
 
                 $managementDepartment = Department::query()->firstOrCreate(
                     ['store_id' => $store->id, 'name' => 'Management'],
