@@ -62,9 +62,9 @@
                   <div class="flex items-center justify-between">
                     <span class="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700">New</span>
                     <Button
-                      label="Show Photo"
+                      label="3D"
                       size="small"
-                      class="!rounded-xl !border-0 !bg-sky-500 !px-4 !py-2 !font-semibold !text-white !shadow-lg hover:!bg-sky-600"
+                      
                     />
                   </div>
 
@@ -110,11 +110,12 @@
                   
                     <Button
                       label="Add to Cart"
-                      class="!rounded-xl !border-0 !bg-sky-500 !px-4 !py-2.5 !text-sm !font-semibold !text-white !shadow-lg hover:!bg-sky-600"
+                      size=small
+                      outlined
                     />
                     <Button
                       label="Buy Now"
-                      class="!rounded-xl !border-0 !bg-emerald-500 !px-4 !py-2.5 !text-sm !font-semibold !text-white !shadow-lg hover:!bg-emerald-600"
+                      size=small
                     />
                   </div>
 
