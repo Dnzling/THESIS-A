@@ -13,7 +13,8 @@ class PurchaseOrderShippingFeeService
 {
     public function estimate(int $storeId, Supplier $supplier, Branch $branch, array $items, float $subtotal): array
     {
-        $supplierAddress = $this->address([$supplier->address, $supplier->barangay ?? null, $supplier->city, $supplier->province, $supplier->postal_code, $supplier->country]);
+        $supplierProvince = $supplier->province ?: ($supplier->state ?? null);
+        $supplierAddress = $this->address([$supplier->address, $supplier->barangay ?? null, $supplier->city, $supplierProvince, $supplier->postal_code, $supplier->country ?: 'Philippines']);
         $branchAddress = $this->address([$branch->address, $branch->barangay, $branch->city, $branch->province]);
         if (!$supplierAddress || !$branchAddress) {
             throw ValidationException::withMessages(['shipping_fee' => 'Supplier and destination branch addresses are required to calculate the shipping fee.']);
@@ -22,9 +23,19 @@ class PurchaseOrderShippingFeeService
         try {
             $distanceService = app(DistanceService::class);
             $hasBranchCoordinates = is_numeric($branch->latitude) && is_numeric($branch->longitude);
-            $distanceKm = $hasBranchCoordinates
-                ? $distanceService->getDistanceKmToCoordinates($supplierAddress, (float) $branch->latitude, (float) $branch->longitude)
-                : $distanceService->getDistanceKm($supplierAddress, $branchAddress);
+            $supplierAddressCandidates = array_values(array_unique(array_filter([
+                $supplierAddress,
+                $this->address([$supplier->address, $supplier->city, $supplierProvince, 'Philippines']),
+                $this->address([$supplier->city, $supplierProvince, 'Philippines']),
+            ])));
+
+            $distanceKm = $this->resolveDistance(
+                $distanceService,
+                $supplierAddressCandidates,
+                $branchAddress,
+                $hasBranchCoordinates ? (float) $branch->latitude : null,
+                $hasBranchCoordinates ? (float) $branch->longitude : null,
+            );
         } catch (\Throwable $exception) {
             throw ValidationException::withMessages(['shipping_fee' => 'Unable to locate the supplier address for road-distance calculation. Update the supplier address with a complete street, city, and province.']);
         }
@@ -63,5 +74,29 @@ class PurchaseOrderShippingFeeService
     private function address(array $parts): string
     {
         return implode(', ', array_filter(array_map(fn ($part) => trim((string) $part), $parts)));
+    }
+
+    private function resolveDistance(
+        DistanceService $distanceService,
+        array $supplierAddressCandidates,
+        string $branchAddress,
+        ?float $branchLatitude,
+        ?float $branchLongitude,
+    ): float {
+        $lastException = null;
+
+        foreach ($supplierAddressCandidates as $supplierAddress) {
+            try {
+                if ($branchLatitude !== null && $branchLongitude !== null) {
+                    return $distanceService->getDistanceKmToCoordinates($supplierAddress, $branchLatitude, $branchLongitude);
+                }
+
+                return $distanceService->getDistanceKm($supplierAddress, $branchAddress);
+            } catch (\Throwable $exception) {
+                $lastException = $exception;
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('Unable to resolve supplier address.');
     }
 }

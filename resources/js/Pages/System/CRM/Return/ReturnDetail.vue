@@ -55,7 +55,7 @@
                 1).toLocaleString() }} item(s)</p>
             </div>
             <div class="rounded-xl border border-slate-200 p-4">
-              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Resolution</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Approved resolution</p>
               <p class="mt-1 font-semibold text-slate-900">{{ returnRequest.return_type ?
                 prettyStatus(returnRequest.return_type) : 'Pending review' }}</p>
             </div>
@@ -102,6 +102,20 @@
                   '—' }}</p>
               </div>
             </div>
+          </div>
+        </template>
+      </Card>
+
+      <Card v-if="returnRequest.pickup" class="rounded-2xl border border-slate-200 shadow-sm">
+        <template #title><div class="flex items-center gap-2"><i class="pi pi-truck text-slate-500"></i><span>Return Delivery</span></div></template>
+        <template #content>
+          <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</p><Tag class="mt-1" :value="prettyStatus(returnRequest.pickup.status)" severity="info" /></div>
+            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Driver</p><p class="mt-1 font-semibold text-slate-900">{{ [returnRequest.pickup.driver?.fname, returnRequest.pickup.driver?.lname].filter(Boolean).join(' ') || 'Unassigned' }}</p></div>
+            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Scheduled</p><p class="mt-1 font-semibold text-slate-900">{{ returnRequest.pickup.scheduled_at ? formatDateTime(returnRequest.pickup.scheduled_at) : '—' }}</p></div>
+            <div><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Delivered</p><p class="mt-1 font-semibold text-slate-900">{{ returnRequest.pickup.delivered_at ? formatDateTime(returnRequest.pickup.delivered_at) : 'Pending' }}</p></div>
+            <div class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Customer Pickup Address</p><p class="mt-1 font-medium text-slate-800">{{ returnRequest.pickup.pickup_address || '—' }}</p></div>
+            <div class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Delivery Destination</p><p class="mt-1 font-medium text-slate-800">{{ returnRequest.pickup.destination_branch ? `${returnRequest.pickup.destination_branch.name} - ${returnRequest.pickup.destination_branch.address || ''}` : 'Not assigned' }}</p></div>
           </div>
         </template>
       </Card>
@@ -224,6 +238,9 @@
             <Button
               v-if="!investigationTicket && returnRequest.status === 'pending_verification' && canCreateInvestigation"
               icon="pi pi-plus" label="Create Investigation Ticket" size="small" @click="openInvestigationDialog" />
+            <Button
+              v-else-if="canCompleteInvestigation"
+              icon="pi pi-file-edit" label="Submit Findings" size="small" @click="openInvestigationFindings" />
           </div>
         </template>
         <template #content>
@@ -246,9 +263,32 @@
               </div>
             </div>
             <div v-if="investigationTicket.notes" class="rounded-xl bg-slate-50 p-4">
-              <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Investigation notes</p>
+              <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Investigation instructions</p>
               <p class="whitespace-pre-line text-sm text-slate-700">{{ investigationTicket.notes }}</p>
             </div>
+            <div v-if="investigationTicket.findings" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Investigation findings</p>
+                <Tag :value="`Recommended: ${prettyStatus(investigationTicket.recommended_resolution)}`"
+                  severity="success" />
+              </div>
+              <p class="mt-2 whitespace-pre-line text-sm text-slate-700">{{ investigationTicket.findings }}</p>
+              <div v-if="investigationTicket.findings_attachment_path" class="mt-4 border-t border-emerald-200 pt-4">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">Finding attachment</p>
+                <button type="button" class="group relative h-36 w-36 overflow-hidden rounded-xl border border-emerald-200 bg-white"
+                  aria-label="Preview investigation finding attachment" @click="openImageZoom({ url: investigationAttachmentUrl })">
+                  <img :src="investigationAttachmentUrl" alt="Investigation finding attachment"
+                    class="h-full w-full object-cover transition group-hover:scale-105" />
+                  <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-left text-xs text-white">Preview image</span>
+                </button>
+              </div>
+              <p v-if="investigationTicket.completed_at" class="mt-2 text-xs text-slate-500">
+                Completed {{ formatDateTime(investigationTicket.completed_at) }}
+              </p>
+            </div>
+            <p v-else class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Approval and rejection become available after an assigned investigator submits the findings.
+            </p>
           </div>
           <p v-else class="text-sm text-slate-600">Assign a CRM investigation team and target date for this pending
             return.</p>
@@ -303,8 +343,6 @@
           :loading="statusUpdating" @click="receiveDialogVisible = true" />
         <Button v-if="canSchedulePickup" icon="pi pi-calendar-plus" label="Schedule Pickup" outlined size="small"
           :loading="pickupScheduling" @click="pickupDialogVisible = true" />
-        <Button v-if="returnRequest?.pickup?.id" icon="pi pi-truck" label="Open Pickup" outlined size="small"
-          @click="openPickup" />
       </div>
     </div>
   
@@ -353,7 +391,7 @@
       class="w-full max-w-2xl">
       <div class="space-y-4">
         <p class="text-sm text-slate-600">Assign active employees who have <code
-            class="rounded bg-slate-100 px-1 py-0.5 text-xs">crm.view</code> permission to investigate this pending
+            class="rounded bg-slate-100 px-1 py-0.5 text-xs">crm.returns.manage</code> permission to investigate this pending
           return.</p>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">Investigation Team <span
@@ -370,7 +408,7 @@
             </template>
           </MultiSelect>
           <p v-if="!loadingInvestigationEmployees && !investigationEmployeeOptions.length"
-            class="mt-1 text-xs text-amber-700">No active employees with crm.view permission are available in this store.
+            class="mt-1 text-xs text-amber-700">No active employees with crm.returns.manage permission are available in this store.
           </p>
         </div>
         <div>
@@ -391,6 +429,52 @@
         <Button icon="pi pi-check" label="Create Ticket & Notify Team" size="small" :loading="creatingInvestigationTicket"
           :disabled="!investigationForm.assigned_employee_ids.length || !investigationForm.expected_investigation_date"
           @click="createInvestigationTicket" />
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="investigationFindingsVisible" header="Complete Return Investigation" modal
+      class="w-full max-w-2xl">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">
+          Record the evidence review and recommend a resolution. A CRM manager can approve or reject the return after submission.
+        </p>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">Recommended resolution <span
+              class="text-red-500">*</span></label>
+          <Select v-model="investigationFindingsForm.recommended_resolution" :options="investigationResolutionOptions"
+            optionLabel="label" optionValue="value" placeholder="Select a recommendation" class="w-full" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700">Findings <span
+              class="text-red-500">*</span></label>
+          <Textarea v-model="investigationFindingsForm.findings" rows="6" class="w-full" autoResize
+            placeholder="Summarize the evidence checked, observations, and reason for the recommendation" />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-slate-700">Attachment <span class="font-normal text-slate-500">(optional image, max 10 MB)</span></label>
+          <input ref="investigationAttachmentInput" type="file" accept="image/jpeg,image/png,image/webp"
+            class="block w-full rounded-lg border border-slate-300 bg-white text-sm text-slate-600 file:mr-3 file:rounded-l-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+            @change="onInvestigationAttachmentSelected" />
+          <div v-if="investigationAttachmentPreview" class="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <button type="button" class="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-200"
+              aria-label="Preview selected investigation attachment" @click="openImageZoom({ url: investigationAttachmentPreview })">
+              <img :src="investigationAttachmentPreview" :alt="investigationAttachment?.name || 'Selected attachment'" class="h-full w-full object-cover" />
+            </button>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-slate-800">{{ investigationAttachment?.name }}</p>
+              <p class="text-xs text-slate-500">{{ formatFileSize(investigationAttachment?.size || 0) }}</p>
+            </div>
+            <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Remove attachment"
+              :disabled="submittingInvestigationFindings" @click="clearInvestigationAttachment" />
+          </div>
+          <p class="text-xs text-slate-500">Accepted formats: JPG, PNG, or WebP.</p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" outlined size="small" :disabled="submittingInvestigationFindings" @click="investigationFindingsVisible = false" />
+        <Button icon="pi pi-check" label="Submit Findings" size="small" :loading="submittingInvestigationFindings"
+          :disabled="!investigationFindingsForm.recommended_resolution || !investigationFindingsForm.findings.trim() || submittingInvestigationFindings"
+          @click="submitInvestigationFindings" />
       </template>
     </Dialog>
   
@@ -492,7 +576,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
@@ -517,6 +601,13 @@ const loadError = ref('')
 const statusUpdating = ref(false)
 const investigationTicket = computed(() => returnRequest.value?.investigation_ticket || null)
 const canCreateInvestigation = computed(() => authStore.hasPermission('crm.returns.manage'))
+const canCompleteInvestigation = computed(() => {
+  if (!investigationTicket.value || String(returnRequest.value?.status || '') !== 'pending_verification') return false
+  if (['completed', 'cancelled'].includes(String(investigationTicket.value.status || ''))) return false
+  const currentUserId = Number(authStore.currentUser?.id || 0)
+  return (investigationTicket.value.assignees || [])
+    .some((employee: any) => Number(employee?.user_id || employee?.user?.id || 0) === currentUserId)
+})
 
 const itemVariant = computed(() => returnRequest.value?.order_item?.branch_inventory?.variation || null)
 const itemVariantName = computed(() => {
@@ -544,6 +635,11 @@ const attachments = computed<{ url: string; name: string }[]>(() => {
 })
 
 const attachmentsCount = computed(() => attachments.value.length)
+const investigationAttachmentUrl = computed(() => {
+  const path = String(investigationTicket.value?.findings_attachment_url || investigationTicket.value?.findings_attachment_path || '')
+  if (!path) return ''
+  return /^https?:\/\//i.test(path) ? path : `/storage/${path.replace(/^\/+/, '')}`
+})
 
 const investigationDialogVisible = ref(false)
 const loadingInvestigationEmployees = ref(false)
@@ -553,6 +649,56 @@ const investigationForm = reactive({
   assigned_employee_ids: [] as number[],
   expected_investigation_date: null as Date | null,
   notes: '',
+})
+const investigationFindingsVisible = ref(false)
+const submittingInvestigationFindings = ref(false)
+const investigationAttachmentInput = ref<HTMLInputElement | null>(null)
+const investigationAttachment = ref<File | null>(null)
+const investigationAttachmentPreview = ref('')
+const investigationFindingsForm = reactive({
+  findings: '',
+  recommended_resolution: null as 'refund' | 'replacement' | 'reject' | null,
+})
+const investigationResolutionOptions = [
+  { label: 'Refund', value: 'refund' },
+  { label: 'Replacement', value: 'replacement' },
+  { label: 'Reject Return', value: 'reject' },
+]
+
+const clearInvestigationAttachment = () => {
+  if (investigationAttachmentPreview.value) URL.revokeObjectURL(investigationAttachmentPreview.value)
+  investigationAttachment.value = null
+  investigationAttachmentPreview.value = ''
+  if (investigationAttachmentInput.value) investigationAttachmentInput.value.value = ''
+}
+
+const onInvestigationAttachmentSelected = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] || null
+  if (!file) return
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+  if (!allowedTypes.includes(file.type) || file.size > 10 * 1024 * 1024) {
+    input.value = ''
+    toast.add({ severity: 'warn', summary: 'Invalid attachment', detail: 'Choose a JPG, PNG, or WebP image no larger than 10 MB.', life: 3500 })
+    return
+  }
+
+  clearInvestigationAttachment()
+  investigationAttachment.value = file
+  investigationAttachmentPreview.value = URL.createObjectURL(file)
+}
+
+const formatFileSize = (size: number) => size < 1024 * 1024
+  ? `${Math.max(1, Math.round(size / 1024))} KB`
+  : `${(size / (1024 * 1024)).toFixed(1)} MB`
+
+watch(investigationFindingsVisible, (visible) => {
+  if (!visible) clearInvestigationAttachment()
+})
+
+onUnmounted(() => {
+  if (investigationAttachmentPreview.value) URL.revokeObjectURL(investigationAttachmentPreview.value)
 })
 
 const investigationEmployeeName = (employee: any) => employee?.user?.full_name
@@ -613,6 +759,46 @@ const createInvestigationTicket = async () => {
   }
 }
 
+const openInvestigationFindings = () => {
+  clearInvestigationAttachment()
+  investigationFindingsForm.findings = investigationTicket.value?.findings || ''
+  investigationFindingsForm.recommended_resolution = investigationTicket.value?.recommended_resolution || null
+  investigationFindingsVisible.value = true
+}
+
+const submitInvestigationFindings = async () => {
+  const findings = investigationFindingsForm.findings.trim()
+  const recommendation = investigationFindingsForm.recommended_resolution
+  if (!findings || !recommendation) return
+
+  submittingInvestigationFindings.value = true
+  try {
+    const payload = new FormData()
+    payload.append('findings', findings)
+    payload.append('recommended_resolution', recommendation)
+    if (investigationAttachment.value) payload.append('attachment', investigationAttachment.value)
+
+    const res = await crmService.completeReturnInvestigationTicket(id.value, payload)
+    investigationFindingsVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Investigation completed',
+      detail: res?.message || 'Findings submitted for manager review.',
+      life: 3000,
+    })
+    await loadReturn()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Could not submit findings',
+      detail: error?.response?.data?.message || 'Failed to complete the investigation.',
+      life: 3500,
+    })
+  } finally {
+    submittingInvestigationFindings.value = false
+  }
+}
+
 const loadReturn = async () => {
   if (!Number.isInteger(id.value) || id.value <= 0) {
     returnRequest.value = null
@@ -642,8 +828,9 @@ const loadReturn = async () => {
 }
 
 const canApprove = computed(() => {
+  if (!authStore.hasPermission('crm.returns.manage')) return false
   const status = String(returnRequest.value?.status || '')
-  if (status === 'pending_verification') return true
+  if (status === 'pending_verification') return String(investigationTicket.value?.status || '') === 'completed'
   if (status !== 'approved' || returnRequest.value?.inspected_at) return false
   return String(returnRequest.value?.pickup?.status || '') !== 'picked_up'
 })
@@ -651,8 +838,15 @@ const approvalButtonLabel = computed(() => {
   if (String(returnRequest.value?.status || '') !== 'approved') return 'Approve'
   return returnRequest.value?.return_type ? 'Change Return Type' : 'Set Return Type'
 })
-const canReject = computed(() => ['pending_verification', 'approved'].includes(String(returnRequest.value?.status || '')))
+const canReject = computed(() => {
+  if (!authStore.hasPermission('crm.returns.manage')) return false
+  const status = String(returnRequest.value?.status || '')
+  if (status === 'pending_verification') return String(investigationTicket.value?.status || '') === 'completed'
+  if (status !== 'approved') return false
+  return !['picked_up', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
+})
 const canMarkReceived = computed(() => {
+  if (!authStore.hasPermission('crm.returns.manage')) return false
   if (String(returnRequest.value?.status || '') !== 'approved') return false
   const pickupStatus = String(returnRequest.value?.pickup?.status || '')
   return pickupStatus === 'picked_up'
@@ -663,12 +857,6 @@ const openOrder = () => {
   const orderId = returnRequest.value?.order_id
   if (!orderId) return
   router.push({ name: 'sales.ecommerce-orders.detail', params: { id: orderId } })
-}
-
-const openPickup = () => {
-  const pickupId = returnRequest.value?.pickup?.id
-  if (!pickupId) return
-  router.push({ name: 'logistics.return-pickups.detail', params: { id: pickupId } })
 }
 
 const pickupDialogVisible = ref(false)
@@ -878,7 +1066,9 @@ const openNotesThenConfirm = (nextStatus: 'rejected') => {
 
 const openApproval = () => {
   pendingStatus.value = 'approved'
-  pendingReturnType.value = returnRequest.value?.return_type || null
+  const recommendation = String(investigationTicket.value?.recommended_resolution || '')
+  pendingReturnType.value = returnRequest.value?.return_type
+    || (['refund', 'replacement'].includes(recommendation) ? recommendation as 'refund' | 'replacement' : null)
   pendingReviewNotes.value = returnRequest.value?.review_notes || ''
   notesDialogVisible.value = true
 }

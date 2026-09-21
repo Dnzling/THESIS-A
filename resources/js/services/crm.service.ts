@@ -120,6 +120,14 @@ class CrmService {
     return res.data
   }
 
+  async completeReturnInvestigationTicket(id: number | string, payload: FormData) {
+    payload.append('_method', 'PUT')
+    const res = await axiosClient.post(`/api/crm/returns/${id}/investigation-ticket/complete`, payload, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
+    return res.data
+  }
+
   async updateReturnStatus(id: number | string, payload: { status: 'approved' | 'rejected' | 'received' | 'refunded'; return_type?: 'refund' | 'replacement'; review_notes?: string }) {
     const res = await axiosClient.put(`/api/crm/returns/${id}/status`, payload)
     return res.data

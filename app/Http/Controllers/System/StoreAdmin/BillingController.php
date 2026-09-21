@@ -44,8 +44,11 @@ class BillingController extends Controller
             : [];
 
         $records = PaymongoIntent::query()
-            ->where('store_id', $store->id)
             ->where('payable_type', 'subscription_upgrade')
+            ->where(function ($query) use ($store) {
+                $query->where('store_id', $store->id)
+                    ->orWhere('payable_id', $store->id);
+            })
             ->orderByDesc('created_at')
             ->get()
             ->map(function (PaymongoIntent $intent) {
@@ -63,6 +66,30 @@ class BillingController extends Controller
                     'paid_at' => $this->paidAt($intent),
                     'created_at' => optional($intent->created_at)->toDateTimeString(),
                 ];
+            })
+            ->values();
+
+        // A checkout retry can leave an earlier intent waiting for a payment
+        // method while the later intent succeeds. Keep the successful payment
+        // in billing history and hide only the abandoned duplicate attempt.
+        $successfulRecords = $records->filter(fn (array $record) => strtolower($record['status']) === 'succeeded');
+        $records = $records
+            ->reject(function (array $record) use ($successfulRecords): bool {
+                if (!in_array(strtolower($record['status']), ['awaiting_payment_method', 'requires_payment_method'], true)) {
+                    return false;
+                }
+
+                $createdAt = $record['created_at'] ? Carbon::parse($record['created_at']) : null;
+                if (!$createdAt) return false;
+
+                return $successfulRecords->contains(function (array $successful) use ($record, $createdAt): bool {
+                    if ($successful['plan'] !== $record['plan'] || (float) $successful['amount'] !== (float) $record['amount']) {
+                        return false;
+                    }
+
+                    $successfulAt = $successful['created_at'] ? Carbon::parse($successful['created_at']) : null;
+                    return $successfulAt && abs($successfulAt->diffInSeconds($createdAt, false)) <= 86400;
+                });
             })
             ->values()
             ->all();
@@ -85,6 +112,48 @@ class BillingController extends Controller
                 'is_expired' => $endsAt ? $endsAt->lt($today) : false,
                 'module_count' => count($enabledModuleRows),
                 'enabled_modules' => $enabledModuleRows,
+                'plan_features' => is_array($plan?->features) ? $plan->features : [],
+                'limits' => [
+                    [
+                        'key' => 'user_accounts',
+                        'label' => 'User accounts',
+                        'limit' => $plan?->max_user_accounts,
+                        'used' => $store->users()->count(),
+                    ],
+                    [
+                        'key' => 'branches',
+                        'label' => 'Store Branches',
+                        'limit' => $plan?->max_branches,
+                        'used' => $store->branches()->count(),
+                    ],
+                    [
+                        'key' => 'warehouses',
+                        'label' => 'Warehouses',
+                        'limit' => $plan?->max_warehouses,
+                        'used' => DB::table('warehouses')->where('store_id', $store->id)->whereNull('deleted_at')->count(),
+                    ],
+                    [
+                        'key' => 'trucks',
+                        'label' => 'Trucks',
+                        'limit' => $plan?->max_trucks,
+                        'used' => DB::table('ecommerce_delivery_vehicles')
+                            ->where('store_id', $store->id)
+                            ->where('vehicle_type', 'truck')
+                            ->count(),
+                    ],
+                    [
+                        'key' => 'suppliers',
+                        'label' => 'Suppliers',
+                        'limit' => $plan?->max_suppliers,
+                        'used' => DB::table('suppliers')->where('store_id', $store->id)->whereNull('deleted_at')->count(),
+                    ],
+                    [
+                        'key' => 'products',
+                        'label' => 'Products',
+                        'limit' => $plan?->max_products,
+                        'used' => $store->products()->count(),
+                    ],
+                ],
             ],
             'billing_records' => $records,
         ]);

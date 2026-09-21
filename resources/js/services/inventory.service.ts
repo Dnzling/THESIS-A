@@ -256,6 +256,7 @@ class InventoryService {
   async createTransferDelivery(
     id: number,
     payload: {
+      driver_user_id: number
       vehicle_type: string
       driver_name: string
       driver_contact: string
@@ -1311,12 +1312,10 @@ class InventoryService {
   // Inventory shortcut: create PR from a branch inventory item (single line item)
   async createPurchaseRequisitionFromInventory(payload: {
     branch_inventory_id?: number
-    selected_supplier_id?: number
     requested_quantity?: number
     items?: Array<{
       product_id: number
       variation_id?: number | null
-      selected_supplier_id?: number | null
       quantity_requested: number
       estimated_unit_cost?: number | null
       tax_rate?: number
@@ -1325,7 +1324,6 @@ class InventoryService {
     reason?: string | null
     requisition_type?: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
     priority?: number | null
-    auto_submit?: boolean
   }) {
     const response = await axiosClient.post(`${this.baseUrl}/requisitions`, payload)
     return response.data

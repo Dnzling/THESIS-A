@@ -24,7 +24,7 @@
     <div v-else class="space-y-6">
       <Card>
         <template #content>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div>
               <p class="text-xs text-gray-600">Transfer No.</p>
               <p class="font-semibold text-gray-900">{{ detail?.transfer_number || detail?.transfer_no || '-' }}</p>
@@ -40,6 +40,18 @@
             <div>
               <p class="text-xs text-gray-600">Date</p>
               <p class="font-semibold text-gray-900">{{ formatDate(detail?.requested_date || detail?.created_at) }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-600">Goods Value</p>
+              <p class="font-semibold text-gray-900">{{ money(detail?.goods_value) }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-600">Shipping Fee</p>
+              <p class="font-semibold text-gray-900">{{ money(detail?.transfer_cost) }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-600">Total Transfer Value</p>
+              <p class="font-semibold text-gray-900">{{ money(Number(detail?.goods_value || 0) + Number(detail?.transfer_cost || 0)) }}</p>
             </div>
           </div>
         </template>
@@ -179,12 +191,12 @@ const canSendToLogistics = computed(() =>
 )
 const showShipmentOverview = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
-  return ['in_transit', 'received'].includes(status)
+  return ['in_transit', 'out_for_delivery', 'received'].includes(status)
 })
 const shipmentSteps = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   const created = !!detail.value?.driver_name || !!detail.value?.vehicle_type
-  const inTransit = status === 'in_transit' || status === 'received'
+  const inTransit = ['in_transit', 'out_for_delivery', 'received'].includes(status)
   const delivered = status === 'received'
 
   return [
@@ -309,6 +321,7 @@ const statusSeverity = (status: string) => {
     approved: 'warning',
     shipped: 'info',
     in_transit: 'info',
+    out_for_delivery: 'warning',
     received: 'success',
     completed: 'success',
     cancelled: 'danger',
@@ -327,6 +340,7 @@ const formatStatusLabel = (status: string) => {
     approved: 'Approved',
     shipped: 'Shipped',
     in_transit: 'In Transit',
+    out_for_delivery: 'Out for Delivery',
     receiver_acknowledge: 'Receiver Acknowledged',
     receiver_acknowledged: 'Receiver Acknowledged',
     received: 'Received',
@@ -347,6 +361,7 @@ const statusBadgeClass = (status: string) => {
     approved: 'bg-indigo-100 text-indigo-700',
     shipped: 'bg-blue-100 text-blue-700',
     in_transit: 'bg-cyan-100 text-cyan-700',
+    out_for_delivery: 'bg-amber-100 text-amber-700',
     receiver_acknowledge: 'bg-violet-100 text-violet-700',
     receiver_acknowledged: 'bg-violet-100 text-violet-700',
     received: 'bg-emerald-100 text-emerald-700',
@@ -362,6 +377,11 @@ const formatDate = (value?: string) => {
   if (Number.isNaN(d.getTime())) return '-'
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 }
+
+const money = (value: unknown) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+}).format(Number(value || 0))
 
 onMounted(() => {
   loadDetail()

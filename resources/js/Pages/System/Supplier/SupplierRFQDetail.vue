@@ -91,6 +91,9 @@
                 <div>
                   <div class="font-semibold">{{ data.product?.product_name || 'N/A' }}</div>
                   <div class="text-xs text-gray-500">{{ data.product?.sku || '' }}</div>
+                  <div v-if="data.variation" class="mt-1 text-xs text-orange-700">
+                    Requested variation: {{ data.variation.variation_name || [data.variation.size, data.variation.color, data.variation.material].filter(Boolean).join(' / ') || data.variation.variation_sku }}
+                  </div>
                 </div>
               </template>
             </Column>
@@ -181,6 +184,9 @@
               <h4 class="font-semibold text-orange-900">{{ item.product?.product_name || 'Item' }}</h4>
               <p class="mt-0.5 text-xs text-orange-700">
                 {{ item.quantity }} {{ item.product?.unit_of_measurement || item.unit_of_measurement || '-' }} requested
+              </p>
+              <p v-if="item.variation" class="mt-1 text-xs text-orange-700">
+                Variation: {{ item.variation.variation_name || [item.variation.size, item.variation.color, item.variation.material].filter(Boolean).join(' / ') || item.variation.variation_sku }}
               </p>
             </div>
             <div class="p-4">

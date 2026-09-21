@@ -95,8 +95,8 @@ class StoreSettingsController extends Controller
                 'status' => $store?->status,
                 'status_details' => $store ? $this->resolveStoreStatusDetails((int) $store->id, (string) $store->status) : null,
                 'contact_person' => is_array($store?->settings) ? ($store->settings['contact_person'] ?? null) : null,
-                'logo_url' => $this->resolveStoreLogoUrl($store),
-                'logo_dimensions' => is_array($store?->settings) ? ($store->settings['logo_dimensions'] ?? null) : null,
+                'logo_url' => $this->resolveBranchLogoUrl($mainBranch),
+                'logo_dimensions' => is_array($mainBranch?->logo_dimensions) ? $mainBranch->logo_dimensions : null,
             ],
             'payments' => $this->resolvePaymentSettings($store),
             'branches' => $store?->branches()
@@ -114,6 +114,12 @@ class StoreSettingsController extends Controller
                     'branch_code',
                     'is_main_branch',
                     'branch_type',
+                    'email',
+                    'latitude',
+                    'longitude',
+                    'geofence_enabled',
+                    'geofence_radius_m',
+                    'logo_path',
                 ])
                 ->toArray() ?? [],
             'attendance' => $this->resolveAttendanceSettings($store?->id),
@@ -185,21 +191,22 @@ class StoreSettingsController extends Controller
             return back()->withErrors(['logo' => 'Unable to read the uploaded logo dimensions.']);
         }
 
-        $settings = is_array($store->settings) ? $store->settings : [];
-        $oldPath = $settings['logo_path'] ?? null;
-        $path = $file->store("store-logos/{$store->id}", 'public');
+        $branch = $store->branches()->orderByDesc('is_main_branch')->orderBy('id')->first();
+        if (!$branch) {
+            abort(404, 'Main branch not found for this store.');
+        }
 
-        $settings['logo'] = $path;
-        $settings['logo_path'] = $path;
-        $settings['logo_dimensions'] = [
-            'width' => $savedWidth,
-            'height' => $savedHeight,
-            'original_width' => (int) ($validated['original_width'] ?? $savedWidth),
-            'original_height' => (int) ($validated['original_height'] ?? $savedHeight),
-        ];
-
-        $store->settings = $settings;
-        $store->save();
+        $oldPath = $branch->logo_path;
+        $path = $file->store("branch-logos/{$store->id}/{$branch->id}", 'public');
+        $branch->update([
+            'logo_path' => $path,
+            'logo_dimensions' => [
+                'width' => $savedWidth,
+                'height' => $savedHeight,
+                'original_width' => (int) ($validated['original_width'] ?? $savedWidth),
+                'original_height' => (int) ($validated['original_height'] ?? $savedHeight),
+            ],
+        ]);
 
         if ($oldPath && $oldPath !== $path && Storage::disk('public')->exists($oldPath)) {
             Storage::disk('public')->delete($oldPath);
@@ -528,22 +535,10 @@ class StoreSettingsController extends Controller
             'latitude' => $validated['latitude'],
             'longitude' => $validated['longitude'],
             'geofence_radius_m' => $validated['geofence_radius_m'] ?? $branch->geofence_radius_m ?? 5,
+            'geofence_enabled' => array_key_exists('geofence_enabled', $validated)
+                ? (bool) $validated['geofence_enabled']
+                : (bool) $branch->geofence_enabled,
         ]);
-
-        $store->update([
-            'address' => $branch->address,
-            'city' => $branch->city,
-            'province' => $branch->province,
-            'latitude' => $branch->latitude,
-            'longitude' => $branch->longitude,
-        ]);
-
-        if (array_key_exists('geofence_enabled', $validated)) {
-            $settings = is_array($store->settings) ? $store->settings : [];
-            $settings['attendance_geofence_enabled'] = (bool) $validated['geofence_enabled'];
-            $store->settings = $settings;
-            $store->save();
-        }
     }
 
     private function resolveStoreForUser(?User $user): ?Store
@@ -601,25 +596,6 @@ class StoreSettingsController extends Controller
         ];
     }
 
-    private function resolveStoreLogoUrl(?Store $store): ?string
-    {
-        if (!$store || !is_array($store->settings)) {
-            return null;
-        }
-
-        $path = $store->settings['logo'] ?? $store->settings['logo_path'] ?? null;
-        if (!$path) {
-            return null;
-        }
-
-        $path = (string) $path;
-        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
-            return $path;
-        }
-
-        return Storage::disk('public')->url($path);
-    }
-
     private function resolveAttendanceSettings(?int $storeId): array
     {
         if (!$storeId) {
@@ -632,7 +608,7 @@ class StoreSettingsController extends Controller
                 'latitude' => null,
                 'longitude' => null,
                 'geofence_radius_m' => 5,
-                'geofence_enabled' => true,
+                'geofence_enabled' => false,
             ];
         }
 
@@ -648,10 +624,8 @@ class StoreSettingsController extends Controller
                 'latitude',
                 'longitude',
                 'geofence_radius_m',
+                'geofence_enabled',
             ]);
-
-        $store = Store::query()->find($storeId, ['id', 'settings']);
-        $settings = is_array($store?->settings) ? $store->settings : [];
 
         return [
             'branch_id' => $branch?->id,
@@ -662,10 +636,23 @@ class StoreSettingsController extends Controller
             'latitude' => $branch?->latitude !== null ? (float) $branch->latitude : null,
             'longitude' => $branch?->longitude !== null ? (float) $branch->longitude : null,
             'geofence_radius_m' => (int) ($branch?->geofence_radius_m ?? 5),
-            'geofence_enabled' => array_key_exists('attendance_geofence_enabled', $settings)
-                ? (bool) $settings['attendance_geofence_enabled']
-                : true,
+            'geofence_enabled' => (bool) ($branch?->geofence_enabled ?? false),
         ];
+    }
+
+    private function resolveBranchLogoUrl(?Branch $branch): ?string
+    {
+        $path = $branch?->logo_path;
+        if (!$path) {
+            return null;
+        }
+
+        $path = (string) $path;
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     private function resolveTier(string $employeeRange): string

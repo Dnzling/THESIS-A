@@ -41,6 +41,7 @@ class PurchaseOrderShipment extends Model
         'tax_rate',
         'expected_delivery_date',
         'dispatched_at',
+        'out_for_delivery_at',
         'delivered_at',
         'status',
     ];
@@ -56,6 +57,7 @@ class PurchaseOrderShipment extends Model
         'tax_rate' => 'decimal:2',
         'expected_delivery_date' => 'date',
         'dispatched_at' => 'datetime',
+        'out_for_delivery_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];
 

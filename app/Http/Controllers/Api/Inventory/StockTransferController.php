@@ -10,6 +10,7 @@ use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\BranchDistance;
 use App\Models\Inventory\InventoryTransaction;
 use App\Models\Core\ActivityLog;
+use App\Models\Core\User;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Config\ProcurementSettings;
 use App\Support\EmployeeContext;
@@ -148,12 +149,12 @@ class StockTransferController extends Controller
             'toBranch',
             'items.product',
             'items.variation',
-            'requestedBy',
-            'senderApprovedBy',
-            'receiverAcknowledgedBy',
-            'financeApprovedBy',
-            'shippedBy',
-            'receivedBy'
+            'requestedBy.user:id,fname,lname',
+            'senderApprovedBy.user:id,fname,lname',
+            'receiverAcknowledgedBy.user:id,fname,lname',
+            'financeApprovedBy.user:id,fname,lname',
+            'shippedBy.user:id,fname,lname',
+            'receivedBy.user:id,fname,lname',
         ])->findOrFail($id);
 
         return response()->json([
@@ -496,10 +497,10 @@ class StockTransferController extends Controller
     {
         $transfer = StockTransfer::with('items.product')->findOrFail($id);
 
-        if ($transfer->status !== 'in_transit') {
+        if (!in_array($transfer->status, ['sender_approved', 'in_transit'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Delivery can only be created when transfer is in transit.',
+                'message' => 'Delivery can only be created after the sender approves the transfer.',
             ], 422);
         }
 
@@ -512,12 +513,24 @@ class StockTransferController extends Controller
         }
 
         $validated = $request->validate([
+            'driver_user_id' => 'required|integer|exists:users,id',
             'vehicle_type' => 'required|string|max:100',
             'driver_name' => 'required|string|max:100',
             'driver_contact' => 'required|string|max:50',
             'tracking_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:1000',
         ]);
+
+        $driver = User::query()
+            ->with(['role:id,name', 'employee:id,user_id,role_id,status', 'employee.role:id,name'])
+            ->where('store_id', $transfer->store_id)
+            ->where('is_active', true)
+            ->find((int) $validated['driver_user_id']);
+        $isDriver = strtolower((string) $driver?->role?->name) === 'driver'
+            || strtolower((string) $driver?->employee?->role?->name) === 'driver';
+        if (!$driver || !$isDriver || $driver->employee?->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
+        }
 
         $extraNotes = trim((string) ($validated['notes'] ?? ''));
         $noteParts = array_filter([
@@ -528,6 +541,8 @@ class StockTransferController extends Controller
         ]);
 
         $transfer->update([
+            'driver_user_id' => $driver->id,
+            'delivery_status' => 'assigned',
             'vehicle_type' => $validated['vehicle_type'],
             'driver_name' => $validated['driver_name'],
             'driver_contact' => $validated['driver_contact'],
@@ -563,7 +578,7 @@ class StockTransferController extends Controller
     {
         $transfer = StockTransfer::findOrFail($id);
 
-        if (!in_array($transfer->status, ['in_transit', 'received'], true)) {
+        if (!in_array($transfer->status, ['in_transit', 'out_for_delivery', 'received'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Delivery logs can only be added when transfer is In Transit or Received.',
@@ -732,7 +747,7 @@ class StockTransferController extends Controller
     {
         $transfer = StockTransfer::with('items')->findOrFail($id);
 
-        if ($transfer->status !== 'in_transit') {
+        if (!in_array($transfer->status, ['in_transit', 'out_for_delivery'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only in-transit transfers can be received',
@@ -851,6 +866,8 @@ class StockTransferController extends Controller
 
             $transfer->update([
                 'status' => 'received',
+                'delivery_status' => 'delivered',
+                'delivered_at' => $transfer->delivered_at ?: now(),
                 'received_by' => EmployeeContext::currentEmployeeId(),
                 'received_date' => now(),
                 'notes' => implode("\n", $noteParts),

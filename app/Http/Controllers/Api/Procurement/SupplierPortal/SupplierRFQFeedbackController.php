@@ -9,6 +9,7 @@ use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\RFQItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -106,7 +107,7 @@ class SupplierRFQFeedbackController extends Controller
                 }
                 if (!empty($arr['attachments']) && is_array($arr['attachments'])) {
                     foreach ($arr['attachments'] as &$att) {
-                        if (isset($att['attachment_path'])) unset($att['attachment_path']);
+                        if (isset($att['file_path'])) unset($att['file_path']);
                     }
                 }
                 return $arr;
@@ -137,7 +138,13 @@ class SupplierRFQFeedbackController extends Controller
     {
         try {
             $user = auth()->user();
-            $portal = SupplierPortal::where('user_id', $user->id)->firstOrFail();
+            $portal = SupplierPortal::where('user_id', $user->id)->first();
+            if (!$portal) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Supplier portal not found.',
+                ], 404);
+            }
 
             if (!$portal->isVerified()) {
                 return response()->json([
@@ -146,8 +153,17 @@ class SupplierRFQFeedbackController extends Controller
                 ], 409);
             }
 
-            $rfq = RequestForQuotation::with(['items.product', 'attachments', 'store'])
-                ->findOrFail($id);
+            // Only expose public variant attributes to suppliers; never serialize cost_price.
+            $relations = [
+                'items.product',
+                'items.variation:id,product_id,variation_name,variation_sku,color,size,material,texture,finish',
+                'store',
+            ];
+            if (Schema::hasTable('rfq_attachments')) {
+                $relations[] = 'attachments';
+            }
+
+            $rfq = RequestForQuotation::with($relations)->findOrFail($id);
 
             // Mark RFQ as viewed for this supplier
             \App\Models\Procurement\RFQ\RFQSupplier::where('rfq_id', $id)
@@ -166,6 +182,7 @@ class SupplierRFQFeedbackController extends Controller
 
             // Hide payment_terms and attachment_path from supplier-facing detail
             $rfqArr = $rfq->toArray();
+            $rfqArr['attachments'] = $rfqArr['attachments'] ?? [];
             if ($rfq->relationLoaded('store') && $rfq->store) {
                 $rfqArr['store'] = [
                     'id' => $rfq->store->id ?? null,
@@ -186,7 +203,7 @@ class SupplierRFQFeedbackController extends Controller
             }
             if (!empty($rfqArr['attachments']) && is_array($rfqArr['attachments'])) {
                 foreach ($rfqArr['attachments'] as &$att) {
-                    if (isset($att['attachment_path'])) unset($att['attachment_path']);
+                    if (isset($att['file_path'])) unset($att['file_path']);
                 }
             }
 
@@ -197,10 +214,21 @@ class SupplierRFQFeedbackController extends Controller
                     'supplier_feedback' => $feedback,
                 ],
             ]);
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching RFQ: ' . $e->getMessage(),
+                'message' => 'RFQ not found.',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Supplier RFQ detail failed.', [
+                'user_id' => auth()->id(),
+                'rfq_id' => $id,
+                'error' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching RFQ details.',
             ], 500);
         }
     }

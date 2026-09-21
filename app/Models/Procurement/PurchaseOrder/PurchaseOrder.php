@@ -293,6 +293,25 @@ class PurchaseOrder extends Model
     public function markInTransit(): void
     {
         $this->update(['status' => 'in_transit']);
+
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered'])
+                ->update(['status' => 'in_transit']);
+        }
+    }
+
+    public function markOutForDelivery(): void
+    {
+        $this->update(['status' => 'out_for_delivery']);
+
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered'])
+                ->update(['status' => 'out_for_delivery']);
+        }
     }
 
     public function markDelivered(): void

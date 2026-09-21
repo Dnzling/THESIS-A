@@ -197,6 +197,11 @@
               <small class="text-slate-500">Optional and must be lower than the selling price.</small>
             </div>
             <div class="flex flex-col gap-2">
+              <label for="cost_price" class="text-sm font-semibold text-gray-700">Unit Cost Price</label>
+              <InputNumber id="cost_price" v-model="form.cost_price" mode="currency" currency="PHP" locale="en-PH" :min="0" fluid size="small" />
+              <small class="text-slate-500">Used for purchase and inventory cost estimates; hidden from suppliers and customers.</small>
+            </div>
+            <div class="flex flex-col gap-2">
               <label for="unit_of_measurement" class="text-sm font-semibold text-gray-700">Unit of Measurement</label>
               <Select
                 id="unit_of_measurement"
@@ -504,6 +509,7 @@ const form = reactive({
   finish: '',
   base_price: null as number | null,
   discounted_price: null as number | null,
+  cost_price: null as number | null,
   unit_of_measurement: '',
   custom_3d_model_id: null as number | null,
   custom_image_id: null as number | null,
@@ -653,6 +659,7 @@ const loadVariation = async () => {
       finish: variation.finish || '',
       base_price: Number(variation.base_price ?? variation.product?.base_price ?? 0),
       discounted_price: variation.discounted_price == null ? null : Number(variation.discounted_price),
+      cost_price: variation.cost_price == null ? null : Number(variation.cost_price),
       unit_of_measurement: variation.unit_of_measurement || variation.product?.unit_of_measurement || '',
       custom_3d_model_id: variation.custom_3d_model_id || null,
       custom_image_id: variation.custom_image_id || null,

@@ -43,14 +43,7 @@ const syncSubscriptionFromIntent = async (storeId: number, pendingPlan: any) => 
     return false
   }
 
-  if (pendingPlan?.plan_key && pendingPlan.plan_key !== 'free') {
-    await axiosClient.put(`/api/stores/${storeId}/subscription`, {
-      subscription_tier: String(pendingPlan.plan_key).toLowerCase(),
-      setup_mode: 'paid',
-      months: Number(pendingPlan.months || 1),
-      billing_cycle: String(pendingPlan.billing_cycle || 'monthly'),
-    })
-  } else if (pendingPlan?.plan_key === 'free') {
+  if (pendingPlan?.plan_key === 'free') {
     await axiosClient.put(`/api/stores/${storeId}/subscription`, {
       subscription_tier: 'free',
       setup_mode: 'free',

@@ -60,6 +60,35 @@
               No enabled modules were found for this plan yet.
             </div>
           </div>
+
+          <div class="mt-5 rounded-xl border border-slate-200 p-4">
+            <div>
+              <div class="text-sm font-semibold text-slate-950">Plan Limits & Usage</div>
+              <p class="text-xs text-slate-500">Configured subscription caps and current usage for this store.</p>
+            </div>
+
+            <div v-if="planLimits.length" class="mt-4 grid gap-3 md:grid-cols-3">
+              <div v-for="limit in planLimits" :key="limit.key" class="rounded-lg border border-slate-200 bg-white p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <span class="text-sm font-medium text-slate-700">{{ limit.label }}</span>
+                  <Tag :value="limit.limit == null ? 'Unlimited' : `${formatCount(limit.limit)} max`" :severity="limit.limit == null ? 'secondary' : 'info'" />
+                </div>
+                <div class="mt-3 text-lg font-semibold text-slate-950">
+                  {{ formatCount(limit.used) }}
+                  <span class="text-xs font-normal text-slate-500">{{ limit.limit == null ? 'currently used' : `of ${formatCount(limit.limit)} used` }}</span>
+                </div>
+                <ProgressBar v-if="limit.limit != null" :value="usagePercent(limit.used, limit.limit)" :showValue="false" class="mt-2 h-2" />
+              </div>
+            </div>
+            <div v-else class="mt-3 text-sm text-slate-500">No account, branch, or product caps are configured for this plan.</div>
+
+            <div v-if="planFeatures.length" class="mt-4 border-t border-slate-100 pt-3">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Other configured plan features</div>
+              <div class="flex flex-wrap gap-2">
+                <Tag v-for="(feature, index) in planFeatures" :key="`${index}-${feature}`" :value="feature" severity="secondary" />
+              </div>
+            </div>
+          </div>
         </template>
       </Card>
 
@@ -124,6 +153,7 @@ import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import ProgressBar from 'primevue/progressbar'
 
 const props = defineProps<{
   store: any
@@ -138,6 +168,25 @@ const enabledModules = computed(() => {
   const modules = subscription.value.enabled_modules
   return Array.isArray(modules) ? modules : []
 })
+const planLimits = computed(() => {
+  const limits = subscription.value.limits
+  return Array.isArray(limits) ? limits : []
+})
+const planFeatures = computed(() => {
+  const features = subscription.value.plan_features
+  return Array.isArray(features) ? features.filter((feature) => typeof feature === 'string' && feature.trim()) : []
+})
+
+const formatCount = (value: number | string | null | undefined) => {
+  const count = Number(value || 0)
+  return new Intl.NumberFormat('en-PH', { maximumFractionDigits: 0 }).format(count)
+}
+
+const usagePercent = (used: number | string, limit: number | string) => {
+  const maximum = Number(limit)
+  if (!Number.isFinite(maximum) || maximum <= 0) return 0
+  return Math.min(100, Math.max(0, (Number(used || 0) / maximum) * 100))
+}
 
 const formatMoney = (value: number | string, currency = 'PHP') => {
   return new Intl.NumberFormat('en-PH', {
@@ -148,7 +197,7 @@ const formatMoney = (value: number | string, currency = 'PHP') => {
 }
 
 const formatDate = (value?: string | null) => {
-  if (!value) return 'Not set'
+  if (!value) return 'Unlimited'
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return value
   return new Intl.DateTimeFormat('en-US', {
@@ -162,8 +211,8 @@ const endsAtLabel = computed(() => formatDate(subscription.value.ends_at))
 
 const remainingLabel = computed(() => {
   const days = Number(subscription.value.days_remaining)
-  if (!subscription.value.ends_at) return 'No end date recorded'
-  if (Number.isNaN(days)) return 'No end date recorded'
+  if (!subscription.value.ends_at) return 'No expiration'
+  if (Number.isNaN(days)) return 'No expiration'
   if (days < 0) return `Expired ${Math.abs(days)} day(s) ago`
   if (days === 0) return 'Ends today'
   return `${days} day(s) remaining`
@@ -183,6 +232,7 @@ const statusSeverity = (status: string) => {
 }
 
 const goToUpgrade = () => {
-  router.visit('/store/settings?open_upgrade=1')
+  const storeId = Number(store.value?.id || subscription.value?.store_id || 0)
+  router.visit(`/subscription-plans${storeId ? `?store_id=${storeId}` : ''}`)
 }
 </script>

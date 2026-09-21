@@ -78,9 +78,12 @@ Route::prefix('logistics')->group(function () {
 
     // Return Pickups (Customer Returns)
     Route::prefix('return-pickups')->group(function () {
+        Route::get('/options/branches', [ReturnPickupController::class, 'branches']);
         Route::get('/', [ReturnPickupController::class, 'index']);
         Route::get('/{pickup}', [ReturnPickupController::class, 'show']);
         Route::put('/{pickup}', [ReturnPickupController::class, 'updateStatus']);
+        Route::post('/{pickup}', [ReturnPickupController::class, 'updateStatus']);
+        Route::post('/{pickup}/location', [ReturnPickupController::class, 'updateLocation']);
         Route::post('/{pickup}/assign-driver', [ReturnPickupController::class, 'assignDriver']);
         Route::post('/{pickup}/proof', [ReturnPickupController::class, 'uploadProof']);
     });

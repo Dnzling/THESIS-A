@@ -4,8 +4,8 @@
       <div class="flex items-center gap-2">
         <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Create Delivery Assignment</h1>
-          <p class="mt-1 text-sm text-slate-600">Assign logistics staff and set transport charges for this order.</p>
+          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">{{ source === 'return_pickup' ? 'Create Return Pickup Assignment' : 'Create Delivery Assignment' }}</h1>
+          <p class="mt-1 text-sm text-slate-600">Assign logistics staff, a vehicle, schedule, and transport charges.</p>
         </div>
       </div>
     </div>
@@ -84,6 +84,11 @@
             <Select v-model="form.vehicle_id" :options="vehicles" optionLabel="label" optionValue="id" fluid filter
               placeholder="Select vehicle" />
           </div>
+
+          <div v-if="source === 'return_pickup'">
+            <label class="mb-1 block text-sm text-slate-600">Deliver Return To *</label>
+            <Select v-model="form.destination_branch_id" :options="branches" optionLabel="label" optionValue="id" fluid filter placeholder="Select destination branch" />
+          </div>
   
           <div v-if="selectedVehicle" class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
             <div class="mb-3 flex items-center justify-between">
@@ -112,8 +117,8 @@
           </div>
   
           <div>
-            <label class="mb-1 block text-sm text-slate-600">Estimated Delivery Time</label>
-            <DatePicker v-model="form.estimated_delivery_at" :minDate="new Date()" showTime hourFormat="12" fluid />
+            <label class="mb-1 block text-sm text-slate-600">{{ source === 'return_pickup' ? 'Pickup Schedule' : 'Estimated Delivery Time' }}</label>
+            <DatePicker v-model="form.estimated_delivery_at" :minDate="new Date()"  fluid showIcon/>
           </div>
   
           <div class="md:col-span-2">
@@ -122,7 +127,7 @@
           </div>
   
           <div class="md:col-span-2 flex flex-wrap gap-2">
-            <Button type="submit" icon="pi pi-check" label="Assign Delivery" :loading="submitting"
+            <Button type="submit" icon="pi pi-check" :label="source === 'return_pickup' ? 'Assign Return Pickup' : 'Assign Delivery'" :loading="submitting"
               :disabled="!canManageDeliveries || !canSubmit" />
           </div>
         </form>
@@ -152,7 +157,10 @@ const toast = useToast()
 const authStore = useAuthStore()
 const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage')
 
-const source = computed(() => (String(route.query.source || '').toLowerCase() === 'sales' ? 'sales' : 'ecommerce'))
+const source = computed<'ecommerce' | 'sales' | 'return_pickup'>(() => {
+  const value = String(route.query.source || '').toLowerCase()
+  return value === 'sales' || value === 'return_pickup' ? value : 'ecommerce'
+})
 const orderId = computed(() => Number(route.query.order_id || 0))
 
 const loading = ref(false)
@@ -163,6 +171,7 @@ const order = ref<any>(null)
 const drivers = ref<any[]>([])
 const assistants = ref<any[]>([])
 const vehicles = ref<any[]>([])
+const branches = ref<any[]>([])
 const zones = ref<any[]>([])
 const selectedZone = ref<any>(null)
 const selectedRate = ref<any>(null)
@@ -173,6 +182,7 @@ const selectedVehicle = computed(() => vehicles.value.find((vehicle: any) => Num
 const form = reactive({
   driver_user_id: null as number | null,
   vehicle_id: null as number | null,
+  destination_branch_id: null as number | null,
   assistant_user_ids: [] as number[],
   distance_km: 0,
   per_km_charge: 0,
@@ -186,10 +196,10 @@ const form = reactive({
   notes: '',
 })
 
-const sourceLabel = computed(() => (source.value === 'sales' ? 'Sales' : 'Ecommerce'))
-const customerName = computed(() => (source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
-const customerContact = computed(() => (source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
-const deliveryAddress = computed(() => (source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
+const sourceLabel = computed(() => source.value === 'return_pickup' ? 'Customer Return Pickup' : (source.value === 'sales' ? 'Sales' : 'Ecommerce'))
+const customerName = computed(() => source.value === 'return_pickup' ? order.value?.pickup_name : (source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
+const customerContact = computed(() => source.value === 'return_pickup' ? order.value?.pickup_phone : (source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
+const deliveryAddress = computed(() => source.value === 'return_pickup' ? order.value?.pickup_address : (source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
 const formattedOrderStatus = computed(() => {
   const status = String(order.value?.status || '')
   if (!status) return '-'
@@ -216,7 +226,7 @@ const selectedRateLabel = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return !!form.driver_user_id && !!form.vehicle_id && Number(form.per_km_charge) >= 0
+  return !!form.driver_user_id && !!form.vehicle_id && (source.value !== 'return_pickup' || !!form.destination_branch_id) && Number(form.per_km_charge) >= 0
 })
 
 const loadOptions = async () => {
@@ -236,10 +246,35 @@ const loadOptions = async () => {
   }))
 
   zones.value = zoneRes?.data?.data || []
+  if (source.value === 'return_pickup') {
+    const branchRes = await logisticsService.getReturnPickupBranches()
+    branches.value = (branchRes?.data || []).map((branch: any) => ({ ...branch, label: `${branch.name} (${branch.branch_type === 'warehouse' ? 'Warehouse' : 'Store'}) - ${branch.address || branch.city || 'No address'}` }))
+  }
 }
 
 const loadOrderDetail = async () => {
   if (!orderId.value) return
+
+  if (source.value === 'return_pickup') {
+    const response = await logisticsService.getReturnPickup(orderId.value)
+    const pickup = response?.data || null
+    const returnRequest = pickup?.return_request || null
+    const orderItem = returnRequest?.order_item || null
+    order.value = pickup ? {
+      ...pickup,
+      order_number: returnRequest?.return_number || `Return #${returnRequest?.id || pickup.id}`,
+      status: pickup.status,
+      total_amount: Number(orderItem?.unit_price || 0) * Number(returnRequest?.requested_quantity || 1),
+      shipping_fee: pickup.estimated_fee || 0,
+      items: orderItem ? [{ ...orderItem, quantity: Number(returnRequest?.requested_quantity || 1) }] : [],
+    } : null
+    form.weight_kg = Number(totalWeightKg.value.toFixed(2))
+    if (pickup && !['scheduled', 'ready_for_dispatch'].includes(String(pickup.status || '').toLowerCase())) {
+      toast.add({ severity: 'warn', summary: 'Already Assigned', detail: 'This return pickup has already been assigned.', life: 3000 })
+      router.replace({ name: 'logistics.return-pickups.detail', params: { id: orderId.value } })
+    }
+    return
+  }
 
   const response = await logisticsService.getDeliveryOrderDetail(source.value as 'ecommerce' | 'sales', orderId.value)
   order.value = response?.data?.order || null
@@ -248,7 +283,11 @@ const loadOrderDetail = async () => {
   }
 
   const existingDeliveryStatus = String(response?.data?.delivery?.status || '').toLowerCase()
-  if (response?.data?.delivery && existingDeliveryStatus !== 'pending') {
+  // An order marked Ready for Dispatch is eligible for its first logistics
+  // assignment. Only redirect when a delivery has moved beyond the unassigned
+  // states; otherwise the create page immediately bounces back to the detail.
+  const deliveryCanBeAssigned = ['pending', 'ready_for_dispatch'].includes(existingDeliveryStatus)
+  if (response?.data?.delivery && !deliveryCanBeAssigned) {
     toast.add({
       severity: 'warn',
       summary: 'Already Assigned',
@@ -265,10 +304,11 @@ const loadOrderDetail = async () => {
 }
 
 const calculateDistance = async () => {
-  const originLatitude = Number(source.value === 'sales' ? order.value?.branch?.latitude : order.value?.assigned_branch?.latitude)
-  const originLongitude = Number(source.value === 'sales' ? order.value?.branch?.longitude : order.value?.assigned_branch?.longitude)
-  const destinationLatitude = Number(source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
-  const destinationLongitude = Number(source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
+  const returnOrder = order.value?.return_request?.order
+  const originLatitude = Number(source.value === 'return_pickup' ? returnOrder?.assigned_branch?.latitude : source.value === 'sales' ? order.value?.branch?.latitude : order.value?.assigned_branch?.latitude)
+  const originLongitude = Number(source.value === 'return_pickup' ? returnOrder?.assigned_branch?.longitude : source.value === 'sales' ? order.value?.branch?.longitude : order.value?.assigned_branch?.longitude)
+  const destinationLatitude = Number(source.value === 'return_pickup' ? returnOrder?.customer_latitude : source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
+  const destinationLongitude = Number(source.value === 'return_pickup' ? returnOrder?.customer_longitude : source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
 
   if (![originLatitude, originLongitude, destinationLatitude, destinationLongitude].every(Number.isFinite)) {
     toast.add({ severity: 'warn', summary: 'Missing Coordinates', detail: 'Unable to calculate distance for this order.', life: 3000 })
@@ -354,6 +394,23 @@ const submitAssignment = async () => {
 
   submitting.value = true
   try {
+    if (source.value === 'return_pickup') {
+      const estimatedFee = Number(form.base_fee || 0) + Number(form.distance_km || 0) * Number(form.per_km_charge || 0) + Number(form.weight_kg || 0) * Number(form.per_kg_fee || 0)
+      await logisticsService.assignReturnPickupDriver(orderId.value, {
+        driver_user_id: form.driver_user_id,
+        assistant_user_ids: form.assistant_user_ids,
+        vehicle_id: form.vehicle_id,
+        destination_branch_id: form.destination_branch_id,
+        distance_km: Number(form.distance_km || 0),
+        estimated_fee: Number(estimatedFee.toFixed(2)),
+        scheduled_at: form.estimated_delivery_at ? new Date(form.estimated_delivery_at).toISOString() : null,
+        notes: form.notes || null,
+      })
+      toast.add({ severity: 'success', summary: 'Assigned', detail: 'Return pickup has been assigned successfully.', life: 2500 })
+      router.push({ name: 'logistics.return-pickups.detail', params: { id: orderId.value } })
+      return
+    }
+
     await logisticsService.assignDelivery({
       source_type: source.value,
       order_id: orderId.value,
@@ -407,6 +464,7 @@ onMounted(async () => {
   loading.value = true
   try {
     await Promise.all([loadOptions(), loadOrderDetail()])
+    if (order.value) await calculateDistance()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load create form.', life: 3500 })
   } finally {

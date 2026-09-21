@@ -144,34 +144,8 @@ abstract class Controller
             return [];
         }
 
-        $rolePermissions = DB::table('role_permissions')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->where('role_permissions.role_id', $user->role_id)
-            ->where('permissions.is_active', true)
-            ->whereNull('permissions.deleted_at')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $userGrants = DB::table('user_permissions')
-            ->join('permissions', 'user_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_permissions.user_id', $user->id)
-            ->where('user_permissions.type', 'grant')
-            ->where('permissions.is_active', true)
-            ->whereNull('permissions.deleted_at')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $userRevokes = DB::table('user_permissions')
-            ->join('permissions', 'user_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_permissions.user_id', $user->id)
-            ->where('user_permissions.type', 'revoke')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $allPermissions = array_merge($rolePermissions, $userGrants);
-        $finalPermissions = array_diff($allPermissions, $userRevokes);
-
-        return array_values(array_unique($finalPermissions));
+        return app(\App\Services\Core\PermissionService::class)
+            ->getUserPermissions($user, $user->store_id ? (int) $user->store_id : null);
     }
 
     protected function userHasPermissions(array $permissions, $user = null): bool

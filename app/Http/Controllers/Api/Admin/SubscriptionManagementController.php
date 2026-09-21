@@ -285,6 +285,7 @@ class SubscriptionManagementController extends Controller
             'branch_code' => $branchCode,
             'is_main_branch' => true,
             'status' => 'active',
+            'geofence_enabled' => false,
         ]);
     }
 }

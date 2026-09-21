@@ -414,11 +414,15 @@
         <p class="text-sm text-slate-600">Confirm details for your GCash receipt before redirecting to authorization.</p>
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
-          <InputMask v-model="gcashDialog.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false" />
+          <InputMask v-model="gcashDialog.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false"
+            :class="{ 'border-red-500': gcashTouched.phone && gcashPhoneError }" @blur="gcashTouched.phone = true" />
+          <small v-if="gcashTouched.phone && gcashPhoneError" class="mt-1 block text-xs text-red-600">{{ gcashPhoneError }}</small>
         </div>
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
-          <InputText v-model="gcashDialog.email" type="email" fluid placeholder="name@example.com" />
+          <InputText v-model="gcashDialog.email" type="email" fluid placeholder="name@example.com"
+            :class="{ 'border-red-500': gcashTouched.email && gcashEmailError }" @blur="gcashTouched.email = true" />
+          <small v-if="gcashTouched.email && gcashEmailError" class="mt-1 block text-xs text-red-600">{{ gcashEmailError }}</small>
         </div>
       </div>
       <template #footer>
@@ -436,25 +440,31 @@
       :closable="!cardDialog.processing"
     >
       <div class="space-y-3">
-        <p class="text-sm text-slate-600">
-          Enter your card details to continue. This form sends card data directly to Online Payment using your public key.
-        </p>
+      
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Card Number</label>
-          <InputMask v-model="cardDialog.cardNumber" mask="0000 0000 0000 0000" fluid placeholder="4111 1111 1111 1111" />
+          <InputMask v-model="cardDialog.cardNumber" mask="9999 9999 9999 9999" fluid placeholder="4111 1111 1111 1111"
+            :class="{ 'border-red-500': cardTouched.cardNumber && cardNumberError }" @blur="cardTouched.cardNumber = true" />
+          <small v-if="cardTouched.cardNumber && cardNumberError" class="mt-1 block text-xs text-red-600">{{ cardNumberError }}</small>
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">MM</label>
-            <InputMask v-model="cardDialog.expMonth" mask="00" inputmode="numeric" fluid placeholder="01" />
+            <InputMask v-model="cardDialog.expMonth" mask="99" inputmode="numeric" fluid placeholder="01"
+              :class="{ 'border-red-500': cardTouched.expMonth && cardExpMonthError }" @blur="cardTouched.expMonth = true" />
+            <small v-if="cardTouched.expMonth && cardExpMonthError" class="mt-1 block text-xs text-red-600">{{ cardExpMonthError }}</small>
           </div>
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">YYYY</label>
-            <InputMask v-model="cardDialog.expYear" mask="0000" inputmode="numeric" fluid placeholder="2030" />
+            <InputMask v-model="cardDialog.expYear" mask="9999" inputmode="numeric" fluid placeholder="2030"
+              :class="{ 'border-red-500': cardTouched.expYear && cardExpYearError }" @blur="cardTouched.expYear = true" />
+            <small v-if="cardTouched.expYear && cardExpYearError" class="mt-1 block text-xs text-red-600">{{ cardExpYearError }}</small>
           </div>
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">CVC</label>
-            <InputMask v-model="cardDialog.cvc" mask="000" inputmode="numeric" fluid placeholder="123" />
+            <InputMask v-model="cardDialog.cvc" mask="999" inputmode="numeric" fluid placeholder="123"
+              :class="{ 'border-red-500': cardTouched.cvc && cardCvcError }" @blur="cardTouched.cvc = true" />
+            <small v-if="cardTouched.cvc && cardCvcError" class="mt-1 block text-xs text-red-600">{{ cardCvcError }}</small>
           </div>
         </div>
       </div>
@@ -546,6 +556,53 @@ const gcashDialog = reactive({
   processing: false,
   phone: '',
   email: '',
+})
+const gcashTouched = reactive({ phone: false, email: false })
+const cardTouched = reactive({ cardNumber: false, expMonth: false, expYear: false, cvc: false })
+
+const gcashPhoneError = computed(() => {
+  const phone = cleanPhoneNumber(gcashDialog.phone)
+  if (!phone) return 'Enter your GCash mobile number.'
+  return /^09\d{9}$/.test(phone) ? '' : 'Enter a valid 11-digit number starting with 09.'
+})
+const gcashEmailError = computed(() => {
+  const email = String(gcashDialog.email || '').trim()
+  if (!email) return 'Enter an email address for your receipt.'
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? '' : 'Enter a valid email address.'
+})
+const cardNumberError = computed(() => {
+  const digits = String(cardDialog.cardNumber || '').replace(/\D/g, '')
+  if (!digits) return 'Enter your card number.'
+  return digits.length === 16 ? '' : 'Enter the complete 16-digit card number.'
+})
+const cardExpMonthError = computed(() => {
+  const month = Number(String(cardDialog.expMonth || '').replace(/\D/g, ''))
+  if (!cardDialog.expMonth || String(cardDialog.expMonth).replace(/\D/g, '').length !== 2) return 'Enter the expiry month.'
+  if (month < 1 || month > 12) return 'Enter a month from 01 to 12.'
+  const yearText = String(cardDialog.expYear || '').replace(/\D/g, '')
+  if (yearText.length === 4) {
+    const year = Number(yearText)
+    const now = new Date()
+    if (year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)) return 'This card has expired.'
+  }
+  return ''
+})
+const cardExpYearError = computed(() => {
+  const yearText = String(cardDialog.expYear || '').replace(/\D/g, '')
+  if (yearText.length !== 4) return 'Enter the 4-digit expiry year.'
+  const year = Number(yearText)
+  const now = new Date()
+  if (year < now.getFullYear()) return 'Enter a current or future expiry year.'
+  const monthText = String(cardDialog.expMonth || '').replace(/\D/g, '')
+  if (year === now.getFullYear() && monthText.length === 2 && Number(monthText) >= 1 && Number(monthText) <= 12 && Number(monthText) < now.getMonth() + 1) {
+    return 'This card has expired.'
+  }
+  return ''
+})
+const cardCvcError = computed(() => {
+  const cvc = String(cardDialog.cvc || '').replace(/\D/g, '')
+  if (!cvc) return 'Enter your card security code.'
+  return cvc.length === 3 ? '' : 'Enter the 3-digit security code.'
 })
 
 const pendingPaymongo = reactive({
@@ -1275,6 +1332,8 @@ async function placeOrder() {
       if (selectedPaymentMethod.value === 'gcash') {
         gcashDialog.phone = String(selectedAddress.value?.contact_number || '').trim()
         gcashDialog.email = (authStore.user?.email || payload.shipping_email || '').trim()
+        gcashTouched.phone = false
+        gcashTouched.email = false
         gcashDialog.visible = true
         return
       }
@@ -1284,6 +1343,10 @@ async function placeOrder() {
       cardDialog.expMonth = ''
       cardDialog.expYear = ''
       cardDialog.cvc = ''
+      cardTouched.cardNumber = false
+      cardTouched.expMonth = false
+      cardTouched.expYear = false
+      cardTouched.cvc = false
       cardDialog.visible = true
       return
     }
@@ -1406,12 +1469,9 @@ async function submitGcashPayment() {
   const phone = cleanPhoneNumber(gcashDialog.phone)
   const email = String(gcashDialog.email || '').trim()
 
-  if (!/^09\d{9}$/.test(phone)) {
-    showAlert({ severity: 'warn', summary: 'Invalid Number', detail: 'Use an 11-digit GCash number (09XXXXXXXXX).' })
-    return
-  }
-  if (!email) {
-    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please provide an email for the receipt.' })
+  gcashTouched.phone = true
+  gcashTouched.email = true
+  if (gcashPhoneError.value || gcashEmailError.value) {
     return
   }
 
@@ -1434,7 +1494,8 @@ async function submitGcashPayment() {
 
 async function attachPaymentMethodToIntent(clientKey: string, paymentMethodId: string, returnUrl: string) {
   const paymentIntentId = String(clientKey).split('_client')[0]
-  const authorization = `Basic ${base64Encode(`${clientKey}:`)}`
+  const publicKey = await getPaymongoPublicKey()
+  const authorization = `Basic ${base64Encode(`${publicKey}:`)}`
 
   const response = await fetch(`https://api.paymongo.com/v1/payment_intents/${encodeURIComponent(paymentIntentId)}/attach`, {
     method: 'POST',
@@ -1446,6 +1507,7 @@ async function attachPaymentMethodToIntent(clientKey: string, paymentMethodId: s
       data: {
         attributes: {
           payment_method: paymentMethodId,
+          client_key: clientKey,
           return_url: returnUrl,
         },
       },
@@ -1470,8 +1532,11 @@ async function submitCardPayment() {
   const expMonth = Number(String(cardDialog.expMonth || '').trim())
   const expYear = Number(String(cardDialog.expYear || '').trim())
   const cvc = String(cardDialog.cvc || '').trim()
-  if (!cardNumber || !expMonth || !expYear || !cvc) {
-    showAlert({ severity: 'warn', summary: 'Incomplete Card', detail: 'Please fill in card number, expiry, and CVC.' })
+  cardTouched.cardNumber = true
+  cardTouched.expMonth = true
+  cardTouched.expYear = true
+  cardTouched.cvc = true
+  if (cardNumberError.value || cardExpMonthError.value || cardExpYearError.value || cardCvcError.value) {
     return
   }
 
@@ -1507,8 +1572,11 @@ async function submitCardPayment() {
       return
     }
 
-    // If it immediately succeeded/processing, just bring user back to checkout status screen.
-    await checkPaymongoResult(pendingPaymongo.orderId)
+    // If it immediately succeeded, continue straight to the paid order.
+    const paymentStatus = await checkPaymongoResult(pendingPaymongo.orderId)
+    if (paymentStatus === 'succeeded') {
+      router.replace({ name: 'ecommerce.order-detail', params: { id: pendingPaymongo.orderId } })
+    }
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Payment Failed', detail: error?.message || 'Unable to process card payment.' })
   } finally {
@@ -1529,7 +1597,6 @@ async function checkPaymongoResult(orderId: number): Promise<string> {
     }
 
     if (status === 'succeeded') {
-      showAlert({ severity: 'success', summary: 'Payment Successful', detail: 'Your payment was confirmed.' })
       completedPaymongoOrderId.value = orderId
       try {
         window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)
@@ -1581,7 +1648,13 @@ onMounted(async () => {
     } else {
       paymongoResultStatus = await checkPaymongoResult(paymongoOrderId)
     }
-    // Remove the query so refresh doesn't keep firing the toast.
+    if (paymongoResultStatus === 'succeeded') {
+      loading.value = false
+      router.replace({ name: 'ecommerce.order-detail', params: { id: paymongoOrderId } })
+      return
+    }
+
+    // Remove the query so refresh doesn't keep firing the result alert.
     const nextQuery = { ...route.query }
     delete (nextQuery as any).paymongo_order_id
     delete (nextQuery as any).paymongo_success
@@ -1589,11 +1662,6 @@ onMounted(async () => {
     if (Object.keys(nextQuery).length !== Object.keys(route.query).length) {
       router.replace({ query: nextQuery })
     }
-  }
-
-  if (paymongoResultStatus === 'succeeded') {
-    loading.value = false
-    return
   }
 
   if (navigator.geolocation) {

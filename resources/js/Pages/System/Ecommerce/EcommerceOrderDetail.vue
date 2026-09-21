@@ -42,7 +42,7 @@
               <p class="text-sm font-semibold text-slate-900">Delivery Logs</p>
               <div v-for="item in deliveryTimeline" :key="`${item.type}-${item.created_at}`" class="rounded-xl border border-slate-200 p-3">
                 <div class="flex flex-wrap justify-between gap-2"><p class="text-sm font-medium text-slate-900">{{ item.title }}</p><span class="text-xs text-slate-400">{{ formatDateTime(item.created_at) }}</span></div>
-                <p class="mt-1 text-xs text-slate-600">{{ item.description || '-' }}</p>
+                <p class="mt-1 text-xs text-slate-600">{{ formatTimelineDescription(item.description) }}</p>
                 <div v-if="proofUrls(item).length" class="mt-3 flex flex-wrap gap-3">
                   <button v-for="proof in proofUrls(item)" :key="proof.url" type="button" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50" @click="previewMedia(proof.url, proof.title)">
                     <img :src="proof.url" :alt="proof.title" class="h-28 w-36 object-cover transition group-hover:scale-105" />
@@ -74,11 +74,9 @@
                 }}</span></div>
             <div><span class="text-slate-500">Estimated Delivery:</span> <span class="font-semibold">{{ formatEstimatedDelivery(order.delivery?.estimated_delivery_at) }}</span></div>
             <div><span class="text-slate-500">Status:</span>
-              <Tag :value="statusLabel(order.primary_status || order.status)" />
+              <Badge :value="statusLabel(order.primary_status || order.status)" />
             </div>
-            <div><span class="text-slate-500">Payment:</span>
-              <Tag :value="formatStatus(order.payment_status)" severity="secondary" />
-            </div>
+           
             <div class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span
                 class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
             <template v-if="showTransitDetails">
@@ -89,10 +87,7 @@
               <div><span class="text-slate-500">Courier Contact:</span> <span class="font-semibold">{{
                   order.delivery?.courier_contact || '-' }}</span></div>
             </template>
-            <div v-if="order.cancellation_request" class="md:col-span-2">
-              <span class="text-slate-500">Cancellation Request:</span>
-              <Tag :value="formatStatus(order.cancellation_request.status)" severity="warning" class="ml-2" />
-            </div>
+           
           </div>
         </template>
       </Card>
@@ -115,14 +110,14 @@
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
                   <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>UOM: {{ item.unit_of_measurement || '—' }}</span>
+                    <span>Unit: {{ item.unit_of_measurement || '—' }}</span>
                     <span v-if="item.category_name">Category: {{ item.category_name }}</span>
                     <span v-if="item.brand">Brand: {{ item.brand }}</span>
                     <span v-if="item.weight_kg !== null && item.weight_kg !== undefined">Weight: {{ item.weight_kg }} kg</span>
                   </div>
                   <p v-if="item.description" class="mt-1 line-clamp-2 text-xs text-slate-500">{{ item.description }}</p>
                   <p v-if="item.dimensions && (item.dimensions.length_cm || item.dimensions.width_cm || item.dimensions.height_cm)" class="text-xs text-slate-500">
-                    Dimensions: {{ item.dimensions.length_cm || 0 }} × {{ item.dimensions.width_cm || 0 }} × {{ item.dimensions.height_cm || 0 }} cm
+                    Dimensions: {{ item.dimensions.length_cm || 0 }} cm × {{ item.dimensions.width_cm || 0 }} cm × {{ item.dimensions.height_cm || 0 }} cm
                   </p>
                 </div>
               </div>
@@ -159,9 +154,47 @@
                 </div>
               </div>
               <div v-if="item.return_request || item.review"
-                class="w-full border-t border-slate-100 pt-2 text-xs text-slate-600">
+                class="w-full space-y-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
                 <p v-if="item.review">Your review: {{ item.review.rating }}/5</p>
-  
+
+                <div v-if="item.return_request?.investigation_ticket"
+                  class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-900">Return Investigation Ticket</p>
+                      <p class="mt-0.5 text-xs text-slate-500">
+                        Ticket #{{ item.return_request.investigation_ticket.id }}
+                      </p>
+                    </div>
+                    <Tag
+                      :value="formatStatus(item.return_request.investigation_ticket.status)"
+                      severity="warn"
+                      class="text-xs"
+                    />
+                  </div>
+
+                  <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p class="text-slate-500">Expected investigation date</p>
+                      <p class="mt-0.5 font-medium text-slate-800">
+                        {{ formatDate(item.return_request.investigation_ticket.expected_investigation_date) }}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-slate-500">Assigned investigation team</p>
+                      <p class="mt-0.5 font-medium text-slate-800">
+                        {{ investigationAssignees(item.return_request.investigation_ticket) }}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div v-if="item.return_request.investigation_ticket.notes" class="mt-3">
+                    <p class="text-slate-500">Investigation notes</p>
+                    <p class="mt-0.5 whitespace-pre-line text-slate-700">
+                      {{ item.return_request.investigation_ticket.notes }}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -184,14 +217,12 @@
             <p class="text-sm font-semibold text-slate-900">Order Timeline</p>
             <p class="text-xs text-slate-500">Track all status changes and delivery updates.</p>
           </div>
-          <Timeline v-if="order.timeline?.length" :value="order.timeline" class="w-full">
-            <template #content="{ item }">
-              <div class="pb-4">
-                <div class="flex flex-wrap items-center gap-2">
-                  <p class="text-sm font-semibold text-slate-900">{{ item.title }}</p>
-                  <Tag v-if="item.status_to" :value="formatStatus(item.status_to)" severity="secondary" class="text-xs" />
-                </div>
-                <p class="mt-1 text-xs text-slate-600">{{ item.description || '-' }}</p>
+          <ul v-if="order.timeline?.length" class="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+            <li v-for="item in order.timeline" :key="`${item.type}-${item.created_at}`" class="flex gap-3 p-4">
+              <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600"></span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-slate-900">{{ item.title }}</p>
+                <p class="mt-1 text-sm text-slate-600">{{ formatTimelineDescription(item.description) }}</p>
                 <p class="mt-1 text-xs text-slate-400">
                   {{ formatDateTime(item.created_at) }} • {{ item.actor || 'System' }}
                 </p>
@@ -204,8 +235,8 @@
                   </button>
                 </div>
               </div>
-            </template>
-          </Timeline>
+            </li>
+          </ul>
           <p v-else class="text-sm text-slate-500">No timeline yet.</p>
         </template>
       </Card>
@@ -229,14 +260,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import ecommerceService from '@/services/ecommerce.service'
 import paymongoService from '@/services/paymongo.service'
-import Timeline from 'primevue/timeline'
 import Dialog from 'primevue/dialog'
 import { showAlert } from '@/utils/swal'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { fetchMapboxRoadRoute, requireMapboxToken } from '@/utils/mapbox'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -247,11 +275,10 @@ const router = useRouter()
 const loading = ref(false)
 const order = ref<any>(null)
 const trackingMapElement = ref<HTMLElement | null>(null)
-let trackingMap: L.Map | null = null
-let truckMarker: L.Marker | null = null
-let destinationMarker: L.Marker | null = null
-let routeLine: L.Polyline | null = null
-let tileLayerAdded = false
+let trackingMap: MapboxMap | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
+let truckMarker: MapboxMarker | null = null
+let destinationMarker: MapboxMarker | null = null
 let trackingRefreshTimer: number | null = null
 const vatableSales = computed(() => Math.max(
   0,
@@ -328,7 +355,7 @@ const showTransitDetails = computed(() => {
   const primary = String(order.value?.primary_status || '').toLowerCase()
   if (primary === 'in_transit') return true
   const deliveryStatus = String(order.value?.delivery?.status || '').toLowerCase()
-  return ['in_transit', 'out_for_delivery', 'on_delivery', 'on_the_way'].includes(deliveryStatus)
+  return ['in_transit', 'out_for_delivery', 'on_delivery'].includes(deliveryStatus)
 })
 
 function proofUrls(item: any) {
@@ -344,48 +371,86 @@ function normalizeProofUrl(raw: string) {
   return normalizeImageUrl(raw)
 }
 
-async function fetchRoadRoute(start: [number, number], end: [number, number]): Promise<[number, number][]> {
-  const coordinates = `${start[1]},${start[0]};${end[1]},${end[0]}`
-  const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`)
-  if (!response.ok) throw new Error('Road route unavailable')
-  const data = await response.json()
-  return (data?.routes?.[0]?.geometry?.coordinates || []).map((point: number[]) => [Number(point[1]), Number(point[0])] as [number, number])
-}
-
 async function renderTrackingMap() {
-  if (!showTransitDetails.value || !trackingMapElement.value) return
-  const center = currentPoint.value || destinationPoint.value || [14.5995, 120.9842] as [number, number]
-  if (!trackingMap) trackingMap = L.map(trackingMapElement.value).setView(center, currentPoint.value || destinationPoint.value ? 13 : 10)
-  if (!tileLayerAdded) {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(trackingMap)
-    tileLayerAdded = true
+  if (!showTransitDetails.value || !trackingMapElement.value) {
+    trackingMap?.remove()
+    trackingMap = null
+    truckMarker = null
+    destinationMarker = null
+    return
   }
 
-  const destinationIcon = L.icon({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41], shadowSize: [41, 41], shadowAnchor: [12, 41] })
-  const truckIcon = L.icon({ iconUrl: '/images/truck-map-marker-orange.png', iconSize: [100, 100], iconAnchor: [48, 48], popupAnchor: [0, -48] })
-  if (currentPoint.value) {
-    if (!truckMarker) truckMarker = L.marker(currentPoint.value, { icon: truckIcon }).addTo(trackingMap).bindTooltip('Truck location')
-    else truckMarker.setLatLng(currentPoint.value)
-  }
-  if (destinationPoint.value) {
-    if (!destinationMarker) destinationMarker = L.marker(destinationPoint.value, { icon: destinationIcon }).addTo(trackingMap).bindTooltip('Your delivery address')
-    else destinationMarker.setLatLng(destinationPoint.value)
-  }
-
-  if (currentPoint.value && destinationPoint.value) {
-    let routePoints: [number, number][] = [currentPoint.value, destinationPoint.value]
-    try {
-      const roadPoints = await fetchRoadRoute(currentPoint.value, destinationPoint.value)
-      if (roadPoints.length > 1) routePoints = roadPoints
-    } catch {
-      // Keep a direct fallback line if the public road-routing service is unavailable.
+  try {
+    if (!trackingMap) {
+      mapboxgl = (await import('mapbox-gl')).default
+      mapboxgl.accessToken = requireMapboxToken()
+      const center = currentPoint.value || destinationPoint.value || [14.5995, 120.9842]
+      trackingMap = new mapboxgl.Map({
+        container: trackingMapElement.value,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [center[1], center[0]],
+        zoom: currentPoint.value || destinationPoint.value ? 13 : 10,
+      })
+      await new Promise<void>((resolve) => trackingMap!.once('load', () => resolve()))
     }
-    if (!routeLine) routeLine = L.polyline(routePoints, { color: '#2563eb', weight: 5, opacity: 0.8 }).addTo(trackingMap)
-    else routeLine.setLatLngs(routePoints)
-    const bounds = L.latLngBounds(routePoints)
-    if (bounds.isValid()) trackingMap.fitBounds(bounds.pad(0.15), { maxZoom: 15 })
+
+    if (!trackingMap || !mapboxgl) return
+
+    truckMarker?.remove()
+    truckMarker = null
+    destinationMarker?.remove()
+    destinationMarker = null
+
+    if (currentPoint.value) {
+      const truckElement = document.createElement('img')
+      truckElement.src = '/images/truck-map-marker-orange.png'
+      truckElement.alt = 'Truck location'
+      truckElement.style.cssText = 'width:56px;height:56px;object-fit:contain;'
+      truckMarker = new mapboxgl.Marker({ element: truckElement, anchor: 'center' })
+        .setLngLat([currentPoint.value[1], currentPoint.value[0]])
+        .setPopup(new mapboxgl.Popup({ offset: 25 }).setText('Truck location'))
+        .addTo(trackingMap)
+    }
+
+    if (destinationPoint.value) {
+      const destinationElement = document.createElement('div')
+      destinationElement.style.cssText = 'width:18px;height:18px;border:3px solid white;border-radius:50%;background:#2563eb;box-shadow:0 1px 5px #0008;'
+      destinationMarker = new mapboxgl.Marker({ element: destinationElement, anchor: 'center' })
+        .setLngLat([destinationPoint.value[1], destinationPoint.value[0]])
+        .setPopup(new mapboxgl.Popup({ offset: 15 }).setText('Your delivery address'))
+        .addTo(trackingMap)
+    }
+
+    if (currentPoint.value && destinationPoint.value) {
+      let routePoints: [number, number][] = [currentPoint.value, destinationPoint.value]
+      try {
+        const roadPoints = await fetchMapboxRoadRoute(currentPoint.value, destinationPoint.value)
+        if (roadPoints.length > 1) routePoints = roadPoints
+      } catch {
+        // Keep the direct fallback line if Mapbox road routing is unavailable.
+      }
+      const routeFeature = {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: { type: 'LineString' as const, coordinates: routePoints.map(([lat, lng]) => [lng, lat]) },
+      }
+      if (trackingMap.getSource('customer-delivery-route')) {
+        (trackingMap.getSource('customer-delivery-route') as import('mapbox-gl').GeoJSONSource).setData(routeFeature)
+      } else {
+        trackingMap.addSource('customer-delivery-route', { type: 'geojson', data: routeFeature })
+        trackingMap.addLayer({ id: 'customer-delivery-route-line', type: 'line', source: 'customer-delivery-route', paint: { 'line-color': '#2563eb', 'line-width': 5, 'line-opacity': 0.8 } })
+      }
+      const bounds = new mapboxgl.LngLatBounds()
+      routePoints.forEach(([lat, lng]) => bounds.extend([lng, lat]))
+      trackingMap.fitBounds(bounds, { padding: 40, maxZoom: 15 })
+    } else if (currentPoint.value || destinationPoint.value) {
+      const point = currentPoint.value || destinationPoint.value!
+      trackingMap.flyTo({ center: [point[1], point[0]], zoom: 13 })
+    }
+    trackingMap.resize()
+  } catch (error: any) {
+    showAlert({ severity: 'error', summary: 'Map Unavailable', detail: error?.message || 'Unable to load the delivery map.' })
   }
-  window.setTimeout(() => trackingMap?.invalidateSize(), 100)
 }
 
 async function refreshTracking() {
@@ -430,6 +495,14 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function investigationAssignees(ticket: any) {
+  const names = (ticket?.assignees || [])
+    .map((assignee: any) => assignee?.name)
+    .filter(Boolean)
+
+  return names.length ? names.join(', ') : 'To be assigned'
+}
+
 function formatEstimatedDelivery(value: string | null) {
   if (!value) return 'Not scheduled'
   const date = new Date(value)
@@ -458,6 +531,21 @@ function formatStatus(value: string) {
   // Customer-facing: keep fulfillment status separate; "pending_cancellation" is driven by cancellation request.
   if (normalized === 'pending_cancellation') return 'Pending'
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+}
+
+function formatTimelineDescription(value: unknown) {
+  const description = String(value || '-').trim()
+
+  return description
+    .replace(
+      /\b(from|to)\s+([a-z][a-z0-9_]*)(?=[.,\s]|$)/gi,
+      (_match, direction: string, status: string) =>
+        `${direction.toLowerCase()} ${formatStatus(status)}`,
+    )
+    .replace(
+      /\b[a-z0-9]+(?:_[a-z0-9]+)+\b/gi,
+      (status) => formatStatus(status),
+    )
 }
 
 function normalizeImageUrl(raw: string) {
@@ -513,5 +601,7 @@ onBeforeUnmount(() => {
   if (trackingRefreshTimer !== null) window.clearInterval(trackingRefreshTimer)
   if (trackingMap) trackingMap.remove()
   trackingMap = null
+  truckMarker = null
+  destinationMarker = null
 })
 </script>

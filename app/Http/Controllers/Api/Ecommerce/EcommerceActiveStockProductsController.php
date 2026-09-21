@@ -7,6 +7,7 @@ use App\Models\CRM\EcommerceProductReview;
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
+use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -302,17 +303,24 @@ class EcommerceActiveStockProductsController extends Controller
                 $rank = $rankedStores->get($store->id);
                 return sprintf('%012d-%012d', PHP_INT_MAX - (int) ($rank?->monthly_sales ?? 0), PHP_INT_MAX - (int) ($rank?->matching_products_count ?? 0));
             })
-            ->values()
-            ->map(function (Store $store) use ($rankedStores) {
+            ->values();
+
+        $storeLogos = Branch::query()
+            ->whereIn('store_id', $stores->pluck('id'))
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id')
+            ->get(['store_id', 'logo_path'])
+            ->unique('store_id')
+            ->pluck('logo_path', 'store_id');
+
+        $stores = $stores->map(function (Store $store) use ($rankedStores, $storeLogos) {
                 $rank = $rankedStores->get($store->id);
-                $settings = is_array($store->settings) ? $store->settings : [];
-                $logo = $settings['logo'] ?? $settings['logo_path'] ?? null;
 
                 return [
                     'id' => $store->id,
                     'store_name' => $store->name,
                     'city' => $store->city,
-                    'store_logo' => $this->toAssetUrl($logo),
+                    'store_logo' => $this->toAssetUrl($storeLogos->get($store->id)),
                     'matching_products_count' => (int) ($rank?->matching_products_count ?? 0),
                     'monthly_sales' => (int) ($rank?->monthly_sales ?? 0),
                 ];

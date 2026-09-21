@@ -202,6 +202,7 @@ const statusOptions = ref([
   { label: 'Sent to Supplier', value: 'sent_to_supplier' },
   { label: 'Supplier Accepted', value: 'supplier_accepted' },
   { label: 'In Transit', value: 'in_transit' },
+  { label: 'Out for Delivery', value: 'out_for_delivery' },
   { label: 'Delivered', value: 'delivered' },
   { label: 'Supplier Declined', value: 'declined_supplier' },
   { label: 'Revision Requested', value: 'revision_requested' },
@@ -278,7 +279,7 @@ function calculateStats() {
 
 function statusSeverity(status: string): string {
   if (['supplier_accepted', 'delivered'].includes(status)) return 'success'
-  if (['sent_to_supplier', 'in_transit'].includes(status)) return 'warning'
+  if (['sent_to_supplier', 'in_transit', 'out_for_delivery'].includes(status)) return 'warning'
   if (['cancelled', 'declined_supplier'].includes(status)) return 'danger'
   return 'secondary'
 }
@@ -302,6 +303,7 @@ function formatStatus(status: string): string {
     sent_to_supplier: 'Sent to Supplier',
     supplier_accepted: 'Supplier Accepted',
     in_transit: 'In Transit',
+    out_for_delivery: 'Out for Delivery',
     delivered: 'Delivered',
     declined_supplier: 'Supplier Declined',
     revision_requested: 'Revision Requested',

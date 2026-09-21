@@ -220,8 +220,8 @@
               <div class="flex justify-between"><span class="text-slate-500">Total quantity</span><span>{{ totalQuantity.toLocaleString() }}</span></div>
               <div class="flex justify-between"><span class="text-slate-500">Goods value</span><span>{{ money(estimate.goods_value) }}</span></div>
               <div class="flex justify-between"><span class="text-slate-500">Route distance</span><span>{{ formatNumber(estimate.distance_km) }} km</span></div>
-              <div class="flex justify-between"><span class="text-slate-500">Shipping fee</span><span>{{ money(estimate.shipping_fee) }}</span></div>
-              <div class="border-t border-slate-200 pt-2 flex justify-between font-semibold text-slate-900"><span>Total transfer value</span><span>{{ money(estimate.total_value) }}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">Estimated shipping fee</span><span class="font-medium">{{ money(estimate.shipping_fee) }}</span></div>
+              <div class="border-t border-slate-200 pt-2 flex justify-between font-semibold text-slate-900"><span>Estimated total transfer value</span><span>{{ money(estimate.total_value) }}</span></div>
               <small v-if="estimating" class="block text-right text-slate-400">Calculating fee…</small>
             </div>
           </div>

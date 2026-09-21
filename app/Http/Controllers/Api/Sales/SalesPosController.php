@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Sales\SalesOrder;
+use App\Models\Sales\SalesOrderDelivery;
+use App\Models\Sales\SalesOrderDeliveryLog;
 use App\Models\Sales\SalesOrderItem;
 use App\Models\Sales\SalesPayment;
 use App\Models\Hr\Employee;
@@ -100,7 +102,7 @@ class SalesPosController extends Controller
                 'customer_contact' => $order->customer_phone,
                 'payment_method' => $order->payment_method ?: $order->payment?->payment_method,
                 'payment_status' => $order->payment_status ?: $order->payment?->status,
-                'status' => $order->status ?: 'completed',
+                'status' => $this->salesOrderDisplayStatus($order),
                 'total_amount' => (float) $order->total_amount,
                 'created_at' => $order->created_at,
                 'channel' => 'In-Store',
@@ -134,7 +136,7 @@ class SalesPosController extends Controller
                 'customer_contact' => $order->shipping_phone,
                 'payment_method' => $order->payment_method,
                 'payment_status' => $order->payment_status,
-                'status' => $order->status ?: 'pending',
+                'status' => $this->deliveryDisplayStatus($order->delivery?->status, $order->status ?: 'pending'),
                 'total_amount' => (float) $order->total_amount,
                 'created_at' => $order->placed_at ?: $order->created_at,
                 'channel' => 'Online',
@@ -223,6 +225,11 @@ class SalesPosController extends Controller
             return response()->json(['success' => false, 'message' => 'No store assigned.'], 422);
         }
 
+        $deliveryRequired = (bool) ($validated['delivery_required'] ?? false);
+        if ($deliveryRequired && $branchId < 1) {
+            return response()->json(['success' => false, 'message' => 'Select a branch before creating a delivery order.'], 422);
+        }
+
         if ($validated['payment_method'] === 'gcash' && !$this->paymongoService->isConfigured()) {
             return response()->json([
                 'success' => false,
@@ -238,7 +245,7 @@ class SalesPosController extends Controller
             ->with('subscriptionPlan:id,commission_rate')
             ->find($storeId)?->subscriptionPlan?->commission_rate ?? 0);
 
-        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $creatorEmployeeId, $commissionRate) {
+        $order = DB::transaction(function () use ($validated, $storeId, $branchId, $user, $creatorEmployeeId, $commissionRate, $deliveryRequired) {
             $subtotal = 0.0;
             $tax = 0.0;
             $discount = (float) ($validated['discount_amount'] ?? 0);
@@ -252,7 +259,7 @@ class SalesPosController extends Controller
                 'store_id' => $storeId,
                 'branch_id' => $branchId ?: null,
                 'order_number' => $this->nextOrderNumber(),
-                'status' => 'pending_payment',
+                'status' => $deliveryRequired ? 'pending' : 'pending_payment',
                 'customer_name' => $validated['customer_name'] ?? null,
                 'customer_phone' => $validated['customer_phone'] ?? null,
                 'payment_method' => $validated['payment_method'],
@@ -279,6 +286,28 @@ class SalesPosController extends Controller
                 'delivery_email' => $validated['delivery_email'] ?? null,
                 'created_by' => $creatorEmployeeId,
             ]);
+
+            if ($deliveryRequired) {
+                $delivery = SalesOrderDelivery::query()->create([
+                    'sales_order_id' => $order->id,
+                    'store_id' => $storeId,
+                    'branch_id' => $branchId,
+                    'status' => 'pending',
+                    'notes' => 'Awaiting Sales approval for dispatch.',
+                    'created_by' => $user->id,
+                    'updated_by' => $user->id,
+                ]);
+
+                SalesOrderDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'sales_order_id' => $order->id,
+                    'store_id' => $storeId,
+                    'event_type' => 'created',
+                    'status_to' => 'pending',
+                    'message' => 'Delivery request created and is pending Sales approval.',
+                    'created_by' => $user->id,
+                ]);
+            }
 
             foreach ($validated['items'] as $itemRow) {
                 $inv = BranchInventory::query()
@@ -608,23 +637,86 @@ class SalesPosController extends Controller
             ], 422);
         }
 
-        if ($order->delivery) {
+        if ($order->delivery && !in_array(strtolower((string) $order->delivery->status), ['pending', 'ready_for_dispatch'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Delivery is already assigned for this order.',
             ], 422);
         }
 
-        $notes = trim((string) ($order->notes ?? ''));
-        $line = '[' . now()->format('Y-m-d H:i') . '] Sent to logistics for delivery assignment.';
-        $order->notes = $notes === '' ? $line : $notes . PHP_EOL . $line;
-        $order->save();
+        if (!$order->branch_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A branch must be assigned before sending this order to logistics.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($order, $request): void {
+            $delivery = $order->delivery;
+            if (!$delivery) {
+                $delivery = SalesOrderDelivery::query()->create([
+                    'sales_order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'branch_id' => $order->branch_id,
+                    'status' => 'ready_for_dispatch',
+                    'notes' => 'Order is ready for logistics assignment.',
+                    'created_by' => $request->user()->id,
+                    'updated_by' => $request->user()->id,
+                ]);
+
+                SalesOrderDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'sales_order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'created',
+                    'status_to' => 'ready_for_dispatch',
+                    'message' => 'Order marked ready for dispatch and queued for logistics assignment.',
+                    'created_by' => $request->user()->id,
+                ]);
+            } elseif ((string) $delivery->status !== 'ready_for_dispatch') {
+                $previousDeliveryStatus = (string) $delivery->status;
+                $delivery->status = 'ready_for_dispatch';
+                $delivery->updated_by = $request->user()->id;
+                $delivery->save();
+
+                SalesOrderDeliveryLog::query()->create([
+                    'delivery_id' => $delivery->id,
+                    'sales_order_id' => $order->id,
+                    'store_id' => $order->store_id,
+                    'event_type' => 'status_updated',
+                    'status_from' => $previousDeliveryStatus,
+                    'status_to' => 'ready_for_dispatch',
+                    'message' => 'Delivery marked ready for dispatch by Sales.',
+                    'created_by' => $request->user()->id,
+                ]);
+            }
+
+            if ((string) $order->status !== 'ready_for_dispatch') {
+                $order->status = 'ready_for_dispatch';
+                $order->save();
+            }
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Order queued for logistics.',
             'data' => $order->fresh(['delivery', 'branch']),
         ]);
+    }
+
+    private function salesOrderDisplayStatus(SalesOrder $order): string
+    {
+        return $this->deliveryDisplayStatus($order->delivery?->status, (string) ($order->status ?: 'completed'));
+    }
+
+    private function deliveryDisplayStatus(?string $deliveryStatus, string $fallback): string
+    {
+        $deliveryStatus = strtolower((string) $deliveryStatus);
+        if ($deliveryStatus !== '') {
+            return $deliveryStatus;
+        }
+
+        return $fallback;
     }
 
     public function dashboard(Request $request): JsonResponse

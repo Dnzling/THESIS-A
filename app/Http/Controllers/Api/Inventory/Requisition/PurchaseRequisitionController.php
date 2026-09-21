@@ -219,18 +219,14 @@ class PurchaseRequisitionController extends Controller
             'items' => 'nullable|array|min:1',
             'items.*.product_id' => 'required_with:items|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
-            'items.*.selected_supplier_id' => 'nullable|exists:suppliers,id',
             'items.*.quantity_requested' => 'required_with:items|integer|min:1',
             'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.specifications' => 'nullable|string',
 
             'branch_inventory_id' => 'required_without:items|nullable|exists:branch_inventory,id',
-            'selected_supplier_id' => 'nullable|exists:suppliers,id',
             'requested_quantity' => 'required_without:items|nullable|integer|min:1',
 
-            // Inventory flow default: create+submit in one click
-            'auto_submit' => 'nullable|boolean',
         ]);
 
         $items = $validated['items'] ?? null;
@@ -247,7 +243,6 @@ class PurchaseRequisitionController extends Controller
                 'variation_id' => $inv->variation_id ? (int) $inv->variation_id : null,
                 'quantity_requested' => (int) $validated['requested_quantity'],
                 'estimated_unit_cost' => null,
-                'selected_supplier_id' => isset($validated['selected_supplier_id']) ? (int) $validated['selected_supplier_id'] : null,
                 'tax_rate' => 0,
                 'specifications' => null,
             ]];
@@ -263,82 +258,11 @@ class PurchaseRequisitionController extends Controller
 
             $resolvedItems = [];
             foreach ($items as $item) {
-                $selectedSupplierId = isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
-                if ($selectedSupplierId && !$this->supplierCanProvideProduct($selectedSupplierId, (int) $item['product_id'], $storeId)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Selected supplier {$selectedSupplierId} is not mapped to product {$item['product_id']} for this store.",
-                    ], 422);
-                }
-
                 $item['estimated_unit_cost'] = $this->resolveEstimatedUnitCost(
                     (int) $item['product_id'],
                     $item['estimated_unit_cost'] ?? null
                 );
                 $resolvedItems[] = $item;
-            }
-
-            // Hard validation: mixed selected supplier assignment is not allowed.
-            $hasAnySelectedSupplier = collect($resolvedItems)->contains(function ($item) {
-                return !is_null($item['selected_supplier_id'] ?? null);
-            });
-            $hasAnyWithoutSelectedSupplier = collect($resolvedItems)->contains(function ($item) {
-                return is_null($item['selected_supplier_id'] ?? null);
-            });
-            if ($hasAnySelectedSupplier && $hasAnyWithoutSelectedSupplier) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot create request with mixed supplier selection. Separate items with selected supplier (PO) and without selected supplier (RFQ).',
-                    'errors' => [
-                        'items' => [
-                            'All line items must either all have selected supplier or all have no selected supplier.',
-                        ],
-                    ],
-                ], 422);
-            }
-
-            // Hard validation: when suppliers are selected, all selected items must use the same supplier.
-            $selectedSupplierIds = collect($resolvedItems)
-                ->map(function ($item) {
-                    return isset($item['selected_supplier_id']) ? (int) $item['selected_supplier_id'] : null;
-                })
-                ->filter(function ($supplierId) {
-                    return !is_null($supplierId) && $supplierId > 0;
-                })
-                ->unique()
-                ->values();
-
-            if ($selectedSupplierIds->count() > 1) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'All selected suppliers must be the same for one request. Create separate requisitions per supplier to avoid processing errors.',
-                    'errors' => [
-                        'items' => [
-                            'Selected supplier must be identical across all line items.',
-                        ],
-                    ],
-                ], 422);
-            }
-
-            // Validation rule by product supplier mapping:
-            // - all items with supplier mapping => allowed (PO flow)
-            // - all items without supplier mapping => allowed (RFQ flow)
-            // - mixed (some with supplier mapping, some without) => not allowed
-            $itemHasSupplierFlags = collect($resolvedItems)->map(function ($item) use ($storeId) {
-                return $this->productHasMappedSupplier((int) ($item['product_id'] ?? 0), $storeId);
-            });
-            $hasAnyWithSupplier = $itemHasSupplierFlags->contains(true);
-            $hasAnyWithoutSupplier = $itemHasSupplierFlags->contains(false);
-            if ($hasAnyWithSupplier && $hasAnyWithoutSupplier) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Mixed items are not allowed in one request. Create separate requisitions: items with supplier (PO) and items without supplier (RFQ).',
-                    'errors' => [
-                        'items' => [
-                            'All line items must either all have supplier mapping or all have no supplier mapping.',
-                        ],
-                    ],
-                ], 422);
             }
 
             $estimatedAmount = 0;
@@ -382,47 +306,11 @@ class PurchaseRequisitionController extends Controller
                     'requisition_id' => $pr->id,
                     'product_id' => (int) $item['product_id'],
                     'variation_id' => $item['variation_id'] ?? null,
-                    'selected_supplier_id' => $item['selected_supplier_id'] ?? null,
                     'quantity_requested' => (int) $item['quantity_requested'],
                     'estimated_unit_cost' => $item['estimated_unit_cost'] ?? null,
                     'tax_rate' => $item['tax_rate'] ?? 0,
                     'specifications' => $item['specifications'] ?? null,
                 ]);
-            }
-
-            $autoSubmit = array_key_exists('auto_submit', $validated) ? (bool) $validated['auto_submit'] : true;
-            if ($autoSubmit) {
-                $pr->submit();
-                $this->notifyProcurementTeamForSubmittedPr($pr);
-            }
-
-            $canInventoryApprove = $this->userHasAnyPermission([
-                'inventory.requisitions.approve',
-                'inventory.requisition.approve',
-                'inventory.requisites.approve',
-            ], $storeId);
-
-            if ($autoSubmit && $canInventoryApprove) {
-                $note = 'Auto-approved on creation.';
-
-                $chain = $pr->approval_chain ?? [];
-                $chain[] = [
-                    'role' => Auth::user()->role->name ?? 'approver',
-                    'user_id' => Auth::id(),
-                    'user_name' => Auth::user()->full_name ?? null,
-                    'action' => 'approved',
-                    'notes' => $note,
-                    'approved_at' => now()->toDateTimeString(),
-                ];
-
-                $pr->update([
-                    'status' => 'procurement_processing',
-                    'approval_chain' => $chain,
-                ]);
-
-                if ($this->userHasAnyPermission(['procurement.requisitions.approve'], $storeId)) {
-                    $pr->addApproval('procurement.requisitions.approve', (int) Auth::id(), (string) (Auth::user()->full_name ?? 'Approver'), $note);
-                }
             }
 
             DB::commit();
@@ -743,26 +631,4 @@ class PurchaseRequisitionController extends Controller
         return 0.0;
     }
 
-    private function supplierCanProvideProduct(int $supplierId, int $productId, int $storeId): bool
-    {
-        return DB::table('supplier_products')
-            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
-            ->where('supplier_products.supplier_id', $supplierId)
-            ->where('supplier_products.product_id', $productId)
-            ->where('suppliers.store_id', $storeId)
-            ->exists();
-    }
-
-    private function productHasMappedSupplier(int $productId, int $storeId): bool
-    {
-        if ($productId <= 0) {
-            return false;
-        }
-
-        return DB::table('supplier_products')
-            ->join('suppliers', 'suppliers.id', '=', 'supplier_products.supplier_id')
-            ->where('supplier_products.product_id', $productId)
-            ->where('suppliers.store_id', $storeId)
-            ->exists();
-    }
 }

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\BranchController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\StoreDashboardController;
+use App\Http\Controllers\Api\Store\StoreModuleController;
 
 use App\Http\Controllers\Api\Hr\EmployeeController;
 use App\Http\Controllers\Api\Hr\PayPeriodController;
@@ -212,6 +213,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::put('/modules', [StoreRoleController::class, 'updateModules']);
         Route::get('/roles/{id}/permissions', [StoreRoleController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [StoreRoleController::class, 'updateRolePermissions']);
+    });
+
+    // Branch-scoped Store module
+    Route::prefix('store-module')->controller(StoreModuleController::class)->group(function () {
+        Route::get('/dashboard', 'dashboard');
+        Route::get('/settings', 'settings');
+        Route::match(['put', 'post'], '/settings', 'updateSettings');
+        Route::get('/ecommerce', 'ecommerce');
     });
 
     Route::prefix('payments')->group(function () {

@@ -934,7 +934,7 @@ const saveProfile = async () => {
       fname: form.fname,
       lname: form.lname,
       birthday: formatDate(form.birthday),
-      phone: form.phone || null,
+      phone_number: String(form.phone || '').trim() || null,
       gender: form.gender || null,
       address: form.address,
       province: form.province,

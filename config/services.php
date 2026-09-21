@@ -36,7 +36,10 @@ return [
     ],
 
     'mapbox' => [
-        'access_token' => env('MAPBOX_ACCESS_TOKEN'),
+        // The same public Mapbox token can be used by the browser and by the
+        // server-side geocoding/directions requests. Prefer a dedicated
+        // server variable, while keeping existing installations functional.
+        'access_token' => env('MAPBOX_ACCESS_TOKEN', env('VITE_MAPBOX_ACCESS_TOKEN')),
     ],
 
 ];

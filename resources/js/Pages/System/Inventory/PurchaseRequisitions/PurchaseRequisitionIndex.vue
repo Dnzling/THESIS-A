@@ -7,7 +7,7 @@
         </div>
         <div class="flex items-center gap-2">
           <Button
-            v-if="canManage"
+            v-if="!props.warehouseMode && canManage"
             label="Receipts"
             severity="info"
             size="small"
@@ -18,7 +18,7 @@
             label="Create PR" 
             severity="warn"
             size="small"
-            @click="router.push({ name: 'inventory.requisites.create' })"
+            @click="router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.create' : 'inventory.requisites.create' })"
           />
         </div>
       </div>
@@ -156,12 +156,15 @@ import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
+import WarehouseService from '@/services/warehouse.service'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
+const props = defineProps<{ warehouseMode?: boolean }>()
+const service: any = props.warehouseMode ? WarehouseService : inventoryService
 
 const loading = ref(false)
 const rows = ref<any[]>([])
@@ -171,7 +174,7 @@ const perPage = ref(15)
 const sortField = ref('created_at')
 const sortOrder = ref(-1)
 
-const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
 const hasActiveFilters = computed(() => Boolean(filters.search.trim() || filters.status || filters.date_range?.length))
 
 const filters = reactive<{ search: string; status: string | null; date_range: Date[] | null }>({
@@ -212,7 +215,7 @@ const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
 
 const onRowClick = (event: any) => {
   const id = event?.data?.id
-  if (id) router.push({ name: 'inventory.requisites.detail', params: { id } })
+  if (id) router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.view' : 'inventory.requisites.detail', params: { id } })
 }
 
 const formatTime = (value: any) => {
@@ -242,7 +245,7 @@ const onDateRangeChange = () => {
 const load = async () => {
   loading.value = true
   try {
-    const response = await inventoryService.getPurchaseRequisitions({
+    const response = await service[props.warehouseMode ? 'purchaseRequisitions' : 'getPurchaseRequisitions']({
       page: page.value,
       per_page: perPage.value,
       sort_by: sortField.value,
@@ -253,8 +256,8 @@ const load = async () => {
       date_to: formatDateParam(filters.date_range?.[1]),
     })
 
-    if (response?.success) {
-      const payload = response.data
+    if (props.warehouseMode ? response : response?.success) {
+      const payload = props.warehouseMode ? response : response.data
       rows.value = payload?.data || []
       total.value = payload?.total || 0
     } else {

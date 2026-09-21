@@ -422,7 +422,7 @@ class PurchaseOrderController extends Controller
                 // Fetch all stock order requests
                 $stockOrderRequests = StockOrderRequest::where('store_id', $storeId)
                     ->whereIn('id', $validated['stock_order_request_ids'])
-                    ->with('branchInventory.product')
+                    ->with(['branchInventory.product', 'branchInventory.variation'])
                     ->get();
 
                 if ($stockOrderRequests->count() !== count($validated['stock_order_request_ids'])) {
@@ -456,7 +456,7 @@ class PurchaseOrderController extends Controller
                     }
 
                     // Use product's unit cost as default
-                    $unitCost = (float) ($product->getRawOriginal('cost_price') ?? 0);
+                    $unitCost = (float) ($stockRequest->branchInventory->variation?->cost_price ?? $product->getRawOriginal('cost_price') ?? 0);
                     $itemSubtotal = $unitCost * $stockRequest->requested_quantity;
 
                     $subtotal += $itemSubtotal;
@@ -564,6 +564,9 @@ class PurchaseOrderController extends Controller
                     }
 
                     $product = Product::find($item['product_id']);
+                    $variation = !empty($item['variation_id'])
+                        ? ProductVariation::where('product_id', $item['product_id'])->find($item['variation_id'])
+                        : null;
                     $approvedFeedback = null;
                     if (!empty($validated['rfq_id'])) {
                         $approvedFeedback = SupplierRFQFeedback::query()
@@ -588,7 +591,7 @@ class PurchaseOrderController extends Controller
 
                     $unitCostValue = $approvedFeedback
                         ? (float) $approvedFeedback->quoted_price
-                        : (float) ($item['unit_cost'] ?? $product?->cost_price ?? 0);
+                        : (float) ($item['unit_cost'] ?? $variation?->cost_price ?? $product?->cost_price ?? 0);
                     if ($approvedFeedback?->estimated_delivery_date) {
                         $feedbackDate = $approvedFeedback->estimated_delivery_date->toDateString();
                         $quotedExpectedDeliveryDate = !$quotedExpectedDeliveryDate || $feedbackDate > $quotedExpectedDeliveryDate
@@ -1285,7 +1288,7 @@ class PurchaseOrderController extends Controller
             $poItemsPayload = [];
 
             foreach ($requisitionItems as $requisitionItem) {
-                $unitCost = (float) ($requisitionItem->estimated_unit_cost ?? $requisitionItem->product?->cost_price ?? 0);
+                $unitCost = (float) ($requisitionItem->estimated_unit_cost ?? $requisitionItem->variation?->cost_price ?? $requisitionItem->product?->cost_price ?? 0);
                 $quantity = (int) $requisitionItem->quantity_requested;
                 $lineTotal = $unitCost * $quantity;
 

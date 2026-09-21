@@ -18,7 +18,7 @@ class BranchController extends Controller
             
             // Get branches for the user's store
             $query = Branch::where('store_id', $user->store_id)
-                ->select('id', 'name', 'branch_code', 'city', 'address', 'status', 'contact_number', 'branch_type', 'latitude', 'longitude', 'geofence_radius_m', 'geofence_enabled')
+                ->select('id', 'name', 'branch_code', 'province', 'city', 'barangay', 'address', 'status', 'contact_number', 'branch_type', 'latitude', 'longitude', 'geofence_radius_m', 'geofence_enabled')
                 ->orderBy('name');
 
             if ($request->filled('branch_type')) {
@@ -26,10 +26,14 @@ class BranchController extends Controller
             }
 
             $branches = $query->get();
+            $store = Store::query()
+                ->select('id', 'province', 'city', 'barangay', 'address')
+                ->find($user->store_id);
             
             return response()->json([
                 'success' => true,
-                'data' => $branches
+                'data' => $branches,
+                'store_location' => $store,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -49,7 +53,7 @@ class BranchController extends Controller
                 'address' => 'required|string|max:255',
                 'city' => 'required|string|max:100',
                 'province' => 'nullable|string|max:50',
-                'barangay' => 'required|string|max:100',
+                'barangay' => 'nullable|string|max:150',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
                 'branch_code' => 'nullable|string|max:20|unique:branches,branch_code',
@@ -61,7 +65,8 @@ class BranchController extends Controller
 
             $storeId = $user?->store_id;
             $branchCode = $validated['branch_code'] ?? $this->generateBranchCode($validated['name'], $storeId);
-            $storePhone = Store::query()->where('id', $storeId)->value('phone');
+            $store = Store::query()->find($storeId);
+            $storePhone = $store?->phone;
             $contactNumber = $validated['contact_number'] ?? null;
             if (!$contactNumber) {
                 $contactNumber = $storePhone ?: '0000000000';
@@ -73,9 +78,10 @@ class BranchController extends Controller
                 'contact_number' => $contactNumber,
                 'status' => 'active',
                 'province' => $validated['province'] ?? 'Cavite',
+                'barangay' => $validated['barangay'] ?? $store?->barangay,
                 'branch_type' => $validated['branch_type'] ?? 'storefront',
                 'is_main_branch' => $validated['is_main_branch'] ?? false,
-                'geofence_enabled' => $validated['geofence_enabled'] ?? true,
+                'geofence_enabled' => $validated['geofence_enabled'] ?? false,
                 'geofence_radius_m' => $validated['geofence_radius_m'] ?? 0,
             ]));
 
@@ -121,10 +127,16 @@ class BranchController extends Controller
 
     public function update(Request $request, $id)
     {
-        $branch = Branch::findOrFail($id);
+        $branch = Branch::query()
+            ->where('store_id', $request->user()?->store_id)
+            ->findOrFail($id);
         $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'branch_type' => 'sometimes|nullable|in:storefront,warehouse',
             'address' => 'nullable|string|max:255',
+            'province' => 'sometimes|nullable|string|max:50',
             'city' => 'nullable|string|max:255',
+            'barangay' => 'sometimes|nullable|string|max:150',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'geofence_radius_m' => 'nullable|integer|min:0|max:5000',

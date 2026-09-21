@@ -74,6 +74,7 @@ class StoreController extends Controller
                 'business_type' => 'nullable|string|max:100',
                 'province' => 'nullable|string|max:100',
                 'city' => 'required|string|max:100',
+                'barangay' => 'required|string|max:150',
                 'address' => 'required|string|max:200',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
@@ -87,9 +88,8 @@ class StoreController extends Controller
                 'email' => $validated['email'] ?? null,
                 'province' => $validated['province'] ?? 'Cavite',
                 'city' => $validated['city'],
+                'barangay' => $validated['barangay'],
                 'address' => $validated['address'],
-                'latitude' => $validated['latitude'] ?? null,
-                'longitude' => $validated['longitude'] ?? null,
                 'status' => 'unverified',
             ];
 
@@ -101,9 +101,9 @@ class StoreController extends Controller
             $payload['subscription_tier'] = !empty($validated['plan'])
                 ? strtolower((string) $validated['plan'])
                 : 'free';
-            $payload['subscription_ends_at'] = now()->addDays(7)->toDateString();
-            $payload['trial_started_at'] = now();
-            $payload['trial_ends_at'] = now()->addDays(7);
+            $payload['subscription_ends_at'] = null;
+            $payload['trial_started_at'] = null;
+            $payload['trial_ends_at'] = null;
 
             $store = Store::create($payload);
 
@@ -124,14 +124,16 @@ class StoreController extends Controller
                 'name' => $store->name . ' - Main',
                 'address' => $store->address,
                 'city' => $store->city,
+                'barangay' => $store->barangay,
                 'province' => $store->province,
-                'latitude' => $store->latitude,
-                'longitude' => $store->longitude,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
                 'contact_number' => $store->phone ?? ($validated['contact_number'] ?? '0000000000'),
                 'branch_code' => $branchCode,
                 'is_main_branch' => true,
                 'status' => 'active',
                 'branch_type' => 'storefront',
+                'geofence_enabled' => false,
             ]);
 
             if ($request->user()) {
@@ -219,12 +221,15 @@ class StoreController extends Controller
             $planKey = strtolower((string) $validated['subscription_tier']);
             $plan = SubscriptionPlan::query()->where('plan_key', $planKey)->firstOrFail();
             $months = (int) ($validated['months'] ?? (($validated['billing_cycle'] ?? '') === 'yearly' ? 12 : 1));
+            $previousPlanKey = (string) $store->subscription_tier;
 
             $store->subscription_tier = $plan->id;
             if ($setupMode === 'free') {
-                $store->subscription_ends_at = now()->addDays(7)->toDateString();
+                $store->subscription_ends_at = null;
             } else {
-                $currentEndsAt = $store->subscription_ends_at ? \Carbon\Carbon::parse($store->subscription_ends_at) : null;
+                $currentEndsAt = $previousPlanKey !== 'free' && $store->subscription_ends_at
+                    ? \Carbon\Carbon::parse($store->subscription_ends_at)
+                    : null;
                 $nextEndsAt = now()->addMonths($months);
                 $store->subscription_ends_at = ($currentEndsAt && $currentEndsAt->gt($nextEndsAt))
                     ? $currentEndsAt->toDateString()
@@ -232,14 +237,15 @@ class StoreController extends Controller
             }
 
             if (Schema::hasColumn('stores', 'trial_started_at')) {
-                $store->trial_started_at = $setupMode === 'free' ? now() : null;
+                $store->trial_started_at = null;
             }
             if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                $store->trial_ends_at = $setupMode === 'free' ? now()->addDays(7) : null;
+                $store->trial_ends_at = null;
             }
 
             $store->save();
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+            app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);
 
             return response()->json([
                 'success' => true,

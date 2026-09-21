@@ -68,14 +68,14 @@
           </div>
   
           <!-- Remember Me & Forgot Password -->
-          <div class="flex items-center justify-between">
+          <!-- <div class="flex items-center justify-between">
             <div class="flex items-center">
               <Checkbox v-model="formData.rememberMe" inputId="rememberMe" :binary="true" />
               <label for="rememberMe" class="ml-2 text-sm text-gray-700 cursor-pointer">
                 Remember me
               </label>
             </div>
-          </div>
+          </div> -->
   
           <!-- Submit Button -->
           <Button type="submit" label="Log In" :loading="props.isSubmitting"

@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-7xl mx-auto space-y-6 py-6">
     <Card class="border border-gray-100 shadow-sm rounded-2xl">
       <template #content>
         <div class="flex items-center justify-between">

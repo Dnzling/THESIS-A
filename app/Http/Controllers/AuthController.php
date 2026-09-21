@@ -660,11 +660,6 @@ class AuthController extends Controller
             return true;
         }
 
-        $settings = is_array($user->store?->settings) ? $user->store->settings : [];
-        if (array_key_exists('attendance_geofence_enabled', $settings) && !$settings['attendance_geofence_enabled']) {
-            return true;
-        }
-
         $employee = Employee::where('user_id', $user->id)
             ->where('store_id', $user->store_id)
             ->first();
@@ -674,7 +669,11 @@ class AuthController extends Controller
         }
 
         $branch = $this->resolveGeofenceBranch($user, $employee);
-        if (!$branch || $branch->latitude === null || $branch->longitude === null) {
+        if (!$branch || !$branch->geofence_enabled) {
+            return true;
+        }
+
+        if ($branch->latitude === null || $branch->longitude === null) {
             return true;
         }
 

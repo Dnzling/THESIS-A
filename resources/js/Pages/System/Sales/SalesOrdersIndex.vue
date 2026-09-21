@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
+  <div class="p-4 space-y-6 py-6">
     <div class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
@@ -9,25 +9,33 @@
     </div>
 
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div class="md:col-span-6">
+      <template #header>
+        <div class="grid grid-cols-7 gap-3 border-b p-6">
+          <div class="xl:col-span-2">
             <IconField>
               <InputIcon class="pi pi-search" />
               <InputText v-model="filters.search" fluid placeholder="Search order number, customer, contact..." />
             </IconField>
           </div>
-          <div class="md:col-span-3">
+          <div>
             <Select v-model="filters.channel" :options="channelOptions" optionLabel="label" optionValue="value" placeholder="Channel" showClear fluid />
           </div>
-          <div class="md:col-span-3">
+          <div>
             <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" placeholder="Status" showClear fluid />
+          </div>
+          <div>
+            <Select v-model="filters.payment_method" :options="paymentMethodOptions" optionLabel="label" optionValue="value" placeholder="Payment Method" showClear fluid />
+          </div>
+
+          <div class="xl:col-span-2">
+            <DatePicker v-model="filters.date_range" selectionMode="range" placeholder="Order date range"
+              :maxDate="new Date()" fluid showIcon />
+          </div>
+          <div class="flex justify-end">
+            <Button v-if="hasActiveFilters" icon="pi pi-filter-slash" label="Reset" severity="secondary" outlined @click="resetFilters" />
           </div>
         </div>
       </template>
-    </Card>
-
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
         <DataTable
           :value="filteredOrders"
@@ -52,7 +60,7 @@
               <p class="text-xs text-gray-500">{{ data.customer_contact || '-' }}</p>
             </template>
           </Column>
-          <Column field="channel" header="Channel">
+          <Column field="channel" header="Channel" style="width: 8%;">
             <template #body="{ data }">
               <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : 'success'" />
             </template>
@@ -68,8 +76,8 @@
           </Column>
           <Column field="payment_method" header="Payment">
             <template #body="{ data }">
-              <Badge severity="secondary" :value="String(data.payment_method || '-').toUpperCase()" />
-              <p class="text-xs text-gray-500 mt-1">{{ data.payment_status || '-' }}</p>
+              <Badge severity="secondary" :value="paymentMethodLabel(data.payment_method)" />
+              <p class="text-xs text-gray-500 mt-1">{{ formatStatus(data.payment_status || '-') }}</p>
             </template>
           </Column>
           <Column field="status" header="Status">
@@ -108,6 +116,7 @@ import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
+import DatePicker from 'primevue/datepicker'
 
 type UnifiedOrder = {
   key: string
@@ -139,7 +148,15 @@ const filters = reactive({
   search: '',
   status: null as string | null,
   channel: null as 'In-Store' | 'Online' | null,
+  payment_method: null as string | null,
+  payment_status: null as string | null,
+  date_range: null as [Date | null, Date | null] | null,
 })
+
+const hasActiveFilters = computed(() => Boolean(
+  filters.search.trim() || filters.status || filters.channel || filters.payment_method || filters.payment_status
+  || (Array.isArray(filters.date_range) && (filters.date_range[0] || filters.date_range[1]))
+))
 
 const channelOptions = [
   { label: 'In-Store', value: 'In-Store' },
@@ -148,6 +165,8 @@ const channelOptions = [
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
+  { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
+  { label: 'Assigned', value: 'assigned' },
   { label: 'Paid', value: 'paid' },
   { label: 'Completed', value: 'completed' },
   { label: 'Processing', value: 'processing' },
@@ -157,6 +176,22 @@ const statusOptions = [
   { label: 'Out For Delivery', value: 'out_for_delivery' },
   { label: 'Delivered', value: 'delivered' },
   { label: 'Cancelled', value: 'cancelled' },
+]
+
+const paymentMethodOptions = [
+  { label: 'Cash', value: 'cash' },
+  { label: 'GCash', value: 'gcash' },
+  { label: 'Credit / Debit Card', value: 'card' },
+  { label: 'Cash on Delivery', value: 'cod' },
+  { label: 'Bank Transfer', value: 'bank_transfer' },
+]
+
+const paymentStatusOptions = [
+  { label: 'Paid', value: 'paid' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Processing', value: 'processing' },
+  { label: 'Failed', value: 'failed' },
+  { label: 'Refunded', value: 'refunded' },
 ]
 
 const canViewPosOrders = computed(() =>
@@ -192,6 +227,23 @@ const filteredOrders = computed(() => {
     results = results.filter(order => String(order.status || '').toLowerCase() === String(filters.status).toLowerCase())
   }
 
+  if (filters.payment_method) {
+    results = results.filter(order => paymentMethodKey(order.payment_method) === filters.payment_method)
+  }
+
+  if (filters.payment_status) {
+    results = results.filter(order => paymentStatusKey(order.payment_status) === filters.payment_status)
+  }
+
+  if (Array.isArray(filters.date_range) && (filters.date_range[0] || filters.date_range[1])) {
+    const start = filters.date_range[0] ? startOfDay(filters.date_range[0]).getTime() : Number.NEGATIVE_INFINITY
+    const end = filters.date_range[1] ? endOfDay(filters.date_range[1]).getTime() : Number.POSITIVE_INFINITY
+    results = results.filter(order => {
+      const timestamp = new Date(order.created_at).getTime()
+      return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end
+    })
+  }
+
   if (filters.search) {
     const term = filters.search.toLowerCase()
     results = results.filter(order =>
@@ -206,17 +258,6 @@ const filteredOrders = computed(() => {
 
 const openDetail = (order: UnifiedOrder) => {
   router.push({ name: order.route_name, params: { id: order.id } })
-}
-
-const canSendToLogistics = (order: UnifiedOrder) => {
-  if (!authStore.hasPermission('sales.order.approve')) return false
-  if (!order.delivery_required) return false
-  if (order.delivery) return false
-  const status = String(order.status || '').toLowerCase()
-  if (order.channel === 'Online') {
-    return ['pending', 'processing'].includes(status)
-  }
-  return order.payment_status === 'paid'
 }
 
 const sendToLogistics = async (order: UnifiedOrder) => {
@@ -244,8 +285,44 @@ const printReceipt = (order: UnifiedOrder) => {
 }
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+const paymentMethodKey = (value: any) => {
+  const method = String(value || '').toLowerCase().trim()
+  if (['e_wallet', 'ewallet', 'gcash'].includes(method)) return 'gcash'
+  if (['credit_card', 'debit_card'].includes(method)) return 'card'
+  if (['cash_on_delivery', 'cash on delivery'].includes(method)) return 'cod'
+  return method
+}
+const paymentMethodLabel = (value: any) => {
+  const method = paymentMethodKey(value)
+  const labels: Record<string, string> = {
+    gcash: 'GCASH',
+    card: 'Credit / Debit Card',
+    cash: 'Cash',
+    cod: 'Cash on Delivery',
+    bank_transfer: 'Bank Transfer',
+  }
+  return labels[method] || (method ? formatStatus(method) : '-')
+}
+const paymentStatusKey = (value: any) => {
+  const status = String(value || '').toLowerCase().trim()
+  if (['succeeded', 'completed'].includes(status)) return 'paid'
+  if (['awaiting_payment_method', 'pending_payment', 'unpaid'].includes(status)) return 'pending'
+  if (['cancelled', 'canceled', 'expired'].includes(status)) return 'failed'
+  return status
+}
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate())
+const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 const formatDateTime = (value: string) => new Date(value).toLocaleString('en-PH')
 const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
+
+const resetFilters = () => {
+  filters.search = ''
+  filters.status = null
+  filters.channel = null
+  filters.payment_method = null
+  filters.payment_status = null
+  filters.date_range = null
+}
 
 const statusSeverity = (status: string) => {
   const normalized = String(status || '').toLowerCase()

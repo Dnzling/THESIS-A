@@ -25,6 +25,7 @@ class Store extends Model
         'phone',
         'email',
         'city',
+        'barangay',
         'address',
         'status',
         'subscription_tier',

@@ -140,31 +140,27 @@
 
         <div class="grid gap-4 md:grid-cols-4 md:items-end">
           <div class="col-span-3">
-            <label class="block text-sm font-medium mb-1">Department *</label>
-            <Select v-model="employeeForm.department" rounded :options="departmentOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select department" />
+            <label class="block text-sm font-medium mb-1">Department</label>
+            <Select v-model="employeeForm.department" rounded :options="departmentOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select department (optional)" showClear />
           </div>
           <Button label="Department" icon="pi pi-plus" severity="warn" outlined @click="openDepartmentDialog" />
         </div>
 
+        <div>
+          <label class="block text-sm font-medium mb-1">Branch *</label>
+          <Select v-model="employeeForm.branchId" :options="branches" optionLabel="name" optionValue="id" class="w-full" placeholder="Select branch" :loading="loadingBranches" />
+        </div>
+
         <div class="grid gap-4 md:grid-cols-4 md:items-end">
           <div class="col-span-3">
-            <label class="block text-sm font-medium mb-1">Salary * <span>     <p class="mt-1 text-xs text-slate-500">Pay computation follows the selected monthly or hourly type.</p></span> </label>
+            <label class="block text-sm font-medium mb-1">Salary / Rate *</label>
+            <p class="mb-1 text-xs text-slate-500">Pay computation follows the selected monthly or hourly type.</p>
             <InputNumber v-model="employeeForm.salary" class="w-full" mode="currency" currency="PHP" locale="en-PH" :min="0" />
        
           </div>
-          <div class="item-center">
-
-            <div class="mt-3">
-              <ToggleButton
-                :modelValue="employeeForm.payType === 'hourly'"
-                onLabel="Hourly"
-                offLabel="Monthly"
-                onIcon="pi pi-clock"
-                offIcon="pi pi-calendar"
-                class="w-full"
-                @update:modelValue="(checked) => employeeForm.payType = checked ? 'hourly' : 'monthly'"
-              />
-            </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Pay Type</label>
+            <SelectButton v-model="employeeForm.payType" :options="payTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
           </div>
         </div>
   
@@ -262,18 +258,6 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="confirmationModal.visible" modal :header="confirmationModal.title" :style="{ width: 'min(28rem, 95vw)' }" appendTo="body">
-      <div class="flex gap-3">
-        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl" :class="confirmationModal.success ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
-          <i :class="confirmationModal.success ? 'pi pi-check-circle' : 'pi pi-exclamation-triangle'" class="text-xl"></i>
-        </div>
-        <p class="text-sm leading-6 text-slate-600">{{ confirmationModal.message }}</p>
-      </div>
-      <template #footer>
-        <Button label="OK" :severity="confirmationModal.success ? 'warn' : 'secondary'" @click="confirmationModal.visible = false" />
-      </template>
-    </Dialog>
-  
     <!-- View Details Dialog -->
     <Dialog modal v-model:visible="showViewDialog" header="Employee Details" :style="{ width: '500px' }">
       <div v-if="selectedEmployee" class="space-y-4">
@@ -327,7 +311,8 @@ import hrService from '../../../services/hr.services'
 import { useRouter } from 'vue-router'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
-import ToggleButton from 'primevue/togglebutton'
+import SelectButton from 'primevue/selectbutton'
+import { showResponseDialog } from '@/utils/responseDialogBus'
 
 interface Department {
   name: string
@@ -346,6 +331,7 @@ interface EmployeeFormState {
   role: RoleOption | null
   email: string
   department: string
+  branchId: number | null
   payType: 'monthly' | 'hourly'
   salary: number
 }
@@ -395,6 +381,12 @@ const savingEmployee = ref(false)
 const savingDepartment = ref(false)
 const savingRole = ref(false)
 const roles = ref<RoleOption[]>([])
+const branches = ref<{ id: number; name: string }[]>([])
+const loadingBranches = ref(false)
+const payTypeOptions = [
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Hourly', value: 'hourly' },
+]
 
 
 
@@ -408,6 +400,7 @@ const employeeForm = ref<EmployeeFormState>({
   role: null,
   email: '',
   department: '',
+  branchId: null,
   payType: 'monthly',
   salary: 0
 })
@@ -420,13 +413,6 @@ const departmentForm = ref({
 const roleForm = ref({
   displayName: '',
   description: ''
-})
-
-const confirmationModal = ref({
-  visible: false,
-  success: false,
-  title: '',
-  message: ''
 })
 
 // Departments are loaded from the current store only through /api/departments.
@@ -506,12 +492,34 @@ const fetchDepartments = async () => {
         name: department.name || department.label || 'Department',
         value: department.name || department.value || department.id
       }))
-      if (!employeeForm.value.department) {
-        employeeForm.value.department = departmentOptions.value[0]?.value || ''
-      }
     }
   } catch (error) {
     console.error('Failed to fetch departments:', error)
+  }
+}
+
+const fetchBranches = async () => {
+  loadingBranches.value = true
+  try {
+    const response = await hrService.api.get('/api/branches', {
+      headers: { Authorization: `Bearer ${authStore.token}` },
+    })
+    const data = response.data?.data || []
+    branches.value = Array.isArray(data)
+      ? data.map((branch: any) => ({ id: Number(branch.id), name: branch.name || `Branch ${branch.id}` }))
+      : []
+
+    const currentBranchId = Number((authStore.currentUser as any)?.branch_id || 0)
+    if (!employeeForm.value.branchId && branches.value.some(branch => branch.id === currentBranchId)) {
+      employeeForm.value.branchId = currentBranchId
+    } else if (!employeeForm.value.branchId && branches.value.length === 1) {
+      employeeForm.value.branchId = branches.value[0].id
+    }
+  } catch (error) {
+    console.error('Failed to fetch branches:', error)
+    branches.value = []
+  } finally {
+    loadingBranches.value = false
   }
 }
 
@@ -520,11 +528,6 @@ const toRoleSlug = (value: string) => String(value || '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '')
-
-const toRoleCode = (value: string) => String(value || '')
-  .replace(/[^A-Za-z0-9]/g, '')
-  .toUpperCase()
-  .slice(0, 5)
 
 // Computed property for filtered employees
 
@@ -701,14 +704,14 @@ const onPlannerEndTimeChange = (row: any, value: string) => {
   row.hours = row.is_working ? calculateHours(row.start_time, row.end_time) : 0
   if (row.hours > 8) {
     capPlannerRowAtEightHours(row)
-    showConfirmationModal(false, 'Schedule Limit', 'Daily working hours cannot exceed 8 hours.')
+    notifyResponse(false, 'Schedule Limit', 'Daily working hours cannot exceed 8 hours.')
   }
 }
 
 const onPlannerWorkingToggle = (row: any, checked: boolean) => {
   if (checked && workingDaysCount.value >= 6 && !row.is_working) {
     row.is_working = false
-    showConfirmationModal(false, 'Schedule Limit', 'Only 6 working days are allowed per week.')
+    notifyResponse(false, 'Schedule Limit', 'Only 6 working days are allowed per week.')
     return
   }
 
@@ -733,8 +736,12 @@ const resetWeeklyPlanner = () => {
   }))
 }
 
-const showConfirmationModal = (success: boolean, title: string, message: string) => {
-  confirmationModal.value = { visible: true, success, title, message }
+const notifyResponse = (success: boolean, title: string, message: string) => {
+  showResponseDialog({
+    severity: success ? 'success' : 'error',
+    title,
+    message,
+  })
 }
 
 // Action functions
@@ -756,6 +763,7 @@ const editEmployee = (employee: Employee) => {
     role: matchedRole,
     email: employee.email,
     department: employee.department || '',
+    branchId: null,
     payType: 'monthly',
     salary: 0
   }
@@ -769,7 +777,8 @@ const resetEmployeeForm = () => {
     lastName: '',
     role: null,
     email: '',
-    department: departmentOptions.value[0]?.value || '',
+    department: '',
+    branchId: null,
     payType: 'monthly',
     salary: 0
   }
@@ -785,9 +794,7 @@ const openAddDialog = async () => {
   if (departments.value.length === 0) {
     await fetchDepartments()
   }
-  if (!employeeForm.value.department) {
-    employeeForm.value.department = departmentOptions.value[0]?.value || ''
-  }
+  await fetchBranches()
   showAddDialog.value = true
 }
 
@@ -804,7 +811,7 @@ const openRoleDialog = () => {
 const createDepartment = async () => {
   const name = departmentForm.value.name.trim()
   if (!name) {
-    showConfirmationModal(false, 'Department Required', 'Please enter the department name.')
+    notifyResponse(false, 'Department Required', 'Please enter the department name.')
     return
   }
 
@@ -816,7 +823,8 @@ const createDepartment = async () => {
       status: 'active'
     }, {
       headers: {
-        'Authorization': `Bearer ${authStore.token}`
+        'Authorization': `Bearer ${authStore.token}`,
+        'X-Suppress-Dialog': '1',
       }
     })
     const department = response.data?.data || {}
@@ -826,11 +834,11 @@ const createDepartment = async () => {
     }
     employeeForm.value.department = label
     showDepartmentDialog.value = false
-    showConfirmationModal(true, 'Department Created', response.data?.message || `${label} is now available.`)
+    notifyResponse(true, 'Department Created', response.data?.message || `${label} is now available.`)
   } catch (error: any) {
     const errors = error?.response?.data?.errors
     const firstError = errors && Object.values(errors)[0]
-    showConfirmationModal(false, 'Department Failed', Array.isArray(firstError) ? firstError[0] : (error?.response?.data?.message || 'Unable to create department.'))
+    notifyResponse(false, 'Department Failed', Array.isArray(firstError) ? firstError[0] : (error?.response?.data?.message || 'Unable to create department.'))
   } finally {
     savingDepartment.value = false
   }
@@ -839,29 +847,29 @@ const createDepartment = async () => {
 const createRole = async () => {
   const displayName = roleForm.value.displayName.trim()
   if (!displayName) {
-    showConfirmationModal(false, 'Role Required', 'Please enter the role name.')
+    notifyResponse(false, 'Role Required', 'Please enter the role name.')
     return
   }
 
   const baseName = toRoleSlug(displayName)
   if (!baseName) {
-    showConfirmationModal(false, 'Role Invalid', 'Please use letters or numbers for the role name.')
+    notifyResponse(false, 'Role Invalid', 'Please use letters or numbers for the role name.')
     return
   }
-  const uniqueSuffix = Date.now().toString(36).slice(-5)
-  const name = `${baseName}_${uniqueSuffix}`
+  const name = baseName
 
   savingRole.value = true
   try {
     const response = await hrService.api.post('/api/store/roles', {
       name,
       display_name: displayName,
-      code: `${toRoleCode(displayName)}${uniqueSuffix.toUpperCase()}`,
+      code: baseName.toUpperCase(),
       description: roleForm.value.description || '',
       is_active: true,
     }, {
       headers: {
-        'Authorization': `Bearer ${authStore.token}`
+        'Authorization': `Bearer ${authStore.token}`,
+        'X-Suppress-Dialog': '1',
       }
     })
 
@@ -879,31 +887,31 @@ const createRole = async () => {
     await fetchRoles()
     employeeForm.value.role = roles.value.find(item => item.id === createdRole.id) || createdRole
     showRoleDialog.value = false
-    showConfirmationModal(true, 'Role Created', response.data?.message || `${displayName} is now available.`)
+    notifyResponse(true, 'Role Created', response.data?.message || `${displayName} is now available.`)
   } catch (error: any) {
     const errors = error?.response?.data?.errors
     const firstError = errors && Object.values(errors)[0]
-    showConfirmationModal(false, 'Role Failed', Array.isArray(firstError) ? firstError[0] : (error?.response?.data?.message || 'Unable to create role.'))
+    notifyResponse(false, 'Role Failed', Array.isArray(firstError) ? firstError[0] : (error?.response?.data?.message || 'Unable to create role.'))
   } finally {
     savingRole.value = false
   }
 }
 
 const saveEmployee = async () => {
-  if (!employeeForm.value.firstName || !employeeForm.value.lastName || !employeeForm.value.role || !employeeForm.value.email || !employeeForm.value.department || Number(employeeForm.value.salary || 0) <= 0) {
-    showConfirmationModal(false, 'Missing Details', 'Please complete the required employee, department, and salary fields.')
+  if (!employeeForm.value.firstName || !employeeForm.value.lastName || !employeeForm.value.role || !employeeForm.value.email || !employeeForm.value.branchId || Number(employeeForm.value.salary || 0) <= 0) {
+    notifyResponse(false, 'Missing Details', 'Please complete the required employee, branch, and salary fields.')
     return
   }
 
   const selectedRole = employeeForm.value.role
   if (!selectedRole) {
-    showConfirmationModal(false, 'Role Required', 'Please select a role.')
+    notifyResponse(false, 'Role Required', 'Please select a role.')
     return
   }
 
   const scheduleError = validateScheduleRules()
   if (scheduleError) {
-    showConfirmationModal(false, 'Schedule Limit', scheduleError)
+    notifyResponse(false, 'Schedule Limit', scheduleError)
     return
   }
 
@@ -921,7 +929,7 @@ const saveEmployee = async () => {
   if (isEditMode.value) {
     const formId = employeeForm.value.id
     if (formId === null) {
-      showConfirmationModal(false, 'Missing Employee', 'Cannot update employee without a valid ID.')
+      notifyResponse(false, 'Missing Employee', 'Cannot update employee without a valid ID.')
       return
     }
 
@@ -948,15 +956,17 @@ const saveEmployee = async () => {
         lname: employeeForm.value.lastName,
         email: employeeForm.value.email,
         role_id: selectedRole.id,
+        branch_id: employeeForm.value.branchId,
         hire_date: new Date().toISOString().slice(0, 10),
-        department: employeeForm.value.department,
+        department: employeeForm.value.department || null,
         employment_type: 'full_time',
         salary: Number(employeeForm.value.salary || 0),
         pay_type: employeeForm.value.payType,
         status: 'active'
       }, {
         headers: {
-          'Authorization': `Bearer ${authStore.token}`
+          'Authorization': `Bearer ${authStore.token}`,
+          'X-Suppress-Dialog': '1',
         }
       })
 
@@ -975,20 +985,21 @@ const saveEmployee = async () => {
           }))
         }, {
           headers: {
-            'Authorization': `Bearer ${authStore.token}`
+            'Authorization': `Bearer ${authStore.token}`,
+            'X-Suppress-Dialog': '1',
           }
         })
       }
 
       await fetchEmployeesAxios()
       cancelDialog()
-      showConfirmationModal(true, 'Employee Created', response.data?.message || 'Employee account, salary, department, and schedule were saved.')
+      notifyResponse(true, 'Employee Created', response.data?.message || 'Employee account, salary, branch, and schedule were saved.')
     } catch (error: any) {
       const apiMessage = error?.response?.data?.message
       const apiErrors = error?.response?.data?.errors
       const firstValidationError = apiErrors && Object.values(apiErrors)[0]
       const firstMessage = Array.isArray(firstValidationError) ? firstValidationError[0] : null
-      showConfirmationModal(false, 'Employee Creation Failed', firstMessage || apiMessage || 'Failed to create employee.')
+      notifyResponse(false, 'Employee Creation Failed', firstMessage || apiMessage || 'Failed to create employee.')
       return
     } finally {
       savingEmployee.value = false
@@ -1008,6 +1019,7 @@ onMounted(() => {
   fetchEmployeesAxios()
   fetchRoles()
   fetchDepartments()
+  fetchBranches()
   console.log('Employees page loaded')
 })
 </script>

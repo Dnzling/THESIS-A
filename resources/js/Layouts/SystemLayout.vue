@@ -549,37 +549,6 @@ const groupedNavigation = computed(() => {
     }
   }
 
-  if (isStoreRole) {
-    const storeBillingItem = {
-      id: -904,
-      name: 'store.billing',
-      display_name: 'Billing',
-      module: 'account',
-      route_name: 'store.billing',
-      route_path: '/store/billing',
-      icon: 'pi pi-credit-card',
-      parent_id: null,
-      display_order: 997,
-      section: 'General',
-      meta: null,
-      is_active: true,
-      badge_count: 0,
-    }
-
-    const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
-    if (!existingPaths.has(storeBillingItem.route_path)) {
-      baseNavigation = [...baseNavigation, storeBillingItem]
-    }
-  }
-
-  // if (isStoreRole) {
-  //   const existingPaths = new Set(baseNavigation.map((item: any) => item.route_path))
-  //   const missingStoreItems = storeFallbackNavigation.filter((item) => !existingPaths.has(item.route_path))
-  //   if (missingStoreItems.length > 0) {
-  //     baseNavigation = [...baseNavigation, ...missingStoreItems]
-  //   }
-  // }
-
   let activeItems = baseNavigation.filter((item: any) => item.is_active)
 
   if (!isSupplierRole) {
@@ -628,7 +597,7 @@ const groupedNavigation = computed(() => {
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['admin', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'crm']
+  const moduleOrder = ['admin', 'store', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'crm']
 
   const catalogModules = authStore.systemModules
     .map((module: any) => String(module?.key || '').trim().toLowerCase())

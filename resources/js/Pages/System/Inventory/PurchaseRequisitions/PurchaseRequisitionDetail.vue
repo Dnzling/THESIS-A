@@ -167,12 +167,15 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
+import WarehouseService from '@/services/warehouse.service'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
 const authStore = useAuthStore()
+const props = defineProps<{ warehouseMode?: boolean }>()
+const service: any = props.warehouseMode ? WarehouseService : inventoryService
 
 const loading = ref(false)
 const detail = ref<any>(null)
@@ -189,16 +192,17 @@ const cancelDialogVisible = ref(false)
 const cancelReason = ref('')
 const cancelError = ref('')
 
-const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
+const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
 const canApprove = computed(() =>
-  authStore.hasPermission('inventory.requisitions.approve') ||
-  authStore.hasPermission('inventory.requisites.approve')
+  !props.warehouseMode && (authStore.hasPermission('inventory.requisitions.approve') ||
+  authStore.hasPermission('inventory.requisites.approve'))
 )
 const canShowApprovalActions = computed(() => {
   const s = String(detail.value?.status || '').toLowerCase()
   return ['draft', 'pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
 })
 const canGenerateReceipt = computed(() => {
+  if (props.warehouseMode) return false
   const s = String(detail.value?.status || '').toLowerCase()
   if (s !== 'delivered') return false
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
@@ -267,7 +271,7 @@ const formatStatus = (status: any) => {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown'
 }
 
-const goBack = () => router.push({ name: 'inventory.requisites.index' })
+const goBack = () => router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions' : 'inventory.requisites.index' })
 const generateReceipt = () => {
   const purchaseOrders = Array.isArray(detail.value?.purchase_orders)
     ? detail.value.purchase_orders
@@ -288,8 +292,8 @@ const load = async () => {
   if (!id.value) return
   loading.value = true
   try {
-    const response = await inventoryService.getPurchaseRequisition(id.value)
-    if (response?.success) detail.value = response.data
+    const response = await service[props.warehouseMode ? 'purchaseRequisition' : 'getPurchaseRequisition'](id.value)
+    if (props.warehouseMode ? response : response?.success) detail.value = props.warehouseMode ? response : response.data
     else detail.value = null
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: e?.response?.data?.message || 'Failed to load PR', life: 3000 })

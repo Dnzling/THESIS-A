@@ -1,11 +1,9 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-white via-orange-50/20 to-slate-50 text-slate-900">
-    <div class="relative overflow-hidden py-20 lg:py-28">
-      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,107,0.18),transparent_55%)]"></div>
+  <div class="min-h-screen">
+    <div class="relative overflow-hidden py-14">
       <div class="mx-auto max-w-7xl px-4 text-center lg:px-8">
-        <span class="inline-flex rounded-full bg-orange-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-orange-700">Subscription Available</span>
         <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl">Simple plans for modern furniture teams.</h1>
-        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Pick Free Trial to enter the system now, or choose a paid plan and enter your payment details to continue.</p>
+        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Pick the unlimited-duration Free plan, or choose a paid plan and enter your payment details to continue.</p>
 
         <div class="mt-8 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <span class="text-sm font-medium" :class="!isYearly ? 'text-slate-900' : 'text-orange-500'">Monthly</span>
@@ -31,15 +29,15 @@
               <p class="text-sm leading-6 text-slate-600">{{ plan.description || 'Flexible plan for growing furniture teams.' }}</p>
             </div>
             <div class="mt-6 flex items-end gap-2">
-              <span class="text-4xl font-bold tracking-tight text-slate-900">₱{{ formatPrice(plan) }}</span>
+              <span class="text-4xl font-bold tracking-tight text-slate-900">{{ formatPrice(plan) }}</span>
               <span class="pb-1 text-sm text-slate-500">/ {{ billingPeriod }}</span>
             </div>
             <p class="mt-2 text-sm text-slate-500">
               Billed {{ isYearly ? 'yearly' : 'monthly' }}
-              <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save ₱{{ yearlySavings(plan) }}</span>
+              <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save {{ yearlySavings(plan) }}</span>
             </p>
             <button type="button" class="mt-8 inline-flex w-full items-center justify-center rounded-full bg-orange-500 px-5 py-3 font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600" @click="plan.plan_key === 'free' || Number(plan.monthly_price || 0) === 0 ? chooseFreeTrial(plan) : openConfirmation(plan)">
-              {{ plan.plan_key === 'free' || Number(plan.monthly_price || 0) === 0 ? 'Start Free Trial' : 'Choose Plan' }}
+              {{ plan.plan_key === 'free' || Number(plan.monthly_price || 0) === 0 ? 'Use Free Plan' : 'Choose Plan' }}
             </button>
             <div class="mt-6 space-y-3">
               <div v-for="feature in plan.features || []" :key="feature" class="flex items-start gap-3 text-sm text-slate-700">
@@ -57,7 +55,7 @@
         <p class="text-sm text-slate-600">You selected <strong>{{ selectedPlan?.name }}</strong>. Continue to payment details?</p>
         <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
           <p><span class="font-semibold">Plan:</span> {{ selectedPlan?.name }}</p>
-          <p><span class="font-semibold">Amount:</span> ₱{{ selectedPlan ? formatPrice(selectedPlan) : '0.00' }}</p>
+          <p><span class="font-semibold">Amount:</span> {{ selectedPlan ? formatPrice(selectedPlan) : formatMoney(0) }}</p>
         </div>
         <div class="flex justify-end gap-3">
           <Button label="Cancel" severity="secondary" outlined @click="confirmVisible = false" />
@@ -175,15 +173,22 @@ const visiblePlans = computed(() =>
 
 const formatPrice = (plan: any) => {
   const price = isYearly.value ? Number(plan.yearly_price || 0) : Number(plan.monthly_price || 0)
-  return price.toFixed(2)
+  return formatMoney(price)
 }
 
 const yearlySavings = (plan: any) => {
   const monthly = Number(plan.monthly_price || 0)
   const yearly = Number(plan.yearly_price || 0)
   const savings = monthly * 12 - yearly
-  return savings > 0 ? savings.toFixed(2) : '0.00'
+  return formatMoney(savings > 0 ? savings : 0)
 }
+
+const formatMoney = (amount: number) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+}).format(amount)
 
 const selectedBillingCycle = computed(() => (isYearly.value ? 'yearly' : 'monthly'))
 
@@ -326,7 +331,7 @@ const createCardPaymentMethod = async () => {
 }
 
 const submitPayment = async () => {
-  if (!selectedPlan.value || !paymentIntentId.value) return
+  if (paymentProcessing.value || !selectedPlan.value || !paymentIntentId.value) return
   const storeId = Number(storeIdFromQuery.value || (authStore.currentUser as any)?.store_id || 0)
   if (!storeId) {
     router.visit('/store/registration')
@@ -398,14 +403,7 @@ onMounted(async () => {
       if (storeId > 0) {
         await paymongoService.getLatestIntentByPayable('subscription_upgrade', storeId, { sync: true })
 
-        if (pendingPlan?.plan_key && pendingPlan.plan_key !== 'free') {
-          await axiosClient.put(`/api/stores/${storeId}/subscription`, {
-            subscription_tier: String(pendingPlan.plan_key).toLowerCase(),
-            setup_mode: 'paid',
-            months: Number(pendingPlan.months || 1),
-            billing_cycle: String(pendingPlan.billing_cycle || 'monthly'),
-          })
-        } else if (pendingPlan?.plan_key === 'free') {
+        if (pendingPlan?.plan_key === 'free') {
           await axiosClient.put(`/api/stores/${storeId}/subscription`, {
             subscription_tier: 'free',
             setup_mode: 'free',
@@ -419,13 +417,11 @@ onMounted(async () => {
         }
       }
     } catch (_error) {
-      if (storeId > 0 && pendingPlan?.plan_key) {
+      if (storeId > 0 && pendingPlan?.plan_key === 'free') {
         try {
           await axiosClient.put(`/api/stores/${storeId}/subscription`, {
-            subscription_tier: String(pendingPlan.plan_key).toLowerCase(),
-            setup_mode: pendingPlan.plan_key === 'free' ? 'free' : 'paid',
-            months: Number(pendingPlan.months || 1),
-            billing_cycle: String(pendingPlan.billing_cycle || 'monthly'),
+            subscription_tier: 'free',
+            setup_mode: 'free',
           })
           await authStore.fetchCurrentUser({ reloadPermissions: true })
         } catch (_fallbackError) {

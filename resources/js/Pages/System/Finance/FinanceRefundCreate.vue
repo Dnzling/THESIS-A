@@ -1,0 +1,17 @@
+<template><div class="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <header class="flex items-center gap-3"><Button icon="pi pi-arrow-left" text rounded @click="router.push({name:'finance.refunds'})"/><div><h1 class="text-xl font-semibold text-slate-900">Create Refund</h1><p class="text-sm text-slate-500">Record a customer refund request for Finance processing.</p></div></header>
+  <Card class="rounded-2xl border border-slate-200 shadow-sm"><template #title><span class="text-base">Refund Information</span></template><template #content><form class="grid gap-4 p-1 md:grid-cols-2" @submit.prevent="submit">
+    <div><label class="mb-1 block text-sm text-slate-600">Source *</label><Select v-model="form.order_type" :options="sources" optionLabel="label" optionValue="value" fluid/></div>
+    <div><label class="mb-1 block text-sm text-slate-600">Record ID *</label><InputNumber v-model="form.order_id" :min="1" :useGrouping="false" fluid/></div>
+    <div><label class="mb-1 block text-sm text-slate-600">Order Reference</label><InputText v-model="form.order_number" fluid/></div>
+    <div><label class="mb-1 block text-sm text-slate-600">Customer *</label><InputText v-model="form.customer_name" fluid/></div>
+    <div><label class="mb-1 block text-sm text-slate-600">Refund Amount *</label><InputNumber v-model="form.amount" mode="currency" currency="PHP" locale="en-PH" :min="0.01" fluid/></div>
+    <div class="md:col-span-2"><label class="mb-1 block text-sm text-slate-600">Reason *</label><Textarea v-model="form.reason" rows="3" fluid/></div>
+    <div class="md:col-span-2"><label class="mb-1 block text-sm text-slate-600">Internal Notes</label><Textarea v-model="form.notes" rows="3" fluid/></div>
+    <div class="md:col-span-2 flex justify-end gap-2"><Button label="Cancel" outlined type="button" @click="router.push({name:'finance.refunds'})"/><Button label="Create Refund" icon="pi pi-save" type="submit" :loading="saving" :disabled="!valid"/></div>
+  </form></template></Card>
+</div></template>
+<script setup lang="ts">
+import { computed, reactive, ref } from 'vue'; import { useRouter } from 'vue-router'; import { useToast } from 'primevue/usetoast'; import financeService from '@/services/finance.service'; import Card from 'primevue/card'; import Button from 'primevue/button'; import Select from 'primevue/select'; import InputText from 'primevue/inputtext'; import InputNumber from 'primevue/inputnumber'; import Textarea from 'primevue/textarea'
+const router=useRouter(),toast=useToast(),saving=ref(false); const sources=[{label:'Ecommerce Return',value:'ecommerce_return'},{label:'Ecommerce Order',value:'ecommerce'},{label:'In-Store Sale',value:'sales'},{label:'Manual',value:'manual'}]; const form=reactive({order_type:'manual',order_id:null as number|null,order_number:'',customer_name:'',amount:null as number|null,reason:'',notes:''}); const valid=computed(()=>!!form.order_type&&!!form.order_id&&!!form.customer_name.trim()&&Number(form.amount)>0&&!!form.reason.trim()); const submit=async()=>{if(!valid.value)return;saving.value=true;try{const r=await financeService.createRefund(form);toast.add({severity:'success',summary:'Created',detail:'Refund request created.',life:2500});router.push({name:'finance.refunds.detail',params:{id:r.data.id}})}catch(e:any){toast.add({severity:'error',summary:'Create Failed',detail:e?.response?.data?.message||'Unable to create refund.',life:3000})}finally{saving.value=false}}
+</script>

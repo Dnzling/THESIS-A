@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\Api\WarehouseOperations\WarehouseOperationsController;
 use App\Http\Controllers\Api\WarehouseOperations\WarehousePurchaseRequisitionController;
+use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('warehouse')->controller(WarehouseOperationsController::class)->group(function () {
+    Route::get('returns', [ReturnPickupController::class, 'warehouseReturns']);
     Route::get('dashboard', 'dashboard');
     Route::get('warehouses', 'warehouses');
     Route::get('warehouses/{id}', 'warehouse')->whereNumber('id');
@@ -23,5 +25,6 @@ Route::prefix('warehouse')->controller(WarehouseOperationsController::class)->gr
 Route::prefix('warehouse/purchase-requisitions')->controller(WarehousePurchaseRequisitionController::class)->group(function () {
     Route::get('/', 'index');
     Route::get('options', 'options');
+    Route::get('{id}', 'show')->whereNumber('id');
     Route::post('/', 'store');
 });

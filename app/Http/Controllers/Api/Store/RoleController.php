@@ -194,7 +194,7 @@ class RoleController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $code = $validated['code'] ?? strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']), 0, 5));
+        $code = $validated['code'] ?? strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
         $role = Role::create([
             'store_id' => $storeId,

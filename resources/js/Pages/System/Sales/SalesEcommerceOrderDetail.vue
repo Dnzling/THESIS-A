@@ -9,14 +9,13 @@
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <Button severity="secondary" text size="small" icon="pi pi-refresh" label="Refresh" @click="loadOrder" />
             <Button
               v-if="canSendToLogistics"
-              severity="success" size="small"
+       size="small"
               icon="pi pi-send"
-              label="Send To Logistics"
+              label="Mark Ready for Dispatch"
               :loading="sendingToLogistics"
-              @click="sendToLogistics"
+              @click="confirmReadyForDispatch"
             />
             <Button
               severity="secondary" size="small" text
@@ -176,9 +175,12 @@
       <Card class="rounded-2xl border border-gray-100 shadow-sm">
         <template #title>Order Timeline</template>
         <template #content>
-          <Timeline v-if="(order?.timeline || []).length" :value="order.timeline" class="w-full">
-            <template #content="{ item }">
-              <div class="pb-4">
+          <ol v-if="(order?.timeline || []).length" class="divide-y divide-slate-100">
+            <li v-for="(item, index) in order.timeline" :key="item.id || `${item.created_at}-${index}`" class="flex gap-4 py-4 first:pt-0 last:pb-0">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                <i :class="index === 0 ? 'pi pi-circle-fill text-xs' : 'pi pi-check text-sm'" />
+              </div>
+              <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="text-sm font-semibold text-gray-900">{{ item.title }}</p>
                   <Tag v-if="item.status_to" :value="formatStatus(item.status_to)" severity="secondary" class="text-xs" />
@@ -193,10 +195,10 @@
                     class="h-28 w-36 object-cover transition group-hover:scale-105" />
                   <span class="absolute inset-x-0 bottom-0 bg-slate-950/65 px-2 py-1 text-center text-xs text-white">View attachment</span>
                 </a>
-                <p class="mt-1 text-xs text-gray-400">{{ formatDateTime(item.created_at) }} • {{ item.actor || 'System' }}</p>
+                <p class="mt-2 text-xs text-gray-400">{{ formatDateTime(item.created_at) }} · {{ item.actor || 'System' }}</p>
               </div>
-            </template>
-          </Timeline>
+            </li>
+          </ol>
           <div v-else class="text-sm text-gray-500">No timeline entries yet.</div>
         </template>
       </Card>
@@ -249,7 +251,6 @@ import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Skeleton from 'primevue/skeleton'
-import Timeline from 'primevue/timeline'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
 import Textarea from 'primevue/textarea'
@@ -339,11 +340,24 @@ const openSalesChat = () => {
 
 const canSendToLogistics = computed(() => {
   if (!order.value) return false
-  if (!authStore.hasPermission('sales.order.approve')) return false
-  if (order.value.delivery) return false
+  if (!authStore.hasPermission('sales.orders.manage')) return false
   const status = String(order.value.primary_status || order.value.status || '').toLowerCase()
-  return ['pending', 'processing'].includes(status)
+  const deliveryStatus = String(order.value.delivery?.status || '').toLowerCase()
+  const deliveryHasStarted = Boolean(order.value.delivery) && deliveryStatus !== 'pending'
+  return ['pending', 'processing'].includes(status) && !deliveryHasStarted
 })
+
+const confirmReadyForDispatch = () => {
+  if (!order.value) return
+  confirm.require({
+    header: 'Mark Order Ready for Dispatch?',
+    message: `Mark ${order.value.order_number || 'this order'} and its delivery as Ready for Dispatch? Logistics can then assign a driver.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Cancel', outlined: true },
+    acceptProps: { label: 'Mark Ready for Dispatch' },
+    accept: () => sendToLogistics(),
+  })
+}
 
 const sendToLogistics = async () => {
   if (!order.value) return
@@ -355,8 +369,8 @@ const sendToLogistics = async () => {
     })
     toast.add({
       severity: 'success',
-      summary: 'Queued for Logistics',
-      detail: 'Order is ready for dispatch.',
+      summary: 'Ready for Dispatch',
+      detail: 'Order is now available for logistics assignment.',
       life: 3000,
     })
     await loadOrder()
@@ -483,7 +497,7 @@ const statusSeverity = (status: string) => {
   return 'info'
 }
 
-const goBack = () => router.push({ name: 'sales.ecommerce-orders' })
+const goBack = () => router.push({ name: 'sales.orders' })
 
 onMounted(loadOrder)
 </script>

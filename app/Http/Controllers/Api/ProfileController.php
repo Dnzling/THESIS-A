@@ -56,11 +56,22 @@ class ProfileController extends Controller
             'emergency_contact_relationship' => 'nullable|string|max:60',
         ]);
 
+        $contactNumberProvided = false;
+        $contactNumber = null;
+        foreach (['phone_number', 'contact_number', 'phone'] as $contactField) {
+            if (array_key_exists($contactField, $validated)) {
+                $contactNumberProvided = true;
+                $contactNumber = $validated[$contactField];
+                break;
+            }
+        }
+
         $user->fill([
             'fname' => $validated['fname'] ?? $user->fname,
             'lname' => $validated['lname'] ?? $user->lname,
             'email' => $validated['email'] ?? $user->email,
             'birthday' => $validated['birthday'] ?? $user->birthday,
+            ...($contactNumberProvided ? ['phone_number' => $contactNumber] : []),
         ]);
 
         $requiresVerification = false;
@@ -71,25 +82,20 @@ class ProfileController extends Controller
 
         $user->save();
 
-        $contactNumber = $validated['contact_number']
-            ?? $validated['phone_number']
-            ?? $validated['phone']
-            ?? null;
-
-        if (!is_null($contactNumber)) {
+        if ($contactNumberProvided) {
             $latestCustomer = Customer::query()
                 ->where('user_id', $user->id)
                 ->latest('id')
                 ->first();
 
-            if (!$latestCustomer) {
+            if (!$latestCustomer && $contactNumber !== null && $contactNumber !== '') {
                 $latestCustomer = Customer::query()->create([
                     'user_id' => $user->id,
                     'verification_status' => 'unverified',
                 ]);
             }
 
-            $latestCustomer->update([
+            $latestCustomer?->update([
                 'contact_number' => $contactNumber,
             ]);
         }
@@ -101,11 +107,9 @@ class ProfileController extends Controller
 
         $employee = Employee::where('user_id', $user->id)->first();
         if ($employee) {
-            $phoneValue = $contactNumber ?? $employee->phone;
             $employee->fill([
                 'fname' => $validated['fname'] ?? $employee->fname,
                 'lname' => $validated['lname'] ?? $employee->lname,
-                'phone' => $phoneValue,
                 'address' => $validated['address'] ?? $employee->address,
                 'province' => $validated['province'] ?? $employee->province,
                 'city' => $validated['city'] ?? $employee->city,

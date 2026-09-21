@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('crm')->group(function () {
     Route::get('/dashboard/payment-analytics', [CrmDashboardController::class, 'paymentAnalytics'])
-        ->middleware('can:crm.view');
+        ->middleware('can:crm.crm.view');
 
     Route::prefix('leads')->group(function () {
         Route::get('/', [CrmLeadController::class, 'leads'])->middleware('can:crm.leads.view');
@@ -46,6 +46,7 @@ Route::prefix('crm')->group(function () {
         Route::get('/', [ReturnController::class, 'index'])->middleware('can:crm.returns.view');
         Route::get('/investigation-assignees', [ReturnController::class, 'investigationAssignees'])->middleware('can:crm.returns.manage');
         Route::post('/{id}/investigation-ticket', [ReturnController::class, 'createInvestigationTicket'])->middleware('can:crm.returns.manage');
+        Route::put('/{id}/investigation-ticket/complete', [ReturnController::class, 'completeInvestigationTicket'])->middleware('can:crm.returns.manage');
         Route::get('/{id}', [ReturnController::class, 'show'])->middleware('can:crm.returns.view');
         Route::put('/{return}/status', [ReturnController::class, 'updateStatus'])->middleware('can:crm.returns.manage');
         Route::post('/{return}/pickup', [ReturnController::class, 'createPickup'])->middleware('can:crm.returns.manage');

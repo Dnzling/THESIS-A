@@ -10,7 +10,7 @@
 
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        <div class="grid grid-cols-1 gap-3 items-end md:grid-cols-2 xl:grid-cols-6">
           <IconField>
             <InputIcon class="pi pi-search" />
             <InputText
@@ -22,6 +22,17 @@
           </IconField>
 
           <Select
+            v-model="filters.workflow"
+            :options="workflowOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Workflow"
+            class="w-full"
+            size="small"
+            showClear
+          />
+
+            <Select
             v-model="filters.status"
             :options="statusOptions"
             optionLabel="label"
@@ -32,6 +43,19 @@
             showClear
           />
 
+
+          <Select
+            v-model="filters.investigation_status"
+            :options="investigationStatusOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Investigation"
+            class="w-full"
+            size="small"
+            showClear
+          />
+
+        
           <DatePicker
             v-model="filters.date_range"
             selectionMode="range"
@@ -87,25 +111,20 @@
             </div>
           </template>
 
-          <Column header="Return ID" field="return_number" style="width: 16%">
-            <template #body="{ data }">
-              <span class="font-semibold text-gray-900">{{ data.return_number || '—' }}</span>
-            </template>
-          </Column>
-
-          <Column field="created_at" header="Date" sortable style="width: 12%">
+             <Column field="created_at" header="Date" class="text-sm" sortable style="width: 20%">
             <template #body="{ data }">
               {{ formatDate(data.created_at) }}
             </template>
           </Column>
 
-          <Column header="Order" sortable field="order.order_number" style="width: 16%">
+          <Column header="Return ID" field="return_number" class="text-xs" style="width: 28%">
             <template #body="{ data }">
-              <div class="text-sm">
-                <div class="font-medium text-gray-900">{{ data.order?.order_number || `#${data.order_id}` }}</div>
-              </div>
+              <span class="font-semibold text-gray-900">{{ data.return_number || '—' }}</span>
             </template>
           </Column>
+
+
+       
 
           <Column header="Customer" style="width: 18%">
             <template #body="{ data }">
@@ -135,9 +154,24 @@
             </template>
           </Column>
 
-          <Column field="status" header="Status" sortable style="width: 14%">
+          <Column header="Workflow Status" style="min-width: 13rem">
             <template #body="{ data }">
-              <Tag :value="prettyStatus(data.status)" :severity="statusSeverity(data.status)" />
+              <Badge
+                :value="workflowStatus(data).label"
+                :severity="workflowStatus(data).severity"
+              />
+            </template>
+          </Column>
+
+          <Column header="Assigned Team" style="min-width: 13rem">
+            <template #body="{ data }">
+              <div v-if="data.investigation_ticket?.assignees?.length" class="space-y-1">
+                <p v-for="employee in data.investigation_ticket.assignees" :key="employee.id"
+                  class="text-sm text-slate-700">
+                  {{ investigatorName(employee) }}
+                </p>
+              </div>
+              <span v-else class="text-sm text-slate-400">Not assigned</span>
             </template>
           </Column>
 
@@ -204,6 +238,8 @@ let latestLoadId = 0
 
 const filters = reactive({
   search: '',
+  workflow: null as null | string,
+  investigation_status: null as null | string,
   status: null as null | string,
   date_range: null as any,
   page: 1,
@@ -212,6 +248,8 @@ const filters = reactive({
 
 const hasActiveFilters = computed(() => Boolean(
   filters.search.trim()
+  || filters.workflow
+  || filters.investigation_status
   || filters.status
   || (Array.isArray(filters.date_range) && (filters.date_range[0] || filters.date_range[1]))
 ))
@@ -226,6 +264,24 @@ const statusOptions = computed(() => ([
   { label: 'Replaced', value: 'replaced' },
 ]))
 
+const workflowOptions = [
+  { label: 'Assigned to Me', value: 'assigned_to_me' },
+  { label: 'Needs Investigation', value: 'needs_investigation' },
+  { label: 'Awaiting Manager Decision', value: 'awaiting_manager_decision' },
+  { label: 'Approved / Awaiting Pickup', value: 'approved' },
+  { label: 'Awaiting Physical Inspection', value: 'awaiting_inspection' },
+  { label: 'Awaiting Finance Refund', value: 'awaiting_refund' },
+  { label: 'Completed', value: 'completed' },
+]
+
+const investigationStatusOptions = [
+  { label: 'Not Assigned', value: 'unassigned' },
+  { label: 'Open', value: 'open' },
+  { label: 'In Progress', value: 'in_progress' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Cancelled', value: 'cancelled' },
+]
+
 const toIsoDate = (date: Date) => {
   const d = new Date(date)
   const yyyy = d.getFullYear()
@@ -237,6 +293,8 @@ const toIsoDate = (date: Date) => {
 const buildParams = () => {
   const params: any = {
     search: filters.search.trim() || undefined,
+    workflow: filters.workflow || undefined,
+    investigation_status: filters.investigation_status || undefined,
     status: filters.status || undefined,
     page: filters.page,
     per_page: filters.per_page,
@@ -285,6 +343,8 @@ const resetFilters = () => {
   if (searchDebounce) clearTimeout(searchDebounce)
   suppressFilterWatchers.value = true
   filters.search = ''
+  filters.workflow = null
+  filters.investigation_status = null
   filters.status = null
   filters.date_range = null
   filters.page = 1
@@ -322,12 +382,39 @@ const prettyStatus = (value: any) => {
   return v ? v.charAt(0).toUpperCase() + v.slice(1) : 'â€”'
 }
 
-const statusSeverity = (status: string) => {
-  const normalized = String(status || '').toLowerCase()
-  if (['approved', 'received', 'refunded', 'replaced'].includes(normalized)) return 'success'
-  if (normalized === 'rejected') return 'danger'
-  return 'warning'
+const workflowStatus = (row: any): { label: string; severity: string } => {
+  const returnStatus = String(row?.status || '').toLowerCase()
+  const investigationStatus = String(row?.investigation_ticket?.status || '').toLowerCase()
+  const pickupStatus = String(row?.pickup?.status || '').toLowerCase()
+
+  if (returnStatus === 'rejected') return { label: 'Rejected', severity: 'danger' }
+  if (returnStatus === 'refunded') return { label: 'Refunded', severity: 'success' }
+  if (returnStatus === 'replaced') return { label: 'Replacement Completed', severity: 'success' }
+  if (returnStatus === 'refund_pending') return { label: 'Awaiting Finance Refund', severity: 'warn' }
+  if (returnStatus === 'received') return { label: 'Physical Inspection Complete', severity: 'info' }
+
+  if (returnStatus === 'approved') {
+    return pickupStatus === 'picked_up'
+      ? { label: 'Awaiting Physical Inspection', severity: 'warn' }
+      : { label: 'Awaiting Pickup', severity: 'info' }
+  }
+
+  if (returnStatus === 'pending_verification') {
+    if (!row?.investigation_ticket) return { label: 'Needs Investigation', severity: 'warn' }
+    if (investigationStatus === 'completed') return { label: 'Awaiting Manager Decision', severity: 'warn' }
+    if (investigationStatus === 'in_progress') return { label: 'Under Investigation', severity: 'info' }
+    if (investigationStatus === 'cancelled') return { label: 'Investigation Cancelled', severity: 'danger' }
+    return { label: 'Investigation Open', severity: 'info' }
+  }
+
+  return { label: prettyStatus(returnStatus), severity: 'secondary' }
 }
+
+const investigatorName = (employee: any) =>
+  [employee?.user?.fname, employee?.user?.lname].filter(Boolean).join(' ')
+  || employee?.user?.email
+  || employee?.employee_number
+  || 'Assigned employee'
 
 const attachmentsDialogVisible = ref(false)
 const attachments = ref<{ url: string; name: string }[]>([])
@@ -351,6 +438,10 @@ watch(
 )
 
 watch(() => filters.status, () => {
+  if (!suppressFilterWatchers.value) runFilteredSearch()
+})
+
+watch([() => filters.workflow, () => filters.investigation_status], () => {
   if (!suppressFilterWatchers.value) runFilteredSearch()
 })
 

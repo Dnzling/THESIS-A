@@ -519,12 +519,9 @@ class AttendanceController extends Controller
             ], 200);
         }
 
-        $settings = is_array($user->store?->settings) ? $user->store->settings : [];
-        $geofenceEnabled = !array_key_exists('attendance_geofence_enabled', $settings) || (bool) $settings['attendance_geofence_enabled'];
-
-        if ($geofenceEnabled && !$user->isSuperAdmin() && !$user->isStoreAdmin()) {
+        if (!$user->isSuperAdmin() && !$user->isStoreAdmin()) {
             $geofenceBranch = $this->resolveGeofenceBranch($user, $employee);
-            if ($geofenceBranch && $geofenceBranch->latitude !== null && $geofenceBranch->longitude !== null) {
+            if ($geofenceBranch?->geofence_enabled && $geofenceBranch->latitude !== null && $geofenceBranch->longitude !== null) {
                 $lat = $request->input('latitude');
                 $lng = $request->input('longitude');
                 if ($lat === null || $lng === null) {

@@ -490,6 +490,13 @@ class ProcurementService {
     return response.data
   }
 
+  async startPurchaseRequisitionProcessing(id: number) {
+    const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/start-processing`, {}, {
+      headers: { 'X-Suppress-Dialog': '1' },
+    })
+    return response.data
+  }
+
   async rejectPurchaseRequisition(id: number, data?: { reason?: string }) {
     const response = await axiosClient.post(`${this.baseUrl}/requisitions/${id}/reject`, data || {})
     return response.data

@@ -22,7 +22,7 @@
             <div class="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 class="text-lg font-semibold text-slate-900">Order Information</h3>
-                <p class="mt-1 text-sm text-slate-500">Supplier and branch are assigned from the approved procurement request.</p>
+                <p class="mt-1 text-sm text-slate-500">Choose a supplier that can provide every product in this purchase order.</p>
               </div>
               <Tag v-if="form.purchase_requisition_id" value="From Purchase Requisition" severity="info" />
             </div>
@@ -49,6 +49,29 @@
             <div class="mb-4">
               <h3 class="text-lg font-semibold text-slate-900">Supplier Information</h3>
               <p class="mt-1 text-sm text-slate-500">Contact and contract terms applied to this purchase order.</p>
+            </div>
+
+            <div v-if="!splitPoMode" class="mb-4 max-w-xl">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Supplier</label>
+              <Select
+                v-model="form.supplier_id"
+                :options="eligibleSuppliers"
+                option-label="display_name"
+                option-value="id"
+                placeholder="Select an eligible supplier"
+                :loading="eligibleSuppliersLoading"
+                :disabled="listedProductIds.length === 0 || eligibleSuppliersLoading"
+                filter
+                show-clear
+                fluid
+                @change="onSupplierChange"
+              />
+              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add products first to find suppliers that carry them.</small>
+              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
+              <small v-else class="mt-1 block text-slate-500">Filtered to suppliers linked to all {{ listedProductIds.length }} listed product(s).</small>
+            </div>
+            <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Suppliers are assigned separately to each product group in this split purchase order.
             </div>
   
             <!-- Supplier Details Card (Auto-populated) -->
@@ -329,7 +352,9 @@ const saving = ref(false)
 const saveDraft = ref(false)
 const isEditing = ref(false)
 const loadingSuppliers = ref(false)
+const eligibleSuppliersLoading = ref(false)
 const suppliers = ref<any[]>([])
+const eligibleSuppliers = ref<any[]>([])
 const products = ref<any[]>([])
 const branches = ref<any[]>([])
 const frequentProducts = ref<any[]>([])
@@ -366,6 +391,11 @@ const selectedBranchName = computed(() => {
   const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
   return branch?.name || branch?.branch_name || (form.branch_id ? `Branch #${form.branch_id}` : 'Not assigned')
 })
+const listedProductIds = computed(() => Array.from(new Set(
+  form.items
+    .map((item: any) => Number(item?.product_id || 0))
+    .filter((productId: number) => productId > 0)
+)))
 const selectedSupplierName = computed(() => {
   if (splitPoMode.value) {
     return `${splitPoSupplierGroups.value} assigned suppliers`
@@ -448,7 +478,7 @@ onMounted(async () => {
               selected_supplier_id: item.selected_supplier_id || null,
               selected_supplier_name: item.selected_supplier_id ? (item.selected_supplier_name || null) : null,
               quantity_ordered: item.quantity_requested || 1,
-              unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+              unit_cost: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0,
               line_total: 0
             }))
 
@@ -561,7 +591,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
             : null)
           : null,
         quantity_ordered: item.quantity_requested || 1,
-        unit_cost: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0,
+        unit_cost: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0,
         line_total: 0
       }))
 
@@ -589,7 +619,7 @@ const prefillFromRequisition = async (requisitionId: number) => {
           product_name: item.product?.product_name || item.product_name || 'Unknown Product',
           sku: item.product?.sku || item.sku || '',
           stock_level: 0,
-          cost_price: parseFloat(item.product?.cost_price || item.estimated_unit_cost || item.product?.base_price || '0') || 0
+          cost_price: parseFloat(item.variation?.cost_price || item.estimated_unit_cost || item.product?.cost_price || item.product?.base_price || '0') || 0
         }))
     }
 
@@ -821,6 +851,77 @@ const loadProductsBySupplier = async (supplierId: number) => {
   }
 }
 
+let supplierEligibilityRequest = 0
+const loadEligibleSuppliers = async () => {
+  const requestId = ++supplierEligibilityRequest
+  const productIds = listedProductIds.value
+
+  if (splitPoMode.value) {
+    eligibleSuppliers.value = []
+    eligibleSuppliersLoading.value = false
+    return
+  }
+
+  if (productIds.length === 0) {
+    eligibleSuppliers.value = []
+    eligibleSuppliersLoading.value = false
+    if (!isEditing.value && form.supplier_id) {
+      form.supplier_id = null
+      await onSupplierChange()
+    }
+    return
+  }
+
+  eligibleSuppliersLoading.value = true
+  try {
+    const response = await procurementService.getSuppliers({
+      per_page: 100,
+      active_contract_only: true,
+      product_ids: productIds,
+    })
+    if (requestId !== supplierEligibilityRequest) return
+
+    const payload = response?.data ?? response
+    const page = payload?.data ?? payload
+    const rows = Array.isArray(page) ? page : (page?.data || [])
+    const options = (Array.isArray(rows) ? rows : []).map((supplier: any) => ({
+      ...supplier,
+      display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+    }))
+
+    if (isEditing.value && form.supplier_id && !options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))) {
+      const currentSupplier = suppliers.value.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+      if (currentSupplier) {
+        options.unshift({
+          ...currentSupplier,
+          display_name: currentSupplier.supplier_name || currentSupplier.company_name || `Supplier #${currentSupplier.id}`,
+        })
+      }
+    }
+
+    eligibleSuppliers.value = options
+
+    if (!isEditing.value && form.supplier_id && !options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))) {
+      form.supplier_id = null
+      await onSupplierChange()
+    }
+  } catch (error) {
+    if (requestId === supplierEligibilityRequest) {
+      eligibleSuppliers.value = []
+      toast.add({
+        severity: 'warn',
+        summary: 'Supplier Filter Unavailable',
+        detail: 'Could not load suppliers for the listed products. Please try again.',
+        life: 3000,
+      })
+    }
+  } finally {
+    if (requestId === supplierEligibilityRequest) {
+      eligibleSuppliersLoading.value = false
+    }
+  }
+}
+
 watch(
   () => form.branch_id,
   async (branchId) => {
@@ -862,6 +963,9 @@ const onSupplierChange = async () => {
     contractDiscountPercent.value = 0
     contractTaxRate.value = 0
     supplierWarning.show = false
+    if (form.branch_id) {
+      await loadProductsByBranch(form.branch_id)
+    }
     return
   }
 
@@ -906,6 +1010,11 @@ const onSupplierChange = async () => {
     console.error('Failed to auto-fill supplier details', error)
   }
 }
+
+watch(
+  () => listedProductIds.value.join(','),
+  () => void loadEligibleSuppliers(),
+)
 
 const onProductChange = (index: number, productId: any) => {
   if (productId) {

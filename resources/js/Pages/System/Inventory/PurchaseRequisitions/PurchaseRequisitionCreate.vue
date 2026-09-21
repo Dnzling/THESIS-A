@@ -81,12 +81,9 @@
                   </template>
                 </Column>
   
-                <Column header="Supplier (Optional)" style="min-width: 240px">
+                <Column header="Unit Total" style="width: 160px">
                   <template #body="slotProps">
-                    <Select v-model="slotProps.data.selected_supplier_id"
-                      :options="getSupplierOptionsForRow(slotProps.data)" optionLabel="label" optionValue="value" filter
-                      fluid showClear placeholder="None" :disabled="!slotProps.data.branch_inventory_id"
-                      @change="onSupplierChange(slotProps.index, $event)" />
+                    {{ formatMoney(resolveUnitCost(getInventoryById(slotProps.data.branch_inventory_id)) * Number(slotProps.data.requested_quantity || 0)) }}
                   </template>
                 </Column>
   
@@ -101,15 +98,6 @@
               </DataTable>
   
               <small v-if="errors.items" class="p-error mt-2 block">{{ errors.items }}</small>
-              <small v-if="hasMixedSupplierSelection" class="p-error mt-2 block bg-red-100 p-2 rounded outline-red-300">
-                You cannot create a request with mixed items (some with supplier and some without supplier).
-                Please create two separate requests: one with suppliers (PO) and one without suppliers (RFQ).
-              </small>
-              <small v-if="hasDifferentSelectedSuppliers" class="p-error mt-2 block">
-                All items with selected supplier must use the same supplier in one request.
-                Please split by supplier and create separate requests.
-              </small>
-  
               <div v-if="previewItems.length" class="mt-4">
                 <div class="text-sm font-semibold text-gray-800 mb-2">Product List Preview</div>
                 <DataTable :value="previewItems" class="p-datatable-sm text-xs" responsiveLayout="scroll">
@@ -137,7 +125,7 @@
                       {{ formatMoney(data.estimated_unit_cost) }}
                     </template>
                   </Column>
-                  <Column header="Line Total" style="width: 160px">
+                  <Column header="Unit Total" style="width: 160px">
                     <template #body="{ data }">
                       {{ formatMoney(Number(data.quantity_requested || 0) * Number(data.estimated_unit_cost || 0)) }}
                     </template>
@@ -149,7 +137,7 @@
             <div class="flex justify-end gap-2 pt-3 border-t">
               <Button type="button" label="Cancel" severity="secondary" size="small" @click="goBack" />
               <Button type="submit" label="Create Request" size="small" :loading="saving"
-                :disabled="!canManage || validItems.length === 0 || hasMixedSupplierSelection || hasDifferentSelectedSuppliers" />
+                :disabled="!canManage || validItems.length === 0" />
             </div>
           </form>
         </template>
@@ -197,13 +185,11 @@ const branchLabel = computed(() => {
 type InventoryPrItem = {
   branch_inventory_id: number | null
   requested_quantity: number
-  selected_supplier_id: number | null
 }
 
 const buildEmptyItem = (): InventoryPrItem => ({
   branch_inventory_id: null,
   requested_quantity: 1,
-  selected_supplier_id: null,
 })
 
 const form = reactive<{
@@ -227,38 +213,6 @@ const previewItems = computed(() => {
     }
   })
 })
-const hasMixedSupplierSelection = computed(() => {
-  const items = validItems.value
-  if (items.length <= 1) return false
-
-  const selectedSupplierFlags = items.map((item) => Number(item.selected_supplier_id || 0) > 0)
-  const mixedSelectedSuppliers = selectedSupplierFlags.includes(true) && selectedSupplierFlags.includes(false)
-  if (mixedSelectedSuppliers) return true
-
-  const supplierAvailabilityFlags = items.map((item) => {
-    const inventoryRow = getInventoryById(item.branch_inventory_id)
-    const suppliers = Array.isArray(inventoryRow?.product?.suppliers) ? inventoryRow.product.suppliers : []
-    return suppliers.length > 0
-  })
-  return supplierAvailabilityFlags.includes(true) && supplierAvailabilityFlags.includes(false)
-})
-
-const selectedSupplierIds = computed(() => {
-  return validItems.value
-    .map((item) => Number(item.selected_supplier_id || 0))
-    .filter((supplierId) => supplierId > 0)
-})
-
-const hasDifferentSelectedSuppliers = computed(() => {
-  if (selectedSupplierIds.value.length <= 1) return false
-  return new Set(selectedSupplierIds.value).size > 1
-})
-
-const anchorSupplierId = computed<number | null>(() => {
-  const firstRowSupplierId = Number(form.items[0]?.selected_supplier_id || 0)
-  return firstRowSupplierId > 0 ? firstRowSupplierId : null
-})
-
 const inventoryOptions = computed(() => {
   return inventoryRows.value
     .slice()
@@ -268,14 +222,8 @@ const inventoryOptions = computed(() => {
       const sku = row?.product?.sku || row?.sku || ''
       const variant = row?.variation?.variation_name || row?.variant_name || ''
       const stock = Number(row?.quantity_available ?? 0)
-      const suppliers = Array.isArray(row?.product?.suppliers) ? row.product.suppliers : []
-      const supplierNames = suppliers
-        .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
-        .filter((name: any) => typeof name === 'string' && name.length > 0)
-      const supplierText = supplierNames.length > 0 ? supplierNames.join(', ') : 'No supplier'
-
       const title = `${productName}${variant ? ` - ${variant}` : ''}${sku ? ` (${sku})` : ''}`
-      const subtitle = `Stock: ${stock} | Supplier: ${supplierText}`
+      const subtitle = `Stock: ${stock}`
       return {
         value: row.id,
         title,
@@ -298,6 +246,7 @@ const formatMoney = (value: any) => {
 
 const resolveUnitCost = (inventoryRow: any): number => {
   return Number(
+    inventoryRow?.variation?.cost_price ??
     inventoryRow?.product?.inventory_cost_price ??
     inventoryRow?.product?.cost_price ??
     inventoryRow?.cost_price ??
@@ -346,42 +295,6 @@ const getInventoryById = (inventoryId: number | null) => {
   return inventoryRows.value.find((r: any) => Number(r.id) === Number(inventoryId)) || null
 }
 
-const getSupplierOptionsForRow = (item: InventoryPrItem) => {
-  const suppliers = Array.isArray(getInventoryById(item.branch_inventory_id)?.product?.suppliers)
-    ? getInventoryById(item.branch_inventory_id)?.product?.suppliers
-    : []
-
-  const options = suppliers
-    .slice()
-    .sort((a: any, b: any) => Number(Boolean(b?.pivot?.is_preferred_supplier)) - Number(Boolean(a?.pivot?.is_preferred_supplier)))
-    .map((supplier: any) => ({
-      value: supplier.id,
-      label: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
-      isPreferred: Boolean(supplier?.pivot?.is_preferred_supplier),
-    }))
-
-  if (!anchorSupplierId.value) return options
-  return options.filter((option: any) => Number(option.value) === Number(anchorSupplierId.value))
-}
-
-const getDefaultSupplierIdForRow = (item: InventoryPrItem): number | null => {
-  const options = getSupplierOptionsForRow(item)
-  if (options.length === 0) {
-    return null
-  }
-
-  const preferred = options.find((option: any) => option.isPreferred)
-  if (preferred) {
-    return Number(preferred.value)
-  }
-
-  if (options.length === 1) {
-    return Number(options[0].value)
-  }
-
-  return null
-}
-
 const addItem = () => {
   form.items.push(buildEmptyItem())
 }
@@ -421,42 +334,13 @@ const hydrateInventoryById = async (inventoryId: number | null) => {
 const onInventoryChange = async (index: number, event: any) => {
   const item = form.items[index]
   item.branch_inventory_id = Number(event?.value || item.branch_inventory_id || 0) || null
-  item.selected_supplier_id = null
 
   await hydrateInventoryById(item.branch_inventory_id)
   applyReorderQty(index)
-  item.selected_supplier_id = getDefaultSupplierIdForRow(item)
-}
-
-const onSupplierChange = (index: number, event: any) => {
-  const selected = Number(event?.value || form.items[index]?.selected_supplier_id || 0) || null
-  form.items[index].selected_supplier_id = selected
-
-  if (!anchorSupplierId.value) return
-
-  // Keep all rows aligned with supplier chosen on the first row.
-  form.items.forEach((row, rowIndex) => {
-    if (rowIndex === 0) return
-    if (Number(row.selected_supplier_id || 0) > 0 && Number(row.selected_supplier_id) !== Number(anchorSupplierId.value)) {
-      row.selected_supplier_id = null
-    }
-  })
 }
 
 const doCreate = async () => {
   Object.keys(errors).forEach(k => delete errors[k])
-  if (hasMixedSupplierSelection.value) {
-    const message = 'Mixed supplier items are not allowed. Separate into two requests: all items with supplier (PO) or all items without supplier (RFQ).'
-    errors.items = message
-    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
-    return
-  }
-  if (hasDifferentSelectedSuppliers.value) {
-    const message = 'Different selected suppliers in one request are not allowed. Please create separate requests per supplier.'
-    errors.items = message
-    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
-    return
-  }
   saving.value = true
   try {
     const payloadItems = validItems.value.map((item) => {
@@ -465,7 +349,6 @@ const doCreate = async () => {
       return {
         product_id: Number(inventoryRow?.product_id),
         variation_id: inventoryRow?.variation_id ?? null,
-        selected_supplier_id: item.selected_supplier_id || null,
         quantity_requested: Number(item.requested_quantity),
         estimated_unit_cost: resolveUnitCost(inventoryRow),
         tax_rate: Number(inventoryRow?.product?.tax_rate ?? 0),
@@ -477,11 +360,10 @@ const doCreate = async () => {
       reason: form.notes || 'Stock replenishment request.',
       requisition_type: 'regular',
       items: payloadItems,
-      auto_submit: true,
     })
 
     if (response?.success) {
-      toast.add({ severity: 'success', summary: 'Created', detail: 'Purchase requisition created.', life: 2500 })
+      toast.add({ severity: 'success', summary: 'Draft Created', detail: 'Purchase requisition saved as a draft. Submit it from the detail page when ready.', life: 3500 })
       router.push({ name: 'inventory.requisites.detail', params: { id: response.data?.id } })
     } else {
       toast.add({ severity: 'error', summary: 'Error', detail: response?.message || 'Failed to create request', life: 3000 })
@@ -507,19 +389,6 @@ const submit = async () => {
     errors.items = 'Please add at least one valid item with quantity.'
     return
   }
-  if (hasMixedSupplierSelection.value) {
-    const message = 'Mixed supplier items are not allowed. Separate into two requests: all items with supplier (PO) or all items without supplier (RFQ).'
-    errors.items = message
-    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
-    return
-  }
-  if (hasDifferentSelectedSuppliers.value) {
-    const message = 'Different selected suppliers in one request are not allowed. Please create separate requests per supplier.'
-    errors.items = message
-    toast.add({ severity: 'warn', summary: 'Validation', detail: message, life: 4500 })
-    return
-  }
-
   await doCreate()
 }
 
@@ -558,8 +427,6 @@ onMounted(async () => {
       // fallback to reorder qty if available
       applyReorderQty(0)
     }
-
-    form.items[0].selected_supplier_id = getDefaultSupplierIdForRow(form.items[0])
 
     if (typeof notesRaw === 'string' && notesRaw.trim()) {
       form.notes = notesRaw

@@ -314,7 +314,8 @@
         :label="processing ? 'Submitting...' : 'Submit'" />
 
         <Button
-          v-if="canApprove"
+          v-if="canReject"
+          label="Reject"
           size="medium"
           severity="danger"
           outlined
@@ -334,9 +335,12 @@
         />
 
         <Button
-          v-if="detail && detail.status === 'procurement_processing' && (canManagePurchaseOrders || canManageRfq)"
+          v-if="canCreateRequest"
           size="medium"
           severity="info"
+          icon="pi pi-file-plus"
+          :loading="processing"
+          :disabled="processing"
           @click="createRequest"
           label="Create Request"
         />
@@ -528,11 +532,15 @@ const canManageReceiving = computed(() => authStore.hasPermission('procurement.r
 const processingReadyStatuses = ['warehouse_approved', 'branch_manager_approved', 'procurement_processing']
 const canCreateRfqFromDetail = computed(() => {
   if (!detail.value) return false
-  return processingReadyStatuses.includes(detail.value.status) && Boolean(detail.value.any_item_missing_supplier)
+  return detail.value.status !== 'procurement_processing'
+    && processingReadyStatuses.includes(detail.value.status)
+    && Boolean(detail.value.any_item_missing_supplier)
 })
 const canCreatePoFromDetail = computed(() => {
   if (!detail.value) return false
-  return processingReadyStatuses.includes(detail.value.status) && Boolean(detail.value.all_items_have_suppliers)
+  return detail.value.status !== 'procurement_processing'
+    && processingReadyStatuses.includes(detail.value.status)
+    && Boolean(detail.value.all_items_have_suppliers)
 })
 
 // Derive supplier binding from items when backend flags are missing
@@ -555,13 +563,19 @@ const supplierGrouping = computed(() => {
   }
 })
 
-const createRequest = () => {
-  if (!detail.value) return
-  const status = normalize(detail.value.status)
-  if (status !== 'procurement_processing') {
-    // only route when in processing state
-    return
+const canCreateRequest = computed(() => {
+  if (!detail.value || !['pending', 'procurement_processing'].includes(normalize(detail.value.status))) return false
+
+  const { boundCount, unboundCount } = supplierGrouping.value
+  if (boundCount > 0 && unboundCount > 0) {
+    return canManagePurchaseOrders.value && canManageRfq.value
   }
+  if (boundCount > 0) return canManagePurchaseOrders.value
+  return canManageRfq.value
+})
+
+const requestCreateRoute = () => {
+  if (!detail.value) return
 
   const { boundCount, unboundCount } = supplierGrouping.value
   if (boundCount > 0 && unboundCount > 0) {
@@ -575,17 +589,52 @@ const createRequest = () => {
   router.push({ name: 'procurement.rfqs.create', query: { requisition_id: requisitionId } })
 }
 
+const createRequest = async () => {
+  if (!detail.value || processing.value) return
+
+  if (normalize(detail.value.status) === 'procurement_processing') {
+    requestCreateRoute()
+    return
+  }
+
+  processing.value = true
+  try {
+    const response = await procurementService.startPurchaseRequisitionProcessing(requisitionId)
+    if (!response?.success) {
+      throw new Error(response?.message || 'Unable to process this requisition.')
+    }
+
+    detail.value.status = 'procurement_processing'
+    requestCreateRoute()
+  } catch (error: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Unable to Create Request',
+      detail: error?.response?.data?.message || error?.message || 'Failed to start procurement processing.',
+      life: 4000,
+    })
+  } finally {
+    processing.value = false
+  }
+}
+
 const canApprove = computed(() => {
   if (!detail.value) return false
   const status = normalize(detail.value.status)
   const approvableStatuses = new Set([
-    'pending',
     'warehouse_approved',
     'branch_manager_approved',
     'pending_central_review',
   ])
 
   return approvableStatuses.has(status) && hasApprovalPermission.value
+})
+
+const canReject = computed(() => {
+  if (!detail.value) return false
+  return ['pending', 'warehouse_approved', 'branch_manager_approved', 'pending_central_review'].includes(
+    normalize(detail.value.status),
+  ) && hasApprovalPermission.value
 })
 
 // Helper functions
@@ -825,49 +874,7 @@ const approve = async () => {
     if (httpOk) {
       try { toast.clear() } catch (e) {}
       toast.add({ severity: 'success', summary: 'Approved', detail: payload?.message || 'Purchase requisition approved successfully', life: 1200 })
-      // suppress global response error dialogs for a short window to avoid
-      // race conditions where a background request triggers an error after success
-      try { (window as any).__suppressResponseErrors = true } catch (e) {}
-      setTimeout(() => { try { (window as any).__suppressResponseErrors = false } catch (e) {} }, 2000)
-
-      const automation = payload?.automation || {}
-      const nextAction = automation?.next_action
-      const hasMixed = Boolean(automation?.has_mixed_supplier_assignment)
-      const rfqs = Array.isArray(automation?.rfqs) ? automation.rfqs : []
-      const pos = Array.isArray(automation?.purchase_orders) ? automation.purchase_orders : []
-
-      if (hasMixed) {
-        toast.add({
-          severity: 'info',
-          summary: 'Processing Queue',
-          detail: 'Mixed supplier assignment detected. RFQ was created first for items without supplier, then PO(s) for supplier-linked items.',
-          life: 5000
-        })
-      }
-
-      setTimeout(() => {
-        if (nextAction === 'rfq') {
-          const firstRfq = rfqs[0]
-          if (firstRfq?.id) {
-            router.push({ name: 'procurement.rfqs.detail', params: { id: firstRfq.id } })
-            return
-          }
-          router.push({ name: 'procurement.rfqs', query: { requisition_id: requisitionId } })
-          return
-        }
-
-        if (nextAction === 'po') {
-          const firstPo = pos[0]
-          if (firstPo?.id) {
-            router.push({ name: 'procurement.purchase-orders.detail', params: { id: firstPo.id } })
-            return
-          }
-          router.push({ name: 'procurement.purchase-orders', query: { requisition_id: requisitionId } })
-          return
-        }
-
-        router.push({ name: 'procurement.purchase-requisitions' })
-      }, 1200)
+      await loadDetail()
     } else {
       console.error('[PR Detail] approve indicates non-success payload', payload)
       toast.add({ severity: 'error', summary: 'Error', detail: payload?.message || 'Failed to approve', life: 4000 })
@@ -983,35 +990,6 @@ const performConfirmedAction = async () => {
       await loadDetail()
       if (ok) {
         toast.add({ severity: 'success', summary: 'Success', detail: payload?.message || 'Action completed successfully', life: 1200 })
-
-        const automation = payload?.automation || {}
-        const nextAction = automation?.next_action
-        const rfqs = Array.isArray(automation?.rfqs) ? automation.rfqs : []
-        const pos = Array.isArray(automation?.purchase_orders) ? automation.purchase_orders : []
-
-        setTimeout(() => {
-          if (nextAction === 'rfq') {
-            const firstRfq = rfqs[0]
-            if (firstRfq?.id) {
-              router.push({ name: 'procurement.rfqs.detail', params: { id: firstRfq.id } })
-              return
-            }
-            router.push({ name: 'procurement.rfqs', query: { requisition_id: requisitionId } })
-            return
-          }
-
-          if (nextAction === 'po') {
-            const firstPo = pos[0]
-            if (firstPo?.id) {
-              router.push({ name: 'procurement.purchase-orders.detail', params: { id: firstPo.id } })
-              return
-            }
-            router.push({ name: 'procurement.purchase-orders', query: { requisition_id: requisitionId } })
-            return
-          }
-
-          router.push({ name: 'procurement.purchase-requisitions' })
-        }, 1200)
       } else {
         // Fallback: show error dialog when server indicates failure
         responseTitle.value = 'Response'

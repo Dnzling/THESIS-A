@@ -39,7 +39,7 @@
     <!-- Main Content -->
     <div v-else-if="detail" class="space-y-6">
       <!-- Delivery Status Steps -->
-    <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered'].includes(detail?.status)" class="space-y-6">
+    <div v-if="['sent_to_supplier', 'supplier_accepted', 'in_transit', 'out_for_delivery', 'delivered'].includes(detail?.status)" class="space-y-6">
         <Card v-if="steps && steps.length" class="rounded-2xl border border-slate-200/70 shadow-sm">
           <template #content>
             <div class="flex flex-col gap-4">
@@ -79,7 +79,7 @@
                 <p class="mt-1"><i class="pi pi-map-marker mr-1"></i>{{ currentPickupAddress }}</p>
               </div>
             </div>
-            <div v-if="shipmentInfo && shipmentStatus === 'in_transit'" class="mx-6 mb-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div v-if="shipmentInfo && ['in_transit', 'out_for_delivery'].includes(String(shipmentStatus))" class="mx-6 mb-5 overflow-hidden rounded-2xl border border-slate-200">
               <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
                 <div>
                   <p class="font-semibold text-slate-900">Live Truck Tracking</p>
@@ -384,12 +384,9 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '../../../../stores/auth'
 import procurementService from '../../../../services/procurement.service'
 import axiosClient from '@/axios'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-import { fetchMapboxRoadRoute, mapboxAttribution, mapboxTileUrl, reverseGeocodeMapbox } from '@/utils/mapbox'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { fetchMapboxRoadRoute, requireMapboxToken, reverseGeocodeMapbox } from '@/utils/mapbox'
 
 const route = useRoute()
 const router = useRouter()
@@ -401,12 +398,14 @@ const canManageReceiving = computed(() => authStore.hasPermission('inventory.rec
 const poId = Number(route.params.id)
 const steps = computed(() => {
   const sent = detail.value?.status === 'sent_to_supplier' || detail.value?.status === 'supplier_accepted'
-  const inTransit = shipmentStatus.value === 'in_transit'
+  const inTransit = ['in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))
+  const outForDelivery = ['out_for_delivery', 'delivered'].includes(String(shipmentStatus.value))
   const delivered = shipmentStatus.value === 'delivered'
   return [
     { key: 'supplier', label: 'Supplier Approval', index: 1, active: sent || inTransit || delivered },
     { key: 'transit', label: 'In Transit', index: 2, active: inTransit || delivered },
-    { key: 'delivered', label: 'Order Delivered', index: 3, active: delivered },
+    { key: 'out_for_delivery', label: 'Out for Delivery', index: 3, active: outForDelivery },
+    { key: 'delivered', label: 'Order Delivered', index: 4, active: delivered },
   ]
 })
 
@@ -419,11 +418,10 @@ const shipmentInfo = ref<any>(null)
 const resolvedShipmentAddress = ref('')
 const resolvedLogAddresses = ref<Record<number, string>>({})
 const pickupMapElement = ref<HTMLElement | null>(null)
-let pickupMap: L.Map | null = null
-let pickupTruckMarker: L.Marker | null = null
-let pickupDestinationMarker: L.Marker | null = null
-let pickupRouteLine: L.Polyline | null = null
-let pickupTileLayerAdded = false
+let pickupMap: MapboxMap | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
+let pickupTruckMarker: MapboxMarker | null = null
+let pickupDestinationMarker: MapboxMarker | null = null
 let pickupRefreshTimer: number | null = null
 const showEmailDialog = ref(false)
 const emailSending = ref(false)
@@ -599,6 +597,7 @@ const logDotColor = (eventType: string) => {
   const map: Record<string, string> = {
     pickup_assigned: 'bg-blue-500',
     in_transit: 'bg-amber-500',
+    out_for_delivery: 'bg-blue-600',
     delivered: 'bg-emerald-600',
     cancelled: 'bg-red-500',
     note: 'bg-sky-500',
@@ -610,6 +609,7 @@ const normalizeEventType = (eventType?: string) => String(eventType || '').trim(
 const deliveryLogLabel = (eventType?: string) => ({
   pickup_assigned: 'Pickup Assigned',
   in_transit: 'Supplies Picked Up',
+  out_for_delivery: 'Out for Delivery',
   delivered: 'Arrived at Store',
   cancelled: 'Pickup Cancelled',
   note: 'Driver Location Update',
@@ -617,6 +617,7 @@ const deliveryLogLabel = (eventType?: string) => ({
 const deliveryLogDescription = (eventType?: string) => ({
   pickup_assigned: 'A driver and vehicle were assigned to this purchase order.',
   in_transit: 'The supplies were collected from the supplier and are now in transit.',
+  out_for_delivery: 'The supplies are on the final delivery leg to the store.',
   delivered: 'The driver arrived at the store with the supplies.',
   cancelled: 'The assigned supplier pickup was cancelled.',
   note: 'The driver shared a pickup location update.',
@@ -624,6 +625,7 @@ const deliveryLogDescription = (eventType?: string) => ({
 const logIcon = (eventType?: string) => ({
   pickup_assigned: 'pi pi-user-plus',
   in_transit: 'pi pi-truck',
+  out_for_delivery: 'pi pi-map-marker',
   delivered: 'pi pi-check-circle',
   cancelled: 'pi pi-times-circle',
   note: 'pi pi-map-marker',
@@ -631,6 +633,7 @@ const logIcon = (eventType?: string) => ({
 const logIconClass = (eventType?: string) => ({
   pickup_assigned: 'bg-blue-100 text-blue-600',
   in_transit: 'bg-amber-100 text-amber-700',
+  out_for_delivery: 'bg-blue-100 text-blue-700',
   delivered: 'bg-emerald-100 text-emerald-700',
   cancelled: 'bg-red-100 text-red-700',
   note: 'bg-sky-100 text-sky-700',
@@ -694,30 +697,16 @@ const loadDeliveryLogs = async () => {
 const fetchRoadRoute = fetchMapboxRoadRoute
 
 const renderPickupMap = async () => {
-  if (!pickupMapElement.value || !shipmentInfo.value || shipmentStatus.value !== 'in_transit') return
-  const destinationIcon = L.icon({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    shadowSize: [41, 41],
-    shadowAnchor: [12, 41],
-  })
-  const truckIcon = L.icon({
-    iconUrl: '/images/truck-map-marker-orange.png',
-    iconSize: [100, 100],
-    iconAnchor: [48, 48],
-    popupAnchor: [0, -48],
-  })
+  if (!pickupMapElement.value || !shipmentInfo.value || !['in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))) return
   const branch = detail.value?.branch || {}
   const destination: [number, number] | null = Number.isFinite(Number(branch.latitude)) && Number.isFinite(Number(branch.longitude))
     ? [Number(branch.latitude), Number(branch.longitude)]
     : null
-  if (!pickupMap) pickupMap = L.map(pickupMapElement.value).setView(destination || [14.5995, 120.9842], destination ? 13 : 10)
-  if (!pickupTileLayerAdded) {
-    L.tileLayer(mapboxTileUrl(), { attribution: mapboxAttribution, tileSize: 512, zoomOffset: -1 }).addTo(pickupMap)
-    pickupTileLayerAdded = true
+  if (!pickupMap) {
+    mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
+    pickupMap = new mapboxgl.Map({ container: pickupMapElement.value, style: 'mapbox://styles/mapbox/streets-v12', center: destination ? [destination[1], destination[0]] : [120.9842, 14.5995], zoom: destination ? 13 : 10 })
+    await new Promise<void>((resolve) => pickupMap!.once('load', () => resolve()))
   }
   const points: [number, number][] = deliveryLogs.value.slice().reverse()
     .filter((log: any) => log.latitude !== null && log.longitude !== null)
@@ -727,13 +716,21 @@ const renderPickupMap = async () => {
     points.push([Number(shipmentInfo.value.current_latitude), Number(shipmentInfo.value.current_longitude)])
   }
   const lastPoint = points[points.length - 1]
+  pickupTruckMarker?.remove()
+  pickupTruckMarker = null
+  pickupDestinationMarker?.remove()
+  pickupDestinationMarker = null
   if (lastPoint) {
-    if (!pickupTruckMarker) pickupTruckMarker = L.marker(lastPoint, { icon: truckIcon }).addTo(pickupMap).bindTooltip('Truck location')
-    else pickupTruckMarker.setLatLng(lastPoint)
+    const truckElement = document.createElement('img')
+    truckElement.src = '/images/truck-map-marker-orange.png'
+    truckElement.alt = 'Truck location'
+    truckElement.style.cssText = 'width:56px;height:56px;object-fit:contain;'
+    pickupTruckMarker = new mapboxgl!.Marker({ element: truckElement, anchor: 'center' }).setLngLat([lastPoint[1], lastPoint[0]]).setPopup(new mapboxgl!.Popup({ offset: 25 }).setText('Truck location')).addTo(pickupMap!)
   }
   if (destination) {
-    if (!pickupDestinationMarker) pickupDestinationMarker = L.marker(destination, { icon: destinationIcon }).addTo(pickupMap).bindTooltip('Store destination')
-    else pickupDestinationMarker.setLatLng(destination)
+    const destinationElement = document.createElement('div')
+    destinationElement.style.cssText = 'width:18px;height:18px;border:3px solid white;border-radius:50%;background:#2563eb;box-shadow:0 1px 5px #0008;'
+    pickupDestinationMarker = new mapboxgl!.Marker({ element: destinationElement, anchor: 'center' }).setLngLat([destination[1], destination[0]]).setPopup(new mapboxgl!.Popup({ offset: 15 }).setText('Store destination')).addTo(pickupMap!)
     let routePoints: [number, number][] = lastPoint ? [lastPoint, destination] : [destination]
     if (lastPoint) {
       try {
@@ -744,16 +741,22 @@ const renderPickupMap = async () => {
       }
     }
     if (!pickupMap) return
-    if (!pickupRouteLine) pickupRouteLine = L.polyline(routePoints, { color: '#2563eb', weight: 5, opacity: 0.8 }).addTo(pickupMap)
-    else pickupRouteLine.setLatLngs(routePoints)
-    const bounds = L.latLngBounds(routePoints)
-    if (bounds.isValid()) pickupMap.fitBounds(bounds.pad(0.15), { maxZoom: 15 })
+    const routeFeature = { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: routePoints.map(([lat, lng]) => [lng, lat]) } }
+    if (pickupMap.getSource('po-delivery-route')) {
+      (pickupMap.getSource('po-delivery-route') as import('mapbox-gl').GeoJSONSource).setData(routeFeature)
+    } else {
+      pickupMap.addSource('po-delivery-route', { type: 'geojson', data: routeFeature })
+      pickupMap.addLayer({ id: 'po-delivery-route-line', type: 'line', source: 'po-delivery-route', paint: { 'line-color': '#2563eb', 'line-width': 5, 'line-opacity': 0.8 } })
+    }
+    const bounds = new mapboxgl!.LngLatBounds()
+    routePoints.forEach(([lat, lng]) => bounds.extend([lng, lat]))
+    pickupMap.fitBounds(bounds, { padding: 40, maxZoom: 15 })
   }
-  setTimeout(() => pickupMap?.invalidateSize(), 100)
+  pickupMap.resize()
 }
 
 const startPickupRefresh = () => {
-  if (shipmentStatus.value !== 'in_transit') {
+  if (!['in_transit', 'out_for_delivery'].includes(String(shipmentStatus.value))) {
     if (pickupRefreshTimer !== null) window.clearInterval(pickupRefreshTimer)
     pickupRefreshTimer = null
     return
@@ -768,6 +771,7 @@ const statusSeverity = (status: string): 'success' | 'info' | 'warn' | 'danger' 
     sent_to_supplier: 'info',
     supplier_accepted: 'success',
     in_transit: 'warn',
+    out_for_delivery: 'info',
     delivered: 'success',
     pending_finance_approval: 'warn',
     rejected_finance: 'danger',
@@ -895,6 +899,8 @@ onBeforeUnmount(() => {
   pickupRefreshTimer = null
   pickupMap?.remove()
   pickupMap = null
+  pickupTruckMarker = null
+  pickupDestinationMarker = null
 })
 </script>
 

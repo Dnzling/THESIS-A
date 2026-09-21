@@ -38,7 +38,7 @@ return new class extends Migration
             $table->string('tracking_number', 80)->nullable();
             $table->string('courier_name', 120)->nullable();
             $table->string('courier_contact', 50)->nullable();
-            $table->enum('status', ['assigned', 'packed', 'in_transit', 'out_for_delivery', 'delivered', 'failed_delivery', 'cancelled'])->default('assigned');
+            $table->enum('status', ['pending', 'ready_for_dispatch', 'assigned', 'packed', 'in_transit', 'out_for_delivery', 'delivered', 'failed_delivery', 'cancelled'])->default('assigned');
             $table->timestamp('estimated_delivery_at')->nullable();
             $table->timestamp('dispatched_at')->nullable();
             $table->timestamp('out_for_delivery_at')->nullable();

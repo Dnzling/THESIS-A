@@ -79,13 +79,13 @@ class TrialOnboardingController extends Controller
 
                 if ($setupMode === 'free') {
                     $trialFields = [
-                        'subscription_ends_at' => now()->addDays(7)->toDateString(),
+                        'subscription_ends_at' => null,
                     ];
                     if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $trialFields['trial_started_at'] = now();
+                        $trialFields['trial_started_at'] = null;
                     }
                     if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $trialFields['trial_ends_at'] = now()->addDays(7);
+                        $trialFields['trial_ends_at'] = null;
                     }
                     $store->forceFill($trialFields)->save();
                 }
@@ -98,6 +98,7 @@ class TrialOnboardingController extends Controller
                     'branch_code' => $branchCode,
                     'is_main_branch' => true,
                     'status' => 'active',
+                    'geofence_enabled' => false,
                 ]);
 
                 $user->update([
@@ -158,12 +159,12 @@ class TrialOnboardingController extends Controller
 
                 if ($setupMode === 'free') {
                     $store->subscription_tier = 'free';
-                    $store->subscription_ends_at = now()->addDays(7)->toDateString();
+                    $store->subscription_ends_at = null;
                     if (Schema::hasColumn('stores', 'trial_started_at')) {
-                        $store->trial_started_at = $store->trial_started_at ?? now();
+                        $store->trial_started_at = null;
                     }
                     if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                        $store->trial_ends_at = now()->addDays(7);
+                        $store->trial_ends_at = null;
                     }
                 } else {
                     $store->subscription_tier = $selectedPlan;

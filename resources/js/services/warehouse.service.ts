@@ -18,6 +18,7 @@ export const WarehouseService = {
   transferHistory: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/transfer-history', { params })),
   purchaseRequisitionOptions: async () => unwrap(await axiosClient.get('/api/warehouse/purchase-requisitions/options')),
   purchaseRequisitions: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/purchase-requisitions', { params })),
+  purchaseRequisition: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/purchase-requisitions/${id}`)),
   createPurchaseRequisition: async (payload: any) => unwrap(await axiosClient.post('/api/warehouse/purchase-requisitions', payload)),
 }
 

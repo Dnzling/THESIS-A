@@ -7,6 +7,7 @@ use App\Models\Hr\Employee;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\Storage;
 
 class ReturnInvestigationTicket extends Model
 {
@@ -18,12 +19,20 @@ class ReturnInvestigationTicket extends Model
         'created_by',
         'expected_investigation_date',
         'notes',
+        'findings',
+        'findings_attachment_path',
+        'recommended_resolution',
+        'completed_by',
+        'completed_at',
         'status',
     ];
 
     protected $casts = [
         'expected_investigation_date' => 'date:Y-m-d',
+        'completed_at' => 'datetime',
     ];
+
+    protected $appends = ['findings_attachment_url'];
 
     public function returnRequest(): BelongsTo
     {
@@ -33,6 +42,20 @@ class ReturnInvestigationTicket extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function completer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'completed_by');
+    }
+
+    public function getFindingsAttachmentUrlAttribute(): ?string
+    {
+        if (!$this->findings_attachment_path) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($this->findings_attachment_path);
     }
 
     public function assignees(): BelongsToMany

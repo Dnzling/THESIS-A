@@ -95,6 +95,7 @@ Route::prefix('procurement')->group(function () {
         Route::put('/{id}', [PurchaseRequisitionController::class, 'update']);
         Route::delete('/{id}', [PurchaseRequisitionController::class, 'destroy']);
         Route::post('/{id}/submit', [PurchaseRequisitionController::class, 'submit']);
+        Route::post('/{id}/start-processing', [PurchaseRequisitionController::class, 'startProcessing']);
         Route::post('/{id}/approve', [PurchaseRequisitionController::class, 'approve']);
         Route::post('/{id}/reject', [PurchaseRequisitionController::class, 'reject']);
         Route::post('/{id}/cancel', [PurchaseRequisitionController::class, 'cancel']);

@@ -13,6 +13,11 @@ const financeService = {
     return response.data
   },
 
+  async createRefund(payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/refunds`, payload)
+    return response.data
+  },
+
   async updateRefundStatus(id: number | string, payload: { status: 'approved' | 'rejected'; notes?: string }) {
     const response = await axiosClient.put(`${baseUrl}/refunds/${id}/status`, payload)
     return response.data

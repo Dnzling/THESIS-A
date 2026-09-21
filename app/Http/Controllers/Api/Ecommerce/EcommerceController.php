@@ -10,6 +10,7 @@ use App\Models\Ecommerce\EcommerceAddressTemplate;
 use App\Models\CRM\EcommerceChatMessage;
 use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
 use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\CRM\EcommerceProductReview;
@@ -80,8 +81,15 @@ class EcommerceController extends Controller
         $storeIds = $stores->getCollection()->pluck('id')->values();
         $statsByStore = $this->buildStoreStatsMap($storeIds);
         $followMap = $this->buildFollowMapForUser($storeIds);
+        $storeLogos = Branch::query()
+            ->whereIn('store_id', $storeIds)
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id')
+            ->get(['store_id', 'logo_path'])
+            ->unique('store_id')
+            ->pluck('logo_path', 'store_id');
 
-        $stores->getCollection()->transform(function (Store $store) use ($statsByStore, $followMap) {
+        $stores->getCollection()->transform(function (Store $store) use ($statsByStore, $followMap, $storeLogos) {
             $stats = $statsByStore[$store->id] ?? $this->defaultStoreStats();
 
             return [
@@ -91,6 +99,7 @@ class EcommerceController extends Controller
                 'contact_number' => $store->contact_number,
                 'city' => $store->city,
                 'address' => $store->address,
+                'store_logo' => $this->toAssetUrl($storeLogos->get($store->id)),
                 'status' => $store->status,
                 'products_count' => $stats['products_count'],
                 'categories_count' => $stats['categories_count'],
@@ -118,8 +127,11 @@ class EcommerceController extends Controller
         $statsMap = $this->buildStoreStatsMap(collect([$storeId]));
         $stats = $statsMap[$storeId] ?? $this->defaultStoreStats();
         $followMap = $this->buildFollowMapForUser(collect([$storeId]));
-        $storeSettings = is_array($store->settings) ? $store->settings : [];
-        $storeLogo = $storeSettings['logo'] ?? $storeSettings['logo_path'] ?? null;
+        $storeLogo = Branch::query()
+            ->where('store_id', $storeId)
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id')
+            ->value('logo_path');
 
         $categories = Category::query()
             ->select(['categories.id', 'categories.category_name'])
@@ -714,8 +726,11 @@ class EcommerceController extends Controller
         }
 
         $model3d = $this->selectBest3DModel($product);
-        $storeSettings = is_array($product->store?->settings) ? $product->store->settings : [];
-        $storeLogo = $storeSettings['logo'] ?? $storeSettings['logo_path'] ?? null;
+        $storeLogo = Branch::query()
+            ->where('store_id', $storeId)
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id')
+            ->value('logo_path');
         $reviewPerPage = max(1, min((int) $request->input('reviews_per_page', 8), 30));
 
         $reviewStats = EcommerceProductReview::query()
@@ -1306,17 +1321,6 @@ class EcommerceController extends Controller
         $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
 
         if ($originLatitude === null || $originLongitude === null) {
-            $store = Store::query()
-                ->where('id', $cart->store_id)
-                ->whereIn('status', ['active', 'verified'])
-                ->first();
-            if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
-                $originLatitude = (float) $store->latitude;
-                $originLongitude = (float) $store->longitude;
-            }
-        }
-
-        if ($originLatitude === null || $originLongitude === null) {
             return response()->json([
                 'success' => false,
                 'message' => 'Fulfillment branch does not have valid coordinates for delivery rate lookup.',
@@ -1516,17 +1520,6 @@ class EcommerceController extends Controller
         $originLatitude = is_numeric($fulfillmentBranch->latitude) ? (float) $fulfillmentBranch->latitude : null;
         $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
 
-        if ($canLookupRates && ($originLatitude === null || $originLongitude === null)) {
-            $store = Store::query()
-                ->where('id', $cart->store_id)
-                ->whereIn('status', ['active', 'verified'])
-                ->first();
-            if ($store && is_numeric($store->latitude) && is_numeric($store->longitude)) {
-                $originLatitude = (float) $store->latitude;
-                $originLongitude = (float) $store->longitude;
-            }
-        }
-
         if ($canLookupRates) {
             if ($originLatitude === null || $originLongitude === null) {
                 if (!is_null($providedShippingFee)) {
@@ -1591,6 +1584,15 @@ class EcommerceController extends Controller
                 'customer_longitude' => $customerLongitude,
                 'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
                 'placed_at' => now(),
+            ]);
+
+            EcommerceOrderDelivery::query()->create([
+                'order_id' => $order->id,
+                'store_id' => $order->store_id,
+                'status' => 'pending',
+                'notes' => 'Awaiting Sales approval for dispatch.',
+                'created_by' => $user->id,
+                'updated_by' => $user->id,
             ]);
 
             // For Online Payment methods, defer order item creation and inventory reservation until payment is confirmed.
@@ -1809,6 +1811,7 @@ class EcommerceController extends Controller
                 'items.product.assets',
                 'items.product.category',
                 'items.returnRequests',
+                'items.returnRequests.investigationTicket.assignees.user:id,fname,lname',
                 'items.review',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
@@ -1905,6 +1908,15 @@ class EcommerceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Returns are only allowed for delivered orders.',
+            ], 422);
+        }
+
+        $deliveredAt = $orderItem->order?->delivery?->delivered_at
+            ?? $orderItem->order?->updated_at;
+        if (!$deliveredAt || $deliveredAt->lt(now()->subDays(7))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The 7-day return window has ended.',
             ], 422);
         }
 
@@ -2944,6 +2956,7 @@ class EcommerceController extends Controller
             'delivery' => $order->delivery ? [
                 'id' => $order->delivery->id,
                 'status' => $order->delivery->status,
+                'delivered_at' => $order->delivery->delivered_at,
                 'tracking_number' => $order->delivery->tracking_number,
                 'courier_name' => $order->delivery->courier_name,
                 'courier_contact' => $order->delivery->courier_contact,
@@ -2955,12 +2968,15 @@ class EcommerceController extends Controller
                 'proof_signature_url' => $order->delivery->proof_signature_path ? Storage::disk('public')->url($order->delivery->proof_signature_path) : null,
             ] : null,
             'timeline' => $this->formatOrderTimeline($order),
-            'items' => $order->items->map(function ($item) use ($orderStatus) {
+            'items' => $order->items->map(function ($item) use ($orderStatus, $primaryStatus, $order) {
                 $latestReturn = $item->relationLoaded('returnRequests')
                     ? $item->returnRequests->sortByDesc('created_at')->first()
                     : null;
                 $review = $item->relationLoaded('review') ? $item->review : null;
                 $eligibleAfterDelivery = in_array($orderStatus, ['delivered', 'completed'], true);
+                $deliveredAt = $order->delivery?->delivered_at ?? $order->updated_at;
+                $withinReturnWindow = $deliveredAt && !$deliveredAt->lt(now()->subDays(7));
+                $returnPending = $primaryStatus === 'return_pending';
 
                 return [
                     'id' => $item->id,
@@ -2983,8 +2999,8 @@ class EcommerceController extends Controller
                     'line_tax' => (float) $item->line_tax,
                     'line_total' => (float) $item->line_total,
                     'image' => $item->product ? $this->selectBestProductImage($item->product)?->url : null,
-                    'can_return' => $eligibleAfterDelivery && (!$latestReturn || $latestReturn->status === 'rejected'),
-                    'can_review' => $eligibleAfterDelivery && !$review,
+                    'can_return' => $eligibleAfterDelivery && $withinReturnWindow && (!$latestReturn || $latestReturn->status === 'rejected'),
+                    'can_review' => $eligibleAfterDelivery && !$returnPending && !$review,
                     'return_request' => $latestReturn ? [
                         'id' => $latestReturn->id,
                         'status' => $latestReturn->status,
@@ -2993,6 +3009,17 @@ class EcommerceController extends Controller
                         'review_notes' => $latestReturn->review_notes,
                         'requested_quantity' => (int) $latestReturn->requested_quantity,
                         'created_at' => $latestReturn->created_at,
+                        'investigation_ticket' => $latestReturn->investigationTicket ? [
+                            'id' => (int) $latestReturn->investigationTicket->id,
+                            'status' => $latestReturn->investigationTicket->status,
+                            'expected_investigation_date' => $latestReturn->investigationTicket->expected_investigation_date,
+                            'notes' => $latestReturn->investigationTicket->notes,
+                            'created_at' => $latestReturn->investigationTicket->created_at,
+                            'assignees' => $latestReturn->investigationTicket->assignees->map(fn ($employee) => [
+                                'id' => (int) $employee->id,
+                                'name' => trim(($employee->user?->fname ?? '') . ' ' . ($employee->user?->lname ?? '')) ?: 'Assigned investigator',
+                            ])->values(),
+                        ] : null,
                     ] : null,
                     'review' => $review ? [
                         'id' => $review->id,

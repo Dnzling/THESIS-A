@@ -32,15 +32,16 @@ const handleRegister = async (formData: RegisterFormData) => {
       lname: formData.lname,
       email: formData.email,
       password: formData.password,
-      role_id: 16,
+      // /register is the business account entry point. Customer accounts use
+      // the dedicated /customer/register page.
+      role_id: 2,
       birthday: formData.birthday ? new Date(formData.birthday).toISOString().slice(0, 10) : null,
       device_name: 'web-browser'
     })
 
     // Success
     localStorage.setItem('register_token', response.data.user.access_token)
-    const role = String(response.data.user?.role || '').toLowerCase()
-    localStorage.setItem('otp_context', role || 'customer')
+    localStorage.setItem('otp_context', 'business')
 
     localStorage.removeItem('selected_subscription_plan')
     localStorage.removeItem('subscription_flow')

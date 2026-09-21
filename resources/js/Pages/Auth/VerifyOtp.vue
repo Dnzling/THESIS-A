@@ -119,10 +119,12 @@ const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
 const isProfileOtp = computed(() => otpContext.value === 'profile_email_change')
 const isSupplierOtp = computed(() => otpContext.value === 'supplier')
+const isBusinessOtp = computed(() => ['business', 'saas', 'store_admin', 'owner'].includes(otpContext.value))
 const otpContextLabel = computed(() => {
   if (isCustomerOtp.value) return 'Furnisync Shop Customer Verification'
   if (isProfileOtp.value) return 'Profile Email Change'
   if (isSupplierOtp.value) return 'Supplier Verification'
+  if (isBusinessOtp.value) return 'Furniture Store Business Verification'
   return 'Furnisync Verification'
 })
 
@@ -216,6 +218,14 @@ const verifyOtp = async () => { // Add async here
       successMessage.value = response.data.message || 'Email verified successfully!'
       isVerified.value = true
 
+      // Capture the context before clearing it. Clearing localStorage first
+      // changes the computed value to its default and used to send business
+      // registrations down the customer login branch.
+      const verifiedContext = otpContext.value
+      const verifiedCustomer = verifiedContext === 'customer'
+      const verifiedProfile = verifiedContext === 'profile_email_change'
+      const verifiedSupplier = verifiedContext === 'supplier'
+
       // Clear OTP context once verified.
       localStorage.removeItem('otp_context')
 
@@ -225,7 +235,7 @@ const verifyOtp = async () => { // Add async here
       const nextPath = String(response.data.next_path || '')
       const requiresLogin = Boolean(response.data.requires_login ?? true)
 
-      if (isCustomerOtp.value) {
+      if (verifiedCustomer) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.get('/customer/login', {
@@ -233,12 +243,12 @@ const verifyOtp = async () => { // Add async here
             email: response.data.user?.email || ''
           })
         }, 1200)
-      } else if (isProfileOtp.value) {
+      } else if (verifiedProfile) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.visit('/hr/profile')
         }, 1200)
-      } else if (isSupplierOtp.value) {
+      } else if (verifiedSupplier) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.visit('/login')

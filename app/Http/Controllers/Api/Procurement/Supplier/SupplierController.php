@@ -147,6 +147,24 @@ class SupplierController extends Controller
             });
         }
 
+        $productIds = $request->input('product_ids', []);
+        if (!is_array($productIds)) {
+            $productIds = explode(',', (string) $productIds);
+        }
+        $productIds = collect($productIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        // When a PO has listed products, only return suppliers linked to every
+        // product so the form cannot create a mixed-supplier PO.
+        foreach ($productIds as $productId) {
+            $query->whereHas('products', function ($productQuery) use ($productId) {
+                $productQuery->where('products.id', $productId);
+            });
+        }
+
         // Filters
         if ($request->has('status')) {
             $query->where('status', $request->status);

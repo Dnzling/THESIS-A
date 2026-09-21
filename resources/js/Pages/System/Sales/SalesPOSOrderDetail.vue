@@ -9,14 +9,15 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <Button icon="pi pi-refresh" severity="secondary" text rounded aria-label="Refresh order" @click="loadOrder" />
         <Button
           v-if="canSendToLogistics"
           icon="pi pi-send"
           severity="success"
-          label="Send To Logistics"
+          label="Mark Ready for Dispatch"
           :loading="sendingToLogistics"
           :disabled="sendDisabled"
-          @click="sendToLogistics"
+          @click="confirmReadyForDispatch"
         />
         <Button icon="pi pi-print" severity="secondary" label="Print Receipt" @click="printReceipt" />
       </div>
@@ -142,7 +143,7 @@
             </div>
             <div>
               <p class="text-xs text-gray-500">Status</p>
-              <Tag :value="order.delivery?.status || 'assigned'" :severity="statusSeverity(order.delivery?.status || 'assigned')" />
+              <Tag :value="deliveryStatusLabel(order.delivery?.status || 'assigned')" :severity="statusSeverity(order.delivery?.status || 'assigned')" />
             </div>
             <div>
               <p class="text-xs text-gray-500">Scheduled</p>
@@ -173,6 +174,7 @@
       </template>
     </Card>
   </div>
+  <ConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -181,17 +183,20 @@ import { useRoute, useRouter } from 'vue-router'
 import salesService from '@/services/sales.service'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
+import ConfirmDialog from 'primevue/confirmdialog'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const toast = useToast()
+const confirm = useConfirm()
 const order = ref<any>(null)
 const sendingToLogistics = ref(false)
 const vatableSales = computed(() => Math.max(
@@ -238,14 +243,18 @@ const statusSeverity = (value: string) => {
   if (value === 'failed_delivery' || value === 'cancelled') return 'danger'
   return 'warning'
 }
+const deliveryStatusLabel = (value: string) =>
+  String(value || '-').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const goBack = () => router.push({ name: 'sales.pos' })
 
 const canSendToLogistics = computed(() => {
   if (!order.value) return false
-  if (!authStore.hasPermission('sales.order.approve')) return false
+  if (!authStore.hasPermission('sales.orders.manage')) return false
   if (!order.value.delivery_required) return false
-  if (order.value.delivery) return false
-  return true
+  const orderStatus = String(order.value.status || '').toLowerCase()
+  const deliveryStatus = String(order.value.delivery?.status || '').toLowerCase()
+  const deliveryNotStarted = !order.value.delivery || ['pending', 'ready_for_dispatch'].includes(deliveryStatus)
+  return ['pending', 'pending_payment', 'completed'].includes(orderStatus) && deliveryNotStarted
 })
 
 const sendDisabled = computed(() => {
@@ -254,6 +263,18 @@ const sendDisabled = computed(() => {
   return !order.value.delivery_address
 })
 
+const confirmReadyForDispatch = () => {
+  if (!order.value) return
+  confirm.require({
+    header: 'Mark Order Ready for Dispatch?',
+    message: `Mark ${order.value.order_number || 'this order'} and its delivery as Ready for Dispatch? Logistics can then assign a driver.`,
+    icon: 'pi pi-exclamation-triangle',
+    rejectProps: { label: 'Cancel', outlined: true },
+    acceptProps: { label: 'Mark Ready for Dispatch', severity: 'success' },
+    accept: () => sendToLogistics(),
+  })
+}
+
 const sendToLogistics = async () => {
   if (!order.value) return
   sendingToLogistics.value = true
@@ -261,8 +282,8 @@ const sendToLogistics = async () => {
     await salesService.sendPosOrderToLogistics(order.value.id)
     toast.add({
       severity: 'success',
-      summary: 'Queued for Logistics',
-      detail: 'Order is ready for dispatch.',
+      summary: 'Ready for Dispatch',
+      detail: 'Order is now available for logistics assignment.',
       life: 3000,
     })
     await loadOrder()

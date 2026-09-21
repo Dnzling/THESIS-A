@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use App\Mail\ApplicantEmployeeCredentialsMail;
@@ -246,7 +247,7 @@ class EmployeeController extends Controller
 
             // Simple validation
             $validated = $request->validate([
-                'branch_id' => 'nullable|exists:branches,id',
+                'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
                 'is_active' => 'nullable|boolean',
                 'fname' => 'required|string|max:100',
                 'lname' => 'required|string|max:100',
@@ -255,7 +256,7 @@ class EmployeeController extends Controller
                 'date_of_birth' => 'nullable|date',
                 'gender' => 'nullable|in:male,female,other',
                 'hire_date' => 'required|date',
-                'department' => 'required|string|max:255',
+                'department' => 'nullable|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
                 'pay_type' => 'nullable|in:monthly,hourly,hybrid',
                 'salary' => 'required|numeric|min:0',
@@ -266,6 +267,7 @@ class EmployeeController extends Controller
             DB::beginTransaction();
 
             $temporaryPassword = Str::random(12);
+            $branchId = $validated['branch_id'] ?? $user->branch_id;
 
             // Create User
             $newUser = User::create([
@@ -276,7 +278,7 @@ class EmployeeController extends Controller
                 'password' => Hash::make($temporaryPassword),
                 'role_id' => $validated['role_id'],
                 'store_id' => $storeId, // Using the authenticated user's store_id
-                'branch_id' => $request->branch_id ?? $user->branch_id,
+                'branch_id' => $branchId,
                 'is_active' => $request->boolean('is_active', true),
                 'registered_by' => $current_user_id, // Using the authenticated user's ID
                 'email_verified_at' => $markEmailVerified ? now() : null,
@@ -289,7 +291,7 @@ class EmployeeController extends Controller
             $employee = Employee::create([
                 'user_id' => $newUser->id,
                 'store_id' => $storeId, // Using the authenticated user's store_id
-                'branch_id' => $validated['branch_id'] ?? $user->branch_id,
+                'branch_id' => $branchId,
                 'role_id' => $validated['role_id'],
                 'employee_number' => $employeeNumber,
                 'fname' => $validated['fname'],
@@ -297,7 +299,7 @@ class EmployeeController extends Controller
                 'date_of_birth' => $validated['date_of_birth'] ?? null,
                 'gender' => $validated['gender'] ?? null,
                 'hire_date' => $validated['hire_date'],
-                'department' => $validated['department'],
+                'department' => $validated['department'] ?? null,
                 'employment_type' => $validated['employment_type'],
                 'pay_type' => $validated['pay_type'] ?? 'monthly',
                 'hourly_rate' => isset($validated['pay_type']) && $validated['pay_type'] === 'hourly' ? $validated['salary'] / 160 : null,
@@ -755,7 +757,7 @@ class EmployeeController extends Controller
             ->with([
                 'user:id,fname,lname,email,birthday,phone_number,role_id,branch_id',
                 'branch:id,name',
-                'role:id,name'
+                'role:id,name,display_name'
             ])
             ->where('store_id', $user->store_id)
             ->where('id', $id)
@@ -1318,7 +1320,7 @@ class EmployeeController extends Controller
         return [
             'role_id' => $employee->role_id,
             'branch' => $employee->branch->name ?? 'N/A',
-            'role' => $employee->role->name ?? 'N/A',
+            'role' => $employee->role->display_name ?? $employee->role->name ?? 'N/A',
             'department' => $employee->department,
             'type' => $employee->employment_type,
             'status' => $employee->status,

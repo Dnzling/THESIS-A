@@ -9,7 +9,7 @@ use App\Models\Hr\Employee;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
-use App\Models\Sales\SalesRefund;
+use App\Models\Finance\FinanceRefund;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -24,7 +24,7 @@ class ReturnController extends Controller
             return response()->json(['success' => false, 'message' => 'A store context is required.'], 422);
         }
 
-        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.view']);
+        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.returns.manage']);
         $employees = Employee::query()
             ->where('store_id', $storeId)
             ->where('status', 'active')
@@ -75,7 +75,7 @@ class ReturnController extends Controller
             return response()->json(['success' => false, 'message' => 'An investigation ticket already exists for this return.'], 409);
         }
 
-        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.view']);
+        $crmViewerIds = $this->userIdsWithAnyPermission($storeId, ['crm.returns.manage']);
         $employees = Employee::query()
             ->where('store_id', $storeId)
             ->where('status', 'active')
@@ -88,7 +88,7 @@ class ReturnController extends Controller
         if ($employees->count() !== count($validated['assigned_employee_ids'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'One or more selected employees are inactive, outside this store, or do not have crm.view permission.',
+                'message' => 'One or more selected employees are inactive, outside this store, or do not have crm.returns.manage permission.',
             ], 422);
         }
 
@@ -128,7 +128,7 @@ class ReturnController extends Controller
             'expected_investigation_date' => $ticket->expected_investigation_date?->format('Y-m-d'),
         ];
         $assigneeUserIds = $employees->pluck('user_id')->map(fn ($userId) => (int) $userId)->unique()->values()->all();
-        $permissionUserIds = collect($this->userIdsWithAnyPermission($storeId, ['crm.view']))
+        $permissionUserIds = collect($this->userIdsWithAnyPermission($storeId, ['crm.returns.manage']))
             ->diff($assigneeUserIds)
             ->values()
             ->all();
@@ -179,6 +179,78 @@ class ReturnController extends Controller
         ], 201);
     }
 
+    public function completeInvestigationTicket(Request $request, int $id): JsonResponse
+    {
+        $storeId = (int) (auth()->user()?->store_id ?? 0);
+        $return = EcommerceOrderReturn::query()
+            ->with('investigationTicket.assignees')
+            ->find($id);
+
+        if (!$return) {
+            return response()->json(['success' => false, 'message' => 'Return request not found.'], 404);
+        }
+        if ($storeId <= 0 || (int) $return->store_id !== $storeId) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized access to return request.'], 403);
+        }
+
+        $ticket = $return->investigationTicket;
+        if (!$ticket) {
+            return response()->json(['success' => false, 'message' => 'Create an investigation ticket first.'], 422);
+        }
+        if ((string) $return->status !== 'pending_verification') {
+            return response()->json(['success' => false, 'message' => 'Only pending returns can be investigated.'], 422);
+        }
+        if ((string) $ticket->status === 'completed') {
+            return response()->json(['success' => false, 'message' => 'This investigation has already been completed.'], 422);
+        }
+        if (!$ticket->assignees->contains(fn (Employee $employee) => (int) $employee->user_id === (int) auth()->id())) {
+            return response()->json(['success' => false, 'message' => 'Only an assigned investigator can complete this ticket.'], 403);
+        }
+
+        $validated = $request->validate([
+            'findings' => ['required', 'string', 'max:5000'],
+            'recommended_resolution' => ['required', 'in:refund,replacement,reject'],
+            'attachment' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+
+        $ticketUpdates = [
+            'findings' => $validated['findings'],
+            'recommended_resolution' => $validated['recommended_resolution'],
+            'completed_by' => auth()->id(),
+            'completed_at' => now(),
+            'status' => 'completed',
+        ];
+        if ($request->hasFile('attachment')) {
+            $ticketUpdates['findings_attachment_path'] = $request->file('attachment')
+                ->store("crm/return-investigations/{$ticket->id}", 'public');
+        }
+        $ticket->update($ticketUpdates);
+
+        $returnNumber = $return->return_number ?: 'Return #' . $return->id;
+        $managerUserIds = $this->userIdsWithAnyPermission($storeId, ['crm.returns.manage']);
+        $this->notifyMany($managerUserIds, [
+            'store_id' => $storeId,
+            'module' => 'crm',
+            'entity_type' => 'crm_return_investigation',
+            'entity_id' => (int) $ticket->id,
+            'action' => 'investigation_completed',
+            'title' => 'Return investigation completed',
+            'message' => "Investigation for {$returnNumber} is complete and ready for a decision.",
+            'link' => '/crm/returns/' . (int) $return->id,
+            'severity' => 'info',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Investigation findings submitted. The return is ready for manager review.',
+            'data' => $return->fresh()->load([
+                'investigationTicket.assignees.user:id,fname,lname,email',
+                'investigationTicket.creator:id,fname,lname',
+                'investigationTicket.completer:id,fname,lname',
+            ]),
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $storeId = (int) (auth()->user()?->store_id ?? 0);
@@ -191,8 +263,45 @@ class ReturnController extends Controller
                 'user:id,fname,lname,email',
                 'pickup:id,store_id,return_id,status,scheduled_at,driver_user_id,picked_up_at,created_at',
                 'pickup.driver:id,fname,lname,email',
+                'investigationTicket.assignees:id,user_id,employee_number,department,branch_id',
+                'investigationTicket.assignees.user:id,fname,lname,email',
             ])
             ->when($storeId > 0, fn ($q) => $q->where('store_id', $storeId));
+
+        $workflow = $request->string('workflow')->toString();
+        if ($workflow === 'assigned_to_me') {
+            $query->whereHas('investigationTicket', function ($ticketQuery) use ($request) {
+                $ticketQuery
+                    ->whereIn('status', ['open', 'in_progress'])
+                    ->whereHas('assignees', fn ($assigneeQuery) => $assigneeQuery->where('employees.user_id', (int) $request->user()->id));
+            });
+        } elseif ($workflow === 'needs_investigation') {
+            $query->where('status', 'pending_verification')
+                ->where(function ($stageQuery) {
+                    $stageQuery->whereDoesntHave('investigationTicket')
+                        ->orWhereHas('investigationTicket', fn ($ticketQuery) => $ticketQuery->whereIn('status', ['open', 'in_progress']));
+                });
+        } elseif ($workflow === 'awaiting_manager_decision') {
+            $query->where('status', 'pending_verification')
+                ->whereHas('investigationTicket', fn ($ticketQuery) => $ticketQuery->where('status', 'completed'));
+        } elseif ($workflow === 'approved') {
+            $query->where('status', 'approved')
+                ->whereDoesntHave('pickup', fn ($pickupQuery) => $pickupQuery->where('status', 'picked_up'));
+        } elseif ($workflow === 'awaiting_inspection') {
+            $query->where('status', 'approved')
+                ->whereHas('pickup', fn ($pickupQuery) => $pickupQuery->where('status', 'picked_up'));
+        } elseif ($workflow === 'awaiting_refund') {
+            $query->where('status', 'refund_pending');
+        } elseif ($workflow === 'completed') {
+            $query->whereIn('status', ['refunded', 'replaced']);
+        }
+
+        $investigationStatus = $request->string('investigation_status')->toString();
+        if ($investigationStatus === 'unassigned') {
+            $query->whereDoesntHave('investigationTicket');
+        } elseif (in_array($investigationStatus, ['open', 'in_progress', 'completed', 'cancelled'], true)) {
+            $query->whereHas('investigationTicket', fn ($ticketQuery) => $ticketQuery->where('status', $investigationStatus));
+        }
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status')->toString());
@@ -279,11 +388,13 @@ class ReturnController extends Controller
             'user:id,fname,lname,email',
             'reviewer:id,fname,lname,email',
             'inspector:id,fname,lname,email',
-            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,picked_up_at,created_at',
+            'pickup:id,store_id,return_id,status,scheduled_at,pickup_name,pickup_phone,pickup_address,driver_user_id,destination_branch_id,picked_up_at,delivered_at,created_at',
             'pickup.driver:id,fname,lname,email',
+            'pickup.destinationBranch:id,name,address,city,province,contact_number',
             'investigationTicket.assignees:id,user_id,employee_number,department,branch_id',
             'investigationTicket.assignees.user:id,fname,lname,email',
             'investigationTicket.creator:id,fname,lname',
+            'investigationTicket.completer:id,fname,lname',
         ]);
 
         return response()->json([
@@ -311,11 +422,27 @@ class ReturnController extends Controller
         $newStatus = $validated['status'];
         $currentStatus = (string) $return->status;
 
+        if ($currentStatus === 'pending_verification') {
+            $return->loadMissing('investigationTicket');
+            if (!$return->investigationTicket) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Create and complete an investigation ticket before deciding this return.',
+                ], 422);
+            }
+            if ((string) $return->investigationTicket->status !== 'completed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The assigned investigator must submit findings before this return can be approved or rejected.',
+                ], 422);
+            }
+        }
+
         if ($newStatus === 'approved'
             && $currentStatus === 'approved'
             && $return->return_type
             && $return->return_type !== $validated['return_type']
-            && in_array((string) $return->pickup?->status, ['picked_up', 'completed'], true)) {
+            && in_array((string) $return->pickup?->status, ['picked_up', 'completed', 'delivered'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Return type can no longer be changed after the item has been picked up.',
@@ -326,6 +453,15 @@ class ReturnController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Review notes are required when rejecting a return.',
+            ], 422);
+        }
+
+        if ($newStatus === 'rejected'
+            && $currentStatus === 'approved'
+            && in_array((string) $return->pickup?->status, ['picked_up', 'completed', 'delivered'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An approved return can no longer be rejected after the item has been picked up.',
             ], 422);
         }
 
@@ -358,14 +494,14 @@ class ReturnController extends Controller
             $return->reviewed_at = Carbon::now();
             $return->save();
 
-            // When approved, ensure a logistics pickup job exists (Logistics will schedule it).
+            // Approved returns enter Logistics as ready for dispatch.
             if ($newStatus === 'approved') {
-                $return->loadMissing(['order']);
+                $return->loadMissing(['order', 'orderItem']);
                 ReturnPickup::query()->firstOrCreate(
                     ['return_id' => (int) $return->id],
                     [
                         'store_id' => (int) $return->store_id,
-                        'status' => 'scheduled',
+                        'status' => 'ready_for_dispatch',
                         'scheduled_at' => null,
                         'pickup_name' => $return->order?->shipping_name,
                         'pickup_phone' => $return->order?->shipping_phone,
@@ -376,31 +512,24 @@ class ReturnController extends Controller
                     ]
                 );
 
-                // Put refund resolutions in Finance immediately for visibility.
-                // Finance may only release it after Inventory changes the status
-                // from pending_inspection to pending.
                 if ($return->return_type === 'refund') {
-                    $return->loadMissing(['orderItem:id,order_id,unit_price']);
-                    SalesRefund::query()->firstOrCreate(
+                    FinanceRefund::query()->updateOrCreate(
+                        ['store_id' => (int) $return->store_id, 'order_type' => 'ecommerce_return', 'order_id' => (int) $return->id],
                         [
-                            'store_id' => (int) $return->store_id,
-                            'order_type' => 'ecommerce_return',
-                            'order_id' => (int) $return->id,
-                        ],
-                        [
-                            'branch_id' => (int) (auth()->user()?->branch_id ?? 0) ?: null,
+                            'branch_id' => $return->order?->assigned_branch_id,
                             'order_number' => $return->order?->order_number,
                             'customer_name' => $return->order?->shipping_name,
-                            'reason' => 'Approved customer return #' . (int) $return->id,
-                            'amount' => round((float) ($return->orderItem?->unit_price ?? 0) * (int) $return->requested_quantity, 2),
+                            'reason' => 'Approved customer return ' . ($return->return_number ?: ('#' . $return->id)),
+                            'amount' => round((float) ($return->orderItem?->unit_price ?? 0) * (int) ($return->requested_quantity ?: 1), 2),
                             'status' => 'pending_inspection',
                             'requested_by' => auth()->id(),
-                            'notes' => 'Awaiting Inventory inspection before Finance can release the refund.',
+                            'notes' => 'Approved by CRM. Awaiting return delivery and inventory inspection.',
                         ]
                     );
                 }
+
             } elseif ($newStatus === 'rejected') {
-                SalesRefund::query()
+                FinanceRefund::query()
                     ->where('store_id', (int) $return->store_id)
                     ->where('order_type', 'ecommerce_return')
                     ->where('order_id', (int) $return->id)
@@ -421,7 +550,7 @@ class ReturnController extends Controller
                 'entity_id' => (int) $return->id,
                 'title' => $newStatus === 'approved' ? 'Return request approved' : 'Return request rejected',
                 'message' => $newStatus === 'approved'
-                    ? 'Your ' . $return->return_type . ' return was approved and is ready for pickup scheduling.'
+                    ? 'Your ' . $return->return_type . ' return was approved. Logistics will arrange the pickup.'
                     : 'Your return request was rejected. Please review the store notes.',
                 'severity' => $newStatus === 'approved' ? 'success' : 'warn',
                 'store_id' => (int) $return->store_id,
@@ -440,6 +569,7 @@ class ReturnController extends Controller
             'investigationTicket.assignees:id,user_id,employee_number,department,branch_id',
             'investigationTicket.assignees.user:id,fname,lname,email',
             'investigationTicket.creator:id,fname,lname',
+            'investigationTicket.completer:id,fname,lname',
         ]);
 
         return response()->json([
@@ -473,14 +603,13 @@ class ReturnController extends Controller
                 'message' => 'Pickup can only be scheduled for approved returns.',
             ], 422);
         }
-
         $pickup = null;
         DB::transaction(function () use (&$pickup, $return, $validated): void {
             $pickup = ReturnPickup::query()->firstOrCreate(
                 ['return_id' => (int) $return->id],
                 [
                     'store_id' => (int) $return->store_id,
-                    'status' => 'scheduled',
+                    'status' => 'ready_for_dispatch',
                     'scheduled_at' => null,
                     'created_by' => auth()->id(),
                     'updated_by' => auth()->id(),
@@ -547,6 +676,10 @@ class ReturnController extends Controller
 
         if ((string) $return->status !== 'approved') {
             return response()->json(['success' => false, 'message' => 'Only an approved return can be inspected.'], 422);
+        }
+        $return->loadMissing('pickup');
+        if (!in_array((string) $return->pickup?->status, ['picked_up', 'completed'], true)) {
+            return response()->json(['success' => false, 'message' => 'The returned item must be picked up before physical inspection.'], 422);
         }
         if (!in_array((string) $return->return_type, ['refund', 'replacement'], true)) {
             return response()->json(['success' => false, 'message' => 'Sales must select Refund or Replacement before Inventory inspection.'], 422);
@@ -669,7 +802,7 @@ class ReturnController extends Controller
 
             if ($return->return_type === 'refund') {
                 $amount = round((float) ($return->orderItem?->unit_price ?? 0) * $receivedQty, 2);
-                $refund = SalesRefund::query()->updateOrCreate(
+                $refund = FinanceRefund::query()->updateOrCreate(
                     [
                         'store_id' => (int) $return->store_id,
                         'order_type' => 'ecommerce_return',
@@ -762,7 +895,7 @@ class ReturnController extends Controller
             ], 422);
         }
 
-        if (SalesRefund::query()
+        if (FinanceRefund::query()
             ->where('store_id', (int) $return->store_id)
             ->where('order_type', 'ecommerce_return')
             ->where('order_id', (int) $return->id)
@@ -776,7 +909,7 @@ class ReturnController extends Controller
 
         $refund = null;
         DB::transaction(function () use (&$refund, $return, $validated, $branchId, $user): void {
-            $refund = SalesRefund::query()->create([
+            $refund = FinanceRefund::query()->create([
                 'store_id' => (int) $return->store_id,
                 'branch_id' => $branchId ?: null,
                 'order_type' => 'ecommerce_return',

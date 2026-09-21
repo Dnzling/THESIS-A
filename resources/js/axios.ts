@@ -27,6 +27,16 @@ const isDialogSuppressed = (config: any): boolean => {
     )
 }
 
+const isSuccessDialogSuppressed = (config: any): boolean => {
+    const headers = config?.headers
+    return Boolean(
+        headers?.['X-Suppress-Success-Dialog'] ||
+        headers?.['x-suppress-success-dialog'] ||
+        headers?.get?.('X-Suppress-Success-Dialog') ||
+        headers?.get?.('x-suppress-success-dialog')
+    )
+}
+
 const applyBaseConfig = (client: AxiosInstance) => {
     client.defaults.baseURL = import.meta.env.VITE_API_BASE_URL
     client.defaults.withCredentials = false
@@ -76,7 +86,7 @@ const attachInterceptors = (client: AxiosInstance) => {
             const key = getRequestKey(response.config)
             if (key) pendingRequests.delete(key)
             const method = String(response.config?.method || '').toLowerCase()
-            const suppress = isDialogSuppressed(response.config)
+            const suppress = isDialogSuppressed(response.config) || isSuccessDialogSuppressed(response.config)
             if (method && method !== 'get' && method !== 'head' && !suppress) {
                 const message =
                     response.data?.message ||

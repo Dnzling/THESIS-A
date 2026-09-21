@@ -160,8 +160,8 @@ const returns = newMovementState()
 const transfers = newMovementState()
 
 const canCreateActiveMovement = computed(() => activeTab.value === 'adjustments'
-  ? authStore.hasPermission('adjustments.manage')
-  : authStore.hasPermission('transfers.manage'))
+  ? authStore.hasPermission('inventory.adjustments.manage')
+  : authStore.hasPermission('inventory.transfers.manage'))
 
 const stateFor = (kind: MovementKind) => kind === 'adjustments' ? adjustments : kind === 'returns' ? returns : transfers
 const filtersFor = (kind: MovementKind) => kind === 'adjustments' ? adjustmentFilters : kind === 'returns' ? returnFilters : transferFilters

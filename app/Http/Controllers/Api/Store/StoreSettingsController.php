@@ -168,6 +168,7 @@ class StoreSettingsController extends Controller
             'phone' => 'sometimes|nullable|string|max:50',
             'address' => 'sometimes|nullable|string|max:255',
             'city' => 'sometimes|nullable|string|max:255',
+            'barangay' => 'sometimes|nullable|string|max:150',
             'province' => 'sometimes|nullable|string|max:255',
             'type' => 'sometimes|nullable|string|max:50',
             'store_code' => 'sometimes|nullable|string|max:50',
@@ -204,6 +205,7 @@ class StoreSettingsController extends Controller
                     'phone' => $store->phone,
                     'address' => $store->address,
                     'city' => $store->city,
+                    'barangay' => $store->barangay,
                     'province' => $store->province,
                     'type' => $store->type,
                     'store_code' => $store->store_code,
@@ -329,6 +331,7 @@ class StoreSettingsController extends Controller
                 'latitude' => null,
                 'longitude' => null,
                 'geofence_radius_m' => 5,
+                'geofence_enabled' => false,
             ];
         }
 
@@ -348,16 +351,8 @@ class StoreSettingsController extends Controller
             'latitude' => $branch?->latitude,
             'longitude' => $branch?->longitude,
             'geofence_radius_m' => $branch?->geofence_radius_m ?? 5,
-            'geofence_enabled' => $this->resolveGeofenceEnabled($storeId),
+            'geofence_enabled' => (bool) ($branch?->geofence_enabled ?? false),
         ];
-    }
-
-    private function resolveGeofenceEnabled(?int $storeId): bool
-    {
-        if (!$storeId) return true;
-        $store = \App\Models\Store\Store::find($storeId);
-        $settings = is_array($store?->settings) ? $store->settings : [];
-        return (bool) ($settings['attendance_geofence_enabled'] ?? true);
     }
 
     private function resolveTrialTier(?Store $store): string
@@ -592,22 +587,10 @@ class StoreSettingsController extends Controller
             'latitude' => $validated['latitude'],
             'longitude' => $validated['longitude'],
             'geofence_radius_m' => $validated['geofence_radius_m'] ?? $branch->geofence_radius_m ?? 5,
+            'geofence_enabled' => array_key_exists('geofence_enabled', $validated)
+                ? (bool) $validated['geofence_enabled']
+                : (bool) $branch->geofence_enabled,
         ]);
-
-        $store->update([
-            'address' => $branch->address,
-            'city' => $branch->city,
-            'province' => $branch->province,
-            'latitude' => $branch->latitude,
-            'longitude' => $branch->longitude,
-        ]);
-
-        if (array_key_exists('geofence_enabled', $validated)) {
-            $settings = is_array($store->settings) ? $store->settings : [];
-            $settings['attendance_geofence_enabled'] = (bool) $validated['geofence_enabled'];
-            $store->settings = $settings;
-            $store->save();
-        }
 
         return response()->json([
             'success' => true,

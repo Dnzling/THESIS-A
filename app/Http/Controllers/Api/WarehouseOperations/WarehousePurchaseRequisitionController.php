@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\WarehouseOperations;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Procurement\Config\ProcurementSettings;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use App\Models\Store\Branch;
@@ -28,7 +29,7 @@ class WarehousePurchaseRequisitionController extends Controller
             ->where('status', 'active')->orderBy('name')->get(['id', 'name', 'branch_code', 'branch_type']);
         $inventory = BranchInventory::where('store_id', $storeId)
             ->whereIn('branch_id', $branches->pluck('id'))
-            ->with(['branch:id,name,branch_code,branch_type', 'product.suppliers', 'variation'])
+            ->with(['branch:id,name,branch_code,branch_type', 'product', 'variation'])
             ->orderBy('branch_id')->orderBy('product_id')->get();
 
         return response()->json(['success' => true, 'data' => compact('branches', 'inventory')]);
@@ -38,10 +39,63 @@ class WarehousePurchaseRequisitionController extends Controller
     {
         $storeId = $this->storeId($request);
         $branchIds = Branch::where('store_id', $storeId)->where('branch_type', 'warehouse')->pluck('id');
-        $rows = PurchaseRequisition::where('store_id', $storeId)->whereIn('branch_id', $branchIds)
-            ->with(['branch', 'requestedBy.user', 'items.product'])->latest()
-            ->paginate($request->integer('per_page', 15));
+        $query = PurchaseRequisition::where('store_id', $storeId)->whereIn('branch_id', $branchIds)
+            ->with(['branch', 'requestedBy.user', 'items.product', 'items.variation']);
+
+        $query->when($request->filled('status'), fn ($q) => $q->where('status', (string) $request->input('status')));
+        $query->when($request->filled('date_from'), fn ($q) => $q->whereDate('created_at', '>=', $request->input('date_from')));
+        $query->when($request->filled('date_to'), fn ($q) => $q->whereDate('created_at', '<=', $request->input('date_to')));
+        $query->when($request->filled('search'), function ($q) use ($request) {
+            $search = trim((string) $request->input('search'));
+            $q->where(function ($nested) use ($search) {
+                $nested->where('pr_number', 'like', "%{$search}%")
+                    ->orWhere('reason', 'like', "%{$search}%")
+                    ->orWhereHas('requestedBy.user', function ($userQuery) use ($search) {
+                        $userQuery->where('fname', 'like', "%{$search}%")
+                            ->orWhere('lname', 'like', "%{$search}%");
+                    });
+            });
+        });
+
+        $sortBy = (string) $request->input('sort_by', 'created_at');
+        $sortBy = in_array($sortBy, ['created_at', 'pr_number', 'status'], true) ? $sortBy : 'created_at';
+        $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $rows = $query->orderBy($sortBy, $sortOrder)->paginate(max(1, min($request->integer('per_page', 15), 100)));
+        $rows->getCollection()->transform(function (PurchaseRequisition $requisition) {
+            $user = $requisition->requestedBy?->user;
+            $name = trim(collect([$user?->fname, $user?->lname])->filter()->implode(' '));
+            $requisition->setAttribute('requested_by_name', $name !== '' ? $name : null);
+            $requisition->setAttribute('requested_by', $name !== '' ? $name : null);
+            return $requisition;
+        });
+
         return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+        $warehouseBranchIds = Branch::where('store_id', $storeId)
+            ->where('branch_type', 'warehouse')
+            ->pluck('id');
+
+        $pr = PurchaseRequisition::where('store_id', $storeId)
+            ->whereIn('branch_id', $warehouseBranchIds)
+            ->with([
+                'branch',
+                'requestedBy.user:id,fname,lname',
+                'items.product.suppliers',
+                'items.variation',
+                'purchaseOrders.supplier',
+                'rfqs.awardedToSupplier',
+            ])
+            ->findOrFail($id);
+
+        $user = $pr->requestedBy?->user;
+        $name = trim(collect([$user?->fname, $user?->lname])->filter()->implode(' '));
+        $pr->setAttribute('requested_by_name', $name !== '' ? $name : null);
+
+        return response()->json(['success' => true, 'data' => $pr]);
     }
 
     public function store(Request $request): JsonResponse
@@ -53,7 +107,6 @@ class WarehousePurchaseRequisitionController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.branch_inventory_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity_requested' => ['required', 'integer', 'min:1'],
-            'items.*.selected_supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
         ]);
 
         $branch = Branch::where('store_id', $storeId)->where('branch_type', 'warehouse')
@@ -65,22 +118,27 @@ class WarehousePurchaseRequisitionController extends Controller
             return response()->json(['success' => false, 'message' => 'One or more items do not belong to the selected warehouse branch.'], 422);
         }
 
-        $supplierIds = collect($validated['items'])->pluck('selected_supplier_id')->filter()->unique();
-        if ($supplierIds->count() > 1) {
-            return response()->json(['success' => false, 'message' => 'Create a separate requisition for each supplier.'], 422);
-        }
-
         $pr = DB::transaction(function () use ($request, $storeId, $branch, $validated, $inventory) {
             $amount = collect($validated['items'])->sum(function ($item) use ($inventory) {
                 $stock = $inventory[(int) $item['branch_inventory_id']];
                 return $this->unitCost($stock) * (int) $item['quantity_requested'];
             });
-            $hasSupplier = collect($validated['items'])->contains(fn ($item) => !empty($item['selected_supplier_id']));
+            $settings = ProcurementSettings::where('store_id', $storeId)->first();
+            $procurementRoute = 'branch_direct';
+            if ($settings) {
+                if ($amount >= $settings->procurement_threshold) {
+                    $procurementRoute = 'centralized';
+                }
+                if ($settings->shouldRequireRFQ($amount)) {
+                    $procurementRoute = 'rfq_required';
+                }
+            }
+
             $pr = PurchaseRequisition::create([
                 'pr_number' => 'PR-WH-'.now()->format('YmdHis').'-'.random_int(1000, 9999),
                 'store_id' => $storeId, 'branch_id' => $branch->id, 'requisition_type' => 'regular',
                 'status' => 'pending', 'estimated_amount' => $amount,
-                'procurement_route' => $hasSupplier ? 'branch_direct' : 'rfq_required',
+                'procurement_route' => $procurementRoute,
                 'required_approvals' => ['warehouse_manager'], 'reason' => $validated['reason'],
                 'priority' => 3, 'requested_by' => $request->user()?->employee?->id, 'submitted_at' => now(),
             ]);
@@ -88,7 +146,7 @@ class WarehousePurchaseRequisitionController extends Controller
                 $stock = $inventory[(int) $item['branch_inventory_id']];
                 PurchaseRequisitionItem::create([
                     'requisition_id' => $pr->id, 'product_id' => $stock->product_id,
-                    'variation_id' => $stock->variation_id, 'selected_supplier_id' => $item['selected_supplier_id'] ?? null,
+                    'variation_id' => $stock->variation_id,
                     'quantity_requested' => (int) $item['quantity_requested'],
                     'estimated_unit_cost' => $this->unitCost($stock), 'tax_rate' => 0,
                 ]);
@@ -109,6 +167,6 @@ class WarehousePurchaseRequisitionController extends Controller
 
     private function unitCost(BranchInventory $stock): float
     {
-        return (float) ($stock->product?->cost_price ?? 0);
+        return (float) ($stock->variation?->cost_price ?? $stock->product?->cost_price ?? 0);
     }
 }

@@ -9,7 +9,7 @@ use App\Http\Controllers\Api\Finance\FinancePayablesController;
 use App\Http\Controllers\Api\Finance\FinanceReceivablesController;
 use App\Http\Controllers\Api\Finance\FinancePayrollController;
 use App\Http\Controllers\Api\Finance\FinanceInvoiceController;
-use App\Http\Controllers\Api\Sales\SalesRefundController;
+use App\Http\Controllers\Api\Finance\FinanceRefundController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
@@ -18,9 +18,10 @@ Route::prefix('finance')->group(function () {
     Route::get('/dashboard', [FinanceDashboardController::class, 'index']);
 
     Route::prefix('refunds')->group(function () {
-        Route::get('/', [SalesRefundController::class, 'index']);
-        Route::get('/{refund}', [SalesRefundController::class, 'show']);
-        Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus']);
+        Route::get('/', [FinanceRefundController::class, 'index']);
+        Route::post('/', [FinanceRefundController::class, 'store']);
+        Route::get('/{refund}', [FinanceRefundController::class, 'show']);
+        Route::put('/{refund}/status', [FinanceRefundController::class, 'updateStatus']);
     });
 
     Route::get('/payables', [FinancePayablesController::class, 'index']);

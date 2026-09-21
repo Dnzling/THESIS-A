@@ -139,8 +139,11 @@ class UserNavigationController extends Controller
         $basePermissions = array_diff($allPermissions, $userRevokes);
         $basePermissions = array_values(array_unique($basePermissions));
 
-        $finalPermissions = array_values(array_unique($basePermissions));
-        $filteredOut = [];
+        $finalPermissions = $this->permissionService->getUserPermissions(
+            $user,
+            $user->store_id ? (int) $user->store_id : null
+        );
+        $filteredOut = array_values(array_diff($basePermissions, $finalPermissions));
 
         return [
             'permissions' => $finalPermissions,

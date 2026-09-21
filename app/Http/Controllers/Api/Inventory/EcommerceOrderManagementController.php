@@ -160,7 +160,7 @@ class EcommerceOrderManagementController extends Controller
         $targetStatus = (string) $validated['status'];
         if ($targetStatus === 'ready_for_dispatch') {
             $storeId = (int) ($order->store_id ?? 0);
-            if (!$request->user()->hasPermissionTo('sales.order.approve', $storeId ?: null)) {
+            if (!$request->user()->hasPermissionTo('sales.orders.manage', $storeId ?: null)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'You do not have permission to approve orders.',
@@ -186,7 +186,7 @@ class EcommerceOrderManagementController extends Controller
             $order->save();
 
             $deliveryPayload = $validated['delivery'] ?? [];
-            $needsDelivery = in_array($targetStatus, ['packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered'], true) || !empty($deliveryPayload);
+            $needsDelivery = in_array($targetStatus, ['ready_for_dispatch', 'packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'], true) || !empty($deliveryPayload);
 
             if ($needsDelivery) {
                 $delivery = EcommerceOrderDelivery::query()->firstOrNew(['order_id' => $order->id], [
@@ -194,7 +194,7 @@ class EcommerceOrderManagementController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
                 $isNewDelivery = !$delivery->exists;
-                $previousDeliveryStatus = (string) ($delivery->status ?: 'assigned');
+                $previousDeliveryStatus = (string) ($delivery->status ?: ($targetStatus === 'ready_for_dispatch' ? 'pending' : 'assigned'));
 
                 $delivery->store_id = $order->store_id;
                 $delivery->vehicle_id = $deliveryPayload['vehicle_id'] ?? $delivery->vehicle_id;
@@ -206,6 +206,7 @@ class EcommerceOrderManagementController extends Controller
                 $delivery->updated_by = $request->user()->id;
 
                 $deliveryStatus = match ($targetStatus) {
+                    'ready_for_dispatch' => 'ready_for_dispatch',
                     'packed' => 'packed',
                     'shipped', 'in_transit' => 'in_transit',
                     'out_for_delivery' => 'out_for_delivery',
@@ -234,7 +235,9 @@ class EcommerceOrderManagementController extends Controller
                         'store_id' => $order->store_id,
                         'event_type' => 'created',
                         'status_to' => $delivery->status,
-                        'message' => 'Delivery record created.',
+                        'message' => $targetStatus === 'ready_for_dispatch'
+                            ? 'Delivery is pending logistics assignment.'
+                            : 'Delivery record created.',
                         'created_by' => $request->user()->id,
                     ]);
                 }
@@ -251,6 +254,8 @@ class EcommerceOrderManagementController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
                 }
+
+                $order->setRelation('delivery', $delivery);
             }
 
             if ($previousOrderStatus !== $targetStatus && $order->delivery) {

@@ -102,7 +102,9 @@ class SalesOrderSettlementService
             );
 
             $lockedOrder->update([
-                'status' => 'completed',
+                'status' => $lockedOrder->delivery_required
+                    ? ((string) $lockedOrder->status === 'ready_for_dispatch' ? 'ready_for_dispatch' : 'pending')
+                    : 'completed',
                 'payment_status' => 'paid',
                 'payment_channel' => $paymentMethod,
                 'payment_reference' => $paymentReference,
@@ -150,7 +152,7 @@ class SalesOrderSettlementService
             if ($lockedOrder->payment_status !== 'paid') {
                 $lockedOrder->update([
                     'payment_status' => 'failed',
-                    'status' => 'pending_payment',
+                    'status' => $lockedOrder->delivery_required ? 'pending' : 'pending_payment',
                 ]);
             }
 

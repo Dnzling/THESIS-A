@@ -18,7 +18,7 @@
                 <div class="mt-1 text-sm capitalize text-slate-500">{{ store.type || 'Store type not set' }}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <Tag :value="storeStatusLabel" :severity="storeStatusSeverity" />
+                <Badge size="large" :value="storeStatusLabel" :severity="storeStatusSeverity" />
                 <Button
                   v-if="shouldShowVerifyButton"
                   :label="verifyButtonLabel"
@@ -71,10 +71,18 @@
           <div class="space-y-4">
             <div class="mx-auto w-full max-w-xs">
               <div class="relative aspect-square overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
-                <img v-if="store.logo_url" :src="store.logo_url" :alt="`${store.name || 'Store'} logo`" class="h-full w-full object-cover" />
+                <img v-if="store.logo_url" :src="store.logo_url" :alt="`${store.name || 'Store'} logo`" class="h-full w-full object-contain p-3" />
                 <div v-else class="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
                   <i class="pi pi-image text-4xl"></i>
                 </div>
+                <Button
+                  label="Upload logo"
+                  icon="pi pi-upload"
+                  size="small"
+                  severity="warn"
+                  class="!absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md"
+                  @click="openLogoDialog"
+                />
               </div>
             </div>
 
@@ -86,7 +94,6 @@
               </p>
             </div>
           </div>
-          <Button class="mt-5 w-full" label="Upload" size="small" icon="pi pi-upload" severity="warn" outlined @click="openLogoDialog" />
         </template>
       </Card>
     </div>
@@ -267,9 +274,9 @@
           <div><label class="mb-1 block text-sm font-medium">Contact Person</label><InputText v-model="profileForm.contact_person" class="w-full" disabled/></div>
           <div><label class="mb-1 block text-sm font-medium">Phone</label><InputMask v-model="profileForm.phone" class="w-full" mask="0999 999 9999" placeholder="09__ ___ ____" /></div>
           <div class="sm:col-span-2"><label class="mb-1 block text-sm font-medium">Address</label><Textarea v-model="profileForm.address" rows="3" class="w-full" /></div>
-          <div><label class="mb-1 block text-sm font-medium">City</label><Select v-model="profileForm.city_id" :options="profileCityOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="profileCitiesLoading" placeholder="Select city" @change="onProfileCityChange" /></div>
+          <div><label class="mb-1 block text-sm font-medium">City</label><Select v-model="profileForm.city_id" :options="profileCityOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="profileCitiesLoading" :disabled="profileCitiesLoading" placeholder="Select city" @change="onProfileCityChange" /></div>
           <div><label class="mb-1 block text-sm font-medium">Province</label><InputText v-model="profileForm.province" class="w-full" readonly /></div>
-          <div><label class="mb-1 block text-sm font-medium">Barangay</label><Select v-model="profileForm.barangay" :options="profileBarangayOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="profileBarangaysLoading" :disabled="!profileForm.city_id" placeholder="Select barangay" /></div>
+          <div><label class="mb-1 block text-sm font-medium">Barangay</label><Select v-model="profileForm.barangay" :options="profileBarangayOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="profileBarangaysLoading" :disabled="!profileForm.city_id || profileBarangaysLoading" placeholder="Select barangay" /></div>
           <div><label class="mb-1 block text-sm font-medium">Store Type</label><Select v-model="profileForm.type" :options="businessTypeOptions" optionLabel="label" optionValue="value" class="w-full" /></div>
         </div>
       </div>
@@ -375,6 +382,7 @@
             <Button label="Search" icon="pi pi-search" severity="secondary" @click="searchAddress" />
           </div>
           <div ref="mapEl" class="h-72 w-full rounded-xl border border-slate-200"></div>
+          <p v-if="mapError" class="mt-2 text-xs text-red-600">{{ mapError }}</p>
           <p class="mt-2 text-xs text-slate-500">Drag the pin or click the map to adjust the exact attendance point.</p>
         </div>
 
@@ -390,6 +398,21 @@
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Address</label>
             <Textarea v-model="attendanceDraft.address" rows="4" class="w-full" placeholder="Attendance address" />
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">City</label>
+              <Select v-model="attendanceDraft.city_id" :options="attendanceCityOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="attendanceCitiesLoading" :disabled="attendanceCitiesLoading" placeholder="Select city" @change="onAttendanceCityChange" />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium text-slate-700">Province</label>
+              <InputText v-model="attendanceDraft.province" class="w-full" readonly />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-1 block text-sm font-medium text-slate-700">Barangay</label>
+              <Select v-model="attendanceDraft.barangay" :options="attendanceBarangayOptions" optionLabel="label" optionValue="value" class="w-full" filter :loading="attendanceBarangaysLoading" :disabled="!attendanceDraft.city_id || attendanceBarangaysLoading" placeholder="Select barangay" />
+            </div>
           </div>
 
           <div>
@@ -441,6 +464,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import axiosClient from '@/axios'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
+import Badge from 'primevue/badge'
 import Card from 'primevue/card'
 import Dialog from 'primevue/dialog'
 import MultiSelect from 'primevue/multiselect'
@@ -459,11 +483,9 @@ import { useToast } from 'primevue/usetoast'
 import { usePermissions } from '@/composables/usePermissions'
 import paymongoService from '@/services/paymongo.service'
 import ecommerceService from '@/services/ecommerce.service'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
+import type { GeoJSONSource, Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 
 type UpgradePlan = {
   key: string
@@ -523,10 +545,11 @@ const storeStatusDialogVisible = ref(false)
 const loading = ref(false)
 const mapEl = ref<HTMLElement | null>(null)
 const mapReady = ref(false)
-const mapRef = ref<any>(null)
-const markerRef = ref<any>(null)
-const circleRef = ref<any>(null)
+const mapRef = ref<MapboxMap | null>(null)
+const markerRef = ref<MapboxMarker | null>(null)
+let mapboxgl: typeof import('mapbox-gl').default | null = null
 const searchQuery = ref('')
+const mapError = ref('')
 const toast = useToast()
 
 const fallbackPlans: UpgradePlan[] = [
@@ -596,7 +619,7 @@ const attendance = reactive({
   latitude: null as number | null,
   longitude: null as number | null,
   geofence_radius_m: 5,
-  geofence_enabled: true,
+  geofence_enabled: false,
 })
 
 const attendanceDraft = reactive({
@@ -604,11 +627,12 @@ const attendanceDraft = reactive({
   address: '',
   barangay: '',
   city: '',
+  city_id: '',
   province: '',
   latitude: null as number | null,
   longitude: null as number | null,
   geofence_radius_m: 5,
-  geofence_enabled: true,
+  geofence_enabled: false,
 })
 
 const subscription = reactive({
@@ -641,6 +665,24 @@ const profileCitiesLoading = ref(false)
 const profileBarangaysLoading = ref(false)
 const profileCityOptions = computed(() => profileCities.value.map((city: any) => ({ label: city.name || city.city_name || 'City', value: String(city.city_id || city.id || city.code || '') })))
 const profileBarangayOptions = computed(() => profileBarangays.value.map((item: any) => ({ label: item.name || item.barangay_name || 'Barangay', value: String(item.code || item.psgc_id || item.id || item.name || '') })))
+const attendanceCities = ref<any[]>([])
+const attendanceBarangays = ref<any[]>([])
+const attendanceCitiesLoading = ref(false)
+const attendanceBarangaysLoading = ref(false)
+const attendanceCityOptions = computed(() => attendanceCities.value.map((city: any) => ({
+  label: city.name || city.city_name || 'City',
+  value: String(city.city_id || city.id || city.code || ''),
+})))
+const attendanceBarangayOptions = computed(() => {
+  const options = attendanceBarangays.value.map((item: any) => ({
+    label: item.name || item.barangay_name || 'Barangay',
+    value: item.name || item.barangay_name || '',
+  }))
+  if (attendanceDraft.barangay && !options.some((option) => option.value.toLowerCase() === attendanceDraft.barangay.toLowerCase())) {
+    options.unshift({ label: attendanceDraft.barangay, value: attendanceDraft.barangay })
+  }
+  return options
+})
 
 const verification = reactive({
   store_status: 'pending',
@@ -726,7 +768,7 @@ attendance.province = props.attendance?.province || ''
 attendance.latitude = props.attendance?.latitude ?? null
 attendance.longitude = props.attendance?.longitude ?? null
 attendance.geofence_radius_m = props.attendance?.geofence_radius_m ?? 5
-attendance.geofence_enabled = props.attendance?.geofence_enabled ?? true
+attendance.geofence_enabled = props.attendance?.geofence_enabled ?? false
 
 const allowedMethods = props.payments?.paymongo?.payment_method_allowed
 paymongoPaymentMethods.value = Array.isArray(allowedMethods) && allowedMethods.length ? allowedMethods : ['gcash']
@@ -899,6 +941,10 @@ const savePaymentSettings = async () => {
 }
 
 const saveAttendance = async () => {
+  if (!attendanceDraft.city || !attendanceDraft.barangay) {
+    toast.add({ severity: 'warn', summary: 'Address required', detail: 'Select the city and barangay for the attendance location.', life: 3000 })
+    return
+  }
   if (attendanceDraft.latitude === null || attendanceDraft.longitude === null) {
     toast.add({ severity: 'warn', summary: 'Location required', detail: 'Search, click, or drag the pin to set a valid attendance point.', life: 3000 })
     return
@@ -938,6 +984,7 @@ const loadProfileCities = async () => {
     const provinces = await ecommerceService.getProvinces()
     const items = Array.isArray(provinces.data?.data) ? provinces.data.data : (provinces.data || [])
     const cavite = items.find((item: any) => String(item.name).trim().toLowerCase() === 'cavite')
+    profileForm.province = cavite?.name || 'Cavite'
     const response = await ecommerceService.getCities(String(cavite?.province_id || cavite?.id || ''))
     profileCities.value = Array.isArray(response.data?.data) ? response.data.data : (response.data || [])
     const match = profileCities.value.find((item: any) => String(item.name || item.city_name).trim().toLowerCase() === String(profileForm.city).trim().toLowerCase())
@@ -1101,18 +1148,63 @@ const saveLogo = () => {
   })
 }
 
-const openAttendanceEditor = () => {
+const loadAttendanceCities = async () => {
+  attendanceCitiesLoading.value = true
+  try {
+    const provincesResponse = await ecommerceService.getProvinces()
+    const provinces = Array.isArray(provincesResponse.data?.data) ? provincesResponse.data.data : (provincesResponse.data || [])
+    const province = provinces.find((item: any) => String(item.name || item.province_name).trim().toLowerCase() === String(attendanceDraft.province || 'Cavite').trim().toLowerCase())
+      || provinces.find((item: any) => String(item.name || item.province_name).trim().toLowerCase() === 'cavite')
+    if (province) attendanceDraft.province = province.name || province.province_name || 'Cavite'
+    const provinceId = String(province?.province_id || province?.id || province?.code || '')
+    const citiesResponse = await ecommerceService.getCities(provinceId)
+    attendanceCities.value = Array.isArray(citiesResponse.data?.data) ? citiesResponse.data.data : (citiesResponse.data || [])
+    const city = attendanceCities.value.find((item: any) => String(item.name || item.city_name).trim().toLowerCase() === String(attendanceDraft.city).trim().toLowerCase())
+    attendanceDraft.city_id = String(city?.city_id || city?.id || city?.code || '')
+    if (attendanceDraft.city_id) await loadAttendanceBarangays(false)
+  } finally {
+    attendanceCitiesLoading.value = false
+  }
+}
+
+const loadAttendanceBarangays = async (clearSelection = true) => {
+  if (!attendanceDraft.city_id) {
+    attendanceBarangays.value = []
+    return
+  }
+  const existingBarangay = attendanceDraft.barangay
+  if (clearSelection) attendanceDraft.barangay = ''
+  attendanceBarangaysLoading.value = true
+  try {
+    const response = await ecommerceService.getBarangays(String(attendanceDraft.city_id))
+    attendanceBarangays.value = Array.isArray(response.data?.data) ? response.data.data : (response.data || [])
+    if (!clearSelection) {
+      const barangay = attendanceBarangays.value.find((item: any) => String(item.name || item.barangay_name).trim().toLowerCase() === String(existingBarangay).trim().toLowerCase())
+      attendanceDraft.barangay = barangay?.name || barangay?.barangay_name || existingBarangay
+    }
+  } finally {
+    attendanceBarangaysLoading.value = false
+  }
+}
+
+const onAttendanceCityChange = async () => {
+  const city = attendanceCities.value.find((item: any) => String(item.city_id || item.id || item.code || '') === String(attendanceDraft.city_id))
+  attendanceDraft.city = city?.name || city?.city_name || ''
+  await loadAttendanceBarangays(true)
+}
+
+const openAttendanceEditor = async () => {
   if (mapRef.value) {
     mapRef.value.remove()
     mapRef.value = null
     markerRef.value = null
-    circleRef.value = null
   }
   Object.assign(attendanceDraft, {
     branch_id: attendance.branch_id,
     address: attendance.address,
     barangay: attendance.barangay,
     city: attendance.city,
+    city_id: '',
     province: attendance.province,
     latitude: attendance.latitude,
     longitude: attendance.longitude,
@@ -1120,16 +1212,15 @@ const openAttendanceEditor = () => {
     geofence_enabled: attendance.geofence_enabled,
   })
   searchQuery.value = attendance.address || ''
+  mapError.value = ''
   mapReady.value = false
   attendanceEditorVisible.value = true
+  await loadAttendanceCities()
 }
 
 const handleAttendanceDialogShow = async () => {
   await nextTick()
-  const handlers = await initMap()
-  if (handlers?.updateRadius) {
-    handlers.updateRadius()
-  }
+  await initMap()
 }
 
 const goToStoreVerification = () => router.visit('/system/store/verification')
@@ -1159,134 +1250,108 @@ const saveStoreProfile = async () => {
   )
 }
 
-const setupLeafletDefaults = () => {
-  const icon = L.icon({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  })
-  L.Marker.prototype.options.icon = icon
-}
-
-const reverseGeocode = async (lat: number, lng: number) => {
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=en`
-    const response = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
-    })
-    if (!response.ok) return
-    const data = await response.json()
-    const address = data?.address || {}
-    attendanceDraft.address = data?.display_name || attendanceDraft.address
-    attendanceDraft.barangay =
-      address.suburb ||
-      address.neighbourhood ||
-      address.village ||
-      address.quarter ||
-      address.hamlet ||
-      attendanceDraft.barangay
-    attendanceDraft.city = address.city || address.town || address.municipality || address.county || attendanceDraft.city
-    attendanceDraft.province = address.state || address.region || attendanceDraft.province
-  } catch (error) {
-    console.error('Reverse geocode failed', error)
-  }
-}
-
-const forwardGeocode = async (query: string) => {
-  const trimmed = query.trim()
-  if (!trimmed) return null
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(trimmed)}&limit=1&addressdetails=1`
-  const response = await fetch(url, {
-    headers: { 'Accept': 'application/json' },
-  })
-  if (!response.ok) return null
-  const results = await response.json()
-  if (!Array.isArray(results) || results.length === 0) return null
-  const hit = results[0]
-  return {
-    lat: parseFloat(hit.lat),
-    lng: parseFloat(hit.lon),
-  }
-}
-
-const syncLocation = async (lat: number, lng: number) => {
+const syncLocation = (lat: number, lng: number) => {
   attendanceDraft.latitude = lat
   attendanceDraft.longitude = lng
-  await reverseGeocode(lat, lng)
+}
+
+const getAttendanceGeofence = () => {
+  const radius = Number(attendanceDraft.geofence_radius_m)
+  const latitude = Number(attendanceDraft.latitude)
+  const longitude = Number(attendanceDraft.longitude)
+  if (!radius || attendanceDraft.latitude === null || attendanceDraft.longitude === null) {
+    return { type: 'FeatureCollection' as const, features: [] }
+  }
+
+  const earthRadius = 6371008.8
+  const angularDistance = radius / earthRadius
+  const latitudeRadians = latitude * Math.PI / 180
+  const longitudeRadians = longitude * Math.PI / 180
+  const ring: number[][] = []
+  for (let step = 0; step <= 64; step += 1) {
+    const bearing = step / 64 * Math.PI * 2
+    const pointLatitude = Math.asin(
+      Math.sin(latitudeRadians) * Math.cos(angularDistance)
+        + Math.cos(latitudeRadians) * Math.sin(angularDistance) * Math.cos(bearing),
+    )
+    const pointLongitude = longitudeRadians + Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latitudeRadians),
+      Math.cos(angularDistance) - Math.sin(latitudeRadians) * Math.sin(pointLatitude),
+    )
+    ring.push([pointLongitude * 180 / Math.PI, pointLatitude * 180 / Math.PI])
+  }
+  return { type: 'Feature' as const, properties: {}, geometry: { type: 'Polygon' as const, coordinates: [ring] } }
+}
+
+const redrawAttendanceMap = () => {
+  if (!mapRef.value || !mapboxgl || attendanceDraft.latitude === null || attendanceDraft.longitude === null) return
+  const center: [number, number] = [Number(attendanceDraft.longitude), Number(attendanceDraft.latitude)]
+  markerRef.value?.remove()
+  markerRef.value = new mapboxgl.Marker({ draggable: true }).setLngLat(center).addTo(mapRef.value)
+  markerRef.value.on('dragend', () => {
+    const point = markerRef.value!.getLngLat()
+    syncLocation(Number(point.lat.toFixed(6)), Number(point.lng.toFixed(6)))
+  })
+  const source = mapRef.value.getSource('attendance-geofence') as GeoJSONSource | undefined
+  source?.setData(getAttendanceGeofence())
 }
 
 const initMap = async () => {
   if (!mapEl.value || mapReady.value) return
-  setupLeafletDefaults()
-
-  const defaultCenter: [number, number] = [
-    attendanceDraft.latitude ?? 14.5995,
-    attendanceDraft.longitude ?? 120.9842,
-  ]
-
-  const map = L.map(mapEl.value).setView(defaultCenter, attendanceDraft.latitude ? 16 : 12)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map)
-
-  const marker = L.marker(defaultCenter, { draggable: true }).addTo(map)
-  const circle = L.circle(defaultCenter, {
-    radius: attendanceDraft.geofence_radius_m || 5,
-    color: '#16a34a',
-    fillColor: '#22c55e',
-    fillOpacity: 0.15,
-    weight: 1,
-  }).addTo(map)
-
-  marker.on('dragend', async () => {
-    const pos = marker.getLatLng()
-    circle.setLatLng(pos)
-    await syncLocation(pos.lat, pos.lng)
-  })
-
-  map.on('click', async (event: any) => {
-    marker.setLatLng(event.latlng)
-    circle.setLatLng(event.latlng)
-    await syncLocation(event.latlng.lat, event.latlng.lng)
-  })
-
-  if (!attendanceDraft.address && attendanceDraft.latitude && attendanceDraft.longitude) {
-    await syncLocation(attendanceDraft.latitude, attendanceDraft.longitude)
+  try {
+    mapError.value = ''
+    const module = await import('mapbox-gl')
+    mapboxgl = module.default
+    mapboxgl.accessToken = requireMapboxToken()
+    const center: [number, number] = [attendanceDraft.longitude ?? 120.9842, attendanceDraft.latitude ?? 14.5995]
+    const map = new mapboxgl.Map({
+      container: mapEl.value,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center,
+      zoom: attendanceDraft.latitude !== null ? 16 : 12,
+    })
+    mapRef.value = map
+    mapReady.value = true
+    map.on('load', () => {
+      map.addSource('attendance-geofence', { type: 'geojson', data: getAttendanceGeofence() })
+      map.addLayer({ id: 'attendance-geofence-fill', type: 'fill', source: 'attendance-geofence', paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.15 } })
+      map.addLayer({ id: 'attendance-geofence-outline', type: 'line', source: 'attendance-geofence', paint: { 'line-color': '#16a34a', 'line-width': 2 } })
+      if (attendanceDraft.latitude === null || attendanceDraft.longitude === null) syncLocation(center[1], center[0])
+      redrawAttendanceMap()
+      setTimeout(() => map.resize(), 150)
+    })
+    map.on('click', (event) => {
+      syncLocation(Number(event.lngLat.lat.toFixed(6)), Number(event.lngLat.lng.toFixed(6)))
+    })
+    map.on('error', (event) => {
+      mapError.value = event.error?.message || 'Mapbox could not load the map. Check the token and network connection.'
+    })
+  } catch (error: any) {
+    mapRef.value?.remove()
+    mapRef.value = null
+    mapReady.value = false
+    mapError.value = error?.message || 'Unable to load the Mapbox map.'
   }
-
-  mapRef.value = map
-  markerRef.value = marker
-  circleRef.value = circle
-  mapReady.value = true
-
-  const updateRadius = () => {
-    circle.setRadius(attendanceDraft.geofence_radius_m || 5)
-  }
-
-  return { updateRadius }
 }
 
 const searchAddress = async () => {
-  const result = await forwardGeocode(searchQuery.value)
-  if (!result) return
-  if (mapRef.value) {
-    mapRef.value.setView([result.lat, result.lng], 16)
+  try {
+    const result = await forwardGeocodeMapbox(searchQuery.value.trim())
+    if (!result) {
+      toast.add({ severity: 'warn', summary: 'Location not found', detail: 'Try a more specific address.', life: 3000 })
+      return
+    }
+    attendanceDraft.address = result.address || attendanceDraft.address
+    syncLocation(Number(result.latitude.toFixed(6)), Number(result.longitude.toFixed(6)))
+    mapRef.value?.jumpTo({ center: [result.longitude, result.latitude], zoom: 16 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Mapbox search failed', detail: error?.message || 'Unable to search for that location.', life: 3500 })
   }
-  if (markerRef.value) {
-    markerRef.value.setLatLng([result.lat, result.lng])
-  }
-  if (circleRef.value) {
-    circleRef.value.setLatLng([result.lat, result.lng])
-  }
-  await syncLocation(result.lat, result.lng)
 }
 
 const goToUpgrade = () => {
-  planDialogVisible.value = true
+  const storeId = Number(subscription.store_id || store.id || 0)
+  router.visit(`/subscription-plans${storeId ? `?store_id=${storeId}` : ''}`)
 }
 
 const selectPlan = (key: string) => {
@@ -1570,11 +1635,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => attendanceDraft.geofence_radius_m,
-  (radius) => {
-    if (circleRef.value) {
-      circleRef.value.setRadius(radius || 5)
-    }
-  }
+  () => [attendanceDraft.latitude, attendanceDraft.longitude, attendanceDraft.geofence_radius_m],
+  () => redrawAttendanceMap(),
 )
 </script>

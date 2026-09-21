@@ -173,6 +173,7 @@ Route::prefix('inventory')->group(function () {
 
     // Stock Returns
     Route::prefix('returns')->group(function () {
+        Route::get('/customer/destinations', [\App\Http\Controllers\Api\Logistics\ReturnPickupController::class, 'inventoryReturns']);
         Route::get('/', [StockReturnController::class, 'index']);
         Route::post('/', [StockReturnController::class, 'store']);
         Route::get('/{return}', [StockReturnController::class, 'show']);

@@ -11,7 +11,7 @@
           <div class="flex items-center gap-2">
             <!-- <Button label="Back" icon="pi pi-arrow-left" text @click="goBack" /> -->
             <!-- <Button label="Delete" icon="pi pi-trash" severity="danger" :loading="deleting" @click="confirmDelete" /> -->
-            <Button label="Save Changes" icon="pi pi-check" severity="info" :loading="saving" @click="confirmSave" />
+            <Button label="Save Changes" icon="pi pi-check" :loading="saving" @click="confirmSave" />
           </div>
         </div>
       </template>
@@ -38,7 +38,7 @@
               </div>
               <div>
                 <label class="text-sm font-medium text-slate-700">Online Store Commission (%)</label>
-                <InputNumber v-model="form.commission_percentage" :min="0" :max="3" :minFractionDigits="2" suffix="%" fluid />
+                <InputNumber v-model="form.commission_percentage" :min="0" :max="5" :minFractionDigits="2" suffix="%" fluid />
                 <small class="text-xs text-slate-500">Applied only to completed customer purchases through the online store.</small>
               </div>
               <div>
@@ -46,12 +46,24 @@
                 <InputNumber v-model="form.max_user_accounts" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>
-                <label class="text-sm font-medium text-slate-700">Branches</label>
+                <label class="text-sm font-medium text-slate-700">Store Branches</label>
                 <InputNumber v-model="form.max_branches" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>
                 <label class="text-sm font-medium text-slate-700">Products</label>
                 <InputNumber v-model="form.max_products" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Warehouses</label>
+                <InputNumber v-model="form.max_warehouses" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Trucks</label>
+                <InputNumber v-model="form.max_trucks" :min="1" placeholder="Unlimited" fluid />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-slate-700">Suppliers</label>
+                <InputNumber v-model="form.max_suppliers" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>
                 <label class="text-sm font-medium text-slate-700">Sort Order</label>
@@ -179,6 +191,9 @@ const form = reactive({
   max_user_accounts: null as number | null,
   max_branches: null as number | null,
   max_products: null as number | null,
+  max_warehouses: null as number | null,
+  max_trucks: null as number | null,
+  max_suppliers: null as number | null,
   is_featured: false,
   is_active: true,
   sort_order: 0,
@@ -318,6 +333,9 @@ const loadData = async () => {
     form.max_user_accounts = plan.max_user_accounts == null ? null : Number(plan.max_user_accounts)
     form.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
     form.max_products = plan.max_products == null ? null : Number(plan.max_products)
+    form.max_warehouses = plan.max_warehouses == null ? null : Number(plan.max_warehouses)
+    form.max_trucks = plan.max_trucks == null ? null : Number(plan.max_trucks)
+    form.max_suppliers = plan.max_suppliers == null ? null : Number(plan.max_suppliers)
     form.is_featured = !!plan.is_featured
     form.is_active = plan.is_active !== false
     form.sort_order = Number(plan.sort_order || 0)
@@ -372,6 +390,9 @@ const save = async () => {
       max_user_accounts: form.max_user_accounts,
       max_branches: form.max_branches,
       max_products: form.max_products,
+      max_warehouses: form.max_warehouses,
+      max_trucks: form.max_trucks,
+      max_suppliers: form.max_suppliers,
       features,
       is_featured: form.is_featured,
       is_active: form.is_active,

@@ -332,11 +332,9 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
 import { onBeforeUnmount, nextTick } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -376,8 +374,9 @@ const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name
 const barangayOptions = computed(() => barangays.value.map((b: any) => ({ label: b.name, value: b.code })))
 
 const mapEl = ref<HTMLDivElement | null>(null)
-let map: L.Map | null = null
-let marker: L.Marker | null = null
+let map: MapboxMap | null = null
+let marker: MapboxMarker | null = null
+let mapboxgl: typeof import('mapbox-gl').default | null = null
 const paymentOptions = ref([
   { label: 'Cash', value: 'cash' },
   { label: 'Online Payment', value: 'card' },
@@ -584,45 +583,39 @@ onMounted(async () => {
 watch(customerDialog, async (visible) => {
   if (!visible) return
   await nextTick()
-  initMap()
+  await initMap()
 })
 
-function initMap() {
+async function initMap() {
   if (!mapEl.value) return
   if (map) {
-    map.invalidateSize()
+    map.resize()
     return
   }
 
-  delete (L.Icon.Default.prototype as any)._getIconUrl
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-  })
-
   const startLat = customerForm.value.latitude ?? 14.5995
   const startLng = customerForm.value.longitude ?? 120.9842
-  map = L.map(mapEl.value).setView([startLat, startLng], 12)
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(map)
-
-  marker = L.marker([startLat, startLng], { draggable: true }).addTo(map)
-  marker.on('dragend', () => {
-    const pos = marker?.getLatLng()
-    if (!pos) return
-    customerForm.value.latitude = pos.lat
-    customerForm.value.longitude = pos.lng
-  })
-
-  map.on('click', (e: L.LeafletMouseEvent) => {
-    marker?.setLatLng(e.latlng)
-    customerForm.value.latitude = e.latlng.lat
-    customerForm.value.longitude = e.latlng.lng
-  })
+  try {
+    mapboxgl = (await import('mapbox-gl')).default
+    mapboxgl.accessToken = requireMapboxToken()
+    map = new mapboxgl.Map({ container: mapEl.value, style: 'mapbox://styles/mapbox/streets-v12', center: [startLng, startLat], zoom: 12 })
+    await new Promise<void>((resolve) => map!.once('load', () => resolve()))
+    marker = new mapboxgl.Marker({ draggable: true, color: '#f97316' }).setLngLat([startLng, startLat]).addTo(map)
+    marker.on('dragend', () => {
+      const position = marker?.getLngLat()
+      if (!position) return
+      customerForm.value.latitude = position.lat
+      customerForm.value.longitude = position.lng
+    })
+    map.on('click', (event) => {
+      marker?.setLngLat(event.lngLat)
+      customerForm.value.latitude = event.lngLat.lat
+      customerForm.value.longitude = event.lngLat.lng
+    })
+    map.resize()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Mapbox Unavailable', detail: error?.message || 'Unable to load the location map.', life: 3500 })
+  }
 }
 
 const geocodeAddressText = async (addressText: string): Promise<{ latitude: number; longitude: number } | null> => {
@@ -630,23 +623,8 @@ const geocodeAddressText = async (addressText: string): Promise<{ latitude: numb
   if (!query) return null
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`,
-      {
-        headers: { Accept: 'application/json' },
-      },
-    )
-
-    if (!response.ok) return null
-    const results = await response.json()
-    if (!Array.isArray(results) || results.length === 0) return null
-
-    const first = results[0]
-    const latitude = Number(first?.lat)
-    const longitude = Number(first?.lon)
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-
-    return { latitude, longitude }
+    const result = await forwardGeocodeMapbox(query)
+    return result ? { latitude: result.latitude, longitude: result.longitude } : null
   } catch {
     return null
   }
@@ -661,8 +639,8 @@ async function geocodeCustomerAddress() {
   }
   customerForm.value.latitude = geocoded.latitude
   customerForm.value.longitude = geocoded.longitude
-  if (marker) marker.setLatLng([geocoded.latitude, geocoded.longitude])
-  if (map) map.setView([geocoded.latitude, geocoded.longitude], 14)
+  if (marker) marker.setLngLat([geocoded.longitude, geocoded.latitude])
+  if (map) map.flyTo({ center: [geocoded.longitude, geocoded.latitude], zoom: 14 })
 }
 
 async function fetchProvinces() {

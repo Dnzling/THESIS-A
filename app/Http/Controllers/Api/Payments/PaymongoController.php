@@ -889,6 +889,13 @@ class PaymongoController extends Controller
             return;
         }
 
+        // A successful intent may be synchronized by both the webhook and the
+        // checkout return page. The revenue reference is unique and records
+        // that this exact payment has already extended the subscription.
+        if (PlatformRevenue::query()->where('reference', $intent->payment_intent_id)->exists()) {
+            return;
+        }
+
         $metadata = is_array($intent->metadata) ? $intent->metadata : [];
         $storeId = (int) ($intent->store_id ?: ($metadata['store_id'] ?? $intent->payable_id));
         if ($storeId <= 0) {
@@ -911,7 +918,7 @@ class PaymongoController extends Controller
             return;
         }
 
-        $baseDate = $store->subscription_ends_at
+        $baseDate = $store->subscription_tier !== 'free' && $store->subscription_ends_at
             ? Carbon::parse($store->subscription_ends_at)
             : now();
         if ($baseDate->lt(now())) {
@@ -923,6 +930,8 @@ class PaymongoController extends Controller
             'subscription_tier' => $targetPlan->id,
             'subscription_ends_at' => $newEndsAt->toDateString(),
         ]);
+        app(\App\Services\Modules\ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+        app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);
 
         if ($targetPlanKey === 'unlimited') {
             $moduleIds = \DB::table('modules')

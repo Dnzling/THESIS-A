@@ -46,7 +46,7 @@
           <div class="flex-1">
             <div class="flex flex-wrap items-center gap-3">
               <h2 class="text-2xl font-semibold text-slate-900">{{ employeeInfo.basic_info?.name || '-' }}</h2>
-              <Tag :value="employeeInfo.employment_details?.status || 'Active'"
+              <Badge class="capitalize" :value="employeeInfo.employment_details?.status || 'Active'"
                 :severity="getStatusSeverity(employeeInfo.employment_details?.status)" rounded />
             </div>
             <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
