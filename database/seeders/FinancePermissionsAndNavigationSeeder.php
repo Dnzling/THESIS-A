@@ -24,6 +24,8 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'purchase-orders',
             'price-approvals',
             'refunds',
+            'liquidations',
+            'tax-vat',
         ];
 
         // Standardize finance permissions to a minimal, predictable set
@@ -118,6 +120,16 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
                 'display_order' => 9,
             ],
             [
+                'name' => 'finance.liquidations',
+                'display_name' => 'Liquidations',
+                'module' => 'finance',
+                'section' => 'liquidations',
+                'route_name' => 'finance.liquidations',
+                'route_path' => '/finance/liquidations',
+                'icon' => 'pi pi-receipt',
+                'display_order' => 9,
+            ],
+            [
                 'name' => 'finance.price-approvals',
                 'display_name' => 'Price Approvals',
                 'module' => 'finance',
@@ -126,6 +138,16 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
                 'route_path' => '/finance/price-approvals',
                 'icon' => 'pi pi-sliders-h',
                 'display_order' => 10,
+            ],
+            [
+                'name' => 'finance.tax-vat',
+                'display_name' => 'Tax / VAT Report',
+                'module' => 'finance',
+                'section' => 'tax',
+                'route_name' => 'finance.tax-vat',
+                'route_path' => '/finance/tax-vat',
+                'icon' => 'pi pi-percentage',
+                'display_order' => 11,
             ],
         ];
 
@@ -159,6 +181,8 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'finance.price-approvals' => 'finance.price-approvals.view',
             'finance.cashflow' => 'finance.cashflow.view',
             'finance.refunds' => 'finance.refunds.view',
+            'finance.liquidations' => 'finance.liquidations.view',
+            'finance.tax-vat' => 'finance.tax-vat.view',
         ];
 
         foreach ($navPermissionMap as $navName => $permissionName) {

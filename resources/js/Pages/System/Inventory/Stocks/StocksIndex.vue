@@ -18,7 +18,7 @@
     <Card>
       <template #content>
         <!-- Filters -->
-        <div class="grid grid-cols-1 gap-4 items-end md:grid-cols-4 mb-5">
+        <div class="grid grid-cols-2 gap-4 items-end md:grid-cols-4 mb-5">
           <IconField>
             <InputIcon class="pi pi-search" />
             <InputText v-model="filters.search" placeholder="Search item name or SKU" class="w-full text-sm"
@@ -71,7 +71,19 @@
             </div>
           </template>
   
-          <Column expander style="width: 3rem" />
+          <Column style="width: 3rem">
+            <template #body="{ data }">
+              <Button
+                v-if="data.variant_rows?.length"
+                text
+                rounded
+                size="small"
+                :icon="isVariantRowsExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+                aria-label="Toggle variant stock"
+                @click.stop="toggleVariantRows(data)"
+              />
+            </template>
+          </Column>
 
           <Column v-if="showBranchColumn" field="branch.name" header="Branch" style="width: 12%">
             <template #body="{ data }">
@@ -85,7 +97,7 @@
             </template>
           </Column>
   
-          <Column field="product_name" header="Product Name" style="width: 18%">
+          <Column field="product_name" header="Product Name" style="width: 13%">
             <template #body="{ data }">
               <div class="space-y-0.5 text-xs">
                 <div class="font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
@@ -100,7 +112,7 @@
             </template>
           </Column>
   
-          <Column header="Cost/Unit" style="width: 12%">
+          <Column header="Cost/Unit" style="width: 10%">
             <template #body="{ data }">
               <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.product?.unit_of_measurement || 'unit' }}</b></span>
             </template>
@@ -120,13 +132,13 @@
   
           <Column header="Stock Value" style="width: 8%">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatMoney(data.stock_value || 0) }}</span>
+              <span class="text-xs font-semibold text-green-600 justify-end flex">{{ formatMoney(data.stock_value || 0) }}</span>
             </template>
           </Column>
   
-          <Column header="Reorder" style="width: 4%">
+          <Column field="stock_status" header="Stock Status" style="width: 10%">
             <template #body="{ data }">
-              <Badge :value="needsReorder(data) ? 'Yes' : 'No'" :severity="needsReorder(data) ? 'danger' : 'success'"
+              <Badge :value="stockStatusLabel(data.stock_status)" :severity="stockStatusSeverity(data.stock_status)"
                 class="text-xs" />
             </template>
           </Column>
@@ -365,9 +377,15 @@ const getReorderLevel = (data: any) => {
   return Number(data.reorder_point ?? data.variation?.reorder_point ?? 0)
 }
 
-const needsReorder = (data: any) => {
-  const onHand = Number(data.quantity_available ?? data.inventory?.[0]?.quantity_available ?? 0)
-  return onHand <= getReorderLevel(data)
+const stockStatusLabel = (status: any) => String(status || 'unknown')
+  .replaceAll('_', ' ')
+  .replace(/\b\w/g, (character) => character.toUpperCase())
+
+const stockStatusSeverity = (status: any) => {
+  if (status === 'in_stock') return 'success'
+  if (status === 'low_stock' || status === 'needs_reorder') return 'warn'
+  if (status === 'out_of_stock') return 'danger'
+  return 'secondary'
 }
 
 const getStockValue = (data: any) => {
@@ -383,6 +401,20 @@ const getBranchName = (data: any) => {
 }
 
 const itemRowClass = () => ({ 'cursor-pointer hover:bg-orange-50': true })
+
+const toggleVariantRows = (data: any) => {
+  const key = data.group_key
+  if (!data.variant_rows?.length || !key) return
+  const nextExpandedRows = { ...expandedRows.value }
+  if (nextExpandedRows[key]) {
+    delete nextExpandedRows[key]
+  } else {
+    nextExpandedRows[key] = true
+  }
+  expandedRows.value = nextExpandedRows
+}
+
+const isVariantRowsExpanded = (data: any) => Boolean(data?.group_key && expandedRows.value[data.group_key])
 
 const onItemRowClick = (event: any) => {
   const target = event?.originalEvent?.target as HTMLElement | null

@@ -411,6 +411,16 @@ class AddMissingNavigationItemsSeeder extends Seeder
                 'icon' => 'pi pi-file',
                 'display_order' => 7,
             ],
+            [
+                'name' => 'finance.tax-vat',
+                'display_name' => 'Tax / VAT Report',
+                'module' => 'finance',
+                'section' => 'tax',
+                'route_name' => 'finance.tax-vat',
+                'route_path' => '/finance/tax-vat',
+                'icon' => 'pi pi-percentage',
+                'display_order' => 8,
+            ],
         ];
 
         // ========== ADMIN CUSTOMER MANAGEMENT ==========

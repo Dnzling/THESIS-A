@@ -615,7 +615,9 @@ class ProcurementService {
   }
 
   async estimatePurchaseOrderShipping(data: any) {
-    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/shipping-estimate`, data)
+    const response = await axiosClient.post(`${this.baseUrl}/purchase-orders/shipping-estimate`, data, {
+      headers: { 'X-Suppress-Success-Dialog': '1' },
+    })
     return response.data
   }
 

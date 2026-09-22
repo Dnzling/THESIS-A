@@ -8,7 +8,7 @@
       <!-- <Button v-if="canManagePurchaseOrders" label="New Purchase Order" icon="pi pi-plus" size="small"
         @click="goToCreatePO" /> -->
     </div>
-  
+
     <!-- Quick Stats -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
@@ -16,7 +16,8 @@
           <div class="flex items-center justify-between">
             <div class="">
               <p class="text-xs font-bold  uppercase tracking-wide">Total POs</p>
-              <p class="text-2xl font-bold text-black-600">{{ stats.totalCount }}</p>
+              <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold text-black-600">{{ stats.totalCount }}</p>
             </div>
             <i class="pi pi-file text-4xl text-black-600"></i>
           </div>
@@ -27,7 +28,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Sent to Supplier</p>
-              <p class="text-2xl font-bold text-black-600">{{ stats.pendingApproval }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold text-black-600">{{ stats.pendingApproval }}</p>
             </div>
             <i class="pi pi-send text-4xl text-black-600"></i>
           </div>
@@ -38,7 +40,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Total Amount</p>
-              <p class="text-2xl font-bold text-black-600">₱ {{ formatNumber(stats.totalAmount) }}</p>
+              <Skeleton v-if="loading" width="6rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold text-black-600">₱ {{ formatNumber(stats.totalAmount) }}</p>
             </div>
             <i class="pi pi-money-bill text-4xl text-black-600"></i>
           </div>
@@ -49,14 +52,15 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Delayed Orders</p>
-              <p class="text-2xl font-bold text-red-600">{{ stats.delayedCount }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold text-red-600">{{ stats.delayedCount }}</p>
             </div>
             <i class="pi pi-clock text-4xl text-red-600"></i>
           </div>
         </template>
       </Card>
     </div>
-  
+
     <!-- POs Table -->
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #header>
@@ -64,7 +68,8 @@
           <div>
             <IconField fluid>
               <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" size="small" placeholder="Search PO, Supplier, or Created By" fluid @keyup.enter="applyFilters" />
+              <InputText v-model="filters.search" size="small" placeholder="Search PO, Supplier, or Created By" fluid
+                @keyup.enter="applyFilters" />
             </IconField>
           </div>
           <div>
@@ -72,12 +77,12 @@
               placeholder="All Statuses" showClear fluid size="small" @change="applyFilters" />
           </div>
           <div>
-            <Select v-model="filters.supplier_id" :options="suppliers" optionLabel="supplier_name"
-              optionValue="id" placeholder="All Suppliers" showClear fluid size="small" @change="applyFilters" />
+            <Select v-model="filters.supplier_id" :options="suppliers" optionLabel="supplier_name" optionValue="id"
+              placeholder="All Suppliers" showClear fluid size="small" @change="applyFilters" />
           </div>
           <div>
-            <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false"
-              placeholder="Order date range" dateFormat="M d, yy" show-icon size="small" @date-select="applyFilters" fluid />
+            <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false" placeholder="Order date range"
+              dateFormat="M d, yy" show-icon size="small" @date-select="applyFilters" fluid />
           </div>
           <div class="flex items-center gap-2">
             <Button label="Clear Filters" severity="secondary" size="small" outlined @click="resetFilters" />
@@ -85,8 +90,13 @@
         </div>
       </template>
       <template #content>
-        <DataTable v-if="!loading" rowHover :value="orders" :loading="loading" :paginator="true" :rows="10" :rowsPerPageOptions="[10, 20, 50]" responsive-layout="scroll" class="p-datatable-sm">
-  
+        <div v-if="loading" class="space-y-3 px-4 pb-4">
+          <div class="grid grid-cols-7 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 7" :key="`head-${cell}`" height="0.75rem" /></div>
+          <div v-for="row in 6" :key="`skeleton-${row}`" class="grid grid-cols-7 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 7" :key="`cell-${row}-${cell}`" height="1.25rem" /></div>
+        </div>
+        <DataTable v-else rowHover :value="orders" :paginator="true" :rows="10"
+          :rowsPerPageOptions="[10, 20, 50]" responsive-layout="scroll" class="p-datatable-sm">
+
           <Column header="Order Date" style="width: 9%" sortable>
             <template #body="{ data }">
               <span class="text-sm text-gray-700">{{ formatDate(data.order_date) }}</span>
@@ -101,8 +111,8 @@
               </RouterLink>
             </template>
           </Column>
-  
-  
+
+
           <!-- Supplier -->
           <Column header="Supplier" style="width: 15%">
             <template #body="{ data }">
@@ -112,13 +122,13 @@
               </div>
             </template>
           </Column>
-  
+
           <Column header="Created By" style="width: 14%">
             <template #body="{ data }">
               <span class="text-sm text-gray-700">{{ getPersonName(data.created_by) }}</span>
             </template>
           </Column>
-  
+
           <!-- Amount & Items -->
           <Column header="Amount / Items" style="width: 13%">
             <template #body="{ data }">
@@ -127,23 +137,23 @@
               </div>
             </template>
           </Column>
-  
+
           <!-- Status -->
           <Column header="Status" style="width: 15%">
             <template #body="{ data }">
               <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
-  
+
           <!-- Actions -->
           <Column header="Actions" style="width: 10%" headerStyle="text-align: center">
             <template #body="{ data }">
-              <div class="flex gap-2 justify-center">
-                <Button icon="pi pi-eye" text rounded @click="viewPO(data)" v-tooltip="'View'" />
+              <div class="justify-center">
+                <Button icon="pi pi-eye" label="View" outlined rounded @click="viewPO(data)" v-tooltip="'View'" size="small" />
               </div>
             </template>
           </Column>
-  
+
           <!-- Empty State -->
           <template #empty>
             <div class="text-center py-8">
@@ -152,14 +162,10 @@
             </div>
           </template>
         </DataTable>
-  
-        <!-- Loading -->
-        <div v-if="loading" class="flex justify-center py-8">
-          <ProgressSpinner />
-        </div>
+
       </template>
     </Card>
-  
+
     <Toast />
   </div>
 </template>
@@ -169,6 +175,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
+import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -180,7 +187,7 @@ const canManagePurchaseOrders = computed(() => authStore.hasPermission('procurem
 // State
 const orders = ref<any[]>([])
 const suppliers = ref<any[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const stats = ref({
   totalCount: 0,
   pendingApproval: 0,

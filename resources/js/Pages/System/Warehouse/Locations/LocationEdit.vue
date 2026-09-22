@@ -414,7 +414,8 @@ const loadWarehouses = async () => {
     const response = await inventoryService.getWarehouses({ per_page: 1000 })
 
     if (response.success) {
-      warehouses.value = response.data || []
+      const page = response.data ?? {}
+      warehouses.value = Array.isArray(page) ? page : (page.data ?? [])
     }
   } catch (error: any) {
     toast.add({

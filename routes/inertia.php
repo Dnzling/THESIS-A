@@ -33,21 +33,25 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/store/ecommerce', 'System/Store/Ecommerce', 'store.ecommerce', 'Store Ecommerce Performance');
 
     // Warehouse Operations
-    Route::redirect('/warehouse-operations', '/warehouse-operations/dashboard')->name('warehouse');
-    $inertia('/warehouse-operations/dashboard', 'System/WarehouseOperations/Dashboard', 'warehouse.dashboard', 'Warehouse Dashboard');
-    $inertia('/warehouse-operations/warehouses', 'System/WarehouseOperations/Warehouses/Index', 'warehouse.warehouses', 'Warehouses');
-    $inertia('/warehouse-operations/warehouses/{id}', 'System/WarehouseOperations/Warehouses/View', 'warehouse.warehouses.view', 'Warehouse Details');
-    $inertia('/warehouse-operations/stock', 'System/WarehouseOperations/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
-    $inertia('/warehouse-operations/stock/{id}', 'System/WarehouseOperations/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
-    $inertia('/warehouse-operations/stock/{id}/edit', 'System/WarehouseOperations/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
-    $inertia('/warehouse-operations/purchase-requisitions', 'System/WarehouseOperations/PurchaseRequisitions/Index', 'warehouse.purchase-requisitions', 'Warehouse Purchase Requisitions');
-    $inertia('/warehouse-operations/purchase-requisitions/create', 'System/WarehouseOperations/PurchaseRequisitions/Create', 'warehouse.purchase-requisitions.create', 'Create Purchase Requisition');
-    $inertia('/warehouse-operations/purchase-requisitions/{id}', 'System/WarehouseOperations/PurchaseRequisitions/View', 'warehouse.purchase-requisitions.view', 'Warehouse Purchase Requisition Details');
-    $inertia('/warehouse-operations/transfer-requests', 'System/WarehouseOperations/Transfers/RequestsIndex', 'warehouse.transfer-requests', 'Transfer Requests');
-    $inertia('/warehouse-operations/transfer-requests/{id}', 'System/WarehouseOperations/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
-    $inertia('/warehouse-operations/receiving', 'System/WarehouseOperations/Receiving/Index', 'warehouse.receiving', 'Receiving');
-    $inertia('/warehouse-operations/returns', 'System/WarehouseOperations/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
-    $inertia('/warehouse-operations/transfer-history', 'System/WarehouseOperations/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
+    Route::redirect('/warehouse', '/warehouse/dashboard')->name('warehouse');
+    $inertia('/warehouse/dashboard', 'System/Warehouse/Dashboard', 'warehouse.dashboard', 'Warehouse Dashboard');
+    $inertia('/warehouse/warehouses', 'System/Warehouse/Warehouses/Index', 'warehouse.warehouses', 'Warehouses');
+    $inertia('/warehouse/warehouses/{id}', 'System/Warehouse/Warehouses/View', 'warehouse.warehouses.view', 'Warehouse Details');
+    $inertia('/warehouse/locations', 'System/Warehouse/Locations/LocationIndex', 'warehouse.locations', 'Warehouse Locations');
+    $inertia('/warehouse/locations/create', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.create', 'Create Warehouse Location');
+    $inertia('/warehouse/locations/{id}', 'System/Warehouse/Locations/LocationDetail', 'warehouse.locations.view', 'Warehouse Location Details');
+    $inertia('/warehouse/locations/{id}/edit', 'System/Warehouse/Locations/LocationEdit', 'warehouse.locations.edit', 'Edit Warehouse Location');
+    $inertia('/warehouse/stock', 'System/Warehouse/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
+    $inertia('/warehouse/stock/{id}', 'System/Warehouse/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
+    $inertia('/warehouse/stock/{id}/edit', 'System/Warehouse/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
+    $inertia('/warehouse/purchase-requisitions', 'System/Warehouse/PurchaseRequisitions/Index', 'warehouse.purchase-requisitions', 'Warehouse Purchase Requisitions');
+    $inertia('/warehouse/purchase-requisitions/create', 'System/Warehouse/PurchaseRequisitions/Create', 'warehouse.purchase-requisitions.create', 'Create Purchase Requisition');
+    $inertia('/warehouse/purchase-requisitions/{id}', 'System/Warehouse/PurchaseRequisitions/View', 'warehouse.purchase-requisitions.view', 'Warehouse Purchase Requisition Details');
+    $inertia('/warehouse/transfer-requests', 'System/Warehouse/Transfers/RequestsIndex', 'warehouse.transfer-requests', 'Transfer Requests');
+    $inertia('/warehouse/transfer-requests/{id}', 'System/Warehouse/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
+    $inertia('/warehouse/receiving', 'System/Warehouse/Receiving/Index', 'warehouse.receiving', 'Receiving');
+    $inertia('/warehouse/returns', 'System/Warehouse/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
+    $inertia('/warehouse/transfer-history', 'System/Warehouse/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
 
 
     // Admin (Super Admin only)
@@ -111,14 +115,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
     });
 
-    // Driver portal
-    Route::middleware('role:driver')->group(function () use ($inertia) {
-        Route::redirect('/driver/portal', '/driver/deliveries')->name('driver.portal');
-        $inertia('/driver/deliveries', 'System/Driver/DriverDeliveriesIndex', 'driver.deliveries', 'My Deliveries');
-        $inertia('/driver/delivery-history', 'System/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
-        $inertia('/driver/deliveries/{source}/{orderId}', 'System/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
-    });
-
     // Store role permissions accessible by store admins and HR
     $inertia('/store/role-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
     $inertia('/employee-profile', 'Profile/Edit', 'employee.profile', 'Employee Profile');
@@ -178,10 +174,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/products/{id}', 'System/Inventory/Products/ProductView', 'inventory.products.detail', 'Product Details');
     $inertia('/inventory/categories', 'System/Inventory/Categories/CategoryIndex', 'inventory.categories', 'Categories');
     $inertia('/inventory/categories/{id}', 'System/Inventory/Categories/CategoryDetail', 'inventory.categories.detail', 'Category Details');
-    $inertia('/inventory/units', 'System/Inventory/Units/UnitIndex', 'inventory.units', 'Units');
-    $inertia('/inventory/units/create', 'System/Inventory/Units/UnitCreate', 'inventory.units.create', 'Create Unit');
-    $inertia('/inventory/units/{id}', 'System/Inventory/Units/UnitDetail', 'inventory.units.detail', 'Unit Details');
-    $inertia('/inventory/units/{id}/edit', 'System/Inventory/Units/UnitEdit', 'inventory.units.edit', 'Edit Unit');
     $inertia('/inventory/stock-issues', 'System/Inventory/StockIssues/StockIssueIndex', 'inventory.stock-issues', 'Stock Issuance');
     $inertia('/inventory/stock-issues/create', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.create', 'Create Stock Issuance');
     $inertia('/inventory/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'inventory.stock-issues.detail', 'Stock Issuance Detail');
@@ -196,10 +188,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/stock-counts/create', 'System/Inventory/StockCounts/StockCountCreate', 'inventory.stock-counts.create', 'Create Stock Count');
     $inertia('/inventory/stock-counts/{id}', 'System/Inventory/StockCounts/StockCountDetail', 'inventory.stock-counts.detail', 'Stock Count Detail');
     $inertia('/inventory/stock-counts/{id}/edit', 'System/Inventory/StockCounts/StockCountEdit', 'inventory.stock-counts.edit', 'Edit Stock Count');
-    $inertia('/inventory/warehouses', 'System/Inventory/Warehouses/WarehouseIndex', 'inventory.warehouses.index', 'Warehouses');
-    $inertia('/inventory/warehouses/create', 'System/Inventory/Warehouses/WarehouseCreate', 'inventory.warehouses.create', 'Create Warehouse');
-    $inertia('/inventory/warehouses/{id}', 'System/Inventory/Warehouses/WarehouseDetail', 'inventory.warehouses.detail', 'Warehouse Detail');
-    $inertia('/inventory/warehouses/{id}/edit', 'System/Inventory/Warehouses/WarehouseEdit', 'inventory.warehouses.edit', 'Edit Warehouse');
     $inertia('/inventory/locations', 'System/Inventory/Locations/LocationIndex', 'inventory.locations.index', 'Locations');
     $inertia('/inventory/locations/create', 'System/Inventory/Locations/LocationCreate', 'inventory.locations.create', 'Create Location');
     $inertia('/inventory/locations/{id}', 'System/Inventory/Locations/LocationDetail', 'inventory.locations.detail', 'Location Detail');
@@ -214,10 +202,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/serial-numbers/create', 'System/Inventory/SerialNumbers/SerialNumberCreate', 'inventory.serial-numbers.create', 'Create Serial Number');
     $inertia('/inventory/serial-numbers/{id}', 'System/Inventory/SerialNumbers/SerialNumberDetail', 'inventory.serial-numbers.show', 'Serial Number Detail');
     $inertia('/inventory/serial-numbers/{id}/edit', 'System/Inventory/SerialNumbers/SerialNumberEdit', 'inventory.serial-numbers.edit', 'Edit Serial Number');
-    $inertia('/inventory/batches', 'System/Inventory/Batches/BatchIndex', 'inventory.batches', 'Batches');
-    $inertia('/inventory/batches/create', 'System/Inventory/Batches/BatchCreate', 'inventory.batches.create', 'Create Batch');
-    $inertia('/inventory/batches/{id}', 'System/Inventory/Batches/BatchDetail', 'inventory.batches.detail', 'Batch Detail');
-    $inertia('/inventory/batches/{id}/edit', 'System/Inventory/Batches/BatchEdit', 'inventory.batches.edit', 'Edit Batch');
     $inertia('/inventory/adjustments', 'System/Inventory/Adjustments/AdjustmentIndex', 'inventory.adjustments', 'Adjustments');
     $inertia('/inventory/adjustments/create', 'System/Inventory/Adjustments/AdjustmentCreate', 'inventory.adjustments.create', 'Create Adjustment');
     $inertia('/inventory/adjustments/{id}', 'System/Inventory/Adjustments/AdjustmentDetail', 'inventory.adjustments.detail', 'Adjustment Detail');
@@ -233,7 +217,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/activity-logs/{id}', 'System/Inventory/ActivityLogs/InventoryActivityLogDetail', 'inventory.activity-logs.detail', 'Activity Log Detail');
     $inertia('/inventory/reports', 'System/Inventory/Reports/ReportsIndex', 'inventory.reports', 'Reports');
     $inertia('/inventory/notifications', 'System/Inventory/Notifications/NotificationIndex', 'inventory.notifications', 'Notifications');
-    $inertia('/inventory/configuration', 'System/Inventory/Configuration/ConfigIndex', 'inventory.configuration', 'Configuration');
+
 
     // Procurement
     Route::redirect('/procurement', '/procurement/dashboard')->name('procurement');
@@ -259,10 +243,10 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/purchase-orders/{id}', 'System/Procurement/PurchaseOrders/PurchaseOrderDetail', 'procurement.purchase-orders.detail', 'Purchase Order Details');
     $inertia('/procurement/purchase-orders/{id}/pickup', 'System/Procurement/PurchaseOrders/PurchaseOrderPickupCreate', 'procurement.purchase-orders.pickup', 'Assign Supplier Pickup');
     $inertia('/procurement/purchase-orders/{id}/edit', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.edit', 'Edit Purchase Order');
-    $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
-    $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
-    $inertia('/procurement/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'procurement.invoices.detail', 'Invoice Details');
-    $inertia('/procurement/invoices/{id}/edit', 'System/Procurement/Invoices/InvoiceEdit', 'procurement.invoices.edit', 'Edit Invoice');
+    // $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
+    // $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
+    // $inertia('/procurement/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'procurement.invoices.detail', 'Invoice Details');
+    // $inertia('/procurement/invoices/{id}/edit', 'System/Procurement/Invoices/InvoiceEdit', 'procurement.invoices.edit', 'Edit Invoice');
     $inertia('/inventory/goods-receipts', 'System/Inventory/GoodsReceipts/GoodsReceiptIndex', 'inventory.goods-receipts', 'Goods Receipts');
     $inertia('/inventory/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'inventory.goods-receipts.create', 'Create Goods Receipt');
     $inertia('/inventory/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'inventory.goods-receipts.detail', 'Goods Receipt Detail');
@@ -286,7 +270,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     Route::redirect('/finance', '/finance/dashboard')->name('finance');
     $inertia('/finance/dashboard', 'System/Finance/FinanceDashboard', 'finance.dashboard', 'Finance Dashboard');
     $inertia('/finance/payables', 'System/Finance/FinancePayablesIndex', 'finance.payables', 'Payables');
-    $inertia('/finance/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'finance.invoices.detail', 'Invoice Detail');
+    $inertia('/finance/invoices/{id}', 'System/Finance/FinanceInvoiceDetail', 'finance.invoices.detail', 'Invoice Detail');
     $inertia('/finance/purchase-orders', 'System/Finance/FinancePurchaseOrderIndex', 'finance.purchase-orders', 'Purchase Orders');
     $inertia('/finance/purchase-orders/{id}', 'System/Finance/FinancePurchaseOrderDetail', 'finance.purchase-orders.detail', 'Purchase Order Detail');
     $inertia('/finance/price-approvals', 'System/Finance/FinancePriceApprovalIndex', 'finance.price-approvals', 'Price Approvals');
@@ -299,14 +283,21 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/finance/payroll/basic', 'System/Finance/FinancePayrollBasicIndex', 'finance.payroll.basic', 'Basic Payroll');
     $inertia('/finance/payroll/{payPeriodId}', 'System/Finance/FinancePayrollDetail', 'finance.payroll.detail', 'Payroll Period Detail');
     $inertia('/finance/cashflow', 'System/Finance/FinanceCashflowIndex', 'finance.cashflow', 'Cashflow');
+    $inertia('/finance/tax-vat', 'System/Finance/FinanceTaxVatIndex', 'finance.tax-vat', 'Tax / VAT Report', 'Store-wide tax monitoring');
     $inertia('/finance/refunds', 'System/Finance/FinanceRefundIndex', 'finance.refunds', 'Refunds');
     $inertia('/finance/refunds/create', 'System/Finance/FinanceRefundCreate', 'finance.refunds.create', 'Create Refund');
     $inertia('/finance/refunds/{id}', 'System/Finance/FinanceRefundDetail', 'finance.refunds.detail', 'Refund Detail');
+    $inertia('/finance/liquidations', 'System/Finance/FinanceLiquidationIndex', 'finance.liquidations', 'Cash Advances & Liquidations');
+    $inertia('/finance/liquidations/create', 'System/Finance/FinanceLiquidationCreate', 'finance.liquidations.create', 'Create Cash Advance');
+    $inertia('/finance/liquidations/{id}', 'System/Finance/FinanceLiquidationDetail', 'finance.liquidations.detail', 'Liquidation Detail');
     $inertia('/finance/budgets', 'System/Finance/FinanceBudgetsIndex', 'finance.budgets', 'Budgets');
     $inertia('/finance/reports', 'System/Finance/FinanceReportsIndex', 'finance.reports', 'Reports');
 
     // Logistics
     Route::redirect('/logistics', '/logistics/deliveries')->name('logistics');
+    $inertia('/driver/deliveries', 'System/Logistics/Driver/DriverDeliveriesIndex', 'driver.deliveries', 'My Deliveries');
+    $inertia('/driver/delivery-history', 'System/Logistics/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
+    $inertia('/driver/deliveries/{source}/{orderId}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');

@@ -280,6 +280,19 @@ Route::prefix('inventory')->group(function () {
         Route::get('/capacity-utilization', [WarehouseController::class, 'getCapacityUtilization']);
     });
 
+    // Warehouse locations
+    Route::prefix('locations')->group(function () {
+        Route::get('/', [LocationController::class, 'index']);
+        Route::post('/', [LocationController::class, 'store']);
+        Route::get('/types', [LocationController::class, 'getTypes']);
+        Route::get('/available', [LocationController::class, 'getAvailable']);
+        Route::get('/needing-check', [LocationController::class, 'getNeedingCheck']);
+        Route::get('/{location}', [LocationController::class, 'show']);
+        Route::put('/{location}', [LocationController::class, 'update']);
+        Route::delete('/{location}', [LocationController::class, 'destroy']);
+        Route::post('/{location}/update-stock', [LocationController::class, 'updateStock']);
+    });
+
     // Reorder Rules Management
     Route::prefix('reorder-rules')->group(function () {
         Route::get('/', [ReorderRuleController::class, 'index']);

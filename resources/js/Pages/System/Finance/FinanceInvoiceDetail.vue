@@ -104,10 +104,7 @@
                   <span class="text-gray-500">Due Date</span>
                   <span class="font-medium text-gray-900">{{ formatDate(invoice?.due_date) }}</span>
                 </div>
-                <div class="flex justify-between py-2">
-                  <span class="text-gray-500">Payment Terms</span>
-                  <span class="font-medium text-gray-900">{{ formatPaymentTerms(invoice?.payment_terms) }}</span>
-                </div>
+              
               </div>
             </div>
 
@@ -515,8 +512,8 @@ import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Tag from 'primevue/tag'
-import procurementService from '../../../../services/procurement.service'
-import financeService from '../../../../services/finance.service'
+import procurementService from '../../../services/procurement.service'
+import financeService from '../../../services/finance.service'
 import paymongoService from '@/services/paymongo.service'
 
 const router = useRouter()

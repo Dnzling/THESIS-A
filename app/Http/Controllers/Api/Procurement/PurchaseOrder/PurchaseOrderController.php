@@ -551,6 +551,17 @@ class PurchaseOrderController extends Controller
             } else {
                 // Manual PO creation from items
                 foreach ($validated['items'] as $index => $item) {
+                    $requiresVariation = ProductVariation::query()
+                        ->where('store_id', $storeId)
+                        ->where('product_id', $item['product_id'])
+                        ->active()
+                        ->exists();
+                    if ($requiresVariation && empty($item['variation_id'])) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.variation_id" => 'Select a product variant instead of the parent product.',
+                        ]);
+                    }
+
                     if (!$this->isValidVariationForProduct($item['variation_id'] ?? null, (int) $item['product_id'], (int) $storeId)) {
                         return response()->json([
                             'success' => false,
@@ -792,7 +803,8 @@ class PurchaseOrderController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $po = PurchaseOrder::findOrFail($id);
+        $storeId = (int) auth()->user()->store_id;
+        $po = PurchaseOrder::where('store_id', $storeId)->findOrFail($id);
 
         // Only draft POs can be edited
         if ($po->status !== 'draft') {
@@ -808,6 +820,8 @@ class PurchaseOrderController extends Controller
             'order_date' => 'sometimes|required|date',
             'payment_terms' => 'nullable|in:cash_on_delivery,net_7,net_15,net_30,net_60,advance_payment',
             'discount_amount' => 'sometimes|nullable|numeric|min:0',
+            'shipping_cost' => 'sometimes|nullable|numeric|min:0',
+            'status' => 'sometimes|required|in:draft,pending_finance_approval',
             'notes' => 'sometimes|nullable|string',
             'terms_conditions' => 'sometimes|nullable|string',
             'items' => 'sometimes|required|array|min:1',
@@ -821,7 +835,6 @@ class PurchaseOrderController extends Controller
 
         DB::beginTransaction();
         try {
-            $storeId = $po->store_id ?? auth()->user()->store_id;
             $supplierId = $validated['supplier_id'] ?? $po->supplier_id;
             $contract = SupplierContract::where('store_id', $storeId)
                 ->where('supplier_id', $supplierId)
@@ -837,6 +850,7 @@ class PurchaseOrderController extends Controller
                 'order_date' => $validated['order_date'] ?? $po->order_date,
                 'payment_terms' => $validated['payment_terms'] ?? $po->payment_terms,
                 'discount_amount' => $validated['discount_amount'] ?? $po->discount_amount,
+                'shipping_cost' => $validated['shipping_cost'] ?? $po->shipping_cost,
                 'contract_tax_rate' => $headerTaxRate,
                 'notes' => $validated['notes'] ?? $po->notes,
                 'terms_conditions' => $validated['terms_conditions'] ?? $po->terms_conditions,
@@ -887,7 +901,7 @@ class PurchaseOrderController extends Controller
                 }
 
                 // Update totals
-                $shippingCost = $po->shipping_cost ?? 0;
+                $shippingCost = $validated['shipping_cost'] ?? $po->shipping_cost ?? 0;
                 $discountAmount = $validated['discount_amount'] ?? $po->discount_amount;
                 $taxableAmount = max(0, $subtotal - (float) $discountAmount);
                 $taxAmount = round($taxableAmount * ($headerTaxRate / 100), 2);
@@ -900,11 +914,26 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
+            $nextStatus = $validated['status'] ?? 'draft';
+            if ($nextStatus === 'pending_finance_approval') {
+                $po->update(['status' => $nextStatus]);
+
+                ActivityLog::record(
+                    'po_submitted',
+                    "PO {$po->po_number} submitted for finance approval.",
+                    ['po_number' => $po->po_number, 'status' => $nextStatus],
+                    'purchase_order',
+                    $po->id
+                );
+            }
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Purchase order updated successfully',
+                'message' => $nextStatus === 'pending_finance_approval'
+                    ? 'Purchase order submitted for finance approval successfully'
+                    : 'Purchase order draft updated successfully',
                 'data' => $po->fresh()->load('items.product'),
             ]);
         } catch (\Exception $e) {

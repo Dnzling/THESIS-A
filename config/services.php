@@ -42,4 +42,12 @@ return [
         'access_token' => env('MAPBOX_ACCESS_TOKEN', env('VITE_MAPBOX_ACCESS_TOKEN')),
     ],
 
+    'ocr_space' => [
+        'key' => env('OCR_SPACE_API_KEY'),
+        'endpoint' => env('OCR_SPACE_ENDPOINT', 'https://api.ocr.space/parse/image'),
+        'engine' => (int) env('OCR_SPACE_ENGINE', 2),
+        'language' => env('OCR_SPACE_LANGUAGE', 'auto'),
+        'timeout' => (int) env('OCR_SPACE_TIMEOUT', 45),
+    ],
+
 ];

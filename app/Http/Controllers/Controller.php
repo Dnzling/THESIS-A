@@ -34,6 +34,16 @@ abstract class Controller
             }
         }
 
+        $creatorName = trim(collect([$user?->fname, $user?->lname])->filter()->implode(' '));
+        $notificationData = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        if ($user) {
+            $notificationData['created_by'] = [
+                'id' => $user->id,
+                'name' => $creatorName !== '' ? $creatorName : ($user->name ?? "User #{$user->id}"),
+                'email' => $user->email,
+            ];
+        }
+
         return SystemNotification::create([
             'store_id' => $storeId,
             'branch_id' => $branchId,
@@ -44,7 +54,7 @@ abstract class Controller
             'action' => $payload['action'] ?? null,
             'title' => $payload['title'] ?? 'Notification',
             'message' => $payload['message'] ?? null,
-            'data' => $payload['data'] ?? null,
+            'data' => $notificationData,
             'link' => $link,
             'severity' => $payload['severity'] ?? 'info',
             'is_read' => (bool) ($payload['is_read'] ?? false),

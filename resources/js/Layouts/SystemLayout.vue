@@ -165,6 +165,9 @@
                     <span class="shrink-0 whitespace-nowrap pt-0.5 text-xs text-gray-400">{{ formatTimeAgo(notif.created_at) }}</span>
                   </div>
                   <p class="mt-1 whitespace-normal break-words text-xs leading-relaxed text-gray-600">{{ notif.message || 'Tap to view' }}</p>
+                  <p v-if="notif.data?.created_by?.name" class="mt-1 truncate text-[11px] text-gray-400">
+                    Created by {{ notif.data.created_by.name }}
+                  </p>
                 </div>
               </button>
             </div>

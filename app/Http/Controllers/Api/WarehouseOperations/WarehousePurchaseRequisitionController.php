@@ -25,8 +25,16 @@ class WarehousePurchaseRequisitionController extends Controller
     public function options(Request $request): JsonResponse
     {
         $storeId = $this->storeId($request);
-        $branches = Branch::where('store_id', $storeId)->where('branch_type', 'warehouse')
-            ->where('status', 'active')->orderBy('name')->get(['id', 'name', 'branch_code', 'branch_type']);
+        $user = $request->user();
+        $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: $user?->branch?->id ?: $user?->employee?->branch?->id);
+        abort_if($branchId < 1, 422, 'Your account is not assigned to a branch.');
+
+        $branches = Branch::where('store_id', $storeId)
+            ->whereKey($branchId)
+            ->where('status', 'active')
+            ->get(['id', 'name', 'branch_code', 'branch_type']);
+
+        abort_if($branches->isEmpty(), 422, 'Your assigned branch is not active or does not belong to your store.');
         $inventory = BranchInventory::where('store_id', $storeId)
             ->whereIn('branch_id', $branches->pluck('id'))
             ->with(['branch:id,name,branch_code,branch_type', 'product', 'variation'])
@@ -154,7 +162,7 @@ class WarehousePurchaseRequisitionController extends Controller
             return $pr;
         });
 
-        $this->notifyUsersByPermissions($storeId, ['procurement.requisitions.manage', 'procurement.requisitions.approve'], [
+        $this->notifyUsersByPermissions($storeId, ['procurement.requisitions.view', 'procurement.requisitions.manage', 'procurement.requisitions.approve'], [
             'store_id' => $storeId, 'branch_id' => $branch->id, 'module' => 'procurement',
             'entity_type' => 'purchase_requisition', 'entity_id' => $pr->id, 'action' => 'submitted',
             'title' => 'Warehouse Purchase Requisition Submitted',

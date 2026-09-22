@@ -13,7 +13,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Total PRs</p>
-              <p class="text-2xl font-bold text-gray-900">{{ summary.total }}</p>
+              <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold text-gray-900">{{ summary.total }}</p>
             </div>
             <i class="pi pi-file-export text-4xl"></i>
           </div>
@@ -24,7 +25,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Draft</p>
-              <p class="text-2xl font-bold text-gray-600">{{ summary.draft }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold text-gray-600">{{ summary.draft }}</p>
             </div>
             <i class="pi pi-file text-4xl"></i>
           </div>
@@ -35,7 +37,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Pending</p>
-              <p class="text-2xl font-bold">{{ summary.pending }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold">{{ summary.pending }}</p>
             </div>
             <i class="pi pi-send text-4xl "></i>
           </div>
@@ -46,7 +49,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide  ">Approved</p>
-              <p class="text-2xl font-bold">{{ summary.approved }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
+              <p v-else class="text-2xl font-bold">{{ summary.approved }}</p>
             </div>
             <i class="pi pi-check text-4xl"></i>
           </div>
@@ -82,7 +86,11 @@
         </div>
       </template>
       <template #content>
-        <DataTable :value="requisitions" :loading="loading" class="p-datatable-sm" rowHover :expandedRows="expandedRows"
+        <div v-if="loading" class="space-y-3 px-4 pb-4">
+          <div class="grid grid-cols-7 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 7" :key="`head-${cell}`" height="0.75rem" /></div>
+          <div v-for="row in 6" :key="`skeleton-${row}`" class="grid grid-cols-7 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 7" :key="`cell-${row}-${cell}`" height="1.25rem" /></div>
+        </div>
+        <DataTable v-else :value="requisitions" class="p-datatable-sm" rowHover :expandedRows="expandedRows"
           @update:expandedRows="expandedRows = $event" responsiveLayout="scroll" paginator :rows="perPage"     @row-click="onRowClick"
             :rowClass="rowClass"
           :totalRecords="total" :first="(currentPage - 1) * perPage" @page="onPageChange"
@@ -236,11 +244,12 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
 
 const router = useRouter()
 const toast = useToast()
-const loading = ref(false)
+const loading = ref(true)
 const requisitions = ref<any[]>([])
 const expandedRows = ref<any[]>([])
 const currentPage = ref(1)

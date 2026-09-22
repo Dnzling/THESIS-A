@@ -2,7 +2,11 @@
 
 namespace App\Services\Store;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 class DocumentAutoValidationService
 {
@@ -192,6 +196,11 @@ class DocumentAutoValidationService
 
     private function extractText(string $absolutePath, string $mime): string
     {
+        $remoteText = $this->extractTextWithOcrSpace($absolutePath, $mime);
+        if ($remoteText !== '') {
+            return $remoteText;
+        }
+
         if (str_contains($mime, 'pdf')) {
             $text = $this->extractPdfText($absolutePath);
             if ($text !== '') {
@@ -207,6 +216,75 @@ class DocumentAutoValidationService
         }
 
         return '';
+    }
+
+    private function extractTextWithOcrSpace(string $absolutePath, string $mime): string
+    {
+        $apiKey = trim((string) config('services.ocr_space.key'));
+        if ($apiKey === '') {
+            return '';
+        }
+
+        $endpoint = (string) config('services.ocr_space.endpoint', 'https://api.ocr.space/parse/image');
+        $engine = (int) config('services.ocr_space.engine', 2);
+        $language = (string) config('services.ocr_space.language', 'auto');
+        $timeout = max(5, (int) config('services.ocr_space.timeout', 45));
+
+        if (!in_array($engine, [1, 2, 3], true)) {
+            $engine = 2;
+        }
+
+        $handle = fopen($absolutePath, 'rb');
+        if ($handle === false) {
+            return '';
+        }
+
+        try {
+            $response = Http::withHeaders(['apikey' => $apiKey])
+                ->timeout($timeout)
+                ->retry(2, 250, fn ($exception) => $exception instanceof ConnectionException)
+                ->attach('file', $handle, basename($absolutePath), [
+                    'Content-Type' => $mime ?: 'application/octet-stream',
+                ])
+                ->post($endpoint, [
+                    'language' => $engine === 1 && $language === 'auto' ? 'eng' : $language,
+                    'OCREngine' => (string) $engine,
+                    'isOverlayRequired' => 'false',
+                    'detectOrientation' => 'true',
+                    'scale' => 'true',
+                ]);
+
+            if (!$response->successful()) {
+                throw new RuntimeException("OCR.space returned HTTP {$response->status()}.");
+            }
+
+            $payload = $response->json();
+            if (!is_array($payload) || ($payload['IsErroredOnProcessing'] ?? false)) {
+                $messages = $payload['ErrorMessage'] ?? $payload['ErrorDetails'] ?? 'Unknown OCR processing error.';
+                $message = is_array($messages) ? implode(' ', $messages) : (string) $messages;
+                throw new RuntimeException($message);
+            }
+
+            $parsedResults = $payload['ParsedResults'] ?? [];
+            if (!is_array($parsedResults)) {
+                return '';
+            }
+
+            return trim(implode("\n", array_filter(array_map(
+                static fn ($result) => is_array($result) ? trim((string) ($result['ParsedText'] ?? '')) : '',
+                $parsedResults
+            ))));
+        } catch (\Throwable $exception) {
+            Log::warning('OCR.space extraction failed; using local OCR fallback.', [
+                'file' => basename($absolutePath),
+                'mime_type' => $mime,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return '';
+        } finally {
+            fclose($handle);
+        }
     }
 
     private function extractPdfText(string $absolutePath): string

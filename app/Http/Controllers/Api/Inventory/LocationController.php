@@ -69,7 +69,17 @@ class LocationController extends Controller
                 });
             }
 
-            $locations = $query->orderBy('warehouse_id')->orderBy('location_code')->paginate(15);
+            $sortField = (string) $request->input('sort_field', 'created_at');
+            $sortDirection = strtolower((string) $request->input('sort_direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSortFields = ['created_at', 'name', 'location_code', 'type', 'status', 'max_capacity_units'];
+            if (!in_array($sortField, $allowedSortFields, true)) {
+                $sortField = 'created_at';
+            }
+
+            $perPage = min(max((int) $request->input('per_page', 15), 1), 1000);
+            $locations = $query
+                ->orderBy($sortField, $sortDirection)
+                ->paginate($perPage);
 
             return response()->json([
                 'success' => true,

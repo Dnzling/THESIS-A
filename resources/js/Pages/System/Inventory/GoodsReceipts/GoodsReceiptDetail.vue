@@ -10,13 +10,15 @@
       <Button label="Back to Receipts" severity="secondary" class="mt-4" @click="goBack" />
     </div>
     <div v-else class="space-y-6">
-      <!-- Header -->
-      <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div>
-          <Button label="Back to receipts" text class="mb-2 px-0" @click="goBack" />
-          <div>
-            <h1 class="text-2xl font-bold text-gray-900 md:text-3xl">{{ receipt.grn_number }}</h1>
-            <p class="mt-1 text-sm text-gray-500">Goods receipt for purchase order {{ receipt.po_number || '-' }}</p>
+      <!-- Finance-style header -->
+      <div class="flex items-center justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <button @click="goBack" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200">
+            <i class="pi pi-chevron-left text-gray-600"></i>
+          </button>
+          <div class="min-w-0">
+            <h1 class="truncate text-2xl font-semibold tracking-tight text-gray-900 md:text-3xl">{{ receipt.grn_number }}</h1>
+            <p class="mt-1 truncate text-sm text-gray-500">Goods receipt for {{ receipt.po_number || 'purchase order' }}</p>
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -37,6 +39,7 @@
           <Button
             label="Print PDF"
             severity="secondary"
+            size="small"
             :loading="printing"
             @click="printReceipt"
           />
@@ -61,56 +64,32 @@
         </template>
       </Card>
 
-      <!-- Status Cards -->
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card class="border border-slate-200 shadow-sm">
-          <template #content>
-            <div>
-              <p class="text-gray-500 text-sm">Status</p>
-              <Badge :value="receipt.receipt_status" :severity="statusSeverity(receipt.receipt_status)" class="mt-2" />
-            </div>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-sm">
-          <template #content>
-            <div>
-              <p class="text-gray-500 text-sm">Quality Check</p>
-              <Badge :value="displayQualityStatus" :severity="qualitySeverity(displayQualityStatus)" class="mt-2" />
-            </div>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-sm">
-          <template #content>
-            <div>
-              <p class="text-gray-500 text-sm">Total Items</p>
-              <p class="text-3xl font-bold text-blue-600 mt-2">{{ receipt.items?.length || 0 }}</p>
-            </div>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-sm">
-          <template #content>
-            <div>
-              <p class="text-gray-500 text-sm">Received Date</p>
-              <p class="text-xl font-bold text-gray-800 mt-2">{{ formatDate(receipt.receipt_date) }}</p>
-            </div>
-          </template>
-        </Card>
-        <Card class="border border-slate-200 shadow-sm">
-          <template #content>
-            <div>
-              <p class="text-gray-500 text-sm">Supplier Rating</p>
-              <p class="mt-2 text-xl font-bold text-gray-800">
-                {{ receipt.supplier_evaluation ? `${Number(receipt.supplier_evaluation.overall_rating).toFixed(2)}/5` : 'Not rated' }}
-              </p>
-            </div>
-          </template>
-        </Card>
+      <!-- Finance-style summary cards -->
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Receipt Status</span><div :class="statusDot(receipt.receipt_status)" class="h-2 w-2 rounded-full"></div></div>
+          <span :class="statusText(receipt.receipt_status)" class="text-base font-semibold">{{ formatStatus(receipt.receipt_status) }}</span>
+        </div>
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-sm font-medium text-gray-500">Quality Check</span><div :class="qualityDot(displayQualityStatus)" class="h-2 w-2 rounded-full"></div></div>
+          <span :class="qualityText(displayQualityStatus)" class="text-base font-semibold">{{ formatStatus(displayQualityStatus) }}</span>
+        </div>
+        <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <span class="mb-3 block text-sm font-medium text-gray-500">Received Items</span>
+          <span class="text-2xl font-bold tracking-tight text-gray-900">{{ receipt.items?.length || 0 }}</span>
+          <span class="ml-1 text-sm text-gray-500">lines</span>
+        </div>
+        <div class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 p-5 shadow-lg">
+          <span class="mb-3 block text-sm font-medium text-gray-400">Received Date</span>
+          <span class="text-lg font-bold tracking-tight text-white">{{ formatDate(receipt.receipt_date) }}</span>
+          <span class="mt-1 block text-xs text-gray-400">{{ receipt.supplier_evaluation ? `Rating ${Number(receipt.supplier_evaluation.overall_rating).toFixed(1)}/5` : 'Supplier not rated' }}</span>
+        </div>
       </div>
 
       <!-- Main Tabs -->
-      <TabView v-model:activeIndex="activeTab" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <TabView v-model:activeIndex="activeTab" class="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <!-- Receipt Details -->
-        <TabPanel header="Details" value="0">
+        <TabPanel value="0">
           <template #header>
             <span>Details</span>
           </template>
@@ -137,6 +116,17 @@
                     >
                       {{ receipt.po_number }}
                     </RouterLink>
+                  </div>
+                  <div class="flex items-start justify-between gap-4">
+                    <span class="text-gray-600">Purchase Requisition</span>
+                    <RouterLink
+                      v-if="receipt.purchase_requisition_id"
+                      :to="`/procurement/purchase-requisitions/${receipt.purchase_requisition_id}`"
+                      class="font-semibold text-blue-600 hover:underline"
+                    >
+                      {{ receipt.purchase_requisition_number || `PR #${receipt.purchase_requisition_id}` }}
+                    </RouterLink>
+                    <span v-else class="font-semibold text-gray-400">-</span>
                   </div>
                   <div class="flex items-start justify-between gap-4">
                     <span class="text-gray-600">Received Date</span>
@@ -311,7 +301,7 @@
         </TabPanel>
 
         <!-- Quality Check -->
-        <TabPanel header="Quality Check" value="1">
+        <TabPanel value="1">
           <template #header>
             <span>Quality Check</span>
             <Badge :value="displayQualityStatus" :severity="qualitySeverity(displayQualityStatus)" class="ml-2" />
@@ -396,25 +386,28 @@
         </TabPanel>
 
         <!-- Timeline -->
-        <TabPanel header="Timeline" value="2">
+        <TabPanel value="2">
           <template #header>
             <span>Timeline</span>
           </template>
 
-          <Timeline :value="timeline" align="left" layout="vertical">
-            <template #content="{ item }">
-              <div class="flex gap-3">
-                <div class="text-sm">
-                  <p class="font-semibold">{{ item.label }}</p>
-                  <p class="text-gray-500 text-xs mt-1">{{ item.date }}</p>
+          <div v-if="timeline.length" class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+            <div v-for="item in timeline" :key="`${item.label}-${item.date}`" class="flex items-start gap-4 bg-white px-4 py-4">
+              <span class="mt-1.5 h-3 w-3 shrink-0 rounded-full" :style="{ backgroundColor: item.color }" />
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="font-semibold text-gray-900">{{ item.label }}</p>
+                  <p class="text-xs text-gray-500">{{ item.date }}</p>
+                </div>
+                <div v-if="item.attachments?.length" class="mt-3 flex flex-wrap gap-2">
+                  <a v-for="attachment in item.attachments" :key="attachment" :href="attachment" target="_blank" rel="noopener" class="block">
+                    <img :src="attachment" alt="Receipt attachment" class="h-16 w-20 rounded-lg border border-gray-200 object-cover transition hover:opacity-80" />
+                  </a>
                 </div>
               </div>
-            </template>
-
-            <template #marker="{ item }">
-              <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: item.color }" />
-            </template>
-          </Timeline>
+            </div>
+          </div>
+          <p v-else class="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">No timeline events available.</p>
         </TabPanel>
       </TabView>
     </div>
@@ -544,6 +537,9 @@ async function loadReceipt() {
     receipt.value = normalizeReceipt(raw)
     const resolutionResponse = await procurementService.getGoodsReceiptResolution(Number(route.params.id))
     resolution.value = resolutionResponse?.data ?? null
+    if (receipt.value && resolution.value?.proof_path) {
+      receipt.value.resolution_proof_url = attachmentUrl(resolution.value.proof_path)
+    }
     buildTimeline()
   } catch (error) {
     toast.add({
@@ -574,6 +570,7 @@ function buildTimeline() {
       label: 'Goods Received',
       date: formatDate(receipt.value?.receipt_date),
       color: isLate.value ? '#ef4444' : '#10b981',
+      attachments: receipt.value?.resolution_proof_url ? [receipt.value.resolution_proof_url] : [],
     },
   ]
 
@@ -654,6 +651,40 @@ function statusSeverity(status: string): string {
   return 'secondary'
 }
 
+function formatStatus(status: string | null | undefined): string {
+  return String(status || 'Pending')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+function statusDot(status: string): string {
+  if (status === 'full') return 'bg-emerald-500'
+  if (status === 'partial') return 'bg-amber-500'
+  if (status === 'damaged' || status === 'rejected') return 'bg-red-500'
+  return 'bg-gray-400'
+}
+
+function statusText(status: string): string {
+  if (status === 'full') return 'text-emerald-600'
+  if (status === 'partial') return 'text-amber-600'
+  if (status === 'damaged' || status === 'rejected') return 'text-red-600'
+  return 'text-gray-600'
+}
+
+function qualityDot(status: string): string {
+  if (status === 'good') return 'bg-emerald-500'
+  if (status === 'fair' || status === 'pending') return 'bg-amber-500'
+  if (status === 'defective' || status === 'poor') return 'bg-red-500'
+  return 'bg-gray-400'
+}
+
+function qualityText(status: string): string {
+  if (status === 'good') return 'text-emerald-600'
+  if (status === 'fair' || status === 'pending') return 'text-amber-600'
+  if (status === 'defective' || status === 'poor') return 'text-red-600'
+  return 'text-gray-600'
+}
+
 function qualitySeverity(status: string): string {
   if (status === 'good') return 'success'
   if (status === 'fair' || status === 'pending') return 'warning'
@@ -664,6 +695,12 @@ function qualitySeverity(status: string): string {
 function formatDate(date: string): string {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function attachmentUrl(path: string | null | undefined): string | null {
+  if (!path) return null
+  if (String(path).startsWith('http')) return String(path)
+  return `/storage/${String(path).replace(/^\/+/, '')}`
 }
 
 function normalizeReceipt(raw: any) {
@@ -697,6 +734,9 @@ function normalizeReceipt(raw: any) {
     po_number: po.po_number,
     po_date: po.order_date,
     expected_delivery_date: po.expected_delivery_date,
+    purchase_requisition_id: po.purchase_requisition?.id || po.purchase_requisition_id || null,
+    purchase_requisition_number: po.purchase_requisition?.pr_number || null,
+    resolution_proof_url: attachmentUrl(raw.resolution?.proof_path || raw.resolution_proof_path),
     supplier_id: po.supplier_id,
     supplier_name: supplier.supplier_name,
     contact_person: supplier.contact_person,

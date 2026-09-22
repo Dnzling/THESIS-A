@@ -4,7 +4,7 @@
     <template v-if="transfer">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button label="Back to Transfer Requests" icon="pi pi-arrow-left" text size="small" @click="router.visit('/warehouse-operations/transfer-requests')"/>
+          <Button icon="pi pi-chevron-left" size="small" rounded severity="warn" @click="router.visit('/warehouse/transfer-requests')"/>
           <div class="mt-2 flex items-center gap-3"><h1 class="text-2xl font-semibold text-slate-900">{{ transfer.transfer_number }}</h1><Badge :value="label(transfer.status)" :severity="severity(transfer.status)"/></div>
           <p class="mt-1 text-sm text-slate-500">Requested {{ dateTime(transfer.created_at) }}</p>
         </div>

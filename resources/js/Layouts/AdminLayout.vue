@@ -16,7 +16,7 @@
   
           <!-- Brand Text -->
           <div>
-            <span class="portal-brand ">FURNISYNC</span>
+            <span class="portal-brand text-orange-500 text-xl">FURNISYNC</span>
           </div>
         </div>
       </div>
@@ -121,6 +121,9 @@
                     <span class="text-xs text-gray-400 whitespace-nowrap">{{ formatTimeAgo(notif.created_at) }}</span>
                   </div>
                   <p class="text-xs text-gray-600 truncate">{{ notif.message || 'Tap to view' }}</p>
+                  <p v-if="notif.data?.created_by?.name" class="mt-1 text-[11px] text-gray-400 truncate">
+                    Created by {{ notif.data.created_by.name }}
+                  </p>
                 </div>
               </button>
             </div>

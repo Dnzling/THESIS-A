@@ -17,6 +17,61 @@
     <Card class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <template #content>
         <form class="space-y-8" @submit.prevent="openSplitPoPreview('submit')">
+          <!-- Supplier selection comes first so products can be scoped to the supplier. -->
+          <section class="border-b border-slate-200 pb-7">
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold text-slate-900">Supplier Information</h3>
+              <p class="mt-1 text-sm text-slate-500">Select the supplier for this purchase order.</p>
+            </div>
+
+            <div v-if="!splitPoMode" class="mb-4 max-w-xl">
+              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Supplier</label>
+              <Select
+                v-model="form.supplier_id"
+                :options="eligibleSuppliers"
+                option-label="display_name"
+                option-value="id"
+                placeholder="Select an eligible supplier"
+                :loading="eligibleSuppliersLoading"
+                :disabled="listedProductIds.length === 0 || eligibleSuppliersLoading"
+                filter
+                show-clear
+                fluid
+                @change="onSupplierChange"
+              />
+              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add products first to find suppliers that carry them.</small>
+              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
+              <small v-else class="mt-1 block text-slate-500">Filtered to suppliers linked to all {{ listedProductIds.length }} listed product(s).</small>
+            </div>
+            <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Suppliers are assigned separately to each product group in this split purchase order.
+            </div>
+
+            <div v-if="selectedSupplier" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contact Person</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.contact_person || '-' }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
+                  <p class="mt-1 break-all font-medium text-slate-900">{{ selectedSupplier.email || '-' }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.phone || '-' }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contract Discount</p>
+                  <p class="mt-1 font-medium text-slate-900">{{ contractDiscountDisplay }}</p>
+                </div>
+              </div>
+            </div>
+            <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              {{ splitPoMode ? 'Supplier details will be applied separately to each generated purchase order.' : 'Select a supplier to load its details.' }}
+            </div>
+          </section>
+
           <!-- Order context is determined by the source PR/RFQ. -->
           <section class="border-b border-slate-200 pb-7">
             <div class="mb-4 flex items-center justify-between gap-3">
@@ -44,71 +99,6 @@
             </div>
           </section>
 
-          <!-- Supplier Information -->
-          <section class="border-b border-slate-200 pb-7">
-            <div class="mb-4">
-              <h3 class="text-lg font-semibold text-slate-900">Supplier Information</h3>
-              <p class="mt-1 text-sm text-slate-500">Contact and contract terms applied to this purchase order.</p>
-            </div>
-
-            <div v-if="!splitPoMode" class="mb-4 max-w-xl">
-              <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Supplier</label>
-              <Select
-                v-model="form.supplier_id"
-                :options="eligibleSuppliers"
-                option-label="display_name"
-                option-value="id"
-                placeholder="Select an eligible supplier"
-                :loading="eligibleSuppliersLoading"
-                :disabled="listedProductIds.length === 0 || eligibleSuppliersLoading"
-                filter
-                show-clear
-                fluid
-                @change="onSupplierChange"
-              />
-              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add products first to find suppliers that carry them.</small>
-              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
-              <small v-else class="mt-1 block text-slate-500">Filtered to suppliers linked to all {{ listedProductIds.length }} listed product(s).</small>
-            </div>
-            <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-              Suppliers are assigned separately to each product group in this split purchase order.
-            </div>
-  
-            <!-- Supplier Details Card (Auto-populated) -->
-            <div v-if="selectedSupplier" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contact Person</p>
-                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.contact_person || '-' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</p>
-                  <p class="mt-1 break-all font-medium text-slate-900">{{ selectedSupplier.email || '-' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
-                  <p class="mt-1 font-medium text-slate-900">{{ selectedSupplier.phone || '-' }}</p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Contract Discount</p>
-                  <p class="mt-1 font-medium text-slate-900">
-                    {{ contractDiscountDisplay }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Tax Rate</p>
-                  <p class="mt-1 font-medium text-slate-900">
-                    {{ supplierTaxRateDisplay }} <span v-if="selectedContract?.is_tax_exempt" class="text-xs text-slate-500">(Exempt)</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-  
-            <div v-else class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-              {{ splitPoMode ? 'Supplier details will be applied separately to each generated purchase order.' : 'Supplier details are being loaded from the source request.' }}
-            </div>
-          </section>
-  
           <!-- Section 3: Line Items -->
           <section class="border-b border-slate-200 pb-7">
             <div class="mb-4 flex items-start justify-between gap-4">
@@ -143,18 +133,28 @@
                     </div>
 
                     <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
-                      <div class="lg:col-span-4">
+              <div class="lg:col-span-4">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Product</label>
                         <Select
-                          :model-value="item.product_id"
+                          :model-value="itemSelectionKey(item)"
                           :options="products"
                           option-label="product_name"
-                          option-value="id"
+                          option-value="selection_key"
                           placeholder="Select product..."
                           class="w-full"
                           filter fluid
                           @update:model-value="(value) => onProductChange(index, value)"
-                        />
+                        >
+                          <template #option="{ option }">
+                            <div class="flex flex-col py-0.5">
+                              <span class="text-sm">{{ option.product_name }}</span>
+                              <span class="text-xs text-slate-500">SKU: {{ option.sku || '—' }}</span>
+                            </div>
+                          </template>
+                        </Select>
+                        <p v-if="item.variation_id || item.variation" class="mt-1 text-xs text-slate-500">
+                          Variant: {{ item.variation?.variation_name || item.variation?.name || `Variant #${item.variation_id}` }}
+                        </p>
                       </div>
 
                       <div class="lg:col-span-2">
@@ -172,23 +172,14 @@
                       </div>
                       <div class="lg:col-span-1">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit</label>
-                        <p class="min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700">
+                        <p class="flex h-[3.25rem] items-center px-3 text-md font-bold text-gray-700">
                           {{ getItemUnitOfMeasurement(item) }}
                         </p>
                       </div>
 
                       <div class="lg:col-span-2">
                         <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Price</label>
-                        <InputNumber
-                          v-model="item.unit_cost"
-                          :min="0"
-                          mode="currency"
-                          currency="PHP"
-                          fluid
-                          disabled
-                          @input="calculateItemTotal(index)"
-                          class="w-full text-right"
-                        />
+                        <p class="flex h-[3.25rem] items-center px-3 text-md text-green-600 font-bold">{{ formatCurrency(Number(item.unit_cost || 0)) }}</p>
                       </div>
 
                       <div class="lg:col-span-3">
@@ -220,36 +211,55 @@
             <Textarea v-model="form.notes" rows="4" auto-resize class="w-full"
               placeholder="Add any special instructions or notes for this purchase order..." />
           </section>
-              <div class="flex justify-end">
+          <div class="flex justify-end">
             <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-700">Cost Summary</h3>
+
               <div class="space-y-3 text-sm">
                 <div class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>Subtotal</span>
+                  <span>Items subtotal</span>
                   <span class="font-medium text-slate-900">{{ formatCurrency(totals.subtotal) }}</span>
                 </div>
-                <div class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>Discount Amount</span>
-                  <span class="font-medium text-slate-900">- {{ formatCurrency(form.discount_amount) }}</span>
+                <div v-if="Number(form.discount_amount) > 0" class="flex items-center justify-between gap-6 text-emerald-700">
+                  <span>Supplier discount</span>
+                  <span class="font-medium">− {{ formatCurrency(form.discount_amount) }}</span>
                 </div>
-                <div class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>Taxable Amount</span>
+                <div class="flex items-center justify-between gap-6 border-t border-slate-100 pt-3 text-slate-600">
+                  <span>Taxable amount</span>
                   <span class="font-medium text-slate-900">{{ formatCurrency(Math.max(0, totals.subtotal - form.discount_amount)) }}</span>
                 </div>
                 <div class="flex items-center justify-between gap-6 text-slate-600">
-                  <span>Tax ({{ supplierTaxRateDisplay }})</span>
+                  <span>VAT <span class="text-xs text-slate-400">({{ selectedContract?.is_tax_exempt ? 'Exempt' : '12%' }})</span></span>
                   <span class="font-medium text-slate-900">{{ formatCurrency(totals.tax_amount) }}</span>
                 </div>
-                <template v-if="shippingEstimate?.breakdown">
-                  <div class="flex items-center justify-between gap-6 text-slate-600"><span>Supplier route</span><span class="font-medium text-slate-900">{{ shippingEstimate.breakdown.distance_km }} km</span></div>
-                  <div class="flex items-center justify-between gap-6 text-slate-600"><span>Base / distance / weight</span><span class="font-medium text-slate-900">{{ formatCurrency(shippingEstimate.breakdown.base_fee) }} / {{ formatCurrency(shippingEstimate.breakdown.distance_fee) }} / {{ formatCurrency(shippingEstimate.breakdown.weight_fee) }}</span></div>
-                  <div v-if="shippingEstimate.breakdown.bulky_item_surcharge || shippingEstimate.breakdown.remote_area_surcharge" class="flex items-center justify-between gap-6 text-slate-600"><span>Surcharges</span><span class="font-medium text-slate-900">{{ formatCurrency((shippingEstimate.breakdown.bulky_item_surcharge || 0) + (shippingEstimate.breakdown.remote_area_surcharge || 0)) }}</span></div>
-                </template>
-                <div class="flex items-center justify-between gap-6 text-slate-600"><span>Shipping Fee</span><span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span></div>
+
+                <div v-if="shippingEstimate?.breakdown" class="rounded-lg bg-slate-50 px-3 py-2.5">
+                  <div class="flex items-center justify-between gap-6 text-slate-600">
+                    <span>Shipping</span>
+                    <span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span>
+                  </div>
+                  <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-4 text-slate-500">
+                    <span>Base {{ formatCurrency(shippingEstimate.breakdown.base_fee) }}</span>
+                    <span>Distance {{ formatCurrency(shippingEstimate.breakdown.distance_fee) }}</span>
+                    <span>Weight {{ formatCurrency(shippingEstimate.breakdown.weight_fee) }}</span>
+                    <span v-if="shippingEstimate.breakdown.bulky_item_surcharge">Bulky {{ formatCurrency(shippingEstimate.breakdown.bulky_item_surcharge) }}</span>
+                    <span v-if="shippingEstimate.breakdown.remote_area_surcharge">Remote area {{ formatCurrency(shippingEstimate.breakdown.remote_area_surcharge) }}</span>
+                  </div>
+                </div>
+                <div v-else class="flex items-center justify-between gap-6 text-slate-600">
+                  <span>Shipping</span>
+                  <span class="font-medium text-slate-900">{{ shippingEstimateLoading ? 'Calculating…' : formatCurrency(shippingFee) }}</span>
+                </div>
+
                 <p v-if="shippingEstimateError" class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{{ shippingEstimateError }}</p>
               </div>
+
               <div class="my-4 border-t border-slate-200"></div>
               <div class="flex items-center justify-between gap-6 rounded-xl bg-slate-900 px-4 py-3 text-white">
-                <span class="font-semibold">Total Amount</span>
+                <div>
+                  <span class="block font-semibold">Total payable</span>
+                  <span class="text-xs text-slate-300">Includes VAT and shipping</span>
+                </div>
                 <span class="text-xl font-bold">{{ formatCurrency(totals.total_amount) }}</span>
               </div>
             </div>
@@ -312,6 +322,18 @@
         </div>
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="removeItemConfirmationVisible" modal header="Remove Item" :style="{ width: '26rem' }">
+      <p class="text-sm text-slate-600">
+        Remove <span class="font-semibold text-slate-900">{{ itemPendingRemoval?.product_name || 'this item' }}</span> from this purchase order?
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Keep Item" severity="secondary" text @click="removeItemConfirmationVisible = false" />
+          <Button label="Remove" severity="danger" @click="confirmRemoveLineItem" />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -370,6 +392,8 @@ const splitPoSupplierGroups = ref<number>(0)
 const splitPoPreviewVisible = ref(false)
 const splitPoPreviewAction = ref<'draft' | 'submit'>('submit')
 const submitConfirmationVisible = ref(false)
+const removeItemConfirmationVisible = ref(false)
+const itemPendingRemoval = ref<{ index: number; product_name: string } | null>(null)
 
 const totals = reactive({
   subtotal: 0,
@@ -385,7 +409,6 @@ let shippingEstimateTimer: ReturnType<typeof setTimeout> | null = null
 const supplierTaxRate = computed(() =>
   selectedContract.value?.is_tax_exempt ? 0 : 12
 )
-const supplierTaxRateDisplay = computed(() => `${Number(supplierTaxRate.value || 0).toFixed(2)}%`)
 const contractDiscountDisplay = computed(() => `${Number(contractDiscountPercent.value || 0).toFixed(2)}%`)
 const selectedBranchName = computed(() => {
   const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
@@ -396,6 +419,10 @@ const listedProductIds = computed(() => Array.from(new Set(
     .map((item: any) => Number(item?.product_id || 0))
     .filter((productId: number) => productId > 0)
 )))
+const productSelectionKey = (productId: any, variationId: any = null) =>
+  `${Number(productId || 0)}:${Number(variationId || 0)}`
+const itemSelectionKey = (item: any) =>
+  productSelectionKey(item?.product_id, item?.variation_id || item?.variation?.id)
 const selectedSupplierName = computed(() => {
   if (splitPoMode.value) {
     return `${splitPoSupplierGroups.value} assigned suppliers`
@@ -470,9 +497,11 @@ onMounted(async () => {
         if (payload) {
           // Populate form items with server-provided items (keep existing mapping)
           if (Array.isArray(payload.requisition?.items)) {
-            form.items = payload.requisition.items.map((item: any) => ({
+              form.items = payload.requisition.items.map((item: any) => ({
               id: `req-${item.id}`,
               product_id: item.product_id,
+              variation_id: item.variation_id || item.variation?.id || null,
+              variation: item.variation || null,
               product_name: item.product?.product_name || item.product_name || '',
               unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
               selected_supplier_id: item.selected_supplier_id || null,
@@ -554,7 +583,7 @@ const syncItemUnitCostsFromProducts = () => {
 
   form.items.forEach((item) => {
     if (!item || !item.product_id) return
-    const product = products.value.find((p) => Number(p.id) === Number(item.product_id))
+    const product = products.value.find((p) => p.selection_key === itemSelectionKey(item))
     if (!product) return
     const current = Number(item.unit_cost || 0)
     if (current > 0) return
@@ -582,6 +611,8 @@ const prefillFromRequisition = async (requisitionId: number) => {
       form.items = requisition.items.map((item: any) => ({
         id: `req-${item.id}`,
         product_id: item.product_id,
+        variation_id: item.variation_id || item.variation?.id || null,
+        variation: item.variation || null,
         product_name: item.product?.product_name || item.product_name || '',
         unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         selected_supplier_id: item.selected_supplier_id || null,
@@ -695,6 +726,8 @@ const prefillFromRFQ = async (rfqId: number) => {
             id: `rfq-item-${item.id || Date.now()}`,
             rfq_item_id: item.id || null,
             product_id: item.product_id || product.id || null,
+            variation_id: item.variation_id || item.variation?.id || null,
+            variation: item.variation || null,
             product_name: product.product_name || item.product_name || '',
             unit_of_measurement: product.unit_of_measurement || item.unit_of_measurement || item.unit || '',
             quantity_ordered: item.quantity || 1,
@@ -762,6 +795,8 @@ const loadPOForEdit = async (poId: number) => {
       form.items = po.items.map((item: any) => ({
         product_id: item.product_id,
         variation_id: item.variation_id,
+        variation: item.variation || null,
+        product_name: item.product?.product_name || item.product_name || '',
         unit_of_measurement: item.product?.unit_of_measurement || item.unit_of_measurement || item.unit || '',
         quantity_ordered: item.quantity_ordered,
         unit_cost: item.unit_cost
@@ -793,22 +828,47 @@ const loadProductsByBranch = async (branchId: number) => {
     const data = response.data?.data || response.data || []
 
     // Map the API response to product format
-    products.value = data.map((item: any) => ({
-      id: item.product_id || item.product?.id,
-      product_name: item.product?.product_name || item.product_name || 'Unknown Product',
-      sku: item.product?.sku || item.sku,
-      stock_level: item.quantity_available || 0,
-      cost_price: item.product?.cost_price ?? item.unit_cost ?? 0,
-      quantity_on_hand: item.quantity_on_hand,
-      reorder_point: item.reorder_point,
-      category_id: item.product?.category_id || item.category_id
-    })).filter((p: any) => !!p.id)
+    const variantProductIds = new Set(
+      data.filter((item: any) => item.variation_id || item.variation?.id)
+        .map((item: any) => Number(item.product_id || item.product?.id))
+    )
+    products.value = data
+      .filter((item: any) => {
+        const productId = Number(item.product_id || item.product?.id)
+        return item.variation_id || item.variation?.id || !variantProductIds.has(productId)
+      })
+      .map((item: any) => {
+        const productId = Number(item.product_id || item.product?.id)
+        const variation = item.variation || null
+        const variationId = Number(item.variation_id || variation?.id || 0) || null
+        const parentName = item.product?.product_name || item.product_name || 'Unknown Product'
+        const variationName = variation?.variation_name || variation?.name
+        return {
+          id: productId,
+          product_id: productId,
+          variation_id: variationId,
+          variation,
+          selection_key: productSelectionKey(productId, variationId),
+          product_name: variationId ? `${parentName} — ${variationName || `Variant #${variationId}`}` : parentName,
+          sku: variation?.variation_sku || item.product?.sku || item.sku,
+          unit_of_measurement: variation?.unit_of_measurement || item.product?.unit_of_measurement || item.unit_of_measurement,
+          stock_level: item.quantity_available || 0,
+          cost_price: variation?.cost_price ?? item.product?.cost_price ?? item.unit_cost ?? 0,
+          quantity_on_hand: item.quantity_on_hand,
+          reorder_point: variation?.reorder_point ?? item.reorder_point,
+          category_id: item.product?.category_id || item.category_id
+        }
+      })
+      .filter((p: any) => !!p.id)
 
     if (products.value.length === 0) {
       const fallbackRes = await procurementService.getProcurementProducts({ per_page: 500 })
       const fallbackList = fallbackRes?.data?.data || fallbackRes?.data || []
       products.value = fallbackList.map((product: any) => ({
         id: product.id,
+        product_id: product.id,
+        variation_id: null,
+        selection_key: productSelectionKey(product.id),
         product_name: product.product_name || 'Unknown Product',
         sku: product.sku || '',
         stock_level: product.stock_level || 0,
@@ -838,8 +898,13 @@ const loadProductsBySupplier = async (supplierId: number) => {
     const list = payload?.data ?? payload ?? []
     products.value = list.map((product: any) => ({
       id: product.id,
+      product_id: product.id,
+      variation_id: product.variation_id || product.variation?.id || null,
+      variation: product.variation || null,
+      selection_key: productSelectionKey(product.id, product.variation_id || product.variation?.id),
       product_name: product.product_name || 'Unknown Product',
       sku: product.sku || '',
+      unit_of_measurement: product.unit_of_measurement || product.variation?.unit_of_measurement || '',
       stock_level: product.stock_level || 0,
       cost_price: product.unit_cost ?? product.cost_price ?? 0,
       category_id: product.category_id
@@ -1018,14 +1083,14 @@ watch(
 
 const onProductChange = (index: number, productId: any) => {
   if (productId) {
-    // Ensure we have a numeric ID
-    const id = typeof productId === 'object' ? productId?.id : productId
+    const key = typeof productId === 'object' ? productId?.selection_key : String(productId)
 
-    if (id) {
-      const numericId = Number(id)
-      const product = products.value.find((p) => Number(p.id) === numericId)
+    if (key) {
+      const product = products.value.find((p) => p.selection_key === key)
       if (product) {
-        form.items[index].product_id = numericId
+        form.items[index].product_id = Number(product.product_id || product.id)
+        form.items[index].variation_id = product.variation_id || null
+        form.items[index].variation = product.variation || null
         form.items[index].product_name = product.product_name
         form.items[index].unit_of_measurement = product.unit_of_measurement || product.unit || ''
         form.items[index].stock_level = product.stock_level || 0
@@ -1048,6 +1113,8 @@ const addLineItem = () => {
   form.items.push({
     id: `item-${Date.now()}`,
     product_id: null,
+    variation_id: null,
+    variation: null,
     unit_of_measurement: '',
     selected_supplier_id: null,
     selected_supplier_name: null,
@@ -1058,9 +1125,22 @@ const addLineItem = () => {
 }
 
 const removeLineItem = (index: number) => {
+  itemPendingRemoval.value = {
+    index,
+    product_name: form.items[index]?.product_name || '',
+  }
+  removeItemConfirmationVisible.value = true
+}
+
+const confirmRemoveLineItem = () => {
+  const index = itemPendingRemoval.value?.index
+  if (index === undefined || index === null) return
+
   form.items.splice(index, 1)
   delete budgetWarnings.value[index]
   updateTotals()
+  removeItemConfirmationVisible.value = false
+  itemPendingRemoval.value = null
 }
 
 const calculateItemTotal = (index: number) => {
@@ -1216,7 +1296,8 @@ const submitForm = async (confirmedSplitMode = false) => {
         shipping_cost: shippingFee.value,
         notes: form.notes,
         items: form.items.map((item) => ({
-          product_id: item.product_id,
+        product_id: item.product_id,
+        variation_id: item.variation_id || item.variation?.id || null,
           rfq_item_id: item.rfq_item_id || null,
           quantity_ordered: item.quantity_ordered,
           unit_cost: item.unit_cost
@@ -1230,7 +1311,9 @@ const submitForm = async (confirmedSplitMode = false) => {
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: 'Purchase Order updated successfully',
+        detail: saveDraft.value
+          ? 'Purchase Order draft updated successfully'
+          : 'Purchase Order submitted for finance approval successfully',
         life: 2000
       })
     } else {

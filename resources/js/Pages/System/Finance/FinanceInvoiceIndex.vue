@@ -433,8 +433,8 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import procurementService from '../../../../services/procurement.service'
-import { useAuthStore } from '../../../../stores/auth'
+import procurementService from '../../../services/procurement.service'
+import { useAuthStore } from '../../../stores/auth'
 
 const router = useRouter()
 const toast = useToast()

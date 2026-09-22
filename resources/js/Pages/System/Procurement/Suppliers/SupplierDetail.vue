@@ -254,7 +254,12 @@
               </thead>
               <tbody>
                 <tr v-for="item in selectedPurchaseOrder.items" :key="item.id" class="border-t border-slate-100">
-                  <td class="px-3 py-3 text-slate-900">{{ item.product?.product_name || item.product_name || '-' }}</td>
+                  <td class="px-3 py-3 text-slate-900">
+                    <p>{{ item.product?.product_name || item.product_name || '-' }}</p>
+                    <p v-if="item.variation" class="mt-1 text-xs text-slate-500">
+                      Variant: {{ item.variation.variation_name || item.variation.name || `Variant #${item.variation_id}` }}
+                    </p>
+                  </td>
                   <td class="px-3 py-3 text-right text-slate-700">{{ item.quantity_ordered ?? item.quantity ?? 0 }}</td>
                   <td class="px-3 py-3 text-right text-slate-700">PHP {{ formatCurrency(item.unit_cost ?? item.unit_price)
                     }}</td>

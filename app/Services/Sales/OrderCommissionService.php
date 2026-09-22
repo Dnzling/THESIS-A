@@ -47,7 +47,7 @@ class OrderCommissionService
 
         $orderType = $order instanceof EcommerceOrder ? 'ecommerce' : 'pos';
 
-        return PlatformRevenue::firstOrCreate(
+        $revenue = PlatformRevenue::firstOrCreate(
             ['reference' => "commission:{$orderType}:{$order->id}"],
             [
                 'store_id' => $order->store_id,
@@ -66,5 +66,19 @@ class OrderCommissionService
                 'paid_at' => $collected ? now() : null,
             ]
         );
+
+        // A commission may first be recorded as a receivable (for example,
+        // COD) and collected later. Keep the existing idempotent row while
+        // promoting it to collected revenue when settlement completes.
+        if ($collected && !$revenue->paid_at) {
+            $metadata = $revenue->metadata ?? [];
+            $metadata['collection_status'] = 'collected';
+            $revenue->update([
+                'metadata' => $metadata,
+                'paid_at' => now(),
+            ]);
+        }
+
+        return $revenue;
     }
 }

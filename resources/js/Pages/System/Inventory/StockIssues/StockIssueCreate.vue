@@ -248,7 +248,7 @@
             </div>
 
             <!-- Totals Card -->
-            <div class="bg-linear-to-br from-gray-50 to-gray-100 rounded-xl p-6 border">
+            <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border">
               <h4 class="text-sm font-medium text-gray-600 mb-4">Issue Summary</h4>
               <div class="space-y-3">
                 <div class="flex justify-between items-center py-2 border-b">

@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
       <div class="flex justify-center">
       </div>
@@ -31,7 +31,8 @@
             </label>
             <div class="flex justify-center space-x-2 mb-6">
               <input v-for="(_, index) in otpDigits" :key="index" ref="otpInputs" v-model="otpDigits[index]"
-                type="number" maxlength="1" @input="handleOtpInput(index, $event)"
+                type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code"
+                @input="handleOtpInput(index, $event)"
                 @keydown="handleOtpKeydown(index, $event)" @paste="handlePaste"
                 class="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition"
                 :class="{ 'border-red-300': errorMessage }" />

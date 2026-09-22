@@ -219,6 +219,9 @@
                   <div>
                     <p class="font-medium text-gray-900">{{ item.product?.product_name || '-' }}</p>
                     <p class="text-xs text-gray-500 mt-1">SKU: {{ item.product?.sku || '-' }}</p>
+                    <p v-if="item.variation" class="mt-1 text-xs text-orange-700">
+                      Variant: {{ item.variation.variation_name || item.variation.name || `Variant #${item.variation_id}` }}
+                    </p>
                     <div v-if="item.quoted_variant_snapshot" class="mt-2 rounded-xl border border-orange-100 bg-orange-50 p-2 text-xs">
                       <p class="font-semibold text-orange-800">Quoted variant: {{ item.quoted_variant_snapshot.name }}</p>
                       <p class="mt-1 text-slate-600">{{ [item.quoted_variant_snapshot.size, item.quoted_variant_snapshot.color, item.quoted_variant_snapshot.material, item.quoted_variant_snapshot.texture, item.quoted_variant_snapshot.finish].filter(Boolean).join(' · ') || 'No additional attributes' }}</p>

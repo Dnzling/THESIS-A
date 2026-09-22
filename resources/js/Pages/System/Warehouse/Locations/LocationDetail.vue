@@ -338,7 +338,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
@@ -352,6 +352,7 @@ const products = ref<any[]>([])
 const toast = useToast()
 const router = useRouter()
 const route = useRoute()
+const warehouseRoute = computed(() => route.path.startsWith('/warehouse/'))
 
 const loadLocation = async () => {
   loading.value = true
@@ -400,11 +401,11 @@ const loadProducts = async () => {
 }
 
 const goBack = () => {
-  router.push({ name: 'inventory.locations.index' })
+  router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
 }
 
 const editLocation = () => {
-  router.push({ name: 'inventory.locations.edit', params: { id: route.params.id } })
+  router.push({ name: warehouseRoute.value ? 'warehouse.locations.edit' : 'inventory.locations.edit', params: { id: route.params.id } })
 }
 
 const confirmDelete = () => {
@@ -423,7 +424,7 @@ const deleteLocation = async () => {
         detail: 'Location deleted successfully',
         life: 3000
       })
-      router.push({ name: 'inventory.locations.index' })
+      router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
     } else {
       toast.add({
         severity: 'error',

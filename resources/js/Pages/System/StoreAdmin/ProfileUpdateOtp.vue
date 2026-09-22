@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-linear-to-br from-orange-50 via-white to-amber-50 px-4 py-12">
+  <div class="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50 px-4 py-12">
     <Toast />
     <div class="mx-auto max-w-md">
       <div class="mb-5 text-center">

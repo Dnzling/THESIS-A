@@ -6,6 +6,7 @@ namespace App\Http\Requests\Inventory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use App\Models\Inventory\Warehouse;
+use App\Models\Store\Branch;
 
 class LocationRequest extends FormRequest
 {
@@ -23,6 +24,7 @@ class LocationRequest extends FormRequest
     public function rules(): array
     {
         $locationId = $this->route('location')?->id;
+        $isUpdate = $this->route('location') !== null;
 
         return [
             'warehouse_id' => [
@@ -31,7 +33,8 @@ class LocationRequest extends FormRequest
                 Rule::exists('warehouses', 'id'),
             ],
             'location_code' => [
-                'required',
+                Rule::requiredIf($isUpdate),
+                'nullable',
                 'string',
                 'max:20',
                 'regex:/^[A-Z0-9_-]+$/',
@@ -160,6 +163,48 @@ class LocationRequest extends FormRequest
     }
 
     /**
+     * Branch users do not choose a warehouse when creating a location.
+     * Resolve the active warehouse for their branch before validation runs.
+     */
+    protected function prepareForValidation(): void
+    {
+        if (!$this->isMethod('post')) {
+            return;
+        }
+
+        $user = $this->user();
+        $branchId = (int) ($user?->branch_id ?? 0);
+        $storeId = (int) ($user?->store_id ?? 0);
+
+        if ($branchId <= 0) {
+            return;
+        }
+
+        $branch = Branch::query()
+            ->whereKey($branchId)
+            ->when($storeId > 0, fn ($query) => $query->where('store_id', $storeId))
+            ->where('branch_type', 'warehouse')
+            ->first();
+
+        if (!$branch) {
+            return;
+        }
+
+        $warehouseQuery = Warehouse::query()
+            ->where('branch_id', $branchId)
+            ->where('status', 'active')
+            ->orderBy('id');
+
+        if ($storeId > 0) {
+            $warehouseQuery->where('store_id', $storeId);
+        }
+
+        if ($warehouse = $warehouseQuery->first()) {
+            $this->merge(['warehouse_id' => $warehouse->id]);
+        }
+    }
+
+    /**
      * Get custom attributes for validator errors.
      */
     public function attributes(): array
@@ -210,6 +255,21 @@ class LocationRequest extends FormRequest
                 $warehouse = Warehouse::find($this->warehouse_id);
                 if ($warehouse && $warehouse->status !== 'active') {
                     $validator->errors()->add('warehouse_id', 'Cannot create locations in inactive warehouses.');
+                }
+
+                // A branch user may only create locations in that branch's warehouse.
+                $user = $this->user();
+                if ($warehouse && $user) {
+                    if ((int) ($user->store_id ?? 0) > 0 && (int) $warehouse->store_id !== (int) $user->store_id) {
+                        $validator->errors()->add('warehouse_id', 'This warehouse does not belong to your store.');
+                    }
+                    if ((int) ($user->branch_id ?? 0) > 0 && (int) $warehouse->branch_id !== (int) $user->branch_id) {
+                        $validator->errors()->add('warehouse_id', 'This warehouse does not belong to your branch.');
+                    }
+                }
+
+                if ($warehouse && $warehouse->branch && $warehouse->branch->branch_type !== 'warehouse') {
+                    $validator->errors()->add('warehouse_id', 'Locations can only be created for warehouse branches.');
                 }
             }
 

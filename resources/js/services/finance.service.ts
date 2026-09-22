@@ -3,6 +3,46 @@ import axiosClient from '../axios'
 const baseUrl = '/api/finance'
 
 const financeService = {
+  async getLiquidations(params?: any) {
+    const response = await axiosClient.get(`${baseUrl}/liquidations`, { params })
+    return response.data
+  },
+
+  async getLiquidation(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/liquidations/${id}`)
+    return response.data
+  },
+
+  async createLiquidation(payload: any) {
+    const response = await axiosClient.post(`${baseUrl}/liquidations`, payload)
+    return response.data
+  },
+
+  async approveLiquidation(id: number | string, payload: any = {}) {
+    const response = await axiosClient.post(`${baseUrl}/liquidations/${id}/approve`, payload)
+    return response.data
+  },
+
+  async rejectLiquidation(id: number | string, payload: { reason: string }) {
+    const response = await axiosClient.post(`${baseUrl}/liquidations/${id}/reject`, payload)
+    return response.data
+  },
+
+  async releaseLiquidation(id: number | string) {
+    const response = await axiosClient.post(`${baseUrl}/liquidations/${id}/release`)
+    return response.data
+  },
+
+  async submitLiquidation(id: number | string, payload: FormData) {
+    const response = await axiosClient.post(`${baseUrl}/liquidations/${id}/submit`, payload)
+    return response.data
+  },
+
+  async settleLiquidation(id: number | string, payload: any = {}) {
+    const response = await axiosClient.post(`${baseUrl}/liquidations/${id}/settle`, payload)
+    return response.data
+  },
+
   async getRefunds(params?: any) {
     const response = await axiosClient.get(`${baseUrl}/refunds`, { params })
     return response.data
@@ -30,6 +70,11 @@ const financeService = {
 
   async getDashboard() {
     const response = await axiosClient.get(`${baseUrl}/dashboard`)
+    return response.data
+  },
+
+  async getTaxVatReport(params?: any) {
+    const response = await axiosClient.get(`${baseUrl}/tax-vat`, { params })
     return response.data
   },
 
@@ -165,6 +210,11 @@ const financeService = {
 
   async getCashflowTransactions(params?: any) {
     const response = await axiosClient.get(`${baseUrl}/cashflow/transactions`, { params })
+    return response.data
+  },
+
+  async getCashflowTransactionDetail(id: number | string) {
+    const response = await axiosClient.get(`${baseUrl}/cashflow/transactions/${id}`)
     return response.data
   },
 

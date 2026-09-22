@@ -25,7 +25,7 @@
 
       <Card>
         <template #content>
-          <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-3 mb-4">
+          <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-4 mb-4">
             <IconField>
               <InputIcon class="pi pi-search" />
               <InputText v-model="filters.search" placeholder="Search requisition, product, or SKU" fluid  size="small" />
@@ -37,6 +37,7 @@
               optionValue="value"
               placeholder="All Statuses"
               showClear
+              fluid
               size="small"
             />
             <DatePicker
@@ -47,6 +48,7 @@
               showIcon
               :maxDate="new Date()"
               showButtonBar
+              fluid
               class="w-full"
               size="small"
               @date-select="onDateRangeChange"
@@ -79,22 +81,18 @@
           <DataTable
             v-else
             :value="rows"
-            class="p-datatable-sm text-xs p-datatable-fluid"
+            class="p-datatable-sm text-sm p-datatable-fluid"
             responsiveLayout="scroll"
             paginator
             :rows="perPage"
             :totalRecords="total"
             :lazy="true"
             :first="(page - 1) * perPage"
-            dataKey="id"
             @page="onPageChange"
             :sortField="sortField"
             :sortOrder="sortOrder"
             @sort="onSort"
-            @row-click="onRowClick"
-            :rowClass="rowClass"
-            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
-            currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
+            rowHover
             :rowsPerPageOptions="[15, 25, 50]"
           >
             <template #empty>
@@ -126,7 +124,7 @@
           </template>
         </Column>
 
-            <Column header="Status" style="width: 170px">
+            <Column header="Status" style="width: 230px">
               <template #body="{ data }">
                 <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
@@ -138,9 +136,29 @@
               </template>
             </Column>
 
-            <Column header="Reason" style="min-width: 260px">
+            <Column field="estimated_amount" header="Request Amount" style="width: 150px">
+              <template #body="{ data }">
+                <span class="font-semibold text-green-600 justify-end flex">{{
+                  formatCurrency(data.estimated_amount)
+                }}</span>
+              </template>
+            </Column>
+
+            <Column header="Reason" style="min-width: 230px">
               <template #body="{ data }">
                 <span class="text-gray-700">{{ String(data.reason || '—') }}</span>
+              </template>
+            </Column>
+            <Column header="Action" style="width: 90px">
+              <template #body="{ data }">
+                <Button
+                  icon="pi pi-eye"
+                  size="small"
+                  outlined
+                  label="View"
+                  rounded
+                  @click.stop="router.push({ name: props.warehouseMode ? 'warehouse.purchase-requisitions.view' : 'inventory.requisites.detail', params: { id: data.id } })"
+                />
               </template>
             </Column>
           </DataTable>
@@ -223,6 +241,11 @@ const formatTime = (value: any) => {
   const d = new Date(value)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
+
+const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+}).format(Number(value || 0))
 
 const formatDateParam = (value: Date | null | undefined) => {
   if (!value) return undefined

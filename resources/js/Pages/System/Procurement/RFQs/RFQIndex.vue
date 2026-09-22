@@ -16,7 +16,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Total RFQs</p>
-              <p class="text-xl font-bold text-gray-900">{{ summary.total || 0 }}</p>
+              <Skeleton v-if="loading" width="3rem" height="1.5rem" />
+              <p v-else class="text-xl font-bold text-gray-900">{{ summary.total || 0 }}</p>
             </div>
             <i class="pi pi-briefcase text-4xl text-black-500"></i>
           </div>
@@ -28,7 +29,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Draft</p>
-              <p class="text-xl font-bold text-black-600">{{ summary.draft || 0 }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.5rem" />
+              <p v-else class="text-xl font-bold text-black-600">{{ summary.draft || 0 }}</p>
             </div>
             <i class="pi pi-file text-4xl text-black-500"></i>
           </div>
@@ -40,7 +42,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Active</p>
-              <p class="text-xl font-bold text-black">{{ summary.sent || 0 }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.5rem" />
+              <p v-else class="text-xl font-bold text-black">{{ summary.sent || 0 }}</p>
             </div>
             <i class="pi pi-send text-4xl text-black"></i>
           </div>
@@ -52,7 +55,8 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs font-bold  uppercase tracking-wide">Approved</p>
-              <p class="text-xl font-bold text-black-600">{{ summary.approved || 0 }}</p>
+              <Skeleton v-if="loading" width="2rem" height="1.5rem" />
+              <p v-else class="text-xl font-bold text-black-600">{{ summary.approved || 0 }}</p>
             </div>
             <i class="pi pi-check text-4xl text-black"></i>
           </div>
@@ -84,7 +88,11 @@
         </div>
       </template>
       <template #content>
-        <DataTable :value="rfqs" :loading="loading" class="p-datatable-sm" rowHover :expandedRows="expandedRows"
+        <div v-if="loading" class="space-y-3 px-4 pb-4">
+          <div class="grid grid-cols-6 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 6" :key="`head-${cell}`" height="0.75rem" /></div>
+          <div v-for="row in 6" :key="`skeleton-${row}`" class="grid grid-cols-6 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 6" :key="`cell-${row}-${cell}`" height="1.25rem" /></div>
+        </div>
+        <DataTable v-else :value="rfqs" class="p-datatable-sm" rowHover :expandedRows="expandedRows"
           responsiveLayout="scroll" paginator :rows="perPage" :totalRecords="total" :first="(currentPage - 1) * perPage"
           @page="onPageChange" :rowsPerPageOptions="[15, 25, 50]" @row-click="onRowClick" :rowClass="rowClass">
   
@@ -229,6 +237,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 
@@ -237,7 +246,7 @@ const toast = useToast()
 const authStore = useAuthStore()
 const canManageRfq = computed(() => authStore.hasPermission('procurement.rfq.manage'))
 
-const loading = ref(false)
+const loading = ref(true)
 const rfqs = ref<any[]>([])
 const expandedRows = ref<any[]>([])
 const currentPage = ref(1)

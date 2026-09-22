@@ -267,7 +267,7 @@
               <div v-for="product in recentProducts" :key="product.id"
                 class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                 @click="router.push({ name: 'merchandising.products.view', params: { id: product.id } })">
-                <div class="w-10 h-10 bg-linear-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded flex items-center justify-center">
                   <i class="pi pi-box text-blue-600"></i>
                 </div>
                 <div class="flex-1 min-w-0">

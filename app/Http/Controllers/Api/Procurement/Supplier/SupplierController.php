@@ -645,25 +645,56 @@ class SupplierController extends Controller
         $productsQuery = $supplier->products()
             ->with([
                 'category:id,category_name',
+                'variations' => fn ($query) => $query->active()
+                    ->select([
+                        'id', 'product_id', 'variation_name', 'variation_sku',
+                        'cost_price', 'reorder_point', 'unit_of_measurement',
+                    ]),
                 'inventory' => function ($q) use ($branchId) {
                     if ($branchId) {
                         $q->where('branch_id', $branchId);
                     }
                 }
             ])
-            ->select('products.id', 'products.product_name', 'products.sku', 'products.category_id', 'products.cost_price');
+            ->select(
+                'products.id', 'products.product_name', 'products.sku',
+                'products.category_id', 'products.cost_price', 'products.unit_of_measurement'
+            );
 
-        $products = $productsQuery->get()->map(function ($product) use ($branchId) {
-            $inv = $branchId ? $product->inventory->first() : null;
-            return [
+        $products = $productsQuery->get()->flatMap(function ($product) use ($branchId) {
+            if ($product->variations->isNotEmpty()) {
+                return $product->variations->map(function ($variation) use ($product, $branchId) {
+                    $inventory = $branchId
+                        ? $product->inventory->firstWhere('variation_id', $variation->id)
+                        : null;
+
+                    return [
+                        'id' => $product->id,
+                        'product_name' => "{$product->product_name} — {$variation->variation_name}",
+                        'sku' => $variation->variation_sku ?: $product->sku,
+                        'category_id' => $product->category_id,
+                        'variation_id' => $variation->id,
+                        'variation' => $variation,
+                        'unit_of_measurement' => $variation->unit_of_measurement ?: $product->unit_of_measurement,
+                        'stock_level' => $inventory?->quantity_available ?? 0,
+                        'unit_cost' => $variation->cost_price ?? $product->getRawOriginal('cost_price'),
+                    ];
+                });
+            }
+
+            $inventory = $branchId ? $product->inventory->first() : null;
+            return [[
                 'id' => $product->id,
                 'product_name' => $product->product_name,
                 'sku' => $product->sku,
                 'category_id' => $product->category_id,
-                'stock_level' => $inv?->quantity_available ?? 0,
+                'variation_id' => null,
+                'variation' => null,
+                'unit_of_measurement' => $product->unit_of_measurement,
+                'stock_level' => $inventory?->quantity_available ?? 0,
                 'unit_cost' => $product->getRawOriginal('cost_price'),
-            ];
-        });
+            ]];
+        })->values();
 
         return response()->json([
             'success' => true,

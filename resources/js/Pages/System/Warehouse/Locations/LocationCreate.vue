@@ -1,5 +1,6 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
+  <div class=" min-h-screen p-6">
+    <ConfirmDialog />
     <div class="max-w-4xl mx-auto">
       <div class="mb-6">
         <div class="flex items-center gap-4">
@@ -36,38 +37,6 @@
                     required
                   />
                   <small v-if="errors.name" class="p-error">{{ errors.name[0] }}</small>
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
-                    Location Code <span class="text-red-500">*</span>
-                  </label>
-                  <InputText
-                    v-model="form.code"
-                    placeholder="Enter location code"
-                    class="w-full"
-                    :class="{ 'p-invalid': errors.code }"
-                    required
-                  />
-                  <small v-if="errors.code" class="p-error">{{ errors.code[0] }}</small>
-                </div>
-
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">
-                    Warehouse <span class="text-red-500">*</span>
-                  </label>
-                  <Select
-                    v-model="form.warehouse_id"
-                    :options="warehouses"
-                    optionLabel="name"
-                    optionValue="id"
-                    placeholder="Select warehouse"
-                    class="w-full"
-                    :class="{ 'p-invalid': errors.warehouse_id }"
-                    :loading="warehousesLoading"
-                    required
-                  />
-                  <small v-if="errors.warehouse_id" class="p-error">{{ errors.warehouse_id[0] }}</small>
                 </div>
 
                 <div>
@@ -110,7 +79,7 @@
                   </label>
                   <InputNumber
                     v-model="form.capacity"
-                    placeholder="Enter capacity"
+                    placeholder="Enter number of units"
                     class="w-full"
                     :class="{ 'p-invalid': errors.capacity }"
                     :min="0"
@@ -183,7 +152,7 @@
                   </label>
                   <InputNumber
                     v-model="form.level"
-                    placeholder="Enter level"
+                    placeholder="Enter level number"
                     class="w-full"
                     :class="{ 'p-invalid': errors.level }"
                     :min="0"
@@ -216,7 +185,7 @@
                   </label>
                   <InputNumber
                     v-model="form.length"
-                    placeholder="Enter length"
+                    placeholder="Enter length in cm"
                     class="w-full"
                     :class="{ 'p-invalid': errors.length }"
                     :min="0"
@@ -232,7 +201,7 @@
                   </label>
                   <InputNumber
                     v-model="form.width"
-                    placeholder="Enter width"
+                    placeholder="Enter width in cm"
                     class="w-full"
                     :class="{ 'p-invalid': errors.width }"
                     :min="0"
@@ -248,7 +217,7 @@
                   </label>
                   <InputNumber
                     v-model="form.height"
-                    placeholder="Enter height"
+                    placeholder="Enter height in cm"
                     class="w-full"
                     :class="{ 'p-invalid': errors.height }"
                     :min="0"
@@ -264,7 +233,7 @@
                   </label>
                   <InputNumber
                     v-model="form.weight_limit"
-                    placeholder="Enter weight limit"
+                    placeholder="Enter weight limit in kg"
                     class="w-full"
                     :class="{ 'p-invalid': errors.weight_limit }"
                     :min="0"
@@ -317,23 +286,23 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import { useRouter, useRoute } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 
 const loading = ref(false)
-const warehousesLoading = ref(false)
 const errors = ref<any>({})
-const warehouses = ref<any[]>([])
 const toast = useToast()
+const confirm = useConfirm()
 const router = useRouter()
 const route = useRoute()
+const warehouseRoute = computed(() => route.path.startsWith('/warehouse/'))
 
 const form = reactive({
   name: '',
-  code: '',
-  warehouse_id: route.query.warehouse_id || '',
   type: '',
   status: 'active',
   capacity: null as number | null,
@@ -364,36 +333,32 @@ const typeOptions = [
   { label: 'Secure', value: 'secure' }
 ]
 
-const loadWarehouses = async () => {
-  warehousesLoading.value = true
-  try {
-    const response = await inventoryService.getWarehouses({ per_page: 1000 })
-
-    if (response.success) {
-      warehouses.value = response.data || []
-    }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load warehouses',
-      life: 3000
-    })
-  } finally {
-    warehousesLoading.value = false
-  }
-}
-
 const goBack = () => {
-  router.push({ name: 'inventory.locations.index' })
+  router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
 }
 
-const submitForm = async () => {
+const submitLocation = async () => {
   loading.value = true
   errors.value = {}
 
   try {
-    const response = await inventoryService.createLocation(form)
+    const response = await inventoryService.createLocation({
+      name: form.name,
+      type: form.type,
+      status: form.status,
+      max_capacity_units: form.capacity,
+      aisle: form.aisle || null,
+      rack: form.rack || null,
+      shelf: form.shelf || null,
+      bin: form.bin || null,
+      max_weight_kg: form.weight_limit,
+      dimensions: {
+        depth: form.length,
+        width: form.width,
+        height: form.height
+      },
+      description: form.description || null
+    })
 
     if (response.success) {
       toast.add({
@@ -402,7 +367,7 @@ const submitForm = async () => {
         detail: 'Location created successfully',
         life: 3000
       })
-      router.push({ name: 'inventory.locations.detail', params: { id: response.data.id } })
+      router.push({ name: warehouseRoute.value ? 'warehouse.locations.view' : 'inventory.locations.detail', params: { id: response.data.id } })
     } else {
       if (response.errors) {
         errors.value = response.errors
@@ -431,7 +396,18 @@ const submitForm = async () => {
   }
 }
 
-onMounted(() => {
-  loadWarehouses()
-})
+const submitForm = () => {
+  if (!form.name || !form.type) return
+
+  confirm.require({
+    header: 'Confirm Create Location',
+    message: `Create location "${form.name}" in your branch warehouse? The warehouse and location code will be assigned automatically.`,
+    icon: 'pi pi-question-circle',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Create Location',
+    rejectProps: { severity: 'secondary', outlined: true },
+    accept: submitLocation
+  })
+}
+
 </script>

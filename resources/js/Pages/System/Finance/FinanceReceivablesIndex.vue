@@ -1,8 +1,8 @@
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="space-y-6 p-4 text-sm md:p-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-semibold tracking-tight text-gray-900">Accounts Receivable</h1>
+        <h1 class="text-xl font-semibold tracking-tight text-gray-900">Receivables</h1>
         <p class="mt-0.5 text-sm text-gray-500">Customer invoices and collections from Sales and Ecommerce.</p>
       </div>
     </div>
@@ -17,7 +17,8 @@
                 <i class="pi pi-clock text-sm text-orange-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.pendingCount }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.pendingCount }}</p>
           </div>
         </template>
       </Card>
@@ -31,7 +32,8 @@
                 <i class="pi pi-check-circle text-sm text-green-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.paidCount }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.paidCount }}</p>
           </div>
         </template>
       </Card>
@@ -45,12 +47,13 @@
                 <i class="pi pi-exclamation-circle text-sm text-red-600"></i>
               </div>
             </div>
-            <p class="text-2xl font-semibold text-gray-900">{{ stats.overdueCount }}</p>
+            <Skeleton v-if="loading" width="3rem" height="1.75rem" />
+            <p v-else class="text-2xl font-semibold text-gray-900">{{ stats.overdueCount }}</p>
           </div>
         </template>
       </Card>
 
-      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-linear-to-br">
+      <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm bg-gradient-to-br">
         <template #content>
           <div class="p-5">
             <div class="mb-3 flex items-center justify-between">
@@ -59,28 +62,24 @@
                 <i class="pi pi-credit-card text-sm"></i>
               </div>
             </div>
-            <p class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
+            <Skeleton v-if="loading" width="7rem" height="1.75rem" />
+            <p v-else class="text-xl font-bold">₱{{ formatMoney(stats.outstandingAmount) }}</p>
           </div>
         </template>
       </Card>
     </div>
 
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+    <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
       <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Filter Receivables</h2>
-        </div>
-      </template>
-
-      <template #content>
-        <div class="p-6 pt-2">
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="m-4 mt-6">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Customer Invoices</h2>
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-5">
             <div class="space-y-2 md:col-span-2">
               <label class="text-xs font-medium uppercase tracking-wider text-gray-500">Search</label>
               <InputText
                 v-model="filters.search"
                 placeholder="Search invoice or customer"
-                class="w-full"
+                class="w-full" size="small"
                 @keyup.enter="loadReceivables"
               />
             </div>
@@ -93,7 +92,7 @@
                 optionLabel="label"
                 optionValue="value"
                 class="w-full"
-                fluid
+                fluid size="small"
               />
             </div>
 
@@ -105,48 +104,48 @@
                 optionLabel="label"
                 optionValue="value"
                 class="w-full"
-                fluid
+                fluid size="small"
               />
             </div>
+            
+          <div class="mt-5  justify-end">
+            <Button icon="pi pi-refresh" label="Apply Filters" severity="secondary" outlined size="small" :loading="loading" @click="loadReceivables" />
+          </div>
           </div>
 
-          <div class="mt-4 flex justify-end">
-            <Button icon="pi pi-refresh" label="Apply Filters" :loading="loading" @click="loadReceivables" />
-          </div>
-        </div>
-      </template>
-    </Card>
-
-    <Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
-      <template #header>
-        <div class="px-6 pt-6">
-          <h2 class="text-lg font-semibold text-gray-900">Customer Invoices</h2>
         </div>
       </template>
       <template #content>
-        <div class="p-6 pt-2">
+        <div v-if="loading" class="space-y-3 px-4 pb-4"><div class="grid grid-cols-7 gap-4 border-b border-slate-100 px-3 py-3"><Skeleton v-for="cell in 7" :key="`head-${cell}`" height="0.75rem" /></div><div v-for="row in 6" :key="`receivable-${row}`" class="grid grid-cols-7 gap-4 border-b border-slate-50 px-3 py-3"><Skeleton v-for="cell in 7" :key="cell" height="1.25rem" /></div></div>
+        <div v-else>
           <DataTable
             :value="receivables"
-            :loading="loading"
-            stripedRows
+            rowHover
             responsiveLayout="scroll"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs m-4"
             paginator
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50]"
           >
+
+           <Column field="due_date" header="Date" style="width: 140px">
+              <template #body="{ data }">
+                <span class="text-sm">{{ formatDate(data.created_at) }}</span>
+              </template>
+            </Column>
+
             <Column field="reference" header="Invoice #" style="min-width: 140px">
               <template #body="{ data }">
                 <button class="text-sm font-medium text-blue-600 hover:underline" @click="viewDetail(data)">{{ data.reference }}</button>
               </template>
             </Column>
 
-            <Column field="source_type" header="Source" style="width: 120px">
+            <Column field="source_type" header="Source" class="align-center text-" style="width: 120px">
               <template #body="{ data }">
-                <Tag
+                <Badge
                   :value="data.source_type === 'ecommerce' ? 'Ecommerce' : 'In Store'"
-                  :severity="data.source_type === 'ecommerce' ? 'info' : 'secondary'"
-                  size="small"
+                  :severity="data.source_type === 'ecommerce' ? 'info' : 'success'"
+                  size="medium"
                 />
               </template>
             </Column>
@@ -159,22 +158,16 @@
               </template>
             </Column>
 
-            <Column field="due_date" header="Created" style="width: 140px">
-              <template #body="{ data }">
-                <span class="text-sm">{{ formatDate(data.created_at) }}</span>
-              </template>
-            </Column>
-
             <Column field="status" header="Status" style="width: 130px">
               <template #body="{ data }">
-                <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" size="small" />
+                <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
               </template>
             </Column>
 
             <Column header="Actions" style="width: 100px" headerStyle="text-align:center">
               <template #body="{ data }">
                 <div class="flex justify-center">
-                  <Button icon="pi pi-eye" text rounded size="small" @click="viewDetail(data)" />
+                  <Button icon="pi pi-eye" label="View" outlined rounded size="small" @click="viewDetail(data)" />
                 </div>
               </template>
             </Column>
@@ -198,10 +191,11 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+import Skeleton from 'primevue/skeleton'
 import financeService from '../../../services/finance.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const receivables = ref<any[]>([])
 const router = useRouter()
 const filters = ref({

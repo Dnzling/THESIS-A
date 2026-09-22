@@ -5,7 +5,7 @@
         <h1 class="text-xl font-bold text-gray-900">Goods Receipts</h1>
         <p class="text-xs text-gray-600 mt-1">Track received supplies and inventory receiving records</p>
       </div>
-      <Button label="New Receipt" icon="pi pi-plus" size="small" @click="$router.push(isProcurement ? '/procurement/goods-receipts/create' : '/inventory/goods-receipts/create')" />
+      <!-- <Button label="New Receipt" icon="pi pi-plus" size="small" @click="$router.push(isProcurement ? '/procurement/goods-receipts/create' : '/inventory/goods-receipts/create')" /> -->
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -39,7 +39,7 @@
     <Card>
       <template #header>
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end m-4 mt-6">
-          <div class="flex flex-col gap-2">
+          <div class="flex flex-col gap-2 md:col-span-2">
             <label class="text-xs font-medium text-gray-600">Search</label>
             <InputText v-model="searchTerm" placeholder="Search GRN, PO, or supplier" size="small" @keyup.enter="applyFilters" />
           </div>
@@ -47,7 +47,7 @@
             <label class="text-xs font-medium text-gray-600">Status</label>
             <Select v-model="statusFilter" :options="statusOptions" option-label="label" option-value="value" placeholder="All statuses" showClear size="small" @change="applyFilters" />
           </div>
-          <div class="flex flex-col gap-2 md:col-span-2">
+          <div class="flex flex-col gap-2">
             <label class="text-xs font-medium text-gray-600">Receipt date</label>
             <DatePicker v-model="dateRange" selectionMode="range" :manualInput="false" placeholder="Select date range" dateFormat="M d, yy" size="small" showButtonBar showIcon @date-select="applyFilters" />
           </div>
@@ -65,16 +65,7 @@
             </template>
           </Column>
           <Column field="grn_number" header="GRN" />
-          <Column header="PR">
-            <template #body="{ data }">
-              {{ data.purchase_order?.purchase_requisition?.pr_number || '—' }}
-            </template>
-          </Column>
-          <Column
-            field="purchase_order.po_number"
-            header="Purchase Order"
-            :body="({ data }) => data.purchase_order?.po_number || data.po_number"
-          />
+         
           <Column header="Supplier">
             <template #body="{ data }">
               {{ data.purchase_order?.supplier?.supplier_name || data.supplier_name || '-' }}
@@ -99,8 +90,8 @@
           <Column header="Actions" style="width: 180px">
             <template #body="{ data }">
               <div class="flex gap-2">
-                <Button icon="pi pi-eye"  text rounded size="small" @click="goToDetail(data.id)" v-tooltip="'View detail'" />
-                <Button icon="pi pi-file-pdf" severity="danger" text rounded size="small" @click="printPdf(data.id)" v-tooltip="'Print PDF receipt'" />
+                <Button icon="pi pi-eye" label="View"  outlined rounded size="small" @click="goToDetail(data.id)" v-tooltip="'View detail'" />
+                <Button icon="pi pi-file-pdf" label="Print" severity="danger" outlined rounded size="small" @click="printPdf(data.id)" v-tooltip="'Print PDF receipt'" />
               </div>
             </template>
           </Column>
@@ -121,9 +112,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import procurementService from '../../../../services/procurement.service'
+import WarehouseService from '../../../../services/warehouse.service'
 import InputText from 'primevue/inputtext'
 const loading = ref(false)
 const isProcurement = window.location.pathname.startsWith('/procurement/')
+const isWarehouse = window.location.pathname.startsWith('/warehouse/')
 
 const receipts = ref<any[]>([])
 const searchTerm = ref('')
@@ -168,7 +161,14 @@ const loadReceipts = async (page = 1) => {
     if (dateRange.value?.[0]) params.start_date = formatFilterDate(dateRange.value[0])
     if (dateRange.value?.[1]) params.end_date = formatFilterDate(dateRange.value[1])
 
-    const response = await procurementService.getGoodsReceipts(params)
+    const response = isWarehouse
+      ? await WarehouseService.receiving({
+          search: params.search,
+          status: params.receipt_status,
+          page,
+          per_page: perPage.value,
+        })
+      : await procurementService.getGoodsReceipts(params)
     // procurementService already returns response.data, so this is the paginator:
     // { current_page, data: [], total, ... }.
     const paginator = response?.data?.current_page !== undefined
