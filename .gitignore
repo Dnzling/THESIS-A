@@ -9,6 +9,7 @@
 /storage/framework/views
 /android
 /public/build
+/public/hot
 /public/capacitor
 .htaccess
 /public/.htaccess
