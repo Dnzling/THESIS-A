@@ -1,5 +1,13 @@
 <template>
-  <div class="space-y-6">
+  <div class="module-dashboard dashboard--merchandising space-y-6">
+    <div class="dashboard-hero flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p class="dashboard-eyebrow">Product Operations</p>
+        <h1 class="text-2xl font-bold text-slate-900">Merchandising Dashboard</h1>
+        <p class="mt-1 text-sm text-slate-500">Catalog health, inventory value, pricing, and digital assets.</p>
+      </div>
+      <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined :loading="loading" @click="refreshDashboard" />
+    </div>
   
     <!-- Loading State -->
     <div v-if="loading" class="space-y-6">
@@ -716,8 +724,7 @@ const formatRelativeTime = (dateString: string) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-onMounted(() => {
-  loadDashboardStats()
-  loadActivityLog()
-})
+const refreshDashboard = () => Promise.all([loadDashboardStats(), loadActivityLog()])
+
+onMounted(refreshDashboard)
 </script>

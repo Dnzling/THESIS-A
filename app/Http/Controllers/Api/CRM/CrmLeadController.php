@@ -12,6 +12,14 @@ use Illuminate\Validation\Rule;
 class CrmLeadController extends Controller
 {
     private const STAGES = ['new', 'contacted', 'qualified', 'proposal', 'won', 'lost'];
+    private const ALLOWED_TRANSITIONS = [
+        'new' => ['contacted', 'lost'],
+        'contacted' => ['qualified', 'lost', 'new'],
+        'qualified' => ['proposal', 'lost', 'contacted'],
+        'proposal' => ['won', 'lost', 'qualified'],
+        'won' => [],
+        'lost' => ['new'],
+    ];
 
     public function leads(Request $request): JsonResponse
     {
@@ -114,8 +122,22 @@ class CrmLeadController extends Controller
         ]);
 
         $from = $lead->stage;
+        $to = $validated['stage'];
+        if ($from === $to) {
+            return response()->json(['success' => false, 'message' => 'Lead is already in this stage.'], 422);
+        }
+        if (!in_array($to, self::ALLOWED_TRANSITIONS[$from] ?? [], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "A lead cannot move directly from {$from} to {$to}. Follow the lead process in order.",
+            ], 422);
+        }
+        if (in_array($to, ['qualified', 'proposal', 'won', 'lost'], true) && blank($validated['note'] ?? null)) {
+            return response()->json(['success' => false, 'message' => 'Add a note explaining the qualification, proposal, outcome, or lost reason.'], 422);
+        }
+
         $lead->update([
-            'stage' => $validated['stage'],
+            'stage' => $to,
             'updated_by' => $request->user()->id,
         ]);
 
@@ -123,9 +145,9 @@ class CrmLeadController extends Controller
             'lead_id' => $lead->id,
             'store_id' => $lead->store_id,
             'activity_type' => 'stage_change',
-            'description' => "Stage updated from {$from} to {$validated['stage']}. " . trim((string) ($validated['note'] ?? '')),
+            'description' => "Stage updated from {$from} to {$to}. " . trim((string) ($validated['note'] ?? '')),
             'activity_at' => now(),
-            'meta' => ['from' => $from, 'to' => $validated['stage']],
+            'meta' => ['from' => $from, 'to' => $to],
             'created_by' => $request->user()->id,
         ]);
 

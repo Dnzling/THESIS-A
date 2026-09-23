@@ -404,6 +404,9 @@ $inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommer
 $inertia('/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
 $inertia('/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
 $inertia('/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
+$inertia('/legal/privacy-policy', 'System/Ecommerce/Legal', 'legal.privacy', 'Privacy Policy');
+$inertia('/legal/returns-refunds', 'System/Ecommerce/Legal', 'legal.returns', 'Returns & Refunds');
+$inertia('/legal/terms-and-conditions', 'System/Ecommerce/Legal', 'legal.terms', 'Terms & Conditions');
 
 // These page shells must remain reachable because customer authentication uses a
 // bearer token from localStorage. The protected ecommerce API routes still enforce

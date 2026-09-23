@@ -5,3 +5,116 @@
 .merchandising-hide-delete .pi-trash {
 	display: none !important;
 }
+
+/* Shared visual language for operational dashboards. */
+@layer components {
+	.module-dashboard {
+		--dashboard-accent: 79 70 229;
+		--dashboard-accent-soft: 238 242 255;
+		position: relative;
+		width: 100%;
+		max-width: 96rem;
+		margin-inline: auto;
+		padding: clamp(1rem, 2vw, 1.75rem);
+		border-radius: 1.75rem;
+		background:
+			radial-gradient(circle at 96% 0%, rgb(var(--dashboard-accent) / 0.10), transparent 24rem),
+			linear-gradient(180deg, #f8fafc 0%, #ffffff 22rem);
+	}
+
+	.dashboard--procurement { --dashboard-accent: 37 99 235; --dashboard-accent-soft: 239 246 255; }
+	.dashboard--warehouse { --dashboard-accent: 8 145 178; --dashboard-accent-soft: 236 254 255; }
+	.dashboard--hr { --dashboard-accent: 124 58 237; --dashboard-accent-soft: 245 243 255; }
+	.dashboard--finance { --dashboard-accent: 5 150 105; --dashboard-accent-soft: 236 253 245; }
+	.dashboard--merchandising { --dashboard-accent: 219 39 119; --dashboard-accent-soft: 253 242 248; }
+	.dashboard--sales { --dashboard-accent: 234 88 12; --dashboard-accent-soft: 255 247 237; }
+	.dashboard--inventory { --dashboard-accent: 22 163 74; --dashboard-accent-soft: 240 253 244; }
+	.dashboard--crm { --dashboard-accent: 217 119 6; --dashboard-accent-soft: 255 251 235; }
+
+	.module-dashboard .dashboard-hero {
+		position: relative;
+		overflow: hidden;
+		padding: clamp(1.25rem, 2.5vw, 2rem);
+		border: 1px solid rgb(var(--dashboard-accent) / 0.16) !important;
+		border-radius: 1.25rem !important;
+		background: linear-gradient(135deg, #fff 35%, rgb(var(--dashboard-accent-soft)) 100%) !important;
+		box-shadow: 0 18px 45px -32px rgb(var(--dashboard-accent) / 0.65) !important;
+	}
+
+	.module-dashboard .dashboard-hero::after {
+		content: '';
+		position: absolute;
+		top: -4.5rem;
+		right: -3rem;
+		width: 12rem;
+		height: 12rem;
+		border: 2rem solid rgb(var(--dashboard-accent) / 0.06);
+		border-radius: 9999px;
+		pointer-events: none;
+	}
+
+	.module-dashboard .dashboard-hero > * { position: relative; z-index: 1; }
+	.module-dashboard .dashboard-hero.p-card { padding: 0; }
+	.module-dashboard .dashboard-hero .p-card-body { padding: clamp(1.25rem, 2.5vw, 2rem); }
+	.module-dashboard .dashboard-hero h1 {
+		font-size: clamp(1.5rem, 2vw, 2rem) !important;
+		font-weight: 750 !important;
+		letter-spacing: -0.035em;
+	}
+
+	.module-dashboard .dashboard-eyebrow {
+		margin-bottom: .35rem;
+		font-size: .7rem;
+		font-weight: 800;
+		letter-spacing: .16em;
+		text-transform: uppercase;
+		color: rgb(var(--dashboard-accent));
+	}
+
+	.module-dashboard .p-card,
+	.module-dashboard .dashboard-panel {
+		border-color: #e2e8f0 !important;
+		border-radius: 1rem !important;
+		box-shadow: 0 10px 30px -25px rgb(15 23 42 / .55);
+		transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+	}
+
+	.module-dashboard .p-card:hover,
+	.module-dashboard .dashboard-panel:hover {
+		border-color: rgb(var(--dashboard-accent) / 0.24) !important;
+		box-shadow: 0 18px 38px -28px rgb(var(--dashboard-accent) / .48);
+	}
+
+	.module-dashboard .cursor-pointer:is(.p-card, div):hover {
+		transform: translateY(-2px);
+	}
+
+	.module-dashboard .p-card-title {
+		color: #0f172a;
+		font-size: .95rem;
+		font-weight: 700;
+		letter-spacing: -.015em;
+	}
+
+	.module-dashboard table thead,
+	.module-dashboard .p-datatable-thead {
+		background: #f8fafc;
+	}
+
+	.module-dashboard table th,
+	.module-dashboard .p-datatable-header-cell {
+		color: #475569;
+		font-size: .72rem;
+		font-weight: 750;
+		letter-spacing: .045em;
+		text-transform: uppercase;
+	}
+
+	.module-dashboard .p-button { border-radius: .75rem; }
+	.module-dashboard .p-button:not(.p-button-text) { box-shadow: 0 8px 20px -14px rgb(var(--dashboard-accent) / .8); }
+
+	@media (max-width: 640px) {
+		.module-dashboard { padding: .75rem; border-radius: 1rem; }
+		.module-dashboard .dashboard-hero { padding: 1.125rem; }
+	}
+}

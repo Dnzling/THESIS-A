@@ -1,6 +1,6 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
-    <Card class="border border-gray-100 shadow-sm rounded-2xl">
+  <div class="module-dashboard dashboard--crm max-w-7xl mx-auto space-y-6">
+    <Card class="dashboard-hero border border-gray-100 shadow-sm rounded-2xl">
       <template #content>
         <div class="flex items-center justify-between">
           <div>
@@ -8,6 +8,24 @@
             <p class="text-sm text-gray-500">Manage leads and pipeline stage.</p>
           </div>
           <Button v-if="canManageCrm" severity="info" icon="pi pi-plus" label="New Lead" @click="openCreate" />
+        </div>
+      </template>
+    </Card>
+
+    <Card class="border border-orange-100 bg-gradient-to-r from-orange-50 via-white to-amber-50 shadow-sm rounded-2xl">
+      <template #content>
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div class="max-w-md">
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-orange-600">Lead process</p>
+            <h2 class="mt-2 text-xl font-bold text-slate-900">Move every lead with a clear next step</h2>
+            <p class="mt-2 text-sm leading-6 text-slate-600">Record the customer interaction before advancing the stage. Qualified, proposal, won, and lost stages require a note for accountability.</p>
+          </div>
+          <div class="grid flex-1 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div v-for="(stage, index) in processStages" :key="stage.value" class="relative rounded-xl border border-white bg-white/80 p-3 shadow-sm">
+              <div class="flex items-center gap-2"><span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-xs font-bold text-orange-700">{{ index + 1 }}</span><span class="text-xs font-bold text-slate-800">{{ stage.label }}</span></div>
+              <p class="mt-2 text-[11px] leading-4 text-slate-500">{{ stage.help }}</p>
+            </div>
+          </div>
         </div>
       </template>
     </Card>
@@ -103,6 +121,14 @@ const stageOptions = [
   { label: 'Won', value: 'won' },
   { label: 'Lost', value: 'lost' },
 ]
+const processStages = [
+  { label: 'New', value: 'new', help: 'Capture and assign.' },
+  { label: 'Contacted', value: 'contacted', help: 'First outreach recorded.' },
+  { label: 'Qualified', value: 'qualified', help: 'Need, budget, and timeline confirmed.' },
+  { label: 'Proposal', value: 'proposal', help: 'Offer or quotation sent.' },
+  { label: 'Won', value: 'won', help: 'Customer accepted and is ready to order.' },
+  { label: 'Lost', value: 'lost', help: 'Record the reason and close.' },
+]
 const form = reactive<any>({ full_name: '', email: '', phone: '', source: 'walk_in', estimated_value: 0, notes: '' })
 const canManageCrm = authStore.hasPermission('sales.crm.manage')
 
@@ -131,9 +157,19 @@ const saveLead = async () => {
 }
 const updateStage = async (row: any) => {
   if (!row.__stage || row.__stage === row.stage) return
-  await crmService.updateLeadStage(row.id, { stage: row.__stage })
-  toast.add({ severity: 'success', summary: 'Updated', detail: 'Lead stage updated.', life: 2000 })
-  load()
+  const note = window.prompt('Add a short note for this stage change (required for Qualified, Proposal, Won, and Lost):', '')
+  if (['qualified', 'proposal', 'won', 'lost'].includes(row.__stage) && !note?.trim()) {
+    row.__stage = row.stage
+    toast.add({ severity: 'warn', summary: 'Note required', detail: 'Please explain the stage change.', life: 2500 })
+    return
+  }
+  try {
+    await crmService.updateLeadStage(row.id, { stage: row.__stage, note: note?.trim() || undefined })
+    toast.add({ severity: 'success', summary: 'Updated', detail: 'Lead stage updated.', life: 2000 })
+    load()
+  } catch {
+    row.__stage = row.stage
+  }
 }
 const money = (v: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0))
 const fmt = (v: string) => String(v || '').replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())

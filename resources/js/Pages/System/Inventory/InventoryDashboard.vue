@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-4 text-sm">
+  <div class="module-dashboard dashboard--inventory space-y-6 text-sm">
     <div v-if="loading" class="space-y-6">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Skeleton v-for="i in 4" :key="i" height="120px" class="rounded-lg" />
@@ -8,9 +8,10 @@
     </div>
   
     <div v-else>
-      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="dashboard-hero mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-lg font-semibold text-gray-900">Inventory Dashboard</h1>
+          <h1 class="text-2xl font-bold text-gray-900">Inventory Dashboard</h1>
+          <p class="mt-1 text-sm text-gray-500">Stock health, movements, and replenishment priorities.</p>
         </div>
         <IconField class="w-full sm:w-72">
           <InputIcon class="pi pi-search" />

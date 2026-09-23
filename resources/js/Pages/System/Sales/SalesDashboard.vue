@@ -1,6 +1,6 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-6">
-    <Card class="border border-gray-100 shadow-sm rounded-2xl">
+  <div class="module-dashboard dashboard--sales max-w-7xl mx-auto space-y-6">
+    <Card class="dashboard-hero border border-gray-100 shadow-sm rounded-2xl">
       <template #content>
         <div class="flex items-center justify-between">
           <div>

@@ -1,6 +1,6 @@
 <template>
-    <div class="md:p-6 space-y-6">
-        <div>
+    <div class="module-dashboard dashboard--warehouse space-y-6">
+        <div class="dashboard-hero">
             <h1 class="text-2xl font-semibold text-slate-900">
                 Warehouse Dashboard
             </h1>

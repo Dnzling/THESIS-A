@@ -1,6 +1,6 @@
 <template>
-  <div class="space-y-6">
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <div class="module-dashboard dashboard--hr space-y-6">
+    <div class="dashboard-hero rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 class="text-2xl font-bold text-slate-900">HR Operations Dashboard</h1>
@@ -471,4 +471,3 @@ watch(selectedPayPeriod, (periodId) => {
 
 onMounted(reloadDashboard)
 </script>
-

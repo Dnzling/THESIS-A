@@ -1,7 +1,7 @@
 <template>
-  <div class="space-y-6 pb-6">
+  <div class="module-dashboard dashboard--procurement space-y-6 pb-6">
     <!-- Header -->
-    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div class="dashboard-hero flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 class="text-3xl font-bold text-gray-900">Procurement Dashboard</h1>
         <p class="text-gray-600">Real-time overview of your procurement operations</p>
@@ -88,7 +88,7 @@
         <!-- Left Column (2/3) -->
         <div class="lg:col-span-2 space-y-6">
           <!-- Top Suppliers -->
-          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          <div class="dashboard-panel bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-xl font-bold text-gray-900">Top Suppliers</h2>
               <Button label="View All" severity="secondary" text size="small" @click="router.push({ name: 'procurement.suppliers' })" />
@@ -114,7 +114,7 @@
           </div>
 
           <!-- Recent POs -->
-          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          <div class="dashboard-panel bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-xl font-bold text-gray-900">Recent Purchase Orders</h2>
               <Button label="View All" severity="secondary" text size="small" @click="router.push({ name: 'procurement.purchase-orders' })" />
@@ -153,7 +153,7 @@
         <!-- Right Column (1/3) -->
         <div class="space-y-6">
           <!-- Key Metrics -->
-          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          <div class="dashboard-panel bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6">Key Metrics</h2>
             <div class="space-y-5">
               <div class="flex items-center justify-between p-4 bg-linear-to-r from-purple-50 to-purple-100 rounded-lg border border-purple-200">
@@ -180,7 +180,7 @@
           </div>
 
           <!-- Quick Actions -->
-          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          <div class="dashboard-panel bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6">Quick Actions</h2>
             <div class="space-y-3">
               <Button v-if="canManageSuppliers" label="➕ Add Supplier" class="w-full justify-start" @click="router.push({ name: 'procurement.suppliers.create' })" severity="info" text />
@@ -191,7 +191,7 @@
           </div>
 
           <!-- PO Status Breakdown -->
-          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6" v-if="stats.po_status_breakdown?.length">
+          <div class="dashboard-panel bg-white rounded-lg border border-gray-200 shadow-sm p-6" v-if="stats.po_status_breakdown?.length">
             <h2 class="text-lg font-bold text-gray-900 mb-6">PO Status</h2>
             <div class="space-y-4">
               <div v-for="status in stats.po_status_breakdown" :key="status.status" class="border-b border-gray-100 last:border-0 pb-4 last:pb-0">

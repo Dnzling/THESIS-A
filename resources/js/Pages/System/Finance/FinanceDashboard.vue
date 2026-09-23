@@ -1,9 +1,10 @@
 <template>
-  <div class="space-y-6 p-6">
-    <div class="">
+  <div class="module-dashboard dashboard--finance space-y-6">
+    <div class="dashboard-hero">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
+          <p class="mt-1 text-sm text-slate-500">Cash position, obligations, and financial performance at a glance.</p>
         </div>
         <Button icon="pi pi-refresh" text :loading="loading" @click="loadDashboard" />
       </div>
