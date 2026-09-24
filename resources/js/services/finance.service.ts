@@ -3,6 +3,10 @@ import axiosClient from '../axios'
 const baseUrl = '/api/finance'
 
 const financeService = {
+  async getBenefitRequest(id: number | string) {
+    const response = await axiosClient.get(`/api/hr/benefit-requests/${id}`)
+    return response.data
+  },
   async getLiquidations(params?: any) {
     const response = await axiosClient.get(`${baseUrl}/liquidations`, { params })
     return response.data

@@ -14,7 +14,9 @@ class PayrollService
         }
 
         // Fallback: derive from monthly salary if available
-        $monthly = (float) ($employee->basic_salary ?? 0);
+        // Employees store their configured monthly pay in salary.
+        // Keep basic_salary as a legacy fallback for older records.
+        $monthly = (float) ($employee->salary ?? $employee->basic_salary ?? 0);
         if ($monthly <= 0) {
             return 0.0;
         }

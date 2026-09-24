@@ -164,6 +164,7 @@ class ProductController extends Controller
                             'id',
                             'product_id',
                             'branch_id',
+                            'warehouse_location_id',
                             'quantity_available',
                             'reorder_point',
                         ]);
@@ -174,6 +175,14 @@ class ProductController extends Controller
                 ])
                 ->where('store_id', $context['store_id'])
                 ->where('is_active', true);
+
+            if ($request->filled('location_id')) {
+                $locationId = (int) $request->input('location_id');
+                $query->whereHas('inventory', function ($q) use ($locationId, $context) {
+                    $q->where('warehouse_location_id', $locationId)
+                        ->where('branch_id', $context['branch_id']);
+                });
+            }
 
             // Filters
             if ($request->has('category_id')) {

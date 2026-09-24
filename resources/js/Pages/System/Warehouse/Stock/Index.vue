@@ -108,7 +108,7 @@
                     </Column>
                     <Column field="reorder_point" header="Reorder" />
                     <Column field="quantity_on_hand" header="On Hand" />
-                    <Column header="Stock Value" class="font-bold text-green-600"
+                    <Column header="Stock Value" class="font-bold text-green-600  justify-end "
                         ><template #body="{ data }">{{
                             money(data.stock_value)
                         }}</template></Column

@@ -14,6 +14,8 @@
             @click="openShiftSwapDialog" />
           <Button label="Overtime" icon="pi pi-clock" severity="warning" outlined class="small-pill"
             @click="openOvertimeDialog" />
+          <Button label="My Benefits" icon="pi pi-heart" severity="secondary" outlined class="small-pill"
+            @click="router.visit('/employee-benefits')" />
         </div>
       </div>
 

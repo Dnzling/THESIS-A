@@ -170,6 +170,50 @@ class AuthController extends Controller
                 ->whereNull('store_id')
                 ->first();
 
+            if (!$targetRole && $registrationType === 'store_admin') {
+                // Older installations may only have a store-scoped default role.
+                // Registration and onboarding need a global role shared by new stores.
+                $targetRole = DB::transaction(function () {
+                    $role = Role::firstOrCreate(
+                        ['name' => 'store_admin', 'store_id' => null],
+                        [
+                            'display_name' => 'Store Administrator',
+                            'description' => 'Manages store configuration and operations',
+                            'code' => 'SADM',
+                            'is_active' => true,
+                        ]
+                    );
+
+                    if ($role->wasRecentlyCreated) {
+                        $existingRoleId = Role::query()
+                            ->where('name', 'store_admin')
+                            ->whereNotNull('store_id')
+                            ->orderBy('id')
+                            ->value('id');
+
+                        if ($existingRoleId) {
+                            $now = now();
+                            $permissions = DB::table('role_permissions')
+                                ->where('role_id', $existingRoleId)
+                                ->pluck('permission_id')
+                                ->map(fn ($permissionId) => [
+                                    'role_id' => $role->id,
+                                    'permission_id' => $permissionId,
+                                    'created_at' => $now,
+                                    'updated_at' => $now,
+                                ])
+                                ->all();
+
+                            if ($permissions) {
+                                DB::table('role_permissions')->insert($permissions);
+                            }
+                        }
+                    }
+
+                    return $role;
+                });
+            }
+
             if (!$targetRole) {
                 throw ValidationException::withMessages([
                     'account_type' => ["The {$registrationType} role is not configured."],

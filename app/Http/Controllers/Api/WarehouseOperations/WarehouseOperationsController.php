@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\WarehouseOperations;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\BranchInventory;
+use App\Models\Inventory\WarehouseLocation;
 use App\Models\Inventory\StockTransfer;
 use App\Models\Inventory\Warehouse;
 use App\Models\ProductCatalog\Category;
@@ -168,7 +169,7 @@ class WarehouseOperationsController extends Controller
             ->with([
                 'branch:id,store_id,name,branch_code,branch_type,address,city,province,status',
                 'product.category', 'product.subcategory', 'product.suppliers', 'product.assets',
-                'variation', 'lastCountedBy.user:id,fname,lname',
+                'variation', 'lastCountedBy.user:id,fname,lname', 'warehouseLocation.warehouse',
             ])
             ->findOrFail($id);
 
@@ -223,6 +224,7 @@ class WarehouseOperationsController extends Controller
             'quantity_damaged' => ['required', 'integer', 'min:0'],
             'quantity_incoming' => ['required', 'integer', 'min:0'],
             'warehouse_section' => ['nullable', 'string', 'max:50'],
+            'warehouse_location_id' => ['nullable', 'integer', 'exists:warehouse_locations,id'],
             'aisle' => ['nullable', 'string', 'max:50'],
             'rack' => ['nullable', 'string', 'max:50'],
             'shelf' => ['nullable', 'string', 'max:50'],
@@ -241,6 +243,21 @@ class WarehouseOperationsController extends Controller
             return response()->json(['success' => false, 'message' => 'Reserved quantity cannot exceed quantity on hand.'], 422);
         }
 
+        if (!empty($validated['warehouse_location_id'])) {
+            $location = WarehouseLocation::with('warehouse')
+                ->find($validated['warehouse_location_id']);
+            if (!$location || !$location->warehouse || (int) $location->warehouse->branch_id !== (int) $stock->branch_id) {
+                return response()->json(['success' => false, 'message' => 'The selected location does not belong to this warehouse branch.'], 422);
+            }
+
+            // Keep the legacy text fields synchronized for existing stock screens.
+            $validated['warehouse_section'] = $location->warehouse->warehouse_code;
+            $validated['aisle'] = $location->aisle;
+            $validated['rack'] = $location->rack;
+            $validated['shelf'] = $location->shelf;
+            $validated['bin_code'] = $location->bin;
+        }
+
         DB::transaction(function () use ($stock, $validated) {
             $stock->product->update(collect($validated)->only([
                 'product_name', 'description', 'product_type', 'category_id', 'unit_of_measurement',
@@ -255,7 +272,7 @@ class WarehouseOperationsController extends Controller
             $stock->update([
                 ...collect($validated)->only([
                     'quantity_on_hand', 'quantity_reserved', 'quantity_damaged', 'quantity_incoming',
-                    'warehouse_section', 'aisle', 'rack', 'shelf', 'bin_code', 'reorder_point',
+                    'warehouse_section', 'warehouse_location_id', 'aisle', 'rack', 'shelf', 'bin_code', 'reorder_point',
                     'reorder_quantity', 'maximum_stock', 'safety_stock',
                 ])->all(),
                 'quantity_available' => $available,

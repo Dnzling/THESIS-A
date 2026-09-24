@@ -28,8 +28,8 @@ class WarehouseController extends Controller
     {
         try {
             $user = $request->user();
-            $storeId = (int) ($user?->store_id ?? 0);
-            $branchId = (int) ($user?->branch_id ?? 0);
+            $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
+            $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
 
             $query = Warehouse::with(['store', 'branch']);
 

@@ -40,7 +40,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/warehouse/locations', 'System/Warehouse/Locations/LocationIndex', 'warehouse.locations', 'Warehouse Locations');
     $inertia('/warehouse/locations/create', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.create', 'Create Warehouse Location');
     $inertia('/warehouse/locations/{id}', 'System/Warehouse/Locations/LocationDetail', 'warehouse.locations.view', 'Warehouse Location Details');
-    $inertia('/warehouse/locations/{id}/edit', 'System/Warehouse/Locations/LocationEdit', 'warehouse.locations.edit', 'Edit Warehouse Location');
+    $inertia('/warehouse/locations/{id}/edit', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.edit', 'Edit Warehouse Location');
     $inertia('/warehouse/stock', 'System/Warehouse/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
     $inertia('/warehouse/stock/{id}', 'System/Warehouse/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
     $inertia('/warehouse/stock/{id}/edit', 'System/Warehouse/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
@@ -102,14 +102,6 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
             ->name('store.settings.payments');
         Route::put('/store/settings/attendance', [WebStoreSettingsController::class, 'updateAttendanceSettings'])
             ->name('store.settings.attendance');
-        Route::post('/store/settings/attendance/prepare', [WebStoreSettingsController::class, 'prepareAttendanceUpdate'])
-            ->name('store.settings.attendance.prepare');
-        Route::get('/store/settings/attendance/otp', [WebStoreSettingsController::class, 'showAttendanceUpdateOtp'])
-            ->name('store.settings.attendance.otp');
-        Route::post('/store/settings/attendance/otp/resend', [WebStoreSettingsController::class, 'resendAttendanceUpdateOtp'])
-            ->name('store.settings.attendance.otp.resend');
-        Route::post('/store/settings/attendance/otp/verify', [WebStoreSettingsController::class, 'verifyAttendanceUpdateOtp'])
-            ->name('store.settings.attendance.otp.verify');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
@@ -118,6 +110,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // Store role permissions accessible by store admins and HR
     $inertia('/store/role-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
     $inertia('/employee-profile', 'Profile/Edit', 'employee.profile', 'Employee Profile');
+    $inertia('/employee-benefits', 'System/HR/Benefits/MyBenefits', 'employee.benefits', 'My Benefits');
     // HR
     $inertia('/hr/dashboard', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');
@@ -134,6 +127,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/hr/leaves/{id}', 'System/HR/LeaveDetail', 'hr.leaves.detail', 'Leave Details');
     $inertia('/hr/analytics', 'System/HR/Analytics', 'hr.analytics', 'Analytics');
     $inertia('/hr/settings', 'System/HR/Settings', 'hr.settings', 'Settings');
+    $inertia('/hr/benefit-requests', 'System/HR/Benefits/BenefitRequests', 'hr.benefit-requests', 'Benefit Requests');
     $inertia('/hr/payroll', 'System/HR/Payroll/PayrollIndex', 'hr.payroll', 'Payroll');
     $inertia('/hr/payroll/overview', 'System/HR/Payroll/PayrollIndex', 'hr.payroll.overview', 'Payroll');
     $inertia('/hr/payroll/periods', 'System/HR/PayPeriods', 'hr.payroll.periods', 'Pay Periods');
@@ -188,10 +182,10 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/stock-counts/create', 'System/Inventory/StockCounts/StockCountCreate', 'inventory.stock-counts.create', 'Create Stock Count');
     $inertia('/inventory/stock-counts/{id}', 'System/Inventory/StockCounts/StockCountDetail', 'inventory.stock-counts.detail', 'Stock Count Detail');
     $inertia('/inventory/stock-counts/{id}/edit', 'System/Inventory/StockCounts/StockCountEdit', 'inventory.stock-counts.edit', 'Edit Stock Count');
-    $inertia('/inventory/locations', 'System/Inventory/Locations/LocationIndex', 'inventory.locations.index', 'Locations');
-    $inertia('/inventory/locations/create', 'System/Inventory/Locations/LocationCreate', 'inventory.locations.create', 'Create Location');
-    $inertia('/inventory/locations/{id}', 'System/Inventory/Locations/LocationDetail', 'inventory.locations.detail', 'Location Detail');
-    $inertia('/inventory/locations/{id}/edit', 'System/Inventory/Locations/LocationEdit', 'inventory.locations.edit', 'Edit Location');
+    $inertia('/inventory/locations', 'System/Warehouse/Locations/LocationIndex', 'inventory.locations.index', 'Locations');
+    $inertia('/inventory/locations/create', 'System/Warehouse/Locations/LocationCreate', 'inventory.locations.create', 'Create Location');
+    $inertia('/inventory/locations/{id}', 'System/Warehouse/Locations/LocationDetail', 'inventory.locations.detail', 'Location Detail');
+    $inertia('/inventory/locations/{id}/edit', 'System/Warehouse/Locations/LocationCreate', 'inventory.locations.edit', 'Edit Location');
     $inertia('/inventory/reorder-rules', 'System/Inventory/ReorderRules/ReorderRuleIndex', 'inventory.reorder-rules', 'Reorder Rules');
     $inertia('/inventory/reorder-rules/create', 'System/Inventory/ReorderRules/ReorderRuleCreate', 'inventory.reorder-rules.create', 'Create Reorder Rule');
     $inertia('/inventory/reorder-rules/{id}', 'System/Inventory/ReorderRules/ReorderRuleDetail', 'inventory.reorder-rules.detail', 'Reorder Rule Detail');

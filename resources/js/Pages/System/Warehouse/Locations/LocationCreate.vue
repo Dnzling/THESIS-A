@@ -12,8 +12,8 @@
             v-tooltip.top="'Back to Locations'"
           />
           <div>
-            <h1 class="text-3xl font-bold text-gray-800">Create Location</h1>
-            <p class="text-gray-600 mt-1">Add a new warehouse location</p>
+            <h1 class="text-2xl font-bold text-gray-800">{{ isEditMode ? 'Edit Location' : 'Create Location' }}</h1>
+            <p class="text-gray-600 mt-1">{{ isEditMode ? 'Update this warehouse storage location' : 'Add a new warehouse location' }}</p>
           </div>
         </div>
       </div>
@@ -272,7 +272,7 @@
                 type="button"
               />
               <Button
-                label="Create Location"
+                :label="isEditMode ? 'Save Changes' : 'Create Location'"
                 type="submit"
                 :loading="loading"
                 class="bg-blue-600 hover:bg-blue-700"
@@ -286,7 +286,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -294,15 +294,19 @@ import { useRouter, useRoute } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 
 const loading = ref(false)
+const editingLocation = ref<any>(null)
 const errors = ref<any>({})
 const toast = useToast()
 const confirm = useConfirm()
 const router = useRouter()
 const route = useRoute()
+const isEditMode = computed(() => Boolean(route.params.id))
 const warehouseRoute = computed(() => route.path.startsWith('/warehouse/'))
 
 const form = reactive({
   name: '',
+  location_code: '',
+  warehouse_id: null as number | null,
   type: '',
   status: 'active',
   capacity: null as number | null,
@@ -337,12 +341,47 @@ const goBack = () => {
   router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
 }
 
+const loadLocationForEdit = async () => {
+  if (!isEditMode.value) return
+
+  loading.value = true
+  try {
+    const response = await inventoryService.getLocation(route.params.id as string)
+    if (!response.success) throw new Error(response.message || 'Failed to load location')
+
+    const location = response.data
+    editingLocation.value = location
+    const dimensions = location.dimensions || {}
+    Object.assign(form, {
+      name: location.name || '',
+      location_code: location.location_code || '',
+      warehouse_id: location.warehouse_id || location.warehouse?.id || null,
+      type: location.type || '',
+      status: location.status || 'active',
+      capacity: location.max_capacity_units != null ? Number(location.max_capacity_units) : null,
+      aisle: location.aisle || '',
+      rack: location.rack || '',
+      shelf: location.shelf || '',
+      bin: location.bin || '',
+      length: dimensions.depth != null ? Number(dimensions.depth) : null,
+      width: dimensions.width != null ? Number(dimensions.width) : null,
+      height: dimensions.height != null ? Number(dimensions.height) : null,
+      weight_limit: location.max_weight_kg != null ? Number(location.max_weight_kg) : null,
+      description: location.description || ''
+    })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || error.message || 'Failed to load location', life: 3000 })
+  } finally {
+    loading.value = false
+  }
+}
+
 const submitLocation = async () => {
   loading.value = true
   errors.value = {}
 
   try {
-    const response = await inventoryService.createLocation({
+    const payload: any = {
       name: form.name,
       type: form.type,
       status: form.status,
@@ -358,16 +397,25 @@ const submitLocation = async () => {
         height: form.height
       },
       description: form.description || null
-    })
+    }
+
+    if (isEditMode.value) {
+      payload.location_code = form.location_code
+      payload.warehouse_id = form.warehouse_id
+    }
+
+    const response = isEditMode.value
+      ? await inventoryService.updateLocation(route.params.id as string, payload)
+      : await inventoryService.createLocation(payload)
 
     if (response.success) {
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: 'Location created successfully',
+        detail: isEditMode.value ? 'Location updated successfully' : 'Location created successfully',
         life: 3000
       })
-      router.push({ name: warehouseRoute.value ? 'warehouse.locations.view' : 'inventory.locations.detail', params: { id: response.data.id } })
+      router.push({ name: warehouseRoute.value ? 'warehouse.locations.view' : 'inventory.locations.detail', params: { id: response.data.id || route.params.id } })
     } else {
       if (response.errors) {
         errors.value = response.errors
@@ -400,14 +448,17 @@ const submitForm = () => {
   if (!form.name || !form.type) return
 
   confirm.require({
-    header: 'Confirm Create Location',
-    message: `Create location "${form.name}" in your branch warehouse? The warehouse and location code will be assigned automatically.`,
+    header: isEditMode.value ? 'Confirm Save Changes' : 'Confirm Create Location',
+    message: isEditMode.value
+      ? `Save changes to location "${form.name}"?`
+      : `Create location "${form.name}" in your branch warehouse? The warehouse and location code will be assigned automatically.`,
     icon: 'pi pi-question-circle',
     rejectLabel: 'Cancel',
-    acceptLabel: 'Create Location',
+    acceptLabel: isEditMode.value ? 'Save Changes' : 'Create Location',
     rejectProps: { severity: 'secondary', outlined: true },
     accept: submitLocation
   })
 }
 
+onMounted(loadLocationForEdit)
 </script>

@@ -121,7 +121,11 @@
               <Column header="Product" style="min-width: 260px">
                 <template #body="{ data }">
                   <div class="text-sm">
-                    <div class="font-semibold text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
+                    <div class="font-semibold text-gray-900">
+                      {{ data.variation?.variation_name
+                        ? `${data.product?.product_name || 'N/A'} — ${data.variation.variation_name}`
+                        : (data.product?.product_name || 'N/A') }}
+                    </div>
                     <div class="text-gray-500">
                       SKU: {{ data.variation?.variation_sku || data.product?.sku || '-' }}
                     </div>
@@ -140,7 +144,7 @@
               </Column>
                   <Column header="Unit" style="width: 140px">
                 <template #body="{ data }">
-                  <b>{{ (data.product?.unit_of_measurement || '—') }}</b>
+                  <b>{{ (data.variation?.unit_of_measurement || data.product?.unit_of_measurement || '—') }}</b>
                 </template>
               </Column>
               <Column header="Line Total" style="width: 160px">

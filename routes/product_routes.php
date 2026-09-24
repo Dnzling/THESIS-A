@@ -34,6 +34,7 @@ Route::prefix('product-catalog')->group(function () {
         ;
     Route::apiResource('products', ProductController::class)
         ->except(['index', 'show'])
+        ->middlewareFor('store', 'subscription.capacity:products')
         ;
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
     Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice']);

@@ -363,10 +363,10 @@
            
           </div>
           <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div class="text-xs uppercase text-slate-400">Protection</div>
-            <div class="mt-1 font-semibold text-slate-900">OTP required before updates</div>
+            <div class="text-xs uppercase text-slate-400">Attendance location</div>
+            <div class="mt-1 font-semibold text-slate-900">Update your attendance area</div>
             <p class="mt-2 text-xs leading-5 text-slate-500">
-              Changes to attendance address, geofence, and radius require authorization from the store account email.
+              Set the address, geofence, and radius used for employee attendance.
             </p>
             <Button class="mt-4 w-full" label="Edit Attendance Location" icon="pi pi-map-marker" outlined @click="openAttendanceEditor" />
           </div>
@@ -445,7 +445,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="attendanceEditorVisible = false" />
-        <Button label="Continue to OTP" icon="pi pi-shield" :loading="savingAttendance" @click="saveAttendance" />
+        <Button label="Save Attendance Location" icon="pi pi-check" :loading="savingAttendance" @click="saveAttendance" />
       </template>
     </Dialog>
 
@@ -950,8 +950,8 @@ const saveAttendance = async () => {
     return
   }
   savingAttendance.value = true
-  router.post(
-    '/store/settings/attendance/prepare',
+  router.put(
+    '/store/settings/attendance',
     {
       branch_id: attendanceDraft.branch_id,
       address: attendanceDraft.address || null,
@@ -965,11 +965,15 @@ const saveAttendance = async () => {
     },
     {
       preserveScroll: true,
+      onSuccess: () => {
+        attendanceEditorVisible.value = false
+        attendanceSuccessVisible.value = true
+      },
       onError: (errors) => {
         toast.add({
           severity: 'error',
-          summary: 'Unable to continue',
-          detail: errors?.email || errors?.attendance || 'Please check the attendance location details.',
+          summary: 'Unable to save',
+          detail: errors?.attendance || 'Please check the attendance location details.',
           life: 3500,
         })
       },

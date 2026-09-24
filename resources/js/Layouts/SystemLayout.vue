@@ -283,16 +283,7 @@ const responseDialog = ref({
 let responseDialogUnsub: (() => void) | null = null
 
 // Track expanded/collapsed modules
-const expandedModules = ref<Record<string, boolean>>({
-  admin: true,
-  inventory: true,
-  warehouse: true,
-  procurement: true,
-  merchandising: true,
-  hr: true,
-  crm: true,
-  supplier: true,
-})
+const expandedModules = ref<Record<string, boolean>>({})
 const expandedModuleValues = computed<string[]>({
   get: () => Object.entries(expandedModules.value)
     .filter(([, expanded]) => expanded)
@@ -304,24 +295,10 @@ const expandedModuleValues = computed<string[]>({
       nextState[module] = openModules.has(module)
     })
     expandedModules.value = nextState
-    localStorage.setItem('expandedModules', JSON.stringify(nextState))
   }
 })
 
-watch(
-  () => authStore.systemModules,
-  (modules) => {
-    modules.forEach((module: any) => {
-      const key = String(module?.key || '').trim().toLowerCase()
-      if (key && !(key in expandedModules.value)) {
-        expandedModules.value[key] = false
-      }
-    })
-  },
-  { immediate: true, deep: true }
-)
-
-// Load saved state on mount
+// Load the user and their navigation on mount.
 onMounted(async () => {
   const storedToken = localStorage.getItem('auth_token')
   if (!storedToken) {
@@ -376,14 +353,6 @@ onMounted(async () => {
 
   isBooting.value = false
 
-  const saved = localStorage.getItem('expandedModules')
-  if (saved) {
-    try {
-      expandedModules.value = JSON.parse(saved)
-    } catch (e) {
-      // Use defaults
-    }
-  }
   window.addEventListener('keydown', handleKeyboardShortcut)
   loadNotifications()
   if (!notificationPoller.value) {
@@ -421,7 +390,6 @@ onUnmounted(() => {
 // Toggle module accordion
 const toggleModule = (module: string) => {
   expandedModules.value[module] = !expandedModules.value[module]
-  localStorage.setItem('expandedModules', JSON.stringify(expandedModules.value))
 }
 
 watch(currentPath, () => {
@@ -631,6 +599,18 @@ const groupedNavigation = computed(() => {
 
   return grouped
 })
+
+// Start with the first module the user can actually see; the rest stay collapsed.
+watch(
+  () => groupedNavigation.value.map((group) => group.module).join('|'),
+  (moduleKeys) => {
+    const modules = moduleKeys ? moduleKeys.split('|') : []
+    expandedModules.value = Object.fromEntries(
+      modules.map((module, index) => [module, index === 0])
+    )
+  },
+  { immediate: true }
+)
 
 
 

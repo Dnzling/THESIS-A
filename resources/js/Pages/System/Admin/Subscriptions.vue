@@ -260,11 +260,11 @@
                 <InputNumber v-model="planForm.max_products" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>
-                <label class="mb-1 block text-xs text-slate-600">Warehouses</label>
+                <label class="mb-1 block text-xs text-slate-600">Warehouse Branches</label>
                 <InputNumber v-model="planForm.max_warehouses" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>
-                <label class="mb-1 block text-xs text-slate-600">Trucks</label>
+                <label class="mb-1 block text-xs text-slate-600">Delivery Vehicles</label>
                 <InputNumber v-model="planForm.max_trucks" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>

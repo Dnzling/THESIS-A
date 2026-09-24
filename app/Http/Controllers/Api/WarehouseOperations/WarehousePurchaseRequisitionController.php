@@ -170,7 +170,11 @@ class WarehousePurchaseRequisitionController extends Controller
             'severity' => 'info', 'link' => "/procurement/purchase-requisitions/{$pr->id}",
         ], [$request->user()->id]);
 
-        return response()->json(['success' => true, 'message' => 'Warehouse purchase requisition created.', 'data' => $pr->load('items.product')], 201);
+        return response()->json([
+            'success' => true,
+            'message' => 'Warehouse purchase requisition created.',
+            'data' => $pr->load(['items.product', 'items.variation']),
+        ], 201);
     }
 
     private function unitCost(BranchInventory $stock): float

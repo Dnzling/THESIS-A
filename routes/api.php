@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\Store\StoreModuleController;
 use App\Http\Controllers\Api\Hr\EmployeeController;
 use App\Http\Controllers\Api\Hr\PayPeriodController;
 use App\Http\Controllers\Api\Hr\DeductionTypeController;
+use App\Http\Controllers\Api\Hr\EmployeeBenefitRequestController;
 use App\Http\Controllers\Api\Hr\PayrollController;
 use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
@@ -266,14 +267,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     });
 
     // ========== USER MANAGEMENT ==========
-    Route::apiResource('users', UserController::class);
+    Route::apiResource('users', UserController::class)->middlewareFor('store', 'subscription.capacity:users');
 
     Route::prefix('users')->group(function () {});
 
     // =========== HR ==============
-    Route::post('/employees/invite', [EmployeeController::class, 'storeInvite']);
+    Route::post('/employees/invite', [EmployeeController::class, 'storeInvite'])->middleware('subscription.capacity:users');
     Route::get('/employees/me', [EmployeeController::class, 'me']);
-    Route::apiResource('employees', EmployeeController::class);
+    Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);
     Route::get('/employees/{id}/details/{year}', [EmployeeController::class, 'getEmployeeDetails']);
     Route::post('/employees/id-preview', [EmployeeController::class, 'previewGovernmentId']);
@@ -348,6 +349,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     });
 
     // Deductions
+    Route::prefix('hr/benefit-requests')->controller(EmployeeBenefitRequestController::class)->group(function () {
+        Route::get('/mine', 'mine');
+        Route::post('/', 'store');
+        Route::get('/', 'index');
+        Route::get('/{benefitRequest}', 'show');
+        Route::post('/{benefitRequest}/review', 'review');
+        Route::post('/{benefitRequest}/complete', 'complete');
+        Route::post('/{benefitRequest}/settle', 'settle');
+    });
+
     Route::prefix('deductions')->group(function () {
         Route::get('/deduction-types', [DeductionTypeController::class, 'index']);
         Route::post('/deduction-types', [DeductionTypeController::class, 'store']);
@@ -396,9 +407,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Store Branches
     Route::prefix('branches')->controller(BranchController::class)->group(function () {
         Route::get('/', 'index');
-        Route::post('/', 'store');
+        Route::post('/', 'store')->middleware('subscription.capacity:branches');
         Route::get('{branch}', 'show');
-        Route::put('{branch}', 'update');
+        Route::put('{branch}', 'update')->middleware('subscription.capacity:branch_update');
         Route::delete('{branch}', 'destroy');
     });
 

@@ -24,6 +24,8 @@ class PayPeriodResource extends JsonResource
         return [
             'id' => $this->id,
             'period' => $period,
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
             'cutoffStart' => $startDate->format('M j, Y'),
             'cutoffEnd' => $endDate->format('M j, Y'),
             'payDate' => Carbon::parse($this->cutoff_date)->format('M j, Y'),

@@ -128,17 +128,16 @@ class BillingController extends Controller
                     ],
                     [
                         'key' => 'warehouses',
-                        'label' => 'Warehouses',
+                        'label' => 'Warehouse Branches',
                         'limit' => $plan?->max_warehouses,
-                        'used' => DB::table('warehouses')->where('store_id', $store->id)->whereNull('deleted_at')->count(),
+                        'used' => DB::table('branches')->where('store_id', $store->id)->where('branch_type', 'warehouse')->count(),
                     ],
                     [
-                        'key' => 'trucks',
-                        'label' => 'Trucks',
+                        'key' => 'vehicles',
+                        'label' => 'Delivery Vehicles',
                         'limit' => $plan?->max_trucks,
                         'used' => DB::table('ecommerce_delivery_vehicles')
                             ->where('store_id', $store->id)
-                            ->where('vehicle_type', 'truck')
                             ->count(),
                     ],
                     [

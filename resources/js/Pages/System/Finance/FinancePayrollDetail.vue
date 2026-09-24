@@ -484,20 +484,28 @@ const approveOne = async (payrollId: number, status: string) => {
         life: 2500,
       })
     } else {
-      await financeService.submitPayroll(payrollId)
+      const result = await financeService.submitPayroll(payrollId)
+      const autoApproved = String(result?.data?.status || '').toLowerCase() === 'approved'
       toast.add({
         severity: 'success',
-        summary: 'Submitted to Finance',
-        detail: 'Payroll has been submitted for finance review.',
+        summary: autoApproved ? 'Payroll Approved' : 'Submitted to Finance',
+        detail: autoApproved
+          ? 'Your HR and Finance permissions auto-approved this payroll.'
+          : 'Payroll has been submitted for finance review.',
         life: 2500,
       })
     }
     await loadDetail()
   } catch (error: any) {
+    if (error?.response?.status === 400) {
+      await loadDetail()
+    }
     toast.add({
       severity: 'error',
       summary: String(status || '').toLowerCase() === 'processing' ? 'Finance Approval Failed' : 'Submit Failed',
-      detail: error?.response?.data?.message || 'Unable to process payroll action.',
+      detail: error?.response?.status === 400
+        ? `${error?.response?.data?.message || 'Payroll status changed.'} The current status has been refreshed.`
+        : error?.response?.data?.message || 'Unable to process payroll action.',
       life: 3000,
     })
   } finally {
@@ -560,11 +568,14 @@ const bulkApprove = async () => {
         life: 2500,
       })
     } else {
-      await financeService.bulkSubmitPayroll(selectedPayrollIdsForAction.value)
+      const result = await financeService.bulkSubmitPayroll(selectedPayrollIdsForAction.value)
+      const autoApproved = Number(result?.approved_count || 0) > 0
       toast.add({
         severity: 'success',
-        summary: 'Bulk Submit Complete',
-        detail: 'Selected payroll entries were submitted to finance.',
+        summary: autoApproved ? 'Payrolls Approved' : 'Bulk Submit Complete',
+        detail: autoApproved
+          ? 'Your HR and Finance permissions auto-approved the selected payrolls.'
+          : 'Selected payroll entries were submitted to finance.',
         life: 2500,
       })
     }

@@ -4,15 +4,15 @@
     class="min-h-screen p-4 md:p-6 space-y-6"
   >
     <!-- Header -->
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
+    <div class="flex items-center justify-start gap-3">
         <Button
-          label="Back to Warehouse Stock"
-          icon="pi pi-arrow-left"
-          text
+          icon="pi pi-chevron-left"
+          
+          rounded
           size="small"
-          @click="router.visit('/warehouse-operations/stock')"
+          @click="router.visit('/warehouse/stock')"
         />
+      <div>
 
         <div class="mt-2 flex flex-wrap items-center gap-3">
           <h1 class="text-2xl font-semibold text-slate-900">
@@ -27,17 +27,8 @@
 
         <p class="mt-1 text-sm text-slate-500">
           {{ variation?.variation_sku || product.sku }}
-          ·
-          {{ item.branch?.name }}
         </p>
       </div>
-
-      <Button
-        label="Create PR"
-        icon="pi pi-plus"
-        size="small"
-        @click="createPr"
-      />
     </div>
 
     <!-- Stock Summary -->
@@ -100,34 +91,7 @@
           </template>
         </Card>
 
-        <!-- Stock Breakdown -->
-        <Card class="border border-slate-200 shadow-sm">
-          <template #title>
-            <span class="text-base">Stock Breakdown</span>
-          </template>
-
-          <template #content>
-            <DataTable
-              :value="stockBreakdown"
-              size="small"
-              stripedRows
-            >
-              <Column
-                field="label"
-                header="Stock Metric"
-              />
-
-              <Column header="Quantity">
-                <template #body="{ data }">
-                  <span class="font-semibold">
-                    {{ number(data.value) }}
-                  </span>
-                  {{ product.unit_of_measurement || 'unit' }}
-                </template>
-              </Column>
-            </DataTable>
-          </template>
-        </Card>
+    
 
         <!-- Attachments -->
         <Card
@@ -209,7 +173,16 @@
         <!-- Warehouse & Location -->
         <Card class="border border-slate-200 shadow-sm">
           <template #title>
-            <span class="text-base">Warehouse & Location</span>
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-base">Warehouse & Location</span>
+              <Button
+                label="Edit Location"
+                icon="pi pi-pencil"
+                size="small"
+                text
+                @click="editLocation"
+              />
+            </div>
           </template>
 
           <template #content>
@@ -487,13 +460,10 @@ const stockBreakdown = computed(() => [
 
 const locationFields = computed(() => [
   {
-    label: 'Warehouse Branch',
+    label: 'Warehouse',
     value: item.value.branch?.name,
   },
-  {
-    label: 'Warehouse',
-    value: item.value.warehouse?.name || 'Unassigned',
-  },
+
   {
     label: 'Section',
     value: item.value.warehouse_section,
@@ -547,8 +517,12 @@ const images = computed(() =>
 
 const createPr = () => {
   router.visit(
-    `/warehouse-operations/purchase-requisitions/create?branch_inventory_id=${item.value.id}`,
+    `/warehouse/purchase-requisitions/create?branch_inventory_id=${item.value.id}`,
   )
+}
+
+const editLocation = () => {
+  router.visit(`/warehouse/stock/${id.value}/edit`)
 }
 
 onMounted(async () => {

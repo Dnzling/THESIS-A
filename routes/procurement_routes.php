@@ -57,7 +57,7 @@ Route::prefix('procurement')->group(function () {
         Route::get('/verified-directory/{portalId}', [SupplierController::class, 'verifiedDirectoryShow']);
         Route::get('/', [SupplierController::class, 'index']);
         Route::get('/{id}', [SupplierController::class, 'show']);
-        Route::post('/', [SupplierController::class, 'store']);
+        Route::post('/', [SupplierController::class, 'store'])->middleware('subscription.capacity:suppliers');
         Route::put('/{id}', [SupplierController::class, 'update']);
         Route::delete('/{id}', [SupplierController::class, 'destroy']);
         Route::get('/{id}/products', [SupplierController::class, 'products']);

@@ -28,7 +28,8 @@ class LocationRequest extends FormRequest
 
         return [
             'warehouse_id' => [
-                'required',
+                Rule::requiredIf($isUpdate),
+                'nullable',
                 'integer',
                 Rule::exists('warehouses', 'id'),
             ],
@@ -173,8 +174,8 @@ class LocationRequest extends FormRequest
         }
 
         $user = $this->user();
-        $branchId = (int) ($user?->branch_id ?? 0);
-        $storeId = (int) ($user?->store_id ?? 0);
+        $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
+        $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
 
         if ($branchId <= 0) {
             return;
@@ -259,11 +260,13 @@ class LocationRequest extends FormRequest
 
                 // A branch user may only create locations in that branch's warehouse.
                 $user = $this->user();
+                $userBranchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
+                $userStoreId = (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
                 if ($warehouse && $user) {
-                    if ((int) ($user->store_id ?? 0) > 0 && (int) $warehouse->store_id !== (int) $user->store_id) {
+                    if ($userStoreId > 0 && (int) $warehouse->store_id !== $userStoreId) {
                         $validator->errors()->add('warehouse_id', 'This warehouse does not belong to your store.');
                     }
-                    if ((int) ($user->branch_id ?? 0) > 0 && (int) $warehouse->branch_id !== (int) $user->branch_id) {
+                    if ($userBranchId > 0 && (int) $warehouse->branch_id !== $userBranchId) {
                         $validator->errors()->add('warehouse_id', 'This warehouse does not belong to your branch.');
                     }
                 }

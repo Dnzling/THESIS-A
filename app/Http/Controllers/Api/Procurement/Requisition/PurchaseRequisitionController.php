@@ -555,7 +555,7 @@ class PurchaseRequisitionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Purchase requisition updated successfully',
-                'data' => $pr->load('items.product'),
+                'data' => $pr->load(['items.product', 'items.variation']),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

@@ -175,13 +175,17 @@
                   <tbody class="divide-y divide-gray-200">
                     <tr v-for="item in po?.items || []" :key="item.id" class="hover:bg-gray-50 transition-colors">
                       <td class="px-4 py-3">
-                        <div class="font-medium text-gray-900">{{ item.product?.product_name || 'Item' }}</div>
-                        <div class="text-xs text-gray-500 mt-0.5">{{ item.product?.sku || '' }}</div>
+                        <div class="font-medium text-gray-900">
+                          {{ item.variation?.variation_name
+                            ? `${item.product?.product_name || 'Item'} — ${item.variation.variation_name}`
+                            : (item.product?.product_name || 'Item') }}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-0.5">{{ item.variation?.variation_sku || item.product?.sku || '' }}</div>
                       </td>
-                      <td class="px-4 py-3 text-right font-medium">{{ formatQuantity(item.quantity_ordered) }} {{ item.product?.unit_of_measurement || 'unit' }}</td>
+                      <td class="px-4 py-3 text-right font-medium">{{ formatQuantity(item.quantity_ordered) }} {{ item.variation?.unit_of_measurement || item.product?.unit_of_measurement || 'unit' }}</td>
                       <td class="px-4 py-3 text-right">
-                        <div>{{ formatDecimal(item.weight_kg, 3) }} kg/unit</div>
-                        <div class="text-xs text-slate-500">{{ formatDecimal(Number(item.weight_kg || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div>
+                        <div>{{ formatDecimal(itemWeight(item), 3) }} kg/unit</div>
+                        <div class="text-xs text-slate-500">{{ formatDecimal(Number(itemWeight(item) || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div>
                       </td>
                       <td class="px-4 py-3 text-right">{{ formatDimensions(item) }}</td>
                       <td class="px-4 py-3 text-right">₱{{ formatMoney(item.unit_cost) }}</td>
@@ -595,7 +599,8 @@ const goodsReceiptStatusSeverity = (status: string): 'success' | 'warn' | 'dange
 }
 
 const getGoodsReceiptProductName = (item: any): string => {
-  return item?.product?.product_name || 'Item'
+  const parent = item?.product?.product_name || 'Item'
+  return item?.variation?.variation_name ? `${parent} — ${item.variation.variation_name}` : parent
 }
 
 const formatQuantity = (value?: number): string => {
@@ -603,9 +608,15 @@ const formatQuantity = (value?: number): string => {
 }
 
 const formatDecimal = (value?: number, digits = 2): string => Number(value ?? 0).toLocaleString('en-PH', { maximumFractionDigits: digits })
-const formatDimensions = (item: any): string => item?.length_cm && item?.width_cm && item?.height_cm
-  ? `${formatDecimal(item.length_cm)} × ${formatDecimal(item.width_cm)} × ${formatDecimal(item.height_cm)} cm`
-  : '-'
+const itemWeight = (item: any): number => Number(item?.variation?.weight_kg ?? item?.product?.weight_kg ?? item?.weight_kg ?? 0)
+const formatDimensions = (item: any): string => {
+  const length = item?.variation?.length_cm ?? item?.product?.length_cm ?? item?.length_cm
+  const width = item?.variation?.width_cm ?? item?.product?.width_cm ?? item?.width_cm
+  const height = item?.variation?.height_cm ?? item?.product?.height_cm ?? item?.height_cm
+  return length != null && width != null && height != null
+    ? `${formatDecimal(length)} × ${formatDecimal(width)} × ${formatDecimal(height)} cm`
+    : '-'
+}
 
 const formatStatus = (status: string): string => {
   if (!status) return '-'

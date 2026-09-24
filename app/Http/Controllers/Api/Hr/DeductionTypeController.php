@@ -100,6 +100,7 @@ class DeductionTypeController extends Controller
                 'name' => 'required|string|max:100',
                 'code' => 'required|string|max:50|unique:deduction_types,code,NULL,id,store_id,' . $storeId,
                 'category' => 'required|in:government,company,loan,benefit,other',
+                'benefit_limit' => 'nullable|numeric|min:0',
                 'calculation_type' => 'required|in:fixed,percentage,formula',
                 'frequency' => 'sometimes|in:one-time,monthly,bi-monthly,quarterly,annual',
                 
@@ -257,6 +258,7 @@ class DeductionTypeController extends Controller
                 'name' => 'sometimes|string|max:100',
                 'code' => 'sometimes|string|max:50|unique:deduction_types,code,' . $id . ',id,store_id,' . $storeId,
                 'category' => 'sometimes|in:government,company,loan,benefit,other',
+                'benefit_limit' => 'nullable|numeric|min:0',
                 'calculation_type' => 'sometimes|in:fixed,percentage,formula',
                 'frequency' => 'sometimes|in:one-time,monthly,bi-monthly,quarterly,annual',
                 

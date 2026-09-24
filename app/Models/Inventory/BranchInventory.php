@@ -29,6 +29,7 @@ class BranchInventory extends Model
         'quantity_damaged',
         'quantity_incoming',
         'warehouse_section',
+        'warehouse_location_id',
         'aisle',
         'rack',
         'shelf',
@@ -66,6 +67,11 @@ class BranchInventory extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function warehouseLocation(): BelongsTo
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
 
     public function product(): BelongsTo

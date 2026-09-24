@@ -222,7 +222,7 @@ Route::prefix('inventory')->group(function () {
     Route::prefix('products')->group(function () {
         Route::get('/', [ProductController::class, 'index']);
         Route::get('/{id}', [ProductController::class, 'show']);
-        Route::post('/', [ProductController::class, 'store']);
+        Route::post('/', [ProductController::class, 'store'])->middleware('subscription.capacity:products');
         Route::put('/{id}', [ProductController::class, 'update']);
         Route::delete('/{id}', [ProductController::class, 'destroy']);
         Route::get('/{id}/variations', [ProductController::class, 'getVariations']);
@@ -396,7 +396,7 @@ Route::prefix('inventory')->group(function () {
     // Delivery Vehicles
     Route::prefix('delivery-vehicles')->group(function () {
         Route::get('/', [EcommerceDeliveryVehicleController::class, 'index']);
-        Route::post('/', [EcommerceDeliveryVehicleController::class, 'store']);
+        Route::post('/', [EcommerceDeliveryVehicleController::class, 'store'])->middleware('subscription.capacity:vehicles');
         Route::get('/{id}', [EcommerceDeliveryVehicleController::class, 'show']);
         Route::put('/{id}', [EcommerceDeliveryVehicleController::class, 'update']);
     });

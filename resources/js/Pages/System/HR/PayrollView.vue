@@ -1,7 +1,7 @@
 <template>
   <div class="payroll-list p-4">
     <!-- Header with Batch Info -->
-    <div v-if="batchInfo" class="mb-4 p-3 bg-gray-50 rounded-lg">
+    <div v-if="batchInfo" class="mb-4 p-3 rounded-lg">
       <div class="flex justify-between items-center">
         <div>
           <h3 class="text-lg font-semibold">{{ batchInfo.name }}</h3>
@@ -11,27 +11,27 @@
           </p>
         </div>
         <div class="flex gap-2">
-          <Tag :severity="getStatusSeverity(batchInfo.status)" :value="batchInfo.status" class="capitalize" />
-          <Button label="Back to Batches" icon="pi pi-arrow-left" text @click="goBack" />
+          <Badge :severity="getStatusSeverity(batchInfo.status)" :value="batchInfo.status" class="capitalize" />
+
         </div>
       </div>
     </div>
-  
+
     <!-- Search and Filters -->
-    <div class="flex gap-2 mb-4">
-      <IconField iconPosition="left" class="w-64">
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <IconField iconPosition="left" class="w-full sm:w-64">
         <InputIcon>
           <i class="pi pi-search" />
         </InputIcon>
-        <InputText v-model="filters.search" placeholder="Search employee..." size="small" @input="debouncedFetch" />
+        <InputText v-model="filters.search" placeholder="Search employee..." size="small" class="w-full" @input="debouncedFetch" />
       </IconField>
-      <Select v-model="filters.branch" :options="branches" placeholder="All Branches" showClear class="w-40" size="small"
+      <Select v-model="filters.branch" :options="branches" placeholder="All Branches" showClear class="w-full sm:w-40" size="small"
         @change="applyFilters" />
-      <Select v-model="filters.department" :options="departments" placeholder="All Departments" showClear class="w-40"
+      <Select v-model="filters.department" :options="departments" placeholder="All Departments" showClear class="w-full sm:w-40"
         size="small" @change="applyFilters" />
-      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-36"
+      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear class="w-full sm:w-36"
         size="small" @change="applyFilters" />
-      <Button v-if="hasDraftPayrolls" label="Bulk Submit" icon="pi pi-send" severity="info" size="small" outlined
+      <Button v-if="hasDraftPayrolls" label="Bulk Submit" icon="pi pi-send" size="small"
         :disabled="selectedItems.length === 0 || loading" :loading="bulkSubmitting" @click="bulkSubmitForApproval" />
       <Button label="Bulk Paid" icon="pi pi-money-bill" severity="success" size="small" outlined
         :disabled="selectedApprovedItems.length === 0 || loading" :loading="bulkMarkingPaid" @click="bulkMarkPaid" />
@@ -41,15 +41,17 @@
   
     <!-- Payroll Table -->
     <DataTable :value="filteredPayrollItems" :paginator="true" :rows="10" :rowsPerPageOptions="[10, 20, 50]"
-      tableStyle="min-width: 110rem" :loading="loading" removableSort
+      tableStyle="min-width: 125rem" :loading="loading" removableSort scrollable
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
       currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries" sortMode="multiple" rowHover
       v-model:selection="selectedItems" selectionMode="multiple">
       <!-- Selection Column -->
-      <Column selectionMode="multiple" headerStyle="width: 3rem" />
+      <Column selectionMode="multiple" frozen alignFrozen="left" style="width: 3rem; min-width: 3rem"
+        headerStyle="width: 3rem; min-width: 3rem" />
   
       <!-- Employee Columns -->
-      <Column class="text-xs" field="employeeName" header="Employee" sortable>
+      <Column class="text-xs" field="employeeName" header="Employee" sortable frozen alignFrozen="left"
+        style="width: 14rem; min-width: 14rem" headerStyle="width: 14rem; min-width: 14rem">
         <template #body="{ data }">
           <div class="font-medium">{{ data.employeeName }}</div>
           <small class="text-gray-500">{{ data.employeeId }}</small>
@@ -67,6 +69,11 @@
           {{ data.department || 'N/A' }}
         </template>
       </Column>
+
+      <Column class="text-xs" field="absentDays" header="Absent" sortable />
+      <Column class="text-xs" field="leaveDays" header="On Leave" sortable />
+      <Column class="text-xs" field="breakMinutes" header="Break (min)" sortable />
+      <Column class="text-xs" field="lateMinutes" header="Late (min)" sortable />
   
       <!-- Financial Columns -->
       <Column class="text-xs" field="baseSalary" header="Base Salary" sortable>
@@ -88,6 +95,7 @@
               </template>
             </Column> -->
   
+      <Column class="text-xs" field="overtimeHours" header="OT Hrs" sortable />
       <Column class="text-xs" field="overtimePay" header="OT Pay" sortable>
         <template #body="{ data }">
           {{ formatCurrency(data.overtimePay) }}
@@ -99,13 +107,20 @@
           {{ formatCurrency(data.allowanceAmount) }}
         </template>
       </Column>
+      <Column class="text-xs" field="incentiveAmount" header="Incentives" sortable>
+        <template #body="{ data }">{{ formatCurrency(data.incentiveAmount) }}</template>
+      </Column>
   
       <!-- Deductions -->
-      <Column class="text-xs font-semibold" header="Deductions (Itemized)">
+      <Column class="text-xs" header="Itemized Deductions" style="min-width: 13rem">
         <template #body="{ data }">
-          <div v-if="!data.deductionItems.length" class="text-gray-500">No itemized deductions</div>
-          <div v-for="deduction in data.deductionItems" :key="`${data.id}-${deduction.name}`">
-            {{ deduction.name }}: {{ formatCurrency(deduction.amount) }}
+          <div v-if="!data.deductionItems.length" class="text-slate-500">None</div>
+          <div v-else class="space-y-1.5 py-1">
+            <div v-for="deduction in data.deductionItems" :key="`${data.id}-${deduction.name}`"
+              class="flex items-start justify-between gap-4 border-b border-slate-100 pb-1 last:border-0 last:pb-0">
+              <span class="min-w-0 text-slate-600">{{ deduction.name }}</span>
+              <span class="shrink-0 tabular-nums font-medium text-slate-900">{{ formatCurrency(deduction.amount) }}</span>
+            </div>
           </div>
         </template>
       </Column>
@@ -115,15 +130,12 @@
           <span class="text-red-600">-{{ formatCurrency(data.lateDeductions) }}</span>
         </template>
       </Column>
-  
-      <Column class="text-xs" field="leaveDeductions" header="Leave" sortable>
-        <template #body="{ data }">
-          <span class="text-red-600">-{{ formatCurrency(data.leaveDeductions) }}</span>
-        </template>
+      <Column class="text-xs" field="absenceDeduction" header="Absence Ded." sortable>
+        <template #body="{ data }">-{{ formatCurrency(data.absenceDeduction) }}</template>
       </Column>
-  
+
       <!-- Totals -->
-      <Column class="text-xs" field="grossPay" header="Gross Pay" sortable>
+      <Column class="text-xs" field="grossPay" style="width: 2%;" header="Gross Pay"  sortable>
         <template #body="{ data }">
           <span class="font-bold text-green-600">+{{ formatCurrency(data.grossPay) }}</span>
         </template>
@@ -144,20 +156,20 @@
       <!-- Status -->
       <Column class="text-xs" field="status" header="Status" sortable>
         <template #body="{ data }">
-          <Tag :severity="getStatusSeverity(data.status)" :value="data.status" class="capitalize" />
+          <Badge :severity="getStatusSeverity(data.status)" :value="data.status" class="capitalize" />
         </template>
       </Column>
   
       <!-- Actions -->
-      <Column header="Actions" style="min-width: 120px">
+      <Column header="Actions" >
         <template #body="{ data }">
           <div class="flex gap-2">
+            <Button icon="pi pi-eye" severity="secondary" text size="small"
+              @click="openPayslipDetails(data)" v-tooltip="'View pay breakdown'" aria-label="View pay breakdown" />
             <Button v-if="data.status === 'draft' || data.status === 'calculated'" icon="pi pi-send" severity="info" text
               @click="submitForApproval(data)" v-tooltip="'Submit for approval'" :loading="data.submitting" />
             <Button v-if="data.status === 'approved'" icon="pi pi-money-bill" severity="success" text
               @click="markPayrollPaid(data)" v-tooltip="'Mark payroll as paid'" :loading="data.paying" />
-            <Button v-if="data.status === 'paid'" icon="pi pi-receipt" severity="contrast" text
-              @click="openPayslipDetails(data)" v-tooltip="'View payslip details'" />
             <Button icon="pi pi-print" severity="secondary" text @click="printPayslip(data)"
               v-tooltip="'Print payslip'" />
           </div>
@@ -172,53 +184,69 @@
       </template>
     </DataTable>
 
-    <Dialog v-model:visible="showPayslipDialog" header="Payslip Details" :style="{ width: '720px' }" modal>
-      <div v-if="selectedPayslip" class="space-y-4 text-sm">
-        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
-            <p><span class="font-semibold">Employee:</span> {{ selectedPayslip.employeeName }}</p>
-            <p><span class="font-semibold">Employee #:</span> {{ selectedPayslip.employeeId || '-' }}</p>
-            <p><span class="font-semibold">Branch:</span> {{ selectedPayslip.branch || '-' }}</p>
-            <p><span class="font-semibold">Department:</span> {{ selectedPayslip.department || '-' }}</p>
-            <p><span class="font-semibold">Period:</span> {{ batchInfo ? formatDate(batchInfo.start_date) : '-' }} - {{ batchInfo ? formatDate(batchInfo.end_date) : '-' }}</p>
-            <p><span class="font-semibold">Pay Date:</span> {{ selectedPayslip.paymentDate ? formatDate(selectedPayslip.paymentDate) : (batchInfo ? formatDate(batchInfo.pay_date) : '-') }}</p>
-            <p><span class="font-semibold">Payment Method:</span> {{ selectedPayslip.paymentMethod || '-' }}</p>
-            <p><span class="font-semibold">Reference #:</span> {{ selectedPayslip.referenceNumber || '-' }}</p>
+    <Dialog v-model:visible="showPayslipDialog" header="Payroll Breakdown" :style="{ width: 'min(760px, 95vw)' }" modal>
+      <div v-if="selectedPayslip" class="space-y-4 text-sm text-slate-800">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Employee</p>
+              <p class="font-semibold text-slate-900">{{ selectedPayslip.employeeName }}</p>
+            </div>
+            <Badge :severity="getStatusSeverity(selectedPayslip.status)" :value="selectedPayslip.status" class="capitalize" />
+          </div>
+          <div class="grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
+            <p><span class="text-slate-500">Employee #</span><span class="ml-2 font-medium">{{ selectedPayslip.employeeId || '-' }}</span></p>
+            <p><span class="text-slate-500">Branch</span><span class="ml-2 font-medium">{{ selectedPayslip.branch || '-' }}</span></p>
+            <p><span class="text-slate-500">Department</span><span class="ml-2 font-medium">{{ selectedPayslip.department || '-' }}</span></p>
+            <p><span class="text-slate-500">Period</span><span class="ml-2 font-medium">{{ batchInfo ? formatDate(batchInfo.start_date) : '-' }} - {{ batchInfo ? formatDate(batchInfo.end_date) : '-' }}</span></p>
+            <p><span class="text-slate-500">Pay date</span><span class="ml-2 font-medium">{{ selectedPayslip.paymentDate ? formatDate(selectedPayslip.paymentDate) : (batchInfo ? formatDate(batchInfo.pay_date) : '-') }}</span></p>
+            <p><span class="text-slate-500">Payment method</span><span class="ml-2 font-medium">{{ selectedPayslip.paymentMethod || '-' }}</span></p>
+            <p v-if="selectedPayslip.referenceNumber"><span class="text-slate-500">Reference #</span><span class="ml-2 font-medium">{{ selectedPayslip.referenceNumber }}</span></p>
           </div>
         </div>
 
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-            <p class="mb-2 font-semibold text-emerald-800">Earnings</p>
-            <div class="space-y-1">
-              <p class="flex justify-between"><span>Base Salary</span><span>{{ formatCurrency(selectedPayslip.baseSalary) }}</span></p>
-              <p class="flex justify-between"><span>Overtime</span><span>{{ formatCurrency(selectedPayslip.overtimePay) }}</span></p>
-              <p class="flex justify-between"><span>Allowance</span><span>{{ formatCurrency(selectedPayslip.allowanceAmount) }}</span></p>
-              <p class="flex justify-between border-t border-emerald-300 pt-1 font-semibold"><span>Gross Pay</span><span>{{ formatCurrency(selectedPayslip.grossPay) }}</span></p>
+          <div class="rounded-xl border border-slate-200 p-4">
+            <p class="mb-3 font-semibold text-slate-900">Earnings</p>
+            <div class="space-y-2 text-xs">
+              <p class="flex justify-between gap-4"><span>Base salary</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.baseSalary) }}</span></p>
+              <p class="flex justify-between gap-4"><span>Overtime</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.overtimePay) }}</span></p>
+              <p class="flex justify-between gap-4"><span>Allowance</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.allowanceAmount) }}</span></p>
+              <p class="flex justify-between gap-4"><span>Incentives</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.incentiveAmount) }}</span></p>
+              <p v-if="selectedPayslip.otherBonusPay" class="flex justify-between gap-4"><span>Other premiums</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.otherBonusPay) }}</span></p>
+              <p class="flex justify-between gap-4 border-t border-slate-200 pt-2 font-semibold text-slate-900"><span>Gross pay</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.grossPay) }}</span></p>
             </div>
           </div>
 
-          <div class="rounded-lg border border-rose-200 bg-rose-50 p-3">
-            <p class="mb-2 font-semibold text-rose-800">Deductions</p>
-            <div class="space-y-1" v-if="selectedPayslip.deductionItems.length">
-              <p v-for="deduction in selectedPayslip.deductionItems" :key="`${selectedPayslip.id}-${deduction.name}`" class="flex justify-between">
+          <div class="rounded-xl border border-slate-200 p-4">
+            <p class="mb-3 font-semibold text-slate-900">Deductions</p>
+            <div class="space-y-2 text-xs" v-if="selectedPayslip.deductionItems.length">
+              <p v-for="deduction in selectedPayslip.deductionItems" :key="`${selectedPayslip.id}-${deduction.name}`" class="flex justify-between gap-4">
                 <span>{{ deduction.name }}</span>
-                <span>-{{ formatCurrency(deduction.amount) }}</span>
+                <span class="shrink-0 tabular-nums">{{ formatCurrency(deduction.amount) }}</span>
               </p>
             </div>
-            <p v-else class="text-gray-500">No itemized deductions</p>
-            <p class="mt-1 flex justify-between"><span>Late Deductions</span><span>-{{ formatCurrency(selectedPayslip.lateDeductions) }}</span></p>
-            <p class="flex justify-between"><span>Leave Deductions</span><span>-{{ formatCurrency(selectedPayslip.leaveDeductions) }}</span></p>
-            <p class="flex justify-between border-t border-rose-300 pt-1 font-semibold"><span>Total Deductions</span><span>-{{ formatCurrency(selectedPayslip.totalDeductions) }}</span></p>
+            <p v-else class="text-xs text-slate-500">No itemized deductions</p>
+            <div class="mt-2 space-y-2 text-xs">
+              <p class="flex justify-between gap-4"><span>Late deduction</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.lateDeductions) }}</span></p>
+              <p class="flex justify-between gap-4"><span>Absence</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.absenceDeduction) }}</span></p>
+              <p class="flex justify-between gap-4"><span>Half-day</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.halfDayDeduction) }}</span></p>
+              <p class="flex justify-between gap-4"><span>Income tax</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.taxAmount) }}</span></p>
+              <p class="flex justify-between gap-4 border-t border-slate-200 pt-2 font-semibold text-slate-900"><span>Total deductions</span><span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.totalDeductions) }}</span></p>
+            </div>
           </div>
         </div>
 
-        <div class="rounded-lg border border-blue-200 bg-blue-50 p-3">
-          <p class="flex justify-between text-base font-semibold text-blue-900">
+        <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+          <p class="font-semibold text-slate-900">Attendance in this pay period</p>
+          <p class="mt-1">Absent {{ selectedPayslip.absentDays }} days | Leave {{ selectedPayslip.leaveDays }} days | Break {{ selectedPayslip.breakMinutes }} min | Late {{ selectedPayslip.lateMinutes }} min | OT {{ selectedPayslip.overtimeHours }} hrs</p>
+        </div>
+
+        <div class="rounded-xl border border-orange-200 bg-orange-50 p-4">
+          <p class="flex justify-between gap-4 text-base font-semibold text-slate-900">
             <span>Net Pay</span>
-            <span>{{ formatCurrency(selectedPayslip.netPay) }}</span>
+            <span class="shrink-0 tabular-nums">{{ formatCurrency(selectedPayslip.netPay) }}</span>
           </p>
-          <p class="mt-1 text-xs text-blue-700">Status: {{ selectedPayslip.status.toUpperCase() }}</p>
         </div>
       </div>
 
@@ -237,6 +265,7 @@ import { useRoute, useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
 import financeService from '@/services/finance.service'
 import { debounce } from 'lodash'
+import { printPayrollPayslip } from '@/utils/payrollPayslipPrint'
 
 // ==================== INTERFACES ====================
 interface DeductionItem {
@@ -258,10 +287,19 @@ interface PayrollItem {
   basicPay: number
   overtimePay: number
   allowanceAmount: number
+  incentiveAmount: number
+  otherBonusPay: number
+  absentDays: number
+  leaveDays: number
+  breakMinutes: number
+  lateMinutes: number
+  overtimeHours: number
   // Deductions
   deductionItems: DeductionItem[]
   lateDeductions: number
-  leaveDeductions: number
+  absenceDeduction: number
+  halfDayDeduction: number
+  taxAmount: number
   otherDeductions: number
   // Totals
   grossPay: number
@@ -278,6 +316,7 @@ interface PayrollItem {
 interface BatchInfo {
   id: number
   name: string
+  store_name?: string | null
   start_date: string
   end_date: string
   pay_date: string
@@ -454,16 +493,30 @@ const transformPayrollData = (apiData: any[]): PayrollItem[] => {
       branch: branchName || 'N/A',
       department: item.employee?.department || item.department || 'N/A',
       baseSalary: item.base_salary || 0,
-      salaryPerHour: item.base_salary ? item.base_salary / 160 : 0,
+      salaryPerHour: Number(item.hourly_rate || 0),
       basicPay: item.base_salary || 0,
       overtimePay: item.overtime_amount || 0,
       allowanceAmount: item.allowances_total || 0,
+      incentiveAmount: Array.isArray(item.incentive_items)
+        ? item.incentive_items.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0)
+        : 0,
+      otherBonusPay: Math.max(0, Number(item.bonuses_total || 0)
+        - (Array.isArray(item.incentive_items)
+          ? item.incentive_items.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0)
+          : 0)),
+      absentDays: Number(item.period_metrics?.absent_days || 0),
+      leaveDays: Number(item.period_metrics?.leave_days || 0),
+      breakMinutes: Number(item.period_metrics?.break_minutes || 0),
+      lateMinutes: Number(item.period_metrics?.late_minutes || 0),
+      overtimeHours: Number(item.overtime_hours || 0),
       deductionItems,
       lateDeductions: Number(item.late_deduction || 0),
-      leaveDeductions: 0, // You'll need to calculate this from leaves
+      absenceDeduction: Number(item.period_metrics?.absence_deduction || 0),
+      halfDayDeduction: Number(item.period_metrics?.half_day_deduction || 0),
+      taxAmount: Number(item.tax_amount || 0),
       otherDeductions: 0,
       grossPay: grossPay,
-      totalDeductions: item.deductions_total || 0,
+      totalDeductions: Number(item.deductions_total || 0) + Number(item.tax_amount || 0),
       netPay: item.net_salary || 0,
       status: item.status || 'draft',
       payroll_id: item.id,
@@ -733,97 +786,43 @@ const bulkMarkPaid = async () => {
 
 const printPayslip = (item: PayrollItem) => {
   const period = batchInfo.value
-  const itemizedDeductionRows = item.deductionItems.length
-    ? item.deductionItems.map(d => `<tr><td>${d.name}</td><td>- ${formatCurrency(d.amount)}</td></tr>`).join('')
-    : '<tr><td colspan="2" style="text-align:left;color:#666;">No itemized deductions</td></tr>'
+  const opened = printPayrollPayslip({
+    storeName: period?.store_name || 'Store name unavailable',
+    employeeName: item.employeeName,
+    employeeId: item.employeeId,
+    department: item.department,
+    branch: item.branch,
+    periodName: period?.name || 'Payroll period',
+    periodStart: period ? formatDate(period.start_date) : '-',
+    periodEnd: period ? formatDate(period.end_date) : '-',
+    payDate: item.paymentDate ? formatDate(item.paymentDate) : (period ? formatDate(period.pay_date) : '-'),
+    payrollId: String(item.payroll_id || item.id || '-'),
+    status: item.status,
+    earnings: [
+      { label: 'Base salary', amount: item.baseSalary },
+      { label: 'Overtime pay', amount: item.overtimePay },
+      { label: 'Allowances', amount: item.allowanceAmount },
+      { label: 'Incentives', amount: item.incentiveAmount },
+      { label: 'Other premiums', amount: item.otherBonusPay },
+    ],
+    deductions: [
+      ...item.deductionItems.map((deduction) => ({ label: deduction.name, amount: deduction.amount })),
+      { label: 'Late deduction', amount: item.lateDeductions },
+      { label: 'Absence deduction', amount: item.absenceDeduction },
+      { label: 'Half-day deduction', amount: item.halfDayDeduction },
+      { label: 'Income tax', amount: item.taxAmount },
+    ],
+    grossPay: item.grossPay,
+    totalDeductions: item.totalDeductions,
+    netPay: item.netPay,
+    absentDays: item.absentDays,
+    leaveDays: item.leaveDays,
+    lateMinutes: item.lateMinutes,
+    overtimeHours: item.overtimeHours,
+  })
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Payslip - ${item.employeeName}</title>
-      <style>
-        body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
-        h2 { text-align: center; margin-bottom: 4px; }
-        .subtitle { text-align: center; color: #666; margin-bottom: 16px; font-size: 11px; }
-        .section { margin-bottom: 12px; }
-        .section-title { font-weight: bold; background: #f0f0f0; padding: 4px 8px; border-left: 3px solid #333; margin-bottom: 6px; }
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 4px 8px; }
-        td:last-child { text-align: right; }
-        .divider { border-top: 1px solid #ccc; margin: 8px 0; }
-        .total-row td { font-weight: bold; border-top: 2px solid #333; }
-        .net-row td { font-weight: bold; font-size: 14px; background: #e8f5e9; }
-        .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px; }
-        .header-grid div { padding: 2px 0; }
-        .label { color: #666; }
-        @media print { body { margin: 10px; } }
-      </style>
-    </head>
-    <body>
-      <h2>PAYSLIP</h2>
-      <div class="subtitle">${period?.name ?? ''} &nbsp;|&nbsp; ${period ? formatDate(period.start_date) + ' – ' + formatDate(period.end_date) : ''}</div>
-
-      <div class="header-grid">
-        <div><span class="label">Employee:</span> <strong>${item.employeeName}</strong></div>
-        <div><span class="label">Employee #:</span> ${item.employeeId}</div>
-        <div><span class="label">Department:</span> ${item.department}</div>
-        <div><span class="label">Branch:</span> ${item.branch}</div>
-        <div><span class="label">Pay Date:</span> ${period ? formatDate(period.pay_date) : 'N/A'}</div>
-        <div><span class="label">Status:</span> ${item.status.toUpperCase()}</div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">EARNINGS</div>
-        <table>
-          <tr><td>Basic Salary</td><td>${formatCurrency(item.baseSalary)}</td></tr>
-          <tr><td>Overtime Pay</td><td>${formatCurrency(item.overtimePay)}</td></tr>
-          <tr><td>Allowances</td><td>${formatCurrency(item.allowanceAmount)}</td></tr>
-          <tr class="total-row"><td>Gross Pay</td><td>${formatCurrency(item.grossPay)}</td></tr>
-        </table>
-      </div>
-
-      <div class="section">
-        <div class="section-title">DEDUCTIONS</div>
-        <table>
-          ${itemizedDeductionRows}
-          <tr><td>Late Deductions</td><td>- ${formatCurrency(item.lateDeductions)}</td></tr>
-          <tr><td>Leave Deductions</td><td>- ${formatCurrency(item.leaveDeductions)}</td></tr>
-          <tr class="total-row"><td>Total Deductions</td><td>- ${formatCurrency(item.totalDeductions)}</td></tr>
-        </table>
-      </div>
-
-      <div class="section">
-        <table>
-          <tr class="net-row"><td>NET PAY</td><td>${formatCurrency(item.netPay)}</td></tr>
-        </table>
-      </div>
-
-      <div style="margin-top:40px; display:grid; grid-template-columns:1fr 1fr; gap:20px; font-size:11px;">
-        <div style="border-top:1px solid #333; padding-top:4px; text-align:center;">Prepared by</div>
-        <div style="border-top:1px solid #333; padding-top:4px; text-align:center;">Received by</div>
-      </div>
-
-      <div style="margin-top:30px; text-align:center; font-size:10px; color:#999;">
-        Printed on: ${new Date().toLocaleString('en-PH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  })}
-      </div>
-    </body>
-    </html>
-  `
-  const win = window.open('', '_blank', 'width=700,height=900')
-  if (win) {
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 500)
+  if (!opened) {
+    toast.add({ severity: 'warn', summary: 'Print blocked', detail: 'Allow pop-ups to print this payslip.', life: 3000 })
   }
 }
 
@@ -907,5 +906,3 @@ onMounted(() => {
   }
 }
 </style>
-
-

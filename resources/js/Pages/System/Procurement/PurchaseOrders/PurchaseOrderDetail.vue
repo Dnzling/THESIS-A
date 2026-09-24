@@ -217,11 +217,12 @@
                 <td class="px-6 py-4 text-gray-500">{{ index + 1 }}</td>
                 <td class="px-6 py-4">
                   <div>
-                    <p class="font-medium text-gray-900">{{ item.product?.product_name || '-' }}</p>
-                    <p class="text-xs text-gray-500 mt-1">SKU: {{ item.product?.sku || '-' }}</p>
-                    <p v-if="item.variation" class="mt-1 text-xs text-orange-700">
-                      Variant: {{ item.variation.variation_name || item.variation.name || `Variant #${item.variation_id}` }}
+                    <p class="font-medium text-gray-900">
+                      {{ item.variation?.variation_name
+                        ? `${item.product?.product_name || '-'} — ${item.variation.variation_name}`
+                        : (item.product?.product_name || '-') }}
                     </p>
+                    <p class="text-xs text-gray-500 mt-1">SKU: {{ item.variation?.variation_sku || item.product?.sku || '-' }}</p>
                     <div v-if="item.quoted_variant_snapshot" class="mt-2 rounded-xl border border-orange-100 bg-orange-50 p-2 text-xs">
                       <p class="font-semibold text-orange-800">Quoted variant: {{ item.quoted_variant_snapshot.name }}</p>
                       <p class="mt-1 text-slate-600">{{ [item.quoted_variant_snapshot.size, item.quoted_variant_snapshot.color, item.quoted_variant_snapshot.material, item.quoted_variant_snapshot.texture, item.quoted_variant_snapshot.finish].filter(Boolean).join(' · ') || 'No additional attributes' }}</p>
@@ -232,8 +233,8 @@
                     </div>
                   </div>
                 </td>
-                <td class="px-6 py-4 text-center font-medium">{{ Number(item?.quantity_ordered || 0).toLocaleString() }} {{ item.product?.unit_of_measurement || 'unit' }}</td>
-                <td class="px-6 py-4 text-right"><div>{{ formatDecimal(item.weight_kg, 3) }} kg/unit</div><div class="text-xs text-gray-500">{{ formatDecimal(Number(item.weight_kg || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div></td>
+                <td class="px-6 py-4 text-center font-medium">{{ Number(item?.quantity_ordered || 0).toLocaleString() }} {{ item.variation?.unit_of_measurement || item.product?.unit_of_measurement || 'unit' }}</td>
+                <td class="px-6 py-4 text-right"><div>{{ formatDecimal(itemWeight(item), 3) }} kg/unit</div><div class="text-xs text-gray-500">{{ formatDecimal(Number(itemWeight(item) || 0) * Number(item.quantity_ordered || 0), 3) }} kg total</div></td>
                 <td class="px-6 py-4 text-right">{{ formatDimensions(item) }}</td>
                 <td class="px-6 py-4 text-right font-mono">{{ formatCurrency(parseFloat(item?.unit_cost || 0)) }}</td>
                 <td class="px-6 py-4 text-right font-mono font-medium text-blue-600">{{
@@ -806,9 +807,15 @@ const formatCurrency = (value: number) => {
 const supplierImageUrl = (path: string) => path?.startsWith('http') ? path : `/storage/${String(path || '').replace(/^\/+/, '')}`
 
 const formatDecimal = (value: any, digits = 2) => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: digits })
-const formatDimensions = (item: any) => item?.length_cm && item?.width_cm && item?.height_cm
-  ? `${formatDecimal(item.length_cm)} × ${formatDecimal(item.width_cm)} × ${formatDecimal(item.height_cm)} cm`
-  : '-'
+const itemWeight = (item: any) => item?.variation?.weight_kg ?? item?.product?.weight_kg ?? item?.weight_kg ?? 0
+const formatDimensions = (item: any) => {
+  const length = item?.variation?.length_cm ?? item?.product?.length_cm ?? item?.length_cm
+  const width = item?.variation?.width_cm ?? item?.product?.width_cm ?? item?.width_cm
+  const height = item?.variation?.height_cm ?? item?.product?.height_cm ?? item?.height_cm
+  return length != null && width != null && height != null
+    ? `${formatDecimal(length)} × ${formatDecimal(width)} × ${formatDecimal(height)} cm`
+    : '-'
+}
 const formatFulfillment = (value?: string) => value === 'supplier_delivery' ? 'Supplier Delivery' : value === 'store_pickup' ? 'Store Pickup' : 'Not selected'
 
 const formatPaymentTerms = (term: string) => {

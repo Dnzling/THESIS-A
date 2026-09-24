@@ -16,7 +16,7 @@
         <Column field="stock_skus" header="SKUs" />
         <Column header="On Hand"><template #body="{ data }">{{ number(data.quantity_on_hand) }}</template></Column>
         <Column header="Status"><template #body="{ data }"><Badge :value="label(data.status)" :severity="data.status === 'active' ? 'success' : 'secondary'" /></template></Column>
-        <Column header="Action" frozen alignFrozen="right"><template #body="{ data }"><Button icon="pi pi-eye" label="View" size="small" text @click="router.visit(`/warehouse-operations/warehouses/${data.id}`)" /></template></Column>
+        <Column header="Action" frozen alignFrozen="right"><template #body="{ data }"><Button icon="pi pi-eye" label="View" size="small" text @click="router.visit(`/warehouse/warehouses/${data.id}`)" /></template></Column>
       </DataTable>
     </template></Card>
   </div>

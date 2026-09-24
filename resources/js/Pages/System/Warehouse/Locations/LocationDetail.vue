@@ -1,339 +1,82 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
-    <div class="max-w-7xl mx-auto">
-      <div class="mb-6">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <Button
-              icon="pi pi-arrow-left"
-              severity="secondary"
-              text
-              @click="goBack"
-              v-tooltip.top="'Back to Locations'"
-            />
-            <div>
-              <h1 class="text-3xl font-bold text-gray-800">{{ location?.name || 'Location Details' }}</h1>
-              <p class="text-gray-600 mt-1">Location information and inventory</p>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <Button
-              label="Edit"
-              icon="pi pi-pencil"
-              severity="warning"
-              @click="editLocation"
-              v-tooltip.top="'Edit Location'"
-            />
-            <Button
-              label="Delete"
-              icon="pi pi-trash"
-              severity="danger"
-              @click="confirmDelete"
-              v-tooltip.top="'Delete Location'"
-            />
-          </div>
+  <div v-if="location" class="min-h-screen p-4 md:p-6 space-y-6">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <Button label="Back to Locations" icon="pi pi-arrow-left" text size="small" @click="goBack" />
+        <div class="mt-2 flex flex-wrap items-center gap-3">
+          <h1 class="text-2xl font-semibold text-slate-900">{{ location.name || 'Storage Location' }}</h1>
+          <Badge :value="label(location.status)" :severity="statusSeverity(location.status)" />
         </div>
+        <p class="mt-1 text-sm text-slate-500">{{ location.location_code || 'No code' }} · {{ location.warehouse?.name || 'Warehouse location' }}</p>
+      </div>
+      <div class="flex gap-2">
+        <Button label="Delete" icon="pi pi-trash" severity="danger" size="small" @click="confirmDelete" />
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <Card v-for="card in summary" :key="card.label" class="border border-slate-200 shadow-sm">
+        <template #content><p class="text-xs uppercase tracking-wide text-slate-500">{{ card.label }}</p><p class="mt-1 text-xl font-semibold text-slate-900">{{ card.value }}</p></template>
+      </Card>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-3">
+      <div class="space-y-6 lg:col-span-2">
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Location Information</span></template>
+          <template #content><div class="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3"><div v-for="field in informationFields" :key="field.label"><p class="text-xs uppercase tracking-wide text-slate-500">{{ field.label }}</p><p class="mt-1 font-medium text-slate-900">{{ field.value || '—' }}</p></div></div></template>
+        </Card>
+
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Storage Coordinates</span></template>
+          <template #content><div class="grid gap-3 sm:grid-cols-3"><div v-for="field in coordinateFields" :key="field.label" class="rounded-lg border border-slate-200 bg-slate-50 p-4"><p class="text-xs uppercase tracking-wide text-slate-500">{{ field.label }}</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ field.value || '—' }}</p></div></div></template>
+        </Card>
+
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Inventory in This Location</span></template>
+          <template #content>
+            <div v-if="productsLoading" class="flex justify-center py-8"><ProgressSpinner /></div>
+            <DataTable v-else-if="products.length" :value="products" size="small" stripedRows>
+              <Column header="Item"><template #body="{ data }"><div><p class="font-medium text-slate-900">{{ data.name || data.product_name || data.product?.name || 'Unnamed item' }}</p><p class="text-xs text-slate-500">{{ data.code || data.sku || data.product?.sku || '—' }}</p></div></template></Column>
+              <Column header="Quantity"><template #body="{ data }"><span class="font-semibold">{{ number(data.quantity ?? data.quantity_on_hand) }}</span></template></Column>
+              <Column header="Status"><template #body="{ data }"><Tag :value="label(data.status || 'active')" :severity="statusSeverity(data.status || 'active')" /></template></Column>
+              <Column header="Action" style="width: 90px"><template #body="{ data }"><Button icon="pi pi-eye" text rounded @click="viewProduct(data)" /></template></Column>
+            </DataTable>
+            <div v-else class="py-10 text-center"><i class="pi pi-box text-3xl text-slate-300"></i><p class="mt-2 text-sm text-slate-500">No inventory recorded in this location.</p><Button label="View Inventory" text size="small" class="mt-2" @click="viewProducts" /></div>
+          </template>
+        </Card>
       </div>
 
-      <!-- Loading State -->
-      <div v-if="loading" class="flex justify-center items-center h-64">
-        <ProgressSpinner />
-      </div>
+      <div class="space-y-6">
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Capacity</span></template>
+          <template #content>
+            <div class="flex items-end justify-between"><div><p class="text-xs uppercase tracking-wide text-slate-500">Used</p><p class="text-2xl font-semibold text-slate-900">{{ number(location.current_stock_units) }}</p></div><div class="text-right"><p class="text-xs uppercase tracking-wide text-slate-500">Maximum</p><p class="font-semibold text-slate-900">{{ location.max_capacity_units ? number(location.max_capacity_units) : '—' }}</p></div></div>
+            <ProgressBar :value="capacityPercent" :showValue="false" class="mt-4" /><p class="mt-2 text-right text-xs text-slate-500">{{ capacityPercent }}% used</p><Divider />
+            <div class="flex justify-between text-sm"><span class="text-slate-500">Weight limit</span><strong>{{ location.max_weight_kg ? `${number(location.max_weight_kg)} kg` : '—' }}</strong></div>
+          </template>
+        </Card>
 
-      <!-- Location Details -->
-      <div v-else-if="location" class="space-y-6">
-        <!-- Overview Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card>
-            <template #content>
-              <div class="text-center">
-                <i class="pi pi-tag text-blue-600 text-3xl mb-2"></i>
-                <div class="text-2xl font-bold text-gray-800">{{ location.code }}</div>
-                <div class="text-sm text-gray-600">Location Code</div>
-              </div>
-            </template>
-          </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Dimensions</span></template>
+          <template #content><dl class="space-y-3 text-sm"><div v-for="field in dimensionFields" :key="field.label" class="flex justify-between gap-4 border-b border-slate-100 pb-2"><dt class="text-slate-500">{{ field.label }}</dt><dd class="font-medium text-slate-900">{{ field.value || '—' }}</dd></div></dl></template>
+        </Card>
 
-          <Card>
-            <template #content>
-              <div class="text-center">
-                <i class="pi pi-building text-green-600 text-3xl mb-2"></i>
-                <div class="text-2xl font-bold text-gray-800 capitalize">{{ location.type }}</div>
-                <div class="text-sm text-gray-600">Type</div>
-              </div>
-            </template>
-          </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><span class="text-base">Warehouse</span></template>
+          <template #content><dl class="space-y-3 text-sm"><div class="flex justify-between gap-4"><dt class="text-slate-500">Name</dt><dd class="text-right font-medium text-slate-900">{{ location.warehouse?.name || '—' }}</dd></div><div class="flex justify-between gap-4"><dt class="text-slate-500">Code</dt><dd class="text-right font-medium text-slate-900">{{ location.warehouse?.warehouse_code || location.warehouse?.code || '—' }}</dd></div><div class="flex justify-between gap-4"><dt class="text-slate-500">Branch</dt><dd class="text-right font-medium text-slate-900">{{ location.warehouse?.branch?.name || '—' }}</dd></div></dl></template>
+        </Card>
 
-          <Card>
-            <template #content>
-              <div class="text-center">
-                <i class="pi pi-box text-purple-600 text-3xl mb-2"></i>
-                <div class="text-2xl font-bold text-gray-800">{{ location.products_count || 0 }}</div>
-                <div class="text-sm text-gray-600">Products</div>
-              </div>
-            </template>
-          </Card>
-
-          <Card>
-            <template #content>
-              <div class="text-center">
-                <i class="pi pi-check-circle text-orange-600 text-3xl mb-2"></i>
-                <div class="text-2xl font-bold text-gray-800 capitalize">{{ location.status }}</div>
-                <div class="text-sm text-gray-600">Status</div>
-              </div>
-            </template>
-          </Card>
-        </div>
-
-        <!-- Main Content -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <!-- Location Information -->
-          <div class="lg:col-span-2 space-y-6">
-            <!-- Basic Information -->
-            <Card>
-              <template #header>
-                <div class="flex items-center gap-2">
-                  <i class="pi pi-info-circle text-blue-600"></i>
-                  <h3 class="text-lg font-semibold text-gray-800">Basic Information</h3>
-                </div>
-              </template>
-              <template #content>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Location Name</label>
-                    <p class="text-gray-900">{{ location.name }}</p>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Location Code</label>
-                    <p class="text-gray-900">{{ location.code }}</p>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Warehouse</label>
-                    <p class="text-gray-900">{{ location.warehouse?.name }} ({{ location.warehouse?.code }})</p>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                    <p class="text-gray-900 capitalize">{{ location.type }}</p>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <Tag
-                      :value="location.status"
-                      :severity="getStatusSeverity(location.status)"
-                      class="capitalize"
-                    />
-                  </div>
-                  <div v-if="location.capacity">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
-                    <p class="text-gray-900">{{ location.capacity.toLocaleString() }} units</p>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Created</label>
-                    <p class="text-gray-900">{{ formatDate(location.created_at) }}</p>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Last Updated</label>
-                    <p class="text-gray-900">{{ formatDate(location.updated_at) }}</p>
-                  </div>
-                </div>
-              </template>
-            </Card>
-
-            <!-- Location Details -->
-            <Card>
-              <template #header>
-                <div class="flex items-center gap-2">
-                  <i class="pi pi-map text-green-600"></i>
-                  <h3 class="text-lg font-semibold text-gray-800">Location Details</h3>
-                </div>
-              </template>
-              <template #content>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div v-if="location.aisle">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Aisle</label>
-                    <p class="text-gray-900">{{ location.aisle }}</p>
-                  </div>
-                  <div v-if="location.rack">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Rack</label>
-                    <p class="text-gray-900">{{ location.rack }}</p>
-                  </div>
-                  <div v-if="location.shelf">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Shelf</label>
-                    <p class="text-gray-900">{{ location.shelf }}</p>
-                  </div>
-                  <div v-if="location.bin">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Bin</label>
-                    <p class="text-gray-900">{{ location.bin }}</p>
-                  </div>
-                  <div v-if="location.level">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Level</label>
-                    <p class="text-gray-900">{{ location.level }}</p>
-                  </div>
-                  <div v-if="location.position">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Position</label>
-                    <p class="text-gray-900">{{ location.position }}</p>
-                  </div>
-                </div>
-                <div v-if="!location.aisle && !location.rack && !location.shelf && !location.bin && !location.level && !location.position" class="text-center py-4">
-                  <p class="text-gray-500">No location details specified</p>
-                </div>
-              </template>
-            </Card>
-
-            <!-- Dimensions -->
-            <Card v-if="location.length || location.width || location.height || location.weight_limit">
-              <template #header>
-                <div class="flex items-center gap-2">
-                  <i class="pi pi-arrows-alt text-purple-600"></i>
-                  <h3 class="text-lg font-semibold text-gray-800">Dimensions</h3>
-                </div>
-              </template>
-              <template #content>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div v-if="location.length">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Length</label>
-                    <p class="text-gray-900">{{ location.length }} cm</p>
-                  </div>
-                  <div v-if="location.width">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Width</label>
-                    <p class="text-gray-900">{{ location.width }} cm</p>
-                  </div>
-                  <div v-if="location.height">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Height</label>
-                    <p class="text-gray-900">{{ location.height }} cm</p>
-                  </div>
-                  <div v-if="location.weight_limit">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Weight Limit</label>
-                    <p class="text-gray-900">{{ location.weight_limit }} kg</p>
-                  </div>
-                </div>
-              </template>
-            </Card>
-
-            <!-- Description -->
-            <Card v-if="location.description">
-              <template #header>
-                <div class="flex items-center gap-2">
-                  <i class="pi pi-file-text text-orange-600"></i>
-                  <h3 class="text-lg font-semibold text-gray-800">Description</h3>
-                </div>
-              </template>
-              <template #content>
-                <p class="text-gray-900 whitespace-pre-wrap">{{ location.description }}</p>
-              </template>
-            </Card>
-          </div>
-
-          <!-- Products Sidebar -->
-          <div>
-            <Card>
-              <template #header>
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <i class="pi pi-box text-indigo-600"></i>
-                    <h3 class="text-lg font-semibold text-gray-800">Products</h3>
-                  </div>
-                  <Button
-                    label="View All"
-                    size="small"
-                    severity="secondary"
-                    @click="viewProducts"
-                  />
-                </div>
-              </template>
-              <template #content>
-                <div v-if="productsLoading" class="flex justify-center py-4">
-                  <ProgressSpinner style="width: 30px; height: 30px" />
-                </div>
-                <div v-else-if="products.length === 0" class="text-center py-8">
-                  <i class="pi pi-box text-gray-400 text-3xl mb-2"></i>
-                  <p class="text-gray-500">No products in this location</p>
-                  <Button
-                    label="Add Product"
-                    size="small"
-                    severity="secondary"
-                    @click="addProduct"
-                    class="mt-2"
-                  />
-                </div>
-                <div v-else class="space-y-3">
-                  <div
-                    v-for="product in products.slice(0, 5)"
-                    :key="product.id"
-                    class="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer"
-                    @click="viewProduct(product)"
-                  >
-                    <div class="flex items-center justify-between">
-                      <div>
-                        <div class="font-medium text-gray-900">{{ product.name }}</div>
-                        <div class="text-sm text-gray-600">{{ product.code }}</div>
-                        <div class="text-sm text-gray-500">Qty: {{ product.quantity || 0 }}</div>
-                      </div>
-                      <Tag
-                        :value="product.status"
-                        :severity="getStatusSeverity(product.status)"
-                        class="capitalize"
-                      />
-                    </div>
-                  </div>
-                  <div v-if="products.length > 5" class="text-center pt-2">
-                    <Button
-                      label="View All Products"
-                      size="small"
-                      text
-                      @click="viewProducts"
-                    />
-                  </div>
-                </div>
-              </template>
-            </Card>
-          </div>
-        </div>
-      </div>
-
-      <!-- Not Found -->
-      <div v-else class="text-center py-12">
-        <i class="pi pi-exclamation-triangle text-4xl text-gray-400 mb-4"></i>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">Location Not Found</h3>
-        <p class="text-gray-600 mb-4">The location you're looking for doesn't exist or has been deleted.</p>
-        <Button label="Back to Locations" @click="goBack" />
+        <Card v-if="location.description" class="border border-slate-200 shadow-sm"><template #title><span class="text-base">Notes</span></template><template #content><p class="text-sm leading-6 text-slate-700 whitespace-pre-wrap">{{ location.description }}</p></template></Card>
       </div>
     </div>
   </div>
 
-  <!-- Delete Confirmation Dialog -->
-  <Dialog
-    v-model:visible="deleteDialog"
-    modal
-    header="Confirm Delete"
-    :style="{ width: '450px' }"
-  >
-    <div class="flex items-center gap-3">
-      <i class="pi pi-exclamation-triangle text-red-500 text-2xl"></i>
-      <div>
-        <p class="font-medium">Are you sure you want to delete this location?</p>
-        <p class="text-sm text-gray-600 mt-1">
-          Location: <strong>{{ location?.name }}</strong>
-        </p>
-        <p v-if="location?.products_count > 0" class="text-sm text-red-600 mt-2">
-          Warning: This location contains {{ location.products_count }} products.
-          Deleting this location may affect inventory tracking.
-        </p>
-      </div>
-    </div>
-    <template #footer>
-      <Button
-        label="Cancel"
-        severity="secondary"
-        @click="deleteDialog = false"
-      />
-      <Button
-        label="Delete"
-        severity="danger"
-        @click="deleteLocation"
-        :loading="deleteLoading"
-      />
-    </template>
+  <div v-else class="flex min-h-[60vh] items-center justify-center"><ProgressSpinner v-if="loading" /><Message v-else severity="error">The location could not be loaded.</Message></div>
+
+  <Dialog v-model:visible="deleteDialog" modal header="Delete Location" :style="{ width: '450px' }">
+    <p class="text-sm text-slate-700">Delete <strong>{{ location?.name }}</strong>? This cannot be undone.</p>
+    <template #footer><Button label="Cancel" severity="secondary" @click="deleteDialog = false" /><Button label="Delete" severity="danger" :loading="deleteLoading" @click="deleteLocation" /></template>
   </Dialog>
 </template>
 
@@ -343,7 +86,7 @@ import { useToast } from 'primevue/usetoast'
 import { useRouter, useRoute } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
 
-const loading = ref(false)
+const loading = ref(true)
 const deleteLoading = ref(false)
 const deleteDialog = ref(false)
 const productsLoading = ref(false)
@@ -354,128 +97,38 @@ const router = useRouter()
 const route = useRoute()
 const warehouseRoute = computed(() => route.path.startsWith('/warehouse/'))
 
-const loadLocation = async () => {
-  loading.value = true
-  try {
-    const response = await inventoryService.getLocation(route.params.id as string)
+const number = (value: any) => Number(value || 0).toLocaleString()
+const label = (value: any) => String(value || '—').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+const statusSeverity = (value: string) => value === 'active' ? 'success' : value === 'inactive' ? 'warn' : 'secondary'
+const capacityPercent = computed(() => { const max = Number(location.value?.max_capacity_units || 0); return max ? Math.min(100, Math.round((Number(location.value?.current_stock_units || 0) / max) * 100)) : 0 })
+const summary = computed(() => [
+  { label: 'Capacity Used', value: `${capacityPercent.value}%` },
+  { label: 'Units Stored', value: number(location.value?.current_stock_units) },
+  { label: 'Capacity', value: location.value?.max_capacity_units ? number(location.value.max_capacity_units) : '—' },
+  { label: 'Products', value: number(products.value.length) },
+  { label: 'Type', value: label(location.value?.type) },
+])
+const informationFields = computed(() => [
+  { label: 'Location Name', value: location.value?.name }, { label: 'Location Code', value: location.value?.location_code },
+  { label: 'Type', value: label(location.value?.type) }, { label: 'Status', value: label(location.value?.status) },
+  { label: 'Created', value: formatDate(location.value?.created_at) }, { label: 'Updated', value: formatDate(location.value?.updated_at) },
+])
+const coordinateFields = computed(() => [
+  { label: 'Aisle', value: location.value?.aisle }, { label: 'Rack', value: location.value?.rack }, { label: 'Shelf', value: location.value?.shelf },
+  { label: 'Bin', value: location.value?.bin }, { label: 'Level', value: location.value?.level }, { label: 'Position', value: location.value?.position },
+])
+const dimensionFields = computed(() => { const d = location.value?.dimensions || {}; return [
+  { label: 'Length', value: d.depth ? `${d.depth} cm` : '—' }, { label: 'Width', value: d.width ? `${d.width} cm` : '—' },
+  { label: 'Height', value: d.height ? `${d.height} cm` : '—' }, { label: 'Weight limit', value: location.value?.max_weight_kg ? `${number(location.value.max_weight_kg)} kg` : '—' },
+] })
+const formatDate = (date: string | null | undefined) => date ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
 
-    if (response.success) {
-      location.value = response.data
-      loadProducts()
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: response.message || 'Failed to load location',
-        life: 3000
-      })
-    }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load location',
-      life: 3000
-    })
-  } finally {
-    loading.value = false
-  }
-}
-
-const loadProducts = async () => {
-  productsLoading.value = true
-  try {
-    const response = await inventoryService.getProducts({
-      location_id: route.params.id,
-      per_page: 5
-    })
-
-    if (response.success) {
-      products.value = response.data || []
-    }
-  } catch (error: any) {
-    // Silently handle product loading errors
-  } finally {
-    productsLoading.value = false
-  }
-}
-
-const goBack = () => {
-  router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
-}
-
-const editLocation = () => {
-  router.push({ name: warehouseRoute.value ? 'warehouse.locations.edit' : 'inventory.locations.edit', params: { id: route.params.id } })
-}
-
-const confirmDelete = () => {
-  deleteDialog.value = true
-}
-
-const deleteLocation = async () => {
-  deleteLoading.value = true
-  try {
-    const response = await inventoryService.deleteLocation(route.params.id as string)
-
-    if (response.success) {
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'Location deleted successfully',
-        life: 3000
-      })
-      router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
-    } else {
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: response.message || 'Failed to delete location',
-        life: 3000
-      })
-    }
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to delete location',
-      life: 3000
-    })
-  } finally {
-    deleteLoading.value = false
-  }
-}
-
-const viewProducts = () => {
-  router.push({ name: 'inventory.products.index', query: { location_id: route.params.id } })
-}
-
-const addProduct = () => {
-  router.push({ name: 'inventory.products.create', query: { location_id: route.params.id } })
-}
-
-const viewProduct = (product: any) => {
-  router.push({ name: 'inventory.products.detail', params: { id: product.id } })
-}
-
-const getStatusSeverity = (status: string) => {
-  switch (status) {
-    case 'active': return 'success'
-    case 'inactive': return 'warning'
-    default: return 'secondary'
-  }
-}
-
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
-onMounted(() => {
-  loadLocation()
-})
+const loadLocation = async () => { loading.value = true; try { const response = await inventoryService.getLocation(route.params.id as string); if (!response.success) throw new Error(response.message); location.value = response.data; await loadProducts() } catch (error: any) { toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || error.message || 'Failed to load location', life: 3000 }) } finally { loading.value = false } }
+const loadProducts = async () => { productsLoading.value = true; try { const response = await inventoryService.getProducts({ location_id: route.params.id, per_page: 100 }); const page = response.data ?? {}; const rows = Array.isArray(page) ? page : (page.data ?? []); products.value = rows.map((row: any) => { const stock = row.inventory?.[0] || {}; return { ...row, quantity: stock.quantity_available ?? 0, status: stock.quantity_available > 0 ? 'in_stock' : 'out_of_stock' } }) } catch { products.value = [] } finally { productsLoading.value = false } }
+const goBack = () => router.push({ name: warehouseRoute.value ? 'warehouse.locations' : 'inventory.locations.index' })
+const viewProducts = () => router.push({ name: 'inventory.products.index', query: { location_id: route.params.id } })
+const viewProduct = (product: any) => router.push({ name: 'inventory.products.detail', params: { id: product.id || product.product_id } })
+const confirmDelete = () => { deleteDialog.value = true }
+const deleteLocation = async () => { deleteLoading.value = true; try { const response = await inventoryService.deleteLocation(route.params.id as string); if (!response.success) throw new Error(response.message); toast.add({ severity: 'success', summary: 'Deleted', detail: 'Location deleted successfully', life: 2500 }); goBack() } catch (error: any) { toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || error.message || 'Failed to delete location', life: 3000 }) } finally { deleteLoading.value = false } }
+onMounted(loadLocation)
 </script>

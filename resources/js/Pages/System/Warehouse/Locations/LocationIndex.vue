@@ -93,18 +93,11 @@
             @sort="onSort"
             tableStyle="min-width: 50rem"
             class="p-datatable-sm"
-            :globalFilterFields="['name', 'code', 'description']"
+            :globalFilterFields="['name', 'location_code', 'description']"
           >
             <Column field="name" header="Location Name" sortable style="min-width: 200px" />
-            <Column field="code" header="Code" style="width: 100px" />
-            <Column field="warehouse.name" header="Warehouse" style="min-width: 150px">
-              <template #body="slotProps">
-                <div class="text-sm">
-                  <div class="font-medium">{{ slotProps.data.warehouse?.name }}</div>
-                  <div class="text-gray-500">{{ slotProps.data.warehouse?.code }}</div>
-                </div>
-              </template>
-            </Column>
+            <Column field="location_code" header="Code" style="width: 120px" />
+
             <Column field="type" header="Type" style="width: 120px">
               <template #body="slotProps">
                 <Tag
@@ -116,7 +109,7 @@
             </Column>
             <Column field="status" header="Status" style="width: 120px">
               <template #body="slotProps">
-                <Tag
+                <Badge
                   :value="slotProps.data.status"
                   :severity="getStatusSeverity(slotProps.data.status)"
                   class="capitalize"
@@ -125,7 +118,7 @@
             </Column>
             <Column field="capacity" header="Capacity" style="width: 120px" sortable>
               <template #body="slotProps">
-                <span v-if="slotProps.data.capacity">{{ slotProps.data.capacity.toLocaleString() }}</span>
+                <span v-if="slotProps.data.max_capacity_units">{{ Number(slotProps.data.max_capacity_units).toLocaleString() }}</span>
                 <span v-else class="text-gray-400">N/A</span>
               </template>
             </Column>
@@ -144,25 +137,13 @@
                 <div class="flex gap-2">
                   <Button
                     icon="pi pi-eye"
-                    severity="info"
+                    label="View"
+                    rounded
                     outlined
                     @click="viewLocation(slotProps.data)"
                     v-tooltip.top="'View Details'"
                   />
-                  <Button
-                    icon="pi pi-pencil"
-                    severity="warning"
-                    outlined
-                    @click="editLocation(slotProps.data)"
-                    v-tooltip.top="'Edit Location'"
-                  />
-                  <Button
-                    icon="pi pi-trash"
-                    severity="danger"
-                    outlined
-                    @click="confirmDelete(slotProps.data)"
-                    v-tooltip.top="'Delete Location'"
-                  />
+
                 </div>
               </template>
             </Column>

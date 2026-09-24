@@ -3,7 +3,7 @@
     <div class=" mx-auto">
       <div class="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 class="text-lg font-bold text-gray-800">Purchase Requisitions</h1>
+          <h1 class="text-2xl font-bold text-gray-800">Purchase Requisitions</h1>
         </div>
         <div class="flex items-center gap-2">
           <Button

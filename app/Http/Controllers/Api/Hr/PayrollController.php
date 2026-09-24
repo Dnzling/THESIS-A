@@ -9,11 +9,16 @@ use App\Models\Hr\PayPeriod;
 use App\Models\Hr\Employee;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\EmployeeDeduction;
+use App\Models\Hr\EmployeePayAdjustment;
 use App\Models\Hr\Leave;
+use App\Models\Hr\ShiftSchedule;
+use App\Models\Hr\ShiftAssignment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Arr;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use App\Models\Core\ActivityLog;
@@ -59,11 +64,11 @@ class PayrollController extends Controller
             // Eager load with proper field selection
             $query->with([
                 'employee' => function ($q) {
-                    $q->select('id', 'fname', 'lname',  'employee_number', 'department', 'store_id', 'branch_id')
-                        ->with('branch:id,name');
+                    $q->select('id', 'user_id', 'employee_number', 'department', 'store_id', 'branch_id', 'salary', 'pay_type', 'hourly_rate')
+                        ->with(['user:id,fname,lname', 'branch:id,name']);
                 },
                 'payPeriod' => function ($q) {
-                    $q->select('id', 'name');
+                    $q->select('id', 'name', 'start_date', 'end_date', 'cutoff_date');
                 },
                 'items' => function ($q) {
                     $q->select('id', 'payroll_id', 'type', 'name', 'amount', 'calculation_type', 'rate');
@@ -99,6 +104,28 @@ class PayrollController extends Controller
             $query->orderBy($orderBy, $orderDirection);
 
             $payrolls = $query->get();
+            if ($request->filled('pay_period_id')) {
+                foreach ($payrolls as $payroll) {
+                    if (!$payroll->employee || !$payroll->payPeriod) {
+                        continue;
+                    }
+                    $calculated = $this->calculateEmployeePayroll($payroll->employee, $payroll->payPeriod);
+                    $breakMinutes = Attendance::where('employee_id', $payroll->employee_id)
+                        ->whereBetween('attendance_date', [$payroll->payPeriod->start_date, $payroll->payPeriod->cutoff_date])
+                        ->sum('break_minutes');
+                    $payroll->setAttribute('period_metrics', [
+                        'absent_days' => (int) ($calculated['absent_days'] ?? 0),
+                        'absence_deduction' => round((float) ($calculated['absence_deduction'] ?? 0), 2),
+                        'half_day_deduction' => round((float) ($calculated['half_day_deduction'] ?? 0), 2),
+                        'leave_days' => (int) ($calculated['leave_days'] ?? 0),
+                        'paid_leave_days' => (int) ($calculated['paid_leave_days'] ?? 0),
+                        'break_minutes' => (int) $breakMinutes,
+                        'late_minutes' => (int) ($calculated['late_minutes'] ?? 0),
+                        'overtime_hours' => (float) ($calculated['overtime_hours'] ?? 0),
+                        'incentive_total' => (float) ($calculated['incentive_total'] ?? 0),
+                    ]);
+                }
+            }
 
             // Transform the paginated data
             $payrollsResource = PayrollIndexResource::collection($payrolls);
@@ -135,32 +162,98 @@ class PayrollController extends Controller
         $data = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
+            'branch_id' => 'nullable|integer|exists:branches,id',
         ]);
         $user = Auth::user();
+        if (!empty($data['branch_id']) && !\App\Models\Store\Branch::where('store_id', $user->store_id)
+            ->whereKey($data['branch_id'])->exists()) {
+            throw ValidationException::withMessages(['branch_id' => 'Select a branch from your store.']);
+        }
+        $period = new PayPeriod([
+            'store_id' => $user->store_id,
+            'start_date' => $data['start_date'],
+            'end_date' => $data['end_date'],
+            'cutoff_date' => $data['end_date'],
+        ]);
+
         $employees = Employee::where('store_id', $user->store_id)
             ->whereIn('status', ['active', 'on_leave'])
-            ->orderBy('fname')->orderBy('lname')->get();
-        $rows = $employees->map(function ($employee) use ($data) {
+            ->when(!empty($data['branch_id']), fn ($query) => $query->where('branch_id', $data['branch_id']))
+            ->with(['user', 'role:id,name,display_name', 'branch:id,name', 'store:id,settings'])
+            ->orderBy('employee_number')->get();
+        $rows = $employees->map(function ($employee) use ($data, $period) {
             $records = Attendance::where('employee_id', $employee->id)
                 ->whereBetween('attendance_date', [$data['start_date'], $data['end_date']])
                 ->orderBy('attendance_date')->get();
-            $dailyRate = (float) ($employee->salary ?? 0) / 26;
-            $paidHours = $records->sum(fn ($record) => (float) ($record->paid_hours ?? (((float) ($record->total_worked_minutes ?? 0)) / 60)));
-            $lateMinutes = (int) $records->sum('late_minutes');
-            $otHours = round((float) $records->sum('overtime_minutes') / 60, 2);
-            $gross = round($paidHours * ($dailyRate / 8) + ($otHours * ($dailyRate / 8) * 1.25), 2);
-            $lateDeduction = round($lateMinutes * (($dailyRate / 8) / 60), 2);
-            $deductions = $lateDeduction;
-            $details = $records->map(function ($record) use ($dailyRate) {
+            $payrollData = $this->calculateEmployeePayroll($employee, $period);
+            $periodDays = Carbon::parse($data['start_date'])
+                ->diffInDays(Carbon::parse($data['end_date'])) + 1;
+            $gross = round(
+                (float) ($payrollData['base_salary'] ?? 0)
+                + (float) ($payrollData['overtime_amount'] ?? 0)
+                + (float) ($payrollData['bonuses_total'] ?? 0)
+                + (float) ($payrollData['allowances_total'] ?? 0),
+                2
+            );
+            $deductions = round(
+                (float) ($payrollData['deductions_total'] ?? 0)
+                + (float) ($payrollData['tax_amount'] ?? 0),
+                2
+            );
+            $dailyRate = (float) ($employee->salary ?? 0) / 30;
+            $latePolicy = $this->lateDeductionPolicy($employee);
+            $hourlyRate = \App\Services\Hr\PayrollService::deriveHourlyRate($employee);
+            $details = $records->map(function ($record) use ($dailyRate, $hourlyRate, $latePolicy) {
                 $actual = (float) ($record->total_worked_minutes ?? 0) / 60;
                 $paid = (float) ($record->paid_hours ?? $actual);
                 $late = (int) ($record->late_minutes ?? 0);
                 $ot = round((float) ($record->overtime_minutes ?? 0) / 60, 2);
                 $dailyGross = round($paid * ($dailyRate / 8) + ($ot * ($dailyRate / 8) * 1.25), 2);
-                $lateDed = round($late * (($dailyRate / 8) / 60), 2);
+                $lateDed = $latePolicy['enabled']
+                    ? round(($late / 60) * $hourlyRate * ($latePolicy['rate'] / 100), 2)
+                    : 0.0;
                 return ['date' => $record->attendance_date?->format('Y-m-d'), 'status' => $record->status, 'clock_in' => $record->clock_in, 'clock_out' => $record->clock_out, 'actual_hours' => round($actual, 2), 'paid_hours' => round($paid, 2), 'break_minutes' => (int) ($record->break_minutes ?? 0), 'late_minutes' => $late, 'late_deduction' => $lateDed, 'ot_hours' => $ot, 'ot_pay' => round($ot * ($dailyRate / 8) * 1.25, 2), 'daily_gross' => $dailyGross, 'daily_net' => round($dailyGross - $lateDed, 2)];
-            })->values();
-            return ['employee_id' => $employee->id, 'employee_name' => trim($employee->fname . ' ' . $employee->lname), 'days' => $records->count(), 'absent' => $records->where('status', 'absent')->count(), 'on_leave' => $records->where('status', 'on_leave')->count(), 'break_minutes' => (int) $records->sum('break_minutes'), 'allowances' => 0, 'incentives' => 0, 'late_minutes' => $lateMinutes, 'late_deduction' => $lateDeduction, 'ot_hours' => $otHours, 'ot_pay' => round($otHours * ($dailyRate / 8) * 1.25, 2), 'gross' => $gross, 'deductions' => $deductions, 'net_pay' => round($gross - $deductions, 2), 'details' => $details];
+            });
+            $recordedDates = $details->pluck('date');
+            foreach ($payrollData['approved_leave_dates'] ?? [] as $date) {
+                if (!$recordedDates->contains($date)) {
+                    $details->push(['date' => $date, 'status' => 'on_leave', 'clock_in' => null, 'clock_out' => null, 'actual_hours' => 0, 'paid_hours' => 0, 'break_minutes' => 0, 'late_minutes' => 0, 'late_deduction' => 0, 'ot_hours' => 0, 'ot_pay' => 0, 'daily_gross' => 0, 'daily_net' => 0]);
+                }
+            }
+            foreach ($payrollData['scheduled_absent_dates'] ?? [] as $date) {
+                if (!$recordedDates->contains($date)) {
+                    $details->push(['date' => $date, 'status' => 'absent', 'clock_in' => null, 'clock_out' => null, 'actual_hours' => 0, 'paid_hours' => 0, 'break_minutes' => 0, 'late_minutes' => 0, 'late_deduction' => 0, 'ot_hours' => 0, 'ot_pay' => 0, 'daily_gross' => 0, 'daily_net' => 0]);
+                }
+            }
+            $details = $details->sortBy('date')->values();
+            $employeeName = trim(collect([$employee->user?->fname, $employee->user?->lname])->filter()->implode(' '));
+            return [
+                'employee_id' => $employee->id,
+                'employee_name' => $employeeName !== '' ? $employeeName : ($employee->employee_number ?: "Employee #{$employee->id}"),
+                'role_name' => $employee->role?->display_name ?: ($employee->role?->name ?: 'Employee'),
+                'branch_id' => $employee->branch_id,
+                'branch_name' => $employee->branch?->name,
+                'worked_hours' => round((float) $records->sum('total_worked_minutes') / 60, 2),
+                'has_source_data' => $this->hasPayrollSourceData((int) $employee->id, $period),
+                'days' => ($employee->pay_type ?? 'monthly') === 'monthly'
+                    ? $periodDays
+                    : $records->count()
+                        + (int) ($payrollData['absent_days'] ?? 0)
+                        + (int) ($payrollData['leave_days'] ?? 0),
+                'absent' => (int) ($payrollData['absent_days'] ?? 0),
+                'on_leave' => (int) ($payrollData['leave_days'] ?? 0),
+                'break_minutes' => (int) $records->sum('break_minutes'),
+                'allowances' => (float) ($payrollData['allowances_total'] ?? 0),
+                'incentives' => (float) ($payrollData['incentive_total'] ?? 0),
+                'late_minutes' => (int) ($payrollData['late_minutes'] ?? 0),
+                'late_deduction' => (float) ($payrollData['late_deduction'] ?? 0),
+                'ot_hours' => (float) ($payrollData['overtime_hours'] ?? 0),
+                'ot_pay' => (float) ($payrollData['overtime_amount'] ?? 0),
+                'gross' => $gross,
+                'deductions' => $deductions,
+                'net_pay' => (float) ($payrollData['net_salary'] ?? ($gross - $deductions)),
+                'details' => $details,
+            ];
         })->values();
         return response()->json(['success' => true, 'data' => ['start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'employees' => $rows, 'summary' => ['employees' => $rows->count(), 'gross' => $rows->sum('gross'), 'incentives' => $rows->sum('incentives'), 'deductions' => $rows->sum('deductions'), 'net_pay' => $rows->sum('net_pay')]]]);
     }
@@ -169,13 +262,30 @@ class PayrollController extends Controller
         try {
             $validated = $request->validate([
                 'pay_period_id'  => 'required|exists:pay_periods,id',
+                'branch_id'      => 'nullable|integer|exists:branches,id',
                 'employee_ids'   => 'nullable|array',
                 'employee_ids.*' => 'exists:employees,id',
                 'recalculate'    => 'boolean',
                 'initial_status' => 'nullable|in:draft,processing',
             ]);
 
-            $payPeriod = PayPeriod::find($validated['pay_period_id']);
+            $user = Auth::user();
+            if (!empty($validated['branch_id']) && !\App\Models\Store\Branch::where('store_id', $user->store_id)
+                ->whereKey($validated['branch_id'])->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Select a branch from your store.',
+                ], 422);
+            }
+            $payPeriod = PayPeriod::where('store_id', $user->store_id)
+                ->find($validated['pay_period_id']);
+
+            if (!$payPeriod) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pay period not found for your store'
+                ], 404);
+            }
 
             if ($payPeriod->end_date > now()) {
                 return response()->json([
@@ -192,9 +302,9 @@ class PayrollController extends Controller
             }
 
             // Get employees to process (filter by current user's store + active status)
-            $user = Auth::user();
             $employees = Employee::where('store_id', $user->store_id)
-                ->where('status', 'active');
+                ->whereIn('status', ['active', 'on_leave'])
+                ->when(!empty($validated['branch_id']), fn ($query) => $query->where('branch_id', $validated['branch_id']));
 
             if (!empty($validated['employee_ids'])) {
                 $employees->whereIn('id', $validated['employee_ids']);
@@ -227,6 +337,14 @@ class PayrollController extends Controller
                         continue;
                     }
 
+                    if ($existing && !in_array($existing->status, ['draft', 'calculated', 'processing'], true)) {
+                        $errors[] = [
+                            'employee' => $employee->full_name,
+                            'error' => 'Approved or paid payroll cannot be recalculated.',
+                        ];
+                        continue;
+                    }
+
                     if (!$this->hasPayrollSourceData((int) $employee->id, $payPeriod)) {
                         $skipped[] = [
                             'employee_id' => $employee->id,
@@ -238,6 +356,13 @@ class PayrollController extends Controller
 
                     // Calculate payroll
                     $payrollData = $this->calculateEmployeePayroll($employee, $payPeriod);
+                    if ((float) ($payrollData['net_salary'] ?? 0) < 0) {
+                        $errors[] = [
+                            'employee' => $employee->full_name,
+                            'error' => 'Net pay is negative. Review the employee salary and deductions before generating payroll.',
+                        ];
+                        continue;
+                    }
 
                     // Validation: flag mismatch when period is short but base looks like full month
                     $monthly = (float) ($employee->salary ?? 0);
@@ -250,14 +375,15 @@ class PayrollController extends Controller
                         }
                     }
 
+                    $persistedData = Arr::only($payrollData, (new Payroll())->getFillable());
                     if ($existing) {
                         // Update existing payroll
-                        $existing->update($payrollData);
+                        $existing->update($persistedData);
                         $payroll = $existing;
                     } else {
                         // Create new payroll
                         $payroll = Payroll::create([
-                            ...$payrollData,
+                            ...$persistedData,
                             'employee_id' => $employee->id,
                             'pay_period_id' => $payPeriod->id,
                             'status' => $validated['initial_status'] ?? 'draft',
@@ -313,7 +439,7 @@ class PayrollController extends Controller
             return true;
         }
 
-        return Leave::where('employee_id', $employeeId)
+        $hasPaidLeave = Leave::where('employee_id', $employeeId)
             ->where('status', 'approved')
             ->where('is_paid', true)
             ->where(function ($query) use ($period) {
@@ -325,6 +451,17 @@ class PayrollController extends Controller
                     });
             })
             ->exists();
+
+        return $hasPaidLeave || ShiftSchedule::where('employee_id', $employeeId)
+            ->where('status', 'scheduled')
+            ->whereBetween('schedule_date', [$period->start_date, $period->cutoff_date])
+            ->exists() || ShiftAssignment::where('employee_id', $employeeId)
+                ->where('start_date', '<=', $period->cutoff_date)
+                ->where(function ($query) use ($period) {
+                    $query->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $period->start_date);
+                })
+                ->exists();
     }
 
     public function show($id)
@@ -663,6 +800,120 @@ class PayrollController extends Controller
             )
             ->first();
 
+        $attendanceRows = Attendance::where('employee_id', $employee->id)
+            ->whereBetween('attendance_date', [$period->start_date, $period->cutoff_date])
+            ->get(['attendance_date', 'status']);
+
+        $attendanceDates = $attendanceRows
+            ->pluck('attendance_date')
+            ->map(fn ($date) => Carbon::parse($date)->toDateString())
+            ->unique()
+            ->values();
+        $workedDates = $attendanceRows
+            ->whereNotIn('status', ['absent', 'on_leave'])
+            ->pluck('attendance_date')
+            ->map(fn ($date) => Carbon::parse($date)->toDateString())
+            ->unique();
+
+        $approvedLeaves = Leave::where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->where(function ($query) use ($period) {
+                $query->whereBetween('start_date', [$period->start_date, $period->cutoff_date])
+                    ->orWhereBetween('end_date', [$period->start_date, $period->cutoff_date])
+                    ->orWhere(function ($nested) use ($period) {
+                        $nested->where('start_date', '<=', $period->start_date)
+                            ->where('end_date', '>=', $period->cutoff_date);
+                    });
+            })
+            ->get(['start_date', 'end_date', 'total_days', 'is_paid']);
+
+        $approvedLeaveDates = collect();
+        $paidLeaveDates = collect();
+        foreach ($approvedLeaves as $leave) {
+            $leaveStart = Carbon::parse($leave->start_date)->max(Carbon::parse($period->start_date));
+            $leaveEnd = Carbon::parse($leave->end_date)->min(Carbon::parse($period->cutoff_date));
+            if ($leaveStart->gt($leaveEnd)) {
+                continue;
+            }
+
+            $dates = collect(CarbonPeriod::create($leaveStart, $leaveEnd))
+                ->map(fn (Carbon $date) => $date->toDateString())
+                ->reject(fn ($date) => $workedDates->contains($date));
+            $approvedLeaveDates = $approvedLeaveDates->merge($dates);
+            if ($leave->is_paid) {
+                $paidLeaveDates = $paidLeaveDates->merge($dates);
+            }
+        }
+        $approvedLeaveDates = $approvedLeaveDates->unique()->values();
+        $paidLeaveDays = $paidLeaveDates->unique()->count();
+
+        $dailySchedules = ShiftSchedule::with('assignment.shift')
+            ->where('employee_id', $employee->id)
+            ->whereBetween('schedule_date', [$period->start_date, $period->cutoff_date])
+            ->get(['id', 'employee_id', 'assignment_id', 'schedule_date', 'status']);
+        $cancelledDates = $dailySchedules->where('status', 'cancelled')
+            ->pluck('schedule_date')
+            ->map(fn ($date) => Carbon::parse($date)->toDateString())
+            ->unique();
+        $scheduledDates = $dailySchedules->where('status', 'scheduled')
+            ->filter(function ($schedule) {
+                if (!$schedule->assignment) {
+                    return true;
+                }
+
+                $pattern = is_array($schedule->assignment->recurring_pattern)
+                    ? $schedule->assignment->recurring_pattern : [];
+                $workingDays = $pattern['week_days'] ?? $pattern['days']
+                    ?? $schedule->assignment->shift?->week_days ?? [];
+                return !is_array($workingDays) || $workingDays === []
+                    || in_array(strtolower($schedule->schedule_date->format('l')),
+                        array_map('strtolower', $workingDays), true);
+            })
+            ->pluck('schedule_date')
+            ->map(fn ($date) => Carbon::parse($date)->toDateString())
+            ->unique();
+
+        // Assignments are the source of truth when daily schedule rows have not
+        // been generated yet. Use the shift's configured working days.
+        $assignments = ShiftAssignment::with('shift')
+            ->where('employee_id', $employee->id)
+            ->where('start_date', '<=', $period->cutoff_date)
+            ->where(function ($query) use ($period) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', $period->start_date);
+            })
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            $assignmentStart = Carbon::parse($assignment->start_date)->max(Carbon::parse($period->start_date));
+            $assignmentEnd = $assignment->end_date
+                ? Carbon::parse($assignment->end_date)->min(Carbon::parse($period->cutoff_date))
+                : Carbon::parse($period->cutoff_date);
+
+            if ($assignmentStart->gt($assignmentEnd)) {
+                continue;
+            }
+
+            $pattern = is_array($assignment->recurring_pattern) ? $assignment->recurring_pattern : [];
+            $workingDays = $pattern['week_days'] ?? $pattern['days'] ?? $assignment->shift?->week_days ?? [];
+            $workingDays = collect(is_array($workingDays) ? $workingDays : [])
+                ->map(fn ($day) => strtolower((string) $day))
+                ->values();
+
+            foreach (CarbonPeriod::create($assignmentStart, $assignmentEnd) as $date) {
+                $day = strtolower($date->format('l'));
+                if (!$cancelledDates->contains($date->toDateString()) && ($workingDays->isEmpty() || $workingDays->contains($day))) {
+                    $scheduledDates->push($date->toDateString());
+                }
+            }
+        }
+
+        $scheduledDates = $scheduledDates->unique()->values();
+        $scheduledAbsentDates = $scheduledDates
+            ->reject(fn ($date) => $attendanceDates->contains($date) || $approvedLeaveDates->contains($date))
+            ->values();
+        $scheduledAbsentDays = $scheduledAbsentDates->count();
+
         // 2. Calculate hourly rate (use PayrollService for canonical derivation)
         $hourlyRate = \App\Services\Hr\PayrollService::deriveHourlyRate($employee);
         $dailyRate = ($employee->salary ?? 0) / 30; // use 30-day month for proration
@@ -670,9 +921,12 @@ class PayrollController extends Controller
         // 3. Calculate regular hours worked
         $regularHours = ($attendance->total_minutes ?? 0) / 60;
 
-        // 4. Calculate late deductions (if company policy deducts for lateness)
+        // 4. Calculate late deductions from the store's attendance payroll policy.
         $lateHours = ($attendance->total_late ?? 0) / 60;
-        $lateDeduction = $lateHours * $hourlyRate * 0.5; // 50% deduction for late hours
+        $latePolicy = $this->lateDeductionPolicy($employee);
+        $lateDeduction = $latePolicy['enabled']
+            ? round($lateHours * $hourlyRate * ($latePolicy['rate'] / 100), 2)
+            : 0.0;
 
         // 5. Calculate night differential (usually +10% to +20%)
         $nightDiffHours = ($attendance->total_night_diff ?? 0) / 60;
@@ -683,26 +937,15 @@ class PayrollController extends Controller
         $restDayPay = ($attendance->restday_work_days ?? 0) * $dailyRate * 0.3;
 
         // 7. Absent deductions
-        $absentDeduction = ($attendance->absent_days ?? 0) * $dailyRate;
+        $absentDays = (int) ($attendance->absent_days ?? 0) + $scheduledAbsentDays;
+        $absentDeduction = $absentDays * $dailyRate;
 
         // 8. Half-day deductions
         $halfDayDeduction = ($attendance->half_days ?? 0) * ($dailyRate / 2);
 
         // 9. Leave pay (if paid leave)
-        $leaveDays = $attendance->leave_days ?? 0;
+        $leaveDays = max((int) ($attendance->leave_days ?? 0), $approvedLeaveDates->count());
         $leavePay = 0;
-
-        // Check if leave is paid (you'd need to join with leaves table)
-        if ($leaveDays > 0) {
-            $paidLeaves = Leave::where('employee_id', $employee->id)
-                ->whereBetween('start_date', [$period->start_date, $period->cutoff_date])
-                ->orWhereBetween('end_date', [$period->start_date, $period->cutoff_date])
-                ->where('is_paid', true)
-                ->where('status', 'approved')
-                ->sum('total_days');
-
-            $leavePay = $paidLeaves * $dailyRate;
-        }
 
         // 10. Calculate totals
         // Determine days in period for proration
@@ -710,6 +953,7 @@ class PayrollController extends Controller
         // If employee is monthly, prorate base salary by days in period; if hourly, compute from hours
         if (($employee->pay_type ?? 'monthly') === 'hourly') {
             $baseSalary = $regularHours * $hourlyRate;
+            $leavePay = $paidLeaveDays * $dailyRate;
         } else {
             $monthly = (float) ($employee->salary ?? 0);
             $baseSalary = round($monthly / 30 * $periodDays, 2);
@@ -718,8 +962,17 @@ class PayrollController extends Controller
         $overtimeRate = config('payroll.overtime_rate', $hourlyRate * 1.25);
         $overtimeAmount = $overtimeHours * $overtimeRate;
 
+        $adjustments = EmployeePayAdjustment::where('store_id', $employee->store_id)
+            ->where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->whereBetween('effective_date', [$period->start_date, $period->cutoff_date])
+            ->get();
+        $allowancesTotal = round((float) $adjustments->where('type', 'allowance')->sum('amount'), 2);
+        $incentivesTotal = round((float) $adjustments->where('type', 'incentive')->sum('amount'), 2);
+
         // Gross pay = base salary + overtime + night diff + rest day + leave pay
-        $grossPay = $baseSalary + $overtimeAmount + $nightDiffPay + $restDayPay + $leavePay;
+        $grossPay = $baseSalary + $overtimeAmount + $nightDiffPay + $restDayPay + $leavePay
+            + $allowancesTotal + $incentivesTotal;
 
         // Total deductions = attendance deductions + configured employee deductions from deduction types
         $deductionReferenceDate = Carbon::parse($period->cutoff_date)->toDateString();
@@ -767,13 +1020,21 @@ class PayrollController extends Controller
             'overtime_hours'    => $overtimeHours,
             'overtime_amount'   => $overtimeAmount,
             'deductions_total'  => $totalDeductions,
-            'bonuses_total'     => $restDayPay + $nightDiffPay + $leavePay, // rest day, night diff, leave pay as bonuses
-            'allowances_total'  => 0,
+            'bonuses_total'     => $restDayPay + $nightDiffPay + $leavePay + $incentivesTotal,
+            'allowances_total'  => $allowancesTotal,
+            'incentive_total'   => $incentivesTotal,
             'tax_amount'        => $taxAmount,
             'net_salary'        => $netSalary,
             'late_minutes'      => (int) ($attendance->total_late ?? 0),
             'late_deduction'    => $lateDeduction,
-            'late_occurrences'  => (int) ($attendance->absent_days ?? 0), // approximate; update if you track occurrences separately
+            'late_occurrences'  => (int) ($attendance->total_late ?? 0) > 0 ? 1 : 0,
+            'absent_days'       => $absentDays,
+            'absence_deduction' => round($absentDeduction, 2),
+            'half_day_deduction' => round($halfDayDeduction, 2),
+            'leave_days'        => $leaveDays,
+            'paid_leave_days'   => $paidLeaveDays,
+            'approved_leave_dates' => $approvedLeaveDates->all(),
+            'scheduled_absent_dates' => $scheduledAbsentDates->all(),
         ];
     }
 
@@ -870,6 +1131,21 @@ class PayrollController extends Controller
             ]);
         }
 
+        $adjustments = EmployeePayAdjustment::where('store_id', $payroll->employee->store_id)
+            ->where('employee_id', $payroll->employee_id)
+            ->where('status', 'approved')
+            ->whereBetween('effective_date', [$payroll->payPeriod->start_date, $payroll->payPeriod->cutoff_date])
+            ->get();
+        foreach ($adjustments as $adjustment) {
+            $payroll->items()->create([
+                'type' => $adjustment->type === 'allowance' ? 'allowance' : 'bonus',
+                'name' => $adjustment->name,
+                'amount' => $adjustment->amount,
+                'calculation_type' => 'fixed',
+                'notes' => $adjustment->effective_date->toDateString() . ' - ' . $adjustment->notes,
+            ]);
+        }
+
         // Add tax deduction
         if ($payrollData['tax_amount'] > 0) {
             $payroll->items()->create([
@@ -927,12 +1203,26 @@ class PayrollController extends Controller
             $payroll->items()->create([
                 'type' => 'deduction',
                 'name' => $deductionType->name,
+                'deduction_type_id' => $deductionType->id,
                 'amount' => $deductionAmount,
                 'calculation_type' => $deductionType->calculation_type,
                 'rate' => (float) ($deductionType->percentage_rate ?? $deductionType->percentage_value ?? 0),
                 'notes' => $deduction->notes,
             ]);
         }
+    }
+
+    private function lateDeductionPolicy(Employee $employee): array
+    {
+        $settings = $employee->store?->settings ?? [];
+        $configuration = is_array($settings) ? ($settings['hr_payroll_configuration'] ?? []) : [];
+        $configuration = is_array($configuration) ? $configuration : [];
+        $rate = $configuration['lateDeductionRate'] ?? 50;
+
+        return [
+            'enabled' => (bool) ($configuration['lateDeductionEnabled'] ?? true),
+            'rate' => is_numeric($rate) ? max(0, min(100, (float) $rate)) : 50.0,
+        ];
     }
 
     private function calculateDeductionAmountForPeriod(
@@ -944,6 +1234,11 @@ class PayrollController extends Controller
     ): float {
         $deductionType = $deduction->deductionType;
         if (!$deductionType || !$period) {
+            return 0;
+        }
+
+        // Lateness is calculated from attendance; never add its legacy fixed type again.
+        if (strtoupper((string) $deductionType->code) === 'LATE') {
             return 0;
         }
 
@@ -1753,7 +2048,7 @@ class PayrollController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            $payroll = Payroll::findOrFail($id);
+            $payroll = Payroll::byUserStore()->findOrFail($id);
 
             if (!in_array($payroll->status, ['draft', 'calculated'])) {
                 return response()->json([
@@ -1770,15 +2065,47 @@ class PayrollController extends Controller
                 'notes'            => 'nullable|string',
             ]);
 
-            $payroll->fill($validated);
-            $payroll->net_salary = $payroll->calculateNetSalary();
-            $payroll->save();
+            DB::transaction(function () use ($payroll, $validated): void {
+                $payroll->fill($validated);
+                $grossPay = (float) $payroll->base_salary + (float) $payroll->overtime_amount
+                    + (float) $payroll->bonuses_total + (float) $payroll->allowances_total;
+                $payroll->tax_amount = round($this->calculateTax(max(0, $grossPay - (float) $payroll->deductions_total)), 2);
+                $payroll->net_salary = round($payroll->calculateNetSalary(), 2);
+                if ($payroll->net_salary < 0) {
+                    throw ValidationException::withMessages([
+                        'deductions_total' => 'Deductions exceed gross pay. Review this draft before saving.',
+                    ]);
+                }
+                $payroll->save();
+
+                foreach (['allowances_total' => 'allowance', 'bonuses_total' => 'bonus'] as $field => $type) {
+                    if (!array_key_exists($field, $validated)) {
+                        continue;
+                    }
+                    $currentItemTotal = (float) $payroll->items()->where('type', $type)->sum('amount');
+                    if (abs($currentItemTotal - (float) $payroll->{$field}) < 0.005) {
+                        continue;
+                    }
+                    $payroll->items()->where('type', $type)->delete();
+                    if ((float) $payroll->{$field} > 0) {
+                        $payroll->items()->create([
+                            'type' => $type,
+                            'name' => $type === 'allowance' ? 'Manual allowance override' : 'Manual bonus/incentive override',
+                            'amount' => $payroll->{$field},
+                            'calculation_type' => 'fixed',
+                            'notes' => 'Draft payroll edit for this pay period.',
+                        ]);
+                    }
+                }
+            });
 
             return response()->json([
                 'success' => true,
-                'messa9ge' => 'Payroll updated successfully',
+                'message' => 'Payroll updated successfully',
                 'data'    => $payroll,
             ]);
+        } catch (ValidationException $e) {
+            return response()->json(['success' => false, 'message' => 'Payroll amounts are invalid.', 'errors' => $e->errors()], 422);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,

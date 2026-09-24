@@ -248,8 +248,12 @@
               <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div class="col-span-2">
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Product</p>
-                  <p class="font-semibold text-gray-900">{{ item?.product?.product_name || 'Unknown' }}</p>
-                  <p class="text-xs text-gray-500 mt-1">SKU: {{ item?.product?.sku || 'N/A' }}</p>
+                  <p class="font-semibold text-gray-900">
+                    {{ item?.variation?.variation_name
+                      ? `${item?.product?.product_name || 'Unknown'} — ${item.variation.variation_name}`
+                      : (item?.product?.product_name || 'Unknown') }}
+                  </p>
+                  <p class="text-xs text-gray-500 mt-1">SKU: {{ item?.variation?.variation_sku || item?.product?.sku || 'N/A' }}</p>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mt-3 mb-1">Linked Supplier</p>
                   <p class="text-sm text-gray-700">{{ getItemSupplierNames(item) }}</p>
                 </div>
@@ -263,7 +267,7 @@
                 </div>
                 <div>
                   <p class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Unit</p>
-                  <p class="text-sm text-gray-700 font-bold uppercase">{{ (item?.product?.unit_of_measurement ?? 0) }}</p>
+                  <p class="text-sm text-gray-700 font-bold uppercase">{{ (item?.variation?.unit_of_measurement || item?.product?.unit_of_measurement || '—') }}</p>
                 </div>
               
                 <div>

@@ -152,8 +152,8 @@
                             </div>
                           </template>
                         </Select>
-                        <p v-if="item.variation_id || item.variation" class="mt-1 text-xs text-slate-500">
-                          Variant: {{ item.variation?.variation_name || item.variation?.name || `Variant #${item.variation_id}` }}
+                        <p v-if="item.variation_id || item.variation" class="mt-1 text-xs text-orange-700">
+                          Variant selected: {{ item.variation?.variation_name || item.variation?.name || `Variant #${item.variation_id}` }}
                         </p>
                       </div>
 
@@ -220,9 +220,9 @@
                   <span>Items subtotal</span>
                   <span class="font-medium text-slate-900">{{ formatCurrency(totals.subtotal) }}</span>
                 </div>
-                <div v-if="Number(form.discount_amount) > 0" class="flex items-center justify-between gap-6 text-emerald-700">
+                <div v-if="Number(form.discount_amount) > 0" class="flex items-center justify-between gap-6 text-red-500">
                   <span>Supplier discount</span>
-                  <span class="font-medium">− {{ formatCurrency(form.discount_amount) }}</span>
+                  <span class="font-semibold">− {{ formatCurrency(form.discount_amount) }}</span>
                 </div>
                 <div class="flex items-center justify-between gap-6 border-t border-slate-100 pt-3 text-slate-600">
                   <span>Taxable amount</span>

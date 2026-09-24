@@ -16,9 +16,9 @@
           <Button label="New Period" icon="pi pi-plus" severity="info" class="ml-auto" @click="createPeriod" />
         </div>
       </template>
-  
+
       <template #content>
-        <DataTable :value="filteredPayPeriods" class="w-full" :loading="loading" paginator :rows="10"
+        <DataTable :value="filteredPayPeriods" class="w-full" rowHover :loading="loading" paginator :rows="10"
           :rowsPerPageOptions="[5, 10, 20, 50]"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
           currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" rowHover showGridlines
@@ -30,16 +30,12 @@
           <Column field="status" header="Status" sortable>
             <template #body="slotProps">
               <div class="flex items-center gap-2">
-                <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)" class="capitalize" />
-                <Select
-                  :modelValue="slotProps.data.status"
-                  :options="statusOptions"
-                  placeholder="Change status"
-                  class="w-36"
-                  size="small"
+                <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)"
+                  class="capitalize" />
+                <Select :modelValue="slotProps.data.status" :options="statusOptions" placeholder="Change status"
+                  class="w-36" size="small"
                   :disabled="isStatusLocked(slotProps.data.status) || updatingStatusId === slotProps.data.id"
-                  @update:modelValue="(value) => changePeriodStatus(slotProps.data, value)"
-                />
+                  @update:modelValue="(value) => changePeriodStatus(slotProps.data, value)" />
               </div>
             </template>
           </Column>
@@ -51,7 +47,7 @@
               </div>
             </template>
           </Column>
-  
+
           <template #empty>
             <div class="text-center py-12">
               <p class="text-gray-500 text-lg">No periods found</p>
@@ -61,10 +57,10 @@
           </template>
         </DataTable>
       </template>
-  
+
       <ScrollTop />
     </Card>
-  
+
     <!-- Create/Edit Dialog -->
     <Dialog v-model:visible="showDialog" :header="dialogTitle" modal :style="{ width: '500px' }">
       <div class="space-y-4">
@@ -84,7 +80,7 @@
           <InputText :modelValue="periodForm.name" class="w-full" readonly />
           <small class="text-gray-500">Generated from selected start and end dates.</small>
         </div>
-  
+
         <div class="flex flex-wrap gap-4">
           <label for="">Type:</label>
           <div class="flex items-center gap-2">
@@ -106,7 +102,7 @@
         <Button label="Save" severity="info" @click="savePeriod" />
       </template>
     </Dialog>
-  
+
     <Dialog v-model:visible="showDeleteModal" header="Confirm Delete" :style="{ width: '400px' }" modal>
       <div class="text-center">
         <i class="pi pi-exclamation-triangle text-4xl text-yellow-500 mb-3"></i>
@@ -114,14 +110,14 @@
         <p class="font-bold">{{ periodToDelete?.period }}</p>
         <small class="text-gray-500">This action cannot be undone.</small>
       </div>
-  
+
       <template #footer>
         <Button label="Cancel" severity="secondary" rounded @click="showDeleteModal = false" />
         <Button label="Delete" severity="danger" rounded @click="deletePeriod" />
       </template>
     </Dialog>
-  
-  
+
+
   </div>
 </template>
 
@@ -548,4 +544,3 @@ onMounted(() => {
   fetchPayPeriods()
 })
 </script>
-

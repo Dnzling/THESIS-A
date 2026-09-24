@@ -776,7 +776,7 @@ class PurchaseOrderController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Purchase order created successfully',
-                'data' => $po->load(['supplier', 'items.product', 'createdBy']),
+                'data' => $po->load(['supplier', 'items.product', 'items.variation', 'createdBy']),
             ], 201);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -934,7 +934,7 @@ class PurchaseOrderController extends Controller
                 'message' => $nextStatus === 'pending_finance_approval'
                     ? 'Purchase order submitted for finance approval successfully'
                     : 'Purchase order draft updated successfully',
-                'data' => $po->fresh()->load('items.product'),
+                'data' => $po->fresh()->load(['items.product', 'items.variation']),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1260,6 +1260,7 @@ class PurchaseOrderController extends Controller
     {
         $requisition = PurchaseRequisition::with([
             'items.product',
+            'items.variation',
         ])
             ->where('store_id', $storeId)
             ->findOrFail((int) $validated['purchase_requisition_id']);
@@ -1395,7 +1396,7 @@ class PurchaseOrderController extends Controller
 
             $this->notifyRequisitionRequesterPoCreated($po);
 
-            $createdOrders[] = $po->load(['supplier', 'items.product', 'createdBy']);
+            $createdOrders[] = $po->load(['supplier', 'items.product', 'items.variation', 'createdBy']);
         }
 
         $this->setPurchaseRequisitionStatus($requisition->id, 'po_created');

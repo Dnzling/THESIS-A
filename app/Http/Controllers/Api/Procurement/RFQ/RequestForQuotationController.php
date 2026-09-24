@@ -470,7 +470,7 @@ class RequestForQuotationController extends Controller
         try {
             $storeId = (int) (auth()->user()->store_id ?? 0);
 
-            $requisition = PurchaseRequisition::with(['items.product'])
+            $requisition = PurchaseRequisition::with(['items.product', 'items.variation'])
                 ->where('store_id', $storeId)
                 ->findOrFail((int) $validated['purchase_requisition_id']);
 

@@ -29,3 +29,4 @@ _tmp_*.php
 test_*.php
 verify_*.php
 tmp_*.txt
+/PsySH/

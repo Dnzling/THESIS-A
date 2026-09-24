@@ -204,11 +204,24 @@
                                             :modelValue="item.branch?.name"
                                             disabled
                                             fluid /></Field
-                                    ><Field label="Warehouse Section"
-                                        ><InputText
-                                            v-model="form.warehouse_section"
-                                            fluid
+                                        ><Field label="Warehouse Section"
+                                            ><InputText
+                                                v-model="form.warehouse_section"
+                                                fluid
                                     /></Field>
+                                    <Field label="Storage Location">
+                                        <Select
+                                            v-model="form.warehouse_location_id"
+                                            :options="options.locations"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Select a storage location"
+                                            showClear
+                                            filter
+                                            fluid
+                                        />
+                                        <small class="text-slate-500">Selecting a location updates the aisle, rack, shelf, and bin automatically.</small>
+                                    </Field>
                                     <div class="grid grid-cols-2 gap-3">
                                         <Field label="Aisle"
                                             ><InputText
@@ -295,6 +308,7 @@ import { useConfirm } from "primevue/useconfirm";
 import { useToast } from "primevue/usetoast";
 import ConfirmDialog from "primevue/confirmdialog";
 import WarehouseService from "@/services/warehouse.service";
+import inventoryService from "@/services/inventory.service";
 const Field = defineComponent({
     props: { label: String, error: String },
     setup(props, { slots, attrs }) {
@@ -322,11 +336,11 @@ const page = usePage(),
     ready = ref(false),
     saving = ref(false),
     item = ref<any>({}),
-    options = reactive<any>({ categories: [], warehouses: [] }),
+    options = reactive<any>({ categories: [], warehouses: [], locations: [] }),
     errors = reactive<Record<string, string>>({});
 const id = computed(() => String(page.url).match(/stock\/(\d+)/)?.[1] || "");
 const productTypes = [
-        { label: "Product", value: "finished_good" },
+        { label: "Finished Good", value: "finished_good" },
         { label: "Supply", value: "supply" },
         { label: "Raw Material", value: "raw_material" },
         { label: "Other", value: "other" },
@@ -371,6 +385,7 @@ const hydrate = (row: any) =>
         quantity_incoming: Number(row.quantity_incoming || 0),
         quantity_damaged: Number(row.quantity_damaged || 0),
         warehouse_section: row.warehouse_section || null,
+        warehouse_location_id: row.warehouse_location_id || row.warehouse_location?.id || null,
         aisle: row.aisle || null,
         rack: row.rack || null,
         shelf: row.shelf || null,
@@ -380,7 +395,7 @@ const hydrate = (row: any) =>
         safety_stock: Number(row.safety_stock || 0),
         maximum_stock: Number(row.maximum_stock || 0),
     });
-const goBack = () => router.visit(`/warehouse-operations/stock/${id.value}`);
+const goBack = () => router.visit(`/warehouse/stock/${id.value}`);
 const save = async () => {
     Object.keys(errors).forEach((k) => delete errors[k]);
     saving.value = true;
@@ -427,6 +442,9 @@ onMounted(async () => {
         ]);
         item.value = row;
         Object.assign(options, opts);
+        const locationResponse = await inventoryService.getLocations({ warehouse_id: row.warehouse?.id, per_page: 1000 });
+        const locationPage = locationResponse?.data ?? {};
+        options.locations = Array.isArray(locationPage) ? locationPage : (locationPage.data ?? []);
         hydrate(row);
     } finally {
         ready.value = true;

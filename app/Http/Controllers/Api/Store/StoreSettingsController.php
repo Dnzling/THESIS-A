@@ -484,6 +484,8 @@ class StoreSettingsController extends Controller
             'attendance_rules.gracePeriod' => 'nullable|integer|min:0|max:240',
             'attendance_rules.timezone' => 'nullable|string|max:64',
             'payroll_configuration' => 'sometimes|array',
+            'payroll_configuration.lateDeductionEnabled' => 'sometimes|boolean',
+            'payroll_configuration.lateDeductionRate' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $user = $request->user();

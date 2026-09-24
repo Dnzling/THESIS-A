@@ -104,7 +104,7 @@
     <Dialog v-model:visible="props.isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
       <div class="flex flex-col items-center justify-center p-6">
         <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
-        <p class="mt-4 text-lg font-medium text-gray-700">Signing you in...</p>
+        <p class="mt-4 text-lg font-medium text-gray-700">Logging you in...</p>
         <p class="text-gray-500">Please wait a moment</p>
       </div>
     </Dialog>

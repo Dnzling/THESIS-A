@@ -52,6 +52,14 @@
       </div>
     </div>
   </div>
+
+  <Dialog v-model:visible="isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
+    <div class="flex flex-col items-center justify-center p-6">
+      <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
+      <p class="mt-4 text-lg font-medium text-gray-700">Logging you in...</p>
+      <p class="text-gray-500">Please wait a moment</p>
+    </div>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -64,6 +72,8 @@ import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
+import Dialog from 'primevue/dialog'
+import ProgressSpinner from 'primevue/progressspinner'
 import CustomerAuth3DHero from '@/Components/auth/CustomerAuth3DHero.vue'
 
 const page = usePage()
