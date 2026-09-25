@@ -15,7 +15,7 @@
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Applicant Review</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Screening and Interview</p>
                     <h1 class="text-3xl font-semibold tracking-tight text-slate-900">{{ applicantName }}</h1>
                     <p class="mt-1 text-sm text-slate-500">{{ application?.email }} - {{ application?.phone || 'No phone provided' }}</p>
                   </div>
@@ -30,21 +30,7 @@
           <Card class="border border-slate-200 shadow-none">
             <template #title>Documents</template>
             <template #content>
-              <div v-if="application?.documents?.length" class="space-y-3">
-                <div v-for="doc in application.documents" :key="doc.id"
-                  class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div>
-                    <p class="font-semibold text-slate-900">{{ doc.document_type || 'Document' }}</p>
-                    <p class="text-xs text-slate-500">{{ doc.file_name || 'Attachment' }}</p>
-                  </div>
-                  <div class="flex gap-2">
-                    <Button label="View" icon="pi pi-eye" outlined @click="previewDocument(doc)" />
-                    <Button label="Download" icon="pi pi-download" severity="secondary" outlined
-                      @click="downloadDocument(doc)" />
-                  </div>
-                </div>
-              </div>
-              <Message v-else :closable="false">No documents uploaded.</Message>
+              <ApplicantDocumentGallery v-if="application" :application-id="application.id" :documents="application.documents || []" />
             </template>
           </Card>
         </div>
@@ -59,7 +45,10 @@
                   severity="success" fluid
                   @click="router.push({ name: 'hr.employees.view', params: { id: application.employee_id } })" />
               </div>
-  
+              <div v-else-if="isRejected" class="space-y-3">
+                <Message severity="error" :closable="false">This application has been rejected.</Message>
+              </div>
+
               <div v-else class="space-y-4">
                 <div class="space-y-3">
                 <DatePicker v-model="interviewForm.interview_date" :minDate="new Date()" showTime hourFormat="12" class="w-full"
@@ -68,7 +57,11 @@
                   optionValue="value" placeholder="Interview type" class="w-full" />
                 <Textarea v-model="interviewForm.notes" rows="3" class="w-full" placeholder="Interview notes" />
                 <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
-                <Button :label="interviewButtonLabel" icon="pi pi-calendar-plus" fluid :loading="submitting"
+                <Message v-if="scheduleDateLocked" severity="info" :closable="false">
+                  You can schedule the next interview attempt on {{ formatDate(latestInterview?.interview_date) }}.
+                </Message>
+                <Button v-if="canScheduleInterview" :label="interviewButtonLabel" icon="pi pi-calendar-plus" fluid :loading="submitting"
+                  :disabled="scheduleDateLocked"
                   @click="scheduleInterview" />
                 </div>
 
@@ -88,7 +81,7 @@
                   </div>
                 </div>
 
-                <div class="pt-6">
+                <div v-if="canShowDecisionActions" class="pt-6">
                  
                   <div class="grid gap-2 md:grid-cols-2">
                   
@@ -96,6 +89,9 @@
                       <Button label="Hire" icon="pi pi-check" severity="success" :loading="hiring" fluid @click="router.push({ name: 'hr.job-applications.onboarding', params: { applicationId: route.params.applicationId } })" />
                   </div>
                 </div>
+                <Message v-else severity="info" :closable="false">
+                  Hire and Reject become available on the recorded interview date: {{ formatDate(latestInterview?.interview_date) }}.
+                </Message>
               </div>
             </template>
           </Card>
@@ -118,15 +114,6 @@
       </div>
     </div>
   
-    <Dialog v-model:visible="previewVisible" modal maximizable :style="{ width: 'min(78rem, 96vw)' }"
-      header="Document Preview">
-      <div v-if="previewUrl" class="min-h-[70vh]">
-        <img v-if="previewIsImage" :src="previewUrl" alt="Document preview"
-          class="mx-auto max-h-[70vh] rounded-xl object-contain" />
-        <iframe v-else :src="previewUrl" class="h-[70vh] w-full rounded-xl border border-slate-200" />
-      </div>
-    </Dialog>
-
     <Dialog v-model:visible="showRejectDialog" modal header="Reject Applicant" :style="{ width: 'min(32rem, 95vw)' }">
       <div class="space-y-4">
         <Select
@@ -154,10 +141,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import hrService from '../../../../services/hr.services'
+import ApplicantDocumentGallery from './ApplicantDocumentGallery.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -171,9 +159,6 @@ const rejecting = ref(false)
 const errorMessage = ref('')
 const showRejectDialog = ref(false)
 const rejectionError = ref('')
-const previewVisible = ref(false)
-const previewUrl = ref('')
-const previewMimeType = ref('')
 
 const interviewTypeOptions = [
   { label: 'Screening', value: 'Screening' },
@@ -203,6 +188,25 @@ const rejectionReasons = [
 
 const applicantName = computed(() => application.value?.full_name || `${application.value?.first_name || ''} ${application.value?.last_name || ''}`.trim())
 const interviewList = computed(() => Array.isArray(application.value?.interviews) ? application.value.interviews : [])
+const latestInterview = computed(() => [...interviewList.value].sort((a: any, b: any) => {
+  const aIssued = new Date(a.created_at || a.interview_date || 0).getTime()
+  const bIssued = new Date(b.created_at || b.interview_date || 0).getTime()
+  return bIssued - aIssued || Number(b.id || 0) - Number(a.id || 0)
+})[0] || null)
+const dateKey = (value?: string | Date | null) => {
+  if (!value) return ''
+  if (typeof value === 'string') {
+    const storedDate = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+    if (storedDate) return storedDate
+  }
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+const isInterviewDateToday = computed(() => dateKey(latestInterview.value?.interview_date) === dateKey(new Date()))
+const scheduleDateLocked = computed(() => interviewList.value.length > 0 && !isInterviewDateToday.value)
+const canShowDecisionActions = computed(() => interviewList.value.length !== 1 || isInterviewDateToday.value)
 const upcomingInterview = computed(() => {
   const now = new Date()
   return [...interviewList.value]
@@ -213,8 +217,7 @@ const displayStatusLabel = computed(() => upcomingInterview.value ? 'Upcoming In
 const canScheduleInterview = computed(() => !['hired', 'rejected'].includes(String(application.value?.status || '').toLowerCase()))
 const interviewButtonLabel = computed(() => (interviewList.value.length ? 'Schedule Another Interview' : 'Schedule Interview'))
 const isHired = computed(() => String(application.value?.status || '').toLowerCase() === 'hired')
-const previewIsImage = computed(() => previewMimeType.value.startsWith('image/'))
-
+const isRejected = computed(() => String(application.value?.status || '').toLowerCase() === 'rejected')
 const loadApplication = async () => {
   loading.value = true
   try {
@@ -230,34 +233,12 @@ const toLocalDateTimeString = (value: Date) => {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
 }
 
-const revokePreviewUrl = () => {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-    previewUrl.value = ''
-    previewMimeType.value = ''
-  }
-}
-
-const previewDocument = async (doc: any) => {
-  revokePreviewUrl()
-  const response = await hrService.api.get(`/api/job-applications/${application.value.id}/documents/${doc.id}`, { responseType: 'blob' })
-  previewMimeType.value = response.data.type || doc.mime_type || ''
-  previewUrl.value = URL.createObjectURL(response.data)
-  previewVisible.value = true
-}
-
-const downloadDocument = async (doc: any) => {
-  const response = await hrService.api.get(`/api/job-applications/${application.value.id}/documents/${doc.id}`, { responseType: 'blob' })
-  const url = window.URL.createObjectURL(response.data)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = doc.file_name || 'document'
-  link.click()
-  window.URL.revokeObjectURL(url)
-}
-
 const scheduleInterview = async () => {
   errorMessage.value = ''
+  if (scheduleDateLocked.value) {
+    errorMessage.value = 'You can schedule another interview only on the recorded interview date.'
+    return
+  }
   if (!interviewForm.interview_date || !interviewForm.interview_type) {
     errorMessage.value = 'Please complete the interview date and interview type.'
     return
@@ -342,10 +323,6 @@ const goBack = () => {
 
 const formatDate = (value?: string) => (value ? new Date(value).toLocaleString('en-PH') : 'N/A')
 const statusSeverity = (status?: string) => ({ Applied: 'info', Screening: 'contrast', Interview: 'warn', 'Upcoming Interview': 'warn', Offer: 'success', Accepted: 'success', Hired: 'success', Rejected: 'danger' }[status || 'Applied'] || 'secondary')
-
-watch(previewVisible, (visible) => {
-  if (!visible) revokePreviewUrl()
-})
 
 onMounted(loadApplication)
 </script>

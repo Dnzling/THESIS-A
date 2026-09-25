@@ -20,56 +20,26 @@
         </IconField>
       </div>
       <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="router.push({ name: 'inventory.items' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Total Items</p>
-                <h3 class="text-3xl font-black text-gray-900">{{ dashboardData.inventory.total_items }}</h3>
-              </div>
-              <i class="pi pi-box text-xl text-emerald-600"></i>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="router.push({ name: 'inventory.alerts' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Low Stock</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.inventory.low_stock }}</h3>
-                <p class="text-xs text-red-600 mt-1">{{ dashboardData.inventory.out_of_stock }} Out of stock</p>
-              </div>
-              <i class="pi pi-exclamation-triangle text-xl text-red-600"></i>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'inventory.stock-movements' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Pending Adjustments</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.adjustments.pending_approvals }}</h3>
-              </div>
-              <i class="pi pi-sync text-xl text-amber-600"></i>
-            </div>
-          </template>
-        </Card>
-  
-        <Card class="hover:shadow-lg transition-shadow cursor-pointer"
-          @click="router.push({ name: 'inventory.stock-movements' })">
-          <template #content>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600 mb-1">Pending Transfers</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ dashboardData.transfers.pending }}</h3>
-              </div>
-              <i class="pi pi-arrow-right-arrow-left text-xl text-blue-600"></i>
-            </div>
-          </template>
-        </Card>
+        <section class="dashboard-panel cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-orange-200" @click="router.push({ name: 'inventory.items' })">
+          <p class="text-xs font-medium text-slate-500">Tracked items</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ dashboardData.inventory.total_items }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ Number(dashboardData.inventory.total_quantity || 0).toLocaleString() }} units on hand</p>
+        </section>
+        <section class="dashboard-panel cursor-pointer rounded-2xl border border-orange-200 bg-white p-4 transition hover:border-orange-300" @click="router.push({ name: 'inventory.alerts' })">
+          <p class="text-xs font-medium text-slate-500">Needs replenishment</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ Number(dashboardData.inventory.low_stock || 0) + Number(dashboardData.inventory.out_of_stock || 0) }}</p>
+          <p class="mt-1 text-xs text-orange-700">{{ dashboardData.inventory.out_of_stock }} out of stock</p>
+        </section>
+        <section class="dashboard-panel cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-orange-200" @click="router.push({ name: 'inventory.adjustments' })">
+          <p class="text-xs font-medium text-slate-500">Adjustments awaiting approval</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ dashboardData.adjustments.pending_approvals }}</p>
+          <p class="mt-1 text-xs text-slate-500">Review stock corrections</p>
+        </section>
+        <section class="dashboard-panel cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-orange-200" @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })">
+          <p class="text-xs font-medium text-slate-500">Transfers to follow up</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ Number(dashboardData.transfers.pending || 0) + Number(dashboardData.transfers.in_transit || 0) }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ dashboardData.transfers.pending }} requested · {{ dashboardData.transfers.in_transit }} in transit</p>
+        </section>
 
       </div>
 
@@ -118,28 +88,63 @@
 
         <Card>
           <template #title>
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-semibold">Reorder Watchlist</span>
-              <Button label="View All" text size="small" class="text-xs" @click="router.push({ name: 'inventory.reorder-suggestions' })" />
+            <div class="flex items-center justify-between gap-2">
+              <div><span class="text-sm font-semibold">Reorder priorities</span><p class="mt-1 text-xs font-normal text-slate-500">Lowest stock first</p></div>
+              <Button label="View suggestions" text size="small" class="text-xs" @click="router.push({ name: 'inventory.reorder-suggestions' })" />
             </div>
           </template>
           <template #content>
-            <div v-if="reorderWatchlist.length" class="space-y-2">
-              <div v-for="item in reorderWatchlist.slice(0, 5)" :key="item.id" class="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0">
-                <div class="min-w-0">
-                  <p class="truncate text-xs font-medium text-gray-800">{{ item.product?.product_name || 'N/A' }}</p>
-                  <p class="text-[10px] text-gray-500">Stock {{ item.quantity_available }} / Reorder {{ item.reorder_point }}</p>
-                </div>
-                <Tag value="Reorder" severity="warn" size="small" />
-              </div>
+            <DataTable :value="lowStockItems" size="small" rowHover class="text-xs" @row-click="onInventoryRowClick">
+              <Column header="Item"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.variation?.variation_name || data.product?.product_name || 'Item' }}</span><span class="mt-0.5 block text-[10px] text-slate-500">{{ data.variation?.variation_sku || data.product?.sku || 'No SKU' }}</span></template></Column>
+              <Column field="quantity_available" header="Available" />
+              <Column field="reorder_point" header="Reorder at" />
+              <Column header="Status"><template #body="{ data }"><Badge :value="getStockLabel(data.stock_status)" :severity="getStockSeverity(data.stock_status)" /></template></Column>
+              <template #empty><div class="py-5 text-center text-xs text-slate-500">Stock levels are healthy.</div></template>
+            </DataTable>
+          </template>
+        </Card>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <Card>
+          <template #title>
+            <div class="flex items-center justify-between gap-2">
+              <div><span class="text-sm font-semibold">Adjustments awaiting review</span><p class="mt-1 text-xs font-normal text-slate-500">Stock changes that need an approval decision</p></div>
+              <Button label="View all" text size="small" class="text-xs" @click="router.push({ name: 'inventory.adjustments' })" />
             </div>
-            <p v-else class="py-4 text-center text-xs text-gray-500">No items need reordering.</p>
+          </template>
+          <template #content>
+            <DataTable :value="pendingAdjustments" size="small" rowHover class="text-xs" @row-click="openAdjustment">
+              <Column field="adjustment_number" header="Reference"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.adjustment_number || `ADJ-${data.id}` }}</span></template></Column>
+              <Column header="Branch"><template #body="{ data }">{{ data.branch?.name || 'Current branch' }}</template></Column>
+              <Column field="created_at" header="Submitted"><template #body="{ data }">{{ formatDate(data.created_at) }}</template></Column>
+              <Column header="Status"><template #body="{ data }"><Badge :value="formatStatus(data.status)" severity="warn" /></template></Column>
+              <template #empty><div class="py-5 text-center text-xs text-slate-500">No stock adjustments need review.</div></template>
+            </DataTable>
+          </template>
+        </Card>
+
+        <Card>
+          <template #title>
+            <div class="flex items-center justify-between gap-2">
+              <div><span class="text-sm font-semibold">Transfers to follow up</span><p class="mt-1 text-xs font-normal text-slate-500">Requested or moving between branches</p></div>
+              <Button label="View transfers" text size="small" class="text-xs" @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })" />
+            </div>
+          </template>
+          <template #content>
+            <DataTable :value="pendingTransfers" size="small" rowHover class="text-xs" @row-click="openTransfer">
+              <Column field="transfer_number" header="Reference"><template #body="{ data }"><span class="font-medium text-slate-900">{{ data.transfer_number || data.transfer_no || `TR-${data.id}` }}</span></template></Column>
+              <Column header="Route"><template #body="{ data }">{{ data.from_branch?.name || 'Branch' }} <span class="text-slate-400">to</span> {{ data.to_branch?.name || 'Branch' }}</template></Column>
+              <Column field="status" header="Status"><template #body="{ data }"><Badge :value="formatStatus(data.status)" :severity="data.status === 'in_transit' ? 'info' : 'warn'" /></template></Column>
+              <Column field="created_at" header="Created"><template #body="{ data }">{{ formatDate(data.created_at) }}</template></Column>
+              <template #empty><div class="py-5 text-center text-xs text-slate-500">No transfers are waiting for follow-up.</div></template>
+            </DataTable>
           </template>
         </Card>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card class="lg:col-span-3 hover:shadow-lg transition-shadow cursor-pointer">
+        <Card class="lg:col-span-3">
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -168,7 +173,6 @@
               class="p-datatable-xs text-xs"
               responsiveLayout="scroll"
               rowHover
-              stripedRows
               size="small"
               @row-click="onInventoryRowClick"
             >
@@ -209,12 +213,6 @@
                 </template>
               </Column>
 
-              <Column field="quantity_available" header="Stock" style="width: 10%">
-                <template #body="{ data }">
-                  <span class="font-medium">{{ data.quantity_available }}</span>
-                </template>
-              </Column>
-
               <Column field="quantity_available" header="Available" style="width: 10%">
                 <template #body="{ data }">
                   {{ data.quantity_available }}
@@ -236,7 +234,7 @@
           </template>
         </Card>
 
-        <Card class="lg:col-span-3 hover:shadow-lg transition-shadow cursor-pointer">
+        <Card class="lg:col-span-3">
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -247,7 +245,7 @@
           </template>
           <template #content>
             <DataTable :value="dashboardData.recent_transactions" class="p-datatable-xs text-xs" responsiveLayout="scroll"
-              :loading="loading" sortMode="multiple" removableSort rowHover stripedRows size="small">
+              :loading="loading" sortMode="multiple" removableSort rowHover size="small" @row-click="openTransaction">
               <Column field="transaction_number" header="Reference" sortable removableSort  />
   
               <Column field="transaction_type" header="Type" sortable removableSort>
@@ -318,6 +316,9 @@ const router = useRouter()
 const toast = useToast()
 const loading = ref(true)
 const inventoryItems = ref<any[]>([])
+const lowStockItems = ref<any[]>([])
+const pendingAdjustments = ref<any[]>([])
+const pendingTransfers = ref<any[]>([])
 const inventoryItemsLoading = ref(false)
 const stockSearchQuery = ref('')
 const trendPeriod = ref('daily')
@@ -334,10 +335,6 @@ const stockHealth = computed(() => {
     { label: 'Out of Stock', value: dashboardData.value.inventory.out_of_stock, color: 'bg-red-500', percent: Math.min(100, dashboardData.value.inventory.out_of_stock / total * 100) }
   ]
 })
-
-const reorderWatchlist = computed(() => inventoryItems.value.filter((item) =>
-  Number(item.quantity_available || 0) <= Number(item.reorder_point || 0)
-))
 
 const movementTrend = computed(() => {
   const rows: any[] = Array.isArray(dashboardData.value.transaction_trends)
@@ -373,9 +370,18 @@ const filteredInventoryItems = computed(() => {
 const onInventoryRowClick = ({ data }: { data: any }) => {
   const productId = data.product?.id || data.product_id
   if (productId) {
-    router.push({ name: 'inventory.products.detail', params: { id: productId } })
+    router.push({
+      name: 'inventory.products.detail',
+      params: { id: productId },
+      query: data.variation_id ? { variation_id: data.variation_id } : undefined
+    })
   }
 }
+
+const openAdjustment = ({ data }: { data: any }) => router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })
+const openTransfer = ({ data }: { data: any }) => router.push({ name: 'inventory.transfers.detail', params: { id: data.id } })
+const openTransaction = ({ data }: { data: any }) => router.push({ name: 'inventory.transactions.detail', params: { id: data.id } })
+const formatStatus = (status?: string) => String(status || 'pending').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
 const getProductTypeLabel = (type?: string) => {
   const labels: Record<string, string> = {
@@ -418,6 +424,12 @@ const dashboardData = ref({
     acknowledged: 0,
     resolved: 0
   },
+  adjustments: {
+    total: 0,
+    pending_approvals: 0,
+    approved: 0,
+    applied: 0
+  },
   transfers: {
     total: 0,
     pending: 0,
@@ -434,9 +446,14 @@ const loadDashboard = async () => {
   loading.value = true
   inventoryItemsLoading.value = true
   try {
-    const [statsResponse, inventoryResponse] = await Promise.all([
+    const [statsResponse, inventoryResponse, lowStockResponse, outOfStockResponse, adjustmentsResponse, requestedTransfersResponse, transitTransfersResponse] = await Promise.all([
       axios.get('/api/inventory/dashboard/stats'),
-      inventoryService.getInventoryItems({ page: 1, per_page: 8, sort_by: 'created_at', sort_order: 'desc' })
+      inventoryService.getInventoryItems({ page: 1, per_page: 8, sort_by: 'created_at', sort_order: 'desc' }),
+      inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'low_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
+      inventoryService.getInventoryItems({ page: 1, per_page: 5, stock_status: 'out_of_stock', sort_by: 'quantity_available', sort_order: 'asc' }).catch(() => null),
+      inventoryService.getAdjustments({ page: 1, per_page: 5, status: 'pending_approval' }).catch(() => null),
+      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'requested' }).catch(() => null),
+      inventoryService.getTransfers({ page: 1, per_page: 5, status: 'in_transit' }).catch(() => null)
     ])
 
     if (statsResponse.data?.data) {
@@ -448,6 +465,15 @@ const loadDashboard = async () => {
 
     const inventoryRows = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : []
     inventoryItems.value = inventoryRows
+    lowStockItems.value = [
+      ...(Array.isArray(outOfStockResponse?.data) ? outOfStockResponse.data : []),
+      ...(Array.isArray(lowStockResponse?.data) ? lowStockResponse.data : [])
+    ]
+    pendingAdjustments.value = Array.isArray(adjustmentsResponse?.data?.data) ? adjustmentsResponse.data.data : []
+    pendingTransfers.value = [
+      ...(Array.isArray(requestedTransfersResponse?.data?.data) ? requestedTransfersResponse.data.data : []),
+      ...(Array.isArray(transitTransfersResponse?.data?.data) ? transitTransfersResponse.data.data : [])
+    ]
   } catch (error: any) {
     console.error('Failed to load inventory dashboard', error)
     toast.add({
@@ -457,6 +483,9 @@ const loadDashboard = async () => {
       life: 3000
     })
     inventoryItems.value = []
+    lowStockItems.value = []
+    pendingAdjustments.value = []
+    pendingTransfers.value = []
   } finally {
     loading.value = false
     inventoryItemsLoading.value = false
@@ -536,6 +565,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+:deep(.p-datatable-tbody > tr) {
+  cursor: pointer;
+}
+
 :deep(.p-card) {
   @apply h-full;
 }

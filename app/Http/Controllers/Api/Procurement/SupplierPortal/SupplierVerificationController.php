@@ -151,7 +151,13 @@ class SupplierVerificationController extends Controller
     {
         try {
             $portal = SupplierPortal::with(['user', 'supplier', 'verificationDocuments', 'verifiedBy'])
-                ->findOrFail($id);
+                ->find($id);
+
+            if (!$portal) {
+                $portal = SupplierPortal::with(['user', 'supplier', 'verificationDocuments', 'verifiedBy'])
+                    ->where('supplier_id', $id)
+                    ->firstOrFail();
+            }
 
             return response()->json([
                 'success' => true,

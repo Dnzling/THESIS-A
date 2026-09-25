@@ -1,16 +1,12 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 py-5 px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Supplier Dashboard</h1>
-        <p class="text-xs text-gray-500 mt-1">Welcome back, {{ portal?.supplier_name || 'Supplier' }}</p>
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-5 sm:px-6 lg:px-8">
+    <section class="relative overflow-hidden rounded-3xl bg-slate-950 px-7 py-8 text-white shadow-xl">
+      <div class="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-orange-400/20 blur-3xl"></div>
+      <div class="relative grid gap-7 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div><p class="text-xs font-bold uppercase tracking-[.22em] text-orange-300">Supplier workspace</p><h1 class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Welcome, {{ portal?.supplier?.supplier_name || portal?.supplier_name || 'Supplier' }}</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Track verification, quotations, purchase orders, and partner activity from one place.</p><div class="mt-6 flex flex-wrap gap-3"><Button v-if="portal?.status !== 'approved'" label="Complete verification" icon="pi pi-arrow-right" iconPos="right" severity="warn" @click="router.push('/supplier-portal/registration')"/><Button v-else label="Browse RFQs" icon="pi pi-file" severity="secondary" @click="router.push('/supplier-portal/rfqs')"/></div></div>
+        <div class="min-w-64 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur"><div class="flex items-center justify-between"><span class="text-xs font-bold uppercase tracking-wider text-slate-400">Verification</span><Tag :value="portalStatus" :severity="statusSeverity" rounded/></div><div class="mt-5 flex items-end justify-between"><div><p class="text-3xl font-bold">{{ submittedDocuments }}/3</p><p class="mt-1 text-xs text-slate-400">Documents submitted</p></div><i class="pi pi-verified text-3xl text-orange-300"></i></div><div class="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-orange-300 transition-all" :style="{width: `${documentProgress}%`}"></div></div></div>
       </div>
-      <div class="flex items-center gap-2">
-        <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-          <i class="pi pi-user text-blue-600 text-sm"></i>
-        </div>
-      </div>
-    </div>
+    </section>
 
     <!-- iOS-style Status Alert -->
     <div v-if="portal" class="space-y-3">
@@ -68,9 +64,9 @@
       <Skeleton v-for="i in 4" :key="i" height="120px" class="rounded-xl" />
     </div>
     
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-3" v-else-if="stats">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" v-else-if="stats">
       <!-- Portal Status Card -->
-      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <template #content>
           <div class="p-4">
             <div class="flex items-center justify-between mb-3">
@@ -86,7 +82,7 @@
       </Card>
 
       <!-- Total RFQs Card -->
-      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #content>
           <div class="p-4">
             <div class="flex items-center justify-between mb-2">
@@ -102,7 +98,7 @@
       </Card>
 
       <!-- Total POs Card -->
-      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
         <template #content>
           <div class="p-4">
             <div class="flex items-center justify-between mb-2">
@@ -118,7 +114,7 @@
       </Card>
 
       <!-- Pending POs Card -->
-      <Card class="rounded-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+      <Card class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <template #content>
           <div class="p-4">
             <div class="flex items-center justify-between mb-3">
@@ -354,7 +350,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Card from 'primevue/card'
 import Message from 'primevue/message'
@@ -375,6 +371,10 @@ const recentPOs = ref<any[]>([])
 const showPaymentDialog = ref(false)
 const submittingPayment = ref(false)
 const payment = ref({ bank_name: '', bank_account_name: '', bank_account_number: '', bank_account_type: null as any, bank_branch: '' })
+const submittedDocuments = computed(() => portal.value?.verification_documents?.length || portal.value?.verificationDocuments?.length || 0)
+const documentProgress = computed(() => Math.min(100, Math.round((submittedDocuments.value / 3) * 100)))
+const portalStatus = computed(() => String(portal.value?.status || 'pending').replace(/\b\w/g, letter => letter.toUpperCase()))
+const statusSeverity = computed(() => portal.value?.status === 'approved' ? 'success' : portal.value?.status === 'rejected' ? 'danger' : 'warn')
 
 const fetchPortalData = async () => {
   try {

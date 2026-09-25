@@ -45,6 +45,18 @@
                   </div>
                 </div>
               </div>
+
+              <div class="rounded-3xl border border-slate-200 bg-white p-5">
+                <h2 class="text-lg font-semibold text-slate-900">Applicant Documents</h2>
+                <p class="mt-1 text-xs text-slate-500">Select a thumbnail to preview the submitted file.</p>
+                <div class="mt-4">
+                  <ApplicantDocumentGallery
+                    v-if="application"
+                    :application-id="application.id"
+                    :documents="application.documents || []"
+                  />
+                </div>
+              </div>
             </div>
           </template>
         </Card>
@@ -56,14 +68,14 @@
               <p class="text-sm leading-6 text-slate-600">
                 Choose one action. Hiring moves this applicant to employee onboarding. Rejecting records a formal reason.
               </p>
-              <Button
+              <Button v-if="canShowDecisionActions"
                 label="Continue to Employee Onboarding"
                 icon="pi pi-arrow-right"
                 severity="info"
                 fluid
                 @click="router.push({ name: 'hr.job-applications.onboarding', params: { applicationId: route.params.applicationId } })"
               />
-              <Button
+              <Button v-if="canShowDecisionActions"
                 label="Reject Applicant"
                 icon="pi pi-times"
                 severity="danger"
@@ -72,6 +84,9 @@
                 fluid
                 @click="showRejectDialog = true"
               />
+              <Message v-if="!canShowDecisionActions" severity="info" :closable="false">
+                Hiring and rejection become available on the recorded interview date: {{ formatDate(latestInterview?.interview_date) }}.
+              </Message>
             </div>
           </template>
         </Card>
@@ -109,6 +124,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import hrService from '../../../../services/hr.services'
+import ApplicantDocumentGallery from './ApplicantDocumentGallery.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -137,6 +153,20 @@ const rejectionReasons = [
 const applicantName = computed(() => application.value?.full_name || `${application.value?.first_name || ''} ${application.value?.last_name || ''}`.trim())
 const formatDate = (value?: string) => (value ? new Date(value).toLocaleString('en-PH') : 'N/A')
 const statusSeverity = (status?: string) => ({ Applied: 'info', Screening: 'contrast', Interview: 'warn', Offer: 'success', Accepted: 'success', Hired: 'success', Rejected: 'danger' }[status || 'Applied'] || 'secondary')
+const interviews = computed(() => Array.isArray(application.value?.interviews) ? application.value.interviews : [])
+const latestInterview = computed(() => [...interviews.value].sort((a: any, b: any) => Number(b.id || 0) - Number(a.id || 0))[0] || null)
+const dateKey = (value?: string | Date | null) => {
+  if (!value) return ''
+  if (typeof value === 'string') {
+    const storedDate = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+    if (storedDate) return storedDate
+  }
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+const canShowDecisionActions = computed(() => interviews.value.length !== 1 || dateKey(latestInterview.value?.interview_date) === dateKey(new Date()))
 
 const loadApplication = async () => {
   loading.value = true

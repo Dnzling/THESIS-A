@@ -88,21 +88,67 @@ export const useAuthStore = defineStore('auth', () => {
             return '/shop'
         }
 
-        const normalizedRole = String(user.value?.role || '').toLowerCase()
-        if (normalizedRole === 'supplier') {
+        const normalizedRole = String(user.value?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
+        if (normalizedRole.includes('supplier')) {
             return '/supplier-portal/dashboard'
         }
 
-        if (user.value?.role === 'super_admin') {
+        if (normalizedRole === 'super_admin') {
             return '/admin/dashboard'
         }
+        if (normalizedRole === 'driver') {
+            return '/driver/deliveries'
+        }
 
+        const moduleOrder = ['admin', 'store', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance', 'logistics', 'sales', 'crm']
         const activeNav = navigation.value
-            .filter(item => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
-            .sort((a, b) => a.display_order - b.display_order)
+            .filter(item => {
+                const name = String(item.name || '').toLowerCase()
+                const path = String(item.route_path || '').trim()
+                return item.is_active
+                    && name !== 'account.profile'
+                    && !['/profile', '/shop/profile', '/supplier-portal/profile'].includes(path.toLowerCase())
+                    && path
+                    && !item.meta?.is_group
+                    && !path.startsWith('#')
+                    && (normalizedRole.includes('supplier') || String(item.module || '').toLowerCase() !== 'supplier')
+            })
+            .map(item => {
+                const name = String(item.name || '').toLowerCase()
+                const routeName = String(item.route_name || '').toLowerCase()
+                const routePath = String(item.route_path || '').toLowerCase()
+                const isCrmItem = name === 'sales.crm'
+                    || name.startsWith('crm.')
+                    || routeName === 'sales.crm'
+                    || routeName.startsWith('crm.')
+                    || routePath.startsWith('/crm')
 
-        const firstAvailable = activeNav[0]
-        return firstAvailable?.route_path || '/store/index'
+                return isCrmItem
+                    ? {
+                        ...item,
+                        module: 'crm',
+                        route_path: name === 'sales.crm' || routeName === 'sales.crm' ? '/crm/dashboard' : item.route_path,
+                    }
+                    : item
+            })
+        const availableModules = [...new Set(activeNav.map(item => String(item.module || '').toLowerCase()))]
+            .sort((a, b) => {
+                const aOrder = moduleOrder.indexOf(a)
+                const bOrder = moduleOrder.indexOf(b)
+                if (aOrder < 0 && bOrder < 0) return a.localeCompare(b)
+                if (aOrder < 0) return 1
+                if (bOrder < 0) return -1
+                return aOrder - bOrder
+            })
+
+        for (const module of availableModules) {
+            const firstAvailable = activeNav
+                .filter(item => String(item.module || '').toLowerCase() === module)
+                .sort((a, b) => a.display_order - b.display_order)[0]
+            if (firstAvailable?.route_path) return firstAvailable.route_path
+        }
+
+        return '/unauthorized'
     }
 
     // Default route: first active navigation item that matches role/permission (fallback to /system/index)
@@ -580,5 +626,6 @@ export const useAuthStore = defineStore('auth', () => {
         getNavigationBySection,
         getChildNavigation,
         hasNavigationSection,
+        getFirstNavigationRoute,
     }
 })

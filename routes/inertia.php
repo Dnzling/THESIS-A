@@ -64,10 +64,12 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
+        $inertia('/admin/store-validation/{id}', 'System/Admin/StoreVerificationShow', 'admin.store-validation.show', 'Store Verification Details');
         $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
         $inertia('/admin/support-&-maintenance', 'System/Admin/SupportMaintenance', 'admin.support-maintenance', 'Support & Maintenance', 'Super Admin Management');
         $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
         $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
+        $inertia('/admin/customer-management/{id}', 'System/Admin/CustomerVerificationShow', 'admin.customer-management.show', 'Customer Verification Details');
         $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');
         $inertia('/admin/stores/{id}', 'System/Admin/StoreDetail', 'admin.stores.detail', 'Store Detail');
         $inertia('/admin/users', 'System/Admin/UsersIndex', 'admin.users', 'Users');

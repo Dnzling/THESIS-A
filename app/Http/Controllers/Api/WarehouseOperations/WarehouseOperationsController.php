@@ -48,7 +48,8 @@ class WarehouseOperationsController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $storeId = $this->storeId($request);
-        $stock = BranchInventory::where('store_id', $storeId);
+        $stock = BranchInventory::where('store_id', $storeId)
+            ->whereHas('branch', fn ($query) => $query->where('branch_type', 'warehouse'));
 
         return response()->json(['success' => true, 'data' => [
             'summary' => [
@@ -56,11 +57,18 @@ class WarehouseOperationsController extends Controller
                 'active_warehouses' => Warehouse::where('store_id', $storeId)->active()->count(),
                 'total_skus' => (clone $stock)->distinct('product_id')->count('product_id'),
                 'quantity_on_hand' => (int) (clone $stock)->sum('quantity_on_hand'),
+                'in_stock' => (clone $stock)->where('stock_status', 'in_stock')->count(),
                 'low_stock' => (clone $stock)->where('stock_status', 'low_stock')->count(),
                 'out_of_stock' => (clone $stock)->where('stock_status', 'out_of_stock')->count(),
-                'pending_transfers' => StockTransfer::where('store_id', $storeId)->pending()->count(),
+                'pending_transfers' => $this->transferQuery($request)->pending()->count(),
             ],
-            'low_stock_items' => $this->stockQuery($request)->whereIn('stock_status', ['low_stock', 'out_of_stock'])->limit(8)->get(),
+            'low_stock_items' => $this->stockQuery($request)
+                ->whereHas('branch', fn ($query) => $query->where('branch_type', 'warehouse'))
+                ->whereIn('stock_status', ['low_stock', 'out_of_stock'])
+                ->orderByRaw("CASE WHEN stock_status = 'out_of_stock' THEN 0 ELSE 1 END")
+                ->orderBy('quantity_available')
+                ->limit(8)
+                ->get(),
             'recent_transfers' => $this->transferQuery($request)->latest()->limit(8)->get()->map(fn ($row) => $this->mapTransfer($row)),
         ]]);
     }
@@ -285,7 +293,12 @@ class WarehouseOperationsController extends Controller
 
     private function transferQuery(Request $request): Builder
     {
-        return StockTransfer::query()->where('store_id', $this->storeId($request))->with([
+        return StockTransfer::query()->where('store_id', $this->storeId($request))
+            ->where(function ($query) {
+                $query->whereHas('fromBranch', fn ($branch) => $branch->where('branch_type', 'warehouse'))
+                    ->orWhereHas('toBranch', fn ($branch) => $branch->where('branch_type', 'warehouse'));
+            })
+            ->with([
             'fromBranch:id,store_id,name,branch_type', 'toBranch:id,store_id,name,branch_type',
             'requestedBy.user:id,fname,lname', 'items.product:id,sku,product_name,unit_of_measurement',
         ]);
@@ -365,7 +378,12 @@ class WarehouseOperationsController extends Controller
 
     private function transferDetailQuery(Request $request): Builder
     {
-        return StockTransfer::query()->where('store_id', $this->storeId($request))->with([
+        return StockTransfer::query()->where('store_id', $this->storeId($request))
+            ->where(function ($query) {
+                $query->whereHas('fromBranch', fn ($branch) => $branch->where('branch_type', 'warehouse'))
+                    ->orWhereHas('toBranch', fn ($branch) => $branch->where('branch_type', 'warehouse'));
+            })
+            ->with([
             'fromBranch', 'toBranch', 'requestedBy.user', 'senderApprovedBy.user',
             'receiverAcknowledgedBy.user', 'financeApprovedBy.user', 'items.product.category',
             'items.variation',

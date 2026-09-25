@@ -15,11 +15,11 @@
 		width: 100%;
 		max-width: 96rem;
 		margin-inline: auto;
-		padding: clamp(1rem, 2vw, 1.75rem);
+		/* padding: clamp(1rem, 2vw, 1.75rem); */
 		border-radius: 1.75rem;
 		background:
-			radial-gradient(circle at 96% 0%, rgb(var(--dashboard-accent) / 0.10), transparent 24rem),
-			linear-gradient(180deg, #f8fafc 0%, #ffffff 22rem);
+			/* radial-gradient(circle at 96% 0%, rgb(var(--dashboard-accent) / 0.10), transparent 24rem), */
+			/* linear-gradient(180deg, #f8fafc 0%, #ffffff 22rem); */
 	}
 
 	.dashboard--procurement { --dashboard-accent: 37 99 235; --dashboard-accent-soft: 239 246 255; }

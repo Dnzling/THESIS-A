@@ -560,7 +560,7 @@ const requiredGovernmentIdLabels = computed(() => governmentIdTypeOptions.value.
 const selectedGovernmentIdOption = computed(() => governmentIdTypeOptions.value.find((item) => String(item.value) === String(governmentIdForm.value.deduction_type_id || '')) || null)
 
 // State
-const activeTab = ref('info')
+const activeTab = ref(route.query.tab === 'overtime' ? 'overtime' : 'info')
 const employeeInfo = ref<EmployeeDetails | any>({
   basic_info: {},
   employment_details: {},

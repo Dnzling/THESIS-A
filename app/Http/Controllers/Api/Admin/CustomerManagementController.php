@@ -34,4 +34,19 @@ class CustomerManagementController extends Controller
         ]);
     }
 
+    public function show(User $customer): JsonResponse
+    {
+        if (!auth()->user()->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $customer->load(['role', 'customer']);
+
+        if (!$customer->role || !in_array($customer->role->name, ['customer', 'customer_user', 'client'], true)) {
+            return response()->json(['success' => false, 'message' => 'Customer not found'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $customer]);
+    }
+
 }

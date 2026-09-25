@@ -155,6 +155,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
         // Customer Management
         Route::get('/customers', [CustomerManagementController::class, 'index']);
+        Route::get('/customers/{customer}', [CustomerManagementController::class, 'show']);
         Route::get('/home-content', [HomepageContentController::class, 'index']);
         Route::post('/home-content/modules', [HomepageContentController::class, 'storeModule']);
         Route::post('/home-content/modules/{module}', [HomepageContentController::class, 'updateModule']);
@@ -342,6 +343,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/payrolls/{id}/payslip/print', [PayrollController::class, 'printPayslip']);
 
     Route::prefix('hr/dashboard')->controller(\App\Http\Controllers\Api\Hr\DashboardController::class)->group(function () {
+        Route::get('/action-queues', 'getActionQueues');
         Route::get('/analytics-overview', 'getAnalyticsOverview');
         Route::get('/today-stats', 'getTodayStats');
         Route::get('/weekly-attendance', 'getWeeklyAttendance');
@@ -373,9 +375,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // ========== STORE MANAGEMENT ==========
     Route::get('pending-verification', [StoreVerificationController::class, 'getPendingVerifications']);
     Route::get('store-verifications', [StoreVerificationController::class, 'index']);
+    Route::get('store-verification/{verification}', [StoreVerificationController::class, 'show']);
     Route::post('store-verification/owner-id/extract', [StoreVerificationController::class, 'extractOwnerId']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
+    Route::get('store-verification/{verification}/documents/{document}/preview', [StoreVerificationController::class, 'previewDocument']);
     Route::get('store-verification/{verification}/documents/{document}/download', [StoreVerificationController::class, 'downloadDocument']);
     Route::post('store-verification/{verification}/documents/{document}/auto-validate', [StoreVerificationController::class, 'autoValidateDocument']);
     Route::post('store-verification/{verification}/documents/auto-validate-all', [StoreVerificationController::class, 'autoValidateAllDocuments']);

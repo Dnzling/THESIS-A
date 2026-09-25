@@ -502,7 +502,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
 import { useToast } from 'primevue/usetoast'
@@ -510,10 +510,11 @@ import DatePicker from 'primevue/datepicker'
 import Skeleton from 'primevue/skeleton'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 
 // --- General State ---
-const activeTab = ref('coverage')
+const activeTab = ref(route.query.tab === 'swaps' ? 'swaps' : 'coverage')
 const selectedDate = ref(new Date())
 const loading = ref(true)
 const assignmentDialog = ref(false)
@@ -1472,7 +1473,19 @@ onMounted(async () => {
   await fetchEmployeeOptions()
   await fetchData()
   fetchAssignments()
-  fetchSwapRequests()
+  await fetchSwapRequests()
+  const swapId = Number(route.query.swap)
+  if (activeTab.value === 'swaps' && Number.isInteger(swapId) && swapId > 0) {
+    try {
+      const response = await hrService.api.get(`api/shift-swaps/${swapId}`)
+      if (response.data.success) {
+        selectedSwap.value = response.data.data
+        swapDetailsVisible.value = true
+      }
+    } catch {
+      // The list remains usable if the linked request was removed.
+    }
+  }
   fetchShiftDefinitions()
 })
 </script>

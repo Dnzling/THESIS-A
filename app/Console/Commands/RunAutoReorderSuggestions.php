@@ -36,7 +36,7 @@ class RunAutoReorderSuggestions extends Command
         }
 
         foreach ($configs as $config) {
-            $result = $this->reorderSuggestionService->generateSuggestions();
+            $result = $this->reorderSuggestionService->generateSuggestions((int) $config->store_id);
             $generated = (int) ($result['total_generated'] ?? 0);
 
             if ($generated > 0) {

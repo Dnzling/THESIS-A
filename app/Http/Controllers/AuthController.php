@@ -13,15 +13,14 @@ use Illuminate\Validation\Rules;
 use App\Models\Core\User;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Employee;
-use App\Models\Hr\ShiftAssignment;
 use App\Models\Procurement\Supplier\Supplier;
 use App\Models\Procurement\SupplierPortal\SupplierPortal;
 use App\Models\Customer\Customer;
-use App\Models\Hr\ShiftSchedule;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Core\Role;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\Hr\AttendanceClockInService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -597,8 +596,11 @@ class AuthController extends Controller
         $alreadyClockedIn = false;
 
         if ($employee) {
-            $today = now()->format('Y-m-d');
-            $now = now();
+            $storeSettings = is_array($employee->store?->settings) ? $employee->store->settings : [];
+            $attendanceRules = $storeSettings['hr_attendance_rules'] ?? [];
+            $timezone = $attendanceRules['timezone'] ?? config('app.timezone', 'UTC');
+            $now = now($timezone);
+            $today = $now->toDateString();
 
             // Check if already clocked in today
             $attendance = Attendance::where('employee_id', $employee->id)
@@ -617,85 +619,42 @@ class AuthController extends Controller
                     'shift_name' => $attendance->shift->name ?? 'No Shift'
                 ];
             } else {
-                // Get today's schedule
-                $schedule = ShiftSchedule::with('shift')
-                    ->where('employee_id', $employee->id)
-                    ->whereDate('schedule_date', $today)
-                    ->first();
-
-                // Fallback: derive and auto-create schedule from active assignment
-                if (!$schedule) {
-                    $assignment = ShiftAssignment::query()
-                        ->where('employee_id', $employee->id)
-                        ->active($today)
-                        ->latest('start_date')
-                        ->first();
-
-                    if ($assignment) {
-                        $schedule = ShiftSchedule::firstOrCreate(
-                            [
-                                'employee_id' => $employee->id,
-                                'schedule_date' => $today,
-                            ],
-                            [
-                                'shift_id' => $assignment->shift_id,
-                                'assignment_id' => $assignment->id,
-                                'generation_method' => 'manual',
-                                'status' => 'scheduled',
-                                'assigned_by' => $user->id,
-                            ]
-                        )->load('shift');
-                    }
-                }
+                $attendanceClockIn = app(AttendanceClockInService::class);
+                $clockInAt = $now->copy();
+                $resolved = $attendanceClockIn->resolveSchedule($employee, $today, $clockInAt, $user->id);
+                $schedule = $resolved['schedule'];
+                $calculated = $attendanceClockIn->calculateStatus($resolved, $clockInAt, $today, $timezone, $attendanceRules);
 
                 if ($attendance) {
                     // Reuse existing row for the date (e.g. absent record created earlier)
                     $attendance->update([
-                        'schedule_id' => $attendance->schedule_id ?? ($schedule->id ?? null),
-                        'shift_id' => $attendance->shift_id ?? ($schedule->shift_id ?? null),
+                        'schedule_id' => $schedule?->id ?? $attendance->schedule_id,
+                        'shift_id' => $resolved['shift']?->id ?? $attendance->shift_id,
                         'clock_in' => $now,
                         'clock_in_method' => 'web',
                         'clock_in_ip' => $request->ip(),
-                        'status' => 'present',
+                        'status' => $calculated['status'],
                     ]);
                 } else {
                     // Create new attendance with clock-in
                     $attendance = Attendance::create([
                         'employee_id' => $employee->id,
                         'schedule_id' => $schedule->id ?? null,
-                        'shift_id' => $schedule->shift_id ?? null,
+                        'shift_id' => $resolved['shift']?->id,
                         'attendance_date' => $today,
                         'clock_in' => $now,
                         'clock_in_method' => 'web',
                         'clock_in_ip' => $request->ip(),
-                        'status' => 'present',
+                        'status' => $calculated['status'],
                     ]);
                 }
 
-                // Calculate late minutes
-                if ($schedule && $schedule->shift) {
-                    $startTime = $schedule->shift->start_time;
-
-                    // Handle both time-only and datetime formats
-                    if (preg_match('/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/', $startTime)) {
-                        $shiftStart = Carbon::parse($startTime);
-                    } else {
-                        $shiftStart = Carbon::parse($today . ' ' . $startTime);
-                    }
-
-                    $minutesLate = $shiftStart->diffInMinutes($now, false);
-                    $gracePeriod = $schedule->shift->grace_period_minutes ?? 15;
-
-                    if ($minutesLate > $gracePeriod) {
-                        $attendance->late_minutes = $minutesLate - $gracePeriod;
-                        $attendance->status = 'late';
-                    } else {
-                        $attendance->late_minutes = 0;
-                        $attendance->status = 'present';
-                    }
-
-                    $attendance->save();
+                $attendance->late_minutes = $calculated['late_minutes'];
+                $attendance->is_restday_work = $resolved['is_rest_day'];
+                if ($calculated['status'] === 'unscheduled') {
+                    $attendance->notes = trim(($attendance->notes ? $attendance->notes . "\n" : '') . 'Clock-in recorded without an assigned shift; review schedule.');
                 }
+                $attendance->save();
 
                 $clockInData = [
                     'id' => $attendance->id,
@@ -703,7 +662,7 @@ class AuthController extends Controller
                     'clock_in_formatted' => $attendance->clock_in->format('h:i A'),
                     'status' => $attendance->status,
                     'late_minutes' => $attendance->late_minutes,
-                    'shift_name' => $schedule->shift->name ?? 'No Shift'
+                    'shift_name' => $attendance->shift?->name ?? 'No Shift'
                 ];
             }
         }

@@ -102,21 +102,12 @@
           <Card class="border border-gray-50 shadow-sm">
             <template #title>Attachments</template>
             <template #content>
-              <div class="space-y-2">
-                <Button
-                  v-for="file in application?.documents || []"
-                  :key="file.id"
-                  :label="file.document_type"
-                  icon="pi pi-eye"
-                  severity="secondary"
-                  outlined
-                  fluid
-                  @click="openDocumentViewer(file)"
-                />
-                <Message v-if="!(application?.documents || []).length" severity="warn" :closable="false">
-                  No attachments were uploaded for this application.
-                </Message>
-              </div>
+              <ApplicantDocumentGallery
+                v-if="application"
+                :application-id="String(application.id || route.params.id)"
+                :documents="application.documents || []"
+                portal
+              />
             </template>
           </Card>
 
@@ -149,41 +140,21 @@
     </div>
   </JobPortalLayout>
 
-  <Dialog v-model:visible="viewerOpen" modal header="Document Preview" :style="{ width: 'min(52rem, 96vw)' }">
-    <div v-if="viewerUrl" class="space-y-4">
-      <p class="text-sm font-medium text-surface-700">{{ viewerLabel }}</p>
-      <div class="rounded-2xl border border-surface-200 bg-surface-50 p-3">
-        <img v-if="viewerKind === 'image'" :src="viewerUrl" class="max-h-[70vh] w-full rounded-xl object-contain" />
-        <iframe v-else-if="viewerKind === 'pdf'" :src="viewerUrl" class="h-[70vh] w-full rounded-xl"></iframe>
-        <div v-else class="space-y-2 text-sm text-surface-600">
-          <p>Preview not available for this file type.</p>
-          <a :href="viewerUrl" target="_blank" class="text-orange-600 underline">Open in new tab</a>
-        </div>
-      </div>
-      <div class="flex justify-end">
-        <Button label="Download" icon="pi pi-download" severity="secondary" @click="downloadFile(viewerFile)" />
-      </div>
-    </div>
-  </Dialog>
 </template>
 
 <script setup lang="ts">
 import JobPortalLayout from '../JobPortal/JobPortalLayout.vue'
-import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import hrService, { type JobApplication } from '../../../../services/hr.services'
+import ApplicantDocumentGallery from '../JobPostings/ApplicantDocumentGallery.vue'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const application = ref<JobApplication | null>(null)
 const loading = ref(false)
-const viewerOpen = ref(false)
-const viewerUrl = ref('')
-const viewerLabel = ref('')
-const viewerKind = ref<'image' | 'pdf' | 'other'>('other')
-const viewerFile = ref<any>(null)
 
 const postingRef = computed(() => application.value?.jobPosting || application.value?.job_posting || application.value?.posting || null)
 const postingTitle = computed(() => postingRef.value?.title || 'N/A')
@@ -215,50 +186,6 @@ const fetchApplication = async () => {
   }
 }
 
-const downloadFile = async (file: any) => {
-  try {
-    const blob = await hrService.downloadApplicantDocument(route.params.id as string, file.id)
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.file_name || 'document'
-    link.click()
-    window.URL.revokeObjectURL(url)
-    toast.add({ severity: 'success', summary: 'Download started', detail: `${file.document_type} is being downloaded.`, life: 2200 })
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Unable to download file',
-      detail: error?.response?.data?.message || 'Please try again.',
-      life: 3000,
-    })
-  }
-}
-
-const openDocumentViewer = async (file: any) => {
-  try {
-    const blob = await hrService.downloadApplicantDocument(route.params.id as string, file.id)
-    viewerFile.value = file
-    viewerLabel.value = file.file_name || file.document_type || 'Document'
-    if (viewerUrl.value) {
-      window.URL.revokeObjectURL(viewerUrl.value)
-    }
-    viewerUrl.value = window.URL.createObjectURL(blob)
-    const mime = String(file.mime_type || blob.type || '').toLowerCase()
-    if (mime.startsWith('image/')) viewerKind.value = 'image'
-    else if (mime === 'application/pdf') viewerKind.value = 'pdf'
-    else viewerKind.value = 'other'
-    viewerOpen.value = true
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Unable to preview file',
-      detail: error?.response?.data?.message || 'Please try again.',
-      life: 3000,
-    })
-  }
-}
-
 const formatDate = (value?: string) => (value ? new Date(value).toLocaleString('en-PH') : 'N/A')
 const formatDateOnly = (value?: string | Date | null) => {
   if (!value) return 'N/A'
@@ -268,21 +195,4 @@ const formatDateOnly = (value?: string | Date | null) => {
 const statusSeverity = (status?: string) => ({ Applied: 'warn', Screening: 'contrast', Interview: 'warn', Offer: 'success', Hired: 'success', Rejected: 'danger' }[status || 'Applied'] || 'secondary')
 
 onMounted(fetchApplication)
-
-watch(viewerOpen, (value) => {
-  if (value) return
-  if (viewerUrl.value) {
-    window.URL.revokeObjectURL(viewerUrl.value)
-  }
-  viewerUrl.value = ''
-  viewerLabel.value = ''
-  viewerKind.value = 'other'
-  viewerFile.value = null
-})
-
-onBeforeUnmount(() => {
-  if (viewerUrl.value) {
-    window.URL.revokeObjectURL(viewerUrl.value)
-  }
-})
 </script>

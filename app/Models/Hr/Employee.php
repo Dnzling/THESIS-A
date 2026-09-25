@@ -42,6 +42,7 @@ class Employee extends Model
         'barangay',
         'gender',
         'hire_date',
+        'contract_end_date',
         'department',
         'employment_type',
         'pay_type',
@@ -66,6 +67,7 @@ class Employee extends Model
     protected $casts = [
         'date_of_birth' => 'date',
         'hire_date' => 'date',
+        'contract_end_date' => 'date',
         'salary' => 'decimal:2',
         'hourly_rate' => 'decimal:4',
         'termination_date' => 'date',

@@ -50,7 +50,9 @@ Route::get('/store/registration', function () {
 })->name('store.registration');
 
 Route::get('/customer/login', function () {
-    return Inertia::render('Auth/CustomerLogin');
+    return Inertia::render('Auth/CustomerLogin', [
+        'status' => session('status'),
+    ]);
 })->name('customer.login');
 
 Route::get('/super-admin/login', function () {

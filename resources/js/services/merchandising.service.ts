@@ -100,6 +100,10 @@ class MerchandisingService {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/stats`)
         return response.data
     }
+    async getDashboardOverview() {
+        const response = await axiosClient.get(`${this.baseUrl}/dashboard/overview`)
+        return response.data
+    }
     async getActivityLog(params: any) {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/activity`, { params })
         return response.data

@@ -76,6 +76,7 @@ export interface JobPosting {
   title: string
   description: string
   department: string
+  employment_type?: 'full_time' | 'part_time' | 'contract' | 'intern'
   salary_min: number
   salary_max: number
   requirements?: string[] | string | null

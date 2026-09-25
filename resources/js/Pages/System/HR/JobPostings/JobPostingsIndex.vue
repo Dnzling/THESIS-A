@@ -81,6 +81,7 @@
                   <Tag :value="posting.status" :severity="getStatusSeverity(posting.status)" />
                   <Tag v-if="posting.role?.display_name || posting.role?.name" 
                     :value="posting.role?.display_name || posting.role?.name" />
+                  <Tag :value="employmentTypeLabel(posting.employment_type)" severity="warn" />
                 </div>
                 <p class="text-sm font-medium text-surface-600">{{ posting.department }}</p>
               </div>
@@ -189,6 +190,14 @@ const filteredPostings = computed(() =>
 
 const openPostingsCount = computed(() =>
   filteredPostings.value.filter((posting) => posting.status === 'Open').length)
+
+const employmentTypeLabels: Record<string, string> = {
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  contract: 'Contract',
+  intern: 'Intern',
+}
+const employmentTypeLabel = (value?: string) => employmentTypeLabels[value || 'full_time'] || 'Full Time'
 
 const totalApplicants = computed(() =>
   filteredPostings.value.reduce((sum, posting) => sum + Number(posting.applications?.length || 0), 0))

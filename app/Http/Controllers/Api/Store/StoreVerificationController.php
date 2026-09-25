@@ -285,6 +285,8 @@ class StoreVerificationController extends Controller
         $verifications->getCollection()->transform(function (StoreVerification $verification) {
             $payload = $this->buildDocumentPayload($verification);
             $verification->setAttribute('documents_summary', $payload['summary']);
+            $verification->setAttribute('verification_status', $this->verificationStatus($verification));
+            $verification->setAttribute('owner', $this->verificationOwner($verification));
             return $verification;
         });
 
@@ -322,6 +324,8 @@ class StoreVerificationController extends Controller
         $verifications->getCollection()->transform(function (StoreVerification $verification) {
             $payload = $this->buildDocumentPayload($verification);
             $verification->setAttribute('documents_summary', $payload['summary']);
+            $verification->setAttribute('verification_status', $this->verificationStatus($verification));
+            $verification->setAttribute('owner', $this->verificationOwner($verification));
             return $verification;
         });
 
@@ -329,6 +333,57 @@ class StoreVerificationController extends Controller
             'success' => true,
             'data' => $verifications
         ]);
+    }
+
+    /**
+     * Admin: Get the complete store verification record.
+     */
+    public function show(StoreVerification $verification)
+    {
+        if (!Auth::user()?->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $verification->load([
+            'store.branches',
+            'reviewer:id,fname,lname,email',
+        ]);
+
+        $store = $verification->store;
+        $owner = $this->verificationOwner($verification, true);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'verification' => $verification,
+                'store' => $store,
+                'owner' => $owner,
+                'documents' => $this->buildDocumentPayload($verification),
+                'status' => $this->verificationStatus($verification),
+            ],
+        ]);
+    }
+
+    private function verificationStatus(StoreVerification $verification): string
+    {
+        return $verification->isPending()
+            ? 'pending'
+            : ($verification->isRejected() ? 'rejected' : 'approved');
+    }
+
+    private function verificationOwner(StoreVerification $verification, bool $includeProfile = false): ?User
+    {
+        $email = $verification->store?->email;
+        if (!$email) {
+            return null;
+        }
+
+        $columns = ['id', 'fname', 'lname', 'email', 'phone_number'];
+        if ($includeProfile) {
+            $columns = [...$columns, 'birthday', 'created_at'];
+        }
+
+        return User::query()->where('email', $email)->first($columns);
     }
 
     /**
@@ -539,6 +594,22 @@ class StoreVerificationController extends Controller
         return Storage::disk('public')->download($documentInfo['path'], basename($documentInfo['path']));
     }
 
+    public function previewDocument(Request $request, StoreVerification $verification, string $document)
+    {
+        if (!Auth::user()?->hasRole('super_admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $documentInfo = $this->resolveDocument($verification, $document, (int) $request->query('index', -1));
+        if (!$documentInfo || empty($documentInfo['path']) || !Storage::disk('public')->exists($documentInfo['path'])) {
+            return response()->json(['success' => false, 'message' => 'Document file not found'], 404);
+        }
+
+        return Storage::disk('public')->response($documentInfo['path'], null, [
+            'Content-Disposition' => 'inline',
+        ]);
+    }
+
     private function validateUploadedDocuments(Request $request): array
     {
         $issues = [];
@@ -637,6 +708,8 @@ class StoreVerificationController extends Controller
 
         return [
             'summary' => [
+                'total' => count($documents),
+                'total_submitted' => count(array_filter($documents, fn($doc) => (bool) $doc['submitted'])),
                 'required_total' => count($requiredDocs),
                 'required_submitted' => count($requiredSubmitted),
                 'required_valid' => count($requiredValid),
@@ -694,6 +767,9 @@ class StoreVerificationController extends Controller
                 : null,
             'inspect_url' => $submitted
                 ? url("/api/store-verification/{$verification->id}/documents/{$key}/inspect" . ($index !== null ? "?index={$index}" : ''))
+                : null,
+            'preview_url' => $submitted
+                ? url("/api/store-verification/{$verification->id}/documents/{$key}/preview" . ($index !== null ? "?index={$index}" : ''))
                 : null,
         ];
     }

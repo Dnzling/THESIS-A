@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\ProductCatalog\Product3DReconstructionController;
 Route::prefix('product-catalog')->group(function () {
 
     Route::get('dashboard/stats', [DashboardController::class, 'stats']);
+    Route::get('dashboard/overview', [DashboardController::class, 'overview']);
     Route::get('dashboard/activity', [DashboardController::class, 'activityLog']);
 
     // Categories

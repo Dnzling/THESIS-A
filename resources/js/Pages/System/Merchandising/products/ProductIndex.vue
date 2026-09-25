@@ -164,10 +164,11 @@ import { ref, reactive, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import merchandisingService from '../../../../services/merchandising.service'
 import { useAuthStore } from '../../../../stores/auth'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 
 // State
@@ -385,6 +386,7 @@ const formatPrice = (price: number) => {
 }
 
 onMounted(() => {
+  filters.search = String(route.query.search || '')
   loadProducts()
   loadCategories()
   loadTags()

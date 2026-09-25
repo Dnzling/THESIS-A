@@ -19,6 +19,7 @@ class JobPosting extends Model
         'role_id',
         'title',
         'department',
+        'employment_type',
         'description',
         'requirements',
         'salary_min',

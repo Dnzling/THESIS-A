@@ -17,6 +17,7 @@
                   <div class="flex flex-wrap items-center gap-2">
                     <Tag :value="posting?.status || 'N/A'" :severity="statusSeverity(posting?.status)" />
                     <Tag v-if="posting?.role?.display_name || posting?.role?.name" :value="posting?.role?.display_name || posting?.role?.name" />
+                    <Tag :value="employmentTypeLabel(posting?.employment_type)" severity="warn" />
                   </div>
                   <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Job Posting Overview</p>
@@ -127,6 +128,13 @@ const loadPosting = async () => {
 
 const formatCurrency = (value?: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 }).format(Number(value || 0))
 const statusSeverity = (status?: string) => ({ Open: 'success', Closed: 'danger', 'On Hold': 'warn' }[status || ''] || 'secondary')
+const employmentTypeLabels: Record<string, string> = {
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  contract: 'Contract',
+  intern: 'Intern',
+}
+const employmentTypeLabel = (value?: string) => employmentTypeLabels[value || 'full_time'] || 'Full Time'
 const applicationSeverity = (status?: string) => ({ Applied: 'info', Screening: 'contrast', Interview: 'warn', Offer: 'success', Accepted: 'success', Hired: 'success', Rejected: 'danger' }[status || 'Applied'] || 'secondary')
 const resolveCreator = (posting: any) => {
   const primary =
@@ -160,4 +168,3 @@ const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateStri
 
 onMounted(loadPosting)
 </script>
-

@@ -10,6 +10,7 @@ use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\Shift;
 use App\Models\Hr\PayPeriod;
 use App\Models\Store\Branch;
+use App\Services\Hr\AttendanceClockInService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -95,6 +96,7 @@ class AttendanceController extends Controller
             'absent' => $allRecords->where('status', 'absent')->count(),
             'on_leave' => $allRecords->where('status', 'on_leave')->count(),
             'half_day' => $allRecords->where('status', 'half_day')->count(),
+            'unscheduled' => $allRecords->where('status', 'unscheduled')->count(),
             'holiday' => $allRecords->where('status', 'holiday')->count(),
             'total' => $allRecords->count()
         ];
@@ -541,8 +543,11 @@ class AttendanceController extends Controller
             }
         }
 
-        $today = now()->format('Y-m-d');
-        $now = now();
+        $storeSettings = is_array($employee->store?->settings) ? $employee->store->settings : [];
+        $attendanceRules = $storeSettings['hr_attendance_rules'] ?? [];
+        $timezone = $attendanceRules['timezone'] ?? config('app.timezone', 'UTC');
+        $now = now($timezone);
+        $today = $now->toDateString();
 
         // Check if already clocked in today
         $attendance = Attendance::where('employee_id', $employee->id)
@@ -574,41 +579,16 @@ class AttendanceController extends Controller
                 ->whereDate('attendance_date', $today)
                 ->first();
 
-            // Get today's schedule
-            $schedule = ShiftSchedule::with('shift')
-                ->where('employee_id', $employee->id)
-                ->whereDate('schedule_date', $today)
-                ->first();
-
-            // Fallback: derive and auto-create schedule from active assignment
-            if (!$schedule) {
-                $assignment = ShiftAssignment::query()
-                    ->where('employee_id', $employee->id)
-                    ->active($today)
-                    ->latest('start_date')
-                    ->first();
-
-                if ($assignment) {
-                    $schedule = ShiftSchedule::firstOrCreate(
-                        [
-                            'employee_id' => $employee->id,
-                            'schedule_date' => $today,
-                        ],
-                        [
-                            'shift_id' => $assignment->shift_id,
-                            'assignment_id' => $assignment->id,
-                            'generation_method' => 'manual',
-                            'status' => 'scheduled',
-                            'assigned_by' => Auth::id(),
-                        ]
-                    )->load('shift');
-                }
-            }
+            $attendanceClockIn = app(AttendanceClockInService::class);
+            $clockInAt = $now->copy();
+            $resolved = $attendanceClockIn->resolveSchedule($employee, $today, $clockInAt, Auth::id());
+            $schedule = $resolved['schedule'];
+            $calculated = $attendanceClockIn->calculateStatus($resolved, $clockInAt, $today, $timezone, $attendanceRules);
 
             if ($attendance) {
                 $attendance->update([
-                    'schedule_id' => $attendance->schedule_id ?? ($schedule->id ?? null),
-                    'shift_id' => $attendance->shift_id ?? ($schedule->shift_id ?? null),
+                    'schedule_id' => $schedule?->id ?? $attendance->schedule_id,
+                    'shift_id' => $resolved['shift']?->id ?? $attendance->shift_id,
                     'clock_in' => $now,
                     'clock_in_method' => $request->method ?? 'manual',
                     'clock_in_ip' => $request->ip(),
@@ -630,33 +610,13 @@ class AttendanceController extends Controller
                 ]);
             }
 
-            // Calculate late minutes (simplest version)
-            // Calculate late minutes - FIX: Handle both time-only and datetime formats
-            if ($attendance->shift && $attendance->shift->start_time) {
-                $startTime = $attendance->shift->start_time;
-
-                // Check if start_time already contains a date
-                if (preg_match('/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/', $startTime)) {
-                    // start_time is already a full datetime
-                    $shiftStart = Carbon::parse($startTime);
-                } else {
-                    // start_time is just a time, concatenate with today's date
-                    $shiftStart = Carbon::parse($today . ' ' . $startTime);
-                }
-
-                $minutesLate = $shiftStart->diffInMinutes($now, false);
-                $gracePeriod = $attendance->shift->grace_period_minutes ?? 15;
-
-                if ($minutesLate > $gracePeriod) {
-                    $attendance->late_minutes = $minutesLate - $gracePeriod;
-                    $attendance->status = 'late';
-                } else {
-                    $attendance->late_minutes = 0;
-                    $attendance->status = 'present';
-                }
-
-                $attendance->save();
+            $attendance->late_minutes = $calculated['late_minutes'];
+            $attendance->status = $calculated['status'];
+            $attendance->is_restday_work = $resolved['is_rest_day'];
+            if ($calculated['status'] === 'unscheduled') {
+                $attendance->notes = trim(($attendance->notes ? $attendance->notes . "\n" : '') . 'Clock-in recorded without an assigned shift; review schedule.');
             }
+            $attendance->save();
 
             DB::commit();
 
@@ -670,7 +630,7 @@ class AttendanceController extends Controller
                     'clock_in_formatted' => $attendance->clock_in->format('h:i A'),
                     'status' => $attendance->status,
                     'late_minutes' => $attendance->late_minutes,
-                    'shift_name' => $schedule->shift->name ?? 'No Shift',
+                    'shift_name' => $attendance->shift?->name ?? 'No Shift',
                     'employee_name' => $employee->fname . ' ' . $employee->lname
                 ]
             ], 201);
