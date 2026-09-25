@@ -668,7 +668,6 @@ const prefillFromRequisition = async (requisitionId: number) => {
       || (requisitionSuppliers.length === 1 ? requisitionSuppliers[0].id : null)
     if (!splitPoMode.value && firstSupplierId) {
       form.supplier_id = Number(firstSupplierId)
-      await onSupplierChange()
     } else if (splitPoMode.value) {
       form.supplier_id = null
     }
@@ -750,10 +749,6 @@ const prefillFromRFQ = async (rfqId: number) => {
         })
       } else {
         form.items = []
-      }
-
-      if (form.supplier_id) {
-        await onSupplierChange()
       }
 
       if (products.value.length === 0) {
@@ -975,7 +970,10 @@ const loadEligibleSuppliers = async () => {
       }
       return
     }
-    if (selectedIsEligible) return
+    if (selectedIsEligible) {
+      if (Number(selectedSupplier.value?.id) !== Number(form.supplier_id)) await onSupplierChange()
+      return
+    }
 
     const nextSupplierId = options.length === 1 ? Number(options[0].id) : null
     if (form.supplier_id !== nextSupplierId) {
@@ -1180,6 +1178,7 @@ const updateTotals = () => {
 
 const scheduleShippingEstimate = (subtotal: number) => {
   if (shippingEstimateTimer) clearTimeout(shippingEstimateTimer)
+  if (prefilling.value) return
   if (shippingEstimateRouteUnavailable.value) return
   const hasCompleteItems = form.items.length > 0 && form.items.every((item) => Number(item.product_id) > 0 && Number(item.quantity_ordered) > 0)
   if (!form.supplier_id || !form.branch_id || !hasCompleteItems) {

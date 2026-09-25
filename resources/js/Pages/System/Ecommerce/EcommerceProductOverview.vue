@@ -117,28 +117,24 @@
   
             <div class="space-y-2">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Specs</p>
-              <div class="grid grid-cols-2 gap-3 text-sm">
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p class="text-[11px] text-slate-500">L</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.length_cm ?? '—' }}<span
-                      v-if="displayDimensions?.length_cm"> cm</span></p>
+              <dl class="grid grid-cols-2 gap-x-6 border-y border-slate-200 text-sm">
+                <div class="flex items-baseline justify-between gap-2 border-b border-slate-100 py-2.5">
+                  <dt class="text-slate-500">Length</dt>
+                  <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.length_cm, 'cm') }}</dd>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p class="text-[11px] text-slate-500">W</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.width_cm ?? '—' }}<span
-                      v-if="displayDimensions?.width_cm"> cm</span></p>
+                <div class="flex items-baseline justify-between gap-2 border-b border-slate-100 py-2.5">
+                  <dt class="text-slate-500">Width</dt>
+                  <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.width_cm, 'cm') }}</dd>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p class="text-[11px] text-slate-500">H</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.height_cm ?? '—' }}<span
-                      v-if="displayDimensions?.height_cm"> cm</span></p>
+                <div class="flex items-baseline justify-between gap-2 py-2.5">
+                  <dt class="text-slate-500">Height</dt>
+                  <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.height_cm, 'cm') }}</dd>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p class="text-[11px] text-slate-500">Weight</p>
-                  <p class="font-semibold text-slate-900">{{ displayDimensions?.weight_kg ?? '—' }}<span
-                      v-if="displayDimensions?.weight_kg"> kg</span></p>
+                <div class="flex items-baseline justify-between gap-2 py-2.5">
+                  <dt class="text-slate-500">Weight</dt>
+                  <dd class="font-medium text-slate-900">{{ displayDimension(displayDimensions?.weight_kg, 'kg') }}</dd>
                 </div>
-              </div>
+              </dl>
             </div>
   
             <div v-if="product?.variations?.length" class="space-y-2">

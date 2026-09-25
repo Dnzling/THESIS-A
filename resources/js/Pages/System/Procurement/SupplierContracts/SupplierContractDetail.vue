@@ -169,8 +169,16 @@
               <p class="text-gray-900">{{ platformName }}</p>
             </div>
             <div>
+              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Store</p>
+              <p class="text-gray-900">{{ contract?.store?.name || contract?.store?.store_code || `Store #${contract?.store_id}` }}</p>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-600 uppercase mb-2">Submitted By</p>
+              <p class="text-gray-900 capitalize">{{ (contract?.submitted_by_type || 'store').replace(/_/g, ' ') }}</p>
+            </div>
+            <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Created By</p>
-              <p class="text-gray-900">{{ contract?.createdBy?.fname }} {{ contract?.createdBy?.lname }}</p>
+              <p class="text-gray-900">{{ creatorName }}</p>
               <p class="text-xs text-gray-500 mt-1">{{ formatDate(contract?.created_at) }}</p>
             </div>
           </div>
@@ -187,9 +195,13 @@
             </div>
             <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200">
               <p class="text-xs font-semibold text-orange-700 uppercase mb-3">Tax Rate</p>
-              <p class="text-3xl font-bold text-orange-600">{{ contract?.tax_rate || 0 }}%</p>
-              <p class="text-xs text-orange-600 mt-2">Applied to discounted amount</p>
+              <p class="text-3xl font-bold text-orange-600">{{ contract?.is_tax_exempt ? 'Tax Exempt' : `${contract?.tax_rate || 0}%` }}</p>
+              <p class="text-xs text-orange-600 mt-2">{{ contract?.tax_note || (contract?.is_tax_exempt ? 'No tax applied' : 'Applied to discounted amount') }}</p>
             </div>
+          </div>
+          <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p class="text-xs font-semibold uppercase text-gray-600">Minimum Order Value</p>
+            <p class="mt-1 text-sm font-semibold text-gray-900">{{ contract?.minimum_order_value == null ? 'No minimum order' : formatMoney(contract.minimum_order_value) }}</p>
           </div>
         </div>
 
@@ -486,6 +498,11 @@ const rejectContractReason = ref('')
 const rejectContractCustomReason = ref('')
 const rejectContractDetails = ref('')
 const platformName = 'FurniSync IMS Platform'
+const creatorName = computed(() => {
+  const user = contract.value?.created_by?.user || contract.value?.createdBy?.user || contract.value?.created_by || contract.value?.createdBy
+  return [user?.fname, user?.lname].filter(Boolean).join(' ') || 'Not recorded'
+})
+const formatMoney = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const canManageSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.manage'))
 const canApproveSupplierContracts = computed(() => authStore.hasPermission('procurement.supplier_contracts.approve'))
 const isSupplierRoute = computed(() => String(route.path || '').startsWith('/supplier-portal/'))
@@ -630,7 +647,9 @@ const loadContract = async () => {
     const response = isSupplierRoute.value
       ? await axiosClient.get(`/api/supplier-portal/contracts/${route.params.id}`)
       : await procurementService.getSupplierContract(route.params.id as string)
-    contract.value = response.data
+    const payload = response?.data?.data ?? response?.data ?? response
+    if (!payload?.id) throw new Error('Contract details were not returned by the server.')
+    contract.value = payload
     await loadMyReports()
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load contract', life: 3000 })

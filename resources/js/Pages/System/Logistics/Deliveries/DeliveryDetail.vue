@@ -343,7 +343,7 @@
 
         <template #content>
           <div
-            v-if="!logs.length"
+            v-if="!displayLogs.length"
             class="py-10 text-center text-slate-500"
           >
             No delivery activity has been recorded.
@@ -354,7 +354,7 @@
             class="space-y-3"
           >
             <article
-              v-for="entry in logs"
+              v-for="entry in displayLogs"
               :key="entry.id"
               class="rounded-xl border border-slate-200 p-4"
             >
@@ -372,9 +372,7 @@
 
                   <p class="mt-2 text-slate-800">
                     {{
-                      entry.message ||
-                      entry.notes ||
-                      'Delivery activity recorded.'
+                      logMessage(entry)
                     }}
                   </p>
 
@@ -468,9 +466,12 @@ import {
   defineComponent,
   h,
   nextTick,
+  onActivated,
   onBeforeUnmount,
+  onDeactivated,
   onMounted,
   ref,
+  watch,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -541,6 +542,7 @@ const routeUnavailable = ref(false)
 
 let trackingMap: MapboxMap | null = null
 let mapboxgl: typeof import('mapbox-gl').default | null = null
+let mapRenderId = 0
 
 const source = computed<'ecommerce' | 'sales' | 'pickup'>(() => {
   const value = String(route.params.source || '').toLowerCase()
@@ -710,6 +712,31 @@ const formatStatus = (value: any) =>
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
+const displayLogs = computed(() => logs.value.filter((entry: any) => {
+  if (entry.event_type !== 'status_updated' || !/^Delivery status updated from /i.test(entry.message || '')) return true
+
+  return !logs.value.some((other: any) => {
+    if (other.id === entry.id || other.event_type !== 'status_updated'
+      || !/^Order status updated from /i.test(other.message || '')) return false
+    const entryTime = new Date(entry.logged_at || entry.created_at).getTime()
+    const otherTime = new Date(other.logged_at || other.created_at).getTime()
+    return entry.status_from === other.status_from
+      && entry.status_to === other.status_to
+      && entry.created_by === other.created_by
+      && Number.isFinite(entryTime) && Number.isFinite(otherTime)
+      && Math.abs(entryTime - otherTime) <= 5000
+  })
+}))
+
+const logMessage = (entry: any) => {
+  if (entry.event_type === 'status_updated' && entry.status_to) {
+    const subject = /^Order status updated/i.test(entry.message || '') ? 'Order' : 'Delivery'
+    return `${subject} moved to ${formatStatus(entry.status_to)}.`
+  }
+  return String(entry.message || entry.notes || 'Delivery activity recorded.')
+    .replace(/\b[a-z]+(?:_[a-z]+)+\b/g, (status) => formatStatus(status))
+}
+
 const formatDeliveryStatus = (value: any) => formatStatus(value)
 
 const formatDateTime = (value: any) =>
@@ -805,11 +832,10 @@ const renderMap = async () => {
   await nextTick()
 
   if (!mapElement.value) {
-    trackingMap?.remove()
-    trackingMap = null
     return
   }
 
+  const renderId = ++mapRenderId
   trackingMap?.remove()
   trackingMap = null
   routeUnavailable.value = false
@@ -821,14 +847,17 @@ const renderMap = async () => {
   try {
     mapboxgl = (await import('mapbox-gl')).default
     mapboxgl.accessToken = requireMapboxToken()
-    trackingMap = new mapboxgl.Map({
+    if (renderId !== mapRenderId || !mapElement.value) return
+    const map = new mapboxgl.Map({
       container: mapElement.value,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [center[1], center[0]],
       zoom: current || destination ? 13 : 9,
       attributionControl: true,
     })
-    await new Promise<void>((resolve) => trackingMap!.once('load', () => resolve()))
+    trackingMap = map
+    await new Promise<void>((resolve) => map.once('load', () => resolve()))
+    if (renderId !== mapRenderId || trackingMap !== map) return
   } catch (error) {
     routeUnavailable.value = true
     toast.add({ severity: 'error', summary: 'Map Unavailable', detail: 'Unable to load the Mapbox map. Check the map token and connection.', life: 3500 })
@@ -852,6 +881,7 @@ const renderMap = async () => {
           current,
           destination,
         )
+      if (renderId !== mapRenderId || !trackingMap) return
 
       if (roadPoints.length > 1) {
         trackingMap!.addSource('delivery-route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: roadPoints.map(([lat, lng]) => [lng, lat]) } } })
@@ -865,6 +895,7 @@ const renderMap = async () => {
         trackingMap!.fitBounds([[current[1], current[0]], [destination[1], destination[0]]], { padding: 40, maxZoom: 15 })
       }
     } catch {
+      if (renderId !== mapRenderId || !trackingMap) return
       // Do not draw a misleading straight line when
       // road routing is unavailable.
       routeUnavailable.value = true
@@ -894,7 +925,6 @@ const loadAll = async () => {
     delivery.value = payload.delivery || null
     logs.value = payload.logs || []
 
-    await renderMap()
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -934,9 +964,27 @@ const goBack = () =>
 
 onMounted(loadAll)
 
-onBeforeUnmount(() => {
+watch(mapElement, (element) => {
+  if (element) {
+    void renderMap()
+  } else {
+    mapRenderId++
+    trackingMap?.remove()
+    trackingMap = null
+  }
+}, { flush: 'post' })
+
+onActivated(() => {
+  if (mapElement.value && !trackingMap) void renderMap()
+})
+
+const destroyMap = () => {
+  mapRenderId++
   trackingMap?.remove()
   trackingMap = null
-})
+}
+
+onDeactivated(destroyMap)
+onBeforeUnmount(destroyMap)
 </script>
 ```

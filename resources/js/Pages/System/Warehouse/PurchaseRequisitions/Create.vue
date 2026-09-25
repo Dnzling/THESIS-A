@@ -247,7 +247,7 @@ const submit = async () => {
       detail: "Warehouse purchase requisition submitted.",
       life: 3000,
     });
-    router.visit("/warehouse/purchsase-requisitions");
+    router.visit("/warehouse/purchase-requisitions");
   } catch (e: any) {
     toast.add({
       severity: "error",

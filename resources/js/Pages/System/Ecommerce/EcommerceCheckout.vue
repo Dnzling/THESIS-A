@@ -375,7 +375,7 @@
       </div>
     </Dialog>
 
-    <Dialog v-model:visible="coordsMap.visible" modal header="Location" class="w-full max-w-4xl" :draggable="false">
+    <Dialog v-model:visible="coordsMap.visible" modal header="Location" class="w-full max-w-4xl" :draggable="false" @show="initCoordsMap" @hide="destroyCoordsMap">
    
         <div class="space-y-4">
           <div class="space-y-2">
@@ -479,7 +479,7 @@
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import RadioButton from 'primevue/radiobutton'
 import InputText from 'primevue/inputtext'
@@ -678,12 +678,10 @@ const redrawCoordsMarker = () => {
   coordsMapInstance.flyTo({ center: [lng, lat], zoom: 14 })
 }
 
-const openCoordsMapDialog = async () => {
+const openCoordsMapDialog = () => {
   coordsMap.latitude = newAddress.latitude ? Number(newAddress.latitude) : DEFAULT_DASM_LAT
   coordsMap.longitude = newAddress.longitude ? Number(newAddress.longitude) : DEFAULT_DASM_LNG
   coordsMap.visible = true
-  await nextTick()
-  initCoordsMap()
 }
 
 async function searchCoordsLocation() {
@@ -712,23 +710,17 @@ const saveCoordsFromMap = () => {
   coordsMap.visible = false
 }
 
-watch(
-  () => coordsMap.visible,
-  async (visible) => {
-    if (visible) {
-      await nextTick()
-      initCoordsMap()
-    }
-  }
-)
-
-onBeforeUnmount(() => {
+const destroyCoordsMap = () => {
   if (coordsMapInstance) {
     coordsMapInstance.remove()
     coordsMapInstance = null
-    coordsMarker = null
-    coordsMapReady = false
   }
+  coordsMarker = null
+  coordsMapReady = false
+}
+
+onBeforeUnmount(() => {
+  destroyCoordsMap()
 })
 
 const shippingFeeTotal = ref(0)

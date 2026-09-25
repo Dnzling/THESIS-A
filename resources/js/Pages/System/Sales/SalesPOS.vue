@@ -223,6 +223,8 @@
       header="Customer Information" 
       modal 
       :style="{ width: '90%', maxWidth: '800px' }"
+      @show="initMap"
+      @hide="destroyMap"
     >
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -331,7 +333,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuthStore } from '@/stores/auth'
-import { onBeforeUnmount, nextTick } from 'vue'
+import { onBeforeUnmount } from 'vue'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
@@ -580,12 +582,6 @@ onMounted(async () => {
   await fetchProvinces()
 })
 
-watch(customerDialog, async (visible) => {
-  if (!visible) return
-  await nextTick()
-  await initMap()
-})
-
 async function initMap() {
   if (!mapEl.value) return
   if (map) {
@@ -598,8 +594,10 @@ async function initMap() {
   try {
     mapboxgl = (await import('mapbox-gl')).default
     mapboxgl.accessToken = requireMapboxToken()
-    map = new mapboxgl.Map({ container: mapEl.value, style: 'mapbox://styles/mapbox/streets-v12', center: [startLng, startLat], zoom: 12 })
-    await new Promise<void>((resolve) => map!.once('load', () => resolve()))
+    const currentMap = new mapboxgl.Map({ container: mapEl.value, style: 'mapbox://styles/mapbox/streets-v12', center: [startLng, startLat], zoom: 12 })
+    map = currentMap
+    await new Promise<void>((resolve) => currentMap.once('load', () => resolve()))
+    if (map !== currentMap || !customerDialog.value) return
     marker = new mapboxgl.Marker({ draggable: true, color: '#f97316' }).setLngLat([startLng, startLat]).addTo(map)
     marker.on('dragend', () => {
       const position = marker?.getLngLat()
@@ -686,13 +684,15 @@ async function onCityChange() {
   }
 }
 
-onBeforeUnmount(() => {
+const destroyMap = () => {
   if (map) {
     map.remove()
     map = null
     marker = null
   }
-})
+}
+
+onBeforeUnmount(destroyMap)
 </script>
 
 <style scoped>

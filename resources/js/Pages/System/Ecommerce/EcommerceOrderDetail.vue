@@ -115,9 +115,8 @@
                     <span v-if="item.brand">Brand: {{ item.brand }}</span>
                     <span v-if="item.weight_kg !== null && item.weight_kg !== undefined">Weight: {{ item.weight_kg }} kg</span>
                   </div>
-                  <p v-if="item.description" class="mt-1 line-clamp-2 text-xs text-slate-500">{{ item.description }}</p>
                   <p v-if="item.dimensions && (item.dimensions.length_cm || item.dimensions.width_cm || item.dimensions.height_cm)" class="text-xs text-slate-500">
-                    Dimensions: {{ item.dimensions.length_cm || 0 }} cm Ã— {{ item.dimensions.width_cm || 0 }} cm Ã— {{ item.dimensions.height_cm || 0 }} cm
+                    Dimensions: {{ item.dimensions.length_cm || 0 }} cm x {{ item.dimensions.width_cm || 0 }} cm x {{ item.dimensions.height_cm || 0 }} cm
                   </p>
                 </div>
               </div>

@@ -242,7 +242,9 @@ class EcommerceOrderManagementController extends Controller
                     ]);
                 }
 
-                if ($previousDeliveryStatus !== (string) $delivery->status) {
+                $sameOrderTransition = $previousOrderStatus === $previousDeliveryStatus
+                    && $targetStatus === (string) $delivery->status;
+                if ($previousDeliveryStatus !== (string) $delivery->status && !$sameOrderTransition) {
                     EcommerceDeliveryLog::query()->create([
                         'delivery_id' => $delivery->id,
                         'order_id' => $order->id,
@@ -884,14 +886,34 @@ class EcommerceOrderManagementController extends Controller
             'created_at' => $order->placed_at ?? $order->created_at,
         ]];
 
-        $deliveryLogs = collect($order->delivery?->logs ?? [])->sortBy('created_at');
+        $deliveryLogs = collect($order->delivery?->logs ?? [])->sortBy('created_at')->values();
+        $deliveryLogs = $deliveryLogs->reject(function ($log) use ($deliveryLogs) {
+            if ($log->event_type !== 'status_updated' || !str_starts_with((string) $log->message, 'Delivery status updated from ')) {
+                return false;
+            }
+
+            return $deliveryLogs->contains(fn ($other) =>
+                $other->id !== $log->id
+                && $other->event_type === 'status_updated'
+                && str_starts_with((string) $other->message, 'Order status updated from ')
+                && $other->status_from === $log->status_from
+                && $other->status_to === $log->status_to
+                && $other->created_by === $log->created_by
+                && abs($other->created_at->getTimestamp() - $log->created_at->getTimestamp()) <= 5
+            );
+        });
 
         foreach ($deliveryLogs as $log) {
             $actor = trim((string) (($log->creator?->fname ?? '') . ' ' . ($log->creator?->lname ?? '')));
+            $description = $log->message ?: 'Order updated.';
+            if ($log->event_type === 'status_updated' && $log->status_to) {
+                $subject = str_starts_with($description, 'Order status updated') ? 'Order' : 'Delivery';
+                $description = $subject . ' moved to ' . str($log->status_to)->replace('_', ' ')->title() . '.';
+            }
             $timeline[] = [
                 'type' => $log->event_type ?: 'update',
                 'title' => $this->timelineTitleFromLog($log->event_type, $log->status_to),
-                'description' => $log->message ?: 'Order updated.',
+                'description' => $description,
                 'status_from' => $log->status_from,
                 'status_to' => $log->status_to,
                 'meta' => $log->meta,

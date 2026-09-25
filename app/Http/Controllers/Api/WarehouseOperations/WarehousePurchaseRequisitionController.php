@@ -31,10 +31,11 @@ class WarehousePurchaseRequisitionController extends Controller
 
         $branches = Branch::where('store_id', $storeId)
             ->whereKey($branchId)
+            ->where('branch_type', 'warehouse')
             ->where('status', 'active')
             ->get(['id', 'name', 'branch_code', 'branch_type']);
 
-        abort_if($branches->isEmpty(), 422, 'Your assigned branch is not active or does not belong to your store.');
+        abort_if($branches->isEmpty(), 422, 'Your assigned branch must be an active warehouse in your store.');
         $inventory = BranchInventory::where('store_id', $storeId)
             ->whereIn('branch_id', $branches->pluck('id'))
             ->with(['branch:id,name,branch_code,branch_type', 'product', 'variation'])
@@ -117,8 +118,19 @@ class WarehousePurchaseRequisitionController extends Controller
             'items.*.quantity_requested' => ['required', 'integer', 'min:1'],
         ]);
 
-        $branch = Branch::where('store_id', $storeId)->where('branch_type', 'warehouse')
-            ->findOrFail((int) $validated['branch_id']);
+        $user = $request->user();
+        $assignedBranchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: $user?->branch?->id ?: $user?->employee?->branch?->id);
+        if ($assignedBranchId < 1 || $assignedBranchId !== (int) $validated['branch_id']) {
+            return response()->json(['success' => false, 'message' => 'Use the warehouse branch assigned to your account.'], 422);
+        }
+
+        $branch = Branch::where('store_id', $storeId)
+            ->where('branch_type', 'warehouse')
+            ->where('status', 'active')
+            ->find($assignedBranchId);
+        if (!$branch) {
+            return response()->json(['success' => false, 'message' => 'Your assigned branch must be an active warehouse in your store.'], 422);
+        }
         $inventoryIds = collect($validated['items'])->pluck('branch_inventory_id')->unique();
         $inventory = BranchInventory::where('store_id', $storeId)->where('branch_id', $branch->id)
             ->whereIn('id', $inventoryIds)->with(['product', 'variation'])->get()->keyBy('id');

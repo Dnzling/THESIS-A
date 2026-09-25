@@ -202,7 +202,7 @@ class SupplierContractController extends Controller
     {
         $this->syncCompletedStatuses();
 
-        $contract = SupplierContract::with(['supplier', 'createdBy', 'rejectedBy:id,fname,lname'])
+        $contract = SupplierContract::with(['supplier', 'store:id,name,store_code', 'createdBy.user:id,fname,lname', 'rejectedBy:id,fname,lname'])
             ->findOrFail($id);
 
         $user = $request->user();

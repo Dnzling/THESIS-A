@@ -66,18 +66,18 @@
             </div>
 
             <div>
-              <small class="text-slate-500">Recipient</small>
+              <small class="text-slate-500">{{ source === 'pickup' ? 'Pickup From' : 'Recipient' }}</small>
               <p>{{ recipientName }}</p>
             </div>
 
             <div>
               <small class="text-slate-500">Driver</small>
-              <p>{{ detail.delivery?.courier_name || '-' }}</p>
+              <p>{{ driverName }}</p>
             </div>
 
                <div>
-              <small class="text-slate-500">Courier Contact Number</small>
-              <p>{{ detail.delivery?.courier_contact || '-' }}</p>
+              <small class="text-slate-500">Driver Contact Number</small>
+              <p>{{ driverContact }}</p>
             </div>
 
             <div>
@@ -86,14 +86,9 @@
             </div>
 
             <div>
-              <small class="text-slate-500">Expected date</small>
+              <small class="text-slate-500">{{ source === 'pickup' ? 'Expected Pickup' : 'Expected Date' }}</small>
               <p>
-                {{
-                  formatDate(
-                    detail.delivery?.estimated_delivery_at ||
-                      detail.order?.estimated_delivery_at,
-                  )
-                }}
+                {{ formatDate(detail.delivery?.expected_delivery_date || detail.delivery?.estimated_delivery_at || detail.order?.expected_delivery_date || detail.order?.estimated_delivery_at) }}
               </p>
             </div>
           </div>
@@ -521,7 +516,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
@@ -625,6 +620,17 @@ const recipientName = computed(() =>
       detail.value?.order?.customer_name ||
       '-',
 )
+
+const driverName = computed(() => {
+  const delivery = detail.value?.delivery
+  return delivery?.courier_name || delivery?.driver_name
+    || [delivery?.driver_user?.fname, delivery?.driver_user?.lname].filter(Boolean).join(' ') || '-'
+})
+
+const driverContact = computed(() => {
+  const delivery = detail.value?.delivery
+  return delivery?.courier_contact || delivery?.driver_contact || delivery?.driver_user?.phone_number || '-'
+})
 
 const pickupAddress = computed(() =>
   source.value === 'stock_transfer'
@@ -1250,12 +1256,22 @@ const renderTrackingMap = async () => {
     return
   }
 
+  if (trackingMap && trackingMap.getContainer() !== mapElement.value) {
+    trackingMap.remove()
+    trackingMap = null
+    truckMarker = null
+    destinationMarker = null
+  }
+
   if (!trackingMap) {
     mapboxgl = (await import('mapbox-gl')).default
+    if (!mapElement.value || !trackingActive.value) return
     mapboxgl.accessToken = requireMapboxToken()
     const center = destinationPoint.value || [14.5995, 120.9842]
-    trackingMap = new mapboxgl.Map({ container: mapElement.value, style: 'mapbox://styles/mapbox/streets-v12', center: [center[1], center[0]], zoom: destinationPoint.value ? 13 : 10 })
-    await new Promise<void>((resolve) => trackingMap!.once('load', () => resolve()))
+    const map = new mapboxgl.Map({ container: mapElement.value, style: 'mapbox://styles/mapbox/streets-v12', center: [center[1], center[0]], zoom: destinationPoint.value ? 13 : 10 })
+    trackingMap = map
+    await new Promise<void>((resolve) => map.once('load', () => resolve()))
+    if (trackingMap !== map || !trackingActive.value) return
   }
   if (!trackingMap || !mapboxgl) return
 
@@ -1348,7 +1364,19 @@ const renderTrackingMap = async () => {
 
 onMounted(load)
 
-onBeforeUnmount(() => {
+watch(trackingActive, async (active) => {
+  if (!active) return
+  await nextTick()
+  if (trackingMap) trackingMap.resize()
+  else void renderTrackingMap().catch(() => undefined)
+}, { flush: 'post' })
+
+onActivated(() => {
+  updateTrackingState()
+  if (trackingActive.value) void renderTrackingMap().catch(() => undefined)
+})
+
+const destroyMap = () => {
   stopLocationTracking()
 
   if (trackingMap) {
@@ -1357,6 +1385,12 @@ onBeforeUnmount(() => {
   }
   truckMarker = null
   destinationMarker = null
+}
+
+onDeactivated(destroyMap)
+
+onBeforeUnmount(() => {
+  destroyMap()
 
   if (photoPreview.value) {
     URL.revokeObjectURL(photoPreview.value)

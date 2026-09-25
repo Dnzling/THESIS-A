@@ -13,6 +13,7 @@ use App\Models\Procurement\Supplier\SupplierContract;
 use App\Models\Procurement\SupplierPortal\SupplierRFQFeedback;
 use App\Models\Procurement\SupplierPortal\SupplierRFQNegotiation;
 use App\Models\ProductCatalog\Product;
+use App\Models\ProductCatalog\ProductVariation;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\Requisition\PurchaseRequisitionItem;
 use Illuminate\Http\Request;
@@ -127,6 +128,7 @@ class RequestForQuotationController extends Controller
         ]);
 
         if ($validated['status'] === 'approved') {
+            $this->syncApprovedDimensions($feedback, (int) $rfq->store_id);
             if ($feedback->has_variant) {
                 $feedback->update(['merchandising_status' => 'pending']);
                 $permissionNames = ['merchandising.variations.edit', 'merchandising.products.edit', 'merchandising.products.create'];
@@ -261,9 +263,16 @@ class RequestForQuotationController extends Controller
         ]);
 
         $rfq = RequestForQuotation::findOrFail($id);
-        $feedbacks = SupplierRFQFeedback::where('rfq_id', $rfq->id)
+        $feedbacks = SupplierRFQFeedback::with('rfqItem')->where('rfq_id', $rfq->id)
             ->whereIn('id', $validated['feedback_ids'])
             ->get();
+
+        if ($feedbacks->count() !== count(array_unique($validated['feedback_ids']))
+            || $feedbacks->pluck('rfq_item_id')->unique()->count() !== $feedbacks->count()) {
+            throw ValidationException::withMessages([
+                'feedback_ids' => 'Select one response per RFQ item from this request.',
+            ]);
+        }
 
         foreach ($feedbacks as $feedback) {
             $feedback->update([
@@ -272,6 +281,7 @@ class RequestForQuotationController extends Controller
                 'reviewed_at' => now(),
                 'rejection_reason' => null,
             ]);
+            $this->syncApprovedDimensions($feedback, (int) $rfq->store_id);
 
             SupplierRFQFeedback::where('rfq_item_id', $feedback->rfq_item_id)
                 ->where('id', '!=', $feedback->id)
@@ -343,6 +353,36 @@ class RequestForQuotationController extends Controller
             ->all();
 
         return count($itemIds) > 0 && count($approvedByItem) === count($itemIds);
+    }
+
+    private function syncApprovedDimensions(SupplierRFQFeedback $feedback, int $storeId): void
+    {
+        $item = $feedback->rfqItem;
+        if (!$item?->product_id || $feedback->has_variant) {
+            return;
+        }
+
+        $dimensions = collect(['length_cm', 'width_cm', 'height_cm', 'weight_kg'])
+            ->filter(fn ($field) => $feedback->{$field} !== null)
+            ->mapWithKeys(fn ($field) => [$field => $feedback->{$field}])
+            ->all();
+        if (!$dimensions) {
+            return;
+        }
+
+        if ($item->variation_id) {
+            ProductVariation::query()
+                ->where('store_id', $storeId)
+                ->where('product_id', $item->product_id)
+                ->whereKey($item->variation_id)
+                ->update($dimensions);
+            return;
+        }
+
+        Product::query()
+            ->where('store_id', $storeId)
+            ->whereKey($item->product_id)
+            ->update($dimensions);
     }
 
     private function syncApprovedPrices(int $rfqId): void
