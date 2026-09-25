@@ -57,6 +57,12 @@ class Employee extends Model
         'status',
         'termination_date',
         'termination_reason',
+        'resignation_date',
+        'last_working_day',
+        'resignation_reason',
+        'handover_status',
+        'resignation_notes',
+        'resignation_letter_path',
     ];
 
     /**
@@ -71,6 +77,8 @@ class Employee extends Model
         'salary' => 'decimal:2',
         'hourly_rate' => 'decimal:4',
         'termination_date' => 'date',
+        'resignation_date' => 'date',
+        'last_working_day' => 'date',
         'settings' => 'array',
     ];
 

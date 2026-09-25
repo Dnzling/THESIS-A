@@ -39,7 +39,7 @@
                 <Tag v-if="product?.is_bestseller" value="Bestseller" severity="success" />
                 <Tag v-if="product?.is_featured" value="Featured" severity="warning" />
               </div>
-              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : '3D'" @click="toggle3DViewer" />
+              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : 'View in 3D'" @click="toggle3DViewer" />
             </div>
   
             <div v-if="show3DViewer && selectedModel3D" class="relative w-full aspect-square">
@@ -107,6 +107,13 @@
                 <Tag :value="`${productDiscountPercentage}% OFF`" severity="danger" class="text-xs" />
               </div>
               <p class="text-3xl font-bold text-orange-600">{{ formatCurrency(displaySellingPrice) }}</p>
+              <div class="flex items-center gap-2 text-sm" :aria-label="productReviewCount ? `${averageRating} out of 5 stars from ${productReviewCount} reviews` : 'No ratings yet'">
+                <span class="flex items-center gap-0.5 text-amber-500" aria-hidden="true">
+                  <i v-for="star in 5" :key="star" :class="star <= Math.round(Number(averageRating)) ? 'pi pi-star-fill' : 'pi pi-star'" />
+                </span>
+                <span v-if="productReviewCount" class="font-semibold text-slate-800">{{ averageRating }}</span>
+                <span class="text-slate-500">{{ productReviewCount ? `${productReviewCount} ${productReviewCount === 1 ? 'review' : 'reviews'}` : 'No ratings yet' }}</span>
+              </div>
               <p class="text-xs font-medium text-slate-500">VAT included</p>
               <p class="text-sm text-slate-500">
                 {{ product.quantity_available || 0 }} stocks available
@@ -504,6 +511,7 @@ const primaryImage = computed(() => {
 const storeRating = computed(() => Number(storeInfo.value?.rating_avg ?? 0))
 const storeRatingCount = computed(() => Number(storeInfo.value?.rating_count ?? 0))
 const reviews = computed(() => product.value?.reviews?.data || [])
+const productReviewCount = computed(() => Number(product.value?.reviews_summary?.total_reviews ?? product.value?.rating_count ?? 0))
 const averageRating = computed(() => {
   return Number(product.value?.reviews_summary?.average_rating || 0).toFixed(1)
 })

@@ -355,6 +355,7 @@ onMounted(async () => {
   isBooting.value = false
 
   window.addEventListener('keydown', handleKeyboardShortcut)
+  document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
   loadNotifications()
   if (!notificationPoller.value) {
     notificationPoller.value = window.setInterval(() => {
@@ -378,6 +379,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyboardShortcut)
+  document.removeEventListener('visibilitychange', refreshNavigationWhenVisible)
   if (notificationPoller.value) {
     clearInterval(notificationPoller.value)
     notificationPoller.value = null
@@ -387,6 +389,12 @@ onUnmounted(() => {
     responseDialogUnsub = null
   }
 })
+
+const refreshNavigationWhenVisible = () => {
+  if (document.visibilityState === 'visible' && authStore.isAuthenticated && authStore.permissionsLoaded) {
+    void authStore.fetchNavigation()
+  }
+}
 
 // Toggle module accordion
 const toggleModule = (module: string) => {

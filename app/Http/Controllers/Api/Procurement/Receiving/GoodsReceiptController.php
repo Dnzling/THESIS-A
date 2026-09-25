@@ -32,12 +32,13 @@ class GoodsReceiptController extends Controller
     public function index(Request $request): JsonResponse
     {
         $storeId = (int) ($request->user()?->store_id ?? 0);
+        if ($storeId <= 0) {
+            return response()->json(['success' => false, 'message' => 'No store is assigned to this account.'], 403);
+        }
         $query = GoodsReceipt::with(['purchaseOrder.supplier', 'purchaseOrder.purchaseRequisition', 'branch', 'receivedBy.user', 'verifiedBy.user'])
             ->withCount('items');
 
-        if ($storeId > 0) {
-            $query->whereHas('purchaseOrder', fn($q) => $q->where('store_id', $storeId));
-        }
+        $query->whereHas('purchaseOrder', fn($q) => $q->where('store_id', $storeId));
 
         // Filters
         if ($request->has('branch_id')) {

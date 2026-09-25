@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Logistics;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrder;
@@ -13,6 +14,7 @@ use App\Models\Logistics\ReturnPickup;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesOrderDelivery;
 use App\Models\Sales\SalesOrderDeliveryLog;
+use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLog;
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
@@ -72,6 +74,10 @@ class UnifiedDeliveryController extends Controller
 
         if (in_array($source, ['all', 'pickup'], true)) {
             $rows = $rows->merge($this->getPickupSupplyRows($request));
+        }
+
+        if (in_array($source, ['all', 'replacement'], true)) {
+            $rows = $rows->merge($this->getReplacementRows($request));
         }
 
         if (in_array($source, ['all', 'return_pickup'], true)) {
@@ -160,12 +166,18 @@ class UnifiedDeliveryController extends Controller
 
     private function getPickupSupplyRows(Request $request): Collection
     {
-        return PurchaseOrderShipment::with(['purchaseOrder.supplier', 'purchaseOrder.branch', 'purchaseOrder.items.product', 'vehicle:id,vehicle_name,plate_number,vehicle_type'])
-            ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $request->user()->store_id))
+        $storeId = $this->resolveStoreId($request);
+        if (!$storeId) {
+            return collect();
+        }
+
+        $shipments = PurchaseOrderShipment::with(['purchaseOrder.supplier', 'purchaseOrder.branch', 'purchaseOrder.items.product', 'vehicle:id,vehicle_name,plate_number,vehicle_type'])
+            ->whereHas('purchaseOrder', fn ($query) => $query->where('store_id', $storeId))
             ->get()
             ->map(function (PurchaseOrderShipment $pickup): array {
                 $po = $pickup->purchaseOrder;
                 return [
+                    'id' => 'pickup-' . $po?->id,
                     'source_type' => 'pickup',
                     'order_id' => $po?->id,
                     'order_number' => $po?->po_number ?? ('PO-' . $pickup->purchase_order_id),
@@ -176,6 +188,8 @@ class UnifiedDeliveryController extends Controller
                     'order_status' => $po?->status,
                     'delivery_status' => $pickup->status ?: 'pending',
                     'total_amount' => $po?->total_amount ?? 0,
+                    'shipping_fee' => $po?->shipping_cost,
+                    'can_create_delivery' => false,
                     'created_at' => $pickup->created_at,
                     'delivery_date' => $pickup->delivered_at ?? $pickup->created_at,
                     'expected_pickup_date' => $pickup->expected_delivery_date,
@@ -188,6 +202,75 @@ class UnifiedDeliveryController extends Controller
                     'vehicle' => $pickup->vehicle,
                 ];
             });
+
+        $awaitingAssignment = PurchaseOrder::query()
+            ->with(['supplier', 'branch', 'items.product'])
+            ->where('store_id', $storeId)
+            ->where('status', 'supplier_accepted')
+            ->where(function ($query) {
+                $query->whereNull('fulfillment_method')->orWhere('fulfillment_method', '!=', 'supplier_delivery');
+            })
+            ->whereDoesntHave('shipment')
+            ->get()
+            ->map(function (PurchaseOrder $po): array {
+                return [
+                    'id' => 'pickup-' . $po->id,
+                    'source_type' => 'pickup',
+                    'order_id' => $po->id,
+                    'order_number' => $po->po_number,
+                    'branch_name' => $po->branch?->name ?? $po->branch?->branch_name,
+                    'customer_name' => $po->supplier?->supplier_name ?? 'Supplier',
+                    'customer_contact' => $po->supplier?->contact_number,
+                    'delivery_address' => $po->supplier?->address,
+                    'order_status' => $po->status,
+                    'delivery_status' => 'ready_for_dispatch',
+                    'total_amount' => $po->total_amount,
+                    'shipping_fee' => $po->shipping_cost,
+                    'created_at' => $po->created_at,
+                    'delivery_date' => $po->created_at,
+                    'expected_pickup_date' => $po->expected_delivery_date,
+                    'quantity_items' => $this->orderItemsQuantity($po->items ?? []),
+                    'weight_kg' => $this->orderItemsWeight($po->items ?? []),
+                    'can_create_delivery' => true,
+                    'driver_user_id' => null,
+                ];
+            });
+
+        return $shipments->merge($awaitingAssignment);
+    }
+
+    private function getReplacementRows(Request $request): Collection
+    {
+        $storeId = $this->resolveStoreId($request);
+        if (!$storeId) return collect();
+
+        return EcommerceOrderReturn::query()
+            ->where('store_id', $storeId)
+            ->where('return_type', 'replacement')
+            ->where('status', 'received')
+            ->whereIn('replacement_status', ['reserved', 'assigned', 'out_for_delivery', 'delivery_failed'])
+            ->with(['order:id,order_number,shipping_name,shipping_phone,shipping_address', 'orderItem:id,product_name,sku', 'replacementBranch:id,name', 'replacementVehicle:id,vehicle_name,plate_number'])
+            ->get()
+            ->map(fn (EcommerceOrderReturn $case): array => [
+                'id' => 'replacement-' . $case->id,
+                'source_type' => 'replacement',
+                'order_id' => $case->id,
+                'order_number' => $case->return_number,
+                'branch_name' => $case->replacementBranch?->name,
+                'customer_name' => $case->order?->shipping_name,
+                'customer_contact' => $case->order?->shipping_phone,
+                'delivery_address' => $case->order?->shipping_address,
+                'order_status' => $case->status,
+                'delivery_status' => $case->replacement_status === 'reserved' ? 'ready_for_dispatch' : $case->replacement_status,
+                'total_amount' => 0,
+                'shipping_fee' => 0,
+                'created_at' => $case->created_at,
+                'quantity_items' => $case->received_quantity,
+                'can_create_delivery' => $case->replacement_status === 'reserved',
+                'driver_user_id' => $case->replacement_driver_id,
+                'vehicle_id' => $case->replacement_vehicle_id,
+                'vehicle' => $case->replacementVehicle,
+            ]);
     }
 
     private function getReturnPickupRows(Request $request): Collection

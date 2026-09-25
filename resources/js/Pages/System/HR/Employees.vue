@@ -52,8 +52,11 @@
             </template>
           </Column>
 
-          <Column field="monthly_salary" header="Monthly Salary" sortable>
+          <Column field="monthly_salary" header="Salary / Rate" sortable>
             <template #body="slotProps"><span class="text-xs">₱{{ Number(slotProps.data.monthly_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</span></template>
+          </Column>
+          <Column field="pay_type" header="Pay Type" sortable>
+            <template #body="slotProps"><span class="text-xs capitalize">{{ slotProps.data.pay_type || 'monthly' }}</span></template>
           </Column>
           <Column field="hireDate" header="Hired Date" sortable>
             <template #body="slotProps"><span class="text-xs">{{ slotProps.data.hireDate ? formatDate(slotProps.data.hireDate) : 'Not set' }}</span></template>
@@ -151,6 +154,17 @@
           <Select v-model="employeeForm.branchId" :options="branches" optionLabel="name" optionValue="id" class="w-full" placeholder="Select branch" :loading="loadingBranches" />
         </div>
 
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <label class="block text-sm font-medium mb-1">Employment Type *</label>
+            <Select v-model="employeeForm.employmentType" :options="employmentTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Hire Date *</label>
+            <DatePicker v-model="employeeForm.hireDate" dateFormat="M d, yy" showIcon class="w-full" fluid />
+          </div>
+        </div>
+
         <div class="grid gap-4 md:grid-cols-4 md:items-end">
           <div class="col-span-3">
             <label class="block text-sm font-medium mb-1">Salary / Rate *</label>
@@ -167,6 +181,7 @@
         <div>
           <label class="block text-sm font-medium mb-1">Email *</label>
           <InputText v-model="employeeForm.email" class="w-full" />
+          <small v-if="employeeForm.email && !isValidEmail" class="text-red-600">Enter a valid email address.</small>
           <p class="mt-1 text-xs text-gray-500">A temporary password will be generated and emailed to this address.</p>
         </div>
 
@@ -214,12 +229,14 @@
               </tbody>
             </table>
           </div>
+          <p v-if="scheduleError" class="mt-2 text-xs font-medium text-red-600">{{ scheduleError }}</p>
         </div>
+        <p v-if="!isEditMode && !canSaveEmployee" class="text-xs text-amber-700">Complete all required fields and resolve schedule errors to add this employee.</p>
       </div>
   
       <template #footer>
         <Button label="Cancel" severity="secondary" @click="cancelDialog" />
-        <Button :label="isEditMode ? 'Update' : 'Add Employee'" severity="warn" :loading="savingEmployee" @click="saveEmployee" />
+        <Button :label="isEditMode ? 'Update' : 'Add Employee'" severity="warn" :loading="savingEmployee" :disabled="savingEmployee || (!isEditMode && !canSaveEmployee)" @click="saveEmployee" />
       </template>
     </Dialog>
 
@@ -312,6 +329,7 @@ import { useRouter } from 'vue-router'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import SelectButton from 'primevue/selectbutton'
+import DatePicker from 'primevue/datepicker'
 import { showResponseDialog } from '@/utils/responseDialogBus'
 
 interface Department {
@@ -334,6 +352,8 @@ interface EmployeeFormState {
   branchId: number | null
   payType: 'monthly' | 'hourly'
   salary: number
+  employmentType: 'full_time' | 'part_time' | 'contract' | 'intern'
+  hireDate: Date | null
 }
 
 interface Employee {
@@ -387,6 +407,12 @@ const payTypeOptions = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Hourly', value: 'hourly' },
 ]
+const employmentTypeOptions = [
+  { label: 'Full Time', value: 'full_time' },
+  { label: 'Part Time', value: 'part_time' },
+  { label: 'Contract', value: 'contract' },
+  { label: 'Intern', value: 'intern' },
+]
 
 
 
@@ -402,7 +428,9 @@ const employeeForm = ref<EmployeeFormState>({
   department: '',
   branchId: null,
   payType: 'monthly',
-  salary: 0
+  salary: 0,
+  employmentType: 'full_time',
+  hireDate: new Date(),
 })
 
 const departmentForm = ref({
@@ -434,6 +462,14 @@ const weeklyPlanner = ref([
 
 const totalWeeklyHours = computed(() => weeklyPlanner.value.reduce((sum, row) => sum + Number(row.hours || 0), 0))
 const workingDaysCount = computed(() => weeklyPlanner.value.filter(row => row.is_working).length)
+const isValidEmail = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeForm.value.email.trim()))
+const scheduleError = computed(() => validateScheduleRules())
+const canSaveEmployee = computed(() => Boolean(
+  employeeForm.value.firstName.trim() && employeeForm.value.lastName.trim()
+  && employeeForm.value.role && employeeForm.value.branchId && employeeForm.value.hireDate
+  && employeeForm.value.employmentType && isValidEmail.value
+  && Number(employeeForm.value.salary) > 0 && !scheduleError.value
+))
 
 // Status options
 const statuses = ref<Status[]>([
@@ -619,6 +655,7 @@ const dayLabelMap: Record<string, string> = {
 }
 
 const formatDayLabel = (value?: string) => value ? (dayLabelMap[value.toLowerCase()] || value) : 'Day'
+const formatLocalDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 const parseTimeToMinutes = (value?: string) => {
   if (!value) return null
@@ -684,6 +721,9 @@ const validateScheduleRules = () => {
     return `${formatDayLabel(overLimit.day)} exceeds the 8-hour daily limit.`
   }
 
+  const invalidTime = weeklyPlanner.value.find(row => row.is_working && (!row.start_time || !row.end_time || calculateHours(row.start_time, row.end_time) <= 0))
+  if (invalidTime) return `${formatDayLabel(invalidTime.day)} needs a valid start and end time.`
+
   return ''
 }
 
@@ -702,10 +742,6 @@ const onPlannerStartTimeChange = (row: any, value: string) => {
 const onPlannerEndTimeChange = (row: any, value: string) => {
   row.end_time = value
   row.hours = row.is_working ? calculateHours(row.start_time, row.end_time) : 0
-  if (row.hours > 8) {
-    capPlannerRowAtEightHours(row)
-    notifyResponse(false, 'Schedule Limit', 'Daily working hours cannot exceed 8 hours.')
-  }
 }
 
 const onPlannerWorkingToggle = (row: any, checked: boolean) => {
@@ -765,7 +801,9 @@ const editEmployee = (employee: Employee) => {
     department: employee.department || '',
     branchId: null,
     payType: 'monthly',
-    salary: 0
+    salary: 0,
+    employmentType: 'full_time',
+    hireDate: employee.hireDate ? new Date(employee.hireDate) : new Date(),
   }
   showAddDialog.value = true
 }
@@ -780,7 +818,9 @@ const resetEmployeeForm = () => {
     department: '',
     branchId: null,
     payType: 'monthly',
-    salary: 0
+    salary: 0,
+    employmentType: 'full_time',
+    hireDate: new Date(),
   }
   resetWeeklyPlanner()
 }
@@ -909,9 +949,8 @@ const saveEmployee = async () => {
     return
   }
 
-  const scheduleError = validateScheduleRules()
-  if (scheduleError) {
-    notifyResponse(false, 'Schedule Limit', scheduleError)
+  if (scheduleError.value) {
+    notifyResponse(false, 'Schedule Limit', scheduleError.value)
     return
   }
 
@@ -957,9 +996,9 @@ const saveEmployee = async () => {
         email: employeeForm.value.email,
         role_id: selectedRole.id,
         branch_id: employeeForm.value.branchId,
-        hire_date: new Date().toISOString().slice(0, 10),
+        hire_date: employeeForm.value.hireDate ? formatLocalDate(employeeForm.value.hireDate) : null,
         department: employeeForm.value.department || null,
-        employment_type: 'full_time',
+        employment_type: employeeForm.value.employmentType,
         salary: Number(employeeForm.value.salary || 0),
         pay_type: employeeForm.value.payType,
         status: 'active'

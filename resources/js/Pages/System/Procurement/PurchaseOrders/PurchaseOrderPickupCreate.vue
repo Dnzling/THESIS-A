@@ -21,6 +21,7 @@
           <div><span class="text-slate-500">Pickup From:</span> <strong>{{ po.supplier?.address || 'Supplier address on file' }}</strong></div>
           <div><span class="text-slate-500">Receive At:</span> <strong>{{ po.branch?.name || po.branch?.branch_name || 'Assigned branch' }}</strong></div>
           <div><span class="text-slate-500">Status:</span> <Tag :value="formatStatus(po.status)" severity="success" /></div>
+          <div><span class="text-slate-500">Recorded Shipping Fee:</span> <strong>{{ formatCurrency(po.shipping_cost) }}</strong></div>
         </div>
       </template>
     </Card>
@@ -97,7 +98,9 @@ const selectedVehicle = computed(() => vehicles.value.find((vehicle: any) => Num
 const canSubmit = computed(() => !!form.driver_id && !!form.vehicle_id && !!form.expected_pickup_date)
 const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const formatStatus = (status: string) => String(status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-const goBack = () => router.push({ name: 'procurement.purchase-orders.detail', params: { id: route.params.id } })
+const goBack = () => router.push(route.query.from === 'logistics'
+  ? { name: 'logistics.deliveries' }
+  : { name: 'procurement.purchase-orders.detail', params: { id: route.params.id } })
 const load = async () => {
   loading.value = true; loadingVehicles.value = true; loadingDrivers.value = true
   try {

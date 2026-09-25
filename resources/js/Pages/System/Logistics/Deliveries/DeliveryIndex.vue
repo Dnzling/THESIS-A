@@ -107,6 +107,12 @@
           <Column header="Actions" style="width: 6rem">
             <template #body="{ data }">
               <div class="flex items-center gap-2">
+                <Button v-if="data.source_type === 'pickup' && data.can_create_delivery && canManageDeliveries"
+                  label="Assign Driver" icon="pi pi-user-plus" severity="warn" size="small"
+                  @click="assignPickup(data)" />
+                <Button v-if="data.source_type === 'replacement' && data.can_create_delivery && canManageDeliveries"
+                  label="Assign Driver" icon="pi pi-user-plus" severity="warn" size="small"
+                  @click="openDetail(data)" />
                 <Button icon="pi pi-eye" text rounded  v-tooltip.bottom="'View details'"
                   @click="openDetail(data)" />
               </div>
@@ -162,6 +168,7 @@ const sourceOptions = [
   { label: 'Ecommerce', value: 'ecommerce' },
   { label: 'Sales', value: 'sales' },
   { label: 'Supplier Pickups', value: 'pickup' },
+  { label: 'Replacements', value: 'replacement' },
   { label: 'Customer Return Pickups', value: 'return_pickup' },
   { label: 'Internal Stock Transfers', value: 'stock_transfer' },
 ]
@@ -177,6 +184,7 @@ const statusOptions = [
   { label: 'Delivered', value: 'delivered' },
   { label: 'Picked Up', value: 'picked_up' },
   { label: 'Failed Delivery', value: 'failed_delivery' },
+  { label: 'Replacement Delivery Failed', value: 'delivery_failed' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
 
@@ -231,6 +239,10 @@ const onDateRangeChange = () => {
 }
 
 const openDetail = (order: any) => {
+  if (order.source_type === 'replacement') {
+    router.push({ name: 'logistics.replacements.detail', params: { id: order.order_id } })
+    return
+  }
   if (order.source_type === 'stock_transfer') {
     router.push({ name: 'logistics.stock-transfers.detail', params: { id: order.order_id } })
     return
@@ -249,10 +261,14 @@ const openDetail = (order: any) => {
   })
 }
 
+const assignPickup = (order: any) => {
+  router.push({ name: 'procurement.purchase-orders.pickup', params: { id: order.order_id }, query: { from: 'logistics' } })
+}
+
 const deliverySeverity = (status: string) => {
   if (status === 'pending' || status === 'ready_for_dispatch') return 'warning'
   if (status === 'delivered' || status === 'picked_up') return 'success'
-  if (status === 'failed_delivery' || status === 'cancelled') return 'danger'
+  if (status === 'failed_delivery' || status === 'delivery_failed' || status === 'cancelled') return 'danger'
   if (status === 'out_for_delivery') return 'warning'
   return 'info'
 }
@@ -279,11 +295,12 @@ const sourceLabel = (source: string) => ({
   ecommerce: 'Ecommerce',
   sales: 'Sales',
   pickup: 'Supplier Pickup',
+  replacement: 'Replacement',
   return_pickup: 'Return Pickup',
   stock_transfer: 'Stock Transfer',
 } as Record<string, string>)[source] || 'Delivery'
 
-const sourceSeverity = (source: string) => source === 'pickup' || source === 'return_pickup'
+const sourceSeverity = (source: string) => source === 'pickup' || source === 'return_pickup' || source === 'replacement'
   ? 'warning'
   : source === 'stock_transfer'
     ? 'success'

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\Role;
+use App\Models\Core\User;
 use App\Models\Store\Store;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -147,7 +149,7 @@ class RoleController extends Controller
         $globalAllowed = ['store_admin', 'driver'];
 
         if (empty($storeId)) {
-            return response()->json(['data' => []]);
+            return response()->json(['data' => [], 'store_id' => null]);
         }
 
         $roles = DB::table('roles')
@@ -165,7 +167,7 @@ class RoleController extends Controller
             ->orderByRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) ASC')
             ->get();
 
-        return response()->json(['data' => $roles]);
+        return response()->json(['data' => $roles, 'store_id' => $storeId]);
     }
 
     public function store(Request $request): JsonResponse
@@ -388,6 +390,16 @@ class RoleController extends Controller
                 'updated_at' => $now,
             ])->all());
         });
+
+        $permissionService = app(PermissionService::class);
+        User::query()
+            ->where('role_id', $role->id)
+            ->select(['id', 'store_id'])
+            ->chunkById(100, function ($users) use ($permissionService): void {
+                foreach ($users as $user) {
+                    $permissionService->clearUserCache($user);
+                }
+            });
 
         return response()->json([
             'message' => 'Permissions updated successfully',

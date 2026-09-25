@@ -51,6 +51,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/warehouse/transfer-requests/{id}', 'System/Warehouse/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
     $inertia('/warehouse/receiving', 'System/Warehouse/Receiving/Index', 'warehouse.receiving', 'Receiving');
     $inertia('/warehouse/returns', 'System/Warehouse/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
+    $inertia('/warehouse/returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'warehouse.replacements.detail', 'Replacement Case');
     $inertia('/warehouse/transfer-history', 'System/Warehouse/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
 
 
@@ -178,6 +179,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/requisites/create', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.create', 'Create Purchase Requisition');
     $inertia('/inventory/requisites/{id}', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionDetail', 'inventory.requisites.detail', 'Purchase Requisition Details');
     $inertia('/inventory/stock-returns', 'System/Inventory/StockReturns/StockReturnIndex', 'inventory.stock-returns', 'Stock Returns');
+    $inertia('/inventory/stock-returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'inventory.replacements.detail', 'Replacement Case');
     $inertia('/inventory/stock-returns/create', 'System/Inventory/StockReturns/StockReturnCreate', 'inventory.stock-returns.create', 'Create Stock Return');
     $inertia('/inventory/stock-returns/{id}', 'System/Inventory/StockReturns/StockReturnDetail', 'inventory.stock-returns.detail', 'Stock Return Detail');
     $inertia('/inventory/stock-counts', 'System/Inventory/StockCounts/StockCountIndex', 'inventory.stock-counts.index', 'Stock Counts');
@@ -292,12 +294,14 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     // Logistics
     Route::redirect('/logistics', '/logistics/deliveries')->name('logistics');
     $inertia('/driver/deliveries', 'System/Logistics/Driver/DriverDeliveriesIndex', 'driver.deliveries', 'My Deliveries');
+    $inertia('/driver/replacements/{id}', 'System/Shared/ReplacementDetail', 'driver.replacements.detail', 'Replacement Delivery');
     $inertia('/driver/delivery-history', 'System/Logistics/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
     $inertia('/driver/deliveries/{source}/{orderId}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
     $inertia('/logistics/return-pickups', 'System/Logistics/ReturnPickups/ReturnPickupIndex', 'logistics.return-pickups', 'Return Pickups');
+    $inertia('/logistics/replacements/{id}', 'System/Shared/ReplacementDetail', 'logistics.replacements.detail', 'Replacement Delivery');
     $inertia('/logistics/return-pickups/{id}', 'System/Logistics/ReturnPickups/ReturnPickupDetail', 'logistics.return-pickups.detail', 'Return Pickup Detail');
     $inertia('/logistics/stock-transfers', 'System/Logistics/StockTransfers/StockTransferIndex', 'logistics.stock-transfers', 'Stock Transfers');
     $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');

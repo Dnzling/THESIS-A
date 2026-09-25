@@ -168,7 +168,7 @@ const loadReceipts = async (page = 1) => {
           page,
           per_page: perPage.value,
         })
-      : await procurementService.getGoodsReceipts(params)
+      : await procurementService.getGoodsReceipts(params, isProcurement ? 'procurement' : 'inventory')
     // procurementService already returns response.data, so this is the paginator:
     // { current_page, data: [], total, ... }.
     const paginator = response?.data?.current_page !== undefined

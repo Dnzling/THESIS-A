@@ -326,11 +326,7 @@ class DepartmentController extends Controller
         $roleIds = $department->roles?->pluck('id')->filter()->values() ?? collect();
         $query = Employee::where('store_id', $storeId);
 
-        if ($roleIds->count() > 0) {
-            $query->whereIn('role_id', $roleIds->all());
-        } else {
-            $query->where('department', $department->name);
-        }
+        $query->whereIn('role_id', $roleIds->all());
 
         return $query->count();
     }
@@ -347,11 +343,7 @@ class DepartmentController extends Controller
                 $query = Employee::where('store_id', $storeId)
                     ->where('branch_id', $branch->id);
 
-                if ($roleIds->count() > 0) {
-                    $query->whereIn('role_id', $roleIds->all());
-                } else {
-                    $query->where('department', $department->name);
-                }
+                $query->whereIn('role_id', $roleIds->all());
 
                 return [
                     'branch_id' => $branch->id,

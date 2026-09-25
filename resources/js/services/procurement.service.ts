@@ -662,18 +662,18 @@ class ProcurementService {
   }
 
   // ==================== GOODS RECEIPTS ====================
-  async getGoodsReceipts(params?: any) {
-    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts`, { params })
+  async getGoodsReceipts(params?: any, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts`, { params })
     return response.data
   }
 
-  async getGoodsReceipt(id: number) {
-    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts/${id}`)
+  async getGoodsReceipt(id: number, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts/${id}`)
     return response.data
   }
 
-  async getGoodsReceiptResolution(id: number) {
-    const response = await axiosClient.get(`${this.inventoryBaseUrl}/goods-receipts/${id}/resolution`)
+  async getGoodsReceiptResolution(id: number, scope: 'inventory' | 'procurement' = 'inventory') {
+    const response = await axiosClient.get(`${scope === 'procurement' ? this.baseUrl : this.inventoryBaseUrl}/goods-receipts/${id}/resolution`)
     return response.data
   }
 

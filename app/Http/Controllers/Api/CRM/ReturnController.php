@@ -657,8 +657,11 @@ class ReturnController extends Controller
 
     public function receive(Request $request, EcommerceOrderReturn $return): JsonResponse
     {
+        abort_unless($request->user()->hasAnyPermission([
+            'crm.returns.manage', 'inventory.receiving.manage', 'warehouse.receiving.view',
+        ]) || $request->user()->hasRole('store_admin'), 403);
         $storeId = (int) (auth()->user()?->store_id ?? 0);
-        if ($storeId > 0 && (int) $return->store_id !== $storeId) {
+        if ($storeId <= 0 || (int) $return->store_id !== $storeId) {
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
         }
 
@@ -678,8 +681,8 @@ class ReturnController extends Controller
             return response()->json(['success' => false, 'message' => 'Only an approved return can be inspected.'], 422);
         }
         $return->loadMissing('pickup');
-        if (!in_array((string) $return->pickup?->status, ['picked_up', 'completed'], true)) {
-            return response()->json(['success' => false, 'message' => 'The returned item must be picked up before physical inspection.'], 422);
+        if ((string) $return->pickup?->status !== 'delivered') {
+            return response()->json(['success' => false, 'message' => 'The returned item must arrive at its destination branch before inspection.'], 422);
         }
         if (!in_array((string) $return->return_type, ['refund', 'replacement'], true)) {
             return response()->json(['success' => false, 'message' => 'Sales must select Refund or Replacement before Inventory inspection.'], 422);
@@ -691,23 +694,35 @@ class ReturnController extends Controller
         if ($employeeId <= 0 || $branchId <= 0) {
             return response()->json(['success' => false, 'message' => 'User must be linked to an employee + branch to post inventory receive.'], 422);
         }
+        if ($branchId !== (int) $return->pickup?->destination_branch_id) {
+            return response()->json(['success' => false, 'message' => 'Receive this return at the branch selected for pickup delivery.'], 422);
+        }
 
         $return->loadMissing([
             'order:id,order_number,shipping_name',
-            'orderItem:id,order_id,product_id,unit_price',
+            'orderItem:id,order_id,product_id,branch_inventory_id,unit_price',
+            'orderItem.branchInventory:id,variation_id',
         ]);
         $productId = (int) ($return->orderItem?->product_id ?? 0);
+        $variationId = $return->orderItem?->branchInventory?->variation_id;
+        if ($return->return_type === 'replacement' && $return->orderItem?->branch_inventory_id && !$return->orderItem?->branchInventory) {
+            return response()->json(['success' => false, 'message' => 'The original item SKU is unavailable. Restore its inventory record before processing a replacement.'], 422);
+        }
         if ($productId <= 0) {
             return response()->json(['success' => false, 'message' => 'Return item product is missing.'], 422);
         }
 
         $refund = null;
-        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $branchId, $employeeId, $user, &$refund): void {
+        DB::transaction(function () use ($return, $validated, $receivedQty, $productId, $variationId, $branchId, $employeeId, $user, &$refund): void {
+            $lockedReturn = EcommerceOrderReturn::query()->lockForUpdate()->findOrFail($return->id);
+            if ($lockedReturn->status !== 'approved') {
+                throw \Illuminate\Validation\ValidationException::withMessages(['return' => 'This return has already been received.']);
+            }
             $inventory = BranchInventory::query()
                 ->where('store_id', (int) $return->store_id)
                 ->where('branch_id', $branchId)
                 ->where('product_id', $productId)
-                ->whereNull('variation_id')
+                ->where('variation_id', $variationId)
                 ->lockForUpdate()
                 ->first();
 
@@ -716,7 +731,7 @@ class ReturnController extends Controller
                     'store_id' => (int) $return->store_id,
                     'branch_id' => $branchId,
                     'product_id' => $productId,
-                    'variation_id' => null,
+                    'variation_id' => $variationId,
                     'quantity_on_hand' => 0,
                     'quantity_reserved' => 0,
                     'quantity_available' => 0,
@@ -734,17 +749,10 @@ class ReturnController extends Controller
             $quantityBefore = (int) $inventory->quantity_on_hand;
             $availableBefore = (int) $inventory->quantity_available;
 
-            // A replacement is issued from existing sellable stock. The returned
-            // item is inspected separately and must not be used to satisfy it.
-            if ($return->return_type === 'replacement' && $availableBefore < $receivedQty) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'received_quantity' => ['Insufficient available stock to issue the replacement.'],
-                ]);
-            }
-
-            // Good returns go back to sellable stock. Bad returns are discarded,
-            // so they never inflate quantity-on-hand or available stock.
-            if ($validated['condition'] === 'good') {
+            // Replacement returns remain quarantined until a separate disposition.
+            if ($return->return_type === 'replacement') {
+                $inventory->quantity_quarantined = (int) $inventory->quantity_quarantined + $receivedQty;
+            } elseif ($validated['condition'] === 'good') {
                 $inventory->quantity_on_hand = $quantityBefore + $receivedQty;
                 $inventory->quantity_available = (int) $inventory->quantity_available + $receivedQty;
             }
@@ -755,44 +763,19 @@ class ReturnController extends Controller
                 'store_id' => (int) $return->store_id,
                 'branch_id' => $branchId,
                 'product_id' => $productId,
-                'variation_id' => null,
-                'transaction_type' => $validated['condition'] === 'good' ? 'customer_return' : 'writeoff',
+                'variation_id' => $variationId,
+                'transaction_type' => $return->return_type === 'replacement' || $validated['condition'] === 'good' ? 'customer_return' : 'writeoff',
                 'quantity_before' => $quantityBefore,
-                'quantity_change' => $validated['condition'] === 'good' ? $receivedQty : 0,
+                'quantity_change' => $return->return_type === 'replacement' ? 0 : ($validated['condition'] === 'good' ? $receivedQty : 0),
                 'quantity_after' => $receivedQuantityAfter,
                 'reference_type' => 'ecommerce_order_return',
                 'reference_id' => (int) $return->id,
-                'notes' => $validated['notes'] ?? ($validated['condition'] === 'good' ? 'Returned item approved for resale.' : 'Returned item discarded after quality inspection.'),
+                'notes' => $validated['notes'] ?? ($return->return_type === 'replacement' ? 'Returned unit received into quarantine; not sellable.' : ($validated['condition'] === 'good' ? 'Returned item approved for resale.' : 'Returned item discarded after quality inspection.')),
                 'unit_cost' => $return->orderItem?->unit_price,
                 'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
                 'created_by' => $employeeId,
                 'transaction_date' => now(),
             ]);
-
-            if ($return->return_type === 'replacement') {
-                $replacementBefore = (int) $inventory->quantity_on_hand;
-                $inventory->quantity_on_hand = $replacementBefore - $receivedQty;
-                $inventory->quantity_available = (int) $inventory->quantity_available - $receivedQty;
-
-                InventoryTransaction::query()->create([
-                    'transaction_number' => 'INVTX-REPL-' . (int) $return->id . '-' . now()->format('YmdHisv'),
-                    'store_id' => (int) $return->store_id,
-                    'branch_id' => $branchId,
-                    'product_id' => $productId,
-                    'variation_id' => null,
-                    'transaction_type' => 'sale',
-                    'quantity_before' => $replacementBefore,
-                    'quantity_change' => -$receivedQty,
-                    'quantity_after' => (int) $inventory->quantity_on_hand,
-                    'reference_type' => 'ecommerce_return_replacement',
-                    'reference_id' => (int) $return->id,
-                    'notes' => 'Replacement item issued to customer.',
-                    'unit_cost' => $return->orderItem?->unit_price,
-                    'total_value' => (float) ($return->orderItem?->unit_price ?? 0) * $receivedQty,
-                    'created_by' => $employeeId,
-                    'transaction_date' => now(),
-                ]);
-            }
 
             $available = (int) $inventory->quantity_available;
             $reorderPoint = (int) ($inventory->reorder_point ?? 0);
@@ -821,11 +804,11 @@ class ReturnController extends Controller
                 );
                 $return->status = 'refund_pending';
             } else {
-                $return->status = 'replaced';
-                $return->resolved_at = now();
+                $return->status = 'received';
+                $return->replacement_status = 'awaiting_stock';
             }
             $return->product_condition = $validated['condition'];
-            $return->inventory_disposition = $validated['condition'] === 'good' ? 'resell' : 'discard';
+            $return->inventory_disposition = $return->return_type === 'replacement' ? null : ($validated['condition'] === 'good' ? 'resell' : 'discard');
             $return->received_quantity = $receivedQty;
             $return->inspected_by = auth()->id();
             $return->inspected_at = now();
@@ -838,10 +821,10 @@ class ReturnController extends Controller
                 'module' => 'ecommerce',
                 'entity_type' => 'ecommerce_order_return',
                 'entity_id' => (int) $return->id,
-                'title' => $return->return_type === 'refund' ? 'Return sent to Finance' : 'Replacement issued',
+                'title' => $return->return_type === 'refund' ? 'Return sent to Finance' : 'Return received for replacement',
                 'message' => $return->return_type === 'refund'
                     ? 'Inventory inspected your item. Your refund request was sent to Finance.'
-                    : 'Inventory inspected your item and issued your replacement.',
+                    : 'Inventory inspected your item. Your replacement is being prepared.',
                 'severity' => 'success',
                 'store_id' => (int) $return->store_id,
             ]);
@@ -851,7 +834,7 @@ class ReturnController extends Controller
             'success' => true,
             'message' => $return->return_type === 'refund'
                 ? 'Inspection complete. Refund request sent to Finance.'
-                : 'Inspection complete. Replacement issued and inventory adjusted.',
+                : 'Inspection complete. Returned item quarantined; replacement awaits stock reservation.',
             'data' => $return->fresh()->load(['inspector:id,fname,lname,email']),
         ]);
     }

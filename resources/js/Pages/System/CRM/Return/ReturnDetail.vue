@@ -119,6 +119,20 @@
           </div>
         </template>
       </Card>
+
+      <Card v-if="returnRequest.return_type === 'replacement'" class="rounded-2xl border border-orange-200 shadow-sm">
+        <template #title><span class="text-base">Replacement progress</span></template>
+        <template #content>
+          <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div>
+              <Tag :value="prettyStatus(returnRequest.replacement_status || 'awaiting_return')" :severity="returnRequest.status === 'replaced' ? 'success' : 'warn'" />
+              <p class="mt-2 text-xs text-slate-500">The returned unit stays in quarantine. Replacement stock is reserved separately and the case closes after delivery proof.</p>
+            </div>
+            <Button v-if="returnRequest.status === 'received'" label="Open replacement workflow" severity="warn" size="small"
+              @click="router.push({ name: 'inventory.replacements.detail', params: { id: returnRequest.id } })" />
+          </div>
+        </template>
+      </Card>
   
       <div class="grid gap-6">
         <div class="space-y-6">
@@ -481,8 +495,7 @@
     <Dialog v-model:visible="receiveDialogVisible" header="Receive & Inspect Return (Inventory)" modal
       class="w-full max-w-xl">
       <div class="space-y-3">
-        <p class="text-sm text-gray-600">Good items return to sellable stock; bad items are discarded. Refunds are sent
-          automatically to Finance, while replacements are issued from available stock.</p>
+        <p class="text-sm text-gray-600">Refund returns follow the normal inspection process. Replacement returns stay in quarantine until separate stock is reserved and delivered.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label class="mb-1 block text-sm text-gray-600">Received Quantity</label>
@@ -814,10 +827,10 @@ const canReject = computed(() => {
   return !['picked_up', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
 })
 const canMarkReceived = computed(() => {
-  if (!authStore.hasPermission('crm.returns.manage')) return false
+  if (!authStore.hasPermission('crm.returns.manage') && !authStore.hasPermission('inventory.receiving.manage') && !authStore.hasPermission('warehouse.receiving.view')) return false
   if (String(returnRequest.value?.status || '') !== 'approved') return false
   const pickupStatus = String(returnRequest.value?.pickup?.status || '')
-  return pickupStatus === 'picked_up'
+  return pickupStatus === 'delivered'
 })
 const canSchedulePickup = computed(() => String(returnRequest.value?.status || '') === 'approved' && !returnRequest.value?.pickup?.id)
 
@@ -925,7 +938,7 @@ const confirmReceive = () => {
     header: 'Post inventory receive?',
     message: returnRequest.value?.return_type === 'refund'
       ? 'Inventory will record the item disposition and automatically send the product-price refund to Finance.'
-      : 'Inventory will record the item disposition and deduct replacement stock.',
+      : 'Inventory will quarantine the returned item. Replacement stock is reserved separately afterward.',
     icon: 'pi pi-exclamation-triangle',
     rejectProps: { label: 'Cancel', outlined: true, size: 'small' },
     acceptProps: { label: 'Confirm', size: 'small' },

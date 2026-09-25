@@ -8,6 +8,8 @@ use App\Models\Ecommerce\EcommerceOrderItem;
 use App\Models\Core\User;
 use App\Models\Logistics\ReturnPickup;
 use App\Models\Finance\FinanceRefund;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
+use App\Models\Store\Branch;
 use App\Models\Store\Store;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,6 +41,17 @@ class EcommerceOrderReturn extends Model
         'reviewed_by',
         'reviewed_at',
         'review_notes',
+        'replacement_status',
+        'replacement_branch_id',
+        'replacement_inventory_id',
+        'replacement_driver_id',
+        'replacement_vehicle_id',
+        'replacement_assigned_at',
+        'replacement_dispatched_at',
+        'replacement_delivered_at',
+        'replacement_proof_path',
+        'replacement_received_by',
+        'replacement_failure_reason',
     ];
 
     protected $casts = [
@@ -48,6 +61,9 @@ class EcommerceOrderReturn extends Model
         'inspected_at' => 'datetime',
         'resolved_at' => 'datetime',
         'evidence_urls' => 'array',
+        'replacement_assigned_at' => 'datetime',
+        'replacement_dispatched_at' => 'datetime',
+        'replacement_delivered_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -100,6 +116,21 @@ class EcommerceOrderReturn extends Model
     public function pickup(): HasOne
     {
         return $this->hasOne(ReturnPickup::class, 'return_id');
+    }
+
+    public function replacementDriver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'replacement_driver_id');
+    }
+
+    public function replacementVehicle(): BelongsTo
+    {
+        return $this->belongsTo(EcommerceDeliveryVehicle::class, 'replacement_vehicle_id');
+    }
+
+    public function replacementBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'replacement_branch_id');
     }
 
     public function investigationTicket(): HasOne

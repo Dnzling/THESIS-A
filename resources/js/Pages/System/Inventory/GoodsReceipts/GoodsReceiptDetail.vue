@@ -531,11 +531,11 @@ const daysVariance = computed(() => {
 async function loadReceipt() {
   loading.value = true
   try {
-    const response = await procurementService.getGoodsReceipt(Number(route.params.id))
+    const response = await procurementService.getGoodsReceipt(Number(route.params.id), isProcurement ? 'procurement' : 'inventory')
     const payload = response?.data ?? response
     const raw = payload?.data ?? payload
     receipt.value = normalizeReceipt(raw)
-    const resolutionResponse = await procurementService.getGoodsReceiptResolution(Number(route.params.id))
+    const resolutionResponse = await procurementService.getGoodsReceiptResolution(Number(route.params.id), isProcurement ? 'procurement' : 'inventory')
     resolution.value = resolutionResponse?.data ?? null
     if (receipt.value && resolution.value?.proof_path) {
       receipt.value.resolution_proof_url = attachmentUrl(resolution.value.proof_path)

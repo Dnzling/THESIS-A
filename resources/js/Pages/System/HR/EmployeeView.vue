@@ -28,7 +28,8 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button label="Update Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
+          <Button label="Change Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
+          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Resign" severity="warn" outlined @click="showResignationDialog = true" />
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
@@ -55,6 +56,18 @@
               <span>{{ employeeInfo.basic_info?.employee_number || '-' }}</span>
               <span class="text-slate-300">|</span>
               <span>{{ formatLabel(employeeInfo.employment_details?.department) }}</span>
+            </div>
+            <div v-if="employeeInfo.employment_details?.resignation_date" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <span class="font-semibold">Resignation notice:</span>
+              {{ formatDate(employeeInfo.employment_details.resignation_date) }}
+              <span class="mx-1">|</span>
+              Last working day: {{ formatDate(employeeInfo.employment_details.last_working_day) }}
+              <span class="mx-1">|</span>
+              Handover: {{ formatLabel(employeeInfo.employment_details.handover_status) }}
+              <span class="mx-1">|</span>
+              Reason: {{ formatLabel(employeeInfo.employment_details.resignation_reason) }}
+              <a v-if="employeeInfo.employment_details.resignation_letter_url" :href="employeeInfo.employment_details.resignation_letter_url" target="_blank" rel="noopener" class="ml-2 font-semibold underline">View letter</a>
+              <p v-if="employeeInfo.employment_details.resignation_notes" class="mt-1">{{ employeeInfo.employment_details.resignation_notes }}</p>
             </div>
 
             <!-- <div class="mt-5 grid gap-3 md:grid-cols-5">
@@ -242,6 +255,44 @@
           <Button label="Close" text @click="showPayslipDialog = false" />
           <Button label="Download PDF" icon="pi pi-download" severity="secondary" @click="handleDownloadPayslip(selectedPayslip)" />
           <Button label="Print" icon="pi pi-print" severity="info" @click="handlePrintPayslip(selectedPayslip)" />
+        </template>
+      </Dialog>
+
+      <Dialog v-model:visible="showResignationDialog" header="Record Resignation" modal :style="{ width: 'min(34rem, 95vw)' }">
+        <div class="space-y-4 text-sm">
+          <p class="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">The employee remains active during notice. The last working day must be at least 7 days after the notice date.</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block font-medium">Resignation Date *</label>
+              <DatePicker v-model="resignationForm.resignationDate" :minDate="new Date()" dateFormat="M d, yy" showIcon fluid />
+            </div>
+            <div>
+              <label class="mb-1 block font-medium">Last Working Day *</label>
+              <DatePicker v-model="resignationForm.lastWorkingDay" :minDate="minimumLastWorkingDay" dateFormat="M d, yy" showIcon fluid />
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Reason *</label>
+            <Select v-model="resignationForm.reason" :options="resignationReasons" optionLabel="label" optionValue="value" placeholder="Select reason" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Handover Status *</label>
+            <Select v-model="resignationForm.handoverStatus" :options="handoverStatuses" optionLabel="label" optionValue="value" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Notes</label>
+            <Textarea v-model="resignationForm.notes" rows="3" fluid />
+          </div>
+          <div>
+            <label class="mb-1 block font-medium">Resignation Letter (optional, max 10 MB)</label>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="w-full text-xs" @change="onResignationLetterChange" />
+          </div>
+          <p v-if="resignationForm.lastWorkingDay && resignationForm.lastWorkingDay < minimumLastWorkingDay" class="text-xs text-red-600">Choose a last working day at least 7 days after the notice date.</p>
+          <p v-if="resignationError" class="text-xs text-red-600">{{ resignationError }}</p>
+        </div>
+        <template #footer>
+          <Button label="Cancel" severity="secondary" text @click="showResignationDialog = false" />
+          <Button label="Record Resignation" severity="warn" :loading="savingResignation" :disabled="!canSubmitResignation || savingResignation" @click="submitResignation" />
         </template>
       </Dialog>
 
@@ -495,6 +546,8 @@ import InputNumber from 'primevue/inputnumber'
 import InputMask from 'primevue/inputmask'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
+import Textarea from 'primevue/textarea'
 
 // Import tab components
 import EmployeeInfoTab from './components/tabs/EmployeeInfoTab.vue'
@@ -525,6 +578,71 @@ const roleOptions = ref<{ label: string; value: number; department?: string }[]>
 const departmentOptions = ref<{ label: string; value: number; name?: string }[]>([])
 const branchOptions = ref<{ id: number; name: string }[]>([])
 const showEditDialog = ref(false)
+const showResignationDialog = ref(false)
+const savingResignation = ref(false)
+const resignationError = ref('')
+const resignationReasons = [
+  { label: 'Personal', value: 'personal' },
+  { label: 'Better Opportunity', value: 'better_opportunity' },
+  { label: 'Relocation', value: 'relocation' },
+  { label: 'Health', value: 'health' },
+  { label: 'End of Contract', value: 'end_of_contract' },
+  { label: 'Other', value: 'other' },
+]
+const handoverStatuses = [
+  { label: 'Not Started', value: 'not_started' },
+  { label: 'In Progress', value: 'in_progress' },
+  { label: 'Complete', value: 'complete' },
+]
+const resignationForm = ref({
+  resignationDate: new Date(),
+  lastWorkingDay: new Date(Date.now() + 7 * 86400000),
+  reason: null as string | null,
+  handoverStatus: 'not_started',
+  notes: '',
+  letter: null as File | null,
+})
+const minimumLastWorkingDay = computed(() => {
+  const date = new Date(resignationForm.value.resignationDate)
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() + 7)
+  return date
+})
+const canSubmitResignation = computed(() => Boolean(
+  resignationForm.value.resignationDate && resignationForm.value.lastWorkingDay
+  && resignationForm.value.lastWorkingDay >= minimumLastWorkingDay.value
+  && resignationForm.value.reason && resignationForm.value.handoverStatus
+  && (!resignationForm.value.letter || resignationForm.value.letter.size <= 10 * 1024 * 1024)
+))
+const resignationDateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const onResignationLetterChange = (event: Event) => {
+  resignationForm.value.letter = (event.target as HTMLInputElement).files?.[0] || null
+  resignationError.value = resignationForm.value.letter && resignationForm.value.letter.size > 10 * 1024 * 1024
+    ? 'The resignation letter must be 10 MB or smaller.' : ''
+}
+const submitResignation = async () => {
+  if (!canSubmitResignation.value) return
+  resignationError.value = ''
+  savingResignation.value = true
+  try {
+    const payload = new FormData()
+    payload.append('resignation_date', resignationDateString(resignationForm.value.resignationDate))
+    payload.append('last_working_day', resignationDateString(resignationForm.value.lastWorkingDay))
+    payload.append('resignation_reason', resignationForm.value.reason || '')
+    payload.append('handover_status', resignationForm.value.handoverStatus)
+    if (resignationForm.value.notes) payload.append('resignation_notes', resignationForm.value.notes)
+    if (resignationForm.value.letter) payload.append('resignation_letter', resignationForm.value.letter)
+    await hrService.api.post(`/api/employees/${employeeId}/resignation`, payload)
+    showResignationDialog.value = false
+    await fetchEmployeeData()
+    toast.add({ severity: 'success', summary: 'Resignation Recorded', detail: 'Notice and handover details have been saved.', life: 3500 })
+  } catch (error: any) {
+    const errors = error?.response?.data?.errors
+    resignationError.value = Object.values(errors || {}).flat()[0] as string || error?.response?.data?.message || 'Unable to record resignation.'
+  } finally {
+    savingResignation.value = false
+  }
+}
 const savingEdit = ref(false)
 const editDialogError = ref('')
 const activeEditStep = ref(0)

@@ -14,12 +14,18 @@
       />
     </div>
 
+    <div v-if="loadError" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+      {{ loadError }}
+      <Button label="Retry" text size="small" severity="danger" @click="reloadRoleData" />
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
       <!-- Roles -->
       <Card class="lg:col-span-4">
         <template #title>Roles</template>
         <template #content>
-          <div v-if="!hasStore" class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <div v-if="loadingRoles && !hasStore" class="py-6 text-sm text-slate-500">Loading roles...</div>
+          <div v-else-if="!hasStore && !loadError" class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
             This account is not assigned to a store yet. Please complete store verification to manage roles.
             <div class="mt-3">
               <Button label="Go to Verification" size="small" severity="warning" @click="goToVerification" />
@@ -27,7 +33,7 @@
           </div>
 
           <DataTable
-            v-else
+            v-else-if="hasStore"
             :value="roles"
             class="p-datatable-sm "
             selectionMode="single"
@@ -81,7 +87,8 @@
           </div>
         </template>
         <template #content>
-          <div v-if="!hasStore" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+          <div v-if="loadingRoles && !hasStore" class="py-6 text-sm text-slate-500">Loading permissions...</div>
+          <div v-else-if="!hasStore && !loadError" class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
             Assign a store first to manage permissions.
           </div>
           <div v-else>
@@ -201,7 +208,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import axios from 'axios'
+import axios from '@/axios'
 import { useToast } from 'primevue/usetoast'
 import { router } from '@inertiajs/vue3'
 import Dialog from 'primevue/dialog'
@@ -210,6 +217,7 @@ import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
 import Popover from 'primevue/popover'
 import { useAuthStore } from '@/stores/auth'
+import { showResponseDialog } from '@/utils/responseDialogBus'
 
 const roles = ref<any[]>([])
 const permissions = ref<any[]>([])
@@ -217,7 +225,12 @@ const selectedRole = ref<any | null>(null)
 const selectedRolePermissions = ref<number[]>([])
 const toast = useToast()
 const authStore = useAuthStore()
-const hasStore = computed(() => Boolean(authStore.user?.store_id || authStore.user?.store?.id))
+const confirmedStoreId = ref<number | null>(null)
+const storeScopeLoaded = ref(false)
+const hasStore = computed(() => storeScopeLoaded.value
+  ? Boolean(confirmedStoreId.value)
+  : Boolean(authStore.user?.store_id || authStore.user?.store?.id))
+const loadError = ref('')
 
 const loadingRoles = ref(false)
 const loadingPermissions = ref(false)
@@ -336,11 +349,15 @@ const groupedPermissions = computed(() => {
 const loadRoles = async () => {
   loadingRoles.value = true
   try {
-  const response = await axios.get('/api/store/roles/store-specific')
+    const response = await axios.get('/api/store/roles/store-specific')
+    confirmedStoreId.value = Number(response.data?.store_id) || null
+    storeScopeLoaded.value = true
     roles.value = response.data?.data || []
     if (!selectedRole.value && roles.value.length > 0) {
       selectedRole.value = roles.value[0]
     }
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load roles.'
   } finally {
     loadingRoles.value = false
   }
@@ -351,6 +368,8 @@ const loadPermissions = async () => {
   try {
     const response = await axios.get('/api/store/permissions')
     permissions.value = response.data?.data || []
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load permissions.'
   } finally {
     loadingPermissions.value = false
   }
@@ -362,6 +381,8 @@ const loadModules = async () => {
     const response = await axios.get('/api/store/modules')
     enabledModules.value = response.data?.data?.enabled_modules || []
     availableModules.value = response.data?.data?.available_modules || []
+  } catch (error: any) {
+    loadError.value = error?.response?.data?.message || 'Unable to load modules.'
   } finally {
     loadingModules.value = false
   }
@@ -449,18 +470,17 @@ const savePermissions = async () => {
       permissions: selectedRolePermissions.value
     })
     selectedRolePermissions.value = (response.data?.permissions || []).map((permission: any) => Number(permission.id))
-    toast.add({
+    await authStore.fetchNavigation()
+    showResponseDialog({
       severity: 'success',
-      summary: 'Permissions Saved',
-      detail: response.data?.message || 'Role permissions were updated successfully.',
-      life: 3000
+      title: 'Permissions Saved',
+      message: response.data?.message || 'Role permissions were updated successfully.',
     })
   } catch (error: any) {
-    toast.add({
+    showResponseDialog({
       severity: 'error',
-      summary: 'Unable to Save',
-      detail: error?.response?.data?.message || 'The role permissions could not be saved.',
-      life: 4500
+      title: 'Unable to Save',
+      message: error?.response?.data?.message || 'The role permissions could not be saved.',
     })
   } finally {
     savingPermissions.value = false
@@ -488,10 +508,15 @@ watch(
   { deep: true }
 )
 
-onMounted(async () => {
-  await authStore.fetchCurrentUser()
-  if (!hasStore.value) return
+const reloadRoleData = async () => {
+  loadError.value = ''
   await Promise.all([loadModules(), loadPermissions(), loadRoles()])
+}
+
+onMounted(async () => {
+  // The API is the source of truth for store scope; profile hydration must not block these lists.
+  void authStore.fetchCurrentUser().catch(() => undefined)
+  await reloadRoleData()
 })
 
 const openCreateRoleDialog = () => {

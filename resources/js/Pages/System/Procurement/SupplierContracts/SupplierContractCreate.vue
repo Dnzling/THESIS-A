@@ -18,19 +18,12 @@
 
         <template #content>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2">
-              <label class="text-sm font-semibold text-gray-700">Store Name</label>
-              <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">
-                {{ selectedStoreName }}
-              </p>
-              <small v-if="errors.store_id" class="text-red-600">{{ errors.store_id }}</small>
-            </div>
-
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2 md:col-span-2">
               <label class="text-sm font-semibold text-gray-700">Contract Title</label>
               <InputText v-model="form.contract_title" placeholder="e.g., Annual Furniture Supply Agreement 2026" class="w-full" />
               <small class="text-gray-500">Auto-generated based on supplier and dates. You can edit if needed.</small>
               <small v-if="errors.contract_title" class="text-red-600">{{ errors.contract_title }}</small>
+              <small v-if="errors.store_id" class="text-red-600">{{ errors.store_id }}</small>
             </div>
 
             <div class="flex flex-col gap-2">

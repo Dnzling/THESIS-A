@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Procurement\RFQ\SupplierQuotationController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
+use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
 use App\Http\Controllers\Api\Procurement\InvoiceController;
 use App\Http\Controllers\Api\Procurement\Config\ProcurementSettingsController;
 use App\Http\Controllers\Api\Procurement\Config\RoleApprovalLimitController;
@@ -32,6 +33,9 @@ use App\Http\Controllers\Api\Procurement\BudgetController;
 // PROCUREMENT MANAGEMENT ROUTES
 // ============================================
 Route::prefix('procurement')->group(function () {
+    Route::get('/goods-receipts', [GoodsReceiptController::class, 'index']);
+    Route::get('/goods-receipts/{id}', [GoodsReceiptController::class, 'show']);
+    Route::get('/goods-receipts/{id}/resolution', [GoodsReceiptResolutionController::class, 'showForReceipt']);
     // Analytics
     Route::prefix('analytics')->group(function () {
         Route::get('/dashboard', [AnalyticsController::class, 'getDashboard']);

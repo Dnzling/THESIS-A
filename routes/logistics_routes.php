@@ -6,11 +6,23 @@ use App\Http\Controllers\Api\Logistics\DeliveryController;
 use App\Http\Controllers\Api\Logistics\DeliveryTripController;
 use App\Http\Controllers\Api\Logistics\DeliveryZoneController;
 use App\Http\Controllers\Api\Logistics\ReturnPickupController;
+use App\Http\Controllers\Api\Logistics\ReplacementController;
 use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 
 Route::prefix('logistics')->group(function () {
+    Route::prefix('replacements')->group(function () {
+        Route::get('/', [ReplacementController::class, 'index']);
+        Route::get('/{id}', [ReplacementController::class, 'show']);
+        Route::post('/{id}/reserve', [ReplacementController::class, 'reserve']);
+        Route::post('/{id}/assign', [ReplacementController::class, 'assign']);
+        Route::post('/{id}/dispatch', [ReplacementController::class, 'dispatch']);
+        Route::post('/{id}/deliver', [ReplacementController::class, 'deliver']);
+        Route::post('/{id}/fail', [ReplacementController::class, 'fail']);
+        Route::post('/{id}/reattempt', [ReplacementController::class, 'reattempt']);
+        Route::post('/{id}/disposition', [ReplacementController::class, 'disposition']);
+    });
     Route::prefix('settings/delivery-fees')->group(function () {
         Route::get('/', [DeliveryFeeSettingController::class, 'show']);
         Route::put('/', [DeliveryFeeSettingController::class, 'update']);

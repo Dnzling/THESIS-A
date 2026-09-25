@@ -275,6 +275,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // =========== HR ==============
     Route::post('/employees/invite', [EmployeeController::class, 'storeInvite'])->middleware('subscription.capacity:users');
+    Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);

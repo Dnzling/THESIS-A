@@ -50,6 +50,6 @@ Route::prefix('crm')->group(function () {
         Route::get('/{id}', [ReturnController::class, 'show'])->middleware('can:crm.returns.view');
         Route::put('/{return}/status', [ReturnController::class, 'updateStatus'])->middleware('can:crm.returns.manage');
         Route::post('/{return}/pickup', [ReturnController::class, 'createPickup'])->middleware('can:crm.returns.manage');
-        Route::post('/{return}/receive', [ReturnController::class, 'receive'])->middleware('can:crm.returns.manage');
+        Route::post('/{return}/receive', [ReturnController::class, 'receive']);
     });
 });

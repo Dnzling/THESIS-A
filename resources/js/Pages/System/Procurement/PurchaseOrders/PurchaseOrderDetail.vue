@@ -21,8 +21,6 @@
           severity="success" @click="confirmSend" />
         <Button v-if="canManagePurchaseOrders && detail?.status === 'sent_to_supplier'" label="Resend to Supplier"
           icon="pi pi-replay" severity="secondary" @click="confirmResend" />
-        <Button v-if="canManagePurchaseOrders && detail?.status === 'supplier_accepted' && detail?.fulfillment_method !== 'supplier_delivery'" label="Assign Pickup" size="small"
-          icon="pi pi-truck" severity="success" @click="router.push({ name: 'procurement.purchase-orders.pickup', params: { id: detail.id } })" />
         <Button v-if="canManageReceiving && detail?.status === 'delivered'" label="Receive Supplies" size="small"
           icon="pi pi-inbox" severity="info" @click="createGoodsReceipt" />
         <Tag :value="formatStatus(detail?.status)" :severity="statusSeverity(detail?.status)" />
@@ -296,26 +294,28 @@
           </div>
         </div>
         <div class="p-6">
-          <Timeline :value="timelineItems" align="left" class="w-full">
-            <template #content="{ item }">
-              <div class="pb-6">
-                <p class="font-medium text-gray-900">{{ item.title }}</p>
-                <p class="text-sm text-gray-500">{{ item.subtitle }}</p>
+          <ol class="divide-y divide-slate-100">
+            <li v-for="(item, index) in timelineItems" :key="index" class="flex gap-4 py-3 first:pt-0 last:pb-0">
+              <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
+              <div>
+                <p class="text-sm font-medium text-slate-900">{{ item.title }}</p>
+                <p class="mt-1 text-xs text-slate-500">{{ item.subtitle }}</p>
               </div>
-            </template>
-          </Timeline>
+            </li>
+          </ol>
         </div>
       </div>
   
       <!-- Goods Receipt Section -->
-      <div v-if="detail?.goods_receipts?.length > 0" class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div class="flex items-center gap-2">
             <i class="pi pi-inbox text-gray-500"></i>
             <h3 class="font-medium text-gray-700">Goods Receipts</h3>
           </div>
         </div>
-        <div class="overflow-x-auto">
+        <p v-if="!detail?.goods_receipts?.length" class="px-6 py-5 text-sm text-slate-500">No goods receipts recorded for this purchase order yet.</p>
+        <div v-else class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-gray-600 text-xs uppercase tracking-wider">
               <tr>
@@ -327,14 +327,14 @@
             <tbody class="divide-y divide-gray-200">
               <tr v-for="receipt in detail.goods_receipts" :key="receipt.id" class="hover:bg-gray-50">
                 <td class="px-6 py-4">
-                  <RouterLink :to="`/inventory/goods-receipts/${receipt.id}`"
+                  <RouterLink :to="`/procurement/goods-receipts/${receipt.id}`"
                     class="text-blue-600 hover:text-blue-800 font-medium">
-                    {{ receipt.gr_number }}
+                    {{ receipt.grn_number }}
                   </RouterLink>
                 </td>
-                <td class="px-6 py-4 text-gray-700">{{ formatDate(receipt.received_date) }}</td>
+                <td class="px-6 py-4 text-gray-700">{{ formatDateWithTime(receipt.receipt_date) }}</td>
                 <td class="px-6 py-4">
-                  <Tag :value="receipt.status" :severity="receipt.status === 'completed' ? 'success' : 'warning'" />
+                  <Tag :value="formatStatus(receipt.receipt_status)" :severity="receipt.receipt_status === 'full' ? 'success' : 'warning'" />
                 </td>
               </tr>
             </tbody>
@@ -554,7 +554,7 @@ const timelineItems = computed(() => {
     return [
       {
         title: 'PO Created',
-        subtitle: detail.value.created_at ? formatDate(detail.value.created_at) : 'Date not available',
+        subtitle: detail.value.created_at ? formatDateWithTime(detail.value.created_at) : 'Date not available',
       },
     ]
   }
@@ -576,7 +576,7 @@ const timelineItems = computed(() => {
     }
     return {
       title: titleMap[action] || log.description || 'Activity',
-      subtitle: `${formatDate(log.created_at)} • ${actor}`,
+      subtitle: `${formatDateWithTime(log.created_at)} | ${actor}`,
     }
   })
 })
