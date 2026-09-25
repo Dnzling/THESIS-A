@@ -666,17 +666,13 @@ class SupplierController extends Controller
      */
     public function products(int $id, Request $request): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
         $branchId = $request->get('branch_id');
 
         $productsQuery = $supplier->products()
             ->with([
                 'category:id,category_name',
-                'variations' => fn ($query) => $query->active()
-                    ->select([
-                        'id', 'product_id', 'variation_name', 'variation_sku',
-                        'cost_price', 'reorder_point', 'unit_of_measurement',
-                    ]),
+                'variations' => fn ($query) => $query->active(),
                 'inventory' => function ($q) use ($branchId) {
                     if ($branchId) {
                         $q->where('branch_id', $branchId);

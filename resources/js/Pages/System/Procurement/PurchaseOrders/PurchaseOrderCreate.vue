@@ -402,6 +402,7 @@ const totals = reactive({
 const shippingEstimate = ref<any>(null)
 const shippingEstimateLoading = ref(false)
 const shippingEstimateError = ref('')
+const shippingEstimateRouteUnavailable = ref(false)
 const shippingFee = computed(() => Number(shippingEstimate.value?.shipping_fee || 0))
 let shippingEstimateTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -593,7 +594,7 @@ const syncItemUnitCostsFromProducts = () => {
 const prefillFromRequisition = async (requisitionId: number) => {
   try {
       const requisitionRes = await procurementService.getPurchaseRequisition(requisitionId)
-      const requisition = requisitionRes?.data || requisitionRes?.data?.data || requisitionRes
+      const requisition = requisitionRes?.data?.data || requisitionRes?.data || requisitionRes
 
       if (!requisition) return
 
@@ -654,7 +655,9 @@ const prefillFromRequisition = async (requisitionId: number) => {
 
     syncItemUnitCostsFromProducts()
 
-    const firstSupplierId = requisition.items?.[0]?.selected_supplier_id || requisition.items?.[0]?.product?.suppliers?.[0]?.id
+    const requisitionSuppliers = Array.isArray(requisition.suppliers) ? requisition.suppliers : []
+    const firstSupplierId = uniqueSupplierIds[0] || requisition.supplier_id
+      || (requisitionSuppliers.length === 1 ? requisitionSuppliers[0].id : null)
     if (!splitPoMode.value && firstSupplierId) {
       form.supplier_id = Number(firstSupplierId)
       await onSupplierChange()
@@ -689,8 +692,10 @@ const prefillFromRFQ = async (rfqId: number) => {
       .filter((id: any) => !!id)
 
     const uniqueSupplierIds = Array.from(new Set(supplierIds)).map((id: any) => Number(id)).filter((id: number) => id > 0)
-    if (rfq.awarded_to_supplier_id) {
-      form.supplier_id = rfq.awarded_to_supplier_id
+    if (targetRfqItemId > 0 && uniqueSupplierIds.length === 1) {
+      form.supplier_id = uniqueSupplierIds[0]
+    } else if (rfq.awarded_to_supplier_id) {
+      form.supplier_id = Number(rfq.awarded_to_supplier_id)
     } else if (uniqueSupplierIds.length === 1) {
       form.supplier_id = uniqueSupplierIds[0]
     } else if (uniqueSupplierIds.length > 1) {
@@ -1097,6 +1102,7 @@ const updateTotals = () => {
 
 const scheduleShippingEstimate = (subtotal: number) => {
   if (shippingEstimateTimer) clearTimeout(shippingEstimateTimer)
+  if (shippingEstimateRouteUnavailable.value) return
   const hasCompleteItems = form.items.length > 0 && form.items.every((item) => Number(item.product_id) > 0 && Number(item.quantity_ordered) > 0)
   if (!form.supplier_id || !form.branch_id || !hasCompleteItems) {
     shippingEstimate.value = null
@@ -1112,7 +1118,10 @@ const scheduleShippingEstimate = (subtotal: number) => {
       totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount + shippingFee.value
     } catch (error: any) {
       shippingEstimate.value = null
-      shippingEstimateError.value = error?.response?.data?.errors?.shipping_fee?.[0]
+      if (error?.response?.status === 404) shippingEstimateRouteUnavailable.value = true
+      shippingEstimateError.value = error?.response?.status === 404
+        ? 'Shipping estimate is unavailable on this server. Ask an administrator to deploy the purchase-order shipping route.'
+        : error?.response?.data?.errors?.shipping_fee?.[0]
         || error?.response?.data?.message
         || 'Shipping fee could not be calculated. Check the supplier and branch locations.'
       totals.total_amount = totals.subtotal + totals.tax_amount - form.discount_amount
