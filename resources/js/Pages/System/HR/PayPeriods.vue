@@ -21,7 +21,7 @@
         <DataTable :value="filteredPayPeriods" class="w-full" rowHover :loading="loading" paginator :rows="10"
           :rowsPerPageOptions="[5, 10, 20, 50]"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" rowHover showGridlines
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" showGridlines
           removableSort responsiveLayout="scroll" sortField="name" :sortOrder="1" tableStyle="min-width: 50rem">
           <Column field="period" header="Period" sortable></Column>
           <Column field="cutoffStart" header="Start Date" sortable></Column>
