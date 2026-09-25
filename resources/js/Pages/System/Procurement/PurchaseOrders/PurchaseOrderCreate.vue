@@ -33,14 +33,15 @@
                 option-value="id"
                 placeholder="Select an eligible supplier"
                 :loading="eligibleSuppliersLoading"
-                :disabled="eligibleSuppliersLoading"
+                :disabled="eligibleSuppliersLoading || listedProductIds.length === 0"
                 filter
                 show-clear
                 fluid
                 @change="onSupplierChange"
               />
-              <small v-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No suppliers with an active contract are available.</small>
-              <small v-else class="mt-1 block text-slate-500">Suppliers with an active contract for this store.</small>
+              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add a product to find its suppliers.</small>
+              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
+              <small v-else class="mt-1 block text-slate-500">Suppliers linked to all listed products with an active contract.</small>
             </div>
             <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
               Suppliers are assigned separately to each product group in this split purchase order.
@@ -374,6 +375,7 @@ const saveDraft = ref(false)
 const isEditing = ref(false)
 const loadingSuppliers = ref(false)
 const eligibleSuppliersLoading = ref(false)
+const prefilling = ref(false)
 const suppliers = ref<any[]>([])
 const eligibleSuppliers = ref<any[]>([])
 const products = ref<any[]>([])
@@ -414,6 +416,9 @@ const selectedBranchName = computed(() => {
   const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
   return branch?.name || branch?.branch_name || (form.branch_id ? `Branch #${form.branch_id}` : 'Not assigned')
 })
+const listedProductIds = computed(() => Array.from(new Set(
+  form.items.map((item: any) => Number(item?.product_id || 0)).filter((id: number) => id > 0)
+)))
 const productSelectionKey = (productId: any, variationId: any = null) =>
   `${Number(productId || 0)}:${Number(variationId || 0)}`
 const itemSelectionKey = (item: any) =>
@@ -474,6 +479,8 @@ const splitPoSummary = computed(() => {
 // Load initial data
 onMounted(async () => {
   await loadInitialData()
+  prefilling.value = true
+  try {
   // Check if editing an existing PO
   const poId = route.params.id
   if (poId) {
@@ -532,6 +539,10 @@ onMounted(async () => {
     const rfqId = parseInt(route.query.rfq_id as string)
     await prefillFromRFQ(rfqId)
   }
+  } finally {
+    prefilling.value = false
+    await loadEligibleSuppliers()
+  }
 })
 
 const loadInitialData = async () => {
@@ -543,10 +554,7 @@ const loadInitialData = async () => {
     ])
 
     suppliers.value = suppliersRes.data?.data || suppliersRes.data || []
-    eligibleSuppliers.value = suppliers.value.map((supplier: any) => ({
-      ...supplier,
-      display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
-    }))
+    eligibleSuppliers.value = []
     const branchData = branchesRes.data?.data || branchesRes.data || []
     branches.value = branchData.map((branch: any) => ({
       ...branch,
@@ -918,6 +926,76 @@ const loadProductsBySupplier = async (supplierId: number) => {
     products.value = []
   }
 }
+
+let supplierLookupRequest = 0
+const loadEligibleSuppliers = async () => {
+  const requestId = ++supplierLookupRequest
+  const productIds = listedProductIds.value
+
+  if (splitPoMode.value) {
+    eligibleSuppliers.value = []
+    eligibleSuppliersLoading.value = false
+    return
+  }
+  if (productIds.length === 0) {
+    eligibleSuppliers.value = []
+    eligibleSuppliersLoading.value = false
+    if (!isEditing.value && form.supplier_id) {
+      form.supplier_id = null
+      await onSupplierChange()
+    }
+    return
+  }
+
+  eligibleSuppliersLoading.value = true
+  try {
+    const response = await procurementService.getSuppliers({
+      active_contract_only: true,
+      product_ids: productIds,
+      per_page: 1000,
+    })
+    if (requestId !== supplierLookupRequest) return
+
+    const page = response?.data ?? response
+    const rows = Array.isArray(page) ? page : (page?.data || [])
+    const options = rows.map((supplier: any) => ({
+      ...supplier,
+      display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+    }))
+    eligibleSuppliers.value = options
+
+    const selectedIsEligible = options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+    if (isEditing.value && form.supplier_id && !selectedIsEligible) {
+      const currentSupplier = suppliers.value.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
+      if (currentSupplier) {
+        eligibleSuppliers.value.unshift({
+          ...currentSupplier,
+          display_name: currentSupplier.supplier_name || currentSupplier.company_name || `Supplier #${currentSupplier.id}`,
+        })
+      }
+      return
+    }
+    if (selectedIsEligible) return
+
+    const nextSupplierId = options.length === 1 ? Number(options[0].id) : null
+    if (form.supplier_id !== nextSupplierId) {
+      form.supplier_id = nextSupplierId
+      await onSupplierChange()
+    }
+  } catch (error) {
+    if (requestId === supplierLookupRequest) {
+      console.error('Failed to load suppliers for listed products', error)
+      eligibleSuppliers.value = []
+    }
+  } finally {
+    if (requestId === supplierLookupRequest) eligibleSuppliersLoading.value = false
+  }
+}
+
+watch(
+  () => listedProductIds.value.join(','),
+  () => { if (!prefilling.value) void loadEligibleSuppliers() },
+)
 
 watch(
   () => form.branch_id,
