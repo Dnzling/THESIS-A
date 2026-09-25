@@ -13,6 +13,12 @@
           description="Upload your DTI/SEC/CDA registration certificate" :file="localForm.registrationPermit"
           @upload="(file) => handleFileUpload(file, 'registrationPermit')"
           @remove="() => handleFileRemove('registrationPermit')" accept=".jpg,.jpeg,.png,.pdf" required />
+        <div>
+          <label for="business-registration-number" class="mb-2 block text-sm font-medium text-slate-700">Business registration number *</label>
+          <InputText id="business-registration-number" :modelValue="localForm.businessRegistrationNumber || ''"
+            @update:modelValue="updateField('businessRegistrationNumber', $event)" size="small" class="w-full" placeholder="Enter or confirm the number on your certificate" />
+          <p class="mt-1 text-xs text-slate-500">{{ registrationReadMessage }}</p>
+        </div>
   
         <!-- Tax Certificate -->
         <UploadSection title="BIR Tax Certificate *" description="Upload your BIR Certificate of Registration"
@@ -49,9 +55,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useToast } from 'primevue/usetoast'
+import InputText from 'primevue/inputtext'
+import axiosClient from '@/axios'
 import UploadSection from '../shared/UploadSection.vue'
 
 const toast = useToast()
+const registrationReadMessage = ref('Upload a certificate to try reading its registration number, or enter it manually.')
 
 interface Props {
   formData: any
@@ -81,6 +90,7 @@ const updateField = (field: string, value: any) => {
 // Validation
 const isStepValid = computed(() => {
   return localForm.value.registrationPermit &&
+    Boolean(String(localForm.value.businessRegistrationNumber || '').trim()) &&
     localForm.value.taxCertificate &&
     localForm.value.mayorPermit
 })
@@ -88,11 +98,12 @@ const isStepValid = computed(() => {
 // File handling
 const handleFileUpload = (file: File, field: string) => {
   // Validate file
-  if (file.size > 5 * 1024 * 1024) {
+  const maxMb = ['taxCertificate', 'mayorPermit'].includes(field) ? 10 : 5
+  if (file.size > maxMb * 1024 * 1024) {
     toast.add({
       severity: 'error',
       summary: 'File too large',
-      detail: 'Please upload files smaller than 5MB',
+      detail: `Please upload files up to ${maxMb}MB`,
       life: 3000
     })
     return
@@ -116,6 +127,18 @@ const handleFileUpload = (file: File, field: string) => {
   }
 
   updateField(field, file)
+  if (field === 'registrationPermit') {
+    const payload = new FormData()
+    payload.append('registration_file', file)
+    registrationReadMessage.value = 'Reading registration certificate...'
+    axiosClient.post('/api/store-verification/business-registration/extract', payload)
+      .then(({ data }) => {
+        const number = String(data?.data?.registration_number || '').trim()
+        if (number && !localForm.value.businessRegistrationNumber) updateField('businessRegistrationNumber', number)
+        registrationReadMessage.value = data?.data?.message || 'Please confirm the registration number.'
+      })
+      .catch(() => { registrationReadMessage.value = 'Could not read the number. Please enter it manually.' })
+  }
 }
 
 const handleFileRemove = (field: string) => {

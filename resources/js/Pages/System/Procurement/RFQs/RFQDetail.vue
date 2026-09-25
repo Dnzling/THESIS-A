@@ -300,6 +300,13 @@
                     <div><span class="text-slate-400">Texture</span><p class="font-medium text-slate-900">{{ item.variant_texture || '—' }}</p></div>
                     <div><span class="text-slate-400">Finish</span><p class="font-medium text-slate-900">{{ item.variant_finish || '—' }}</p></div>
                   </div>
+                  <div v-if="item.additional_variants.length" class="mt-3 space-y-2 border-t border-indigo-100 pt-3">
+                    <p class="font-semibold text-indigo-900">Additional proposed variants</p>
+                    <div v-for="(variant, index) in item.additional_variants" :key="index" class="rounded-lg border border-indigo-100 bg-white p-2 text-slate-700">
+                      <p class="font-semibold">{{ variant.variant_name }}</p>
+                      <p>{{ [variant.supplier_sku, variant.variant_size, variant.variant_color, variant.variant_material, variant.variant_texture, variant.variant_finish].filter(Boolean).join(' / ') || 'No additional specifications' }}</p>
+                    </div>
+                  </div>
                   <div v-if="item.variant_image_paths.length" class="mt-3 border-t border-indigo-100 pt-3">
                     <p class="mb-2 text-xs font-medium uppercase tracking-wide text-indigo-700">Variant images</p>
                     <div class="flex flex-wrap gap-3">
@@ -658,6 +665,7 @@ const portalFeedbackGroups = computed(() => {
       attachment_path: feedback?.attachment_path || null,
       has_variant: Boolean(feedback?.has_variant),
       variant_name: feedback?.variant_name || '',
+      additional_variants: Array.isArray(feedback?.additional_variants) ? feedback.additional_variants : [],
       supplier_sku: feedback?.supplier_sku || '',
       variant_size: feedback?.variant_size || '',
       variant_color: feedback?.variant_color || '',

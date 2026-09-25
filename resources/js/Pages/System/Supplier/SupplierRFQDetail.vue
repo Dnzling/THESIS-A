@@ -131,6 +131,11 @@
                   </div>
                   <p v-if="feedbackByItemId[data.id].product_specifications"><strong class="text-slate-800">Specifications:</strong> {{ feedbackByItemId[data.id].product_specifications }}</p>
                   <p v-if="feedbackByItemId[data.id].additional_notes"><strong class="text-slate-800">Notes:</strong> {{ feedbackByItemId[data.id].additional_notes }}</p>
+                  <div v-if="feedbackByItemId[data.id].has_variant" class="border-t border-slate-200 pt-2">
+                    <p class="font-semibold text-slate-800">Proposed variants</p>
+                    <p>{{ feedbackByItemId[data.id].variant_name }}</p>
+                    <p v-for="(variant, index) in feedbackByItemId[data.id].additional_variants || []" :key="index">{{ variant.variant_name }}</p>
+                  </div>
                   <p v-if="feedbackByItemId[data.id].rejection_reason" class="text-xs text-red-600">
                     {{ feedbackByItemId[data.id].rejection_reason }}
                   </p>
@@ -234,6 +239,26 @@
                 <div><label class="mb-1 block text-xs font-medium">Texture</label><InputText v-model="quoteData[item.id].variant_texture" fluid /></div>
                 <div><label class="mb-1 block text-xs font-medium">Finish</label><InputText v-model="quoteData[item.id].variant_finish" fluid /></div>
                 <div class="md:col-span-2 lg:col-span-3"><label class="mb-1 block text-xs font-medium">Variant Images (up to 5)</label><input type="file" accept="image/png,image/jpeg,image/webp" multiple class="w-full text-sm" @change="setVariantImages(item.id, $event)" /></div>
+              </div>
+              <div v-if="quoteData[item.id].has_variant" class="mt-4 space-y-3">
+                <div v-for="(variant, index) in quoteData[item.id].additional_variants" :key="index" class="rounded-xl border border-orange-200 bg-white p-3">
+                  <div class="mb-3 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-800">Additional variant {{ index + 2 }}</span>
+                    <Button label="Remove" icon="pi pi-trash" severity="danger" text size="small" @click="quoteData[item.id].additional_variants.splice(index, 1)" />
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    <div><label class="mb-1 block text-xs">Variant Name *</label><InputText v-model="variant.variant_name" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Supplier SKU / Model</label><InputText v-model="variant.supplier_sku" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Unit of Measurement</label><InputText v-model="variant.unit_of_measurement" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Size</label><InputText v-model="variant.variant_size" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Color</label><InputText v-model="variant.variant_color" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Material</label><InputText v-model="variant.variant_material" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Texture</label><InputText v-model="variant.variant_texture" fluid size="small" /></div>
+                    <div><label class="mb-1 block text-xs">Finish</label><InputText v-model="variant.variant_finish" fluid size="small" /></div>
+                  </div>
+                </div>
+                <Button label="Add Variant" icon="pi pi-plus" severity="warn" outlined size="small" :disabled="quoteData[item.id].additional_variants.length >= 20" @click="addVariant(item.id)" />
+                <small v-if="quoteErrors[item.id]?.additional_variants" class="block text-red-500">{{ quoteErrors[item.id].additional_variants }}</small>
               </div>
             </div>
 
@@ -415,7 +440,7 @@ const loadRFQDetail = async () => {
           product_specifications: '',
           additional_notes: '',
           description: '',
-          has_variant: false, variant_name: '', supplier_sku: '', variant_size: '', variant_color: '', variant_texture: '', variant_finish: '', variant_material: '', unit_of_measurement: item.product?.unit_of_measurement || '', variant_images: [],
+          has_variant: false, variant_name: '', supplier_sku: '', variant_size: '', variant_color: '', variant_texture: '', variant_finish: '', variant_material: '', unit_of_measurement: item.product?.unit_of_measurement || '', variant_images: [], additional_variants: [],
         }
       }
     })
@@ -437,7 +462,7 @@ const loadRFQDetail = async () => {
         product_specifications: f.product_specifications || '',
         additional_notes: f.additional_notes || '',
         description: f.description || '',
-        has_variant: Boolean(f.has_variant), variant_name: f.variant_name || '', supplier_sku: f.supplier_sku || '', variant_size: f.variant_size || '', variant_color: f.variant_color || '', variant_texture: f.variant_texture || '', variant_finish: f.variant_finish || '', variant_material: f.variant_material || '', unit_of_measurement: f.unit_of_measurement || item?.product?.unit_of_measurement || '', variant_images: [],
+        has_variant: Boolean(f.has_variant), variant_name: f.variant_name || '', supplier_sku: f.supplier_sku || '', variant_size: f.variant_size || '', variant_color: f.variant_color || '', variant_texture: f.variant_texture || '', variant_finish: f.variant_finish || '', variant_material: f.variant_material || '', unit_of_measurement: f.unit_of_measurement || item?.product?.unit_of_measurement || '', variant_images: [], additional_variants: f.additional_variants || [],
       }
     })
 
@@ -490,6 +515,7 @@ const validateAllQuotes = () => {
       itemErrors.quotation_valid_until = 'Select the quotation validity date.'
     }
     if (quote.has_variant && !String(quote.variant_name || '').trim()) itemErrors.variant_name = 'Enter the proposed variant name.'
+    if (quote.has_variant && quote.additional_variants?.some((variant: any) => !String(variant.variant_name || '').trim())) itemErrors.additional_variants = 'Name every additional variant or remove the empty entry.'
 
     if (Object.keys(itemErrors).length > 0) {
       errors[item.id] = itemErrors
@@ -577,6 +603,7 @@ const performQuoteSubmission = async () => {
         variant_material: quote.variant_material,
         unit_of_measurement: quote.unit_of_measurement,
         variant_images: quote.variant_images,
+        additional_variants: quote.has_variant ? quote.additional_variants : [],
       })
     }
 
@@ -626,6 +653,13 @@ const calculateQuoteTotal = (item: any, quote: any) => {
 }
 const setVariantImages = (itemId: number, event: Event) => {
   quoteData.value[itemId].variant_images = Array.from((event.target as HTMLInputElement).files || []).slice(0, 5)
+}
+
+const addVariant = (itemId: number) => {
+  quoteData.value[itemId].additional_variants.push({
+    variant_name: '', supplier_sku: '', unit_of_measurement: quoteData.value[itemId].unit_of_measurement || '',
+    variant_size: '', variant_color: '', variant_material: '', variant_texture: '', variant_finish: '',
+  })
 }
 
 const quoteDimensions = (quote: any) => {

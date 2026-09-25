@@ -33,15 +33,14 @@
                 option-value="id"
                 placeholder="Select an eligible supplier"
                 :loading="eligibleSuppliersLoading"
-                :disabled="listedProductIds.length === 0 || eligibleSuppliersLoading"
+                :disabled="eligibleSuppliersLoading"
                 filter
                 show-clear
                 fluid
                 @change="onSupplierChange"
               />
-              <small v-if="listedProductIds.length === 0" class="mt-1 block text-slate-500">Add products first to find suppliers that carry them.</small>
-              <small v-else-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No active-contract supplier is linked to every listed product.</small>
-              <small v-else class="mt-1 block text-slate-500">Filtered to suppliers linked to all {{ listedProductIds.length }} listed product(s).</small>
+              <small v-if="!eligibleSuppliersLoading && eligibleSuppliers.length === 0" class="mt-1 block text-amber-700">No suppliers with an active contract are available.</small>
+              <small v-else class="mt-1 block text-slate-500">Suppliers with an active contract for this store.</small>
             </div>
             <div v-else class="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
               Suppliers are assigned separately to each product group in this split purchase order.
@@ -414,11 +413,6 @@ const selectedBranchName = computed(() => {
   const branch = branches.value.find((item: any) => Number(item.id) === Number(form.branch_id))
   return branch?.name || branch?.branch_name || (form.branch_id ? `Branch #${form.branch_id}` : 'Not assigned')
 })
-const listedProductIds = computed(() => Array.from(new Set(
-  form.items
-    .map((item: any) => Number(item?.product_id || 0))
-    .filter((productId: number) => productId > 0)
-)))
 const productSelectionKey = (productId: any, variationId: any = null) =>
   `${Number(productId || 0)}:${Number(variationId || 0)}`
 const itemSelectionKey = (item: any) =>
@@ -543,11 +537,15 @@ const loadInitialData = async () => {
   try {
     loadingSuppliers.value = true
     const [suppliersRes, branchesRes] = await Promise.all([
-      procurementService.getSuppliers({ per_page: 100, active_contract_only: true }),
+      procurementService.getSuppliers({ per_page: 1000, active_contract_only: true }),
       procurementService.getBranches ? procurementService.getBranches() : Promise.resolve({ data: [] })
     ])
 
     suppliers.value = suppliersRes.data?.data || suppliersRes.data || []
+    eligibleSuppliers.value = suppliers.value.map((supplier: any) => ({
+      ...supplier,
+      display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
+    }))
     const branchData = branchesRes.data?.data || branchesRes.data || []
     branches.value = branchData.map((branch: any) => ({
       ...branch,
@@ -916,77 +914,6 @@ const loadProductsBySupplier = async (supplierId: number) => {
   }
 }
 
-let supplierEligibilityRequest = 0
-const loadEligibleSuppliers = async () => {
-  const requestId = ++supplierEligibilityRequest
-  const productIds = listedProductIds.value
-
-  if (splitPoMode.value) {
-    eligibleSuppliers.value = []
-    eligibleSuppliersLoading.value = false
-    return
-  }
-
-  if (productIds.length === 0) {
-    eligibleSuppliers.value = []
-    eligibleSuppliersLoading.value = false
-    if (!isEditing.value && form.supplier_id) {
-      form.supplier_id = null
-      await onSupplierChange()
-    }
-    return
-  }
-
-  eligibleSuppliersLoading.value = true
-  try {
-    const response = await procurementService.getSuppliers({
-      per_page: 100,
-      active_contract_only: true,
-      product_ids: productIds,
-    })
-    if (requestId !== supplierEligibilityRequest) return
-
-    const payload = response?.data ?? response
-    const page = payload?.data ?? payload
-    const rows = Array.isArray(page) ? page : (page?.data || [])
-    const options = (Array.isArray(rows) ? rows : []).map((supplier: any) => ({
-      ...supplier,
-      display_name: supplier.supplier_name || supplier.company_name || `Supplier #${supplier.id}`,
-    }))
-
-    if (isEditing.value && form.supplier_id && !options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))) {
-      const currentSupplier = suppliers.value.find((supplier: any) => Number(supplier.id) === Number(form.supplier_id))
-      if (currentSupplier) {
-        options.unshift({
-          ...currentSupplier,
-          display_name: currentSupplier.supplier_name || currentSupplier.company_name || `Supplier #${currentSupplier.id}`,
-        })
-      }
-    }
-
-    eligibleSuppliers.value = options
-
-    if (!isEditing.value && form.supplier_id && !options.some((supplier: any) => Number(supplier.id) === Number(form.supplier_id))) {
-      form.supplier_id = null
-      await onSupplierChange()
-    }
-  } catch (error) {
-    if (requestId === supplierEligibilityRequest) {
-      eligibleSuppliers.value = []
-      toast.add({
-        severity: 'warn',
-        summary: 'Supplier Filter Unavailable',
-        detail: 'Could not load suppliers for the listed products. Please try again.',
-        life: 3000,
-      })
-    }
-  } finally {
-    if (requestId === supplierEligibilityRequest) {
-      eligibleSuppliersLoading.value = false
-    }
-  }
-}
-
 watch(
   () => form.branch_id,
   async (branchId) => {
@@ -1075,11 +1002,6 @@ const onSupplierChange = async () => {
     console.error('Failed to auto-fill supplier details', error)
   }
 }
-
-watch(
-  () => listedProductIds.value.join(','),
-  () => void loadEligibleSuppliers(),
-)
 
 const onProductChange = (index: number, productId: any) => {
   if (productId) {

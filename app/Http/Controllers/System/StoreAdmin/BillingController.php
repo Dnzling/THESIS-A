@@ -124,7 +124,7 @@ class BillingController extends Controller
                         'key' => 'branches',
                         'label' => 'Store Branches',
                         'limit' => $plan?->max_branches,
-                        'used' => $store->branches()->count(),
+                        'used' => $store->branches()->where('branch_type', 'storefront')->count(),
                     ],
                     [
                         'key' => 'warehouses',

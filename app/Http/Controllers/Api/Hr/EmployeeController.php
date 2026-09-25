@@ -19,6 +19,7 @@ use App\Models\Hr\Shift;
 use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\ShiftSchedule;
 use App\Services\Store\DocumentAutoValidationService;
+use App\Services\Core\PermissionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -396,6 +397,7 @@ class EmployeeController extends Controller
 
             // Update User
             $user = $employee->user;
+            $roleChanged = $request->has('role_id') && (int) $user->role_id !== (int) $validated['role_id'];
             if ($request->has('fname')) $user->fname = $validated['fname'];
             if ($request->has('lname')) $user->lname = $validated['lname'];
             if ($request->has('email')) $user->email = $validated['email'];
@@ -530,6 +532,9 @@ class EmployeeController extends Controller
             DB::commit();
 
             // Clear cached employee details for today (with and without year filter)
+            if ($roleChanged) {
+                app(PermissionService::class)->clearUserCache($user);
+            }
             $today = now()->format('Y-m-d');
             $year = now()->year;
             Cache::forget("employee_details_{$id}_{$year}_{$today}");

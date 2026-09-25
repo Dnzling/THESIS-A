@@ -10,8 +10,10 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <Tag :value="(supplier?.status || 'active').toString().toUpperCase()"
-          :severity="statusSeverity(supplier?.status || 'active')" />
+        <Button v-if="!loading && supplier && activeContractsCount === 0" label="Create Contract" icon="pi pi-plus"
+          severity="warn" size="small" @click="createContract" />
+        <Tag :value="humanize(supplier?.contract_status || 'no_contract')"
+          :severity="contractStatusSeverity(supplier?.contract_status || 'no_contract')" />
       </div>
     </div>
   
@@ -194,6 +196,14 @@
             <span>Start: {{ formatDate(contract.start_date) }}</span>
             <span>End: {{ formatDate(contract.end_date) }}</span>
           </div>
+          <div v-if="contract.status === 'rejected'" class="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+            <p class="font-semibold">Rejection details</p>
+            <p class="mt-1 whitespace-pre-line">{{ contract.rejection_reason || 'No reason provided.' }}</p>
+            <p v-if="contract.rejected_by || contract.rejected_at" class="mt-2 text-rose-700">
+              {{ contract.rejected_by ? `By ${[contract.rejected_by.fname, contract.rejected_by.lname].filter(Boolean).join(' ')}` : 'Reviewer not recorded' }}
+              <span v-if="contract.rejected_at"> · {{ formatDateTime(contract.rejected_at) }}</span>
+            </p>
+          </div>
           <div class="mt-4 flex justify-end">
             <Button label="View Contract" icon="pi pi-eye" size="small" outlined @click="viewContract(contract)" />
           </div>
@@ -371,6 +381,9 @@ const linkedStoreName = computed(() => {
 })
 
 const activeContractsCount = computed(() => {
+  if (supplier.value?.active_contracts_count !== undefined && supplier.value?.active_contracts_count !== null) {
+    return Number(supplier.value.active_contracts_count)
+  }
   if (performance.value?.active_contracts !== undefined && performance.value?.active_contracts !== null) {
     return performance.value.active_contracts
   }
@@ -429,17 +442,10 @@ const loadSupplierData = async () => {
   }
 }
 
-const statusSeverity = (status: string) => {
-  if (status === 'active') return 'success'
-  if (status === 'blacklisted') return 'danger'
-  return 'secondary'
-}
-
 const contractStatusSeverity = (status: string) => {
   if (status === 'active') return 'success'
-  if (status === 'terminated') return 'danger'
-  if (status === 'draft') return 'warning'
-  if (status === 'expiring') return 'warning'
+  if (status === 'terminated' || status === 'rejected') return 'danger'
+  if (status === 'draft' || status === 'pending' || status === 'expiring') return 'warn'
   return 'secondary'
 }
 

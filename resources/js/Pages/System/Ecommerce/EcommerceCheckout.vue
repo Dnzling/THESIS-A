@@ -493,11 +493,9 @@ import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 import InputMask from 'primevue/inputmask'
 import { showAlert } from '@/utils/swal'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -625,22 +623,9 @@ const coordsMap = reactive({
   longitude: null as number | null,
 })
 
-let coordsLeafletMap: L.Map | null = null
-let coordsLeafletMarker: L.Marker | null = null
+let coordsMapInstance: mapboxgl.Map | null = null
+let coordsMarker: mapboxgl.Marker | null = null
 let coordsMapReady = false
-
-const setupLeafletDefaults = () => {
-  const icon = L.icon({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  })
-  L.Marker.prototype.options.icon = icon
-}
 
 const initCoordsMap = () => {
   const container = document.getElementById('checkout-coords-map')
@@ -652,16 +637,21 @@ const initCoordsMap = () => {
   coordsMap.longitude = Number(lng.toFixed(6))
 
   if (!coordsMapReady) {
-    setupLeafletDefaults()
-    coordsLeafletMap = L.map(container).setView([lat, lng], 14)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(coordsLeafletMap)
-
-    coordsLeafletMap.on('click', (e: any) => {
-      coordsMap.latitude = Number(e.latlng.lat.toFixed(6))
-      coordsMap.longitude = Number(e.latlng.lng.toFixed(6))
+    try {
+      coordsMapInstance = new mapboxgl.Map({
+        container,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        accessToken: requireMapboxToken(),
+        center: [lng, lat],
+        zoom: 14,
+      })
+    } catch (error) {
+      console.warn('Mapbox location picker unavailable', error)
+      return
+    }
+    coordsMapInstance.on('click', (e) => {
+      coordsMap.latitude = Number(e.lngLat.lat.toFixed(6))
+      coordsMap.longitude = Number(e.lngLat.lng.toFixed(6))
       redrawCoordsMarker()
     })
 
@@ -669,23 +659,23 @@ const initCoordsMap = () => {
   }
 
   redrawCoordsMarker()
-  setTimeout(() => coordsLeafletMap?.invalidateSize(), 150)
+  setTimeout(() => coordsMapInstance?.resize(), 150)
 }
 
 const redrawCoordsMarker = () => {
-  if (!coordsLeafletMap) return
+  if (!coordsMapInstance) return
   const lat = Number(coordsMap.latitude ?? DEFAULT_DASM_LAT) || DEFAULT_DASM_LAT
   const lng = Number(coordsMap.longitude ?? DEFAULT_DASM_LNG) || DEFAULT_DASM_LNG
 
-  if (coordsLeafletMarker) coordsLeafletMarker.remove()
-  coordsLeafletMarker = L.marker([lat, lng], { draggable: true }).addTo(coordsLeafletMap)
-  coordsLeafletMarker.on('dragend', () => {
-    const pos = coordsLeafletMarker!.getLatLng()
+  if (coordsMarker) coordsMarker.remove()
+  coordsMarker = new mapboxgl.Marker({ draggable: true }).setLngLat([lng, lat]).addTo(coordsMapInstance)
+  coordsMarker.on('dragend', () => {
+    const pos = coordsMarker!.getLngLat()
     coordsMap.latitude = Number(pos.lat.toFixed(6))
     coordsMap.longitude = Number(pos.lng.toFixed(6))
   })
 
-  coordsLeafletMap.setView([lat, lng], 14)
+  coordsMapInstance.flyTo({ center: [lng, lat], zoom: 14 })
 }
 
 const openCoordsMapDialog = async () => {
@@ -700,13 +690,10 @@ async function searchCoordsLocation() {
   if (!coordsMap.searchQuery.trim()) return
   coordsMap.searching = true
   try {
-    const q = encodeURIComponent(coordsMap.searchQuery.trim())
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
-    const results = await res.json()
-    if (results && results.length > 0) {
-      const first = results[0]
-      coordsMap.latitude = Number(Number(first.lat).toFixed(6))
-      coordsMap.longitude = Number(Number(first.lon).toFixed(6))
+    const result = await forwardGeocodeMapbox(coordsMap.searchQuery.trim())
+    if (result) {
+      coordsMap.latitude = Number(result.latitude.toFixed(6))
+      coordsMap.longitude = Number(result.longitude.toFixed(6))
       redrawCoordsMarker()
     }
   } catch (e) {
@@ -736,10 +723,10 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (coordsLeafletMap) {
-    coordsLeafletMap.remove()
-    coordsLeafletMap = null
-    coordsLeafletMarker = null
+  if (coordsMapInstance) {
+    coordsMapInstance.remove()
+    coordsMapInstance = null
+    coordsMarker = null
     coordsMapReady = false
   }
 })
@@ -1244,7 +1231,7 @@ async function startEditAddress(address: AddressTemplate) {
   }
 }
 
-// Coordinates are picked via the interactive map dialog (Leaflet).
+// Coordinates are picked via the interactive Mapbox dialog.
 
 async function placeOrder() {
   if (!selectedAddress.value) {

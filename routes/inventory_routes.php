@@ -271,7 +271,7 @@ Route::prefix('inventory')->group(function () {
     // Warehouses Management
     Route::prefix('warehouses')->group(function () {
         Route::get('/', [WarehouseController::class, 'index']);
-        Route::post('/', [WarehouseController::class, 'store']);
+        Route::post('/', [WarehouseController::class, 'store'])->middleware('subscription.capacity:warehouse_registration');
         Route::get('/{warehouse}', [WarehouseController::class, 'show']);
         Route::put('/{warehouse}', [WarehouseController::class, 'update']);
         Route::delete('/{warehouse}', [WarehouseController::class, 'destroy']);

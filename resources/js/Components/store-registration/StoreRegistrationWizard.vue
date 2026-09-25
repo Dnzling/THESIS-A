@@ -84,6 +84,7 @@ const formData = ref({
   primaryIdBack: null as File | null,
   primaryIdReadMessage: '',
   registrationPermit: null as File | null,
+  businessRegistrationNumber: '',
   taxCertificate: null as File | null,
   mayorPermit: null as File | null,
   additionalNotes: '',

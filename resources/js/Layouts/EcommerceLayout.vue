@@ -296,7 +296,7 @@ async function loadChatThreads() {
 
 watch(() => route.fullPath, () => {
   loadCartCount()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 watch(() => page.url, () => {
   productSearch.value = searchFromUrl()
@@ -304,13 +304,13 @@ watch(() => page.url, () => {
 watch(isLoggedIn, () => {
   loadCartCount()
   loadChatThreads()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 
 onMounted(() => {
   loadCartCount()
   loadChatThreads()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
   window.addEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })

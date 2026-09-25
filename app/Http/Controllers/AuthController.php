@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\LoginResponseResource;
 use App\Http\Resources\UserResource;
-use App\Mail\CustomerOtpVerificationMail;
-use App\Mail\OtpVerificationMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -82,9 +80,6 @@ class AuthController extends Controller
                 return $user;
             });
 
-            $otp = $user->generateOtp();
-            Mail::to($user->email)->send(new OtpVerificationMail($otp, $user->fname));
-
             $user->load(['role' => function ($query) {
                 $query->select('id', 'name', 'display_name');
             }]);
@@ -93,7 +88,7 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Supplier account created. Please verify OTP sent to your email.',
+                'message' => 'Supplier account created. Open the verification page to receive your OTP.',
                 'user' => [
                     'firstname' => $user->fname,
                     'lastname' => $user->lname,
@@ -273,16 +268,6 @@ class AuthController extends Controller
                     );
                 }
 
-                // Keep account creation atomic with OTP delivery. If the mail
-                // transport fails, the transaction rolls back the user and
-                // customer rows so the email can be registered again.
-                $otp = $user->generateOtp();
-                $mail = $user->hasRole('customer')
-                    ? new CustomerOtpVerificationMail($otp, $user->fname)
-                    : new OtpVerificationMail($otp, $user->fname);
-
-                Mail::to($user->email)->send($mail);
-
                 return $user;
             });
 
@@ -297,7 +282,7 @@ class AuthController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Registration successful. Please check your email for OTP.',
+                    'message' => 'Registration successful. Open the verification page to receive your OTP.',
                     'user' => [
                         'firstname' => $user->fname,
                         'lastname' => $user->lname,
@@ -461,8 +446,6 @@ class AuthController extends Controller
 
             // Check email verification
             if (!$user->email_verified_at) {
-                $user->generateOtp();
-
                 // Issue a temporary token for OTP verification flow.
                 $tempToken = $user->createToken('otp_verification')->plainTextToken;
                 $user->loadMissing('role');

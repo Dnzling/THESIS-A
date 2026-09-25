@@ -31,8 +31,8 @@
             <InputText v-model="filters.search" size="small" placeholder="Search supplier" class="w-full"
               @input="onFilterChange" />
           </IconField>
-          <Select v-model="filters.status" :options="statuses" optionLabel="label" optionValue="value"
-            placeholder="Status" size="small" showClear class="w-full" @change="onFilterChange" />
+          <Select v-model="filters.contract_status" :options="statuses" optionLabel="label" optionValue="value"
+            placeholder="Contract Status" size="small" showClear class="w-full" @change="onFilterChange" />
           <Select v-model="filters.supplier_type" :options="supplierTypes" optionLabel="label" optionValue="value"
             placeholder="Supplier Type" size="small" showClear class="w-full" @change="onFilterChange" />
           <div></div>
@@ -73,9 +73,9 @@
           <Column field="supplier_type" header="Type" style="min-width: 140px">
             <template #body="{ data }"><span class="text-sm text-gray-700">{{ humanize(data.supplier_type) }}</span></template>
           </Column>
-          <Column field="status" header="Status" style="min-width: 130px">
+          <Column field="contract_status" header="Contract Status" style="min-width: 150px">
             <template #body="{ data }">
-              <Tag :value="humanize(data.status || 'active')" :severity="statusSeverity(data.status || 'active')" />
+              <Tag :value="humanize(data.contract_status || 'no_contract')" :severity="statusSeverity(data.contract_status || 'no_contract')" />
             </template>
           </Column>
           <Column header="Actions" :frozen="true" alignFrozen="right" style="width: 90px">
@@ -110,7 +110,7 @@ const currentPage = ref(1)
 
 const filters = reactive({
   search: '',
-  status: null as string | null,
+  contract_status: null as string | null,
   supplier_type: null as string | null,
   page: 1,
   per_page: 15,
@@ -118,8 +118,12 @@ const filters = reactive({
 
 const statuses = [
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-  { label: 'Blacklisted', value: 'blacklisted' }
+  { label: 'Pending', value: 'pending' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Rejected', value: 'rejected' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Terminated', value: 'terminated' },
+  { label: 'No Contract', value: 'no_contract' },
 ]
 
 const supplierTypes = [
@@ -132,9 +136,9 @@ const supplierTypes = [
 
 const summaryCards = computed(() => [
   { label: 'Total Suppliers', value: total.value, icon: 'pi pi-users', color: 'text-blue-500' },
-  { label: 'Active', value: suppliers.value.filter((supplier: any) => supplier.status === 'active').length, icon: 'pi pi-check-circle', color: 'text-green-500' },
-  { label: 'Inactive', value: suppliers.value.filter((supplier: any) => supplier.status === 'inactive').length, icon: 'pi pi-pause-circle', color: 'text-gray-500' },
-  { label: 'Blacklisted', value: suppliers.value.filter((supplier: any) => supplier.status === 'blacklisted').length, icon: 'pi pi-ban', color: 'text-red-500' },
+  { label: 'Active Contracts (Page)', value: suppliers.value.filter((supplier: any) => supplier.contract_status === 'active').length, icon: 'pi pi-check-circle', color: 'text-green-500' },
+  { label: 'Pending Contracts (Page)', value: suppliers.value.filter((supplier: any) => supplier.contract_status === 'pending').length, icon: 'pi pi-clock', color: 'text-orange-500' },
+  { label: 'No Contract (Page)', value: suppliers.value.filter((supplier: any) => !supplier.contract_status).length, icon: 'pi pi-file', color: 'text-gray-500' },
 ])
 
 const loadSuppliers = async () => {
@@ -154,7 +158,8 @@ const loadSuppliers = async () => {
 
 const statusSeverity = (status: string) => {
   if (status === 'active') return 'success'
-  if (status === 'blacklisted') return 'danger'
+  if (status === 'pending' || status === 'draft') return 'warn'
+  if (status === 'rejected' || status === 'terminated') return 'danger'
   return 'secondary'
 }
 
@@ -166,7 +171,7 @@ const onFilterChange = () => {
 
 const resetFilters = () => {
   filters.search = ''
-  filters.status = null
+  filters.contract_status = null
   filters.supplier_type = null
   filters.page = 1
   currentPage.value = 1

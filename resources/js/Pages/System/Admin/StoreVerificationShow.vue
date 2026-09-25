@@ -13,7 +13,7 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button v-if="status === 'pending'" label="Reject" icon="pi pi-times" severity="danger" outlined @click="rejectOpen = true" />
-        <Button v-if="status === 'pending'" label="Approve Store" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approve" />
+        <Button v-if="status === 'pending'" label="Approve Store" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approveOpen = true" />
         <Tag :value="title(status)" :severity="statusSeverity(status)" rounded />
       </div>
     </div>
@@ -47,9 +47,6 @@
 
           <SectionCard title="Registered location" icon="pi pi-map-marker">
             <InfoGrid :items="locationInfo" />
-            <a v-if="mapUrl" :href="mapUrl" target="_blank" rel="noopener" class="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline">
-              <i class="pi pi-external-link" /> Open coordinates in map
-            </a>
           </SectionCard>
 
           <SectionCard title="Submitted documents" icon="pi pi-images">
@@ -60,8 +57,9 @@
             </div>
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <article v-for="doc in documents" :key="`${doc.key}-${doc.index ?? 'main'}`" class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                <button v-if="isImage(doc) && doc.preview_url" class="block h-40 w-full bg-slate-100" @click="openDocument(doc)">
+                <button v-if="doc.preview_url" class="block h-40 w-full overflow-hidden bg-slate-100" @click="openDocument(doc)">
                   <img v-if="thumbnailUrls[documentId(doc)]" :src="thumbnailUrls[documentId(doc)]" :alt="doc.label" class="h-full w-full object-cover transition duration-300 hover:scale-[1.03]" />
+                  <iframe v-else-if="pdfPreviewUrls[documentId(doc)]" :src="`${pdfPreviewUrls[documentId(doc)]}#toolbar=0&navpanes=0&scrollbar=0`" :title="doc.label" tabindex="-1" class="pointer-events-none h-full w-full border-0" />
                   <span v-else class="flex h-full items-center justify-center"><i class="pi pi-spin pi-spinner text-2xl text-slate-400" /></span>
                 </button>
                 <button v-else class="flex h-40 w-full items-center justify-center bg-slate-100" :disabled="!doc.submitted" @click="openDocument(doc)">
@@ -103,6 +101,16 @@
 
     <div v-else class="rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-red-700">Unable to load this verification record.</div>
 
+    <Dialog v-model:visible="approveOpen" modal header="Approve store verification" :closable="!processing" :style="{ width: '32rem', maxWidth: '94vw' }">
+      <p class="text-sm leading-6 text-slate-600">
+        Approve <strong class="text-slate-900">{{ store?.name || 'this store' }}</strong>? The store will become active and its verification will be marked approved.
+      </p>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text :disabled="processing" @click="approveOpen = false" />
+        <Button label="Approve Store" icon="pi pi-check" severity="success" :loading="processing" :disabled="!documentSummary.can_approve" @click="approve" />
+      </template>
+    </Dialog>
+
     <Dialog v-model:visible="rejectOpen" modal header="Reject store verification" :style="{ width: '32rem', maxWidth: '94vw' }">
       <p class="mb-3 text-sm text-slate-600">Explain what must be corrected before the store submits again.</p>
       <Textarea v-model="rejectionReason" rows="6" fluid placeholder="Detailed rejection reason" />
@@ -131,9 +139,11 @@ const toast = useToast()
 const loading = ref(true)
 const processing = ref(false)
 const payload = ref<any>(null)
+const approveOpen = ref(false)
 const rejectOpen = ref(false)
 const rejectionReason = ref('')
 const thumbnailUrls = ref<Record<string, string>>({})
+const pdfPreviewUrls = ref<Record<string, string>>({})
 const objectUrls = new Set<string>()
 
 const verification = computed(() => payload.value?.verification || null)
@@ -161,19 +171,13 @@ const ownerInfo = computed(() => [
 ])
 const locationInfo = computed(() => [
   ['Verification address', verification.value?.address], ['Store address', store.value?.address], ['Barangay', store.value?.barangay],
-  ['City', verification.value?.city || store.value?.city], ['Province', store.value?.province], ['Latitude', verification.value?.latitude || store.value?.latitude],
-  ['Longitude', verification.value?.longitude || store.value?.longitude],
+  ['City', verification.value?.city || store.value?.city], ['Province', store.value?.province]
 ])
 const reviewInfo = computed(() => [
   ['Submitted', dateTime(verification.value?.submitted_at)], ['Reviewed', dateTime(verification.value?.reviewed_at)],
   ['Reviewed by', fullName(verification.value?.reviewer)], ['Reviewer email', verification.value?.reviewer?.email],
   ['Last updated', dateTime(verification.value?.updated_at)], ['Record created', dateTime(verification.value?.created_at)],
 ])
-const mapUrl = computed(() => {
-  const lat = verification.value?.latitude || store.value?.latitude
-  const lng = verification.value?.longitude || store.value?.longitude
-  return lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : ''
-})
 
 const SummaryCard = defineComponent({ props: { label: String, value: String, icon: String, tone: String }, setup: props => () => h('div', { class: 'rounded-2xl border border-slate-100 bg-white p-5 shadow-sm' }, [h('div', { class: 'flex items-center justify-between gap-3' }, [h('div', [h('p', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-500' }, props.label), h('p', { class: 'mt-2 text-lg font-semibold text-slate-950' }, props.value)]), h('span', { class: 'flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600' }, [h('i', { class: props.icon })])])]) })
 const SectionCard = defineComponent({ props: { title: String, icon: String }, setup: (props, { slots }) => () => h('section', { class: 'rounded-2xl border border-slate-100 bg-white p-6 shadow-sm' }, [h('div', { class: 'mb-5 flex items-center gap-3' }, [h('span', { class: 'flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600' }, [h('i', { class: props.icon })]), h('h2', { class: 'font-semibold text-slate-950' }, props.title)]), slots.default?.()]) })
@@ -186,14 +190,18 @@ const documentId = (doc: any) => `${doc.key}-${doc.index ?? 'main'}`
 const createObjectUrl = (blob: Blob) => { const url = URL.createObjectURL(blob); objectUrls.add(url); return url }
 const fetchBlob = async (url: string) => { const response = await axiosClient.get(apiPath(url), { responseType: 'blob' }); return new Blob([response.data], { type: response.headers['content-type'] || response.data?.type || 'application/octet-stream' }) }
 const loadThumbnails = async () => {
-  const images = documents.value.filter((doc: any) => isImage(doc) && doc.preview_url)
-  await Promise.all(images.map(async (doc: any) => {
-    try { thumbnailUrls.value[documentId(doc)] = createObjectUrl(await fetchBlob(doc.preview_url)) } catch { /* The card remains available for retry. */ }
+  const previewable = documents.value.filter((doc: any) => doc.preview_url)
+  await Promise.all(previewable.map(async (doc: any) => {
+    try {
+      const url = createObjectUrl(await fetchBlob(doc.preview_url))
+      if (isImage(doc)) thumbnailUrls.value[documentId(doc)] = url
+      else if (String(doc.mime_type) === 'application/pdf') pdfPreviewUrls.value[documentId(doc)] = url
+    } catch { /* The card remains available for retry. */ }
   }))
 }
 const load = async () => { loading.value = true; try { const response = await axiosClient.get(`/api/store-verification/${route.params.id}`); payload.value = response.data?.data; await loadThumbnails() } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load verification', detail: error?.response?.data?.message || 'Please try again.', life: 3500 }) } finally { loading.value = false } }
-const review = async (action: 'approve' | 'reject', reason?: string) => { processing.value = true; try { await axiosClient.post(`/api/store-verification/${route.params.id}/review`, { action, rejection_reason: reason }); toast.add({ severity: 'success', summary: action === 'approve' ? 'Store approved' : 'Store rejected', detail: 'The verification record has been updated.', life: 3000 }); rejectOpen.value = false; rejectionReason.value = ''; await load() } catch (error: any) { toast.add({ severity: 'error', summary: 'Review failed', detail: error?.response?.data?.message || 'Unable to update verification.', life: 4000 }) } finally { processing.value = false } }
-const approve = () => { if (window.confirm('Approve this store verification?')) review('approve') }
+const review = async (action: 'approve' | 'reject', reason?: string) => { processing.value = true; try { await axiosClient.post(`/api/store-verification/${route.params.id}/review`, { action, rejection_reason: reason }); toast.add({ severity: 'success', summary: action === 'approve' ? 'Store approved' : 'Store rejected', detail: 'The verification record has been updated.', life: 3000 }); approveOpen.value = false; rejectOpen.value = false; rejectionReason.value = ''; await load() } catch (error: any) { toast.add({ severity: 'error', summary: 'Review failed', detail: error?.response?.data?.message || 'Unable to update verification.', life: 4000 }) } finally { processing.value = false } }
+const approve = () => review('approve')
 const reject = () => review('reject', rejectionReason.value.trim())
 const goBack = () => router.push({ name: 'AdminStoreValidation' })
 const isImage = (doc: any) => String(doc?.mime_type || '').startsWith('image/')

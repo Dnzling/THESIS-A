@@ -20,7 +20,10 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-gray-700">Store Name</label>
-              <InputText :modelValue="selectedStoreName" class="w-full" disabled />
+              <p class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">
+                {{ selectedStoreName }}
+              </p>
+              <small v-if="errors.store_id" class="text-red-600">{{ errors.store_id }}</small>
             </div>
 
             <div class="flex flex-col gap-2">
@@ -183,10 +186,12 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 const loading = ref(false)
 const submitting = ref(false)
 const suppliers = ref<any[]>([])
@@ -197,7 +202,7 @@ const showReviewDialog = ref(false)
 const titleManuallyEdited = ref(false)
 
 const form = reactive({
-  store_id: null,
+  store_id: null as number | null,
   supplier_id: null,
   contract_title: '',
   contract_type: 'supply',
@@ -739,6 +744,7 @@ const onFileSelect = (event: any) => {
 const validateForm = (): boolean => {
   Object.keys(errors).forEach(key => delete errors[key])
 
+  if (!form.store_id) errors.store_id = 'Your account has no assigned store'
   if (!form.supplier_id) errors.supplier_id = 'Please select a supplier'
   if (!form.contract_title) {
     form.contract_title = generateContractTitle()
@@ -760,6 +766,10 @@ const validateForm = (): boolean => {
 }
 
 const saveDraft = async () => {
+  if (!form.store_id) {
+    toast.add({ severity: 'warn', summary: 'Store unavailable', detail: 'Your account has no assigned store.', life: 3000 })
+    return
+  }
   if (!form.supplier_id) {
     toast.add({ severity: 'warn', summary: 'Incomplete', detail: 'Please select supplier first', life: 3000 })
     return
@@ -913,14 +923,15 @@ const skipOrCancel = () => {
 
 onMounted(async () => {
   try {
-    selectedStoreName.value = (route.query.store_name as string) || 'Not Selected'
+    const currentUser = await authStore.fetchCurrentUser()
+    const assignedStore = currentUser?.store || authStore.user?.store
+    form.store_id = assignedStore?.id || null
+    selectedStoreName.value = assignedStore?.name || 'No store assigned'
     selectedSupplierName.value = (route.query.supplier_name as string) || 'Not Selected'
 
     // Auto-select supplier if passed from supplier creation flow
     if (route.query.supplier_id) {
       form.supplier_id = parseInt(route.query.supplier_id as string)
-      form.store_id = route.query.store_id ? parseInt(route.query.store_id as string) : null
-
       if (!selectedSupplierName.value || selectedSupplierName.value === 'Not Selected') {
         const response = await procurementService.getSuppliers({ per_page: 100 })
         suppliers.value = response.data?.data || []

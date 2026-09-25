@@ -23,9 +23,13 @@
             class="px-6"
           />
           <Button label="Report" icon="pi pi-flag" severity="danger" outlined @click="openReportDialog" class="px-6" />
-          <Button v-if="canApproveSupplierContracts && ['draft','pending'].includes(contract?.status)" label="Approve" icon="pi pi-check-circle" severity="success" 
+          <Button v-if="canApproveSupplierContracts && !isSupplierRoute && ['draft','pending'].includes(contract?.status) && contract?.submitted_by_type === 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
             @click="activateContract" :loading="activating" class="px-6" />
           <Button v-if="canApproveSupplierContracts && contract?.status === 'pending'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
+            @click="openRejectContractDialog" class="px-6" />
+          <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
+            :loading="activating" @click="activateContract" class="px-6" />
+          <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
             @click="openRejectContractDialog" class="px-6" />
           <Button v-if="contract?.status === 'active'" label="Request Termination" icon="pi pi-ban" severity="danger" outlined
             @click="openTerminateRequestDialog" class="px-6" />
@@ -89,6 +93,7 @@
       <div v-if="contract?.status === 'rejected'" class="bg-rose-50 rounded-lg border border-rose-200 p-4 mb-6">
         <p class="text-sm font-semibold text-rose-800">Contract Rejected</p>
         <p class="text-xs text-rose-700 mt-1">{{ contract?.rejection_reason || 'No reason provided.' }}</p>
+        <p v-if="contract?.rejected_by" class="text-xs text-rose-700 mt-1">Rejected by: {{ [contract.rejected_by.fname, contract.rejected_by.lname].filter(Boolean).join(' ') }}</p>
         <p v-if="contract?.rejected_at" class="text-xs text-rose-700 mt-1">Rejected at: {{ formatDatetime(contract?.rejected_at) }}</p>
       </div>
 
@@ -325,7 +330,7 @@
       <div class="space-y-3">
         <div>
           <label class="block text-sm font-medium mb-1">Reason</label>
-          <Select v-model="rejectContractReason" :options="rejectContractReasonOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select a reason" />
+          <Select v-model="rejectContractReason" :options="isSupplierRoute ? supplierRejectReasonOptions : rejectContractReasonOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select a reason" />
         </div>
         <div v-if="rejectContractReason === 'other'">
           <label class="block text-sm font-medium mb-1">Custom Reason</label>
@@ -333,7 +338,7 @@
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Details (optional)</label>
-          <Textarea v-model="rejectContractDetails" rows="3" class="w-full" placeholder="Add details for supplier..." />
+          <Textarea v-model="rejectContractDetails" rows="3" class="w-full" :placeholder="isSupplierRoute ? 'Add details for the store...' : 'Add details for supplier...'" />
         </div>
       </div>
       <template #footer>
@@ -622,7 +627,9 @@ const validityIcon = computed(() => {
 const loadContract = async () => {
   loading.value = true
   try {
-    const response = await procurementService.getSupplierContract(route.params.id as string)
+    const response = isSupplierRoute.value
+      ? await axiosClient.get(`/api/supplier-portal/contracts/${route.params.id}`)
+      : await procurementService.getSupplierContract(route.params.id as string)
     contract.value = response.data
     await loadMyReports()
   } catch (error) {
@@ -723,7 +730,11 @@ const activateContract = async () => {
     accept: async () => {
       activating.value = true
       try {
-        await procurementService.activateSupplierContract(route.params.id as string)
+        if (isSupplierRoute.value) {
+          await axiosClient.post(`/api/supplier-portal/contracts/${route.params.id}/approve`)
+        } else {
+          await procurementService.activateSupplierContract(route.params.id as string)
+        }
         toast.add({ severity: 'success', summary: 'Success', detail: 'Contract approved and activated.', life: 3000 })
         loadContract()
       } catch (error: any) {
@@ -773,6 +784,12 @@ const rejectContractReasonOptions = [
   { label: 'Supplier compliance issue', value: 'Supplier compliance issue' },
   { label: 'Other', value: 'other' },
 ]
+const supplierRejectReasonOptions = [
+  { label: 'Contract terms need changes', value: 'Contract terms need changes' },
+  { label: 'Pricing or discount is not acceptable', value: 'Pricing or discount is not acceptable' },
+  { label: 'Dates or duration need changes', value: 'Dates or duration need changes' },
+  { label: 'Other', value: 'other' },
+]
 
 const openRejectContractDialog = () => {
   rejectContractReason.value = ''
@@ -796,7 +813,10 @@ const submitRejectContract = async () => {
     accept: async () => {
       rejectingContract.value = true
       try {
-        await axiosClient.post(`/api/procurement/supplier-contracts/${contract.value.id}/reject`, {
+        const rejectPath = isSupplierRoute.value
+          ? `/api/supplier-portal/contracts/${contract.value.id}/reject`
+          : `/api/procurement/supplier-contracts/${contract.value.id}/reject`
+        await axiosClient.post(rejectPath, {
           reason: finalReason,
           details: rejectContractDetails.value?.trim() || null,
         })

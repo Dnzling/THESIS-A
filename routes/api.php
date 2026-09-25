@@ -55,6 +55,7 @@ Route::prefix('auth')->group(function () {
 
     // Email Verification (public routes with temporary token)
     Route::post('verify-otp', [VerifyEmailController::class, 'verifyOtpApi']);
+    Route::middleware('throttle:6,1')->post('send-otp', [VerifyEmailController::class, 'resendOtpApi']);
     Route::post('resend-otp', [VerifyEmailController::class, 'resendOtpApi']);
 });
 
@@ -377,6 +378,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('store-verifications', [StoreVerificationController::class, 'index']);
     Route::get('store-verification/{verification}', [StoreVerificationController::class, 'show']);
     Route::post('store-verification/owner-id/extract', [StoreVerificationController::class, 'extractOwnerId']);
+    Route::post('store-verification/business-registration/extract', [StoreVerificationController::class, 'extractBusinessRegistration']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
     Route::get('store-verification/{verification}/documents/{document}/preview', [StoreVerificationController::class, 'previewDocument']);

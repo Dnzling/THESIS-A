@@ -356,11 +356,18 @@ class SupplierService {
     variant_material?: string
     unit_of_measurement?: string
     variant_images?: File[]
+    additional_variants?: Record<string, string>[]
   }) {
     const formData = new FormData()
     Object.entries(data).forEach(([key, value]) => {
       if (key === 'variant_images' && Array.isArray(value)) {
         value.forEach((file) => formData.append('variant_images[]', file))
+        return
+      }
+      if (key === 'additional_variants' && Array.isArray(value)) {
+        value.forEach((variant, index) => Object.entries(variant).forEach(([field, fieldValue]) => {
+          formData.append(`additional_variants[${index}][${field}]`, fieldValue || '')
+        }))
         return
       }
       if (value !== undefined && value !== null && value !== '') {

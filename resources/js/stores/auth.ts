@@ -10,6 +10,7 @@ interface User {
     last_name: string
     role: string
     email: string
+    store?: { id: number; name: string } | null
     abilities?: string[]
 }
 
@@ -535,14 +536,21 @@ export const useAuthStore = defineStore('auth', () => {
                 payload?.user ??
                 payload
 
+            const previousRole = String(user.value?.role || '')
             user.value = resolvedUser
             localStorage.setItem('user', JSON.stringify(resolvedUser))
 
-            const shouldReloadPermissions = options?.reloadPermissions === true
+            const shouldReloadPermissions = options?.reloadPermissions === true || previousRole !== String(resolvedUser?.role || '')
             if (shouldReloadPermissions) {
                 // Explicit refresh requested (rare). Use this when role/permissions might have changed.
                 permissionsLoaded.value = false
                 isLoadingPermissions.value = false
+                permissions.value = []
+                navigation.value = []
+                systemModules.value = []
+                localStorage.removeItem('permissions')
+                localStorage.removeItem('navigation')
+                localStorage.removeItem('system_modules')
                 await loadPermissions()
             } else if (!permissionsLoaded.value && !isLoadingPermissions.value) {
                 // If permissions weren't loaded yet, load once. Otherwise keep cache to avoid reloading per page.

@@ -43,13 +43,13 @@ class StoreVerificationController extends Controller
             'label' => 'BIR Tax Certificate',
             'required' => true,
             'allowed_mimes' => ['application/pdf'],
-            'max_kb' => 5120,
+            'max_kb' => 10240,
         ],
         'business_permit_file' => [
             'label' => "Mayor's/Business Permit",
             'required' => true,
             'allowed_mimes' => ['application/pdf'],
-            'max_kb' => 5120,
+            'max_kb' => 10240,
         ],
     ];
 
@@ -75,11 +75,11 @@ class StoreVerificationController extends Controller
                 'gov_id_number' => ['required', 'string', 'max:100'],
                 'gov_id_front_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
                 'gov_id_back_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
-                'business_registration_number' => ['nullable', 'string', 'max:100'],
+                'business_registration_number' => ['required', 'string', 'max:100'],
                 'business_registration_date' => ['required', 'date', 'before_or_equal:today'],
                 'business_registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-                'tax_certificate_file' => ['required', 'file', 'mimes:pdf', 'max:5120'],
-                'business_permit_file' => ['required', 'file', 'mimes:pdf', 'max:5120'],
+                'tax_certificate_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+                'business_permit_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
             ]);
 
             $legitimacyIssues = $this->validateUploadedDocuments($request);
@@ -179,6 +179,38 @@ class StoreVerificationController extends Controller
                     'message' => $idNumber
                         ? 'We found a possible ID number. Please confirm it before submitting.'
                         : 'We could not read the ID number clearly. Please enter it manually.',
+                ],
+            ]);
+        } finally {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    public function extractBusinessRegistration(Request $request)
+    {
+        $request->validate([
+            'registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+        ]);
+
+        $path = $request->file('registration_file')->store('store-verifications/tmp-registration', 'public');
+
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $number = null;
+            foreach (preg_split('/\R/', $text) ?: [] as $line) {
+                if (preg_match('/(?:registration|certificate|business|permit)\s*(?:no\.?|number|#|id)\s*[:#-]?\s*([A-Z0-9][A-Z0-9\-\/ ]{4,30})/i', $line, $matches)) {
+                    $number = trim($matches[1]);
+                    break;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'registration_number' => $number,
+                    'message' => $number
+                        ? 'Possible registration number found. Please confirm it against your certificate.'
+                        : 'Could not read a registration number. Please enter it manually.',
                 ],
             ]);
         } finally {
@@ -489,6 +521,27 @@ class StoreVerificationController extends Controller
 
             $message = 'Store verification rejected';
         }
+
+        $storeId = (int) $verification->store_id;
+        User::query()->where('store_id', $storeId)->get(['id', 'role_id', 'store_id'])
+            ->filter(fn (User $user) => $user->hasPermissionTo('admin.settings.manage', $storeId))
+            ->each(function (User $user) use ($storeId, $verification, $validated) {
+                $approved = $validated['action'] === 'approve';
+                $this->notify((int) $user->id, [
+                    'store_id' => $storeId,
+                    'module' => 'admin',
+                    'entity_type' => 'store_verification',
+                    'entity_id' => (int) $verification->id,
+                    'action' => $approved ? 'approved' : 'rejected',
+                    'title' => $approved ? 'Store verification approved' : 'Store verification needs changes',
+                    'message' => $approved
+                        ? 'Your store verification was approved.'
+                        : 'Your store verification was rejected. Review the reason in Store Settings and resubmit.',
+                    'data' => $approved ? [] : ['rejection_reason' => $validated['rejection_reason']],
+                    'link' => '/store/settings',
+                    'severity' => $approved ? 'success' : 'warn',
+                ]);
+            });
 
         return response()->json([
             'success' => true,

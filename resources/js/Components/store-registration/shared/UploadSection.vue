@@ -11,7 +11,7 @@
         </p>
       </div>
       <span class="rounded-full bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700">
-        Max 5MB
+        Max {{ maxMb }}MB
       </span>
     </div>
     
@@ -31,8 +31,9 @@
           </p>
         </div>
         <div v-else class="flex items-center justify-center space-x-4">
-          <div class="rounded-xl bg-emerald-100 p-3">
-            <i class="pi pi-file text-2xl text-emerald-600"></i>
+          <div class="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-orange-100 bg-white">
+            <img v-if="previewUrl && file.type.startsWith('image/')" :src="previewUrl" :alt="title" class="h-full w-full object-cover" />
+            <iframe v-else-if="previewUrl && file.type === 'application/pdf'" :src="`${previewUrl}#toolbar=0&navpanes=0`" :title="title" tabindex="-1" class="pointer-events-none h-full w-full border-0" />
           </div>
           <div class="text-left">
             <p class="font-medium text-slate-800">{{ file.name }}</p>
@@ -64,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, onBeforeUnmount, ref, watch} from 'vue'
 
 interface Props {
   title: string
@@ -78,11 +79,18 @@ const props = withDefaults(defineProps<Props>(), {
   accept: '.jpg,.jpeg,.png',
   required: false
 })
+const previewUrl = ref('')
+watch(() => props.file, (file) => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = file ? URL.createObjectURL(file) : ''
+}, { immediate: true })
+onBeforeUnmount(() => { if (previewUrl.value) URL.revokeObjectURL(previewUrl.value) })
 
 const emit = defineEmits<{
   upload: [file: File]
   remove: []
 }>()
+const maxMb = computed(() => props.accept === '.pdf' ? 10 : 5)
 
 const handleFileChange = (event: Event) => {
   const input = event.target as HTMLInputElement
@@ -101,7 +109,7 @@ const formatFileSize = (bytes: number) => {
 
 const acceptText = computed(() => {
   if (props.accept.includes('.pdf')) {
-    return 'PNG, JPG, PDF up to 5MB'
+    return props.accept === '.pdf' ? 'PDF up to 10MB' : 'PNG, JPG, PDF up to 5MB'
   }
   return 'PNG, JPG up to 5MB'
 })

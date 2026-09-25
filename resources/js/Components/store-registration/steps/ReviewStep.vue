@@ -16,6 +16,7 @@
     </ReviewSection>
 
     <ReviewSection title="Business Documents" :canEdit="true" @edit="$emit('edit-step', 2)">
+      <InfoItem label="Business registration number" :value="formData.businessRegistrationNumber" />
       <div class="grid gap-4 md:grid-cols-3">
         <FilePreview :file="formData.registrationPermit" label="Registration permit" />
         <FilePreview :file="formData.taxCertificate" label="BIR tax certificate" />
@@ -131,6 +132,7 @@ const hasRequiredData = computed(() =>
   && Boolean(String(props.formData.primaryIdNumber || '').trim())
   && props.formData.primaryIdFront instanceof File
   && props.formData.registrationPermit instanceof File
+  && Boolean(String(props.formData.businessRegistrationNumber || '').trim())
   && props.formData.taxCertificate instanceof File
   && props.formData.mayorPermit instanceof File
 )
@@ -169,7 +171,7 @@ const submitVerification = async () => {
     const payload = new FormData()
     payload.append('gov_id_type', props.formData.primaryIdType)
     payload.append('gov_id_number', props.formData.primaryIdNumber)
-    payload.append('business_registration_number', '')
+    payload.append('business_registration_number', props.formData.businessRegistrationNumber || '')
     payload.append('business_registration_date', new Date().toISOString().slice(0, 10))
     appendFile(payload, 'gov_id_front_file', props.formData.primaryIdFront)
     appendFile(payload, 'gov_id_back_file', props.formData.primaryIdBack)

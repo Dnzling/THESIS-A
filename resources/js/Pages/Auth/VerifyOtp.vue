@@ -337,8 +337,8 @@ const resendCode = async () => {
   }
 }
 
-// Auto-focus first input on mount
-onMounted(() => {
+// The verification page owns the first OTP delivery, not registration.
+onMounted(async () => {
   setTimeout(() => {
     focusOtpInput(0)
   }, 100)
@@ -356,8 +356,20 @@ onMounted(() => {
     console.warn('No register_token found in localStorage')
   }
 
-  // Start initial 60s countdown on page load
-  startResendCooldown()
+  if (!accessToken.value) {
+    errorMessage.value = 'Your verification session has expired. Please log in again.'
+    return
+  }
+  if (isProfileOtp.value) return
+  try {
+    const response = await axios.post('/api/auth/send-otp', {}, {
+      headers: { Authorization: `Bearer ${accessToken.value}` },
+    })
+    successMessage.value = response.data.message || 'Verification code sent to your email.'
+    startResendCooldown()
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.message || 'Could not send your verification code. Please try again.'
+  }
 })
 
 onBeforeUnmount(() => {

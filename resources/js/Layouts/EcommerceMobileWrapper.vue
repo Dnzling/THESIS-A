@@ -97,7 +97,6 @@ const authStore = useAuthStore()
 const isLoggedIn = computed(() => authStore.isAuthenticated)
 const cartCount = ref(0)
 const unreadNotificationCount = ref(0)
-let notificationPoll: ReturnType<typeof setInterval> | null = null
 const isNotificationsActive = computed(() => String(route.name || '') === 'ecommerce.notifications')
 
 function isActive(names: string[]) {
@@ -161,17 +160,16 @@ function handleNotificationsUpdated() {
 
 watch(() => route.fullPath, () => {
   loadCartCount()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 watch(isLoggedIn, () => {
   loadCartCount()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 
 onMounted(() => {
   loadCartCount()
-  loadUnreadNotificationCount()
-  notificationPoll = setInterval(loadUnreadNotificationCount, 30000)
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
   window.addEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
@@ -179,6 +177,5 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
   window.removeEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
-  if (notificationPoll) clearInterval(notificationPoll)
 })
 </script>

@@ -262,6 +262,9 @@ const currentPath = computed(() => String(page.url || '').split('?')[0] || '/')
 const pageTitle = computed(() => page.props?.title || '')
 const isMerchandising = computed(() => currentPath.value.startsWith('/merchandising'))
 const authStore = useAuthStore()
+watch(() => page.url, () => {
+  if (authStore.isAuthenticated) void authStore.fetchCurrentUser().catch(() => {})
+})
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isBooting = ref(true)
 const userDialogRef = ref(null)
@@ -306,13 +309,11 @@ onMounted(async () => {
     return
   }
 
-  if (!authStore.user) {
-    try {
-      await authStore.fetchCurrentUser()
-    } catch (error) {
-      // fetchCurrentUser handles logout/redirection on 401
-      return
-    }
+  try {
+    await authStore.fetchCurrentUser()
+  } catch (error) {
+    // fetchCurrentUser handles logout/redirection on 401
+    return
   }
 
   if (!isAuthenticated.value) {

@@ -139,7 +139,18 @@ class SupplierController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::where('store_id', Auth::user()->store_id);
+        $contractStatusQuery = $this->contractStatusQuery();
+        $query = Supplier::where('store_id', Auth::user()->store_id)
+            ->select('suppliers.*')
+            ->selectSub($contractStatusQuery, 'contract_status');
+
+        if ($request->filled('contract_status')) {
+            $status = $request->input('contract_status');
+            $query->whereRaw(
+                'COALESCE((' . $this->contractStatusQuery()->toSql() . "), 'no_contract') = ?",
+                [...$this->contractStatusQuery()->getBindings(), $status]
+            );
+        }
 
         if ($request->boolean('active_contract_only')) {
             $query->whereHas('contracts', function ($contractQuery) {
@@ -209,17 +220,33 @@ class SupplierController extends Controller
     {
         $supplier = Supplier::with([
             'store:id,name,store_code,city,province,address',
-            'contracts',
+            'contracts.rejectedBy:id,fname,lname',
             'products',
             'purchaseOrders' => function ($query) {
                 $query->latest()->limit(10);
             }
-        ])->findOrFail($id);
+        ])->select('suppliers.*')
+            ->selectSub($this->contractStatusQuery(), 'contract_status')
+            ->withCount(['contracts as active_contracts_count' => fn ($query) => $query->active()])
+            ->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $supplier,
         ]);
+    }
+
+    private function contractStatusQuery()
+    {
+        $today = now()->toDateString();
+
+        return \Illuminate\Support\Facades\DB::table('supplier_contracts')
+            ->select('status')
+            ->whereColumn('supplier_contracts.supplier_id', 'suppliers.id')
+            ->orderByRaw("CASE WHEN status = 'active' AND start_date <= ? AND end_date >= ? THEN 0 ELSE 1 END", [$today, $today])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(1);
     }
 
     /**

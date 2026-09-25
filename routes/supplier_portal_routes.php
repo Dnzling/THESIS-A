@@ -28,6 +28,9 @@ Route::prefix('supplier-portal')->group(function () {
         Route::get('/stores/search', [SupplierPortalController::class, 'searchStores']);
         Route::post('/stores/link', [SupplierPortalController::class, 'linkStore']);
         Route::get('/stores/{storeId}', [SupplierPortalController::class, 'getLinkedStoreDetail'])->whereNumber('storeId');
+        Route::get('/contracts/{id}', [SupplierContractController::class, 'show'])->whereNumber('id');
+        Route::post('/contracts/{id}/approve', [SupplierContractController::class, 'supplierApprove'])->whereNumber('id');
+        Route::post('/contracts/{id}/reject', [SupplierContractController::class, 'supplierReject'])->whereNumber('id');
         Route::post('/contracts/{id}/report', [SupplierContractController::class, 'report'])->whereNumber('id');
         Route::post('/contracts/{id}/terminate-request', [SupplierContractController::class, 'requestTermination'])->whereNumber('id');
         Route::post('/contracts/{id}/terminate-request/respond', [SupplierContractController::class, 'respondTerminationRequest'])->whereNumber('id');

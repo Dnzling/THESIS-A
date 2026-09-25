@@ -198,7 +198,7 @@
             <section class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
                 <h2 class="text-xl font-semibold text-gray-900">Pricing</h2>
-                <p class="text-sm text-gray-500 mt-1">Set the price and tax information</p>
+                <p class="text-sm text-gray-500 mt-1">Set the selling price and optional discount</p>
               </div>
               <Message v-if="isEditMode && form.price_approval_status === 'pending'" severity="warn" :closable="false">
                 Price update is pending finance approval. Live selling price will stay unchanged until approved.
@@ -220,19 +220,13 @@
                   <small class="text-gray-500 text-xs">Auto-managed value (read-only)</small>
                 </div>
   
-                <div v-if="!isRawMaterialType" class="space-y-2">
+                <div v-if="!isRawMaterialType" class="space-y-2 md:col-span-2">
                   <label class="text-sm font-medium text-gray-700">Discounted Price</label>
                   <InputNumber id="discounted_price" v-model="form.discounted_price" mode="currency" currency="PHP"
                     locale="en-PH" :min="0" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
                   <small class="text-gray-500 text-xs">Leave empty if no discount</small>
                 </div>
   
-                <div class="space-y-2">
-                  <label class="text-sm font-medium text-gray-700">Tax Rate (%)</label>
-                  <InputNumber id="tax_rate" v-model="form.tax_rate" suffix="%" :min="0" :max="100" :minFractionDigits="2"
-                    disabled class="w-full bg-gray-100 border-gray-200 rounded-xl" fluid />
-                  <small class="text-gray-500 text-xs">Auto-managed value (read-only)</small>
-                </div>
               </div>
   
               <div v-if="form.base_price || form.discounted_price"
@@ -800,7 +794,6 @@ const form = ref({
   base_price: 0.00,
   cost_price: '',
   discounted_price: null,
-  tax_rate: null,
   length_cm: null,
   width_cm: null,
   height_cm: null,
@@ -1186,7 +1179,6 @@ const loadProduct = async () => {
       base_price: product.base_price,
       cost_price: product.cost_price || null,
       discounted_price: product.discounted_price,
-      tax_rate: product.tax_rate || null,
       length_cm: product.length_cm,
       width_cm: product.width_cm,
       height_cm: product.height_cm,
@@ -1862,7 +1854,6 @@ const handleSubmit = async () => {
       base_price: form.value.base_price,
       cost_price: form.value.cost_price,
       discounted_price: isRawMaterialType.value ? null : form.value.discounted_price,
-      tax_rate: form.value.tax_rate,
       length_cm: form.value.length_cm,
       width_cm: form.value.width_cm,
       height_cm: form.value.height_cm,

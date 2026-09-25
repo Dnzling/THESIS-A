@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Store\Store;
 use App\Models\Hr\Employee;
+use App\Models\Core\User;
 
 class SupplierContract extends Model
 {
@@ -26,6 +27,7 @@ class SupplierContract extends Model
         'terms_conditions',
         'contract_file_path',
         'status',
+        'submitted_by_type',
         'rejection_reason',
         'rejected_by_user_id',
         'rejected_at',
@@ -68,12 +70,17 @@ class SupplierContract extends Model
         return $this->belongsTo(Employee::class, 'created_by');
     }
 
+    public function rejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by_user_id');
+    }
+
     // Scopes
     public function scopeActive($query)
     {
         return $query->where('status', 'active')
-            ->where('start_date', '<=', now())
-            ->where('end_date', '>=', now());
+            ->whereDate('start_date', '<=', now()->toDateString())
+            ->whereDate('end_date', '>=', now()->toDateString());
     }
 
     public function scopeExpired($query)
@@ -91,8 +98,10 @@ class SupplierContract extends Model
     public function isActive(): bool
     {
         return $this->status === 'active' 
-            && $this->start_date <= now() 
-            && $this->end_date >= now();
+            && $this->start_date !== null
+            && $this->end_date !== null
+            && $this->start_date->toDateString() <= today()->toDateString()
+            && $this->end_date->toDateString() >= today()->toDateString();
     }
 
     public function isExpiringSoon(int $days = 30): bool

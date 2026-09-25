@@ -1,36 +1,11 @@
 <template>
   <div class="mx-auto max-w-7xl space-y-6 pb-10">
-    <section class="overflow-hidden rounded-3xl bg-slate-950 text-white shadow-xl">
-      <div class="relative grid gap-8 px-6 py-8 sm:px-9 lg:grid-cols-[1fr_auto] lg:items-end">
-        <div class="absolute -right-16 -top-24 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl"></div>
-        <div class="relative">
-          <p class="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-emerald-300">Trust &amp; compliance</p>
-          <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Store verification</h1>
-          <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-            Review business identities, ownership details, and submitted documents from one clear workspace.
-          </p>
-        </div>
-        <div class="relative flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur">
-          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-300 text-slate-950">
-            <i class="pi pi-clock text-lg"></i>
-          </span>
-          <div>
-            <p class="text-2xl font-bold">{{ pendingStores.length }}</p>
-            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Awaiting review</p>
-          </div>
-        </div>
-      </div>
-    </section>
+    
 
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <button
-        v-for="card in statusCards"
-        :key="card.value"
-        type="button"
+      <button v-for="card in statusCards" :key="card.value" type="button"
         class="group rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-        :class="activeView === card.value ? card.activeClass : 'border-slate-200'"
-        @click="activeView = card.value"
-      >
+        :class="activeView === card.value ? card.activeClass : 'border-slate-200'" @click="activeView = card.value">
         <div class="flex items-center justify-between">
           <span class="flex h-10 w-10 items-center justify-center rounded-xl" :class="card.iconClass">
             <i :class="card.icon"></i>
@@ -46,21 +21,18 @@
       <div class="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 class="text-lg font-bold text-slate-900">{{ activeTitle }}</h2>
-          <p class="mt-1 text-sm text-slate-500">{{ filteredStores.length }} application{{ filteredStores.length === 1 ? '' : 's' }}</p>
+          <p class="mt-1 text-sm text-slate-500">{{ filteredStores.length }} application{{ filteredStores.length === 1 ?
+            '' : 's' }}</p>
         </div>
         <div class="flex flex-col gap-3 sm:flex-row">
           <IconField class="w-full sm:w-72">
             <InputIcon class="pi pi-search" />
             <InputText v-model="search" placeholder="Search store or owner" class="w-full" />
           </IconField>
-          <Select
-            v-model="documentFilter"
-            :options="documentOptions"
-            option-label="label"
-            option-value="value"
-            class="w-full sm:w-52"
-          />
-          <Button icon="pi pi-refresh" severity="secondary" outlined :loading="loading" aria-label="Refresh" @click="fetchStores" />
+          <Select v-model="documentFilter" :options="documentOptions" option-label="label" option-value="value"
+            class="w-full sm:w-52" />
+          <Button icon="pi pi-refresh" severity="secondary" outlined :loading="loading" aria-label="Refresh"
+            @click="fetchStores" />
         </div>
       </div>
 
@@ -69,13 +41,11 @@
       </div>
 
       <div v-else-if="filteredStores.length" class="divide-y divide-slate-100">
-        <article
-          v-for="store in filteredStores"
-          :key="store.verificationId"
-          class="grid gap-5 p-5 transition hover:bg-slate-50/80 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,.8fr)_auto] md:items-center lg:p-6"
-        >
+        <article v-for="store in filteredStores" :key="store.verificationId"
+          class="grid gap-5 p-5 transition hover:bg-slate-50/80 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,.8fr)_auto] md:items-center lg:p-6">
           <div class="flex min-w-0 items-start gap-4">
-            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 font-bold text-white">
+            <div
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 font-bold text-white">
               {{ initials(store.storeName) }}
             </div>
             <div class="min-w-0">
@@ -102,14 +72,9 @@
             <p class="mt-3 text-xs text-slate-500">Submitted {{ formatDate(store.submittedAt) }}</p>
           </div>
 
-          <Button
-            :label="store.status === 'Pending' ? 'Review' : 'View details'"
-            icon="pi pi-arrow-right"
-            icon-pos="right"
-            :severity="store.status === 'Pending' ? undefined : 'secondary'"
-            :outlined="store.status !== 'Pending'"
-            @click="openStore(store)"
-          />
+          <Button :label="store.status === 'Pending' ? 'Review' : 'View details'" icon="pi pi-arrow-right"
+            icon-pos="right" :severity="store.status === 'Pending' ? undefined : 'secondary'"
+            :outlined="store.status !== 'Pending'" @click="openStore(store)" />
         </article>
       </div>
 
