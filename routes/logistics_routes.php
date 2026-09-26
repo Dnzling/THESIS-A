@@ -9,9 +9,16 @@ use App\Http\Controllers\Api\Logistics\ReturnPickupController;
 use App\Http\Controllers\Api\Logistics\ReplacementController;
 use App\Http\Controllers\Api\Logistics\UnifiedDeliveryController;
 use App\Http\Controllers\Api\Logistics\VehicleController;
+use App\Http\Controllers\Api\Logistics\SupplierPickupAssignmentController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 
 Route::prefix('logistics')->group(function () {
+    Route::prefix('supplier-pickups/{id}')->whereNumber('id')->group(function () {
+        Route::get('/assignment', [SupplierPickupAssignmentController::class, 'showAssignment']);
+        Route::get('/vehicles', [SupplierPickupAssignmentController::class, 'pickupVehicles']);
+        Route::get('/drivers', [SupplierPickupAssignmentController::class, 'pickupDrivers']);
+        Route::post('/assign', [SupplierPickupAssignmentController::class, 'assignPickup']);
+    });
     Route::prefix('replacements')->group(function () {
         Route::get('/', [ReplacementController::class, 'index']);
         Route::get('/{id}', [ReplacementController::class, 'show']);

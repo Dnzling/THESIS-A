@@ -244,7 +244,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/purchase-orders', 'System/Procurement/PurchaseOrders/PurchaseOrderIndex', 'procurement.purchase-orders', 'Purchase Orders');
     $inertia('/procurement/purchase-orders/create', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.create', 'Create Purchase Order');
     $inertia('/procurement/purchase-orders/{id}', 'System/Procurement/PurchaseOrders/PurchaseOrderDetail', 'procurement.purchase-orders.detail', 'Purchase Order Details');
-    $inertia('/procurement/purchase-orders/{id}/pickup', 'System/Procurement/PurchaseOrders/PurchaseOrderPickupCreate', 'procurement.purchase-orders.pickup', 'Assign Supplier Pickup');
+    $inertia('/logistics/supplier-pickups/{id}/assign', 'System/Logistics/SupplierPickups/Assign', 'logistics.supplier-pickups.assign', 'Assign Supplier Pickup');
     $inertia('/procurement/purchase-orders/{id}/edit', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.edit', 'Edit Purchase Order');
     // $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
     // $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');

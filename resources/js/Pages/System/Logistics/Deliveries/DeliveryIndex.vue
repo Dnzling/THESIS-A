@@ -266,7 +266,7 @@ const openDetail = (order: any) => {
 }
 
 const assignPickup = (order: any) => {
-  router.push({ name: 'procurement.purchase-orders.pickup', params: { id: order.order_id }, query: { from: 'logistics' } })
+  router.push({ name: 'logistics.supplier-pickups.assign', params: { id: order.order_id } })
 }
 
 const deliverySeverity = (status: string) => {

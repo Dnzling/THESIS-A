@@ -3,7 +3,7 @@
     <div class="flex items-start justify-between gap-4">
       <div class="flex items-start gap-3">
         <Button icon="pi pi-arrow-left" text rounded @click="router.push('/supplier-portal/pos')" />
-        <div><h1 class="text-2xl font-semibold text-slate-900">Review Purchase Order</h1><p class="text-sm text-slate-500">Review shipment specifications, contract rates, and fulfillment method.</p></div>
+        <div><h1 class="text-2xl font-semibold text-slate-900">Review Purchase Order</h1><p class="text-sm text-slate-500">Review order specifications and contract rates before accepting.</p></div>
       </div>
       <Badge v-if="po" :value="formatStatus(po.status)" :severity="statusSeverity(po.status)" />
     </div>
@@ -51,12 +51,9 @@
           </Card>
 
           <Card v-if="!isReadOnly" class="rounded-2xl border border-slate-200 shadow-sm">
-            <template #title>Fulfillment Method</template>
+            <template #title>Fulfillment</template>
             <template #content>
-              <label class="mb-2 block text-sm font-medium text-slate-700">How will this order be fulfilled? *</label>
-              <Select v-model="fulfillmentMethod" :options="fulfillmentOptions" optionLabel="label" optionValue="value" placeholder="Select pickup or delivery" fluid :invalid="showFulfillmentError" />
-              <small v-if="showFulfillmentError" class="mt-1 block text-red-500">Select a fulfillment method before approving.</small>
-              <p class="mt-3 text-xs text-slate-500">{{ fulfillmentMethod === 'supplier_delivery' ? 'Your team will deliver the order to the destination branch.' : 'The store will assign a driver and vehicle to collect the order.' }}</p>
+              <div class="rounded-xl border border-orange-200 bg-orange-50 p-4"><p class="font-semibold text-slate-900">Store Pickup</p><p class="mt-1 text-xs leading-5 text-slate-600">After you accept, the store will assign a driver and vehicle to collect the order. No delivery method selection is needed.</p></div>
             </template>
           </Card>
           <div v-if="!isReadOnly" class="grid grid-cols-2 gap-3"><Button label="Reject" severity="danger" outlined @click="rejectionDialog = true" /><Button label="Approve PO" icon="pi pi-check" :loading="submitting" @click="approvePO" /></div>
@@ -74,18 +71,17 @@
 import { computed, defineComponent, h, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
-import Badge from 'primevue/badge'; import Button from 'primevue/button'; import Card from 'primevue/card'; import Dialog from 'primevue/dialog'; import Select from 'primevue/select'; import Skeleton from 'primevue/skeleton'; import Textarea from 'primevue/textarea'
+import Badge from 'primevue/badge'; import Button from 'primevue/button'; import Card from 'primevue/card'; import Dialog from 'primevue/dialog'; import Skeleton from 'primevue/skeleton'; import Textarea from 'primevue/textarea'
 import supplierService from '../../../services/supplier.service'
 
 const Info = defineComponent({ props: { label: String, value: [String, Number] }, setup: p => () => h('div', [h('p', { class: 'text-xs text-slate-500' }, p.label), h('p', { class: 'mt-1 font-medium text-slate-900' }, String(p.value ?? '—'))]) })
 const FeeRow = defineComponent({ props: { label: String, value: String, valueClass: String }, setup: p => () => h('div', { class: 'flex justify-between gap-3' }, [h('span', { class: 'text-slate-500' }, p.label), h('span', { class: ['font-medium text-slate-900', p.valueClass] }, p.value)]) })
 const route = useRoute(); const router = useRouter(); const toast = useToast()
-const po = ref<any>(null); const contractTaxRate = ref(0); const contractDiscountPercent = ref(0); const fulfillmentMethod = ref<string | null>(null); const showFulfillmentError = ref(false); const submitting = ref(false); const rejectionDialog = ref(false); const rejectionReason = ref(''); const loading = ref(false)
-const fulfillmentOptions = [{ label: 'Store Pickup', value: 'store_pickup' }, { label: 'Supplier Delivery', value: 'supplier_delivery' }]
+const po = ref<any>(null); const contractTaxRate = ref(0); const contractDiscountPercent = ref(0); const submitting = ref(false); const rejectionDialog = ref(false); const rejectionReason = ref(''); const loading = ref(false)
 const isReadOnly = computed(() => po.value?.status !== 'sent_to_supplier')
 const taxableAmount = computed(() => Math.max(0, Number(po.value?.subtotal || 0) - Number(po.value?.discount_amount || 0)))
-const loadPO = async () => { loading.value = true; try { const res = await supplierService.getSupplierPODetail(Number(route.params.id)); const payload = res.data || res; po.value = payload?.data?.po || payload?.po || null; const feedback = payload?.data?.supplier_feedback || payload?.supplier_feedback; fulfillmentMethod.value = feedback?.fulfillment_method || po.value?.fulfillment_method || null; contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0); contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || po.value?.contract_discount_percentage || 0) } finally { loading.value = false } }
-const approvePO = async () => { if (!po.value || !fulfillmentMethod.value) { showFulfillmentError.value = true; return } submitting.value = true; try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'accepted', fulfillment_method: fulfillmentMethod.value }); toast.add({ severity: 'success', summary: 'PO Approved', detail: 'Your fulfillment method has been recorded.', life: 2500 }); router.push(`/supplier-portal/pos/${po.value.id}/view`) } catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to approve PO', life: 3000 }) } finally { submitting.value = false } }
+const loadPO = async () => { loading.value = true; try { const res = await supplierService.getSupplierPODetail(Number(route.params.id)); const payload = res.data || res; po.value = payload?.data?.po || payload?.po || null; contractTaxRate.value = Number(payload?.data?.contract_tax_rate || po.value?.contract_tax_rate || 0); contractDiscountPercent.value = Number(payload?.data?.contract_discount_percent || po.value?.contract_discount_percentage || 0) } finally { loading.value = false } }
+const approvePO = async () => { if (!po.value) return; submitting.value = true; try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'accepted', fulfillment_method: 'store_pickup' }); toast.add({ severity: 'success', summary: 'PO Approved', detail: 'The store will arrange pickup.', life: 2500 }); router.push(`/supplier-portal/pos/${po.value.id}/view`) } catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to approve PO', life: 3000 }) } finally { submitting.value = false } }
 const rejectPO = async () => { if (!po.value || !rejectionReason.value.trim()) return; submitting.value = true; try { await supplierService.submitPOFeedback({ purchase_order_id: po.value.id, response: 'rejected', rejection_reason: rejectionReason.value.trim() }); toast.add({ severity: 'success', summary: 'PO Rejected', detail: 'The business has been notified.', life: 2500 }); router.push('/supplier-portal/pos') } catch (e: any) { toast.add({ severity: 'error', summary: 'Error', detail: e.response?.data?.message || 'Failed to reject PO', life: 3000 }) } finally { submitting.value = false } }
 const money = (v: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(v || 0)); const decimal = (v: any, d = 2) => Number(v || 0).toLocaleString('en-PH', { maximumFractionDigits: d }); const whole = (v: any) => Number(v || 0).toLocaleString('en-PH', { maximumFractionDigits: 0 }); const uom = (i: any) => i.product?.unit_of_measurement || 'unit'; const dimensions = (i: any) => i.length_cm && i.width_cm && i.height_cm ? `${decimal(i.length_cm)} × ${decimal(i.width_cm)} × ${decimal(i.height_cm)} cm` : '—'; const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'; const formatStatus = (s: string) => s?.split('_').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ') || '—'; const statusSeverity = (s: string) => s === 'supplier_accepted' ? 'success' : s === 'declined_supplier' ? 'danger' : 'info'
 onMounted(loadPO)

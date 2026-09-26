@@ -157,9 +157,6 @@ Route::prefix('procurement')->group(function () {
         Route::post('/shipping-estimate', [PurchaseOrderController::class, 'estimateShippingFee']);
         Route::get('/approved', [PurchaseOrderPrintEmailController::class, 'getApprovedOrders']);
         Route::get('/{id}', [PurchaseOrderController::class, 'show']);
-        Route::get('/{id}/pickup-vehicles', [PurchaseOrderController::class, 'pickupVehicles']);
-        Route::get('/{id}/pickup-drivers', [PurchaseOrderController::class, 'pickupDrivers']);
-        Route::post('/{id}/pickup', [PurchaseOrderController::class, 'assignPickup']);
         Route::post('/', [PurchaseOrderController::class, 'store']);
         Route::put('/{id}', [PurchaseOrderController::class, 'update']);
         Route::delete('/{id}', [PurchaseOrderController::class, 'destroy']);

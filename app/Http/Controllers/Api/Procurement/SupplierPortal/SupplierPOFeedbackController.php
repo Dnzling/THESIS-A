@@ -231,7 +231,6 @@ class SupplierPOFeedbackController extends Controller
         $validator = Validator::make($request->all(), [
             'purchase_order_id' => 'required|exists:purchase_orders,id',
             'response' => 'required|in:accepted,rejected',
-            'fulfillment_method' => 'required_if:response,accepted|nullable|in:store_pickup,supplier_delivery',
             'rejection_reason' => 'required_if:response,rejected|string',
             'expected_delivery_date' => 'nullable|date|after_or_equal:today',
             'delivery_quantity' => 'nullable|integer|min:1',
@@ -274,7 +273,7 @@ class SupplierPOFeedbackController extends Controller
                 ],
                 [
                     'response' => $request->response,
-                    'fulfillment_method' => $request->get('fulfillment_method'),
+                    'fulfillment_method' => $request->response === 'accepted' ? 'store_pickup' : null,
                     'rejection_reason' => $request->get('rejection_reason'),
                     'expected_delivery_date' => $request->get('expected_delivery_date'),
                     'delivery_quantity' => $request->get('delivery_quantity'),
@@ -284,7 +283,7 @@ class SupplierPOFeedbackController extends Controller
             );
 
             if ($request->response === 'accepted') {
-                $po->fulfillment_method = $request->fulfillment_method;
+                $po->fulfillment_method = 'store_pickup';
                 $po->save();
                 $po->markSupplierAccepted();
 
@@ -294,7 +293,7 @@ class SupplierPOFeedbackController extends Controller
                     [
                         'po_number' => $po->po_number,
                         'supplier_id' => $portal->supplier_id,
-                        'fulfillment_method' => $request->fulfillment_method,
+                        'fulfillment_method' => 'store_pickup',
                     ],
                     'purchase_order',
                     $po->id
