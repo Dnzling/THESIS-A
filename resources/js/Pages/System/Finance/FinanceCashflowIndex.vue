@@ -7,8 +7,8 @@
       </div>
       <div class="flex items-center gap-2">
         <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadCashflow" />
-        <Button icon="pi pi-minus" label="Deduct" severity="secondary" outlined size="small" @click="openAdjustDialog('out')" />
-        <Button icon="pi pi-plus" label="Add Funds" severity="warn" size="small" @click="openAdjustDialog('in')" />
+        <!-- <Button icon="pi pi-minus" label="Deduct" severity="secondary" outlined size="small" @click="openAdjustDialog('out')" />
+        <Button icon="pi pi-plus" label="Add Funds" severity="warn" size="small" @click="openAdjustDialog('in')" /> -->
       </div>
     </div>
 
