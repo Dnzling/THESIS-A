@@ -31,14 +31,14 @@
           size="small"
           @click="router.push({ name: 'merchandising.products.edit', params: { id: productId } })" 
         />
-        <Button 
+        <!-- <Button 
           label="Archive" 
           icon="pi pi-briefcase" 
           severity="danger"
           outlined
           size="small"
           @click="confirmDelete" 
-        />
+        /> -->
       </div>
     </div>
 

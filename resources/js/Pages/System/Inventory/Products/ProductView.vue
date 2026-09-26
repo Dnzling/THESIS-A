@@ -34,14 +34,14 @@
           size="small"
           @click="goToEdit"
         />
-        <Button
+        <!-- <Button
           label="Archive"
           icon="pi pi-briefcase"
           severity="danger"
           outlined
           size="small"
           @click="confirmDelete"
-        />
+        /> -->
       </div>
     </div>
 
