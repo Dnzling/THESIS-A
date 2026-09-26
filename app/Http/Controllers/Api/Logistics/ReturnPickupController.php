@@ -190,11 +190,21 @@ class ReturnPickupController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        if (!in_array((string) $pickup->status, ['ready_for_dispatch', 'scheduled'], true)) {
+            return response()->json(['success' => false, 'message' => 'This return pickup is no longer available for assignment.'], 422);
+        }
+
         $driver = User::query()
+            ->with(['role:id,name', 'employee:id,user_id,role_id,status', 'employee.role:id,name'])
             ->where('id', (int) $validated['driver_user_id'])
             ->when($storeId > 0, fn ($q) => $q->where('store_id', $storeId))
             ->where('is_active', true)
-            ->firstOrFail();
+            ->first();
+        if (!$driver || $driver->employee?->status !== 'active'
+            || (strtolower((string) $driver->role?->name) !== 'driver'
+                && strtolower((string) $driver->employee?->role?->name) !== 'driver')) {
+            return response()->json(['success' => false, 'message' => 'Please select an active employee with the Driver role.'], 422);
+        }
 
         $vehicle = EcommerceDeliveryVehicle::query()
             ->where('id', (int) $validated['vehicle_id'])

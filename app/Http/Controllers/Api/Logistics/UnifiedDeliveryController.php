@@ -635,7 +635,7 @@ class UnifiedDeliveryController extends Controller
     public function assign(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'source_type' => ['required', Rule::in(self::ORDER_SOURCES)],
+            'source_type' => ['required', Rule::in(['ecommerce', 'sales'])],
             'order_id' => 'required|integer|min:1',
             'driver_user_id' => 'required|exists:users,id',
             'assistant_user_ids' => 'nullable|array',
@@ -697,7 +697,11 @@ class UnifiedDeliveryController extends Controller
         $vehicle = EcommerceDeliveryVehicle::query()
             ->where('id', (int) $validated['vehicle_id'])
             ->where('store_id', $storeId)
-            ->firstOrFail();
+            ->where('is_active', true)
+            ->first();
+        if (!$vehicle) {
+            return response()->json(['success' => false, 'message' => 'Please select an active vehicle from this store.'], 422);
+        }
 
         $distance = isset($validated['distance_km']) ? (float) $validated['distance_km'] : 0;
         $perKmCharge = (float) $validated['per_km_charge'];
@@ -829,6 +833,7 @@ class UnifiedDeliveryController extends Controller
 
         if ($delivery) {
             $delivery->fill(array_merge([
+                'vehicle_id' => $vehicle->id,
                 'driver_user_id' => $driver->id,
                 'tracking_number' => $delivery->tracking_number ?: $this->nextTrackingNumber(),
                 'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),
@@ -858,6 +863,7 @@ class UnifiedDeliveryController extends Controller
                 'sales_order_id' => $order->id,
                 'store_id' => $order->store_id,
                 'branch_id' => $order->branch_id,
+                'vehicle_id' => $vehicle->id,
                 'driver_user_id' => $driver->id,
                 'tracking_number' => $this->nextTrackingNumber(),
                 'courier_name' => trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')),

@@ -20,6 +20,7 @@ class SalesOrderDelivery extends Model
         'branch_id',
         'trip_id',
         'driver_user_id',
+        'vehicle_id',
         'tracking_number',
         'courier_name',
         'courier_contact',
