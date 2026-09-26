@@ -1324,8 +1324,24 @@ class InventoryService {
     reason?: string | null
     requisition_type?: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
     priority?: number | null
+    submit?: boolean
   }) {
     const response = await axiosClient.post(`${this.baseUrl}/requisitions`, payload)
+    return response.data
+  }
+
+  async updatePurchaseRequisitionDraft(id: number | string, payload: {
+    requisition_type: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
+    reason: string
+    submit?: boolean
+    items: Array<{ product_id: number; variation_id?: number | null; quantity_requested: number; estimated_unit_cost?: number | null; tax_rate?: number }>
+  }) {
+    const response = await axiosClient.put(`${this.baseUrl}/requisitions/${id}`, payload)
+    return response.data
+  }
+
+  async deletePurchaseRequisitionDraft(id: number | string) {
+    const response = await axiosClient.delete(`${this.baseUrl}/requisitions/${id}`)
     return response.data
   }
 

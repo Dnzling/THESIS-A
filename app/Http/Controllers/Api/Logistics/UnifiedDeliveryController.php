@@ -357,6 +357,7 @@ class UnifiedDeliveryController extends Controller
             ])
             ->where('store_id', $storeId)
             ->whereIn('status', ['sender_approved', 'in_transit', 'out_for_delivery'])
+            ->whereNotNull('delivery_status')
             ->get()
             ->map(function (StockTransfer $transfer): array {
                 $hasDelivery = (bool) ($transfer->driver_user_id || $transfer->driver_name || $transfer->vehicle_type || $transfer->tracking_number);
@@ -1840,8 +1841,8 @@ class UnifiedDeliveryController extends Controller
                 'purchaseOrder.items.product',
                 'purchaseOrder.items.variation',
                 'purchaseOrder.supplier',
-                'purchaseOrder.branch',
-                'purchaseOrder.purchaseRequisition:id,pr_number,status',
+                'purchaseOrder.purchaseRequisition:id,pr_number,status,branch_id',
+                'purchaseOrder.purchaseRequisition.branch:id,name,address,latitude,longitude,contact_number,email',
                 'driverUser:id,fname,lname,email,phone_number',
                 'driverEmployee:id,user_id,employee_number',
                 'vehicle',

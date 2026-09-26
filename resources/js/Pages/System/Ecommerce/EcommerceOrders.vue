@@ -4,17 +4,9 @@
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="-mx-1 flex w-full overflow-x-auto px-1 sm:w-auto">
           <div class="flex flex-nowrap gap-2">
-            <Button
-              v-for="tab in tabs"
-              :key="tab.value"
-              :label="tab.label"
-              :outlined="activeTab !== tab.value"
-              :severity="activeTab === tab.value ? 'warn' : 'secondary'"
-              rounded
-              size="small"
-              class="shrink-0"
-              @click="activeTab = tab.value"
-            />
+            <Button v-for="tab in tabs" :key="tab.value" :label="tab.label" :outlined="activeTab !== tab.value"
+              :severity="activeTab === tab.value ? 'warn' : 'secondary'" rounded size="small" class="shrink-0"
+              @click="activeTab = tab.value" />
           </div>
         </div>
 
@@ -37,8 +29,10 @@
                   <div class="min-w-0">
                     <p class="text-sm font-semibold text-slate-800">Order No: {{ group.order_number }}</p>
                     <p class="text-xs text-slate-500 truncate">Store: {{ group.store_name }}</p>
-                    <p class="text-xs text-slate-500">Est. delivery: <span class="font-medium text-slate-700">{{ formatEstimatedDelivery(group.estimated_delivery_at) }}</span></p>
-                    <p class="text-sm font-semibold text-slate-900">Order total: {{ formatMoney(group.total_amount) }}</p>
+                    <p class="text-xs text-slate-500">Est. delivery: <span class="font-medium text-slate-700">{{
+                      formatEstimatedDelivery(group.estimated_delivery_at) }}</span></p>
+                    <p class="text-sm font-semibold text-slate-900">Order total: {{ formatMoney(group.total_amount) }}
+                    </p>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
                     <Tag :value="statusLabel(group.status)" :class="statusTagClass(group.status)" />
@@ -47,11 +41,8 @@
                 </div>
               </div>
 
-              <div
-                v-for="item in group.items"
-                :key="`${item.order_id}-${item.item_id}`"
-                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3"
-              >
+              <div v-for="item in group.items" :key="`${item.order_id}-${item.item_id}`"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3">
                 <div class="flex min-w-0 items-center gap-3">
                   <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
                     class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
@@ -61,7 +52,8 @@
                   </div>
                 </div>
 
-                <div class="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:items-center sm:gap-4 md:gap-5">
+                <div
+                  class="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:items-center sm:gap-4 md:gap-5">
                   <p class="text-xs sm:text-sm text-slate-600">{{ formatDate(item.created_at) }}</p>
                   <p class="text-xs sm:text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
                 </div>
@@ -225,6 +217,8 @@ function statusLabel(status: string) {
     if (value === 'return_pending') return 'Return Pending'
     if (value === 'return_approved') return 'Return Approved'
     if (value === 'return_received') return 'Return Received'
+    if (value === 'return_rejected') return 'Return Rejected'
+    if (value === 'return_processing') return 'Return Processing'
     if (value === 'refunded') return 'Refunded'
     return 'Return'
   }

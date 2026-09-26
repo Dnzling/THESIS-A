@@ -722,13 +722,17 @@ class SalesPosController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $todayDate = now()->toDateString();
+        $yesterdayDate = now()->subDay()->toDateString();
         $monthNow = now()->month;
         $yearNow = now()->year;
+        $previousMonthDate = now()->subMonthNoOverflow();
 
         $query = SalesOrder::query();
         $this->applyStoreScope($request, $query);
         $todaySalesOrders = (clone $query)->whereDate('created_at', $todayDate);
+        $yesterdaySalesOrders = (clone $query)->whereDate('created_at', $yesterdayDate);
         $monthSalesOrders = (clone $query)->whereMonth('created_at', $monthNow)->whereYear('created_at', $yearNow);
+        $previousMonthSalesOrders = (clone $query)->whereMonth('created_at', $previousMonthDate->month)->whereYear('created_at', $previousMonthDate->year);
 
         $paymentQuery = SalesPayment::query();
         $this->applyStoreScope($request, $paymentQuery);
@@ -736,12 +740,16 @@ class SalesPosController extends Controller
         $todayPosOrdersCount = (clone $todaySalesOrders)->count();
         $monthPosOrdersCount = (clone $monthSalesOrders)->count();
         $todayPosSales = (float) (clone $todaySalesOrders)->whereIn('payment_status', ['paid', 'succeeded', 'completed'])->sum('total_amount');
+        $yesterdayPosSales = (float) (clone $yesterdaySalesOrders)->whereIn('payment_status', ['paid', 'succeeded', 'completed'])->sum('total_amount');
         $monthPosSales = (float) (clone $monthSalesOrders)->whereIn('payment_status', ['paid', 'succeeded', 'completed'])->sum('total_amount');
+        $previousMonthPosSales = (float) (clone $previousMonthSalesOrders)->whereIn('payment_status', ['paid', 'succeeded', 'completed'])->sum('total_amount');
 
         $todayEcomOrdersCount = 0;
         $monthEcomOrdersCount = 0;
         $todayEcomSales = 0.0;
+        $yesterdayEcomSales = 0.0;
         $monthEcomSales = 0.0;
+        $previousMonthEcomSales = 0.0;
         $ecomMethods = collect();
         $ecomPendingPayments = 0;
 
@@ -750,16 +758,29 @@ class SalesPosController extends Controller
             $this->applyStoreScope($request, $ecomQuery);
 
             $todayEcomOrdersCount = (clone $ecomQuery)->whereDate('created_at', $todayDate)->count();
+            $yesterdayEcomOrdersCount = (clone $ecomQuery)->whereDate('created_at', $yesterdayDate)->count();
             $monthEcomOrdersCount = (clone $ecomQuery)->whereMonth('created_at', $monthNow)->whereYear('created_at', $yearNow)->count();
+            $previousMonthEcomOrdersCount = (clone $ecomQuery)->whereMonth('created_at', $previousMonthDate->month)->whereYear('created_at', $previousMonthDate->year)->count();
 
             $todayEcomSales = (float) (clone $ecomQuery)
                 ->whereDate('created_at', $todayDate)
                 ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
                 ->sum('total_amount');
 
+            $yesterdayEcomSales = (float) (clone $ecomQuery)
+                ->whereDate('created_at', $yesterdayDate)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->sum('total_amount');
+
             $monthEcomSales = (float) (clone $ecomQuery)
                 ->whereMonth('created_at', $monthNow)
                 ->whereYear('created_at', $yearNow)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->sum('total_amount');
+
+            $previousMonthEcomSales = (float) (clone $ecomQuery)
+                ->whereMonth('created_at', $previousMonthDate->month)
+                ->whereYear('created_at', $previousMonthDate->year)
                 ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
                 ->sum('total_amount');
 
@@ -810,13 +831,67 @@ class SalesPosController extends Controller
             $todayPaid += $ecomTodayPaid;
         }
 
+        $trendRange = (string) $request->input('trend_range', '7d');
+        if (!in_array($trendRange, ['7d', '30d', '6m', '12m'], true)) {
+            $trendRange = '7d';
+        }
+        $monthlyTrend = str_ends_with($trendRange, 'm');
+        $periodCount = (int) substr($trendRange, 0, -1);
+        $trendStart = $monthlyTrend
+            ? now()->startOfMonth()->subMonths($periodCount - 1)
+            : now()->startOfDay()->subDays($periodCount - 1);
+        $trendFormat = $monthlyTrend ? '%Y-%m' : '%Y-%m-%d';
+        $trendRows = (clone $query)
+            ->where('created_at', '>=', $trendStart)
+            ->whereIn('payment_status', ['paid', 'succeeded', 'completed'])
+            ->selectRaw("DATE_FORMAT(created_at, '{$trendFormat}') as period, COUNT(*) as orders, SUM(total_amount) as sales")
+            ->groupBy('period')
+            ->get()
+            ->keyBy('period');
+
+        if (DB::getSchemaBuilder()->hasTable('ecommerce_orders')) {
+            $ecomTrendRows = (clone $ecomQuery)
+                ->where('created_at', '>=', $trendStart)
+                ->whereIn(DB::raw('LOWER(COALESCE(payment_status, status, "pending"))'), ['paid', 'succeeded', 'completed'])
+                ->selectRaw("DATE_FORMAT(created_at, '{$trendFormat}') as period, COUNT(*) as orders, SUM(total_amount) as sales")
+                ->groupBy('period')
+                ->get();
+
+            foreach ($ecomTrendRows as $row) {
+                $existing = $trendRows->get($row->period);
+                $trendRows->put($row->period, (object) [
+                    'period' => $row->period,
+                    'orders' => (int) ($existing->orders ?? 0) + (int) $row->orders,
+                    'sales' => (float) ($existing->sales ?? 0) + (float) $row->sales,
+                ]);
+            }
+        }
+
+        $salesTrend = collect();
+        for ($offset = $periodCount - 1; $offset >= 0; $offset--) {
+            $period = $monthlyTrend
+                ? now()->startOfMonth()->subMonths($offset)->format('Y-m')
+                : now()->startOfDay()->subDays($offset)->format('Y-m-d');
+            $row = $trendRows->get($period);
+            $salesTrend->push([
+                'period' => $period,
+                'orders' => (int) ($row->orders ?? 0),
+                'sales' => (float) ($row->sales ?? 0),
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
                 'today_orders' => $todayPosOrdersCount + $todayEcomOrdersCount,
+                'yesterday_orders' => (clone $yesterdaySalesOrders)->count() + ($yesterdayEcomOrdersCount ?? 0),
                 'today_sales' => $todayPosSales + $todayEcomSales,
+                'yesterday_sales' => $yesterdayPosSales + $yesterdayEcomSales,
                 'month_orders' => $monthPosOrdersCount + $monthEcomOrdersCount,
+                'previous_month_orders' => (clone $previousMonthSalesOrders)->count() + ($previousMonthEcomOrdersCount ?? 0),
                 'month_sales' => $monthPosSales + $monthEcomSales,
+                'previous_month_sales' => $previousMonthPosSales + $previousMonthEcomSales,
+                'sales_trend' => $salesTrend,
                 'today_paid' => $todayPaid,
                 'pending_payments' => (clone $paymentQuery)->whereIn('status', ['pending', 'processing', 'awaiting_payment_method'])->count() + $ecomPendingPayments,
                 'payments_by_method' => $paymentsByMethod,

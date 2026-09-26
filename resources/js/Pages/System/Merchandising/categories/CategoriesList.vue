@@ -147,16 +147,6 @@
             :header="editMode ? 'Edit Category' : (isSubcategory ? 'Add Subcategory' : 'Add Category')" :modal="true"
             class="w-full max-w-2xl">
             <div class="space-y-4 mt-4">
-                <!-- Category Code -->
-                <div class="flex flex-col gap-2">
-                    <label for="category_code" class="text-sm font-semibold text-gray-700">
-                        Category Code <span class="text-red-500">*</span>
-                    </label>
-                    <InputText id="category_code" v-model="formData.category_code" placeholder="e.g., SOFA, CHAIR, TABLE"
-                        :class="{ 'p-invalid': errors.category_code }" />
-                    <small v-if="errors.category_code" class="text-red-500">{{ errors.category_code }}</small>
-                </div>
-    
                 <!-- Category Name -->
                 <div class="flex flex-col gap-2">
                     <label for="category_name" class="text-sm font-semibold text-gray-700">
@@ -305,7 +295,6 @@ const filters = reactive({
 })
 
 const formData = reactive({
-  category_code: '',
   category_name: '',
   description: '',
   parent_category_id: null,
@@ -445,7 +434,6 @@ const addSubcategory = (parent: any) => {
 const editCategory = (category: any) => {
   currentCategory.value = category
   Object.assign(formData, {
-    category_code: category.category_code,
     category_name: category.category_name,
     description: category.description || '',
     parent_category_id: category.parent_category_id,
@@ -526,10 +514,6 @@ const deleteCategory = async () => {
 const validate = () => {
   errors.value = {}
 
-  if (!formData.category_code) {
-    errors.value.category_code = 'Category code is required'
-  }
-
   if (!formData.category_name) {
     errors.value.category_name = 'Category name is required'
   }
@@ -538,7 +522,6 @@ const validate = () => {
 }
 
 const resetForm = () => {
-  formData.category_code = ''
   formData.category_name = ''
   formData.description = ''
   formData.parent_category_id = null

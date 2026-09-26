@@ -27,7 +27,8 @@ class PurchaseRequisitionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = PurchaseRequisition::with(['branch', 'requestedBy.user', 'items.product.suppliers', 'items.variation'])
-            ->where('store_id', Auth::user()->store_id);
+            ->where('store_id', Auth::user()->store_id)
+            ->where('status', '!=', 'draft');
 
         // Filters
         if ($request->has('branch_id')) {

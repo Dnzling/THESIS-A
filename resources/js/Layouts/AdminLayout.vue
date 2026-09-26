@@ -231,11 +231,11 @@ const adminMenu = [
     label: "Supplier Verification",
     icon: "pi pi-building-columns text-gray-500 w-5"
   },
-  {
-    to: "/admin/customer-validation",
-    label: "Customer Verification",
-    icon: "pi pi-user text-gray-500 w-5"
-  },
+  // {
+  //   to: "/admin/customer-validation",
+  //   label: "Customer Verification",
+  //   icon: "pi pi-user text-gray-500 w-5"
+  // },
   {
     to: "/admin/stores",
     label: "Stores",

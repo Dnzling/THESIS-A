@@ -64,9 +64,9 @@
             </template>
           </Column>
   
-          <Column header="Source" style="width: 7.5rem">
+          <Column header="Source" style="width: 9rem">
             <template #body="{ data }">
-              <Tag :value="sourceLabel(data.source_type)" :severity="sourceSeverity(data.source_type)" />
+              <Badge :value="sourceLabel(data.source_type)" :severity="sourceSeverity(data.source_type)" />
             </template>
           </Column>
   
@@ -87,14 +87,18 @@
 
           <Column header="Status" style="width: 11rem">
             <template #body="{ data }">
-              <Tag v-if="data.delivery_status" :value="formatDeliveryStatus(data.delivery_status)"
+              <Badge v-if="data.delivery_status" :value="formatDeliveryStatus(data.delivery_status)"
                 :severity="deliverySeverity(data.delivery_status)" />
-              <Tag v-else value="Pending" severity="warn" />
+              <Badge v-else value="Pending" severity="warn" />
             </template>
           </Column>
   
-          <Column header="Total" style="width: 7rem">
-            <template #body="{ data }">{{ formatCurrency(data.total_amount) }}</template>
+          <Column header="Total" style="width: 7rem" class="text-green-600 font-semibold text-right">
+            <template #body="{ data }">
+              <div class="flex justify-end">
+                      {{ formatCurrency(data.total_amount) }}
+              </div>
+        </template>
           </Column>
 
           <Column header="Shipping Fee" style="width: 8rem">
@@ -108,12 +112,12 @@
             <template #body="{ data }">
               <div class="flex items-center gap-2">
                 <Button v-if="data.source_type === 'pickup' && data.can_create_delivery && canManageDeliveries"
-                  label="Assign Driver" icon="pi pi-user-plus" severity="warn" size="small"
+                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small" 
                   @click="assignPickup(data)" />
                 <Button v-if="data.source_type === 'replacement' && data.can_create_delivery && canManageDeliveries"
-                  label="Assign Driver" icon="pi pi-user-plus" severity="warn" size="small"
+                  label="Assign" icon="pi pi-user-plus" severity="warn" size="small"
                   @click="openDetail(data)" />
-                <Button icon="pi pi-eye" text rounded  v-tooltip.bottom="'View details'"
+                <Button icon="pi pi-eye" label="View" outlined size="small" rounded  v-tooltip.bottom="'View details'"
                   @click="openDetail(data)" />
               </div>
             </template>
@@ -132,7 +136,7 @@ import Card from 'primevue/card'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
@@ -166,7 +170,7 @@ const pageState = reactive({
 const sourceOptions = [
   { label: 'All Sources', value: 'all' },
   { label: 'Ecommerce', value: 'ecommerce' },
-  { label: 'Sales', value: 'sales' },
+  { label: 'In Store', value: 'sales' },
   { label: 'Supplier Pickups', value: 'pickup' },
   { label: 'Replacements', value: 'replacement' },
   { label: 'Customer Return Pickups', value: 'return_pickup' },
@@ -293,18 +297,21 @@ const formatDateTime = (value?: string) => {
 
 const sourceLabel = (source: string) => ({
   ecommerce: 'Ecommerce',
-  sales: 'Sales',
+  sales: 'In Store',
   pickup: 'Supplier Pickup',
   replacement: 'Replacement',
   return_pickup: 'Return Pickup',
   stock_transfer: 'Stock Transfer',
 } as Record<string, string>)[source] || 'Delivery'
 
-const sourceSeverity = (source: string) => source === 'pickup' || source === 'return_pickup' || source === 'replacement'
-  ? 'warning'
-  : source === 'stock_transfer'
-    ? 'success'
-    : source === 'ecommerce' ? 'info' : 'contrast'
+const sourceSeverity = (source: string) => ({
+  ecommerce: 'info',
+  sales: 'success',
+  pickup: 'warn',
+  replacement: 'danger',
+  return_pickup: 'help',
+  stock_transfer: 'contrast',
+} as Record<string, string>)[source] || 'secondary'
 
 const formatCurrency = (value: string | number) => new Intl.NumberFormat('en-PH', {
   style: 'currency',

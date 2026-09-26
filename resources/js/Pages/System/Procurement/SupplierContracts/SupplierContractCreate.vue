@@ -151,23 +151,41 @@
       </div>
     </form>
 
-    <Dialog v-model:visible="showReviewDialog" modal header="Review Contract" :style="{ width: '70rem' }">
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div class="space-y-2 text-sm">
-          <div><b>Store:</b> {{ selectedStoreName }}</div>
-          <div><b>Supplier:</b> {{ selectedSupplierName }}</div>
-          <div><b>Title:</b> {{ form.contract_title }}</div>
-          <div><b>Type:</b> {{ form.contract_type }}</div>
-          <div><b>Date Range:</b> {{ form.start_date ? form.start_date.toISOString().split('T')[0] : '-' }} to {{ form.end_date ? form.end_date.toISOString().split('T')[0] : '-' }}</div>
-          <div><b>Discount:</b> {{ form.discount_percentage }}%</div>
-          <div><b>Tax Rate:</b> {{ form.tax_rate }}%</div>
+    <Dialog v-model:visible="showReviewDialog" modal :showHeader="false" class="w-[72rem] max-w-[96vw]" :pt="{ content: { class: 'p-0' }, footer: { class: 'p-0' } }">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 md:px-6">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Final review</p>
+          <h2 class="mt-1 text-xl font-semibold text-slate-900">Review supplier contract</h2>
+          <p class="mt-1 text-xs text-slate-500">Confirm the details below before submitting this agreement to the supplier.</p>
         </div>
-        <iframe class="w-full h-[420px] border rounded" :srcdoc="reviewHtml"></iframe>
+        <Button icon="pi pi-times" text rounded severity="secondary" size="small" aria-label="Close review" @click="showReviewDialog = false" />
+      </div>
+
+      <div class="max-h-[76vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+        <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <div class="sm:col-span-2"><p class="text-xs text-slate-500">Contract title</p><p class="mt-1 font-semibold text-slate-900">{{ form.contract_title }}</p></div>
+          <div><p class="text-xs text-slate-500">Type</p><p class="mt-1 font-medium capitalize text-slate-900">{{ form.contract_type }}</p></div>
+          <div><p class="text-xs text-slate-500">Duration</p><p class="mt-1 font-medium text-slate-900">{{ contractDurationDays }} days</p></div>
+          <div><p class="text-xs text-slate-500">Store</p><p class="mt-1 font-medium text-slate-900">{{ selectedStoreName }}</p></div>
+          <div><p class="text-xs text-slate-500">Supplier</p><p class="mt-1 font-medium text-slate-900">{{ selectedSupplierName }}</p></div>
+          <div class="sm:col-span-2"><p class="text-xs text-slate-500">Effective period</p><p class="mt-1 font-medium text-slate-900">{{ reviewDate(form.start_date) }} to {{ reviewDate(form.end_date) }}</p></div>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Volume discount</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.discount_percentage || 0 }}%</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Tax rate</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ form.tax_rate || 0 }}%</p></div>
+          <div class="rounded-xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Attachment</p><p class="mt-1 truncate font-semibold text-slate-900">{{ contractFile?.name || 'No file attached' }}</p><p v-if="contractFile" class="mt-1 text-xs text-slate-500">{{ formatFileSize(contractFile.size) }}</p></div>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-slate-200">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3"><div><h3 class="font-semibold text-slate-900">Agreement preview</h3><p class="text-xs text-slate-500">Read the generated agreement before submission.</p></div><span class="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">Draft preview</span></div>
+          <iframe class="h-[min(55vh,620px)] min-h-[360px] w-full bg-white" :srcdoc="reviewHtml" title="Draft store-supplier agreement"></iframe>
+        </div>
       </div>
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <Button label="Close" severity="secondary" @click="showReviewDialog = false" />
-          <Button label="Submit Contract" severity="success" icon="pi pi-check" @click="submitForm" :loading="submitting" />
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 md:px-6">
+          <p class="text-xs text-slate-500">Submitting sends this contract for supplier review.</p>
+          <div class="flex gap-2"><Button label="Back to edit" severity="secondary" outlined size="small" @click="showReviewDialog = false" /><Button label="Submit contract" severity="warn" icon="pi pi-check" size="small" @click="submitForm" :loading="submitting" /></div>
         </div>
       </template>
     </Dialog>
@@ -242,6 +260,7 @@ const contractDurationDays = computed(() => {
   const end = new Date(form.end_date)
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24))
 })
+const reviewDate = (value: Date | null) => value ? new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '-'
 
 const paymentDueDate = computed(() => {
   if (!form.start_date || !form.payment_terms_days) return 'N/A'

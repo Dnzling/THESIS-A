@@ -286,10 +286,10 @@ class ReturnController extends Controller
                 ->whereHas('investigationTicket', fn ($ticketQuery) => $ticketQuery->where('status', 'completed'));
         } elseif ($workflow === 'approved') {
             $query->where('status', 'approved')
-                ->whereDoesntHave('pickup', fn ($pickupQuery) => $pickupQuery->where('status', 'picked_up'));
+                ->whereDoesntHave('pickup', fn ($pickupQuery) => $pickupQuery->whereIn('status', ['picked_up', 'out_for_delivery', 'completed', 'delivered']));
         } elseif ($workflow === 'awaiting_inspection') {
             $query->where('status', 'approved')
-                ->whereHas('pickup', fn ($pickupQuery) => $pickupQuery->where('status', 'picked_up'));
+                ->whereHas('pickup', fn ($pickupQuery) => $pickupQuery->whereIn('status', ['picked_up', 'out_for_delivery', 'completed', 'delivered']));
         } elseif ($workflow === 'awaiting_refund') {
             $query->where('status', 'refund_pending');
         } elseif ($workflow === 'completed') {
@@ -442,7 +442,7 @@ class ReturnController extends Controller
             && $currentStatus === 'approved'
             && $return->return_type
             && $return->return_type !== $validated['return_type']
-            && in_array((string) $return->pickup?->status, ['picked_up', 'completed', 'delivered'], true)) {
+            && in_array((string) $return->pickup?->status, ['picked_up', 'out_for_delivery', 'completed', 'delivered'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Return type can no longer be changed after the item has been picked up.',
@@ -458,7 +458,7 @@ class ReturnController extends Controller
 
         if ($newStatus === 'rejected'
             && $currentStatus === 'approved'
-            && in_array((string) $return->pickup?->status, ['picked_up', 'completed', 'delivered'], true)) {
+            && in_array((string) $return->pickup?->status, ['picked_up', 'out_for_delivery', 'completed', 'delivered'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'An approved return can no longer be rejected after the item has been picked up.',
@@ -690,12 +690,18 @@ class ReturnController extends Controller
 
         $user = $request->user();
         $employeeId = (int) ($user?->employee?->id ?? 0);
-        $branchId = (int) ($user?->branch_id ?? $user?->employee?->branch_id ?? 0);
-        if ($employeeId <= 0 || $branchId <= 0) {
+        $employeeBranchId = (int) ($user?->employee?->branch_id ?? $user?->branch_id ?? 0);
+        $branchId = (int) ($return->pickup?->destination_branch_id ?? 0);
+        if ($employeeId <= 0 || $employeeBranchId <= 0) {
             return response()->json(['success' => false, 'message' => 'User must be linked to an employee + branch to post inventory receive.'], 422);
         }
-        if ($branchId !== (int) $return->pickup?->destination_branch_id) {
-            return response()->json(['success' => false, 'message' => 'Receive this return at the branch selected for pickup delivery.'], 422);
+        if ($branchId <= 0) {
+            return response()->json(['success' => false, 'message' => 'The return pickup has no destination branch. Assign one before inspection.'], 422);
+        }
+        if ($employeeBranchId !== $branchId && ! $user->hasRole('store_admin')) {
+            $return->loadMissing('pickup.destinationBranch:id,name');
+            $destinationName = $return->pickup?->destinationBranch?->name ?? 'the selected branch';
+            return response()->json(['success' => false, 'message' => "Receive this return at {$destinationName}, or ask a store admin to complete the inspection."], 422);
         }
 
         $return->loadMissing([
@@ -740,9 +746,6 @@ class ReturnController extends Controller
                     'reorder_point' => 0,
                     'reorder_quantity' => 0,
                     'stock_status' => 'out_of_stock',
-                    'unit_cost' => $return->orderItem?->unit_price,
-                    'average_cost' => $return->orderItem?->unit_price,
-                    'total_value' => 0,
                 ]);
             }
 
@@ -780,7 +783,6 @@ class ReturnController extends Controller
             $available = (int) $inventory->quantity_available;
             $reorderPoint = (int) ($inventory->reorder_point ?? 0);
             $inventory->stock_status = $available <= 0 ? 'out_of_stock' : ($available <= $reorderPoint ? 'low_stock' : 'in_stock');
-            $inventory->total_value = round((float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0) * (int) $inventory->quantity_on_hand, 2);
             $inventory->save();
 
             if ($return->return_type === 'refund') {

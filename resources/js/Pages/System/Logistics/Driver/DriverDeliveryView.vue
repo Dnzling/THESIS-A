@@ -65,9 +65,19 @@
               </p>
             </div>
 
+            <div v-if="source === 'ecommerce'">
+              <small class="text-slate-500">Payment Method</small>
+              <p>{{ label(detail.order?.payment_method || detail.order?.payment?.payment_method || '-') }}</p>
+            </div>
+
+            <div v-if="source === 'ecommerce'">
+              <small class="text-slate-500">Payment Status</small>
+              <p>{{ label(detail.order?.payment_status || detail.order?.payment?.status || '-') }}</p>
+            </div>
+
             <div>
-              <small class="text-slate-500">{{ source === 'pickup' ? 'Pickup From' : 'Recipient' }}</small>
-              <p>{{ recipientName }}</p>
+              <small class="text-slate-500">{{ source === 'pickup' ? 'Supplier Pickup' : 'Recipient' }}</small>
+              <p>{{ source === 'pickup' ? supplierPickupName : recipientName }}</p>
             </div>
 
             <div>
@@ -90,6 +100,21 @@
               <p>
                 {{ formatDate(detail.delivery?.expected_delivery_date || detail.delivery?.estimated_delivery_at || detail.order?.expected_delivery_date || detail.order?.estimated_delivery_at) }}
               </p>
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Who to hand off to</p>
+                <p class="mt-1 text-base font-semibold text-slate-900">{{ recipientName }}</p>
+              </div>
+              <a v-if="recipientPhone && recipientPhone !== '-'" :href="`tel:${recipientPhone}`" class="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-orange-700 shadow-sm hover:bg-orange-100">Call {{ recipientPhone }}</a>
+            </div>
+            <div class="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div v-if="recipientPhone"><span class="block text-xs text-slate-500">Phone</span><span class="font-medium text-slate-800">{{ recipientPhone }}</span></div>
+              <div v-if="recipientEmail"><span class="block text-xs text-slate-500">Email</span><span class="break-all font-medium text-slate-800">{{ recipientEmail }}</span></div>
+              <div class="sm:col-span-2 lg:col-span-3"><span class="block text-xs text-slate-500">{{ recipientAddressLabel }}</span><span class="font-medium text-slate-800">{{ recipientAddress }}</span></div>
             </div>
           </div>
 
@@ -255,7 +280,9 @@
               v-if="!destinationPoint"
               class="px-4 py-3 text-sm text-amber-700"
             >
-              The store destination does not have map coordinates yet.
+              {{ source === 'return_pickup' && returnPickupToCustomer
+                ? 'The customer pickup address does not have map coordinates yet.'
+                : 'The drop-off branch does not have map coordinates yet.' }}
             </div>
           </div>
 
@@ -610,15 +637,56 @@ const linkedStatusesDelivered = computed(
         'delivered'),
 )
 
-const recipientName = computed(() =>
-  source.value === 'stock_transfer'
-    ? `${detail.value?.order?.from_branch?.name || 'Source branch'} to ${
-        detail.value?.order?.to_branch?.name || 'Destination branch'
-      }`
-    : detail.value?.order?.supplier?.supplier_name ||
-      detail.value?.order?.shipping_name ||
-      detail.value?.order?.customer_name ||
-      '-',
+const handoffBranch = computed(() =>
+  source.value === 'return_pickup'
+    ? detail.value?.delivery?.destination_branch || detail.value?.order?.branch || {}
+    : source.value === 'pickup'
+      ? detail.value?.order?.purchase_requisition?.branch || detail.value?.order?.purchaseRequisition?.branch || detail.value?.order?.branch || {}
+    : detail.value?.order?.branch || {},
+)
+
+const supplierPickupName = computed(() => detail.value?.order?.supplier?.supplier_name || '-')
+
+const recipientName = computed(() => {
+  if (source.value === 'stock_transfer') {
+    return `${detail.value?.order?.from_branch?.name || 'Source branch'} to ${detail.value?.order?.to_branch?.name || 'Destination branch'}`
+  }
+
+  if (source.value === 'pickup' || (source.value === 'return_pickup' && !returnPickupToCustomer.value)) {
+    const branch = handoffBranch.value
+    const manager = branch.manager
+    const managerName = [manager?.fname, manager?.lname].filter(Boolean).join(' ')
+    return managerName || branch.name || 'Branch recipient'
+  }
+
+  return detail.value?.order?.shipping_name || detail.value?.order?.customer_name || detail.value?.order?.pickup_name || 'Customer'
+})
+
+const recipientPhone = computed(() => {
+  if (source.value === 'pickup' || (source.value === 'return_pickup' && !returnPickupToCustomer.value)) {
+    return handoffBranch.value.contact_number || '-'
+  }
+  return detail.value?.order?.shipping_phone || detail.value?.order?.customer_phone || detail.value?.order?.pickup_phone || '-'
+})
+
+const recipientEmail = computed(() => {
+  if (source.value === 'pickup' || (source.value === 'return_pickup' && !returnPickupToCustomer.value)) {
+    return handoffBranch.value.email || ''
+  }
+  return detail.value?.order?.shipping_email || detail.value?.order?.delivery_email || ''
+})
+
+const recipientAddress = computed(() => {
+  if (source.value === 'pickup' || (source.value === 'return_pickup' && !returnPickupToCustomer.value)) {
+    return handoffBranch.value.address || detail.value?.delivery?.destination_address || '-'
+  }
+  return detail.value?.order?.shipping_address || detail.value?.order?.delivery_address || detail.value?.delivery?.pickup_address || '-'
+})
+
+const recipientAddressLabel = computed(() =>
+  source.value === 'pickup' || (source.value === 'return_pickup' && !returnPickupToCustomer.value)
+    ? 'Receiving branch'
+    : 'Delivery address',
 )
 
 const driverName = computed(() => {
@@ -633,7 +701,9 @@ const driverContact = computed(() => {
 })
 
 const pickupAddress = computed(() =>
-  source.value === 'stock_transfer'
+  source.value === 'return_pickup'
+    ? detail.value?.delivery?.pickup_address || detail.value?.order?.shipping_address || '-'
+    : source.value === 'stock_transfer'
     ? detail.value?.delivery?.origin_address ||
       detail.value?.order?.from_branch?.address ||
       '-'
@@ -645,7 +715,9 @@ const pickupAddress = computed(() =>
 )
 
 const destinationAddress = computed(() =>
-  source.value === 'stock_transfer'
+  source.value === 'pickup'
+    ? handoffBranch.value.address || detail.value?.delivery?.destination_address || '-'
+    : source.value === 'stock_transfer'
     ? detail.value?.delivery?.destination_address ||
       detail.value?.order?.to_branch?.address ||
       '-'
@@ -655,17 +727,24 @@ const destinationAddress = computed(() =>
       '-',
 )
 
+const returnPickupToCustomer = computed(() =>
+  source.value === 'return_pickup' &&
+  !['picked_up', 'out_for_delivery', 'delivered'].includes(currentDeliveryStatus.value),
+)
+
 const destinationPoint = computed<[number, number] | null>(() => {
-  const branch = detail.value?.order?.branch || {}
+  const branch = source.value === 'pickup'
+    ? handoffBranch.value
+    : detail.value?.order?.branch || {}
 
   const latitude = Number(
-    source.value === 'ecommerce'
+    source.value === 'ecommerce' || returnPickupToCustomer.value
       ? detail.value?.order?.customer_latitude
       : branch.latitude ?? detail.value?.delivery?.destination_latitude,
   )
 
   const longitude = Number(
-    source.value === 'ecommerce'
+    source.value === 'ecommerce' || returnPickupToCustomer.value
       ? detail.value?.order?.customer_longitude
       : branch.longitude ?? detail.value?.delivery?.destination_longitude,
   )
@@ -1143,7 +1222,7 @@ const sendLiveLocation = async (
   refresh = false,
 ) => {
   if (
-    !['pickup', 'ecommerce', 'stock_transfer'].includes(
+    !['pickup', 'ecommerce', 'stock_transfer', 'return_pickup'].includes(
       source.value,
     ) ||
     isDelivered.value
@@ -1188,7 +1267,7 @@ const updateTrackingState = () => {
     ['pickup', 'ecommerce', 'stock_transfer', 'return_pickup'].includes(
       source.value,
     ) &&
-    (source.value === 'return_pickup' ? ['picked_up', 'out_for_delivery'] : ['in_transit', 'out_for_delivery']).includes(
+    (source.value === 'return_pickup' ? ['assigned', 'picked_up', 'out_for_delivery'] : ['in_transit', 'out_for_delivery']).includes(
       status,
     )
 
@@ -1324,7 +1403,8 @@ const renderTrackingMap = async () => {
   if (destinationPoint.value) {
     const destinationElement = document.createElement('div')
     destinationElement.style.cssText = 'width:18px;height:18px;border:3px solid white;border-radius:50%;background:#2563eb;box-shadow:0 1px 5px #0008;'
-    destinationMarker = new mapboxgl.Marker({ element: destinationElement, anchor: 'center' }).setLngLat([destinationPoint.value[1], destinationPoint.value[0]]).setPopup(new mapboxgl.Popup({ offset: 15 }).setText(source.value === 'ecommerce' ? 'Delivery destination' : 'Store destination')).addTo(trackingMap)
+    const destinationLabel = returnPickupToCustomer.value ? 'Customer pickup location' : source.value === 'return_pickup' ? 'Drop-off branch' : source.value === 'ecommerce' ? 'Delivery destination' : 'Store destination'
+    destinationMarker = new mapboxgl.Marker({ element: destinationElement, anchor: 'center' }).setLngLat([destinationPoint.value[1], destinationPoint.value[0]]).setPopup(new mapboxgl.Popup({ offset: 15 }).setText(destinationLabel)).addTo(trackingMap)
 
     let linePoints: [number, number][] = lastPoint
       ? [lastPoint, destinationPoint.value]

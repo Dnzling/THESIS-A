@@ -15,7 +15,7 @@
       </div>
       <Card class="border border-slate-200 shadow-sm"><template #content>
           <form class="space-y-5" @submit.prevent="confirmSubmit">
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-4 md:grid-cols-3">
               <div class="rounded-xl border border-orange-100 bg-orange-50/60 p-3">
                 <label class="text-xs font-semibold text-slate-700">Requesting Branch
                   <span class="text-red-500">*</span></label>
@@ -25,6 +25,12 @@
                 <small class="text-slate-600">Automatically assigned from your user
                   profile.</small><small v-if="errors.branch_id" class="mt-1 block text-red-500">{{ errors.branch_id
                   }}</small>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-slate-700">PR Type <span class="text-red-500">*</span></label>
+                <Select v-model="form.requisition_type" :options="prTypeOptions" optionLabel="label" optionValue="value"
+                  placeholder="Select PR type" size="small" fluid />
+                <small v-if="errors.requisition_type" class="text-red-500">{{ errors.requisition_type }}</small>
               </div>
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-slate-700">Reason / Notes
@@ -135,7 +141,14 @@ const confirm = useConfirm(),
   branches = ref<any[]>([]),
   inventory = ref<any[]>([]),
   errors = reactive<Record<string, string>>({});
-const form = reactive<any>({ branch_id: null, reason: "", items: [] });
+const form = reactive<any>({ branch_id: null, requisition_type: "regular", reason: "", items: [] });
+const prTypeOptions = [
+  { label: "Regular", value: "regular" },
+  { label: "Urgent", value: "urgent" },
+  { label: "New Product", value: "new_product" },
+  { label: "Seasonal", value: "seasonal" },
+  { label: "Emergency", value: "emergency" },
+];
 const branchInventory = computed(() =>
   inventory.value.filter(
     (row) => Number(row.branch_id) === Number(form.branch_id),
@@ -217,6 +230,7 @@ const confirmRemoveItem = (i: number) => {
 const isFormValid = computed(() =>
   Boolean(
     form.branch_id &&
+    form.requisition_type &&
     form.reason.trim() &&
     form.items.length > 0 &&
     form.items.every(
@@ -231,6 +245,7 @@ const submit = async () => {
     (i: any) => i.branch_inventory_id && i.quantity_requested > 0,
   );
   if (!form.branch_id) errors.branch_id = "Select a warehouse branch.";
+  if (!form.requisition_type) errors.requisition_type = "Select a PR type.";
   if (!form.reason.trim()) errors.reason = "Reason is required.";
   if (!items.length) errors.items = "Add at least one valid item.";
   if (Object.keys(errors).length) return;
@@ -238,6 +253,7 @@ const submit = async () => {
   try {
     await WarehouseService.createPurchaseRequisition({
       branch_id: form.branch_id,
+      requisition_type: form.requisition_type,
       reason: form.reason,
       items,
     });

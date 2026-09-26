@@ -4,17 +4,19 @@
       <div class="grid h-full gap-0 lg:grid-cols-2">
         <Auth3DHero
           theme="light"
-          title="Hello Furnisync!"
-          subtitle="Showcase your catalog in 3D and create immersive product stories in minutes."
+          visual="furniture"
+          title="Your business, beautifully connected"
+          subtitle="Manage your furniture store or supplier operations from one connected workspace."
           brand="Furnisync"
-          footer="Interactive 3D model preview"
+          footer="Built for furniture businesses and suppliers"
           class="h-full"
         />
         <div class="flex flex-col justify-center p-8 lg:p-12">
           <div class="flex items-center justify-left mb-6">
             <div>
+              <p class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-600">Business &amp; Supplier Portal</p>
               <h1 class="text-3xl font-bold text-orange-500">Welcome Back</h1>
-              <p class="text-gray-400 mt-1 text-sm font-medium">Sign in to your account</p>
+              <p class="text-gray-500 mt-1 text-sm font-medium">Sign in to manage your store or supplier account</p>
             </div>
           </div>
 

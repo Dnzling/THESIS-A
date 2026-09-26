@@ -216,6 +216,7 @@ class PurchaseRequisitionController extends Controller
             'requisition_type' => 'nullable|in:regular,urgent,new_product,seasonal,emergency',
             'reason' => 'nullable|string',
             'priority' => 'nullable|integer|min:1|max:5',
+            'submit' => 'nullable|boolean',
             'items' => 'nullable|array|min:1',
             'items.*.product_id' => 'required_with:items|exists:products,id',
             'items.*.variation_id' => 'nullable|exists:product_variations,id',
@@ -292,7 +293,8 @@ class PurchaseRequisitionController extends Controller
                 'store_id' => $storeId,
                 'branch_id' => $branchId,
                 'requisition_type' => $validated['requisition_type'] ?? 'regular',
-                'status' => 'draft',
+                'status' => !empty($validated['submit']) ? 'pending' : 'draft',
+                'submitted_at' => !empty($validated['submit']) ? now() : null,
                 'estimated_amount' => $estimatedAmount,
                 'procurement_route' => $procurementRoute,
                 'required_approvals' => $requiredApprovals,
@@ -315,6 +317,10 @@ class PurchaseRequisitionController extends Controller
 
             DB::commit();
 
+            if (!empty($validated['submit'])) {
+                $this->notifyProcurementTeamForSubmittedPr($pr);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Purchase requisition created successfully',
@@ -328,6 +334,91 @@ class PurchaseRequisitionController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        abort_unless($this->userHasAnyPermission(['inventory.requisites.manage', 'inventory.requisitions.manage']), 403);
+        $storeId = (int) Auth::user()->store_id;
+        $branchId = $this->resolveBranchId();
+        $pr = PurchaseRequisition::where('store_id', $storeId)
+            ->where('branch_id', $branchId)->findOrFail($id);
+        if ($pr->status !== 'draft') {
+            return response()->json(['success' => false, 'message' => 'Only draft requisitions can be edited.'], 422);
+        }
+
+        $validated = $request->validate([
+            'requisition_type' => 'required|in:regular,urgent,new_product,seasonal,emergency',
+            'reason' => 'required|string|max:2000',
+            'submit' => 'nullable|boolean',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.variation_id' => 'nullable|integer|exists:product_variations,id',
+            'items.*.quantity_requested' => 'required|integer|min:1',
+            'items.*.estimated_unit_cost' => 'nullable|numeric|min:0',
+            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+        ]);
+
+        $inventory = BranchInventory::where('store_id', $storeId)
+            ->where('branch_id', $branchId)->get(['product_id', 'variation_id']);
+        foreach ($validated['items'] as $item) {
+            $exists = $inventory->contains(fn ($row) => (int) $row->product_id === (int) $item['product_id']
+                && (int) ($row->variation_id ?? 0) === (int) ($item['variation_id'] ?? 0));
+            if (!$exists) {
+                return response()->json(['success' => false, 'message' => 'All items must belong to your branch inventory.'], 422);
+            }
+        }
+
+        DB::transaction(function () use ($pr, $validated): void {
+            $amount = 0;
+            $pr->items()->delete();
+            foreach ($validated['items'] as $item) {
+                $cost = $this->resolveEstimatedUnitCost((int) $item['product_id'], $item['estimated_unit_cost'] ?? null);
+                $amount += (int) $item['quantity_requested'] * (float) $cost;
+                $pr->items()->create([
+                    'product_id' => $item['product_id'],
+                    'variation_id' => $item['variation_id'] ?? null,
+                    'quantity_requested' => $item['quantity_requested'],
+                    'estimated_unit_cost' => $cost,
+                    'tax_rate' => $item['tax_rate'] ?? 0,
+                ]);
+            }
+            $settings = ProcurementSettings::where('store_id', $pr->store_id)->first();
+            $route = 'branch_direct';
+            if ($settings) {
+                if ($amount >= $settings->procurement_threshold) $route = 'centralized';
+                if ($settings->shouldRequireRFQ($amount)) $route = 'rfq_required';
+            }
+            $approvals = ['warehouse_manager'];
+            if ($amount >= 100000) $approvals[] = 'branch_manager';
+            if ($amount >= 500000) $approvals[] = 'finance_manager';
+            $pr->update([
+                'requisition_type' => $validated['requisition_type'],
+                'reason' => $validated['reason'],
+                'estimated_amount' => $amount,
+                'procurement_route' => $route,
+                'required_approvals' => $approvals,
+                'status' => !empty($validated['submit']) ? 'pending' : 'draft',
+                'submitted_at' => !empty($validated['submit']) ? now() : null,
+            ]);
+        });
+
+        if (!empty($validated['submit'])) {
+            $this->notifyProcurementTeamForSubmittedPr($pr);
+        }
+        return response()->json(['success' => true, 'message' => 'Requisition updated.', 'data' => $pr->fresh('items')]);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        abort_unless($this->userHasAnyPermission(['inventory.requisites.manage', 'inventory.requisitions.manage']), 403);
+        $pr = PurchaseRequisition::where('store_id', (int) Auth::user()->store_id)
+            ->where('branch_id', $this->resolveBranchId())->findOrFail($id);
+        if ($pr->status !== 'draft') {
+            return response()->json(['success' => false, 'message' => 'Only draft requisitions can be deleted.'], 422);
+        }
+        $pr->delete();
+        return response()->json(['success' => true, 'message' => 'Draft deleted.']);
     }
 
     /**

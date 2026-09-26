@@ -12,7 +12,7 @@
         class="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-semibold"
         :class="statusBadgeClass(detail?.status || 'draft')"
       >
-        {{ formatStatusLabel(detail?.status || 'draft') }}
+        {{ detail?.delivery_status === 'delivered' && detail?.status !== 'received' ? 'Delivered - Awaiting Receipt' : formatStatusLabel(detail?.status || 'draft') }}
       </span>
     </div>
 
@@ -152,9 +152,24 @@
               @click="sendToLogistics"
             />
           </div>
+          <div v-if="canCreateReceipt" class="pt-4 flex justify-end">
+            <Button label="Receive Transfer" icon="pi pi-inbox" severity="warn" size="small" @click="openReceipt" />
+          </div>
         </template>
       </Card>
     </div>
+    <Dialog v-model:visible="receiptVisible" modal header="Receive Delivered Transfer" :style="{ width: 'min(92vw, 680px)' }">
+      <p class="mb-4 text-sm text-slate-600">Confirm the quantities physically received at the destination branch. Stock updates only after you submit.</p>
+      <div class="space-y-3">
+        <div v-for="item in receiptItems" :key="item.id" class="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_110px_110px] sm:items-end">
+          <div><p class="text-sm font-medium text-slate-900">{{ item.name }}</p><p class="text-xs text-slate-500">Approved: {{ item.approved }}</p></div>
+          <div><label class="mb-1 block text-xs text-slate-600">Good</label><InputNumber v-model="item.received_quantity" :min="0" :max="item.approved" size="small" fluid /></div>
+          <div><label class="mb-1 block text-xs text-slate-600">Damaged</label><InputNumber v-model="item.damaged_quantity" :min="0" :max="item.approved" size="small" fluid /></div>
+        </div>
+      </div>
+      <p v-if="receiptError" class="mt-3 text-xs text-red-600">{{ receiptError }}</p>
+      <template #footer><Button label="Cancel" severity="secondary" text size="small" @click="receiptVisible = false" /><Button label="Confirm Receipt" severity="warn" size="small" :loading="processing" @click="receiveTransfer" /></template>
+    </Dialog>
   </div>
 </template>
 
@@ -171,6 +186,9 @@ const toast = useToast()
 
 const loading = ref(false)
 const processing = ref(false)
+const receiptVisible = ref(false)
+const receiptError = ref('')
+const receiptItems = ref<Array<{ id: number; name: string; approved: number; received_quantity: number; damaged_quantity: number }>>([])
 const detail = ref<any>(null)
 const authStore = useAuthStore()
 
@@ -189,6 +207,18 @@ const canApprove = computed(() => ['pending_approval', 'requested'].includes(det
 const canSendToLogistics = computed(() =>
   ['receiver_acknowledge', 'receiver_acknowledged'].includes(String(detail.value?.status || '').toLowerCase())
 )
+const canCreateReceipt = computed(() => detail.value?.delivery_status === 'delivered' && detail.value?.status !== 'received')
+const openReceipt = () => {
+  receiptError.value = ''
+  receiptItems.value = (detail.value?.items || []).map((item: any) => ({
+    id: item.id,
+    name: item.product?.product_name || 'Product',
+    approved: Number(item.approved_quantity ?? item.requested_quantity ?? 0),
+    received_quantity: Number(item.approved_quantity ?? item.requested_quantity ?? 0),
+    damaged_quantity: 0,
+  }))
+  receiptVisible.value = true
+}
 const showShipmentOverview = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   return ['in_transit', 'out_for_delivery', 'received'].includes(status)
@@ -255,12 +285,19 @@ const shipTransfer = async () => {
 }
 
 const receiveTransfer = async () => {
+  if (receiptItems.value.some(item => item.received_quantity < 0 || item.damaged_quantity < 0 || item.received_quantity + item.damaged_quantity > item.approved)) {
+    receiptError.value = 'Good and damaged quantities together cannot exceed the approved quantity.'
+    return
+  }
   processing.value = true
   try {
-    await inventoryService.receiveTransfer(transferId.value)
+    await inventoryService.receiveTransfer(transferId.value, { items: receiptItems.value.map(({ id, received_quantity, damaged_quantity }) => ({ id, received_quantity, damaged_quantity })) })
+    receiptVisible.value = false
+    toast.add({ severity: 'success', summary: 'Transfer received', detail: 'Destination stock has been updated.', life: 2500 })
     await loadDetail()
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to receive transfer', error)
+    receiptError.value = error?.response?.data?.message || 'Unable to receive the transfer.'
   } finally {
     processing.value = false
   }

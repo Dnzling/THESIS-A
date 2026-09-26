@@ -109,6 +109,9 @@ class StockTransferController extends Controller
         if ($storeId > 0) {
             $query->where('store_id', $storeId);
         }
+        if ($request->boolean('logistics_ready')) {
+            $query->whereNotNull('delivery_status');
+        }
         if ($branchId > 0) {
             $query->where(function ($builder) use ($branchId) {
                 $builder->where('from_branch_id', $branchId)
@@ -497,10 +500,10 @@ class StockTransferController extends Controller
     {
         $transfer = StockTransfer::with('items.product')->findOrFail($id);
 
-        if (!in_array($transfer->status, ['sender_approved', 'in_transit'], true)) {
+        if (!in_array($transfer->status, ['sender_approved', 'in_transit'], true) || $transfer->delivery_status !== 'ready_for_dispatch') {
             return response()->json([
                 'success' => false,
-                'message' => 'Delivery can only be created after the sender approves the transfer.',
+                'message' => 'Delivery can only be assigned once the transfer is ready for dispatch.',
             ], 422);
         }
 
@@ -745,12 +748,16 @@ class StockTransferController extends Controller
      */
     public function receive(Request $request, int $id): JsonResponse
     {
-        $transfer = StockTransfer::with('items')->findOrFail($id);
+        $context = $this->getUserContext($request);
+        $transfer = StockTransfer::with('items')
+            ->where('store_id', $context['store_id'])
+            ->when($context['branch_id'] > 0, fn ($query) => $query->where('to_branch_id', $context['branch_id']))
+            ->findOrFail($id);
 
-        if (!in_array($transfer->status, ['in_transit', 'out_for_delivery'], true)) {
+        if (!in_array($transfer->status, ['in_transit', 'out_for_delivery'], true) || $transfer->delivery_status !== 'delivered') {
             return response()->json([
                 'success' => false,
-                'message' => 'Only in-transit transfers can be received',
+                'message' => 'Only transfers delivered by logistics can be received',
             ], 422);
         }
 
@@ -775,6 +782,12 @@ class StockTransferController extends Controller
         try {
             foreach ($validated['items'] as $itemData) {
                 $item = $transfer->items->firstWhere('id', $itemData['id']);
+                if (!$item) {
+                    throw new \InvalidArgumentException('A receipt item does not belong to this transfer.');
+                }
+                if ($itemData['received_quantity'] + ($itemData['damaged_quantity'] ?? 0) > ($item->approved_quantity ?? $item->requested_quantity)) {
+                    throw new \InvalidArgumentException('Received and damaged quantities cannot exceed the approved quantity.');
+                }
 
                 // Update item
                 $item->update([

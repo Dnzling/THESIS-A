@@ -55,6 +55,15 @@
           <!-- COVERAGE VIEW -->
           <TabPanel value="coverage">
             <div class="space-y-4">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="mr-2 text-xs font-medium text-slate-600">Schedule for</span>
+                <Button icon="pi pi-chevron-left" text rounded size="small" aria-label="Previous day" @click="previousDay" />
+                <DatePicker v-model="selectedDate" dateFormat="M d, yy" size="small" class="w-44"
+                  @date-select="fetchCoverageData" />
+                <Button icon="pi pi-chevron-right" text rounded size="small" aria-label="Next day" @click="nextDay" />
+                <span v-if="isToday" class="rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">Today</span>
+                <Button v-else label="Go to today" text severity="warn" size="small" @click="goToToday" />
+              </div>
               <div v-if="coverageLoading" class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div v-for="n in 4" :key="n" class="h-36 animate-pulse rounded-lg border border-gray-100 p-4"><Skeleton width="45%" height="1rem" class="mb-4" /><Skeleton width="100%" height="0.6rem" class="mb-4" /><Skeleton width="70%" height="0.75rem" /></div>
               </div>
@@ -62,45 +71,27 @@
                 Coverage is temporarily unavailable while we validate schedule data. Please check back shortly.
               </div>
               <div v-else-if="departments.length === 0" class="rounded-lg border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500">
-                No shifts are scheduled for this date.
+                No staff are scheduled for this date.
               </div>
-              <div v-else>
-              <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2">
-                  <Button icon="pi pi-chevron-left" text rounded size="small" @click="previousDay" />
-                  <DatePicker v-model="selectedDate" dateFormat="MM dd, yy" class="w-40"
-                    @date-select="fetchCoverageData" />
-                  <Button icon="pi pi-chevron-right" text rounded size="small" @click="nextDay" />
-                </div>
-                <Tag value="Today" severity="info" v-if="isToday" />
-              </div>
-  
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div v-for="dept in departments" :key="dept.id" class="border border-gray-100 rounded-lg p-4">
-                  <div class="flex justify-between items-center mb-3">
-                    <h3 class="font-semibold">{{ dept.name }}</h3>
-                    <div>
-                      <span v-if="dept.totalEmployees > 0" class="text-sm font-medium">{{ dept.scheduled }} / {{ dept.totalEmployees }}</span>
-                      <span v-else class="text-sm font-medium">{{ dept.scheduled }} scheduled</span>
-                      <span class="text-xs text-gray-400 ml-1">scheduled</span>
+              <div v-else class="space-y-3">
+                <p class="text-xs text-slate-500">Staff with a shift on this date, grouped by department. This is not a staffing target.</p>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div v-for="dept in departments" :key="dept.id" class="rounded-xl border border-slate-200 bg-white p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <h3 class="text-sm font-semibold text-slate-900">{{ dept.name }}</h3>
+                      <span class="shrink-0 rounded-lg bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                        {{ dept.scheduled }} {{ dept.scheduled === 1 ? 'person' : 'people' }} scheduled
+                      </span>
                     </div>
-                  </div>
-                  <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
-                    <div class="bg-blue-500 h-2 rounded-full" :style="{ width: dept.coveragePercentage + '%' }"></div>
-                  </div>
-                  <div class="mt-3 text-xs text-gray-500">
-                    {{ dept.scheduled }} employees scheduled for this department.
-                  </div>
-                  <div v-if="dept.unfilledCount > 0" class="mt-2 space-y-2">
-                    <div v-for="n in dept.unfilledCount" :key="'unfilled-'+n"
-                      class="flex items-center gap-2 text-sm text-gray-400">
-                      <i class="pi pi-plus-circle text-xs"></i>
-                      <span>Unfilled slot {{ n }}</span>
+                    <div class="mt-3 flex flex-wrap gap-1.5">
+                      <span v-for="employee in dept.scheduledEmployees" :key="employee.id"
+                        class="rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-700">
+                        {{ employee.name }}<span v-if="employee.shiftType" class="text-slate-400"> · {{ employee.shiftType }}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
             </div>
           </TabPanel>
   
@@ -569,7 +560,6 @@ const assignmentForm = ref({
 const employeeOptions = ref<{ label: string; value: number }[]>([])
 const myShiftOptions = ref<{ label: string; value: number }[]>([])
 const receiverShiftOptions = ref<{ label: string; value: number }[]>([])
-const departmentEmployeeCounts = ref<Record<string, number>>({})
 
 // --- Swap State ---
 const swapRequests = ref<any[]>([])
@@ -915,7 +905,7 @@ const fetchData = async () => {
       const records = response.data.data.data || response.data.data || []
       shiftsData.value = transformShiftData(records)
       processDashboardStats()
-      processDepartmentsData()
+      if (activeTab.value === 'coverage') fetchCoverageData()
       extractFilterOptions()
     } else {
       error.value = 'Failed to load data'
@@ -945,28 +935,6 @@ const processDashboardStats = () => {
   }
 }
 
-const processDepartmentsData = () => {
-  const deptMap = new Map<string, any>()
-  shiftsData.value.forEach((shift: any) => {
-    const dept = shift.employee.department || 'Unassigned'
-    if (!deptMap.has(dept)) {
-      deptMap.set(dept, { id: dept, name: dept, totalEmployees: 0, scheduled: 0, scheduledEmployees: [], unfilledCount: 0, coveragePercentage: 0 })
-    }
-    const d = deptMap.get(dept)
-    if (shift.status === 'scheduled') {
-      d.scheduled++
-      d.scheduledEmployees.push({ id: shift.employee.id, name: shift.employee.full_name, shiftType: shift.shift.name })
-    }
-  })
-
-  deptMap.forEach((d: any) => {
-    d.totalEmployees = departmentEmployeeCounts.value[d.name] ?? 0
-    d.unfilledCount = Math.max(0, d.totalEmployees - d.scheduled)
-    d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
-  })
-  departments.value = Array.from(deptMap.values())
-}
-
 const extractFilterOptions = () => {
   const depts = [...new Set(shiftsData.value.map((s: any) => s.employee.department).filter(Boolean))]
   departmentOptions.value = depts.map((d: string) => ({ label: d, value: d }))
@@ -976,66 +944,44 @@ const extractFilterOptions = () => {
 }
 
 const fetchCoverageData = async () => {
-  if (coverageUnavailable.value) return
   coverageLoading.value = true
+  coverageUnavailable.value = false
   try {
-    // Prefer server-side coverage endpoint (temporary debug) to get today's assignments
-    const resp = await hrService.api.get('api/test/_debug/shifts-today', {
-      headers: { 'Authorization': `Bearer ${authStore.token}` }
-    })
-    const records = resp.data.data || []
+    const date = formatDateForAPI(selectedDate.value)
+    const records: any[] = []
+    let page = 1
+    let lastPage = 1
+    do {
+      const response = await hrService.api.get('api/shift-schedules', {
+        headers: { Authorization: `Bearer ${authStore.token}` },
+        params: { date, page }
+      })
+      const result = response.data.data
+      records.push(...(result.data || []))
+      lastPage = result.last_page || 1
+      page++
+    } while (page <= lastPage)
 
-    // Map debug records to internal shift shape (include branch and department)
-    const filtered = records.map((r: any) => ({
-      id: r.id,
-      employee: { id: r.employee_id, fname: r.employee?.split(' ')[0] || r.employee, lname: r.employee?.split(' ')[1] || '' , full_name: r.employee, department: r.department },
-      shift: { name: 'Scheduled' },
-      branch: r.branch,
-      schedule_date: r.start_date ? r.start_date.split('T')[0] : null,
-      status: 'scheduled'
-    }))
-
-    // Reprocess departments grouped by branch with filtered data
     const deptMap = new Map<string, any>()
-    filtered.forEach((shift: any) => {
-    const dept = shift.branch ? `${shift.branch} / ${shift.employee.department || 'Unassigned'}` : (shift.employee.department || 'Unassigned')
-    if (!deptMap.has(dept)) {
-      deptMap.set(dept, { id: dept, name: dept, totalEmployees: 0, scheduled: 0, scheduledEmployees: [], unfilledCount: 0, coveragePercentage: 0 })
-    }
-    const d = deptMap.get(dept)
-    if (shift.status === 'scheduled') {
-      d.scheduled++
-      d.scheduledEmployees.push({ id: shift.employee.id, name: shift.employee.full_name, shiftType: shift.shift.name })
-    }
-  })
-  deptMap.forEach((d: any) => {
-    d.totalEmployees = departmentEmployeeCounts.value[d.name] ?? 0
-    d.unfilledCount = Math.max(0, d.totalEmployees - d.scheduled)
-    d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
-  })
-  departments.value = Array.from(deptMap.values())
-  } catch (err:any) {
-    // fallback to client-side computation if debug endpoint fails
-    const dateStr = formatDateForAPI(selectedDate.value)
-    const filtered = shiftsData.value.filter((s: any) => s.schedule_date?.startsWith(dateStr))
-    const deptMap = new Map<string, any>()
-    filtered.forEach((shift: any) => {
-      const dept = shift.employee.department || 'Unassigned'
-      if (!deptMap.has(dept)) {
-        deptMap.set(dept, { id: dept, name: dept, totalEmployees: 0, scheduled: 0, scheduledEmployees: [], unfilledCount: 0, coveragePercentage: 0 })
-      }
-      const d = deptMap.get(dept)
-      if (shift.status === 'scheduled') {
-        d.scheduled++
-        d.scheduledEmployees.push({ id: shift.employee.id, name: shift.employee.full_name, shiftType: shift.shift.name })
-      }
+    records.filter((record: any) => record.status !== 'cancelled').forEach((record: any) => {
+      const employee = record.employee || {}
+      if (!employee.id) return
+      const name = employee.department || 'Unassigned'
+      if (!deptMap.has(name)) deptMap.set(name, { id: name, name, scheduled: 0, scheduledEmployees: [] })
+      const department = deptMap.get(name)
+      if (department.scheduledEmployees.some((person: any) => person.id === employee.id)) return
+      department.scheduledEmployees.push({
+        id: employee.id,
+        name: `${employee.fname || ''} ${employee.lname || ''}`.trim() || 'Unknown employee',
+        shiftType: record.shift?.name || ''
+      })
+      department.scheduled++
     })
-    deptMap.forEach((d: any) => {
-      d.totalEmployees = departmentEmployeeCounts.value[d.name] ?? 0
-      d.unfilledCount = Math.max(0, d.totalEmployees - d.scheduled)
-      d.coveragePercentage = d.totalEmployees > 0 ? (d.scheduled / d.totalEmployees) * 100 : 0
-    })
-    departments.value = Array.from(deptMap.values())
+    departments.value = Array.from(deptMap.values()).sort((a: any, b: any) => a.name.localeCompare(b.name))
+  } catch (err) {
+    console.error('Failed to fetch schedule coverage', err)
+    departments.value = []
+    coverageUnavailable.value = true
   } finally {
     coverageLoading.value = false
   }
@@ -1418,12 +1364,6 @@ const fetchEmployeeOptions = async () => {
     })
     if (response.data.success) {
       const employees = response.data.data.data || response.data.data || []
-      const deptCounts: Record<string, number> = {}
-      employees.forEach((e: any) => {
-        const dept = e.department || 'Unassigned'
-        deptCounts[dept] = (deptCounts[dept] || 0) + 1
-      })
-      departmentEmployeeCounts.value = deptCounts
       employeeOptions.value = employees.map((e: any) => ({
         label: `${e.fname} ${e.lname}`,
         value: e.id
@@ -1460,6 +1400,10 @@ const previousDay = () => {
 }
 const nextDay = () => {
   selectedDate.value = new Date(selectedDate.value.setDate(selectedDate.value.getDate() + 1))
+  fetchCoverageData()
+}
+const goToToday = () => {
+  selectedDate.value = new Date()
   fetchCoverageData()
 }
 const viewShiftDetails = (shift: any) => openEditShiftDialog(shift)

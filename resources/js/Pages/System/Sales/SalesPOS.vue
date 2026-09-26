@@ -174,9 +174,13 @@
             mode="currency" 
             currency="PHP" 
             :min="0"
+            :invalid="tenderedAmountInvalid"
             placeholder="Amount tendered"
             class="mb-3"
           />
+          <Message v-if="tenderedAmountInvalid" severity="error" :closable="false" class="-mt-2 mb-3">
+            Amount tendered must be at least {{ money(total) }}.
+          </Message>
 
           <!-- GCash Info -->
           <Message v-if="paymentMethod === 'gcash'"  class="mb-3">
@@ -209,7 +213,7 @@
              
             fluid 
             :loading="checkingOut" 
-            :disabled="!canManagePos || !cart.length"
+            :disabled="!canManagePos || !cart.length || tenderedAmountInvalid || (paymentMethod !== 'gcash' && amountTendered === null)"
             label="Checkout"
             @click="checkout"
           />
@@ -462,6 +466,11 @@ const removeCart = (item: any) => {
 
 const subtotal = computed(() => cart.value.reduce((s, i) => s + (Number(i.unit_price) * Number(i.quantity || 0)), 0))
 const total = computed(() => subtotal.value + (deliveryRequired.value ? shippingFee.value : 0))
+const tenderedAmountInvalid = computed(() =>
+  paymentMethod.value !== 'gcash'
+  && amountTendered.value !== null
+  && Number(amountTendered.value) < total.value
+)
 const changeAmount = computed(() => Math.max(0, Number(amountTendered.value || 0) - total.value))
 
 let shippingEstimateRequest = 0
@@ -495,6 +504,10 @@ const updateShippingFee = async () => {
 const checkout = async () => {
   if (!cart.value.length) {
     toast.add({ severity: 'warn', summary: 'Empty Cart', detail: 'Please add items to cart first.', life: 2500 })
+    return
+  }
+
+  if (paymentMethod.value !== 'gcash' && (amountTendered.value === null || Number(amountTendered.value) < total.value)) {
     return
   }
   

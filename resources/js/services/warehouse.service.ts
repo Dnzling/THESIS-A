@@ -13,6 +13,7 @@ export const WarehouseService = {
   transferRequests: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/transfer-requests', { params })),
   transferRequest: async (id: number | string) => unwrap(await axiosClient.get(`/api/warehouse/transfer-requests/${id}`)),
   approveTransferRequest: async (id: number | string) => unwrap(await axiosClient.post(`/api/warehouse/transfer-requests/${id}/approve`)),
+  readyTransferForDispatch: async (id: number | string) => unwrap(await axiosClient.post(`/api/warehouse/transfer-requests/${id}/ready-for-dispatch`)),
   rejectTransferRequest: async (id: number | string, rejection_reason: string) => unwrap(await axiosClient.post(`/api/warehouse/transfer-requests/${id}/reject`, { rejection_reason })),
   receiving: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/receiving', { params })),
   transferHistory: async (params: any = {}) => unwrap(await axiosClient.get('/api/warehouse/transfer-history', { params })),

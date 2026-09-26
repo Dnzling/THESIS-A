@@ -79,6 +79,7 @@ Route::prefix('inventory')->group(function () {
 
     // Reports
     Route::prefix('reports')->group(function () {
+        Route::get('/actionable', [InventoryReportController::class, 'actionable']);
         Route::get('/branch-summary', [InventoryReportController::class, 'branchSummary']);
         Route::get('/store-summary', [InventoryReportController::class, 'storeSummary']);
         Route::get('/movements', [InventoryReportController::class, 'movements']);
@@ -138,6 +139,8 @@ Route::prefix('inventory')->group(function () {
         Route::get('/', [InventoryPurchaseRequisitionController::class, 'index']);
         Route::post('/', [InventoryPurchaseRequisitionController::class, 'store']);
         Route::get('/{id}', [InventoryPurchaseRequisitionController::class, 'show']);
+        Route::put('/{id}', [InventoryPurchaseRequisitionController::class, 'update']);
+        Route::delete('/{id}', [InventoryPurchaseRequisitionController::class, 'destroy']);
         Route::post('/{id}/submit', [InventoryPurchaseRequisitionController::class, 'submit']);
         Route::post('/{id}/approve', [InventoryPurchaseRequisitionController::class, 'approve']);
         Route::post('/{id}/reject', [InventoryPurchaseRequisitionController::class, 'reject']);
@@ -174,6 +177,7 @@ Route::prefix('inventory')->group(function () {
     // Stock Returns
     Route::prefix('returns')->group(function () {
         Route::get('/customer/destinations', [\App\Http\Controllers\Api\Logistics\ReturnPickupController::class, 'inventoryReturns']);
+        Route::post('/customer/{return}/inspect', [\App\Http\Controllers\Api\CRM\ReturnController::class, 'receive']);
         Route::get('/', [StockReturnController::class, 'index']);
         Route::post('/', [StockReturnController::class, 'store']);
         Route::get('/{return}', [StockReturnController::class, 'show']);
@@ -294,6 +298,7 @@ Route::prefix('inventory')->group(function () {
     });
 
     // Reorder Rules Management
+    Route::get('forecasting', fn (\Illuminate\Http\Request $request, \App\Http\Controllers\Api\Inventory\ForecastController $controller) => $controller->index($request, 'inventory'));
     Route::prefix('reorder-rules')->group(function () {
         Route::get('/', [ReorderRuleController::class, 'index']);
         Route::post('/', [ReorderRuleController::class, 'store']);

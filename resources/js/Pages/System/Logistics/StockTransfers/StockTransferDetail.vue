@@ -16,7 +16,7 @@
             icon="pi pi-truck"
             label="Assign Delivery"
             severity="success"
-            @click="deliveryDialogVisible = true"
+            @click="router.push({ name: 'logistics.stock-transfers.assign', params: { id: transferId } })"
           />
           <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadDetail" />
         </div>
@@ -240,62 +240,6 @@
       </template>
     </Card>
 
-    <Dialog v-model:visible="deliveryDialogVisible" modal header="Delivery Assignment Form" class="w-full max-w-3xl">
-      <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="submitDelivery">
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Logistics Employee</label>
-          <Select
-            v-model="deliveryForm.driver_user_id"
-            :options="employees"
-            optionLabel="name"
-            optionValue="id"
-            fluid
-            filter
-            placeholder="Select logistics employee"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
-          <Select
-            v-model="deliveryForm.vehicle_id"
-            :options="vehicles"
-            optionLabel="label"
-            optionValue="id"
-            fluid
-            filter
-            placeholder="Select truck/van"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Courier Contact Number</label>
-          <InputText v-model="deliveryForm.courier_contact" fluid placeholder="09xxxxxxxxx" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Estimated Delivery Time</label>
-          <DatePicker v-model="deliveryForm.estimated_delivery_at" showTime hourFormat="12" fluid />
-        </div>
-
-        <div class="md:col-span-2">
-          <label class="mb-1 block text-sm text-slate-600">Notes (Optional)</label>
-          <Textarea v-model="deliveryForm.notes" rows="3" fluid placeholder="Delivery assignment notes" />
-        </div>
-        <div class="md:col-span-2">
-          <Message severity="info" :closable="false">No delivery fee will be charged for stock transfer logistics.</Message>
-        </div>
-      </form>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="deliveryDialogVisible = false" />
-        <Button
-          label="Create Delivery"
-          icon="pi pi-check-circle"
-          severity="success"
-          :loading="submittingDelivery"
-          :disabled="!canSubmitDelivery"
-          @click="submitDelivery"
-        />
-      </template>
-    </Dialog>
-
     <Dialog v-model:visible="recordLogDialogVisible" modal header="Record Delivery Log" class="w-full max-w-xl">
       <div class="space-y-3">
         <Select
@@ -388,7 +332,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
@@ -399,11 +343,7 @@ import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
-import Message from 'primevue/message'
-import Select from 'primevue/select'
-import DatePicker from 'primevue/datepicker'
 import inventoryService from '../../../../services/inventory.service'
-import logisticsService from '../../../../services/logistics.service'
 
 const route = useRoute()
 const router = useRouter()
@@ -412,8 +352,6 @@ const toast = useToast()
 const loading = ref(false)
 const detail = ref<any>(null)
 const transferId = computed(() => Number(route.params.id || 0))
-const deliveryDialogVisible = ref(false)
-const submittingDelivery = ref(false)
 const recordLogDialogVisible = ref(false)
 const recordLogEvent = ref<string | null>(null)
 const recordLogNotes = ref('')
@@ -433,16 +371,6 @@ const recordLogEventOptions = [
   { label: 'Received by Branch', value: 'received_by_branch' },
   { label: 'Custom Note', value: 'custom_note' },
 ]
-const employees = ref<any[]>([])
-const vehicles = ref<any[]>([])
-const deliveryForm = reactive({
-  driver_user_id: null as number | null,
-  vehicle_id: null as number | null,
-  courier_contact: '',
-  estimated_delivery_at: null as Date | null,
-  tracking_number: '',
-  notes: '',
-})
 
 const loadDetail = async () => {
   if (!transferId.value) return
@@ -475,7 +403,7 @@ const canCreateDelivery = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   const notes = String(detail.value?.notes || '').toLowerCase()
   const logisticsProcessing = status === 'in_transit' && notes.includes('sent to logistics')
-  return (status === 'sender_approved' || logisticsProcessing) && !detail.value?.driver_name && !detail.value?.driver_user_id
+  return (detail.value?.delivery_status === 'ready_for_dispatch' || logisticsProcessing) && !detail.value?.driver_name && !detail.value?.driver_user_id
 })
 
 const showShipmentOverview = computed(() => {
@@ -659,55 +587,6 @@ const proofImages = computed(() => {
     .filter((entry) => !!entry.url)
 })
 
-const canSubmitDelivery = computed(() =>
-  !!deliveryForm.driver_user_id && !!deliveryForm.vehicle_id && !!deliveryForm.courier_contact.trim()
-)
-
-const submitDelivery = async () => {
-  if (!canSubmitDelivery.value) return
-  submittingDelivery.value = true
-  try {
-    const selectedEmployee = employees.value.find((e: any) => Number(e.id) === Number(deliveryForm.driver_user_id))
-    const selectedVehicle = vehicles.value.find((v: any) => Number(v.id) === Number(deliveryForm.vehicle_id))
-
-    const driverName = selectedEmployee?.name || selectedEmployee?.full_name || 'Assigned Driver'
-    const driverContact =
-      deliveryForm.courier_contact.trim() ||
-      selectedEmployee?.contact_number ||
-      selectedEmployee?.contact ||
-      selectedEmployee?.phone ||
-      selectedEmployee?.mobile ||
-      ''
-    const vehicleType = selectedVehicle?.vehicle_name || selectedVehicle?.label || 'Assigned Vehicle'
-
-    await inventoryService.createTransferDelivery(transferId.value, {
-      driver_user_id: Number(deliveryForm.driver_user_id),
-      vehicle_type: vehicleType,
-      driver_name: String(driverName).trim(),
-      driver_contact: String(driverContact).trim(),
-      tracking_number: deliveryForm.tracking_number.trim() || undefined,
-      notes: deliveryForm.notes.trim() || undefined,
-    })
-    toast.add({
-      severity: 'success',
-      summary: 'Delivery Created',
-      detail: 'Stock transfer delivery created with no charge.',
-      life: 2500,
-    })
-    deliveryDialogVisible.value = false
-    await loadDetail()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Create Failed',
-      detail: error?.response?.data?.message || 'Failed to create delivery.',
-      life: 3000,
-    })
-  } finally {
-    submittingDelivery.value = false
-  }
-}
-
 const saveShipmentLog = async () => {
   if (!recordLogEvent.value) return
   savingLog.value = true
@@ -839,48 +718,6 @@ const markAsDelivered = async () => {
   }
 }
 
-const loadOptions = async () => {
-  try {
-    const [employeeRes, vehicleRes] = await Promise.all([
-      logisticsService.getLogisticsEmployees(),
-      logisticsService.getVehicles({ per_page: 100 }),
-    ])
-
-    const employeePayload = employeeRes?.data || []
-    employees.value = Array.isArray(employeePayload)
-      ? employeePayload
-      : (employeePayload.drivers || [])
-    const vehicleRows = vehicleRes?.data?.data || []
-    vehicles.value = vehicleRows.map((vehicle: any) => ({
-      ...vehicle,
-      label: `${vehicle.vehicle_name} (${vehicle.plate_number})`,
-    }))
-  } catch (error: any) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Options Incomplete',
-      detail: error?.response?.data?.message || 'Failed to load drivers/vehicles.',
-      life: 2500,
-    })
-  }
-}
-
-watch(
-  () => deliveryForm.driver_user_id,
-  (id) => {
-    if (!id) return
-    const selectedEmployee = employees.value.find((e: any) => Number(e.id) === Number(id))
-    if (!deliveryForm.courier_contact && selectedEmployee) {
-      deliveryForm.courier_contact =
-        selectedEmployee.contact_number ||
-        selectedEmployee.contact ||
-        selectedEmployee.phone ||
-        selectedEmployee.mobile ||
-        ''
-    }
-  }
-)
-
 const statusSeverity = (status?: string) => {
   const s = String(status || '').toLowerCase()
   if (s === 'received') return 'success'
@@ -905,6 +742,6 @@ const formatDate = (value?: string) => {
 const goBack = () => router.push({ name: 'logistics.stock-transfers' })
 
 onMounted(async () => {
-  await Promise.all([loadDetail(), loadOptions()])
+  await loadDetail()
 })
 </script>

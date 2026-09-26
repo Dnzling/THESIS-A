@@ -39,7 +39,7 @@
                 <Tag v-if="product?.is_bestseller" value="Bestseller" severity="success" />
                 <Tag v-if="product?.is_featured" value="Featured" severity="warning" />
               </div>
-              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : 'View in 3D'" @click="toggle3DViewer" />
+              <Button v-if="selectedModel3D" :label="show3DViewer ? ' Photo' : 'View in 3D'" @click="toggle3DViewer" rounded :icon="show3DViewer ? 'pi pi-image' : 'pi pi-arrows-alt'" />
             </div>
   
             <div v-if="show3DViewer && selectedModel3D" class="relative w-full aspect-square">

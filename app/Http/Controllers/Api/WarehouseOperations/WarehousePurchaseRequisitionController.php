@@ -112,6 +112,7 @@ class WarehousePurchaseRequisitionController extends Controller
         $storeId = $this->storeId($request);
         $validated = $request->validate([
             'branch_id' => ['required', 'integer'],
+            'requisition_type' => ['sometimes', 'in:regular,urgent,new_product,seasonal,emergency'],
             'reason' => ['required', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.branch_inventory_id' => ['required', 'integer', 'distinct'],
@@ -156,7 +157,7 @@ class WarehousePurchaseRequisitionController extends Controller
 
             $pr = PurchaseRequisition::create([
                 'pr_number' => 'PR-WH-'.now()->format('YmdHis').'-'.random_int(1000, 9999),
-                'store_id' => $storeId, 'branch_id' => $branch->id, 'requisition_type' => 'regular',
+                'store_id' => $storeId, 'branch_id' => $branch->id, 'requisition_type' => $validated['requisition_type'] ?? 'regular',
                 'status' => 'pending', 'estimated_amount' => $amount,
                 'procurement_route' => $procurementRoute,
                 'required_approvals' => ['warehouse_manager'], 'reason' => $validated['reason'],

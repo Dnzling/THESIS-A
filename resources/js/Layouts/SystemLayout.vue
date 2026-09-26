@@ -73,7 +73,7 @@
                       ]"></i>
                       <span>{{ item.display_name }}</span>
                     </div>
-                    <Badge v-if="item.badge_count && item.badge_count > 0" :value="item.badge_count" severity="danger"
+                    <Badge v-if="item.name !== 'merchandising.products' && item.badge_count && item.badge_count > 0" :value="item.badge_count" severity="danger"
                       size="small" />
                     </Link>
                   </div>

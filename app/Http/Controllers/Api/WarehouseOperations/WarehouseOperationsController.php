@@ -361,6 +361,17 @@ class WarehouseOperationsController extends Controller
         return response()->json(['success' => true, 'message' => 'Transfer request approved successfully.']);
     }
 
+    public function readyTransferForDispatch(Request $request, int $id): JsonResponse
+    {
+        $this->authorizeTransferAction($request, 'warehouse.transfers.approve');
+        $transfer = $this->transferDetailQuery($request)->findOrFail($id);
+        abort_unless($transfer->status === 'sender_approved' && !$transfer->delivery_status, 422, 'Only sender-approved transfers can be prepared for dispatch.');
+
+        $transfer->update(['delivery_status' => 'ready_for_dispatch']);
+
+        return response()->json(['success' => true, 'message' => 'Transfer is ready for logistics dispatch.', 'data' => $transfer->fresh()]);
+    }
+
     public function rejectTransferRequest(Request $request, int $id): JsonResponse
     {
         $this->authorizeTransferAction($request, 'warehouse.transfers.reject');

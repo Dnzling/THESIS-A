@@ -66,7 +66,7 @@
                 </label>
                 <div class="flex gap-2">
                   <InputText v-model="form.sku" :placeholder="isEditMode ? 'Product SKU' : 'Generated automatically when saved'"
-                    :disabled="!isEditMode" :class="{ 'p-invalid': errors.sku }"
+                    readonly :class="{ 'p-invalid': errors.sku }"
                     class="flex-1 bg-gray-50 border-gray-200 rounded-xl" />
                   <Button icon="pi pi-copy" v-tooltip.top="'Copy SKU'" severity="secondary" outlined @click="copySKU"
                     :disabled="!form.sku" class="rounded-xl" />
@@ -677,7 +677,6 @@
     <Toast />
     <Dialog v-model:visible="categoryDialogVisible" header="Add Category" modal class="w-full max-w-xl">
       <div class="space-y-4">
-        <div><label class="text-sm font-medium text-gray-700">Category Code *</label><InputText v-model="categoryForm.category_code" class="w-full" /></div>
         <div><label class="text-sm font-medium text-gray-700">Category Name *</label><InputText v-model="categoryForm.category_name" class="w-full" /></div>
         <div><label class="text-sm font-medium text-gray-700">Description</label><Textarea v-model="categoryForm.description" rows="3" class="w-full" /></div>
         <div class="flex items-center gap-2"><Checkbox v-model="categoryForm.is_active" inputId="new-category-active" binary /><label for="new-category-active">Active</label></div>
@@ -718,7 +717,7 @@ const availableTags = ref<any[]>([])
 const categoryDialogVisible = ref(false)
 const categorySaving = ref(false)
 const categoryForm = reactive({
-  category_code: '', category_name: '', description: '', parent_category_id: null,
+  category_name: '', description: '', parent_category_id: null,
   icon_path: '', is_active: true, display_order: 0,
 })
 const existingModel = ref(null)
@@ -1112,15 +1111,15 @@ const loadCategories = async () => {
 
 const openCategoryDialog = () => {
   Object.assign(categoryForm, {
-    category_code: '', category_name: '', description: '', parent_category_id: null,
+    category_name: '', description: '', parent_category_id: null,
     icon_path: '', is_active: true, display_order: 0,
   })
   categoryDialogVisible.value = true
 }
 
 const createCategoryFromProductForm = async () => {
-  if (!categoryForm.category_code.trim() || !categoryForm.category_name.trim()) {
-    toast.add({ severity: 'warn', summary: 'Required fields', detail: 'Category code and name are required.', life: 3000 })
+  if (!categoryForm.category_name.trim()) {
+    toast.add({ severity: 'warn', summary: 'Required field', detail: 'Category name is required.', life: 3000 })
     return
   }
   categorySaving.value = true

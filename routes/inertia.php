@@ -42,6 +42,8 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/warehouse/locations/{id}', 'System/Warehouse/Locations/LocationDetail', 'warehouse.locations.view', 'Warehouse Location Details');
     $inertia('/warehouse/locations/{id}/edit', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.edit', 'Edit Warehouse Location');
     $inertia('/warehouse/stock', 'System/Warehouse/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
+    $inertia('/warehouse/reorder', 'System/Warehouse/Reorder/Index', 'warehouse.reorder', 'Warehouse Reorder');
+    $inertia('/warehouse/forecasting', 'System/Shared/Forecasting', 'warehouse.forecasting', 'Warehouse Forecasting');
     $inertia('/warehouse/stock/{id}', 'System/Warehouse/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
     $inertia('/warehouse/stock/{id}/edit', 'System/Warehouse/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
     $inertia('/warehouse/purchase-requisitions', 'System/Warehouse/PurchaseRequisitions/Index', 'warehouse.purchase-requisitions', 'Warehouse Purchase Requisitions');
@@ -51,6 +53,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/warehouse/transfer-requests/{id}', 'System/Warehouse/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
     $inertia('/warehouse/receiving', 'System/Warehouse/Receiving/Index', 'warehouse.receiving', 'Receiving');
     $inertia('/warehouse/returns', 'System/Warehouse/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
+    $inertia('/warehouse/returns/{id}', 'System/Warehouse/Returns/View', 'warehouse.returns.view', 'Warehouse Return Details');
     $inertia('/warehouse/returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'warehouse.replacements.detail', 'Replacement Case');
     $inertia('/warehouse/transfer-history', 'System/Warehouse/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
 
@@ -177,6 +180,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.edit', 'Edit Stock Issuance');
     $inertia('/inventory/requisites', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionIndex', 'inventory.requisites.index', 'Purchase Requisitions');
     $inertia('/inventory/requisites/create', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.create', 'Create Purchase Requisition');
+    $inertia('/inventory/requisites/{id}/edit', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.edit', 'Edit Purchase Requisition');
     $inertia('/inventory/requisites/{id}', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionDetail', 'inventory.requisites.detail', 'Purchase Requisition Details');
     $inertia('/inventory/stock-returns', 'System/Inventory/StockReturns/StockReturnIndex', 'inventory.stock-returns', 'Stock Returns');
     $inertia('/inventory/stock-returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'inventory.replacements.detail', 'Replacement Case');
@@ -195,6 +199,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/reorder-rules/{id}', 'System/Inventory/ReorderRules/ReorderRuleDetail', 'inventory.reorder-rules.detail', 'Reorder Rule Detail');
     $inertia('/inventory/reorder-rules/{id}/edit', 'System/Inventory/ReorderRules/ReorderRuleEdit', 'inventory.reorder-rules.edit', 'Edit Reorder Rule');
     $inertia('/inventory/reorder-suggestions', 'System/Inventory/ReorderSuggestions/ReorderSuggestionIndex', 'inventory.reorder-suggestions', 'Reorder Suggestions');
+    $inertia('/inventory/forecasting', 'System/Shared/Forecasting', 'inventory.forecasting', 'Inventory Forecasting');
     $inertia('/inventory/reorder-suggestions/{id}', 'System/Inventory/ReorderSuggestions/ReorderSuggestionDetail', 'inventory.reorder-suggestions.detail', 'Reorder Suggestion Detail');
     $inertia('/inventory/serial-numbers', 'System/Inventory/SerialNumbers/SerialNumberIndex', 'inventory.serial-numbers.index', 'Serial Numbers');
     $inertia('/inventory/serial-numbers/create', 'System/Inventory/SerialNumbers/SerialNumberCreate', 'inventory.serial-numbers.create', 'Create Serial Number');
@@ -305,6 +310,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/logistics/return-pickups/{id}', 'System/Logistics/ReturnPickups/ReturnPickupDetail', 'logistics.return-pickups.detail', 'Return Pickup Detail');
     $inertia('/logistics/stock-transfers', 'System/Logistics/StockTransfers/StockTransferIndex', 'logistics.stock-transfers', 'Stock Transfers');
     $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');
+    $inertia('/logistics/stock-transfers/{id}/assign', 'System/Logistics/StockTransfers/StockTransferAssign', 'logistics.stock-transfers.assign', 'Assign Transfer Delivery');
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');

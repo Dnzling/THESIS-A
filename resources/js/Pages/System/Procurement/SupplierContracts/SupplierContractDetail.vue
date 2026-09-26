@@ -1,18 +1,17 @@
 <template>
-  <div class="p-8 min-h-screen">
-    <!-- Header Section -->
-    <div class="mb-8">
-      
-      <div class="flex justify-between items-start gap-6">
+  <div class="mx-auto min-h-screen max-w-7xl space-y-4 px-4 py-5 text-sm md:px-6">
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex flex-wrap justify-between items-start gap-4">
         <div>
-          <div class="flex items-center gap-3 mb-2">
-            <h1 class="text-xl font-bold text-gray-900">{{ contract?.contract_number }}</h1>
+          <p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Procurement / Supplier contract</p>
+          <div class="mt-2 flex flex-wrap items-center gap-3">
+            <h1 class="text-xl font-semibold text-slate-900">{{ contract?.contract_title || 'Supplier contract' }}</h1>
             <Tag :value="contract?.status?.toUpperCase() || 'DRAFT'" :severity="statusSeverity(contract?.status)" />
           </div>
-          <p class="text-lg text-gray-600">{{ contract?.contract_title }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ contract?.contract_number || 'No contract number' }} <span class="mx-1 text-slate-300">/</span> {{ contract?.supplier?.supplier_name || 'Supplier not set' }}</p>
         </div>
         
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <Button
             v-if="contract?.contract_file_path"
             label="View Document"
@@ -20,46 +19,51 @@
             severity="secondary"
             outlined
             @click="openDocDialog"
-            class="px-6"
+            size="small"
           />
-          <Button label="Report" icon="pi pi-flag" severity="danger" outlined @click="openReportDialog" class="px-6" />
-          <Button v-if="canApproveSupplierContracts && !isSupplierRoute && ['draft','pending'].includes(contract?.status) && contract?.submitted_by_type === 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
-            @click="activateContract" :loading="activating" class="px-6" />
-          <Button v-if="canApproveSupplierContracts && contract?.status === 'pending'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
-            @click="openRejectContractDialog" class="px-6" />
+          <Button label="Report issue" icon="pi pi-flag" severity="danger" outlined size="small" @click="openReportDialog" />
+          <Button v-if="!isSupplierRoute && canApproveSupplierContracts && ['draft', 'pending'].includes(contract?.status)" label="Review contract" icon="pi pi-eye" severity="warn" size="small" @click="openReviewDialog" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Approve" icon="pi pi-check-circle" severity="success"
-            :loading="activating" @click="activateContract" class="px-6" />
+            :loading="activating" @click="activateContract" size="small" />
           <Button v-if="isSupplierRoute && contract?.status === 'pending' && contract?.submitted_by_type !== 'supplier'" label="Reject" icon="pi pi-times-circle" severity="danger" outlined
-            @click="openRejectContractDialog" class="px-6" />
+            @click="openRejectContractDialog" size="small" />
           <Button v-if="contract?.status === 'active'" label="Request Termination" icon="pi pi-ban" severity="danger" outlined
-            @click="openTerminateRequestDialog" class="px-6" />
+            @click="openTerminateRequestDialog" size="small" />
         </div>
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center items-center py-20">
-      <ProgressSpinner />
+    <div v-if="loading" class="grid gap-4 md:grid-cols-3">
+      <Skeleton height="120px" v-for="n in 3" :key="n" />
+      <Skeleton height="340px" class="md:col-span-3" />
     </div>
 
     <div v-else-if="contract">
-      <!-- Quick Stats -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-6 mb-8">
-        <div class="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
-          <p class="text-sm font-medium text-gray-600 mb-2">Tax Rate</p>
-          <p class="text-2xl font-bold text-orange-600">{{ contract?.tax_rate || 0 }}%</p>
-          <p class="text-xs text-gray-500 mt-2">Applied after discount</p>
-        </div>
+      <div v-if="contract.status === 'pending'" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <p class="font-semibold text-amber-900">Waiting for contract decision</p>
+        <p class="mt-1 text-xs text-amber-800">Submitted by {{ (contract.submitted_by_type || 'store').replace(/_/g, ' ') }}. Review the terms and document before approving or rejecting.</p>
+      </div>
 
-        <div class="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
-          <p class="text-sm font-medium text-gray-600 mb-2">Volume Discount</p>
-          <p class="text-2xl font-bold text-green-600">{{ contract?.discount_percentage || 0 }}%</p>
-          <p class="text-xs text-gray-500 mt-2">On all orders</p>
+      <div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-xs text-slate-500">Supplier</p>
+          <p class="mt-1 truncate font-semibold text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ contract?.supplier?.supplier_code || 'No supplier code' }}</p>
         </div>
-
-        <div class="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition">
-          <p class="text-sm font-medium text-gray-600 mb-2">Validity</p>
-          <p class="text-2xl font-bold text-blue-600">{{ calculateDaysRemaining(contract?.end_date) }}</p>
-          <p class="text-xs text-gray-500 mt-2">Contract status</p>
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-xs text-slate-500">Validity</p>
+          <p class="mt-1 font-semibold text-slate-900">{{ calculateDaysRemaining(contract?.end_date) }}</p>
+          <p class="mt-1 text-xs text-slate-500">Ends {{ formatDate(contract?.end_date) }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-xs text-slate-500">Volume discount</p>
+          <p class="mt-1 text-lg font-semibold text-slate-900">{{ contract?.discount_percentage || 0 }}%</p>
+          <p class="mt-1 text-xs text-slate-500">Applied to PO subtotal</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-xs text-slate-500">Tax</p>
+          <p class="mt-1 text-lg font-semibold text-slate-900">{{ contract?.is_tax_exempt ? 'Exempt' : `${contract?.tax_rate || 0}%` }}</p>
+          <p class="mt-1 text-xs text-slate-500">After discount</p>
         </div>
       </div>
 
@@ -97,8 +101,8 @@
         <p v-if="contract?.rejected_at" class="text-xs text-rose-700 mt-1">Rejected at: {{ formatDatetime(contract?.rejected_at) }}</p>
       </div>
 
-      <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-8">
-        <h3 class="text-lg font-semibold text-gray-900 mb-3">My Submitted Reports</h3>
+      <div class="mb-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 class="font-semibold text-slate-900 mb-3">Reported issues</h3>
         <div v-if="myReportsLoading" class="text-sm text-gray-500">Loading reports...</div>
         <div v-else-if="myReports.length === 0" class="text-sm text-gray-500">No submitted reports for this contract yet.</div>
         <div v-else class="space-y-2">
@@ -122,11 +126,11 @@
       </div>
 
       <!-- Content Sections -->
-      <div class="space-y-8">
+      <div class="grid items-start gap-4 lg:grid-cols-2">
         <!-- Supplier Information Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Supplier Information</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-5 font-semibold text-slate-900">Supplier information</h2>
+          <div class="grid gap-5 sm:grid-cols-2">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Supplier Name</p>
               <p class="text-lg font-semibold text-gray-900">{{ contract?.supplier?.supplier_name }}</p>
@@ -157,9 +161,9 @@
         </div>
 
         <!-- Contract Details Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Contract Details</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-5 font-semibold text-slate-900">Contract details</h2>
+          <div class="grid gap-5 sm:grid-cols-2">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-2">Contract Number</p>
               <p class="text-lg font-mono text-gray-900 bg-gray-50 px-3 py-2 rounded">{{ contract?.contract_number }}</p>
@@ -185,15 +189,15 @@
         </div>
 
         <!-- Financial Terms Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Financial Terms</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-5 font-semibold text-slate-900">Commercial terms</h2>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold text-green-700 uppercase mb-3">Volume Discount</p>
               <p class="text-3xl font-bold text-green-600">{{ contract?.discount_percentage || 0 }}% OFF</p>
               <p class="text-xs text-green-600 mt-2">Applied to PO subtotal</p>
             </div>
-            <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold text-orange-700 uppercase mb-3">Tax Rate</p>
               <p class="text-3xl font-bold text-orange-600">{{ contract?.is_tax_exempt ? 'Tax Exempt' : `${contract?.tax_rate || 0}%` }}</p>
               <p class="text-xs text-orange-600 mt-2">{{ contract?.tax_note || (contract?.is_tax_exempt ? 'No tax applied' : 'Applied to discounted amount') }}</p>
@@ -206,29 +210,29 @@
         </div>
 
         <!-- Duration & Validity Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Duration & Validity</h2>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-5 font-semibold text-slate-900">Dates &amp; validity</h2>
+          <div class="grid gap-3 sm:grid-cols-3">
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">Start Date</p>
-              <div class="bg-green-50 rounded-lg p-4 border border-green-200">
-                <p class="text-2xl font-bold text-green-700">{{ formatDate(contract?.start_date) }}</p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="font-semibold text-slate-900">{{ formatDate(contract?.start_date) }}</p>
                 <p class="text-xs text-green-600 mt-2">Contract becomes effective</p>
               </div>
             </div>
 
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">End Date</p>
-              <div class="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                <p class="text-2xl font-bold text-orange-700">{{ formatDate(contract?.end_date) }}</p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="font-semibold text-slate-900">{{ formatDate(contract?.end_date) }}</p>
                 <p class="text-xs text-orange-600 mt-2">Contract expires</p>
               </div>
             </div>
 
             <div>
               <p class="text-sm font-medium text-gray-600 uppercase mb-3">Duration</p>
-              <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                <p class="text-2xl font-bold text-blue-700">{{ contractDurationDays }} <span class="text-sm">days</span></p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="font-semibold text-slate-900">{{ contractDurationDays }} <span class="text-sm">days</span></p>
                 <p class="text-xs text-blue-600 mt-2">≈ {{ Math.ceil(contractDurationDays / 30) }} months</p>
               </div>
             </div>
@@ -247,14 +251,26 @@
         </div>
 
         <!-- Terms & Conditions Section -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Terms & Conditions</h2>
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+          <h2 class="mb-5 font-semibold text-slate-900">Terms &amp; conditions</h2>
           <div class="bg-gray-50 rounded-lg p-6 border border-gray-200 min-h-48 whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
             {{ contract?.terms_conditions || '✓ No additional terms specified' }}
           </div>
         </div>
 
-      
+        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 class="font-semibold text-slate-900">Contract document</h2><p class="mt-1 text-xs text-slate-500">Review the attachment before making a contract decision.</p></div>
+            <Button v-if="contractDocUrl" label="View full document" icon="pi pi-external-link" severity="warn" outlined size="small" @click="openDocDialog" />
+          </div>
+          <div v-if="contractDocUrl" class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3"><div class="flex min-w-0 items-center gap-3"><i :class="isContractImage ? 'pi pi-image' : 'pi pi-file-pdf'" class="text-lg text-orange-600" /><div class="min-w-0"><p class="truncate font-medium text-slate-900">{{ contractDocName }}</p><p class="text-xs text-slate-500">{{ isContractImage ? 'Image attachment' : isContractPdf ? 'PDF attachment' : 'Document attachment' }}</p></div></div><Button label="Open" size="small" severity="secondary" text @click="openDocNewTab" /></div>
+            <button v-if="isContractImage" type="button" class="block w-full cursor-zoom-in p-4" @click="openDocDialog"><img :src="contractDocUrl" :alt="contractDocName" class="mx-auto max-h-72 rounded object-contain" /></button>
+            <iframe v-else-if="isContractPdf" :src="contractDocUrl" :title="contractDocName" class="h-72 w-full bg-white" />
+            <div v-else class="p-6 text-center text-xs text-slate-500">Preview is unavailable for this file type. Open the attachment to view it.</div>
+          </div>
+          <div v-else class="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-xs text-slate-500">No contract document has been attached.</div>
+        </div>
       </div>
     </div>
 
@@ -336,6 +352,29 @@
           <Button label="Submit Rejection" severity="warning" :loading="respondingTermination" @click="submitRejectTermination" />
         </div>
       </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showReviewDialog" modal header="Review supplier contract" class="w-[56rem] max-w-[95vw]">
+      <div class="space-y-4 text-sm">
+        <div class="rounded-xl border border-orange-200 bg-orange-50 p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-wide text-orange-700">{{ contract?.contract_number }}</p><h3 class="mt-1 text-lg font-semibold text-slate-900">{{ contract?.contract_title || 'Supplier contract' }}</h3><p class="mt-1 text-xs text-slate-600">Submitted by {{ (contract?.submitted_by_type || 'store').replace(/_/g, ' ') }}</p></div><Tag :value="contract?.status?.toUpperCase() || 'DRAFT'" :severity="statusSeverity(contract?.status)" /></div>
+        </div>
+        <div class="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-2">
+          <div><p class="text-xs text-slate-500">Supplier</p><p class="mt-1 font-semibold text-slate-900">{{ contract?.supplier?.supplier_name || '-' }}</p></div>
+          <div><p class="text-xs text-slate-500">Store</p><p class="mt-1 font-semibold text-slate-900">{{ contract?.store?.name || '-' }}</p></div>
+          <div><p class="text-xs text-slate-500">Effective period</p><p class="mt-1 font-medium text-slate-900">{{ formatDate(contract?.start_date) }} to {{ formatDate(contract?.end_date) }}</p></div>
+          <div><p class="text-xs text-slate-500">Minimum order value</p><p class="mt-1 font-medium text-slate-900">{{ contract?.minimum_order_value == null ? 'No minimum order' : formatMoney(contract.minimum_order_value) }}</p></div>
+          <div><p class="text-xs text-slate-500">Volume discount</p><p class="mt-1 font-medium text-slate-900">{{ contract?.discount_percentage || 0 }}%</p></div>
+          <div><p class="text-xs text-slate-500">Tax</p><p class="mt-1 font-medium text-slate-900">{{ contract?.is_tax_exempt ? 'Tax exempt' : `${contract?.tax_rate || 0}%` }}</p></div>
+        </div>
+        <div><p class="mb-2 font-semibold text-slate-900">Terms &amp; conditions</p><div class="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-xs leading-5 text-slate-700">{{ contract?.terms_conditions || 'No additional terms provided.' }}</div></div>
+        <div><div class="mb-2 flex flex-wrap items-center justify-between gap-2"><p class="font-semibold text-slate-900">Attached document</p><Button v-if="contractDocUrl" label="Open full document" icon="pi pi-external-link" text size="small" severity="warn" @click="openDocDialog" /></div>
+          <div v-if="contractDocUrl" class="overflow-hidden rounded-lg border border-slate-200"><img v-if="isContractImage" :src="contractDocUrl" :alt="contractDocName" class="mx-auto max-h-60 object-contain" /><iframe v-else-if="isContractPdf" :src="contractDocUrl" :title="contractDocName" class="h-60 w-full" /><p v-else class="p-5 text-xs text-slate-600">{{ contractDocName }}. Open the file to review it.</p></div>
+          <p v-else class="rounded-lg border border-dashed border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">No document attached. Check the terms carefully before approval.</p>
+        </div>
+        <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-3 text-xs text-slate-700"><Checkbox v-model="reviewAcknowledged" binary inputId="review-acknowledged" /><span>I have reviewed the supplier, contract dates, commercial terms, and any attached document.</span></label>
+      </div>
+      <template #footer><div class="flex flex-wrap justify-end gap-2"><Button label="Close" severity="secondary" text size="small" @click="showReviewDialog = false" /><Button v-if="contract?.status === 'pending'" label="Reject with reason" severity="danger" outlined size="small" @click="showReviewDialog = false; openRejectContractDialog()" /><Button v-if="contract?.submitted_by_type === 'supplier'" label="Approve contract" severity="warn" size="small" :disabled="!reviewAcknowledged" :loading="activating" @click="approveReviewedContract" /></div></template>
     </Dialog>
 
     <Dialog v-model:visible="showRejectContractDialog" header="Reject Contract" :modal="true" class="w-[32rem]">
@@ -424,13 +463,15 @@
     <Dialog v-model:visible="showDocDialog" header="Contract Document" :modal="true" class="w-[72rem] max-w-[92vw]">
       <div v-if="contractDocUrl" class="space-y-3">
         <div class="flex items-center justify-between gap-3">
-          <div class="text-xs text-slate-500 break-all">{{ contractDocUrl }}</div>
+          <div class="min-w-0 truncate text-sm font-medium text-slate-900">{{ contractDocName }}</div>
           <div class="flex gap-2 shrink-0">
             <Button label="Open New Tab" icon="pi pi-external-link" size="small" outlined @click="openDocNewTab" />
             <Button label="Download" icon="pi pi-download" size="small" severity="secondary" @click="downloadDoc" />
           </div>
         </div>
-        <iframe :src="contractDocUrl" class="w-full h-[70vh] rounded border border-slate-200 bg-white" />
+        <img v-if="isContractImage" :src="contractDocUrl" :alt="contractDocName" class="mx-auto max-h-[70vh] max-w-full rounded object-contain" />
+        <iframe v-else-if="isContractPdf" :src="contractDocUrl" :title="contractDocName" class="w-full h-[70vh] rounded border border-slate-200 bg-white" />
+        <div v-else class="rounded-lg bg-slate-50 p-8 text-center text-sm text-slate-600">This file type cannot be previewed here. Use Open New Tab or Download.</div>
       </div>
       <div v-else class="text-sm text-slate-600">No contract document attachment available.</div>
       <template #footer>
@@ -447,10 +488,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Skeleton from 'primevue/skeleton'
 import procurementService from '../../../../services/procurement.service'
 import { useAuthStore } from '../../../../stores/auth'
 import axiosClient from '@/axios'
 import Select from 'primevue/select'
+import Checkbox from 'primevue/checkbox'
 
 const router = useRouter()
 const route = useRoute()
@@ -469,6 +512,8 @@ const myReports = ref<any[]>([])
 const myReportsLoading = ref(false)
 const showReportViewDialog = ref(false)
 const showDocDialog = ref(false)
+const showReviewDialog = ref(false)
+const reviewAcknowledged = ref(false)
 const selectedReport = ref<any | null>(null)
 const reportThread = ref<any[]>([])
 const reportThreadLoading = ref(false)
@@ -489,6 +534,13 @@ const contractDocUrl = computed(() => {
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw
   return `/storage/${raw.replace(/^storage\//, '')}`
 })
+const contractDocName = computed(() => {
+  const path = String(contract.value?.contract_file_path || '')
+  const filename = path.split('?')[0].split('/').pop() || 'Contract attachment'
+  try { return decodeURIComponent(filename) } catch { return filename }
+})
+const isContractImage = computed(() => /\.(png|jpe?g|gif|webp)(\?|$)/i.test(contractDocUrl.value))
+const isContractPdf = computed(() => /\.pdf(\?|$)/i.test(contractDocUrl.value))
 const respondingTermination = ref(false)
 const showRejectTerminationDialog = ref(false)
 const terminationRejectNotes = ref('')
@@ -563,7 +615,7 @@ const contractDurationDays = computed(() => {
 
 const calculateProgressPercentage = computed(() => {
   if (contractDurationDays.value === 0) return 0
-  return Math.min(Math.round((daysFromStart.value / contractDurationDays.value) * 100), 100)
+  return Math.max(0, Math.min(Math.round((daysFromStart.value / contractDurationDays.value) * 100), 100))
 })
 
 const statusSeverity = (status: string): string => {
@@ -683,6 +735,26 @@ const openReportViewDialog = (rep: any) => {
 
 const openDocDialog = () => {
   showDocDialog.value = true
+}
+
+const openReviewDialog = () => {
+  reviewAcknowledged.value = false
+  showReviewDialog.value = true
+}
+
+const approveReviewedContract = async () => {
+  if (!reviewAcknowledged.value || !contract.value?.id || contract.value.submitted_by_type !== 'supplier') return
+  activating.value = true
+  try {
+    await procurementService.activateSupplierContract(route.params.id as string)
+    showReviewDialog.value = false
+    toast.add({ severity: 'success', summary: 'Contract approved', detail: 'The contract is now active.', life: 3000 })
+    await loadContract()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Approval failed', detail: error.response?.data?.message || 'Could not approve the contract.', life: 4000 })
+  } finally {
+    activating.value = false
+  }
 }
 
 const openDocNewTab = () => {

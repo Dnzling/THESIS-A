@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Inventory\ReorderRule;
 use App\Models\Inventory\StockTransfer;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -13,6 +14,130 @@ use Carbon\Carbon;
 class ReportingService
 {
     protected const DAYS_TO_SLOW_MOVING = 90;
+
+    public function getActionableFinishedGoods(int $storeId, int $branchId, string $report, Carbon $start, Carbon $end): array
+    {
+        if ($report === 'transactions') {
+            $transactions = InventoryTransaction::query()->with(['product:id,sku,product_name,product_type', 'variation:id,variation_name,variation_sku', 'branch:id,name'])
+                ->where('store_id', $storeId)
+                ->when($branchId > 0, fn ($query) => $query->where('branch_id', $branchId))
+                ->whereHas('product', fn ($query) => $query->where('store_id', $storeId)->where('product_type', 'finished_good'))
+                ->whereBetween('transaction_date', [$start, $end])
+                ->orderByDesc('transaction_date')->limit(200)->get()
+                ->map(fn ($tx) => [
+                    'id' => $tx->id,
+                    'product_id' => $tx->product_id,
+                    'variation_id' => $tx->variation_id,
+                    'branch' => $tx->branch?->name ?? 'Branch',
+                    'sku' => $tx->variation?->variation_sku ?: $tx->product?->sku,
+                    'product_name' => $tx->product?->product_name,
+                    'variation_name' => $tx->variation?->variation_name,
+                    'transaction_type' => $tx->transaction_type,
+                    'quantity_change' => (int) $tx->quantity_change,
+                    'transaction_date' => $tx->transaction_date,
+                    'action' => in_array($tx->transaction_type, ['adjustment', 'damage', 'loss'], true) ? 'Review movement' : 'View transaction',
+                    'severity' => in_array($tx->transaction_type, ['adjustment', 'damage', 'loss'], true) ? 'warn' : 'info',
+                ])->values()->all();
+            return ['rows' => $transactions, 'total' => count($transactions), 'limited' => count($transactions) === 200];
+        }
+
+        $stock = BranchInventory::query()
+            ->with(['product:id,store_id,sku,product_name,product_type,cost_price,created_at', 'variation:id,variation_name,variation_sku,cost_price', 'branch:id,name'])
+            ->where('store_id', $storeId)
+            ->when($branchId > 0, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas('product', fn ($query) => $query->where('store_id', $storeId)->where('product_type', 'finished_good'))
+            ->get();
+
+        $branchIds = $stock->pluck('branch_id')->unique()->all();
+        $rules = ReorderRule::query()->whereIn('branch_id', $branchIds)->where('is_active', true)
+            ->get()->keyBy(fn ($rule) => $rule->branch_id . ':' . $rule->product_id);
+
+        $sales = InventoryTransaction::query()
+            ->where('store_id', $storeId)
+            ->whereIn('branch_id', $branchIds)
+            ->whereIn('product_id', $stock->pluck('product_id')->unique()->all())
+            ->where('transaction_type', 'sale')
+            ->where('transaction_date', '<=', $end)
+            ->selectRaw('branch_id, product_id, variation_id, SUM(CASE WHEN transaction_date BETWEEN ? AND ? THEN ABS(quantity_change) ELSE 0 END) AS units_sold, MAX(transaction_date) AS last_sale_at', [$start, $end])
+            ->groupBy('branch_id', 'product_id', 'variation_id')
+            ->get()->keyBy(fn ($row) => $row->branch_id . ':' . $row->product_id . ':' . ($row->variation_id ?? 0));
+
+        $periodDays = max(1, $start->diffInDays($end) + 1);
+        $rows = $stock->map(function (BranchInventory $item) use ($sales, $rules, $periodDays, $end) {
+            $sale = $sales->get($item->branch_id . ':' . $item->product_id . ':' . ($item->variation_id ?? 0));
+            $rule = $rules->get($item->branch_id . ':' . $item->product_id);
+            $sold = (int) ($sale?->units_sold ?? 0);
+            $available = (int) ($item->quantity_available ?? 0);
+            $reorderPoint = (int) ($rule?->reorder_point ?? $item->reorder_point ?? 0);
+            $daysCover = $sold > 0 ? (int) floor($available / ($sold / $periodDays)) : null;
+            $lastSale = $sale?->last_sale_at ? Carbon::parse($sale->last_sale_at) : null;
+            $daysSinceSale = $lastSale ? (int) $lastSale->diffInDays($end) : null;
+            $daysListed = $item->created_at && $item->created_at->lessThanOrEqualTo($end)
+                ? (int) $item->created_at->diffInDays($end) : 0;
+
+            if ($available <= 0 && $sold > 0) {
+                $action = 'Out of stock - replenish';
+                $severity = 'danger';
+            } elseif ($available <= $reorderPoint && $sold > 0) {
+                $action = 'Replenish now';
+                $severity = 'danger';
+            } elseif ($daysCover !== null && $daysCover <= 14) {
+                $action = 'Plan replenishment';
+                $severity = 'warn';
+            } elseif ($available > 0 && $sold === 0 && $daysListed >= 30) {
+                $action = 'Review price or promote';
+                $severity = 'warn';
+            } elseif ($available > 0 && $daysSinceSale !== null && $daysSinceSale >= 90) {
+                $action = 'Review aging stock';
+                $severity = 'warn';
+            } else {
+                $action = 'Monitor';
+                $severity = 'success';
+            }
+
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'variation_id' => $item->variation_id,
+                'branch' => $item->branch?->name ?? 'Branch',
+                'sku' => $item->variation?->variation_sku ?: $item->product?->sku,
+                'product_name' => $item->product?->product_name,
+                'variation_name' => $item->variation?->variation_name,
+                'available' => $available,
+                'units_sold' => $sold,
+                'days_cover' => $daysCover,
+                'last_sale_at' => $sale?->last_sale_at,
+                'days_since_sale' => $daysSinceSale,
+                'days_listed' => $daysListed,
+                'reorder_point' => $reorderPoint,
+                'stock_value' => $available * (float) ($item->variation?->cost_price ?? $item->product?->cost_price ?? 0),
+                'action' => $action,
+                'severity' => $severity,
+            ];
+        });
+
+        $rows = match ($report) {
+            'slow_movers' => $rows->filter(fn ($row) => $row['available'] > 0 && (($row['units_sold'] === 0 && $row['days_listed'] >= 30) || ($row['days_cover'] ?? 0) > 60))
+                ->map(function ($row) {
+                    $row['action'] = $row['units_sold'] === 0 ? 'Review price or promote' : 'Reduce next replenishment';
+                    $row['severity'] = 'warn';
+                    return $row;
+                })->sortByDesc('stock_value'),
+            'fast_movers' => $rows->filter(fn ($row) => $row['units_sold'] > 0)
+                ->sortByDesc('units_sold'),
+            'aging' => $rows->filter(fn ($row) => $row['available'] > 0)
+                ->map(function ($row) {
+                    $idle = $row['days_since_sale'] ?? $row['days_listed'];
+                    $row['action'] = $idle >= 90 ? 'Review markdown or transfer'
+                        : ($idle >= 30 ? 'Promote or review' : 'Monitor');
+                    $row['severity'] = $idle >= 90 ? 'danger' : ($idle >= 30 ? 'warn' : 'success');
+                    return $row;
+                })->sortByDesc(fn ($row) => $row['days_since_sale'] ?? $row['days_listed']),
+            default => collect(),
+        };
+
+        return ['rows' => $rows->values()->all(), 'total' => $rows->count(), 'period_days' => $periodDays];
+    }
 
     /**
      * Get branch inventory summary with KPIs

@@ -96,6 +96,18 @@
               />
 
               <Info
+                v-if="source === 'ecommerce'"
+                label="Payment Method"
+                :value="formatPaymentMethod(order.payment_method || order.payment?.payment_method)"
+              />
+
+              <Info
+                v-if="source === 'ecommerce'"
+                label="Payment Status"
+                :value="formatStatus(order.payment_status || order.payment?.status)"
+              />
+
+              <Info
                 label="Order Total"
                 :value="
                   formatCurrency(
@@ -710,6 +722,11 @@ const destinationPoint = computed<
 const formatStatus = (value: any) =>
   String(value || '-')
     .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+
+const formatPaymentMethod = (value: any) =>
+  String(value || '-')
+    .replace(/[_-]/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
 const displayLogs = computed(() => logs.value.filter((entry: any) => {

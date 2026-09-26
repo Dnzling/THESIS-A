@@ -35,7 +35,7 @@
                 <h2 class="text-xl font-semibold text-slate-900">{{ returnRequest.return_number || '—' }}</h2>
               </div>
             </div>
-            <Tag :value="prettyStatus(returnRequest.status)" :severity="statusSeverity(returnRequest.status)" />
+            <Tag :value="returnDisplayStatus.label" :severity="returnDisplayStatus.severity" />
           </div>
         </template>
         <template #content>
@@ -353,8 +353,6 @@
         <Button v-if="canApprove" icon="pi pi-check" :label="approvalButtonLabel" size="small" :loading="statusUpdating"
           @click="openApproval" />
   
-        <Button v-if="canMarkReceived" icon="pi pi-box" label="Inventory Inspection" outlined size="small"
-          :loading="statusUpdating" @click="receiveDialogVisible = true" />
         <Button v-if="canSchedulePickup" icon="pi pi-calendar-plus" label="Schedule Pickup" outlined size="small"
           :loading="pickupScheduling" @click="pickupDialogVisible = true" />
       </div>
@@ -492,33 +490,6 @@
       </template>
     </Dialog>
   
-    <Dialog v-model:visible="receiveDialogVisible" header="Receive & Inspect Return (Inventory)" modal
-      class="w-full max-w-xl">
-      <div class="space-y-3">
-        <p class="text-sm text-gray-600">Refund returns follow the normal inspection process. Replacement returns stay in quarantine until separate stock is reserved and delivered.</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-sm text-gray-600">Received Quantity</label>
-            <InputNumber v-model="receiveForm.received_quantity" :min="1"
-              :max="Number(returnRequest?.requested_quantity ?? 1)" class="w-full" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm text-gray-600">Product Quality</label>
-            <Select v-model="receiveForm.condition" :options="receiveConditionOptions" optionLabel="label"
-              optionValue="value" class="w-full" />
-          </div>
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-gray-600">Notes</label>
-          <Textarea v-model="receiveForm.notes" rows="2" class="w-full" autoResize />
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" outlined size="small" @click="receiveDialogVisible = false" />
-        <Button icon="pi pi-check" label="Complete Inspection" size="small" :loading="receiving"
-          @click="confirmReceive" />
-      </template>
-    </Dialog>
   
     <Dialog v-model:visible="notesDialogVisible" header="Review Notes" modal class="w-full max-w-xl">
       <div class="space-y-3">
@@ -808,12 +779,20 @@ const loadReturn = async () => {
   }
 }
 
+const returnDisplayStatus = computed(() => {
+  const pickupStatus = String(returnRequest.value?.pickup?.status || '')
+  if (returnRequest.value?.status === 'approved' && ['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(pickupStatus)) {
+    return { label: 'Awaiting Physical Inspection', severity: 'warn' }
+  }
+  return { label: prettyStatus(returnRequest.value?.status), severity: statusSeverity(returnRequest.value?.status) }
+})
+
 const canApprove = computed(() => {
   if (!authStore.hasPermission('crm.returns.manage')) return false
   const status = String(returnRequest.value?.status || '')
   if (status === 'pending_verification') return String(investigationTicket.value?.status || '') === 'completed'
   if (status !== 'approved' || returnRequest.value?.inspected_at) return false
-  return String(returnRequest.value?.pickup?.status || '') !== 'picked_up'
+  return !['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
 })
 const approvalButtonLabel = computed(() => {
   if (String(returnRequest.value?.status || '') !== 'approved') return 'Approve'
@@ -824,13 +803,7 @@ const canReject = computed(() => {
   const status = String(returnRequest.value?.status || '')
   if (status === 'pending_verification') return String(investigationTicket.value?.status || '') === 'completed'
   if (status !== 'approved') return false
-  return !['picked_up', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
-})
-const canMarkReceived = computed(() => {
-  if (!authStore.hasPermission('crm.returns.manage') && !authStore.hasPermission('inventory.receiving.manage') && !authStore.hasPermission('warehouse.receiving.view')) return false
-  if (String(returnRequest.value?.status || '') !== 'approved') return false
-  const pickupStatus = String(returnRequest.value?.pickup?.status || '')
-  return pickupStatus === 'delivered'
+  return !['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(String(returnRequest.value?.pickup?.status || ''))
 })
 const canSchedulePickup = computed(() => String(returnRequest.value?.status || '') === 'approved' && !returnRequest.value?.pickup?.id)
 
@@ -915,66 +888,6 @@ const rejectReasonOptions = [
   { label: 'Other', value: 'Other' },
 ]
 
-const receiveDialogVisible = ref(false)
-const receiving = ref(false)
-const receiveConditionOptions = [
-  { label: 'Good condition (Resell)', value: 'good' },
-  { label: 'Bad condition (Discard)', value: 'bad' },
-]
-const receiveForm = reactive({
-  received_quantity: 1,
-  condition: 'good' as 'good' | 'bad',
-  notes: '',
-})
-
-const confirmReceive = () => {
-  const maxQty = Number(returnRequest.value?.requested_quantity ?? 1)
-  const qty = Number(receiveForm.received_quantity || 1)
-  if (qty < 1 || qty > maxQty) {
-    toast.add({ severity: 'warn', summary: 'Invalid', detail: `Received quantity must be between 1 and ${maxQty}.`, life: 2500 })
-    return
-  }
-  confirm.require({
-    header: 'Post inventory receive?',
-    message: returnRequest.value?.return_type === 'refund'
-      ? 'Inventory will record the item disposition and automatically send the product-price refund to Finance.'
-      : 'Inventory will quarantine the returned item. Replacement stock is reserved separately afterward.',
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: 'Cancel', outlined: true, size: 'small' },
-    acceptProps: { label: 'Confirm', size: 'small' },
-    accept: async () => {
-      await postReceive()
-    },
-  })
-}
-
-const postReceive = async () => {
-  receiving.value = true
-  try {
-    const res = await crmService.receiveReturn(id.value, {
-      received_quantity: Number(receiveForm.received_quantity || 1),
-      condition: receiveForm.condition,
-      notes: receiveForm.notes || undefined,
-    })
-    returnRequest.value = res?.data || returnRequest.value
-    toast.add({ severity: 'success', summary: 'Received', detail: res?.message || 'Inventory updated.', life: 2500 })
-    receiveDialogVisible.value = false
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Failed', detail: error?.response?.data?.message || 'Failed to receive return.', life: 3000 })
-  } finally {
-    receiving.value = false
-  }
-}
-
-watch(
-  () => receiveDialogVisible.value,
-  (visible) => {
-    if (!visible) return
-    receiveForm.received_quantity = Number(returnRequest.value?.requested_quantity ?? 1)
-    receiveForm.condition = 'good'
-    receiveForm.notes = ''
-  },
-)
 
 const notesContinueDisabled = computed(() => {
   if (pendingStatus.value === 'approved') return !pendingReturnType.value

@@ -171,7 +171,6 @@ class ReplacementController extends Controller
             $inventory->quantity_on_hand -= $quantity;
             $inventory->stock_status = $inventory->quantity_available <= 0 ? 'out_of_stock'
                 : ($inventory->quantity_available <= (int) $inventory->reorder_point ? 'low_stock' : 'in_stock');
-            $inventory->total_value = round((float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0) * (int) $inventory->quantity_on_hand, 2);
             $inventory->save();
             InventoryTransaction::query()->create([
                 'transaction_number' => 'INVTX-REPL-' . $case->id . '-' . now()->format('YmdHisv'),
@@ -298,7 +297,6 @@ class ReplacementController extends Controller
             }
             $inventory->stock_status = $inventory->quantity_available <= 0 ? 'out_of_stock'
                 : ($inventory->quantity_available <= (int) $inventory->reorder_point ? 'low_stock' : 'in_stock');
-            $inventory->total_value = round((float) ($inventory->average_cost ?? $inventory->unit_cost ?? 0) * (int) $inventory->quantity_on_hand, 2);
             $inventory->save();
             InventoryTransaction::query()->create([
                 'transaction_number' => 'INVTX-RET-DISP-' . $case->id . '-' . now()->format('YmdHisv'),

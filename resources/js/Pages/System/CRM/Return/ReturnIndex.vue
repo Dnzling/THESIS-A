@@ -394,7 +394,7 @@ const workflowStatus = (row: any): { label: string; severity: string } => {
   if (returnStatus === 'received') return { label: 'Physical Inspection Complete', severity: 'info' }
 
   if (returnStatus === 'approved') {
-    return pickupStatus === 'picked_up'
+    return ['picked_up', 'out_for_delivery', 'delivered', 'completed'].includes(pickupStatus)
       ? { label: 'Awaiting Physical Inspection', severity: 'warn' }
       : { label: 'Awaiting Pickup', severity: 'info' }
   }

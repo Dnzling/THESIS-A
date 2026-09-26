@@ -138,11 +138,6 @@ class CrmService {
     return res.data
   }
 
-  async receiveReturn(id: number | string, payload: { received_quantity: number; condition: 'good' | 'bad'; notes?: string }) {
-    const res = await axiosClient.post(`/api/crm/returns/${id}/receive`, payload)
-    return res.data
-  }
-
 }
 
 export default new CrmService()

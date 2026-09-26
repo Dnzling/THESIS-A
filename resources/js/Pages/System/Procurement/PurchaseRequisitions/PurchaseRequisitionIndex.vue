@@ -7,7 +7,7 @@
       </div>
     </div>
   
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <Card>
         <template #content>
           <div class="flex items-center justify-between">
@@ -17,18 +17,6 @@
               <p v-else class="text-2xl font-bold text-gray-900">{{ summary.total }}</p>
             </div>
             <i class="pi pi-file-export text-4xl"></i>
-          </div>
-        </template>
-      </Card>
-      <Card>
-        <template #content>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold  uppercase tracking-wide">Draft</p>
-              <Skeleton v-if="loading" width="2rem" height="1.75rem" />
-              <p v-else class="text-2xl font-bold text-gray-600">{{ summary.draft }}</p>
-            </div>
-            <i class="pi pi-file text-4xl"></i>
           </div>
         </template>
       </Card>
@@ -261,7 +249,6 @@ const searchQuery = ref('')
 const dateRange = ref<Date[] | null>(null)
 
 const statusOptions = [
-  { label: 'Draft', value: 'draft' },
   { label: 'Pending', value: 'pending' },
   { label: 'Warehouse Approved', value: 'warehouse_approved' },
   { label: 'Branch Manager Approved', value: 'branch_manager_approved' },
@@ -287,7 +274,6 @@ const approvedStatuses = ['warehouse_approved', 'branch_manager_approved', 'proc
 
 const summary = computed(() => ({
   total: total.value,
-  draft: requisitions.value.filter(r => r.status === 'draft').length,
   pending: requisitions.value.filter(r => r.status === 'pending').length,
   approved: requisitions.value.filter(r => approvedStatuses.includes(r.status)).length,
 }))

@@ -136,6 +136,7 @@ const loadTransfers = async () => {
   loading.value = true
   try {
     const response = await inventoryService.getTransfers({
+      logistics_ready: true,
       page: pageState.page,
       per_page: pageState.rows,
       status: filters.status || undefined,
@@ -221,4 +222,3 @@ watch(
 
 onMounted(loadTransfers)
 </script>
-

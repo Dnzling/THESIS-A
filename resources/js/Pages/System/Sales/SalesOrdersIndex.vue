@@ -41,6 +41,7 @@
           :value="filteredOrders"
           :loading="loading"
           dataKey="key"
+          class="text-sm"
           rowHover
           paginator
           :rows="15"

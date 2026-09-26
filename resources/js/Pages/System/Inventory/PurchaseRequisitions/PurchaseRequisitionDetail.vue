@@ -1,5 +1,6 @@
 <template>
-  <div class="min-h-screenpx-4 py-6 sm:px-6 lg:px-8">
+  <div class="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+    <ConfirmDialog />
     <div class="mx-auto max-w-7xl space-y-6">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
@@ -12,6 +13,9 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
+          <Button v-if="canEditDraft" label="Edit Draft" severity="warn" size="small" outlined @click="editDraft" />
+          <Button v-if="canEditDraft" label="Submit" severity="warn" size="small" :loading="submitting" @click="confirmSubmit" />
+          <Button v-if="canEditDraft" label="Delete" severity="danger" size="small" text :loading="deleting" @click="confirmDelete" />
           <Button
             v-if="canApprove && canShowApprovalActions"
             label="Reject"
@@ -169,6 +173,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
+import ConfirmDialog from 'primevue/confirmdialog'
 import { useAuthStore } from '@/stores/auth'
 import inventoryService from '@/services/inventory.service'
 import WarehouseService from '@/services/warehouse.service'
@@ -187,6 +192,7 @@ const submitting = ref(false)
 const approving = ref(false)
 const rejecting = ref(false)
 const cancelling = ref(false)
+const deleting = ref(false)
 
 const rejectDialogVisible = ref(false)
 const rejectReason = ref('')
@@ -197,13 +203,14 @@ const cancelReason = ref('')
 const cancelError = ref('')
 
 const canManage = computed(() => authStore.hasPermission(props.warehouseMode ? 'warehouse.purchase-requisitions.manage' : 'inventory.requisites.manage'))
+const canEditDraft = computed(() => !props.warehouseMode && canManage.value && detail.value?.status === 'draft')
 const canApprove = computed(() =>
   !props.warehouseMode && (authStore.hasPermission('inventory.requisitions.approve') ||
   authStore.hasPermission('inventory.requisites.approve'))
 )
 const canShowApprovalActions = computed(() => {
   const s = String(detail.value?.status || '').toLowerCase()
-  return ['draft', 'pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
+  return ['pending', 'warehouse_approved', 'branch_manager_approved'].includes(s)
 })
 const canGenerateReceipt = computed(() => {
   if (props.warehouseMode) return false
@@ -216,6 +223,27 @@ const canGenerateReceipt = computed(() => {
 })
 
 const id = computed(() => String(route.params.id || ''))
+const editDraft = () => router.push({ name: 'inventory.requisites.edit', params: { id: id.value } })
+const confirmDelete = () => confirm.require({
+  header: 'Delete Draft PR?',
+  message: `Delete ${detail.value?.pr_number || 'this draft'}? This cannot be undone.`,
+  icon: 'pi pi-exclamation-triangle',
+  rejectLabel: 'Keep Draft',
+  acceptLabel: 'Delete Draft',
+  acceptProps: { severity: 'danger' },
+  accept: async () => {
+    deleting.value = true
+    try {
+      await inventoryService.deletePurchaseRequisitionDraft(id.value)
+      toast.add({ severity: 'success', summary: 'Draft deleted', life: 2500 })
+      goBack()
+    } catch (error: any) {
+      toast.add({ severity: 'error', summary: 'Delete failed', detail: error?.response?.data?.message || 'Unable to delete draft.', life: 3500 })
+    } finally {
+      deleting.value = false
+    }
+  },
+})
 
 const branchLabel = computed(() => {
   const user = authStore.user as any

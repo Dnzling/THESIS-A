@@ -29,6 +29,11 @@ class ReturnPickupController extends Controller
 
     private function destinationReturns(Request $request, string $branchType): JsonResponse
     {
+        $dateFilters = $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+        ]);
+
         $query = ReturnPickup::query()->with([
             'destinationBranch:id,name,branch_type,address', 'driver:id,fname,lname',
             'returnRequest:id,return_number,order_id,order_item_id,requested_quantity,reason,status,return_type',
@@ -39,14 +44,38 @@ class ReturnPickupController extends Controller
             ->whereNotIn('status', ['ready_for_dispatch', 'scheduled', 'cancelled']);
 
         $branchId = $request->user()->employee?->branch_id;
-        if ($branchId) $query->where('destination_branch_id', $branchId);
+        if ($branchId && ! $request->user()->hasRole('store_admin')) $query->where('destination_branch_id', $branchId);
         if ($request->filled('status')) $query->where('status', $request->string('status'));
         if ($request->filled('search')) {
             $term = trim($request->string('search')->toString());
             $query->where(fn ($q) => $q->whereHas('returnRequest', fn ($r) => $r->where('return_number', 'like', "%{$term}%"))
-                ->orWhereHas('returnRequest.order', fn ($o) => $o->where('order_number', 'like', "%{$term}%")->orWhere('shipping_name', 'like', "%{$term}%")));
+                ->orWhereHas('returnRequest.order', fn ($o) => $o->where('order_number', 'like', "%{$term}%")->orWhere('shipping_name', 'like', "%{$term}%"))
+                ->orWhereHas('returnRequest.orderItem', fn ($i) => $i->where('product_name', 'like', "%{$term}%")->orWhere('sku', 'like', "%{$term}%")));
         }
-        return response()->json(['success' => true, 'data' => $query->latest()->get()]);
+
+        if (!empty($dateFilters['start_date'])) $query->whereDate('created_at', '>=', $dateFilters['start_date']);
+        if (!empty($dateFilters['end_date'])) $query->whereDate('created_at', '<=', $dateFilters['end_date']);
+
+        $sortBy = (string) $request->input('sort_by', 'created_at');
+        $sortBy = in_array($sortBy, ['created_at', 'scheduled_at', 'status'], true) ? $sortBy : 'created_at';
+        $sortOrder = strtolower((string) $request->input('sort_order', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        return response()->json(['success' => true, 'data' => $query->orderBy($sortBy, $sortOrder)->get()]);
+    }
+
+    public function warehouseShow(Request $request, ReturnPickup $pickup): JsonResponse
+    {
+        $pickup->loadMissing('destinationBranch:id,branch_type');
+        if ((int) $pickup->store_id !== (int) $request->user()->store_id || $pickup->destinationBranch?->branch_type !== 'warehouse') {
+            return response()->json(['success' => false, 'message' => 'Warehouse return not found.'], 404);
+        }
+
+        $branchId = (int) ($request->user()->employee?->branch_id ?? $request->user()->branch_id ?? 0);
+        if ($branchId > 0 && $branchId !== (int) $pickup->destination_branch_id && ! $request->user()->hasRole('store_admin')) {
+            return response()->json(['success' => false, 'message' => 'This return belongs to another warehouse branch.'], 403);
+        }
+
+        return $this->show($request, $pickup);
     }
 
     public function index(Request $request): JsonResponse
@@ -108,15 +137,18 @@ class ReturnPickupController extends Controller
         $pickup->load([
             'driver:id,fname,lname,email,phone_number',
             'vehicle:id,vehicle_name,vehicle_type,plate_number,brand,model',
-            'destinationBranch:id,name,address,city,province,latitude,longitude,contact_number',
+            'destinationBranch:id,name,address,city,province,latitude,longitude,contact_number,email',
             'logs.creator:id,fname,lname,email',
-            'returnRequest:id,return_number,order_id,order_item_id,store_id,user_id,requested_quantity,reason,details,evidence_urls,status,return_type,created_at,review_notes,reviewed_at,reviewed_by',
-            'returnRequest.order:id,order_number,store_id,assigned_branch_id,user_id,shipping_name,shipping_phone,shipping_address,customer_latitude,customer_longitude,total_amount,status,created_at',
+            'returnRequest:id,return_number,order_id,order_item_id,store_id,user_id,requested_quantity,reason,details,evidence_urls,status,return_type,product_condition,inventory_disposition,received_quantity,inspected_by,inspected_at,inspection_notes,replacement_status,created_at,review_notes,reviewed_at,reviewed_by',
+            'returnRequest.order:id,order_number,store_id,assigned_branch_id,user_id,shipping_name,shipping_phone,shipping_email,shipping_address,customer_latitude,customer_longitude,total_amount,status,created_at',
             'returnRequest.order.assignedBranch:id,name,address,latitude,longitude',
-            'returnRequest.orderItem:id,order_id,product_id,product_name,sku,quantity,unit_price',
+            'returnRequest.orderItem:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price',
             'returnRequest.orderItem.product:id,product_name,sku,weight_kg',
+            'returnRequest.orderItem.branchInventory:id,variation_id',
+            'returnRequest.orderItem.branchInventory.variation:id,variation_name,variation_sku,color,size,material,finish',
             'returnRequest.user:id,fname,lname,email',
             'returnRequest.reviewer:id,fname,lname,email',
+            'returnRequest.inspector:id,fname,lname,email',
         ]);
 
         $data = $pickup->toArray();
@@ -293,7 +325,7 @@ class ReturnPickupController extends Controller
     {
         if ((int) $pickup->store_id !== (int) $request->user()->store_id || ($request->user()->hasRole('driver') && (int) $pickup->driver_user_id !== (int) $request->user()->id)) abort(403);
         $data = $request->validate(['latitude' => 'required|numeric|between:-90,90', 'longitude' => 'required|numeric|between:-180,180', 'location_address' => 'nullable|string|max:2000']);
-        if (!in_array($pickup->status, ['picked_up', 'out_for_delivery'], true)) return response()->json(['success' => false, 'message' => 'Live tracking is only available after pickup and while the return is out for delivery.'], 422);
+        if (!in_array($pickup->status, ['assigned', 'picked_up', 'out_for_delivery'], true)) return response()->json(['success' => false, 'message' => 'Live tracking is only available while the return pickup is assigned or in transit.'], 422);
         $pickup->update(['current_latitude' => $data['latitude'], 'current_longitude' => $data['longitude'], 'current_address' => $data['location_address'] ?? $pickup->current_address]);
         return response()->json(['success' => true, 'data' => $pickup->fresh()]);
     }

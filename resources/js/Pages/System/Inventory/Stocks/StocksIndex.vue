@@ -5,13 +5,13 @@
         <h1 class="text-xl font-bold text-gray-800">Inventory</h1>
       </div>
       <div class="flex items-center gap-2">
-        <!-- <Button
+        <Button
           v-if="canCreateAdjustments"
           label="Reorder Suggestions"
           size="small"
           class="text-sm"
           @click="router.push({ name: 'inventory.reorder-suggestions' })"
-        /> -->
+        />
       </div>
     </div>
   
@@ -186,7 +186,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const canCreateItems = computed(() => authStore.hasPermission('products.manage'))
-const canCreateAdjustments = computed(() => authStore.hasPermission('adjustments.manage'))
+const canCreateAdjustments = computed(() => authStore.hasPermission('inventory.adjustments.manage'))
 const canUpdateItems = computed(() => authStore.hasPermission('products.update') || authStore.hasPermission('inventory.products.manage'))
 const canViewWarehouseStock = computed(() => authStore.hasPermission('warehouse.view'))
 const branchCount = ref(0)

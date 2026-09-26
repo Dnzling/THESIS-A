@@ -28,21 +28,6 @@
       <Card>
         <template #content>
           <div class="space-y-4">
-            <!-- Category Code -->
-            <div class="flex flex-col gap-2">
-              <label for="category_code" class="text-sm font-semibold text-gray-700">
-                Category Code <span class="text-red-500">*</span>
-              </label>
-              <InputText 
-                id="category_code"
-                v-model="form.category_code" 
-                placeholder="e.g., SOFA, CHAIR, TABLE" 
-                :class="{ 'p-invalid': errors.category_code }"
-              />
-              <small v-if="errors.category_code" class="text-red-500">{{ errors.category_code }}</small>
-              <small class="text-gray-500">Used for SKU generation and internal reference</small>
-            </div>
-
             <!-- Category Name -->
             <div class="flex flex-col gap-2">
               <label for="category_name" class="text-sm font-semibold text-gray-700">
@@ -184,7 +169,6 @@ const loadingCategories = ref(false)
 const categories = ref([])
 
 const form = reactive({
-  category_code: '',
   category_name: '',
   description: '',
   parent_category_id: null,
@@ -216,7 +200,6 @@ const loadCategory = async () => {
     const category = response.data
     
     Object.assign(form, {
-      category_code: category.category_code,
       category_name: category.category_name,
       description: category.description || '',
       parent_category_id: category.parent_category_id,
@@ -239,10 +222,6 @@ const loadCategory = async () => {
 
 const validateForm = () => {
   errors.value = {}
-  
-  if (!form.category_code) {
-    errors.value.category_code = 'Category code is required'
-  }
   
   if (!form.category_name) {
     errors.value.category_name = 'Category name is required'

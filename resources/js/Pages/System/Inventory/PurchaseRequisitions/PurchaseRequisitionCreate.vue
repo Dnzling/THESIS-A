@@ -5,19 +5,24 @@
       <div class="mb-4 flex items-center gap-3">
         <Button icon="pi pi-arrow-left" severity="secondary" text @click="goBack" />
         <div>
-          <h1 class="text-xl font-bold text-gray-800">Create Purchase Requisition</h1>
+          <h1 class="text-xl font-bold text-gray-800">{{ editId ? 'Edit Draft Purchase Requisition' : 'Create Purchase Requisition' }}</h1>
           <p class="text-xs text-gray-500 mt-0.5">Request replenishment for your branch inventory with multiple items.</p>
         </div>
       </div>
   
       <Card>
         <template #content>
-          <form class="space-y-4" @submit.prevent="submit">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <form class="space-y-4" @submit.prevent="submit(true)">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-gray-700">Branch</label>
                 <InputText :modelValue="branchLabel" disabled />
                 <small class="text-gray-500">Auto-filled from your profile</small>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-semibold text-gray-700">PR Type <span class="text-red-500">*</span></label>
+                <Select v-model="form.requisition_type" :options="prTypeOptions" optionLabel="label" optionValue="value"
+                  placeholder="Select PR type" size="small" fluid />
               </div>
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-semibold text-gray-700">Reason / Notes</label>
@@ -136,7 +141,9 @@
   
             <div class="flex justify-end gap-2 pt-3 border-t">
               <Button type="button" label="Cancel" severity="secondary" size="small" @click="goBack" />
-              <Button type="submit" label="Create Request" size="small" :loading="saving"
+              <Button type="button" label="Save Draft" severity="secondary" outlined size="small" :loading="saving"
+                :disabled="!canManage || validItems.length === 0" @click="submit(false)" />
+              <Button type="submit" :label="editId ? 'Save & Submit' : 'Submit Request'" severity="warn" size="small" :loading="saving"
                 :disabled="!canManage || validItems.length === 0" />
             </div>
           </form>
@@ -163,6 +170,7 @@ const saving = ref(false)
 const loadingInventory = ref(false)
 const inventoryRows = ref<any[]>([])
 const errors = reactive<Record<string, string>>({})
+const editId = computed(() => Number(route.params.id || 0))
 
 const canManage = computed(() => authStore.hasPermission('inventory.requisites.manage'))
 const canViewBranchInventory = computed(() => authStore.hasPermission('inventory.branch_inventory.view'))
@@ -194,11 +202,20 @@ const buildEmptyItem = (): InventoryPrItem => ({
 
 const form = reactive<{
   notes: string
+  requisition_type: 'regular' | 'urgent' | 'new_product' | 'seasonal' | 'emergency'
   items: InventoryPrItem[]
 }>({
   notes: '',
+  requisition_type: 'regular',
   items: [buildEmptyItem()],
 })
+const prTypeOptions = [
+  { label: 'Regular', value: 'regular' },
+  { label: 'Urgent', value: 'urgent' },
+  { label: 'New Product', value: 'new_product' },
+  { label: 'Seasonal', value: 'seasonal' },
+  { label: 'Emergency', value: 'emergency' },
+]
 
 const validItems = computed(() => form.items.filter((item) => item.branch_inventory_id && item.requested_quantity > 0))
 const previewItems = computed(() => {
@@ -339,7 +356,7 @@ const onInventoryChange = async (index: number, event: any) => {
   applyReorderQty(index)
 }
 
-const doCreate = async () => {
+const doCreate = async (submitNow: boolean) => {
   Object.keys(errors).forEach(k => delete errors[k])
   saving.value = true
   try {
@@ -356,14 +373,18 @@ const doCreate = async () => {
       }
     })
 
-    const response = await inventoryService.createPurchaseRequisitionFromInventory({
+    const payload = {
       reason: form.notes || 'Stock replenishment request.',
-      requisition_type: 'regular',
+      requisition_type: form.requisition_type,
+      submit: submitNow,
       items: payloadItems,
-    })
+    }
+    const response = editId.value
+      ? await inventoryService.updatePurchaseRequisitionDraft(editId.value, payload)
+      : await inventoryService.createPurchaseRequisitionFromInventory(payload)
 
     if (response?.success) {
-      toast.add({ severity: 'success', summary: 'Draft Created', detail: 'Purchase requisition saved as a draft. Submit it from the detail page when ready.', life: 3500 })
+      toast.add({ severity: 'success', summary: submitNow ? 'Request Submitted' : 'Draft Saved', detail: submitNow ? 'Purchase requisition is pending in Procurement.' : 'You can edit or submit this draft later.', life: 3500 })
       router.push({ name: 'inventory.requisites.detail', params: { id: response.data?.id } })
     } else {
       toast.add({ severity: 'error', summary: 'Error', detail: response?.message || 'Failed to create request', life: 3000 })
@@ -382,14 +403,14 @@ const doCreate = async () => {
   }
 }
 
-const submit = async () => {
+const submit = async (submitNow: boolean) => {
   Object.keys(errors).forEach(k => delete errors[k])
   if (!canManage.value) return
   if (validItems.value.length === 0) {
     errors.items = 'Please add at least one valid item with quantity.'
     return
   }
-  await doCreate()
+  await doCreate(submitNow)
 }
 
 onMounted(async () => {
@@ -407,6 +428,35 @@ onMounted(async () => {
   }
 
   await loadInventory()
+
+  if (editId.value) {
+    try {
+      const response = await inventoryService.getPurchaseRequisition(editId.value)
+      const pr = response?.data
+      if (!response?.success || pr?.status !== 'draft') {
+        toast.add({ severity: 'warn', summary: 'Draft unavailable', detail: 'Only draft requests can be edited.', life: 3500 })
+        goBack()
+        return
+      }
+      form.notes = pr.reason || ''
+      form.requisition_type = pr.requisition_type || 'regular'
+      const mapped = (pr.items || []).map((item: any) => {
+        const row = inventoryRows.value.find((stock: any) => Number(stock.product_id) === Number(item.product_id)
+          && Number(stock.variation_id || 0) === Number(item.variation_id || 0))
+        return row ? { branch_inventory_id: Number(row.id), requested_quantity: Number(item.quantity_requested) } : null
+      })
+      if (mapped.some((item: any) => !item)) {
+        toast.add({ severity: 'error', summary: 'Items unavailable', detail: 'Some draft items are not in this branch inventory. The draft was not changed.', life: 4500 })
+        goBack()
+        return
+      }
+      form.items = mapped.length ? mapped.filter((item): item is InventoryPrItem => item !== null) : [buildEmptyItem()]
+    } catch (error: any) {
+      toast.add({ severity: 'error', summary: 'Load failed', detail: error?.response?.data?.message || 'Unable to load draft.', life: 3500 })
+      goBack()
+    }
+    return
+  }
 
   // Auto-fill when coming from Branch Inventory "Create PR"
   const q = route.query || {}
