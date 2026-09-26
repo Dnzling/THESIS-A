@@ -4,7 +4,7 @@
     <div class="mb-4 flex items-center justify-between">
       <div><h1 class="text-lg font-bold text-gray-800">Employees</h1></div>
       <div class="flex items-center gap-2">
-        <Button label="Add Employee"  @click="openAddDialog" severity="warn" size="small" />
+        <!-- <Button label="Add Employee"  @click="openAddDialog" severity="warn" size="small" /> -->
       </div>
     </div>
 
