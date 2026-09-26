@@ -99,6 +99,151 @@ class AnalyticsController extends Controller
     }
 
     /**
+     * Compare replenishment pressure and recent consumption across branches.
+     * This is intentionally a transparent MVP forecast: recent stock-out/issue
+     * pressure plus the branch's reorder settings, rather than a black-box model.
+     * GET /api/procurement/analytics/forecasting
+     */
+    public function getForecasting(Request $request): JsonResponse
+    {
+        try {
+            $user = auth()->user();
+            $storeId = (int) ($user?->store_id ?? 0);
+            $days = min(max((int) $request->get('days', 90), 30), 365);
+            $branchId = (int) $request->get('branch_id', 0);
+
+            if ($storeId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Your account is not assigned to a store.'], 422);
+            }
+
+            if ($branchId <= 0 && (int) ($user?->branch_id ?? 0) > 0 && !$user->hasRole('super_admin')) {
+                $branchId = (int) $user->branch_id;
+            }
+
+            $branchesQuery = DB::table('branches')
+                ->where('store_id', $storeId)
+                ->where('status', 'active');
+            if ($branchId > 0) {
+                $branchesQuery->where('id', $branchId);
+            }
+            $branches = $branchesQuery->orderBy('name')->get(['id', 'name']);
+
+            if ($branches->isEmpty()) {
+                return response()->json(['success' => true, 'data' => [
+                    'is_multi_branch' => false,
+                    'branch_count' => 0,
+                    'days' => $days,
+                    'branch_summary' => [],
+                    'top_items' => [],
+                    'monthly_demand' => [],
+                ]]);
+            }
+
+            $branchIds = $branches->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $inventory = DB::table('branch_inventory')
+                ->join('products', 'branch_inventory.product_id', '=', 'products.id')
+                ->where('branch_inventory.store_id', $storeId)
+                ->whereIn('branch_inventory.branch_id', $branchIds)
+                ->whereNull('branch_inventory.deleted_at')
+                ->select([
+                    'branch_inventory.branch_id',
+                    'branch_inventory.product_id',
+                    'products.product_name',
+                    'products.sku',
+                    'branch_inventory.quantity_available',
+                    'branch_inventory.quantity_incoming',
+                    'branch_inventory.reorder_point',
+                    'branch_inventory.reorder_quantity',
+                    'branch_inventory.safety_stock',
+                ])->get();
+
+            $since = now()->subDays($days)->startOfDay();
+            $demand = DB::table('inventory_transactions')
+                ->where('store_id', $storeId)
+                ->whereIn('branch_id', $branchIds)
+                ->where('quantity_change', '<', 0)
+                ->where('transaction_date', '>=', $since)
+                ->select('branch_id', 'product_id')
+                ->selectRaw('SUM(ABS(quantity_change)) as consumed_qty')
+                ->groupBy('branch_id', 'product_id')
+                ->get()
+                ->keyBy(fn ($row) => $row->branch_id . ':' . $row->product_id);
+
+            $rows = $inventory->map(function ($row) use ($demand, $days) {
+                $demandRow = $demand->get($row->branch_id . ':' . $row->product_id);
+                $consumed = (float) ($demandRow?->consumed_qty ?? 0);
+                $dailyDemand = $consumed / $days;
+                $available = (float) $row->quantity_available;
+                $incoming = (float) $row->quantity_incoming;
+                $reorderPoint = (float) $row->reorder_point;
+                $reorderQuantity = (float) $row->reorder_quantity;
+                $shortage = max($reorderPoint - $available, 0);
+                $projected30DayDemand = $dailyDemand * 30;
+                $recommended = max($reorderQuantity, $projected30DayDemand + (float) $row->safety_stock - $available - $incoming, 0);
+
+                return [
+                    'branch_id' => (int) $row->branch_id,
+                    'product_id' => (int) $row->product_id,
+                    'product_name' => $row->product_name,
+                    'sku' => $row->sku,
+                    'available_qty' => $available,
+                    'incoming_qty' => $incoming,
+                    'reorder_point' => $reorderPoint,
+                    'consumed_qty' => round($consumed, 2),
+                    'daily_demand' => round($dailyDemand, 2),
+                    'projected_30_day_demand' => round($projected30DayDemand, 2),
+                    'shortage_qty' => round($shortage, 2),
+                    'recommended_qty' => round($recommended, 2),
+                    'needs_replenishment' => $available <= $reorderPoint,
+                ];
+            });
+
+            $branchSummary = $branches->map(function ($branch) use ($rows) {
+                $branchRows = $rows->where('branch_id', (int) $branch->id);
+                return [
+                    'branch_id' => (int) $branch->id,
+                    'branch_name' => $branch->name,
+                    'tracked_items' => $branchRows->count(),
+                    'items_needing_replenishment' => $branchRows->where('needs_replenishment', true)->count(),
+                    'out_of_stock_items' => $branchRows->where('available_qty', '<=', 0)->count(),
+                    'shortage_qty' => round($branchRows->sum('shortage_qty'), 2),
+                    'recommended_qty' => round($branchRows->sum('recommended_qty'), 2),
+                    'consumed_qty' => round($branchRows->sum('consumed_qty'), 2),
+                    'pressure_score' => round($branchRows->sum('shortage_qty') + ($branchRows->where('available_qty', '<=', 0)->count() * 5), 2),
+                ];
+            })->sortByDesc('pressure_score')->values();
+
+            $topItems = $rows->filter(fn ($row) => $row['needs_replenishment'])
+                ->sortByDesc(fn ($row) => $row['shortage_qty'] + $row['daily_demand'])
+                ->take(10)->values();
+
+            $monthlyDemand = DB::table('inventory_transactions')
+                ->where('store_id', $storeId)
+                ->whereIn('branch_id', $branchIds)
+                ->where('quantity_change', '<', 0)
+                ->where('transaction_date', '>=', $since)
+                ->groupByRaw("DATE_FORMAT(transaction_date, '%Y-%m')")
+                ->orderByRaw("DATE_FORMAT(transaction_date, '%Y-%m')")
+                ->selectRaw("DATE_FORMAT(transaction_date, '%Y-%m') as month")
+                ->selectRaw('SUM(ABS(quantity_change)) as consumed_qty')
+                ->get()
+                ->map(fn ($row) => ['month' => $row->month, 'consumed_qty' => round((float) $row->consumed_qty, 2)])
+                ->values();
+
+            return response()->json(['success' => true, 'data' => [
+                'is_multi_branch' => $branches->count() > 1,
+                'branch_count' => $branches->count(),
+                'days' => $days,
+                'branch_summary' => $branchSummary,
+                'top_items' => $topItems,
+                'monthly_demand' => $monthlyDemand,
+            ]]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to retrieve procurement forecasting data.'], 500);
+        }
+    }
+
+    /**
      * Get spend analytics
      * GET /api/procurement/analytics/spend
      */

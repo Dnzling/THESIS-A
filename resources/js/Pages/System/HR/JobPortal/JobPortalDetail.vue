@@ -18,6 +18,7 @@
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center gap-2">
                   <Tag value="Open" severity="success" />
+                  <Tag :value="employmentTypeLabel" severity="warn" />
                   <span class="text-xs uppercase tracking-wide text-surface-500">{{ storeLabel }}</span>
                 </div>
                 <div>
@@ -62,6 +63,10 @@
                 <div>
                   <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Role</p>
                   <p class="mt-1 text-sm font-semibold text-surface-900">{{ roleLabel }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Employment Type</p>
+                  <p class="mt-1 text-sm font-semibold text-surface-900">{{ employmentTypeLabel }}</p>
                 </div>
                 <div>
                   <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Store</p>
@@ -125,6 +130,13 @@ const fetchProfile = async () => {
 const stages = computed<JobPostingStage[]>(() => posting.value?.screeningStages || posting.value?.screening_stages || [])
 const storeLabel = computed(() => posting.value?.store?.store_name || posting.value?.store?.name || 'Store opening')
 const roleLabel = computed(() => posting.value?.role?.display_name || posting.value?.role?.name || posting.value?.department || 'Role')
+const employmentTypeLabels: Record<string, string> = {
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  contract: 'Contract',
+  intern: 'Intern',
+}
+const employmentTypeLabel = computed(() => employmentTypeLabels[posting.value?.employment_type || 'full_time'] || 'Full Time')
 const formatCurrency = (value: number | string | undefined) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 }).format(Number(value || 0))
 
 const profileReady = computed(() => {

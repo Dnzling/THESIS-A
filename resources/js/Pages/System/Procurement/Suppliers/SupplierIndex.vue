@@ -1,63 +1,96 @@
 <template>
-  <div class="p-6 bg-gray-50 min-h-screen">
+  <div class="p-6 min-h-screen">
     <div class="mb-6 flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Suppliers</h1>
-        <p class="text-gray-600 mt-1">Manage supplier profiles and contacts</p>
+        <h1 class="text-lg font-bold text-gray-800">Suppliers</h1>
+        <p class="text-xs text-gray-600 mt-1">Manage supplier relationships and purchasing partners</p>
       </div>
-      <Button
-        v-if="canManageSuppliers"
-        label="Add Supplier"
-        icon="pi pi-plus"
-        severity="success"
-        @click="router.push({ name: 'procurement.suppliers.create' })"
-      />
+      <Button v-if="canManageSuppliers" label="Add Supplier" icon="pi pi-plus" size="small"
+        @click="router.push({ name: 'procurement.suppliers.create' })" />
     </div>
 
-    <Card class="mb-6">
-      <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <Card v-for="metric in summaryCards" :key="metric.label">
+        <template #content>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-bold  uppercase tracking-wide">{{ metric.label }}</p>
+              <p class="text-xl font-bold text-gray-900">{{ metric.value }}</p>
+            </div>
+            <i :class="[metric.icon, metric.color, 'text-3xl']" aria-hidden="true" />
+          </div>
+        </template>
+      </Card>
+    </div>
+  
+    <Card>
+      <template #header>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end m-4 mt-6">
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search supplier" class="w-full" @input="onFilterChange" />
+            <InputText v-model="filters.search" size="small" placeholder="Search supplier" class="w-full"
+              @input="onFilterChange" />
           </IconField>
-
-          <Select v-model="filters.status" :options="statuses" optionLabel="label" optionValue="value" placeholder="Status" showClear class="w-full" @change="onFilterChange" />
-
-          <Button label="Reset" icon="pi pi-filter-slash" severity="secondary" outlined @click="resetFilters" />
+          <Select v-model="filters.contract_status" :options="statuses" optionLabel="label" optionValue="value"
+            placeholder="Contract Status" size="small" showClear class="w-full" @change="onFilterChange" />
+          <Select v-model="filters.supplier_type" :options="supplierTypes" optionLabel="label" optionValue="value"
+            placeholder="Supplier Type" size="small" showClear class="w-full" @change="onFilterChange" />
+          <div></div>
+          <Button label="Clear Filters" size="small" severity="secondary" outlined @click="resetFilters" />
         </div>
       </template>
-    </Card>
-
-    <Card>
       <template #content>
-        <DataTable :value="suppliers" :loading="loading" class="p-datatable-sm" stripedRows>
+        <DataTable v-if="!loading" :value="suppliers" :loading="loading" class="p-datatable-sm" rowHover
+          responsiveLayout="scroll" paginator lazy :rows="filters.per_page" :totalRecords="total"
+          :first="(currentPage - 1) * filters.per_page" :rowsPerPageOptions="[10, 15, 25, 50]" @page="onPageChange">
           <template #empty>
-            <div class="text-center py-8">
-              <i class="pi pi-inbox text-4xl text-gray-400"></i>
-              <p class="text-gray-600 mt-2">No suppliers found</p>
+            <div class="text-center py-12">
+              <i class="pi pi-users text-5xl text-gray-300 mb-4"></i>
+              <p class="text-lg text-gray-600">No suppliers found</p>
+              <p class="text-sm text-gray-500 mt-1">Try adjusting your search or filters.</p>
             </div>
           </template>
-
-          <Column field="supplier_name" header="Supplier" />
-          <Column field="contact_person" header="Contact" />
-          <Column field="phone" header="Phone" />
-          <Column field="email" header="Email" />
-          <Column field="status" header="Status">
+  
+          <Column field="supplier_name" header="Supplier" style="min-width: 220px">
             <template #body="{ data }">
-              <Tag :value="data.status || 'active'" :severity="statusSeverity(data.status || 'active')" />
-            </template>
-          </Column>
-          <Column header="Actions" :frozen="true" alignFrozen="right">
-            <template #body="{ data }">
-              <div class="flex gap-2">
-                <Button icon="pi pi-eye" severity="info" text rounded @click="router.push({ name: 'procurement.suppliers.detail', params: { id: data.id } })" />
+              <div>
+                <p class="font-semibold text-gray-900">{{ data.supplier_name || data.company_name || '-' }}</p>
+                <p class="text-xs text-gray-500">{{ data.supplier_code || 'No supplier code' }}</p>
               </div>
             </template>
           </Column>
+          <Column header="Contact" style="min-width: 180px">
+            <template #body="{ data }">
+              <div>
+                <p class="text-sm text-gray-800">{{ data.contact_person || '-' }}</p>
+                <p class="text-xs text-gray-500">{{ data.phone || data.mobile || 'No phone' }}</p>
+              </div>
+            </template>
+          </Column>
+          <Column field="email" header="Email" style="min-width: 220px">
+            <template #body="{ data }"><span class="text-sm text-gray-700">{{ data.email || '-' }}</span></template>
+          </Column>
+          <Column field="supplier_type" header="Type" style="min-width: 140px">
+            <template #body="{ data }"><span class="text-sm text-gray-700">{{ humanize(data.supplier_type) }}</span></template>
+          </Column>
+          <Column field="contract_status" header="Contract Status" style="min-width: 150px">
+            <template #body="{ data }">
+              <Tag :value="humanize(data.contract_status || 'no_contract')" :severity="statusSeverity(data.contract_status || 'no_contract')" />
+            </template>
+          </Column>
+          <Column header="Actions" :frozen="true" alignFrozen="right" style="width: 90px">
+            <template #body="{ data }">
+              <Button icon="pi pi-eye" outlined rounded
+                @click="router.push({ name: 'procurement.suppliers.detail', params: { id: data.id } })"
+                v-tooltip="'View Supplier'" />
+            </template>
+          </Column>
         </DataTable>
+        <div v-else class="space-y-2 p-4">
+          <Skeleton v-for="row in 6" :key="row" height="32px" />
+        </div>
       </template>
-    </Card>
+  </Card>
   </div>
 </template>
 
@@ -72,23 +105,49 @@ const authStore = useAuthStore()
 const canManageSuppliers = computed(() => authStore.hasPermission('procurement.suppliers.manage'))
 const loading = ref(false)
 const suppliers = ref<Supplier[]>([])
+const total = ref(0)
+const currentPage = ref(1)
 
 const filters = reactive({
   search: '',
-  status: null as string | null
+  contract_status: null as string | null,
+  supplier_type: null as string | null,
+  page: 1,
+  per_page: 15,
 })
 
 const statuses = [
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-  { label: 'Blacklisted', value: 'blacklisted' }
+  { label: 'Pending', value: 'pending' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Rejected', value: 'rejected' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Terminated', value: 'terminated' },
+  { label: 'No Contract', value: 'no_contract' },
 ]
+
+const supplierTypes = [
+  { label: 'Manufacturer', value: 'manufacturer' },
+  { label: 'Distributor', value: 'distributor' },
+  { label: 'Importer', value: 'importer' },
+  { label: 'Wholesaler', value: 'wholesaler' },
+  { label: 'Service Provider', value: 'service_provider' },
+]
+
+const summaryCards = computed(() => [
+  { label: 'Total Suppliers', value: total.value, icon: 'pi pi-users', color: 'text-blue-500' },
+  { label: 'Active Contracts (Page)', value: suppliers.value.filter((supplier: any) => supplier.contract_status === 'active').length, icon: 'pi pi-check-circle', color: 'text-green-500' },
+  { label: 'Pending Contracts (Page)', value: suppliers.value.filter((supplier: any) => supplier.contract_status === 'pending').length, icon: 'pi pi-clock', color: 'text-orange-500' },
+  { label: 'No Contract (Page)', value: suppliers.value.filter((supplier: any) => !supplier.contract_status).length, icon: 'pi pi-file', color: 'text-gray-500' },
+])
 
 const loadSuppliers = async () => {
   loading.value = true
   try {
     const response = await procurementService.getSuppliers(filters)
     suppliers.value = response.data?.data || []
+    total.value = Number(response.data?.total || suppliers.value.length)
+    currentPage.value = currentPage.value || 1
   } catch (error) {
     console.error('Failed to load suppliers', error)
     suppliers.value = []
@@ -99,18 +158,36 @@ const loadSuppliers = async () => {
 
 const statusSeverity = (status: string) => {
   if (status === 'active') return 'success'
-  if (status === 'blacklisted') return 'danger'
+  if (status === 'pending' || status === 'draft') return 'warn'
+  if (status === 'rejected' || status === 'terminated') return 'danger'
   return 'secondary'
 }
 
 const onFilterChange = () => {
+  filters.page = 1
+  currentPage.value = 1
   loadSuppliers()
 }
 
 const resetFilters = () => {
   filters.search = ''
-  filters.status = null
+  filters.contract_status = null
+  filters.supplier_type = null
+  filters.page = 1
+  currentPage.value = 1
   loadSuppliers()
+}
+
+const onPageChange = (event: any) => {
+  filters.page = event.page + 1
+  filters.per_page = event.rows
+  currentPage.value = filters.page
+  loadSuppliers()
+}
+
+const humanize = (value: string | null | undefined) => {
+  if (!value) return 'N/A'
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
 onMounted(() => {

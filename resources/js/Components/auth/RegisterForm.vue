@@ -37,7 +37,7 @@
                                 <label class="block text-sm font-medium text-gray-700">
                                     Firstname <span class="text-red-500">*</span>
                                 </label>
-                                <InputText v-model="formData.fname" placeholder="ex. Juan"
+                                <InputText v-model="formData.fname" placeholder="Juan"
                                     :class="{ 'p-invalid': validationErrors.fname }" class="w-full mt-1" />
                                 <small v-if="validationErrors.fname" class="p-error">
                                     {{ validationErrors.fname }}
@@ -101,8 +101,21 @@
                         <div class="p-inputgroup">
                             <Password id="password" v-model="formData.password" :feedback="false" toggleMask
                                 placeholder="Enter your password" :class="{ 'p-invalid': validationErrors.password }"
-                                class="w-full" autocomplete="new-password" />
+                                class="w-full" autocomplete="new-password" @focus="passwordFocused = true" @blur="passwordFocused = false" />
                         </div>
+                        <Transition name="password-guide">
+                            <div v-if="showPasswordRules" class="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+                                <p class="mb-2 font-semibold text-gray-800">Password must include:</p>
+                                <ul class="space-y-2">
+                                    <li v-for="rule in passwordRuleItems" :key="rule.key" class="flex items-center gap-2 transition-colors duration-300" :class="rule.met ? 'text-emerald-700' : 'text-gray-500'">
+                                        <span class="flex h-5 w-5 items-center justify-center rounded-full border text-xs font-bold transition-all duration-300" :class="rule.met ? 'scale-100 border-emerald-500 bg-emerald-500 text-white' : 'scale-90 bg-white text-gray-400'">
+                                            <i :class="rule.met ? 'pi pi-check' : 'pi pi-check'"></i>
+                                        </span>
+                                        <span>{{ rule.label }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </Transition>
                         <small v-if="validationErrors.password" class="p-error">
                             {{ validationErrors.password }}
                         </small>
@@ -156,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed} from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
@@ -208,6 +221,29 @@ const formData = reactive<RegisterFormData>({
 const validationErrors = reactive<ValidationErrors>({})
 const errorMessage = ref<string>('')
 const successMessage = ref<string>('')
+const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/
+const passwordFocused = ref(false)
+const passwordRuleItems = reactive([
+  { key: 'length', label: 'At least 8 characters', met: false },
+  { key: 'uppercase', label: 'One uppercase letter', met: false },
+  { key: 'number', label: 'One number', met: false },
+  { key: 'special', label: 'One special character', met: false },
+])
+
+const showPasswordRules = computed(() => passwordFocused.value && formData.password.length > 0)
+
+const updatePasswordRules = (value: string) => {
+  passwordRuleItems[0].met = value.length >= 8
+  passwordRuleItems[1].met = /[A-Z]/.test(value)
+  passwordRuleItems[2].met = /\d/.test(value)
+  passwordRuleItems[3].met = /[^A-Za-z0-9]/.test(value)
+}
+
+watch(
+  () => formData.password,
+  (value) => updatePasswordRules(value),
+  { immediate: true }
+)
 
 
 const maxDate = computed(() => {
@@ -266,6 +302,9 @@ const validateForm = (): boolean => {
   } else if (formData.password.length < 8) {
     validationErrors.password = 'Password must be at least 8 characters'
     isValid = false
+  } else if (!passwordRegex.test(formData.password)) {
+    validationErrors.password = 'Password must include an uppercase letter, a number, and a special character'
+    isValid = false
   }
 
   if (formData.password != formData.confirmPassword) {
@@ -301,5 +340,27 @@ const handleSubmit = () => {
 
 :deep(.p-password-input) {
     width: 100%;
+}
+</style>
+
+<style scoped>
+.password-guide-enter-active,
+.password-guide-leave-active {
+    transition: opacity 0.22s ease, transform 0.22s ease, max-height 0.22s ease;
+    max-height: 180px;
+}
+
+.password-guide-enter-from,
+.password-guide-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+}
+
+.password-guide-enter-to,
+.password-guide-leave-from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 180px;
 }
 </style>

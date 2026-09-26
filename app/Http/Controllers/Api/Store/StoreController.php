@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Admin\SubscriptionPlan;
+use App\Models\Hr\Employee;
+use App\Models\Core\Role;
+use App\Models\Hr\Department;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
@@ -71,11 +74,28 @@ class StoreController extends Controller
                 'business_type' => 'nullable|string|max:100',
                 'province' => 'nullable|string|max:100',
                 'city' => 'required|string|max:100',
+                'barangay' => 'required|string|max:150',
                 'address' => 'required|string|max:200',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
                 'plan' => 'nullable|string|exists:subscription_plans,plan_key',
             ]);
+
+            $storeAdminRole = null;
+            if ($request->user()) {
+                $storeAdminRole = Role::query()
+                    ->whereNull('store_id')
+                    ->where(function ($query) {
+                        $query->whereRaw('LOWER(name) = ?', ['store_admin'])
+                            ->orWhereRaw('LOWER(display_name) = ?', ['store administrator'])
+                            ->orWhereRaw('LOWER(display_name) = ?', ['store admin']);
+                    })
+                    ->first();
+
+                if (!$storeAdminRole) {
+                    throw new \RuntimeException('The global store_admin role is not configured.');
+                }
+            }
 
             $payload = [
                 'name' => $validated['store_name'],
@@ -84,9 +104,9 @@ class StoreController extends Controller
                 'email' => $validated['email'] ?? null,
                 'province' => $validated['province'] ?? 'Cavite',
                 'city' => $validated['city'],
+                'barangay' => $validated['barangay'],
                 'address' => $validated['address'],
-                'latitude' => $validated['latitude'] ?? null,
-                'longitude' => $validated['longitude'] ?? null,
+                'status' => 'unverified',
             ];
 
             $storeSettings = [
@@ -97,9 +117,9 @@ class StoreController extends Controller
             $payload['subscription_tier'] = !empty($validated['plan'])
                 ? strtolower((string) $validated['plan'])
                 : 'free';
-            $payload['subscription_ends_at'] = now()->addDays(7)->toDateString();
-            $payload['trial_started_at'] = now();
-            $payload['trial_ends_at'] = now()->addDays(7);
+            $payload['subscription_ends_at'] = null;
+            $payload['trial_started_at'] = null;
+            $payload['trial_ends_at'] = null;
 
             $store = Store::create($payload);
 
@@ -115,20 +135,56 @@ class StoreController extends Controller
                 $branchCode = $branchCode . '-' . str_pad((string) random_int(1, 999), 3, '0', STR_PAD_LEFT);
             }
 
-            Branch::create([
+            $branch = Branch::create([
                 'store_id' => $store->id,
                 'name' => $store->name . ' - Main',
                 'address' => $store->address,
                 'city' => $store->city,
+                'barangay' => $store->barangay,
                 'province' => $store->province,
-                'latitude' => $store->latitude,
-                'longitude' => $store->longitude,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
                 'contact_number' => $store->phone ?? ($validated['contact_number'] ?? '0000000000'),
                 'branch_code' => $branchCode,
                 'is_main_branch' => true,
                 'status' => 'active',
                 'branch_type' => 'storefront',
+                'geofence_enabled' => false,
             ]);
+
+            if ($request->user()) {
+                $request->user()->update(['branch_id' => $branch->id]);
+
+                $storeAdminRoleId = (int) $storeAdminRole->id;
+
+                $managementDepartment = Department::query()->firstOrCreate(
+                    ['store_id' => $store->id, 'name' => 'Management'],
+                    [
+                        'description' => 'Store management department',
+                        'status' => 'active',
+                        'created_by' => $request->user()->id,
+                    ]
+                );
+
+                // The registering account is the first employee and store administrator.
+                $request->user()->update(['role_id' => $storeAdminRoleId]);
+
+                Employee::query()->firstOrCreate(
+                    ['user_id' => $request->user()->id, 'store_id' => $store->id],
+                    [
+                        'store_id' => $store->id,
+                        'branch_id' => $branch->id,
+                        'role_id' => $storeAdminRoleId,
+                        'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                        'fname' => (string) $request->user()->fname,
+                        'lname' => (string) $request->user()->lname,
+                        'department' => $managementDepartment->name,
+                        'employment_type' => 'full_time',
+                        'status' => 'active',
+                        'hire_date' => now()->toDateString(),
+                    ]
+                );
+            }
 
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
 
@@ -167,21 +223,39 @@ class StoreController extends Controller
             $validated = $request->validate([
                 'subscription_tier' => 'required|string|exists:subscription_plans,plan_key',
                 'setup_mode' => 'nullable|string|in:free,paid',
+                'months' => 'nullable|integer|min:1|max:36',
+                'billing_cycle' => 'nullable|string|in:monthly,yearly',
             ]);
 
             $setupMode = strtolower((string) ($validated['setup_mode'] ?? 'free'));
-            $store->subscription_tier = strtolower((string) $validated['subscription_tier']);
-            $store->subscription_ends_at = $setupMode === 'free' ? now()->addDays(7)->toDateString() : null;
+            $planKey = strtolower((string) $validated['subscription_tier']);
+            $plan = SubscriptionPlan::query()->where('plan_key', $planKey)->firstOrFail();
+            $months = (int) ($validated['months'] ?? (($validated['billing_cycle'] ?? '') === 'yearly' ? 12 : 1));
+            $previousPlanKey = (string) $store->subscription_tier;
+
+            $store->subscription_tier = $plan->id;
+            if ($setupMode === 'free') {
+                $store->subscription_ends_at = null;
+            } else {
+                $currentEndsAt = $previousPlanKey !== 'free' && $store->subscription_ends_at
+                    ? \Carbon\Carbon::parse($store->subscription_ends_at)
+                    : null;
+                $nextEndsAt = now()->addMonths($months);
+                $store->subscription_ends_at = ($currentEndsAt && $currentEndsAt->gt($nextEndsAt))
+                    ? $currentEndsAt->toDateString()
+                    : $nextEndsAt->toDateString();
+            }
 
             if (Schema::hasColumn('stores', 'trial_started_at')) {
-                $store->trial_started_at = $setupMode === 'free' ? now() : null;
+                $store->trial_started_at = null;
             }
             if (Schema::hasColumn('stores', 'trial_ends_at')) {
-                $store->trial_ends_at = $setupMode === 'free' ? now()->addDays(7) : null;
+                $store->trial_ends_at = null;
             }
 
             $store->save();
             app(ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
+            app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);
 
             return response()->json([
                 'success' => true,

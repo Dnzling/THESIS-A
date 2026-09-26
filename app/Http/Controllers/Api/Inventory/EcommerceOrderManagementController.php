@@ -4,13 +4,13 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\User;
-use App\Models\Ecommerce\EcommerceChatMessage;
-use App\Models\Ecommerce\EcommerceChatThread;
+use App\Models\CRM\EcommerceChatMessage;
+use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceDeliveryLog;
 use App\Models\Ecommerce\EcommerceOrder;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
-use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesRefund;
 use App\Models\Inventory\BranchInventory;
 use App\Models\Store\Branch;
@@ -81,14 +81,17 @@ class EcommerceOrderManagementController extends Controller
                 'user:id,fname,lname,email',
                 'store',
                 'assignedBranch:id,name,branch_code,city,province',
-                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_total',
-                'items.product:id,product_name,sku',
+                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_subtotal,line_tax,line_total',
+                'items.product:id,product_name,sku,unit_of_measurement',
                 'items.branchInventory:id,branch_id,product_id,variation_id,quantity_available,stock_status',
                 'items.branchInventory.branch:id,name,branch_code,city,province',
+                'items.branchInventory.variation:id,variation_name,variation_sku',
                 'items.returnRequests',
                 'cancellationRequests',
                 'delivery.vehicle:id,vehicle_name,plate_number,vehicle_type,status',
-                'delivery.driver:id,fname,lname,email',
+                'delivery.driver:id,fname,lname,email,phone_number,role_id',
+                'delivery.driver.employee:id,user_id,employee_number,status,department,employment_type',
+                'delivery.driver.role:id,name,display_name',
                 'delivery.logs:id,delivery_id,order_id,event_type,status_from,status_to,message,meta,created_by,created_at',
                 'delivery.logs.creator:id,fname,lname',
             ]);
@@ -157,7 +160,7 @@ class EcommerceOrderManagementController extends Controller
         $targetStatus = (string) $validated['status'];
         if ($targetStatus === 'ready_for_dispatch') {
             $storeId = (int) ($order->store_id ?? 0);
-            if (!$request->user()->hasPermissionTo('sales.order.approve', $storeId ?: null)) {
+            if (!$request->user()->hasPermissionTo('sales.orders.manage', $storeId ?: null)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'You do not have permission to approve orders.',
@@ -183,7 +186,7 @@ class EcommerceOrderManagementController extends Controller
             $order->save();
 
             $deliveryPayload = $validated['delivery'] ?? [];
-            $needsDelivery = in_array($targetStatus, ['packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered'], true) || !empty($deliveryPayload);
+            $needsDelivery = in_array($targetStatus, ['ready_for_dispatch', 'packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'], true) || !empty($deliveryPayload);
 
             if ($needsDelivery) {
                 $delivery = EcommerceOrderDelivery::query()->firstOrNew(['order_id' => $order->id], [
@@ -191,7 +194,7 @@ class EcommerceOrderManagementController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
                 $isNewDelivery = !$delivery->exists;
-                $previousDeliveryStatus = (string) ($delivery->status ?: 'assigned');
+                $previousDeliveryStatus = (string) ($delivery->status ?: ($targetStatus === 'ready_for_dispatch' ? 'pending' : 'assigned'));
 
                 $delivery->store_id = $order->store_id;
                 $delivery->vehicle_id = $deliveryPayload['vehicle_id'] ?? $delivery->vehicle_id;
@@ -203,6 +206,7 @@ class EcommerceOrderManagementController extends Controller
                 $delivery->updated_by = $request->user()->id;
 
                 $deliveryStatus = match ($targetStatus) {
+                    'ready_for_dispatch' => 'ready_for_dispatch',
                     'packed' => 'packed',
                     'shipped', 'in_transit' => 'in_transit',
                     'out_for_delivery' => 'out_for_delivery',
@@ -231,12 +235,16 @@ class EcommerceOrderManagementController extends Controller
                         'store_id' => $order->store_id,
                         'event_type' => 'created',
                         'status_to' => $delivery->status,
-                        'message' => 'Delivery record created.',
+                        'message' => $targetStatus === 'ready_for_dispatch'
+                            ? 'Delivery is pending logistics assignment.'
+                            : 'Delivery record created.',
                         'created_by' => $request->user()->id,
                     ]);
                 }
 
-                if ($previousDeliveryStatus !== (string) $delivery->status) {
+                $sameOrderTransition = $previousOrderStatus === $previousDeliveryStatus
+                    && $targetStatus === (string) $delivery->status;
+                if ($previousDeliveryStatus !== (string) $delivery->status && !$sameOrderTransition) {
                     EcommerceDeliveryLog::query()->create([
                         'delivery_id' => $delivery->id,
                         'order_id' => $order->id,
@@ -248,6 +256,8 @@ class EcommerceOrderManagementController extends Controller
                         'created_by' => $request->user()->id,
                     ]);
                 }
+
+                $order->setRelation('delivery', $delivery);
             }
 
             if ($previousOrderStatus !== $targetStatus && $order->delivery) {
@@ -819,7 +829,7 @@ class EcommerceOrderManagementController extends Controller
             'title' => 'New message about your order',
             'message' => $preview,
             'severity' => 'info',
-            'link' => '/shop/chats?store_id=' . (int) $order->store_id,
+            'link' => '/chats?store_id=' . (int) $order->store_id,
         ]);
 
         return response()->json(['success' => true, 'data' => $message], 201);
@@ -876,14 +886,34 @@ class EcommerceOrderManagementController extends Controller
             'created_at' => $order->placed_at ?? $order->created_at,
         ]];
 
-        $deliveryLogs = collect($order->delivery?->logs ?? [])->sortBy('created_at');
+        $deliveryLogs = collect($order->delivery?->logs ?? [])->sortBy('created_at')->values();
+        $deliveryLogs = $deliveryLogs->reject(function ($log) use ($deliveryLogs) {
+            if ($log->event_type !== 'status_updated' || !str_starts_with((string) $log->message, 'Delivery status updated from ')) {
+                return false;
+            }
+
+            return $deliveryLogs->contains(fn ($other) =>
+                $other->id !== $log->id
+                && $other->event_type === 'status_updated'
+                && str_starts_with((string) $other->message, 'Order status updated from ')
+                && $other->status_from === $log->status_from
+                && $other->status_to === $log->status_to
+                && $other->created_by === $log->created_by
+                && abs($other->created_at->getTimestamp() - $log->created_at->getTimestamp()) <= 5
+            );
+        });
 
         foreach ($deliveryLogs as $log) {
             $actor = trim((string) (($log->creator?->fname ?? '') . ' ' . ($log->creator?->lname ?? '')));
+            $description = $log->message ?: 'Order updated.';
+            if ($log->event_type === 'status_updated' && $log->status_to) {
+                $subject = str_starts_with($description, 'Order status updated') ? 'Order' : 'Delivery';
+                $description = $subject . ' moved to ' . str($log->status_to)->replace('_', ' ')->title() . '.';
+            }
             $timeline[] = [
                 'type' => $log->event_type ?: 'update',
                 'title' => $this->timelineTitleFromLog($log->event_type, $log->status_to),
-                'description' => $log->message ?: 'Order updated.',
+                'description' => $description,
                 'status_from' => $log->status_from,
                 'status_to' => $log->status_to,
                 'meta' => $log->meta,
@@ -915,7 +945,7 @@ class EcommerceOrderManagementController extends Controller
     private function resolveDriver(int $storeId, int $driverUserId): User
     {
         return User::query()
-            ->with('employee:id,user_id,phone,status')
+            ->with('employee:id,user_id,status')
             ->where('id', $driverUserId)
             ->where('store_id', $storeId)
             ->where('is_active', true)
@@ -924,10 +954,7 @@ class EcommerceOrderManagementController extends Controller
 
     private function resolveDriverContact(User $driver): ?string
     {
-        $employeePhone = $driver->employee?->phone;
-        $userPhone = $driver->phone_number ?? null;
-
-        return $employeePhone ?: $userPhone;
+        return $driver->phone_number ?: null;
     }
 
     private function nextTrackingNumber(int $storeId): string

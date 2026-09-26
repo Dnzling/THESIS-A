@@ -9,23 +9,39 @@ use App\Http\Controllers\Api\Finance\FinancePayablesController;
 use App\Http\Controllers\Api\Finance\FinanceReceivablesController;
 use App\Http\Controllers\Api\Finance\FinancePayrollController;
 use App\Http\Controllers\Api\Finance\FinanceInvoiceController;
-use App\Http\Controllers\Api\Sales\SalesRefundController;
+use App\Http\Controllers\Api\Finance\FinanceRefundController;
+use App\Http\Controllers\Api\Finance\FinanceLiquidationController;
+use App\Http\Controllers\Api\Finance\FinanceTaxVatController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 
 Route::prefix('finance')->group(function () {
     Route::get('/dashboard', [FinanceDashboardController::class, 'index']);
+    Route::get('/tax-vat', [FinanceTaxVatController::class, 'index'])->middleware('can:finance.tax-vat.view');
 
     Route::prefix('refunds')->group(function () {
-        Route::get('/', [SalesRefundController::class, 'index'])->middleware('can:finance.refunds.view');
-        Route::get('/{refund}', [SalesRefundController::class, 'show'])->middleware('can:finance.refunds.view');
-        Route::put('/{refund}/status', [SalesRefundController::class, 'updateStatus'])->middleware('can:finance.refunds.approve');
+        Route::get('/', [FinanceRefundController::class, 'index'])->middleware('can:finance.refunds.view');
+        Route::post('/', [FinanceRefundController::class, 'store'])->middleware('can:finance.refunds.manage');
+        Route::get('/{refund}', [FinanceRefundController::class, 'show'])->middleware('can:finance.refunds.view');
+        Route::put('/{refund}/status', [FinanceRefundController::class, 'updateStatus'])->middleware('can:finance.refunds.approve');
+    });
+
+    Route::prefix('liquidations')->group(function () {
+        Route::get('/', [FinanceLiquidationController::class, 'index'])->middleware('can:finance.liquidations.view');
+        Route::post('/', [FinanceLiquidationController::class, 'store'])->middleware('can:finance.liquidations.manage');
+        Route::get('/{liquidation}', [FinanceLiquidationController::class, 'show'])->middleware('can:finance.liquidations.view');
+        Route::post('/{liquidation}/approve', [FinanceLiquidationController::class, 'approve'])->middleware('can:finance.liquidations.approve');
+        Route::post('/{liquidation}/reject', [FinanceLiquidationController::class, 'reject'])->middleware('can:finance.liquidations.approve');
+        Route::post('/{liquidation}/release', [FinanceLiquidationController::class, 'release'])->middleware('can:finance.liquidations.approve');
+        Route::post('/{liquidation}/submit', [FinanceLiquidationController::class, 'submit'])->middleware('can:finance.liquidations.manage');
+        Route::post('/{liquidation}/settle', [FinanceLiquidationController::class, 'settle'])->middleware('can:finance.liquidations.approve');
     });
 
     Route::get('/payables', [FinancePayablesController::class, 'index']);
     Route::get('/cashflow/account', [FinanceCashflowController::class, 'accountSummary']);
     Route::get('/cashflow/transactions', [FinanceCashflowController::class, 'transactions']);
+    Route::get('/cashflow/transactions/{id}', [FinanceCashflowController::class, 'transactionDetail']);
     Route::post('/cashflow/top-up', [FinanceCashflowController::class, 'topUp']);
     Route::post('/cashflow/adjust', [FinanceCashflowController::class, 'adjust']);
     Route::get('/receivables', [FinanceReceivablesController::class, 'index']);

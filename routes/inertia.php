@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\System\StoreAdmin\StoreSettingsController as WebStoreSettingsController;
+use App\Http\Controllers\System\StoreAdmin\BillingController as StoreBillingController;
 
 $render = function (string $page, array $props = []) {
     return Inertia::render($page, array_filter($props, fn($value) => $value !== null));
@@ -26,20 +27,53 @@ $inertia = function (string $uri, string $page, ?string $name = null, ?string $t
 
 Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($inertia) {
 
+    // Store module (the signed-in user's assigned branch)
+    $inertia('/store/dashboard', 'System/Store/Dashboard', 'store.dashboard', 'Store Dashboard');
+    $inertia('/store/branch-settings', 'System/Store/Settings', 'store.branch-settings', 'Store Settings');
+    $inertia('/store/ecommerce', 'System/Store/Ecommerce', 'store.ecommerce', 'Store Ecommerce Performance');
+
+    // Warehouse Operations
+    Route::redirect('/warehouse', '/warehouse/dashboard')->name('warehouse');
+    $inertia('/warehouse/dashboard', 'System/Warehouse/Dashboard', 'warehouse.dashboard', 'Warehouse Dashboard');
+    $inertia('/warehouse/warehouses', 'System/Warehouse/Warehouses/Index', 'warehouse.warehouses', 'Warehouses');
+    $inertia('/warehouse/warehouses/{id}', 'System/Warehouse/Warehouses/View', 'warehouse.warehouses.view', 'Warehouse Details');
+    $inertia('/warehouse/locations', 'System/Warehouse/Locations/LocationIndex', 'warehouse.locations', 'Warehouse Locations');
+    $inertia('/warehouse/locations/create', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.create', 'Create Warehouse Location');
+    $inertia('/warehouse/locations/{id}', 'System/Warehouse/Locations/LocationDetail', 'warehouse.locations.view', 'Warehouse Location Details');
+    $inertia('/warehouse/locations/{id}/edit', 'System/Warehouse/Locations/LocationCreate', 'warehouse.locations.edit', 'Edit Warehouse Location');
+    $inertia('/warehouse/stock', 'System/Warehouse/Stock/Index', 'warehouse.stock', 'Warehouse Stock');
+    $inertia('/warehouse/reorder', 'System/Warehouse/Reorder/Index', 'warehouse.reorder', 'Warehouse Reorder');
+    $inertia('/warehouse/forecasting', 'System/Shared/Forecasting', 'warehouse.forecasting', 'Warehouse Forecasting');
+    $inertia('/warehouse/stock/{id}', 'System/Warehouse/Stock/View', 'warehouse.stock.view', 'Warehouse Stock Details');
+    $inertia('/warehouse/stock/{id}/edit', 'System/Warehouse/Stock/Edit', 'warehouse.stock.edit', 'Edit Warehouse Stock');
+    $inertia('/warehouse/purchase-requisitions', 'System/Warehouse/PurchaseRequisitions/Index', 'warehouse.purchase-requisitions', 'Warehouse Purchase Requisitions');
+    $inertia('/warehouse/purchase-requisitions/create', 'System/Warehouse/PurchaseRequisitions/Create', 'warehouse.purchase-requisitions.create', 'Create Purchase Requisition');
+    $inertia('/warehouse/purchase-requisitions/{id}', 'System/Warehouse/PurchaseRequisitions/View', 'warehouse.purchase-requisitions.view', 'Warehouse Purchase Requisition Details');
+    $inertia('/warehouse/transfer-requests', 'System/Warehouse/Transfers/RequestsIndex', 'warehouse.transfer-requests', 'Transfer Requests');
+    $inertia('/warehouse/transfer-requests/{id}', 'System/Warehouse/Transfers/RequestView', 'warehouse.transfer-requests.view', 'Transfer Request Details');
+    $inertia('/warehouse/receiving', 'System/Warehouse/Receiving/Index', 'warehouse.receiving', 'Receiving');
+    $inertia('/warehouse/returns', 'System/Warehouse/Returns/Index', 'warehouse.returns', 'Warehouse Returns');
+    $inertia('/warehouse/returns/{id}', 'System/Warehouse/Returns/View', 'warehouse.returns.view', 'Warehouse Return Details');
+    $inertia('/warehouse/returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'warehouse.replacements.detail', 'Replacement Case');
+    $inertia('/warehouse/transfer-history', 'System/Warehouse/Transfers/HistoryIndex', 'warehouse.transfer-history', 'Transfer History');
+
 
     // Admin (Super Admin only)
     Route::middleware('role:super_admin')->group(function () use ($inertia) {
         $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
         $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
         $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
+        $inertia('/admin/home-content', 'System/Admin/HomeContent', 'admin.home-content', 'Home Content');
+        $inertia('/admin/ecommerce-categories', 'System/Admin/EcommerceCategories', 'admin.ecommerce-categories', 'Ecommerce Categories');
         $inertia('/admin/subscription', 'System/Admin/Subscriptions', 'AdminSubscription', 'Subscription');
         $inertia('/admin/subscription-plans/{id}', 'System/Admin/SubscriptionPlanShow', 'admin.subscription-plans.show', 'Subscription Plan');
         $inertia('/admin/store-validation', 'System/Admin/Storevalidation', 'AdminStoreValidation', 'Store Validation');
-        $inertia('/admin/customer-validation', 'System/Admin/Customervalidation', 'AdminCustomerValidation', 'Customer Validation');
+        $inertia('/admin/store-validation/{id}', 'System/Admin/StoreVerificationShow', 'admin.store-validation.show', 'Store Verification Details');
         $inertia('/admin/verification/suppliers', 'System/Admin/SupplierVerification', 'admin.supplier-verification', 'Supplier Verification');
         $inertia('/admin/support-&-maintenance', 'System/Admin/SupportMaintenance', 'admin.support-maintenance', 'Support & Maintenance', 'Super Admin Management');
         $inertia('/admin/verification/suppliers/{id}', 'System/Admin/SupplierVerificationShow', 'admin.supplier-verification.show', 'Supplier Verification Details');
         $inertia('/admin/customer-management', 'System/Admin/CustomerManagement', 'admin.customer-management', 'Customer Management');
+        $inertia('/admin/customer-management/{id}', 'System/Admin/CustomerVerificationShow', 'admin.customer-management.show', 'Customer Verification Details');
         $inertia('/admin/stores', 'System/Admin/StoresIndex', 'admin.stores', 'Stores');
         $inertia('/admin/stores/{id}', 'System/Admin/StoreDetail', 'admin.stores.detail', 'Store Detail');
         $inertia('/admin/users', 'System/Admin/UsersIndex', 'admin.users', 'Users');
@@ -49,16 +83,27 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
         $inertia('/admin/suppliers/list', 'System/Supplier/SupplierList', 'admin.suppliers.list', 'Supplier List');
         $inertia('/admin/suppliers/{id}', 'System/Supplier/SupplierDetail', 'admin.suppliers.detail', 'Supplier Details');
         $inertia('/admin/suppliers/dashboard', 'System/Supplier/SupplierDashboard', 'admin.suppliers.dashboard', 'Supplier Dashboard');
-
     });
 
-    // System (Store Admin)u
+    // System (Store Admin)
     Route::middleware('role:store_admin')->group(function () use ($inertia) {
         $inertia('/store/index', 'System/StoreAdmin/Dashboard', 'store.index', 'Dashboard');
         Route::get('/store/settings', [WebStoreSettingsController::class, 'show'])
             ->name('store.settings');
+        Route::get('/store/billing', [StoreBillingController::class, 'show'])
+            ->name('store.billing');
+        Route::post('/store/settings/profile/prepare', [WebStoreSettingsController::class, 'prepareProfileUpdate'])
+            ->name('store.settings.profile.prepare');
+        Route::get('/store/settings/profile/otp', [WebStoreSettingsController::class, 'showProfileUpdateOtp'])
+            ->name('store.settings.profile.otp');
+        Route::post('/store/settings/profile/otp/resend', [WebStoreSettingsController::class, 'resendProfileUpdateOtp'])
+            ->name('store.settings.profile.otp.resend');
+        Route::post('/store/settings/profile/otp/verify', [WebStoreSettingsController::class, 'verifyProfileUpdateOtp'])
+            ->name('store.settings.profile.otp.verify');
         Route::put('/store/settings/profile', [WebStoreSettingsController::class, 'updateProfile'])
             ->name('store.settings.profile');
+        Route::post('/store/settings/logo', [WebStoreSettingsController::class, 'updateLogo'])
+            ->name('store.settings.logo');
         Route::put('/store/settings/payments', [WebStoreSettingsController::class, 'updatePaymentSettings'])
             ->name('store.settings.payments');
         Route::put('/store/settings/attendance', [WebStoreSettingsController::class, 'updateAttendanceSettings'])
@@ -70,11 +115,13 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
 
     // Store role permissions accessible by store admins and HR
     $inertia('/store/role-permissions', 'System/StoreAdmin/RolePermissions', 'store.role-permissions', 'Role Permissions');
+    $inertia('/employee-profile', 'Profile/Edit', 'employee.profile', 'Employee Profile');
+    $inertia('/employee-benefits', 'System/HR/Benefits/MyBenefits', 'employee.benefits', 'My Benefits');
     // HR
-    $inertia('/hr/index', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
+    $inertia('/hr/dashboard', 'System/HR/index', 'hr.dashboard', 'HR Dashboard');
     $inertia('/hr/employees', 'System/HR/Employees', 'hr.employees', 'Employees');
     $inertia('/hr/employees/view/{id?}', 'System/HR/EmployeeView', 'hr.employees.view', 'View Employee');
-    Route::get('/hr/profile', fn() => redirect('/profile'));
+    Route::get('/hr/profile', fn() => redirect('/employee-profile'));
     $inertia('/hr/shifts', 'System/HR/ShiftIndex', 'hr.shifts', 'Shift Management');
     $inertia('/hr/shifts/employees', 'System/HR/EmployeeShifts', 'hr.shifts.employees', 'Employee Shifts');
     $inertia('/hr/shifts/create', 'System/HR/ShiftCreate', 'hr.shifts.create', 'Create Shift');
@@ -86,13 +133,14 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/hr/leaves/{id}', 'System/HR/LeaveDetail', 'hr.leaves.detail', 'Leave Details');
     $inertia('/hr/analytics', 'System/HR/Analytics', 'hr.analytics', 'Analytics');
     $inertia('/hr/settings', 'System/HR/Settings', 'hr.settings', 'Settings');
-    $inertia('/hr/payroll', 'System/HR/PayrollList', 'hr.payroll', 'Payroll');
-    $inertia('/hr/payroll/overview', 'System/HR/PayrollOverview', 'hr.payroll.overview', 'Payroll Overview');
+    $inertia('/hr/benefit-requests', 'System/HR/Benefits/BenefitRequests', 'hr.benefit-requests', 'Benefit Requests');
+    $inertia('/hr/payroll', 'System/HR/Payroll/PayrollIndex', 'hr.payroll', 'Payroll');
+    $inertia('/hr/payroll/overview', 'System/HR/Payroll/PayrollIndex', 'hr.payroll.overview', 'Payroll');
     $inertia('/hr/payroll/periods', 'System/HR/PayPeriods', 'hr.payroll.periods', 'Pay Periods');
     $inertia('/hr/payroll/lists', 'System/HR/PayrollList', 'hr.payroll.list', 'Edit Payroll');
-    $inertia('/hr/payroll/create', 'System/HR/PayrollCreate', 'hr.payroll.create', 'Generate Payroll');
-    $inertia('/hr/payroll/view/{id}', 'System/HR/PayrollView', 'hr.payroll.view', 'View Payroll');
-    $inertia('/hr/payroll/edit/{id}', 'System/HR/PayrollEdit', 'hr.payroll.edit', 'Edit Payroll');
+    $inertia('/hr/payroll/create', 'System/HR/Payroll/PayrollCreate', 'hr.payroll.create', 'Generate Payroll');
+    $inertia('/hr/payroll/view/{id}', 'System/HR/Payroll/PayrollView', 'hr.payroll.view', 'View Payroll');
+    $inertia('/hr/payroll/edit/{id}', 'System/HR/Payroll/PayrollEdit', 'hr.payroll.edit', 'Edit Payroll');
     $inertia('/hr/recuitment', 'System/HR/JobPostings/JobPostingsIndex', 'hr.recuitment', 'Job Postings');
     $inertia('/hr/recuitment/postings/{postingId}', 'System/HR/JobPostings/JobPostingDetailView', 'hr.recuitment.detail', 'Job Posting Overview');
     $inertia('/hr/recuitment/postings/{postingId}/applicants', 'System/HR/JobPostings/JobPostingApplicantsList', 'hr.recuitment.applicants', 'Applicants');
@@ -124,51 +172,39 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/products/create', 'System/Inventory/Products/ProductForm', 'inventory.products.create', 'Add Product', 'Create a new product');
     $inertia('/inventory/products/{id}/edit', 'System/Inventory/Products/ProductForm', 'inventory.products.edit', 'Edit Product', 'Update product information');
     $inertia('/inventory/products/{id}', 'System/Inventory/Products/ProductView', 'inventory.products.detail', 'Product Details');
-    $inertia('/inventory/raw-materials/create', 'System/Inventory/Products/RawMaterialForm', 'inventory.raw-materials.create', 'Add Raw Material', 'Create a new raw material');
-    $inertia('/inventory/supplies/create', 'System/Inventory/Products/SupplyForm', 'inventory.supplies.create', 'Add Supply', 'Create a new supply');
-    $inertia('/inventory/supplies/{id}/edit', 'System/Inventory/Products/SupplyForm', 'inventory.supplies.edit', 'Edit Supply', 'Update supply information');
     $inertia('/inventory/categories', 'System/Inventory/Categories/CategoryIndex', 'inventory.categories', 'Categories');
     $inertia('/inventory/categories/{id}', 'System/Inventory/Categories/CategoryDetail', 'inventory.categories.detail', 'Category Details');
-    $inertia('/inventory/units', 'System/Inventory/Units/UnitIndex', 'inventory.units', 'Units');
-    $inertia('/inventory/units/create', 'System/Inventory/Units/UnitCreate', 'inventory.units.create', 'Create Unit');
-    $inertia('/inventory/units/{id}', 'System/Inventory/Units/UnitDetail', 'inventory.units.detail', 'Unit Details');
-    $inertia('/inventory/units/{id}/edit', 'System/Inventory/Units/UnitEdit', 'inventory.units.edit', 'Edit Unit');
-    $inertia('/inventory/stock-issues', 'System/Inventory/StockIssues/StockIssueIndex', 'inventory.stock-issues', 'Stock Issues');
-    $inertia('/inventory/stock-issues/create', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.create', 'Create Stock Issue');
-    $inertia('/inventory/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'inventory.stock-issues.detail', 'Stock Issue Detail');
-    $inertia('/inventory/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueEdit', 'inventory.stock-issues.edit', 'Edit Stock Issue');
+    $inertia('/inventory/stock-issues', 'System/Inventory/StockIssues/StockIssueIndex', 'inventory.stock-issues', 'Stock Issuance');
+    $inertia('/inventory/stock-issues/create', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.create', 'Create Stock Issuance');
+    $inertia('/inventory/stock-issues/{id}', 'System/Inventory/StockIssues/StockIssueDetail', 'inventory.stock-issues.detail', 'Stock Issuance Detail');
+    $inertia('/inventory/stock-issues/{id}/edit', 'System/Inventory/StockIssues/StockIssueCreate', 'inventory.stock-issues.edit', 'Edit Stock Issuance');
     $inertia('/inventory/requisites', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionIndex', 'inventory.requisites.index', 'Purchase Requisitions');
     $inertia('/inventory/requisites/create', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.create', 'Create Purchase Requisition');
+    $inertia('/inventory/requisites/{id}/edit', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionCreate', 'inventory.requisites.edit', 'Edit Purchase Requisition');
     $inertia('/inventory/requisites/{id}', 'System/Inventory/PurchaseRequisitions/PurchaseRequisitionDetail', 'inventory.requisites.detail', 'Purchase Requisition Details');
     $inertia('/inventory/stock-returns', 'System/Inventory/StockReturns/StockReturnIndex', 'inventory.stock-returns', 'Stock Returns');
+    $inertia('/inventory/stock-returns/replacements/{id}', 'System/Shared/ReplacementDetail', 'inventory.replacements.detail', 'Replacement Case');
     $inertia('/inventory/stock-returns/create', 'System/Inventory/StockReturns/StockReturnCreate', 'inventory.stock-returns.create', 'Create Stock Return');
     $inertia('/inventory/stock-returns/{id}', 'System/Inventory/StockReturns/StockReturnDetail', 'inventory.stock-returns.detail', 'Stock Return Detail');
     $inertia('/inventory/stock-counts', 'System/Inventory/StockCounts/StockCountIndex', 'inventory.stock-counts.index', 'Stock Counts');
     $inertia('/inventory/stock-counts/create', 'System/Inventory/StockCounts/StockCountCreate', 'inventory.stock-counts.create', 'Create Stock Count');
     $inertia('/inventory/stock-counts/{id}', 'System/Inventory/StockCounts/StockCountDetail', 'inventory.stock-counts.detail', 'Stock Count Detail');
     $inertia('/inventory/stock-counts/{id}/edit', 'System/Inventory/StockCounts/StockCountEdit', 'inventory.stock-counts.edit', 'Edit Stock Count');
-    $inertia('/inventory/warehouses', 'System/Inventory/Warehouses/WarehouseIndex', 'inventory.warehouses.index', 'Warehouses');
-    $inertia('/inventory/warehouses/create', 'System/Inventory/Warehouses/WarehouseCreate', 'inventory.warehouses.create', 'Create Warehouse');
-    $inertia('/inventory/warehouses/{id}', 'System/Inventory/Warehouses/WarehouseDetail', 'inventory.warehouses.detail', 'Warehouse Detail');
-    $inertia('/inventory/warehouses/{id}/edit', 'System/Inventory/Warehouses/WarehouseEdit', 'inventory.warehouses.edit', 'Edit Warehouse');
-    $inertia('/inventory/locations', 'System/Inventory/Locations/LocationIndex', 'inventory.locations.index', 'Locations');
-    $inertia('/inventory/locations/create', 'System/Inventory/Locations/LocationCreate', 'inventory.locations.create', 'Create Location');
-    $inertia('/inventory/locations/{id}', 'System/Inventory/Locations/LocationDetail', 'inventory.locations.detail', 'Location Detail');
-    $inertia('/inventory/locations/{id}/edit', 'System/Inventory/Locations/LocationEdit', 'inventory.locations.edit', 'Edit Location');
+    $inertia('/inventory/locations', 'System/Warehouse/Locations/LocationIndex', 'inventory.locations.index', 'Locations');
+    $inertia('/inventory/locations/create', 'System/Warehouse/Locations/LocationCreate', 'inventory.locations.create', 'Create Location');
+    $inertia('/inventory/locations/{id}', 'System/Warehouse/Locations/LocationDetail', 'inventory.locations.detail', 'Location Detail');
+    $inertia('/inventory/locations/{id}/edit', 'System/Warehouse/Locations/LocationCreate', 'inventory.locations.edit', 'Edit Location');
     $inertia('/inventory/reorder-rules', 'System/Inventory/ReorderRules/ReorderRuleIndex', 'inventory.reorder-rules', 'Reorder Rules');
     $inertia('/inventory/reorder-rules/create', 'System/Inventory/ReorderRules/ReorderRuleCreate', 'inventory.reorder-rules.create', 'Create Reorder Rule');
     $inertia('/inventory/reorder-rules/{id}', 'System/Inventory/ReorderRules/ReorderRuleDetail', 'inventory.reorder-rules.detail', 'Reorder Rule Detail');
     $inertia('/inventory/reorder-rules/{id}/edit', 'System/Inventory/ReorderRules/ReorderRuleEdit', 'inventory.reorder-rules.edit', 'Edit Reorder Rule');
     $inertia('/inventory/reorder-suggestions', 'System/Inventory/ReorderSuggestions/ReorderSuggestionIndex', 'inventory.reorder-suggestions', 'Reorder Suggestions');
+    $inertia('/inventory/forecasting', 'System/Shared/Forecasting', 'inventory.forecasting', 'Inventory Forecasting');
     $inertia('/inventory/reorder-suggestions/{id}', 'System/Inventory/ReorderSuggestions/ReorderSuggestionDetail', 'inventory.reorder-suggestions.detail', 'Reorder Suggestion Detail');
     $inertia('/inventory/serial-numbers', 'System/Inventory/SerialNumbers/SerialNumberIndex', 'inventory.serial-numbers.index', 'Serial Numbers');
     $inertia('/inventory/serial-numbers/create', 'System/Inventory/SerialNumbers/SerialNumberCreate', 'inventory.serial-numbers.create', 'Create Serial Number');
     $inertia('/inventory/serial-numbers/{id}', 'System/Inventory/SerialNumbers/SerialNumberDetail', 'inventory.serial-numbers.show', 'Serial Number Detail');
     $inertia('/inventory/serial-numbers/{id}/edit', 'System/Inventory/SerialNumbers/SerialNumberEdit', 'inventory.serial-numbers.edit', 'Edit Serial Number');
-    $inertia('/inventory/batches', 'System/Inventory/Batches/BatchIndex', 'inventory.batches', 'Batches');
-    $inertia('/inventory/batches/create', 'System/Inventory/Batches/BatchCreate', 'inventory.batches.create', 'Create Batch');
-    $inertia('/inventory/batches/{id}', 'System/Inventory/Batches/BatchDetail', 'inventory.batches.detail', 'Batch Detail');
-    $inertia('/inventory/batches/{id}/edit', 'System/Inventory/Batches/BatchEdit', 'inventory.batches.edit', 'Edit Batch');
     $inertia('/inventory/adjustments', 'System/Inventory/Adjustments/AdjustmentIndex', 'inventory.adjustments', 'Adjustments');
     $inertia('/inventory/adjustments/create', 'System/Inventory/Adjustments/AdjustmentCreate', 'inventory.adjustments.create', 'Create Adjustment');
     $inertia('/inventory/adjustments/{id}', 'System/Inventory/Adjustments/AdjustmentDetail', 'inventory.adjustments.detail', 'Adjustment Detail');
@@ -176,6 +212,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/transfers', 'System/Inventory/Transfers/TransferIndex', 'inventory.transfers', 'Transfers');
     $inertia('/inventory/transfers/create', 'System/Inventory/Transfers/TransferCreate', 'inventory.transfers.create', 'Create Transfer');
     $inertia('/inventory/transfers/{id}', 'System/Inventory/Transfers/TransferDetail', 'inventory.transfers.detail', 'Transfer Detail');
+    $inertia('/inventory/stock-movements', 'System/Inventory/StockMovements/StockMovementIndex', 'inventory.stock-movements', 'Stock Movements');
     $inertia('/inventory/alerts', 'System/Inventory/Alerts/AlertsIndex', 'inventory.alerts', 'Alerts');
     $inertia('/inventory/transactions', 'System/Inventory/Transactions/TransactionIndex', 'inventory.transactions', 'Transactions');
     $inertia('/inventory/transactions/{id}', 'System/Inventory/Transactions/TransactionDetail', 'inventory.transactions.detail', 'Transaction Detail');
@@ -183,15 +220,12 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/inventory/activity-logs/{id}', 'System/Inventory/ActivityLogs/InventoryActivityLogDetail', 'inventory.activity-logs.detail', 'Activity Log Detail');
     $inertia('/inventory/reports', 'System/Inventory/Reports/ReportsIndex', 'inventory.reports', 'Reports');
     $inertia('/inventory/notifications', 'System/Inventory/Notifications/NotificationIndex', 'inventory.notifications', 'Notifications');
-    $inertia('/inventory/configuration', 'System/Inventory/Configuration/ConfigIndex', 'inventory.configuration', 'Configuration');
-    $inertia('/inventory/stock-order-requests', 'System/Inventory/PurchaseRequests/PurchaseRequestIndex', 'stock-order-requests.index', 'Stock Order Requests');
-    $inertia('/inventory/stock-order-requests/create', 'System/Inventory/PurchaseRequests/PurchaseRequestCreate', 'stock-order-requests.create', 'Create Stock Order Request');
-    $inertia('/inventory/stock-order-requests/{id}', 'System/Inventory/PurchaseRequests/PurchaseRequestDetail', 'stock-order-requests.detail', 'Stock Order Request Detail');
-    $inertia('/inventory/stock-order-requests/{id}/edit', 'System/Inventory/PurchaseRequests/PurchaseRequestEdit', 'stock-order-requests.edit', 'Edit Stock Order Request');
+
 
     // Procurement
     Route::redirect('/procurement', '/procurement/dashboard')->name('procurement');
     $inertia('/procurement/dashboard', 'System/Procurement/Dashboard', 'procurement.dashboard', 'Procurement Dashboard');
+    $inertia('/procurement/analytics/forecasting', 'System/Procurement/Analytics/Forecasting', 'procurement.analytics.forecasting', 'Procurement Forecasting');
     $inertia('/procurement/suppliers', 'System/Procurement/Suppliers/SupplierIndex', 'procurement.suppliers', 'Suppliers');
     $inertia('/procurement/suppliers/create', 'System/Procurement/Suppliers/SupplierCreate', 'procurement.suppliers.create', 'Create Supplier');
     $inertia('/procurement/suppliers/verified/{portalId}', 'System/Procurement/Suppliers/VerifiedSupplierShow', 'procurement.suppliers.verified.show', 'Verified Supplier');
@@ -210,11 +244,12 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/purchase-orders', 'System/Procurement/PurchaseOrders/PurchaseOrderIndex', 'procurement.purchase-orders', 'Purchase Orders');
     $inertia('/procurement/purchase-orders/create', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.create', 'Create Purchase Order');
     $inertia('/procurement/purchase-orders/{id}', 'System/Procurement/PurchaseOrders/PurchaseOrderDetail', 'procurement.purchase-orders.detail', 'Purchase Order Details');
+    $inertia('/logistics/supplier-pickups/{id}/assign', 'System/Logistics/SupplierPickups/Assign', 'logistics.supplier-pickups.assign', 'Assign Supplier Pickup');
     $inertia('/procurement/purchase-orders/{id}/edit', 'System/Procurement/PurchaseOrders/PurchaseOrderCreate', 'procurement.purchase-orders.edit', 'Edit Purchase Order');
-    $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
-    $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
-    $inertia('/procurement/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'procurement.invoices.detail', 'Invoice Details');
-    $inertia('/procurement/invoices/{id}/edit', 'System/Procurement/Invoices/InvoiceEdit', 'procurement.invoices.edit', 'Edit Invoice');
+    // $inertia('/procurement/invoices', 'System/Procurement/Invoices/InvoiceIndex', 'procurement.invoices', 'Invoices');
+    // $inertia('/procurement/invoices/create', 'System/Procurement/Invoices/InvoiceCreate', 'procurement.invoices.create', 'Create Invoice');
+    // $inertia('/procurement/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'procurement.invoices.detail', 'Invoice Details');
+    // $inertia('/procurement/invoices/{id}/edit', 'System/Procurement/Invoices/InvoiceEdit', 'procurement.invoices.edit', 'Edit Invoice');
     $inertia('/inventory/goods-receipts', 'System/Inventory/GoodsReceipts/GoodsReceiptIndex', 'inventory.goods-receipts', 'Goods Receipts');
     $inertia('/inventory/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'inventory.goods-receipts.create', 'Create Goods Receipt');
     $inertia('/inventory/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'inventory.goods-receipts.detail', 'Goods Receipt Detail');
@@ -224,6 +259,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/procurement/goods-receipts/create', 'System/Inventory/GoodsReceipts/GoodsReceiptCreate', 'procurement.goods-receipts.create', 'Create Goods Receipt');
     $inertia('/procurement/goods-receipts/{id}', 'System/Inventory/GoodsReceipts/GoodsReceiptDetail', 'procurement.goods-receipts.detail', 'Goods Receipt Detail');
     $inertia('/procurement/products', 'System/Procurement/ProductsIndex', 'procurement.products', 'Products');
+    $inertia('/procurement/products/{id}', 'System/Procurement/ProcurementProductView', 'procurement.products.detail', 'Product Details');
     $inertia('/procurement/analytics/reorder-suggestions', 'System/Procurement/Analytics/ReorderSuggestions', 'procurement.analytics.reorder-suggestions', 'Reorder Suggestions');
     $inertia('/procurement/analytics/spend', 'System/Procurement/Analytics/SpendAnalytics', 'procurement.analytics.spend', 'Spend Analytics');
     $inertia('/procurement/analytics/budget', 'System/Procurement/Analytics/BudgetTracking', 'procurement.analytics.budget', 'Budget Tracking');
@@ -237,7 +273,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     Route::redirect('/finance', '/finance/dashboard')->name('finance');
     $inertia('/finance/dashboard', 'System/Finance/FinanceDashboard', 'finance.dashboard', 'Finance Dashboard');
     $inertia('/finance/payables', 'System/Finance/FinancePayablesIndex', 'finance.payables', 'Payables');
-    $inertia('/finance/invoices/{id}', 'System/Procurement/Invoices/InvoiceDetail', 'finance.invoices.detail', 'Invoice Detail');
+    $inertia('/finance/invoices/{id}', 'System/Finance/FinanceInvoiceDetail', 'finance.invoices.detail', 'Invoice Detail');
     $inertia('/finance/purchase-orders', 'System/Finance/FinancePurchaseOrderIndex', 'finance.purchase-orders', 'Purchase Orders');
     $inertia('/finance/purchase-orders/{id}', 'System/Finance/FinancePurchaseOrderDetail', 'finance.purchase-orders.detail', 'Purchase Order Detail');
     $inertia('/finance/price-approvals', 'System/Finance/FinancePriceApprovalIndex', 'finance.price-approvals', 'Price Approvals');
@@ -250,61 +286,72 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/finance/payroll/basic', 'System/Finance/FinancePayrollBasicIndex', 'finance.payroll.basic', 'Basic Payroll');
     $inertia('/finance/payroll/{payPeriodId}', 'System/Finance/FinancePayrollDetail', 'finance.payroll.detail', 'Payroll Period Detail');
     $inertia('/finance/cashflow', 'System/Finance/FinanceCashflowIndex', 'finance.cashflow', 'Cashflow');
-    $inertia('/finance/refunds', 'System/Sales/SalesRefunds', 'finance.refunds', 'Refunds');
-    $inertia('/finance/refunds/{id}', 'System/Sales/SalesRefundDetail', 'finance.refunds.detail', 'Refund Detail');
+    $inertia('/finance/tax-vat', 'System/Finance/FinanceTaxVatIndex', 'finance.tax-vat', 'Tax / VAT Report', 'Store-wide tax monitoring');
+    $inertia('/finance/refunds', 'System/Finance/FinanceRefundIndex', 'finance.refunds', 'Refunds');
+    $inertia('/finance/refunds/create', 'System/Finance/FinanceRefundCreate', 'finance.refunds.create', 'Create Refund');
+    $inertia('/finance/refunds/{id}', 'System/Finance/FinanceRefundDetail', 'finance.refunds.detail', 'Refund Detail');
+    $inertia('/finance/liquidations', 'System/Finance/FinanceLiquidationIndex', 'finance.liquidations', 'Cash Advances & Liquidations');
+    $inertia('/finance/liquidations/create', 'System/Finance/FinanceLiquidationCreate', 'finance.liquidations.create', 'Create Cash Advance');
+    $inertia('/finance/liquidations/{id}', 'System/Finance/FinanceLiquidationDetail', 'finance.liquidations.detail', 'Liquidation Detail');
     $inertia('/finance/budgets', 'System/Finance/FinanceBudgetsIndex', 'finance.budgets', 'Budgets');
     $inertia('/finance/reports', 'System/Finance/FinanceReportsIndex', 'finance.reports', 'Reports');
 
     // Logistics
     Route::redirect('/logistics', '/logistics/deliveries')->name('logistics');
+    $inertia('/driver/deliveries', 'System/Logistics/Driver/DriverDeliveriesIndex', 'driver.deliveries', 'My Deliveries');
+    $inertia('/driver/replacements/{id}', 'System/Shared/ReplacementDetail', 'driver.replacements.detail', 'Replacement Delivery');
+    $inertia('/driver/delivery-history', 'System/Logistics/Driver/DriverDeliveryHistoryIndex', 'driver.delivery-history', 'Delivery History');
+    $inertia('/driver/deliveries/{source}/{orderId}', 'System/Logistics/Driver/DriverDeliveryView', 'driver.deliveries.view', 'Delivery Details');
     $inertia('/logistics/deliveries', 'System/Logistics/Deliveries/DeliveryIndex', 'logistics.deliveries', 'Deliveries');
     $inertia('/logistics/deliveries/create', 'System/Logistics/Deliveries/DeliveryCreate', 'logistics.deliveries.create', 'Create Delivery');
     $inertia('/logistics/deliveries/{source}/{orderId}', 'System/Logistics/Deliveries/DeliveryDetail', 'logistics.deliveries.detail', 'Delivery Detail');
     $inertia('/logistics/return-pickups', 'System/Logistics/ReturnPickups/ReturnPickupIndex', 'logistics.return-pickups', 'Return Pickups');
+    $inertia('/logistics/replacements/{id}', 'System/Shared/ReplacementDetail', 'logistics.replacements.detail', 'Replacement Delivery');
     $inertia('/logistics/return-pickups/{id}', 'System/Logistics/ReturnPickups/ReturnPickupDetail', 'logistics.return-pickups.detail', 'Return Pickup Detail');
     $inertia('/logistics/stock-transfers', 'System/Logistics/StockTransfers/StockTransferIndex', 'logistics.stock-transfers', 'Stock Transfers');
     $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');
+    $inertia('/logistics/stock-transfers/{id}/assign', 'System/Logistics/StockTransfers/StockTransferAssign', 'logistics.stock-transfers.assign', 'Assign Transfer Delivery');
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');
-    $inertia('/logistics/delivery-fees', 'System/Merchandising/DeliveryFeeSettings', 'logistics.delivery-fees', 'Delivery Fee Settings', 'Configure store delivery fees');
+    $inertia('/logistics/delivery-fees', 'System/Logistics/Settings/DeliverySettings', 'logistics.delivery-fees', 'Delivery Settings', 'Configure store delivery pricing and limits');
     Route::get('/logistics/zones', fn() => redirect('/logistics/delivery-fees'));
 
     // Sales
     Route::redirect('/sales', '/sales/dashboard')->name('sales');
     $inertia('/sales/dashboard', 'System/Sales/SalesDashboard', 'sales.dashboard', 'Sales Dashboard');
-    $inertia('/sales/crm', 'System/Sales/SalesCRM', 'sales.crm', 'CRM Leads');
-    $inertia('/sales/chats', 'System/Sales/SalesChats', 'sales.chats', 'Customer Chats');
-    $inertia('/sales/orders', 'System/Sales/SalesOrdersUnified', 'sales.orders', 'Orders');
-    $inertia('/sales/orders-unified', 'System/Sales/SalesOrdersUnified', 'sales.orders-unified', 'Unified Orders');
-    $inertia('/sales/pos/overview', 'System/Sales/SalesPOSOverview', 'sales.pos.overview', 'POS Overview');
+    $inertia('/sales/orders', 'System/Sales/SalesOrdersIndex', 'sales.orders', 'Orders');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
-    $inertia('/sales/deliveries', 'System/Sales/SalesOrderDeliveriesIndex', 'sales.deliveries', 'Sales Deliveries');
-    $inertia('/sales/deliveries/{id}', 'System/Sales/SalesOrderDeliveryDetail', 'sales.deliveries.detail', 'Delivery Detail');
-    $inertia('/sales/ecommerce-orders', 'System/Inventory/EcommerceOrders/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
-    $inertia('/sales/ecommerce-orders/{id}', 'System/Inventory/EcommerceOrders/EcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
-    $inertia('/sales/reviews', 'System/Sales/SalesReviews', 'sales.reviews', 'Reviews');
-    $inertia('/sales/reviews/{id}', 'System/Sales/SalesReviewDetail', 'sales.reviews.detail', 'Review Detail');
-    $inertia('/sales/vouchers', 'System/Sales/SalesVouchers', 'sales.vouchers', 'Vouchers');
-    $inertia('/sales/vouchers/create', 'System/Sales/SalesVoucherCreate', 'sales.vouchers.create', 'Create Voucher');
-    $inertia('/sales/vouchers/{id}', 'System/Sales/SalesVoucherShow', 'sales.vouchers.detail', 'Voucher Details');
+    // $inertia('/sales/ecommerce-orders', 'System/Sales/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
+    $inertia('/sales/ecommerce-orders/{id}', 'System/Sales/SalesEcommerceOrderDetail', 'sales.ecommerce-orders.detail', 'Order Detail');
     $inertia('/sales/reports', 'System/Sales/SalesReports', 'sales.reports', 'Reports');
-    $inertia('/sales/returns', 'System/Sales/SalesReturnsIndex', 'sales.returns', 'Returns');
-    $inertia('/sales/returns/{id}', 'System/Sales/SalesReturnDetail', 'sales.returns.detail', 'Return Detail');
+
+    // CRM
+    Route::redirect('/crm', '/crm/dashboard')->name('CRM');
+    $inertia('/crm/dashboard', 'System/CRM/Dashboard', 'crm.dashboard', 'CRM Dashboard');
+    $inertia('/crm/leads', 'System/CRM/Dashboard', 'crm.leads', 'CRM Leads');
+    $inertia('/crm/chats', 'System/CRM/Chats/Chats', 'crm.chats', 'Customer Chats');
+    $inertia('/crm/reviews', 'System/CRM/Review/ReviewIndex', 'crm.reviews', 'Reviews');
+    $inertia('/crm/reviews/{id}', 'System/CRM/Review/ReviewView', 'crm.reviews.view', 'Review Detail');
+    $inertia('/crm/vouchers', 'System/CRM/Vouchers/VoucherIndex', 'crm.vouchers', 'Vouchers');
+    $inertia('/crm/vouchers/create', 'System/CRM/Vouchers/VoucherCreate', 'crm.vouchers.create', 'Create Voucher');
+    $inertia('/crm/vouchers/{id}', 'System/CRM/Vouchers/VoucherView', 'crm.vouchers.view', 'Voucher Details');
+    $inertia('/crm/returns', 'System/CRM/Return/ReturnIndex', 'crm.returns', 'Returns');
+    $inertia('/crm/returns/{id}', 'System/CRM/Return/ReturnDetail', 'crm.returns.view', 'Return Detail');
 
     // Merchandising
     Route::redirect('/merchandising', '/merchandising/products')->name('merchandising');
     Route::get('/merchandising/delivery-fees', fn() => redirect('/logistics/delivery-fees'));
     $inertia('/merchandising/dashboard', 'System/Merchandising/Dashboard', 'merchandising.dashboard', 'Product Catalog Dashboard', 'Overview of your product catalog and inventory');
-    $inertia('/merchandising/products', 'System/Merchandising/products/ProductsList', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
+    $inertia('/merchandising/products', 'System/Merchandising/products/ProductIndex', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
     $inertia('/merchandising/products/logs', 'System/Merchandising/products/ProductLogs', 'merchandising.products.logs', 'Product Logs', 'View product module activity logs');
     $inertia('/merchandising/products/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.create', 'Add New Product', 'Create a new furniture product');
     Route::redirect('/merchandising/products/raw/new', '/merchandising/products/new')->name('merchandising.products.raw.create');
     $inertia('/merchandising/products/{id}/edit', 'System/Merchandising/products/ProductForm', 'merchandising.products.edit', 'Edit Product', 'Update product information');
     $inertia('/merchandising/products/{id}', 'System/Merchandising/products/ProductView', 'merchandising.products.view', 'Product Details', 'View detailed product information and 3D model');
     $inertia('/merchandising/variations', 'System/Merchandising/variations/VariationsList', 'merchandising.variations', 'Product Variations', 'Manage colors, sizes, and materials');
-    $inertia('/merchandising/variations/new', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.create', 'Add New Variation', 'Create a new product variation');
+    $inertia('/merchandising/variations/new', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.create', 'Add Variation', 'Create a product variation');
     $inertia('/merchandising/variations/{id}/edit', 'System/Merchandising/variations/VariationForm', 'merchandising.variations.edit', 'Edit Variation', 'Update variation details');
     $inertia('/merchandising/assets', 'System/Merchandising/assets/AssetsList', 'merchandising.assets', '3D Models & Assets', 'Upload and manage 3D models, images, and videos');
     $inertia('/merchandising/assets/upload', 'System/Merchandising/assets/AssetUpload', 'merchandising.assets.upload', 'Upload Asset', 'Upload new 3D model or image');
@@ -332,11 +379,7 @@ Route::middleware(['auth:sanctum', 'trial.setup'])->group(function () use ($iner
     $inertia('/supplier-portal/pos', 'System/Supplier/SupplierPOIndex', 'supplier.pos', 'Purchase Orders');
     $inertia('/supplier-portal/pos/{id}', 'System/Supplier/SupplierPOApprove', 'supplier.pos.approve', 'Review Purchase Order');
     $inertia('/supplier-portal/pos/{id}/view', 'System/Supplier/SupplierPODetail', 'supplier.pos.view', 'Purchase Order Details');
-    $inertia('/supplier-portal/pos/{id}/delivery-template', 'System/Supplier/SupplierPODeliveryTemplate', 'supplier.pos.delivery-template', 'Delivery Form');
-    $inertia('/supplier-portal/pos/{id}/invoice', 'System/Supplier/SupplierPOShipmentConfirm', 'supplier.pos.invoice', 'Invoice Confirmation');
     $inertia('/supplier-portal/pos/{id}/invoice-view', 'System/Supplier/SupplierInvoiceDetail', 'supplier.pos.invoice-view', 'Invoice Details');
-    $inertia('/supplier-portal/deliveries', 'System/Supplier/SupplierDriverShipmentsIndex', 'supplier.deliveries', 'Delivery Logs');
-    $inertia('/supplier-portal/deliveries/{id}', 'System/Supplier/SupplierDriverShipmentDetail', 'supplier.deliveries.detail', 'Delivery Log Detail');
     $inertia('/supplier-portal/transactions', 'System/Supplier/SupplierTransactions', 'supplier.transactions', 'Transactions');
     $inertia('/supplier-portal/stores', 'System/Supplier/SupplierStores', 'supplier.stores', 'Linked Stores');
     $inertia('/supplier-portal/stores/{storeId}', 'System/Supplier/SupplierStoreShow', 'supplier.stores.show', 'Store Details');
@@ -359,23 +402,28 @@ $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-por
 
 
 // Ecommerce storefront
+$inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Shopping');
 $inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
-$inertia('/shop/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
-$inertia('/shop/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
-$inertia('/shop/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');
-$inertia('/shop/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
-$inertia('/shop/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
-$inertia('/shop/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
+$inertia('/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
+$inertia('/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
+$inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');
+$inertia('/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
+$inertia('/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
+$inertia('/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
+$inertia('/legal/privacy-policy', 'System/Ecommerce/Legal', 'legal.privacy', 'Privacy Policy');
+$inertia('/legal/returns-refunds', 'System/Ecommerce/Legal', 'legal.returns', 'Returns & Refunds');
+$inertia('/legal/terms-and-conditions', 'System/Ecommerce/Legal', 'legal.terms', 'Terms & Conditions');
 
 // These page shells must remain reachable because customer authentication uses a
 // bearer token from localStorage. The protected ecommerce API routes still enforce
 // auth:sanctum and redirect unauthenticated customers from the client interceptor.
-$inertia('/shop/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
-$inertia('/shop/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
-$inertia('/shop/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
-$inertia('/shop/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
-$inertia('/shop/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
-$inertia('/shop/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
-$inertia('/shop/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
-$inertia('/shop/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
-$inertia('/shop/profile', 'System/Ecommerce/EcommerceProfile', 'ecommerce.profile', 'My Profile');
+$inertia('/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
+$inertia('/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
+$inertia('/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
+$inertia('/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');
+$inertia('/orders/{id}/cancel', 'System/Ecommerce/EcommerceOrderCancel', 'ecommerce.order-cancel', 'Cancel Order');
+$inertia('/orders/{id}/items/{itemId}/return', 'System/Ecommerce/EcommerceOrderReturn', 'ecommerce.order-return', 'Return Item');
+$inertia('/orders/{id}/items/{itemId}/review', 'System/Ecommerce/EcommerceOrderReview', 'ecommerce.order-review', 'Review Item');
+$inertia('/chats', 'System/Ecommerce/EcommerceChats', 'ecommerce.chats', 'Chats');
+$inertia('/notifications', 'System/Ecommerce/EcommerceNotifications', 'ecommerce.notifications', 'Notifications');
+$inertia('/profile', 'System/Ecommerce/EcommerceProfile', 'ecommerce.profile', 'My Profile');

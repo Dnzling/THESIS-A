@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Hr;
 
+use Carbon\Carbon;
 use App\Http\Controllers\Controller;
 use App\Mail\ApplicantEmployeeCredentialsMail;
 use App\Mail\ApplicantInterviewScheduledMail;
@@ -45,6 +46,14 @@ class RecruitmentController extends Controller
                 'success' => false,
                 'message' => 'Interview scheduling is restricted to your store.',
             ], 403);
+        }
+
+        $latestAttempt = $application->interviews()->orderByDesc('id')->first();
+        if ($latestAttempt && !Carbon::parse($latestAttempt->interview_date)->isSameDay(now())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Another interview can only be scheduled on the recorded interview date.',
+            ], 422);
         }
 
         $settings = is_array($request->user()?->store?->settings) ? $request->user()->store->settings : [];
@@ -109,6 +118,13 @@ class RecruitmentController extends Controller
 
     public function hireApplicant(Request $request, JobApplication $application): JsonResponse
     {
+        if ($this->hasSingleAttemptOutsideToday($application)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hiring is available on the recorded interview date.',
+            ], 422);
+        }
+
         $hrUser = $request->user();
         $storeId = $hrUser->store_id;
 
@@ -117,6 +133,7 @@ class RecruitmentController extends Controller
                 'department_id' => 'required|exists:departments,id',
                 'role_id' => 'required|exists:roles,id',
                 'hire_date' => 'required|date',
+                'contract_end_date' => 'nullable|required_if:employment_type,contract|date|after_or_equal:hire_date',
                 'pay_type' => 'nullable|in:monthly,hourly,hybrid',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
                 'salary' => 'required|numeric|min:0',
@@ -180,6 +197,7 @@ class RecruitmentController extends Controller
                 'phone' => $validated['phone'] ?? $application->phone,
                 'address' => $validated['address'] ?? null,
                 'hire_date' => $validated['hire_date'],
+                'contract_end_date' => $validated['contract_end_date'] ?? null,
                 'department' => $department->name,
                 'employment_type' => $validated['employment_type'],
                 'salary' => $validated['salary'],
@@ -235,6 +253,13 @@ class RecruitmentController extends Controller
 
     public function rejectApplicant(Request $request, JobApplication $application): JsonResponse
     {
+        if ($this->hasSingleAttemptOutsideToday($application)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rejecting is available on the recorded interview date.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'reason' => 'required|string|max:100',
             'notes' => 'nullable|string|max:1000',
@@ -260,6 +285,16 @@ class RecruitmentController extends Controller
             'message' => 'Applicant rejected successfully.',
             'data' => $application->fresh(),
         ]);
+    }
+
+    private function hasSingleAttemptOutsideToday(JobApplication $application): bool
+    {
+        $attempts = $application->interviews()->orderByDesc('id')->get(['interview_date']);
+        if ($attempts->count() !== 1) {
+            return false;
+        }
+
+        return !Carbon::parse($attempts->first()->interview_date)->isSameDay(now());
     }
 
     private function applyStoreDeductions(Employee $employee, int $storeId, int $createdBy): void

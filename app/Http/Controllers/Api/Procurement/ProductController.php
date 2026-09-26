@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Api\Procurement;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductCatalog\Product;
+use App\Models\Store\Branch;
 use App\Models\Inventory\ReorderRule;
+use App\Models\Inventory\BranchInventory;
 use App\Models\Procurement\Supplier\SupplierPrice;
 use App\Models\Procurement\Inventory\ProcurementInventory;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class ProductController extends Controller
 {
@@ -22,23 +25,30 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            if ($denied = $this->productReadAccessResponse()) {
+                return $denied;
+            }
             $storeId = auth()->user()->store_id;
-            $branchId = $request->get('branch_id', auth()->user()->branch_id);
+            // No branch filter by default: procurement lists every product
+            // recorded in every branch of the current store.
+            $branchId = $request->get('branch_id');
             $includeCost = $request->boolean('include_cost', false);
             $filterSupplierId = $request->get('supplier_id');
 
             $query = Product::where('store_id', $storeId)
+                // Procurement's product catalog is limited to finished goods.
+                ->where('product_type', 'finished_good')
                 ->with([
                     'category:id,category_name',
                     'suppliers' => function($q) {
                         $q->active()
-                          ->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating')
-                          ->with(['priceHistory' => function($sq) {
-                              $sq->active()
-                                ->orderBy('effective_date', 'desc')
-                                ->limit(1);
-                          }]);
-                    }
+                          ->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating');
+                    },
+                    'inventory' => function ($q) use ($branchId) {
+                        $q->with('branch:id,name')
+                          ->select('id', 'product_id', 'branch_id', 'quantity_on_hand', 'stock_status', 'reorder_point')
+                          ->when($branchId, fn ($inventory) => $inventory->where('branch_id', $branchId));
+                    },
                 ])
                 ->withCount(['variations']);
 
@@ -49,11 +59,11 @@ class ProductController extends Controller
                 });
             }
 
-            if ($branchId) {
-                $query->whereHas('inventory', function($q) use ($branchId) {
+            $query->whereHas('inventory', function ($q) use ($branchId) {
+                if ($branchId) {
                     $q->where('branch_id', $branchId);
-                });
-            }
+                }
+            });
 
             // Filters
             if ($request->has('category_id')) {
@@ -75,8 +85,8 @@ class ProductController extends Controller
                 if ($status) {
                     // Will need inventory join to filter by status
                     $query->whereHas('inventory', function($q) use ($branchId, $status) {
-                        $q->where('branch_id', $branchId)
-                          ->where('stock_status', $status);
+                        $q->where('stock_status', $status)
+                          ->when($branchId, fn ($inventory) => $inventory->where('branch_id', $branchId));
                     }, '>=', 0);
                 }
             }
@@ -99,10 +109,53 @@ class ProductController extends Controller
                 $query->orderBy($sortField, $sortOrder);
             }
 
-            $products = $query->paginate($request->get('per_page', 15));
+            $allProducts = $query->get();
+            $productMap = $allProducts->keyBy('id');
+            $inventoryRows = BranchInventory::with('branch:id,name')
+                ->where('store_id', $storeId)
+                ->whereIn('product_id', $productMap->keys())
+                ->when($branchId, fn ($inventory) => $inventory->where('branch_id', $branchId))
+                ->orderBy('branch_id')
+                ->orderBy('product_id')
+                ->get();
+
+            // Build one response row for every branch_inventory record. This
+            // intentionally keeps the same product separate per branch.
+            $branchRows = $inventoryRows->map(function ($inventory) use ($productMap) {
+                $product = $productMap->get($inventory->product_id);
+                if (!$product) return null;
+
+                $row = clone $product;
+                $row->setRelation('inventory', collect([$inventory]));
+                return $row;
+            })->filter()->values();
+
+            $perPage = max(1, (int) $request->get('per_page', 15));
+            $currentPage = LengthAwarePaginator::resolveCurrentPage();
+            $products = new LengthAwarePaginator(
+                $branchRows->forPage($currentPage, $perPage)->values(),
+                $branchRows->count(),
+                $perPage,
+                $currentPage,
+                ['path' => LengthAwarePaginator::resolveCurrentPath()]
+            );
+            $branchCount = Branch::where('store_id', $storeId)->count();
+            $branchNames = Branch::where('store_id', $storeId)->pluck('name', 'id');
 
             // Enrich with procurement inventory and pricing data
-            $products->getCollection()->transform(function($product) use ($storeId, $includeCost) {
+            $products->getCollection()->transform(function($product) use ($storeId, $includeCost, $branchCount, $branchNames) {
+                $branchInventory = $product->inventory->first();
+                $product->current_stock = (int) ($branchInventory?->quantity_on_hand ?? 0);
+                $product->stock_status = $branchInventory?->stock_status;
+                $product->reorder_point = (int) ($branchInventory?->reorder_point ?? 0);
+                $product->branch_name = $branchNames->get($branchInventory?->branch_id) ?: $branchInventory?->branch?->name;
+                $product->branch_id = $branchInventory?->branch_id;
+                $product->branch = [
+                    'id' => $branchInventory?->branch_id,
+                    'name' => $product->branch_name,
+                ];
+                $product->quantity_on_hand = $product->current_stock;
+                $product->branch_count = $branchCount;
                 $procInventory = ProcurementInventory::where('store_id', $storeId)
                     ->where('product_id', $product->id)
                     ->first();
@@ -114,18 +167,13 @@ class ProductController extends Controller
                 $product->pending_receive_qty = $procInventory?->pending_receive_qty ?? 0;
                 $product->total_qty_tracked = $procInventory?->total_qty_tracked ?? 0;
 
-                // Get best supplier price
-                $bestPrice = $product->suppliers()
-                    ->orderBy(DB::raw('priceHistory.unit_price'))
-                    ->first();
-
-                $product->best_supplier = $bestPrice;
+                $product->best_supplier = $product->suppliers->first();
                 if ($includeCost) {
                     $product->cost_price = $product->getRawOriginal('cost_price');
                 }
 
                 $product->cost_price = $product->getRawOriginal('cost_price');
-                $product->best_price = $bestPrice?->priceHistory?->first()?->unit_price ?? null;
+                $product->best_price = null;
 
                 return $product;
             });
@@ -157,6 +205,9 @@ class ProductController extends Controller
     public function show(int $id, Request $request): JsonResponse
     {
         try {
+            if ($denied = $this->productReadAccessResponse()) {
+                return $denied;
+            }
             $storeId = auth()->user()->store_id;
             $branchId = $request->get('branch_id', auth()->user()->branch_id);
 
@@ -166,6 +217,7 @@ class ProductController extends Controller
             $product = Product::where('store_id', $storeId)
                 ->with([
                     'category:id,category_name',
+                    'assets:id,product_id,asset_type,file_name,file_path,is_primary,display_order',
                     'suppliers' => function($q) use ($withSuppliers) {
                         if ($withSuppliers) {
                             $q->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating', 'suppliers.company_name')
@@ -175,10 +227,6 @@ class ProductController extends Controller
                             $q->select('suppliers.id', 'suppliers.supplier_name', 'suppliers.rating')
                               ->active();
                         }
-                    },
-                    'suppliers.priceHistory' => function($q) {
-                        $q->orderBy('effective_date', 'desc')
-                          ->limit(5); // Last 5 prices
                     }
                 ])
                 ->findOrFail($id);
@@ -193,6 +241,8 @@ class ProductController extends Controller
             }
             $product->cost_price = $product->getRawOriginal('cost_price');
             $product->current_stock = $inventory?->quantity_on_hand ?? 0;
+            $product->branch_id = $inventory?->branch_id;
+            $product->branch_name = $inventory?->branch?->name;
             $product->quantity_on_orders = $inventory?->quantity_on_orders ?? 0;
             $rule = ReorderRule::query()
                 ->where('product_id', $id)
@@ -231,6 +281,29 @@ class ProductController extends Controller
                 'message' => 'Failed to retrieve product'
             ], 500);
         }
+    }
+
+    /**
+     * Product data is shared by procurement, inventory, and merchandising.
+     * Keep the API protected while allowing users with a read permission in
+     * any of those owning modules to consume the shared catalog.
+     */
+    private function productReadAccessResponse(): ?JsonResponse
+    {
+        $user = auth()->user();
+        $storeId = $user?->store_id;
+        $allowed = collect([
+            'procurement.products.view',
+            'inventory.products.view',
+            'merchandising.products.view',
+        ])->contains(fn (string $permission) => $user?->hasPermissionTo($permission, $storeId));
+
+        return $allowed
+            ? null
+            : response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to view procurement products.',
+            ], 403);
     }
 
     /**

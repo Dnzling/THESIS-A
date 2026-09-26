@@ -19,6 +19,7 @@ use App\Models\Hr\Shift;
 use App\Models\Hr\ShiftAssignment;
 use App\Models\Hr\ShiftSchedule;
 use App\Services\Store\DocumentAutoValidationService;
+use App\Services\Core\PermissionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use App\Mail\ApplicantEmployeeCredentialsMail;
@@ -117,6 +119,8 @@ class EmployeeController extends Controller
                     'department' => $employee->department,
                     'status' => ucfirst($employee->status),
                     'hireDate' => $employee->hire_date,
+                    'monthly_salary' => round((float) ($employee->salary ?? 0), 2),
+                    'pay_type' => $employee->pay_type ?? 'monthly',
                     'email' => $employee->user->email ?? null,
                     'branch' => $employee->user->branch->name ?? null,
                     'phone' => $employee->phone
@@ -216,6 +220,45 @@ class EmployeeController extends Controller
         return $this->storeInternal($request, true);
     }
 
+    public function recordResignation(Request $request, int $id)
+    {
+        $employee = Employee::query()
+            ->where('store_id', $request->user()->store_id)
+            ->findOrFail($id);
+
+        if ($employee->resignation_date || in_array($employee->status, ['terminated'], true)) {
+            return response()->json(['success' => false, 'message' => 'This employee already has a resignation or has left the store.'], 422);
+        }
+
+        $validated = $request->validate([
+            'resignation_date' => ['required', 'date', 'after_or_equal:today'],
+            'last_working_day' => ['required', 'date'],
+            'resignation_reason' => ['required', Rule::in(['personal', 'better_opportunity', 'relocation', 'health', 'end_of_contract', 'other'])],
+            'handover_status' => ['required', Rule::in(['not_started', 'in_progress', 'complete'])],
+            'resignation_notes' => ['nullable', 'string', 'max:5000'],
+            'resignation_letter' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ]);
+
+        if (Carbon::parse($validated['last_working_day'])->lt(Carbon::parse($validated['resignation_date'])->addDays(7))) {
+            throw ValidationException::withMessages(['last_working_day' => 'The last working day must be at least 7 days after the notice date.']);
+        }
+
+        $employee->fill(collect($validated)->only([
+            'resignation_date', 'last_working_day', 'resignation_reason',
+            'handover_status', 'resignation_notes',
+        ])->all());
+        if ($request->hasFile('resignation_letter')) {
+            $employee->resignation_letter_path = $request->file('resignation_letter')
+                ->store("hr/resignation-letters/{$employee->store_id}/{$employee->id}", 'public');
+        }
+        $employee->save();
+        $today = now()->format('Y-m-d');
+        Cache::forget("employee_details_{$employee->id}_" . now()->year . "_{$today}");
+        Cache::forget("employee_details_{$employee->id}__{$today}");
+
+        return response()->json(['success' => true, 'message' => 'Resignation notice recorded.', 'data' => $employee]);
+    }
+
     private function storeInternal(Request $request, bool $markEmailVerified)
     {
         try {
@@ -244,7 +287,7 @@ class EmployeeController extends Controller
 
             // Simple validation
             $validated = $request->validate([
-                'branch_id' => 'nullable|exists:branches,id',
+                'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
                 'is_active' => 'nullable|boolean',
                 'fname' => 'required|string|max:100',
                 'lname' => 'required|string|max:100',
@@ -253,8 +296,10 @@ class EmployeeController extends Controller
                 'date_of_birth' => 'nullable|date',
                 'gender' => 'nullable|in:male,female,other',
                 'hire_date' => 'required|date',
-                'department' => 'required|string|max:255',
+                'contract_end_date' => 'nullable|date|after_or_equal:hire_date',
+                'department' => 'nullable|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
+                'pay_type' => 'nullable|in:monthly,hourly,hybrid',
                 'salary' => 'required|numeric|min:0',
                 'status' => 'required|in:active,on_leave,suspended,terminated'
             ]);
@@ -263,16 +308,18 @@ class EmployeeController extends Controller
             DB::beginTransaction();
 
             $temporaryPassword = Str::random(12);
+            $branchId = $validated['branch_id'] ?? $user->branch_id;
 
             // Create User
             $newUser = User::create([
                 'fname' => $validated['fname'],
                 'lname' => $validated['lname'],
                 'email' => $validated['email'],
+                'birthday' => $validated['date_of_birth'] ?? null,
                 'password' => Hash::make($temporaryPassword),
                 'role_id' => $validated['role_id'],
                 'store_id' => $storeId, // Using the authenticated user's store_id
-                'branch_id' => $request->branch_id ?? $user->branch_id,
+                'branch_id' => $branchId,
                 'is_active' => $request->boolean('is_active', true),
                 'registered_by' => $current_user_id, // Using the authenticated user's ID
                 'email_verified_at' => $markEmailVerified ? now() : null,
@@ -285,7 +332,7 @@ class EmployeeController extends Controller
             $employee = Employee::create([
                 'user_id' => $newUser->id,
                 'store_id' => $storeId, // Using the authenticated user's store_id
-                'branch_id' => $validated['branch_id'] ?? $user->branch_id,
+                'branch_id' => $branchId,
                 'role_id' => $validated['role_id'],
                 'employee_number' => $employeeNumber,
                 'fname' => $validated['fname'],
@@ -293,8 +340,11 @@ class EmployeeController extends Controller
                 'date_of_birth' => $validated['date_of_birth'] ?? null,
                 'gender' => $validated['gender'] ?? null,
                 'hire_date' => $validated['hire_date'],
-                'department' => $validated['department'],
+                'contract_end_date' => $validated['contract_end_date'] ?? null,
+                'department' => $validated['department'] ?? null,
                 'employment_type' => $validated['employment_type'],
+                'pay_type' => $validated['pay_type'] ?? 'monthly',
+                'hourly_rate' => ($validated['pay_type'] ?? 'monthly') === 'hourly' ? $validated['salary'] : null,
                 'salary' => $validated['salary'],
                 'status' => $validated['status']
             ]);
@@ -366,6 +416,7 @@ class EmployeeController extends Controller
                 'date_of_birth' => 'sometimes|date',
                 'gender' => 'sometimes|in:male,female,other',
                 'hire_date' => 'sometimes|date',
+                'contract_end_date' => 'sometimes|nullable|date',
                 'department' => 'sometimes|string|max:255',
                 'employment_type' => 'sometimes|in:full_time,part_time,contract,intern',
                 'pay_type' => 'sometimes|in:monthly,hourly,hybrid',
@@ -385,6 +436,7 @@ class EmployeeController extends Controller
 
             // Update User
             $user = $employee->user;
+            $roleChanged = $request->has('role_id') && (int) $user->role_id !== (int) $validated['role_id'];
             if ($request->has('fname')) $user->fname = $validated['fname'];
             if ($request->has('lname')) $user->lname = $validated['lname'];
             if ($request->has('email')) $user->email = $validated['email'];
@@ -403,6 +455,11 @@ class EmployeeController extends Controller
                 'government_id_type',
                 'government_id_status',
             ])->toArray();
+            if (array_key_exists('salary', $validated) || array_key_exists('pay_type', $validated)) {
+                $payType = $validated['pay_type'] ?? $employee->pay_type;
+                $salary = $validated['salary'] ?? $employee->salary;
+                $employeeData['hourly_rate'] = $payType === 'hourly' ? $salary : null;
+            }
             if (!empty($employeeData)) {
                 $employee->update($employeeData);
             }
@@ -519,6 +576,9 @@ class EmployeeController extends Controller
             DB::commit();
 
             // Clear cached employee details for today (with and without year filter)
+            if ($roleChanged) {
+                app(PermissionService::class)->clearUserCache($user);
+            }
             $today = now()->format('Y-m-d');
             $year = now()->year;
             Cache::forget("employee_details_{$id}_{$year}_{$today}");
@@ -730,18 +790,23 @@ class EmployeeController extends Controller
             'branch_id',
             'role_id',
             'employee_number',
-            'fname',
-            'lname',
-            'date_of_birth',
             'gender',
             'hire_date',
+            'contract_end_date',
+            'pay_type',
+            'hourly_rate',
+            'resignation_date',
+            'last_working_day',
+            'resignation_reason',
+            'handover_status',
+            'resignation_notes',
+            'resignation_letter_path',
             'department',
             'employment_type',
             'status',
             'salary',
             'bank_account',
             'tax_id',
-            'phone',
             'address',
             'city',
             'province',
@@ -751,8 +816,9 @@ class EmployeeController extends Controller
             'contract_path',
         ])
             ->with([
+                'user:id,fname,lname,email,birthday,phone_number,role_id,branch_id',
                 'branch:id,name',
-                'role:id,name'
+                'role:id,name,display_name'
             ])
             ->where('store_id', $user->store_id)
             ->where('id', $id)
@@ -976,6 +1042,30 @@ class EmployeeController extends Controller
             'schedules.*.effective_to' => 'nullable|date',
             'schedules.*.notes' => 'nullable|string|max:1000',
         ]);
+
+        $workingDays = 0;
+        $seenDays = [];
+        foreach ($validated['schedules'] as $schedule) {
+            $day = $schedule['day_of_week'];
+            if (in_array($day, $seenDays, true)) {
+                throw ValidationException::withMessages(['schedules' => 'Each day may appear only once.']);
+            }
+            $seenDays[] = $day;
+            if ($schedule['is_off'] ?? false) continue;
+
+            $workingDays++;
+            $start = $this->normalizeTimeValue($schedule['start_time'] ?? null);
+            $end = $this->normalizeTimeValue($schedule['end_time'] ?? null);
+            if (!$start || !$end || strtotime($end) <= strtotime($start)) {
+                throw ValidationException::withMessages(['schedules' => "{$day} needs a valid start and end time."]);
+            }
+            if ((strtotime($end) - strtotime($start)) > 8 * 3600) {
+                throw ValidationException::withMessages(['schedules' => "{$day} exceeds the 8-hour daily limit."]);
+            }
+        }
+        if ($workingDays > 6) {
+            throw ValidationException::withMessages(['schedules' => 'Only 6 working days are allowed per week.']);
+        }
 
         DB::transaction(function () use ($employee, $validated, $user) {
             foreach ($validated['schedules'] as $schedule) {
@@ -1315,14 +1405,21 @@ class EmployeeController extends Controller
         return [
             'role_id' => $employee->role_id,
             'branch' => $employee->branch->name ?? 'N/A',
-            'role' => $employee->role->name ?? 'N/A',
+            'role' => $employee->role->display_name ?? $employee->role->name ?? 'N/A',
             'department' => $employee->department,
             'type' => $employee->employment_type,
             'status' => $employee->status,
             'hire_date' => $employee->hire_date ? Carbon::parse($employee->hire_date)->format('M d, Y') : null,
+            'contract_end_date' => $employee->contract_end_date ? Carbon::parse($employee->contract_end_date)->format('M d, Y') : null,
             'tenure' => $yearsEmployed . ' year(s)',
             'monthly_salary' => round($employee->salary, 2),
             'pay_type' => $employee->pay_type ?? 'monthly',
+            'resignation_date' => $employee->resignation_date?->toDateString(),
+            'last_working_day' => $employee->last_working_day?->toDateString(),
+            'resignation_reason' => $employee->resignation_reason,
+            'handover_status' => $employee->handover_status,
+            'resignation_notes' => $employee->resignation_notes,
+            'resignation_letter_url' => $employee->resignation_letter_path ? asset('storage/' . $employee->resignation_letter_path) : null,
             'hourly_rate' => round((float) ($employee->hourly_rate ?? 0), 4),
             'monthly_salary_formatted' => '₱' . number_format($employee->salary, 2)
         ];

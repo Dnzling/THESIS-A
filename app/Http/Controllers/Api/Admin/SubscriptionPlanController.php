@@ -100,6 +100,14 @@ class SubscriptionPlanController extends Controller
             'description' => 'nullable|string|max:255',
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:5',
+            'commission_percentage' => 'nullable|numeric|min:0|max:5',
+            'max_user_accounts' => 'nullable|integer|min:1',
+            'max_branches' => 'nullable|integer|min:1',
+            'max_products' => 'nullable|integer|min:1',
+            'max_warehouses' => 'nullable|integer|min:1',
+            'max_trucks' => 'nullable|integer|min:1',
+            'max_suppliers' => 'nullable|integer|min:1',
             'features' => 'nullable|array',
             'features.*' => 'string|max:200',
             'is_featured' => 'nullable|boolean',
@@ -113,6 +121,14 @@ class SubscriptionPlanController extends Controller
             'description' => $validated['description'] ?? null,
             'monthly_price' => $validated['monthly_price'],
             'yearly_price' => $validated['yearly_price'],
+            'commission_rate' => $validated['commission_rate'] ?? null,
+            'commission_percentage' => $validated['commission_percentage'] ?? 0,
+            'max_user_accounts' => $validated['max_user_accounts'] ?? null,
+            'max_branches' => $validated['max_branches'] ?? null,
+            'max_products' => $validated['max_products'] ?? null,
+            'max_warehouses' => $validated['max_warehouses'] ?? null,
+            'max_trucks' => $validated['max_trucks'] ?? null,
+            'max_suppliers' => $validated['max_suppliers'] ?? null,
             'features' => $validated['features'] ?? [],
             'is_featured' => (bool) ($validated['is_featured'] ?? false),
             'is_active' => (bool) ($validated['is_active'] ?? true),
@@ -137,6 +153,14 @@ class SubscriptionPlanController extends Controller
             'description' => 'nullable|string|max:255',
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
+            'commission_rate' => 'nullable|numeric|min:0|max:5',
+            'commission_percentage' => 'nullable|numeric|min:0|max:5',
+            'max_user_accounts' => 'nullable|integer|min:1',
+            'max_branches' => 'nullable|integer|min:1',
+            'max_products' => 'nullable|integer|min:1',
+            'max_warehouses' => 'nullable|integer|min:1',
+            'max_trucks' => 'nullable|integer|min:1',
+            'max_suppliers' => 'nullable|integer|min:1',
             'features' => 'nullable|array',
             'features.*' => 'string|max:200',
             'is_featured' => 'nullable|boolean',
@@ -153,6 +177,18 @@ class SubscriptionPlanController extends Controller
             'description' => $validated['description'] ?? null,
             'monthly_price' => $validated['monthly_price'],
             'yearly_price' => $validated['yearly_price'],
+            'commission_rate' => array_key_exists('commission_rate', $validated)
+                ? $validated['commission_rate']
+                : $subscriptionPlan->commission_rate,
+            'commission_percentage' => array_key_exists('commission_percentage', $validated)
+                ? ($validated['commission_percentage'] ?? 0)
+                : $subscriptionPlan->commission_percentage,
+            'max_user_accounts' => $validated['max_user_accounts'] ?? null,
+            'max_branches' => $validated['max_branches'] ?? null,
+            'max_products' => $validated['max_products'] ?? null,
+            'max_warehouses' => $validated['max_warehouses'] ?? null,
+            'max_trucks' => $validated['max_trucks'] ?? null,
+            'max_suppliers' => $validated['max_suppliers'] ?? null,
             'features' => $validated['features'] ?? [],
             'is_featured' => (bool) ($validated['is_featured'] ?? $subscriptionPlan->is_featured),
             'is_active' => (bool) ($validated['is_active'] ?? $subscriptionPlan->is_active),
@@ -206,6 +242,11 @@ class SubscriptionPlanController extends Controller
                     ->update(['included' => false, 'updated_at' => now()]);
             }
         }
+
+        DB::table('stores')
+            ->where('subscription_tier', $subscriptionPlan->id)
+            ->pluck('id')
+            ->each(fn ($storeId) => app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $storeId));
 
         return response()->json([
             'success' => true,

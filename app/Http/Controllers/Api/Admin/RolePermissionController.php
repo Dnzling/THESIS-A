@@ -77,7 +77,15 @@ class RolePermissionController extends Controller
         $authUser = Auth::user();
         $isSuperAdmin = (bool) $authUser?->role && (string) $authUser->role->name === 'super_admin';
 
-        $protectedRoles = ['super_admin', 'unassigned_role'];
+        $protectedRoles = [
+            'super_admin',
+            'store_admin',
+            'driver',
+            'applicant',
+            'supplier',
+            'customer',
+            'unassigned_role',
+        ];
         if (in_array((string) $role->name, $protectedRoles, true)) {
             return response()->json([
                 'message' => 'This role is protected and cannot be deleted.',
@@ -145,6 +153,49 @@ class RolePermissionController extends Controller
         return response()->json($permissions);
     }
 
+    /** Get the master module catalog used by permissions and navigation. */
+    public function getModules()
+    {
+        return response()->json(DB::table('modules')->orderBy('name')->get());
+    }
+
+    public function createModule(Request $request)
+    {
+        $validated = $request->validate([
+            'key' => 'required|string|max:50|alpha_dash|unique:modules,key',
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $id = DB::table('modules')->insertGetId([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Module created successfully', 'id' => $id], 201);
+    }
+
+    public function updateModule(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'key' => 'required|string|max:50|alpha_dash|unique:modules,key,' . $id,
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        DB::table('modules')->where('id', $id)->update([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Module updated successfully']);
+    }
+
     /**
      * Get role permissions
      */
@@ -165,7 +216,7 @@ class RolePermissionController extends Controller
     public function updateRolePermissions(Request $request, $roleId)
     {
         $request->validate([
-            'permissions' => 'required|array',
+            'permissions' => 'present|array',
             'permissions.*' => 'exists:permissions,id'
         ]);
 

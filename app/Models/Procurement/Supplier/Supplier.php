@@ -13,6 +13,7 @@ use App\Models\ProductCatalog\Product;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
 use App\Models\Procurement\RFQ\SupplierQuotation;
 use App\Models\Procurement\Analytics\SupplierPerformance;
+use App\Models\Procurement\Analytics\SupplierPerformanceEvaluation;
 
 class Supplier extends Model
 {
@@ -119,6 +120,11 @@ class Supplier extends Model
         return $this->hasMany(SupplierPerformance::class);
     }
 
+    public function performanceEvaluations(): HasMany
+    {
+        return $this->hasMany(SupplierPerformanceEvaluation::class);
+    }
+
     // Scopes
     public function scopeActive($query)
     {
@@ -168,6 +174,13 @@ class Supplier extends Model
 
     public function updateRating(): void
     {
+        $evaluationAverage = $this->performanceEvaluations()->avg('overall_rating');
+        if ($evaluationAverage !== null) {
+            $this->rating = round((float) $evaluationAverage, 2);
+            $this->save();
+            return;
+        }
+
         $onTimeRate = $this->on_time_delivery_rate;
         
         if ($onTimeRate >= 95) {

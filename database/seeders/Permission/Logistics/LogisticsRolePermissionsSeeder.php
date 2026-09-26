@@ -21,13 +21,15 @@ class LogisticsRolePermissionsSeeder extends Seeder
         $fleetManage = DB::table('permissions')->where('name', 'logistics.fleet.manage')->value('id');
         $zonesView = DB::table('permissions')->where('name', 'logistics.zones.view')->value('id');
         $zonesManage = DB::table('permissions')->where('name', 'logistics.zones.manage')->value('id');
+        $settingsView = DB::table('permissions')->where('name', 'logistics.settings.view')->value('id');
+        $settingsManage = DB::table('permissions')->where('name', 'logistics.settings.manage')->value('id');
 
         $assignments = [
             'super_admin' => $allLogisticsPermissions,
             'store_admin' => $allLogisticsPermissions,
-            'warehouse_manager' => collect([$deliveriesView, $deliveriesManage, $fleetView, $fleetManage, $zonesView, $zonesManage])->filter(),
+            'warehouse_manager' => collect([$deliveriesView, $deliveriesManage, $fleetView, $fleetManage, $zonesView, $zonesManage, $settingsView, $settingsManage])->filter(),
             'inventory_staff' => collect([$deliveriesView, $deliveriesManage, $fleetView])->filter(),
-            'branch_manager' => collect([$deliveriesView, $deliveriesManage, $fleetView])->filter(),
+            'branch_manager' => collect([$deliveriesView, $deliveriesManage, $fleetView, $settingsView])->filter(),
             'sales_staff' => collect([$deliveriesView])->filter(),
         ];
 
@@ -51,4 +53,3 @@ class LogisticsRolePermissionsSeeder extends Seeder
         }
     }
 }
-

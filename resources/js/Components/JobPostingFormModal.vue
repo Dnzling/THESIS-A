@@ -72,6 +72,17 @@
                 </div>
 
                 <div class="space-y-2">
+                  <label class="text-sm font-medium text-surface-700">Employment Type</label>
+                  <Select
+                    v-model="form.employment_type"
+                    :options="employmentTypeOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    class="w-full"
+                  />
+                </div>
+
+                <div class="space-y-2">
                   <label class="text-sm font-medium text-surface-700">Status</label>
                   <Select
                     v-model="form.status"
@@ -217,6 +228,10 @@
                   <p class="mt-1 font-semibold text-surface-900">{{ selectedRoleLabel || 'Select role' }}</p>
                 </div>
                 <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Employment Type</p>
+                  <p class="mt-1 font-semibold text-surface-900">{{ selectedEmploymentTypeLabel }}</p>
+                </div>
+                <div>
                   <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Salary Range</p>
                   <p class="mt-1 font-semibold text-surface-900">
                     {{ formatCurrency(form.salary_min) }} - {{ formatCurrency(form.salary_max) }}
@@ -289,6 +304,13 @@ const statusOptions = [
   { label: 'On Hold', value: 'On Hold' },
 ]
 
+const employmentTypeOptions = [
+  { label: 'Full Time', value: 'full_time' },
+  { label: 'Part Time', value: 'part_time' },
+  { label: 'Contract', value: 'contract' },
+  { label: 'Intern', value: 'intern' },
+]
+
 const defaultStages = (): ScreeningStageForm[] => [
   { name: 'Initial Review', description: 'Review applicant documents, qualifications, and fit.' },
   { name: 'Interview', description: 'Conduct the active interview and hands-on assessment.' },
@@ -298,6 +320,7 @@ const form = ref({
   title: '',
   department: '',
   role_id: null as number | null,
+  employment_type: 'full_time',
   status: 'Open',
   salary_min: 0,
   salary_max: 0,
@@ -313,6 +336,9 @@ const submitted = ref(false)
 const formError = ref('')
 
 const selectedRoleLabel = computed(() => roleOptions.value.find((role) => role.value === form.value.role_id)?.label || '')
+const selectedEmploymentTypeLabel = computed(() =>
+  employmentTypeOptions.find((option) => option.value === form.value.employment_type)?.label || 'Full Time',
+)
 const selectedRoleDepartment = computed(() => roleOptions.value.find((role) => role.value === form.value.role_id)?.department || '')
 const filteredRoleOptions = computed(() => {
   if (!form.value.department) return roleOptions.value
@@ -350,6 +376,7 @@ const resetForm = () => {
     title: '',
     department: '',
     role_id: null,
+    employment_type: 'full_time',
     status: 'Open',
     salary_min: 0,
     salary_max: 0,
@@ -492,6 +519,7 @@ watch(
       title: newPosting.title || '',
       department: newPosting.department || '',
       role_id: newPosting.role_id || newPosting.role?.id || null,
+      employment_type: newPosting.employment_type || 'full_time',
       status: newPosting.status || 'Open',
       salary_min: Number(newPosting.salary_min || 0),
       salary_max: Number(newPosting.salary_max || 0),

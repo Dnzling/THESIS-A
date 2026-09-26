@@ -1,0 +1,453 @@
+<template>
+    <div v-if="ready" class="min-h-screen p-4 md:p-6">
+        <ConfirmDialog />
+        <div class="mx-auto max-w-7xl space-y-5">
+            <div class="flex items-center gap-3">
+                <Button
+                    icon="pi pi-arrow-left"
+                    severity="secondary"
+                    text
+                    @click="goBack"
+                />
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">
+                        Edit Warehouse Stock
+                    </h1>
+                    <p class="text-sm text-slate-500">
+                        {{ form.product_name }} · {{ item.product?.sku }} ·
+                        {{ item.branch?.name }}
+                    </p>
+                </div>
+            </div>
+            <form class="space-y-5" @submit.prevent="confirmSave">
+                <div class="grid gap-5 lg:grid-cols-3">
+                    <div class="space-y-5 lg:col-span-2">
+                        <Card class="border border-slate-200 shadow-sm"
+                            ><template #title
+                                ><span class="text-base"
+                                    >Product Information</span
+                                ></template
+                            ><template #content
+                                ><div class="grid gap-4 md:grid-cols-2">
+                                    <Field
+                                        label="Product Name"
+                                        :error="errors.product_name"
+                                        ><InputText
+                                            v-model="form.product_name"
+                                            fluid
+                                    /></Field>
+                                    <Field label="SKU"
+                                        ><InputText
+                                            :modelValue="item.product?.sku"
+                                            disabled
+                                            fluid
+                                        /><small class="text-slate-500"
+                                            >SKU cannot be changed from
+                                            warehouse stock.</small
+                                        ></Field
+                                    >
+                                    <Field label="Product Type"
+                                        ><Select
+                                            v-model="form.product_type"
+                                            :options="productTypes"
+                                            optionLabel="label"
+                                            optionValue="value"
+                                            fluid
+                                    /></Field>
+                                    <Field label="Category"
+                                        ><Select
+                                            v-model="form.category_id"
+                                            :options="options.categories"
+                                            optionLabel="category_name"
+                                            optionValue="id"
+                                            showClear
+                                            filter
+                                            fluid
+                                    /></Field>
+                                    <Field label="Unit of Measurement"
+                                        ><Select
+                                            v-model="form.unit_of_measurement"
+                                            :options="units"
+                                            fluid
+                                            editable
+                                    /></Field>
+                                    <Field label="Brand"
+                                        ><InputText v-model="form.brand" fluid
+                                    /></Field>
+                                    <Field label="Cost Price"
+                                        ><InputNumber
+                                            v-model="form.cost_price"
+                                            mode="currency"
+                                            currency="PHP"
+                                            locale="en-PH"
+                                            :min="0"
+                                            fluid
+                                    /></Field>
+                                    <Field label="Product Status"
+                                        ><div
+                                            class="flex h-10 items-center gap-2"
+                                        >
+                                            <ToggleSwitch
+                                                v-model="form.is_active"
+                                            /><span class="text-sm">{{
+                                                form.is_active
+                                                    ? "Active"
+                                                    : "Inactive"
+                                            }}</span>
+                                        </div></Field
+                                    >
+                                    <Field
+                                        label="Description"
+                                        class="md:col-span-2"
+                                        ><Textarea
+                                            v-model="form.description"
+                                            rows="4"
+                                            fluid
+                                    /></Field></div></template
+                        ></Card>
+                        <Card class="border border-slate-200 shadow-sm"
+                            ><template #title
+                                ><span class="text-base"
+                                    >Dimensions & Weight</span
+                                ></template
+                            ><template #content
+                                ><div
+                                    class="grid grid-cols-2 gap-4 md:grid-cols-4"
+                                >
+                                    <Field label="Length (cm)"
+                                        ><InputNumber
+                                            v-model="form.length_cm"
+                                            :min="0"
+                                            :minFractionDigits="0"
+                                            :maxFractionDigits="2"
+                                            fluid /></Field
+                                    ><Field label="Width (cm)"
+                                        ><InputNumber
+                                            v-model="form.width_cm"
+                                            :min="0"
+                                            :minFractionDigits="0"
+                                            :maxFractionDigits="2"
+                                            fluid /></Field
+                                    ><Field label="Height (cm)"
+                                        ><InputNumber
+                                            v-model="form.height_cm"
+                                            :min="0"
+                                            :minFractionDigits="0"
+                                            :maxFractionDigits="2"
+                                            fluid /></Field
+                                    ><Field label="Weight (kg)"
+                                        ><InputNumber
+                                            v-model="form.weight_kg"
+                                            :min="0"
+                                            :minFractionDigits="0"
+                                            :maxFractionDigits="2"
+                                            fluid
+                                    /></Field></div></template
+                        ></Card>
+                        <Card class="border border-slate-200 shadow-sm"
+                            ><template #title
+                                ><span class="text-base"
+                                    >Stock Quantities</span
+                                ></template
+                            ><template #content
+                                ><div
+                                    class="grid grid-cols-2 gap-4 md:grid-cols-4"
+                                >
+                                    <Field label="Quantity on Hand"
+                                        ><InputNumber
+                                            v-model="form.quantity_on_hand"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid /></Field
+                                    ><Field label="Reserved"
+                                        ><InputNumber
+                                            v-model="form.quantity_reserved"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid /></Field
+                                    ><Field label="Incoming"
+                                        ><InputNumber
+                                            v-model="form.quantity_incoming"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid /></Field
+                                    ><Field label="Damaged"
+                                        ><InputNumber
+                                            v-model="form.quantity_damaged"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid
+                                    /></Field>
+                                </div>
+                                <Message
+                                    severity="warn"
+                                    :closable="false"
+                                    class="mt-4"
+                                    >Changing quantity on hand directly updates
+                                    this warehouse stock balance. Use a stock
+                                    movement workflow when an audit trail is
+                                    required.</Message
+                                ></template
+                            ></Card
+                        >
+                    </div>
+                    <div class="space-y-5">
+                        <Card class="border border-slate-200 shadow-sm"
+                            ><template #title
+                                ><span class="text-base"
+                                    >Warehouse Location</span
+                                ></template
+                            ><template #content
+                                ><div class="space-y-4">
+                                    <Field label="Warehouse Branch"
+                                        ><InputText
+                                            :modelValue="item.branch?.name"
+                                            disabled
+                                            fluid /></Field
+                                        ><Field label="Warehouse Section"
+                                            ><InputText
+                                                v-model="form.warehouse_section"
+                                                fluid
+                                    /></Field>
+                                    <Field label="Storage Location">
+                                        <Select
+                                            v-model="form.warehouse_location_id"
+                                            :options="options.locations"
+                                            optionLabel="name"
+                                            optionValue="id"
+                                            placeholder="Select a storage location"
+                                            showClear
+                                            filter
+                                            fluid
+                                        />
+                                        <small class="text-slate-500">Selecting a location updates the aisle, rack, shelf, and bin automatically.</small>
+                                    </Field>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <Field label="Aisle"
+                                            ><InputText
+                                                v-model="form.aisle"
+                                                fluid /></Field
+                                        ><Field label="Rack"
+                                            ><InputText
+                                                v-model="form.rack"
+                                                fluid /></Field
+                                        ><Field label="Shelf"
+                                            ><InputText
+                                                v-model="form.shelf"
+                                                fluid /></Field
+                                        ><Field label="Bin Code"
+                                            ><InputText
+                                                v-model="form.bin_code"
+                                                fluid
+                                        /></Field>
+                                    </div></div></template
+                        ></Card>
+                        <Card class="border border-slate-200 shadow-sm"
+                            ><template #title
+                                ><span class="text-base"
+                                    >Replenishment Controls</span
+                                ></template
+                            ><template #content
+                                ><div class="space-y-4">
+                                    <Field label="Reorder Point"
+                                        ><InputNumber
+                                            v-model="form.reorder_point"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid /></Field
+                                    ><Field label="Reorder Quantity"
+                                        ><InputNumber
+                                            v-model="form.reorder_quantity"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid /></Field
+                                    ><Field label="Safety Stock"
+                                        ><InputNumber
+                                            v-model="form.safety_stock"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid /></Field
+                                    ><Field label="Maximum Stock"
+                                        ><InputNumber
+                                            v-model="form.maximum_stock"
+                                            :min="0"
+                                            :useGrouping="false"
+                                            fluid
+                                    /></Field></div></template
+                        ></Card>
+                    </div>
+                </div>
+                <div
+                    class="sticky bottom-3 flex justify-end gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
+                >
+                    <Button
+                        type="button"
+                        label="Cancel"
+                        severity="secondary"
+                        size="small"
+                        @click="goBack"
+                    /><Button
+                        type="submit"
+                        label="Save Changes"
+                        icon="pi pi-check"
+                        size="small"
+                        :loading="saving"
+                    />
+                </div>
+            </form>
+        </div>
+    </div>
+    <div v-else class="flex min-h-[60vh] items-center justify-center">
+        <ProgressSpinner />
+    </div>
+</template>
+<script setup lang="ts">
+import { computed, defineComponent, h, onMounted, reactive, ref } from "vue";
+import { router, usePage } from "@inertiajs/vue3";
+import { useConfirm } from "primevue/useconfirm";
+import { useToast } from "primevue/usetoast";
+import ConfirmDialog from "primevue/confirmdialog";
+import WarehouseService from "@/services/warehouse.service";
+import inventoryService from "@/services/inventory.service";
+const Field = defineComponent({
+    props: { label: String, error: String },
+    setup(props, { slots, attrs }) {
+        return () =>
+            h(
+                "div",
+                { ...attrs, class: ["flex flex-col gap-1.5", attrs.class] },
+                [
+                    h(
+                        "label",
+                        { class: "text-xs font-semibold text-slate-700" },
+                        props.label,
+                    ),
+                    slots.default?.(),
+                    props.error
+                        ? h("small", { class: "text-red-500" }, props.error)
+                        : null,
+                ],
+            );
+    },
+});
+const page = usePage(),
+    confirm = useConfirm(),
+    toast = useToast(),
+    ready = ref(false),
+    saving = ref(false),
+    item = ref<any>({}),
+    options = reactive<any>({ categories: [], warehouses: [], locations: [] }),
+    errors = reactive<Record<string, string>>({});
+const id = computed(() => String(page.url).match(/stock\/(\d+)/)?.[1] || "");
+const productTypes = [
+        { label: "Finished Good", value: "finished_good" },
+        { label: "Supply", value: "supply" },
+        { label: "Raw Material", value: "raw_material" },
+        { label: "Other", value: "other" },
+    ],
+    units = [
+        "pcs",
+        "piece",
+        "set",
+        "box",
+        "pack",
+        "kg",
+        "g",
+        "meter",
+        "liter",
+        "roll",
+        "sheet",
+        "unit",
+    ];
+const form = reactive<any>({});
+const hydrate = (row: any) =>
+    Object.assign(form, {
+        product_name: row.product?.product_name || "",
+        description: row.product?.description || "",
+        product_type: row.product?.product_type || "finished_good",
+        category_id: row.product?.category_id || null,
+        unit_of_measurement: row.product?.unit_of_measurement || "pcs",
+        brand: row.product?.brand || null,
+        cost_price: Number(row.unit_cost || row.product?.cost_price || 0),
+        length_cm: row.product?.length_cm
+            ? Number(row.product.length_cm)
+            : null,
+        width_cm: row.product?.width_cm ? Number(row.product.width_cm) : null,
+        height_cm: row.product?.height_cm
+            ? Number(row.product.height_cm)
+            : null,
+        weight_kg: row.product?.weight_kg
+            ? Number(row.product.weight_kg)
+            : null,
+        is_active: Boolean(row.product?.is_active),
+        quantity_on_hand: Number(row.quantity_on_hand || 0),
+        quantity_reserved: Number(row.quantity_reserved || 0),
+        quantity_incoming: Number(row.quantity_incoming || 0),
+        quantity_damaged: Number(row.quantity_damaged || 0),
+        warehouse_section: row.warehouse_section || null,
+        warehouse_location_id: row.warehouse_location_id || row.warehouse_location?.id || null,
+        aisle: row.aisle || null,
+        rack: row.rack || null,
+        shelf: row.shelf || null,
+        bin_code: row.bin_code || null,
+        reorder_point: Number(row.reorder_point || 0),
+        reorder_quantity: Number(row.reorder_quantity || 0),
+        safety_stock: Number(row.safety_stock || 0),
+        maximum_stock: Number(row.maximum_stock || 0),
+    });
+const goBack = () => router.visit(`/warehouse/stock/${id.value}`);
+const save = async () => {
+    Object.keys(errors).forEach((k) => delete errors[k]);
+    saving.value = true;
+    try {
+        await WarehouseService.updateStockItem(id.value, form);
+        toast.add({
+            severity: "success",
+            summary: "Updated",
+            detail: "Warehouse stock record updated.",
+            life: 3000,
+        });
+        goBack();
+    } catch (e: any) {
+        const api = e?.response?.data?.errors;
+        if (api)
+            Object.entries(api).forEach(
+                ([k, v]: any) =>
+                    (errors[k] = Array.isArray(v) ? v[0] : String(v)),
+            );
+        toast.add({
+            severity: "error",
+            summary: "Unable to Save",
+            detail: e?.response?.data?.message || "Update failed.",
+            life: 4500,
+        });
+    } finally {
+        saving.value = false;
+    }
+};
+const confirmSave = () =>
+    confirm.require({
+        header: "Save Warehouse Stock Changes?",
+        message: "This will update the product and its warehouse stock record.",
+        icon: "pi pi-exclamation-triangle",
+        rejectLabel: "No",
+        acceptLabel: "Save",
+        accept: save,
+    });
+onMounted(async () => {
+    try {
+        const [row, opts] = await Promise.all([
+            WarehouseService.stockItem(id.value),
+            WarehouseService.stockItemOptions(),
+        ]);
+        item.value = row;
+        Object.assign(options, opts);
+        const locationResponse = await inventoryService.getLocations({ warehouse_id: row.warehouse?.id, per_page: 1000 });
+        const locationPage = locationResponse?.data ?? {};
+        options.locations = Array.isArray(locationPage) ? locationPage : (locationPage.data ?? []);
+        hydrate(row);
+    } finally {
+        ready.value = true;
+    }
+});
+</script>

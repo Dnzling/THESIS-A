@@ -378,9 +378,12 @@ class InventoryService
      */
     public function calculateBranchValue(int $storeId, int $branchId): float
     {
-        return (float) BranchInventory::where('store_id', $storeId)
-            ->where('branch_id', $branchId)
-            ->sum('total_value');
+        return (float) BranchInventory::join('products', 'products.id', '=', 'branch_inventory.product_id')
+            ->where('branch_inventory.store_id', $storeId)
+            ->where('branch_inventory.branch_id', $branchId)
+            ->sum(
+                DB::raw('branch_inventory.quantity_on_hand * COALESCE(products.cost_price, 0)')
+            );
     }
 
     /**

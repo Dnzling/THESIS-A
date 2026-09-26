@@ -18,7 +18,7 @@ Route::prefix('stores/{store}')->group(function () {
     Route::get('/verification/status', [StoreVerificationController::class, 'getStatus']);
 });
 
-Route::get('/', function () {
+Route::get('/business', function () {
     return Inertia::render('Marketing/Home', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
@@ -27,12 +27,8 @@ Route::get('/', function () {
     ]);
 });
 
-Route::get('/about', function () {
+Route::get('/business/about', function () {
     return Inertia::render('Marketing/About');
-});
-
-Route::get('/pricing', function () {
-    return Inertia::render('Marketing/Pricing');
 });
 
 Route::get('/subscription-plans', function () {
@@ -40,15 +36,23 @@ Route::get('/subscription-plans', function () {
 })->name('subscription.plans');
 
 Route::get('/subscription-checkout', function () {
-    return redirect('/subscription-plans');
+    return Inertia::render('Auth/SubscriptionCheckout');
 })->name('subscription.checkout');
+
+Route::get('/business/pricing', function () {
+    return Inertia::render('Marketing/Pricing');
+})->name('pricing');
+
+
 
 Route::get('/store/registration', function () {
     return Inertia::render('Auth/StoreRegistration');
 })->name('store.registration');
 
 Route::get('/customer/login', function () {
-    return Inertia::render('Auth/CustomerLogin');
+    return Inertia::render('Auth/CustomerLogin', [
+        'status' => session('status'),
+    ]);
 })->name('customer.login');
 
 Route::get('/super-admin/login', function () {
@@ -89,6 +93,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::middleware(['auth'])->group(function () {
+    Route::post('/store/settings/profile/request-otp', [\App\Http\Controllers\System\StoreAdmin\StoreSettingsController::class, 'requestProfileUpdateOtp']);
     Route::get('/inventory/transactions/{id}/print', [InventoryTransactionController::class, 'print'])
         ->name('inventory.transactions.print');
 });

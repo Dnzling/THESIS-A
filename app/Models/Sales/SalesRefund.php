@@ -6,7 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class SalesRefund extends Model
 {
-    protected $table = 'sales_refunds';
+    // Compatibility alias while legacy Sales callers are migrated to FinanceRefund.
+    protected $table = 'finance_refunds';
 
     protected $fillable = [
         'store_id',

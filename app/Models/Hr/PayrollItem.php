@@ -12,6 +12,7 @@ class PayrollItem extends Model
 
     protected $fillable = [
         'payroll_id',
+        'deduction_type_id',
         'type',
         'name',
         'amount',

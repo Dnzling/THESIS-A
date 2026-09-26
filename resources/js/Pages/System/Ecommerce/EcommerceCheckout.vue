@@ -1,52 +1,47 @@
 <template>
-  <div class="space-y-4">
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+  <div class="mx-auto max-w-7xl space-y-6 pb-8">
+    <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Checkout</h1>
+        <h1 class="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">Review and place your order</h1>
+        <p class="mt-1 text-sm text-slate-500">Confirm your delivery address, items, and payment method.</p>
       </div>
-      <Button label="Back to Cart" icon="pi pi-arrow-left" severity="secondary" class="w-full sm:w-auto" @click="goCart" />
+      <Button label="Back to Cart" icon="pi pi-arrow-left" severity="secondary" outlined class="w-full sm:w-auto" @click="goCart" />
     </div>
 
-    <Card v-if="loading" class="border border-slate-200 shadow-none">
+    <Card v-if="completedPaymongoOrderId" class="border border-emerald-200 bg-emerald-50/60 shadow-none">
       <template #content>
-        <Skeleton height="4rem" />
-      </template>
-    </Card>
-
-    <Card v-else class="cursor-pointer border border-slate-200 shadow-none" @click="addressDrawerVisible = true">
-      <template #content>
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Shipping Address</p>
-            <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select address template' }}</p>
-            <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
-            <p class="text-sm text-slate-600">{{ selectedAddressSummary }}</p>
+        <div class="flex flex-col items-center px-4 py-8 text-center">
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-600">
+            <i class="pi pi-check" />
           </div>
-          <Button icon="pi pi-chevron-right" text severity="secondary" />
+          <p class="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Payment confirmed</p>
+          <h2 class="mt-1 text-2xl font-bold text-slate-900">Your order has been paid successfully</h2>
+          <p class="mt-2 max-w-lg text-sm text-slate-600">
+            Order #{{ formatNumber(completedPaymongoOrderId) }} is confirmed. You can now view its details and delivery progress.
+          </p>
+          <div class="mt-6 flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row">
+            <Button label="View Order" icon="pi pi-receipt" @click="goToCompletedOrder" />
+            <Button label="Continue Shopping" icon="pi pi-shopping-bag" severity="secondary" outlined @click="goShopping" />
+          </div>
         </div>
       </template>
     </Card>
 
-    <Card v-if="requiresVerification" class="border border-amber-200 bg-amber-50 shadow-none">
-      <template #content>
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p class="text-sm font-semibold text-amber-800">Account Verification Required</p>
-            <p class="text-xs text-amber-700">You need to complete customer verification before placing an order.</p>
-          </div>
-          <Button label="Go to Verification" severity="warn" @click="goToVerificationProfile" />
-        </div>
-      </template>
-    </Card>
-
-    <div v-if="loading" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <Card class="border border-slate-200 shadow-none lg:col-span-2">
-        <template #content>
-          <div class="space-y-3">
-            <Skeleton v-for="idx in 3" :key="`checkout-left-${idx}`" height="5rem" />
-          </div>
-        </template>
-      </Card>
+    <div v-else-if="loading" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div class="space-y-4 lg:col-span-2">
+        <Card class="border border-slate-200 shadow-none">
+          <template #content>
+            <Skeleton height="5rem" />
+          </template>
+        </Card>
+        <Card class="border border-slate-200 shadow-none">
+          <template #content>
+            <div class="space-y-3">
+              <Skeleton v-for="idx in 3" :key="`checkout-left-${idx}`" height="5rem" />
+            </div>
+          </template>
+        </Card>
+      </div>
       <Card class="border border-slate-200 shadow-none">
         <template #content>
           <div class="space-y-3">
@@ -58,44 +53,91 @@
     </div>
 
     <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <Card class="border border-slate-200 shadow-none lg:col-span-2">
+      <div class="space-y-4 lg:col-span-2">
+        <Card
+          class="cursor-pointer border border-slate-200 shadow-none transition hover:border-amber-300 hover:shadow-sm"
+          @click="openAddressDialog"
+        >
+          <template #content>
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex min-w-0 items-start gap-3">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Shipping Address</p>
+                    <Badge v-if="selectedAddress && selectedAddress.id === defaultAddressId" value="Default"  />
+                  </div>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select a shipping address' }}</p>
+                  <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
+                  <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
+                </div>
+              </div>
+              <Button label="Change" icon="pi pi-pencil" size="small" text severity="warn" />
+            </div>
+          </template>
+        </Card>
+
+        <Card class="border border-slate-200 shadow-none">
         <template #content>
+          <div class="mb-4 flex items-center justify-between">
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">Order items</h2>
+              <p class="text-xs text-slate-500">{{ formatNumber(itemsCount) }} item{{ itemsCount === 1 ? '' : 's' }} in this order</p>
+            </div>
+          </div>
           <div class="space-y-3">
             <div
               v-for="item in checkoutItems"
               :key="item.id"
-              class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3"
+              class="flex items-start justify-between gap-3 border-t border-b border-slate-200 bg-white p-3 transition hover:border-slate-300 sm:p-4"
             >
               <div class="flex min-w-0 items-start gap-3">
                 <img
                   :src="normalizeImageUrl(item.image) || '/F.svg'"
                   :alt="item.product_name"
-                  class="h-14 w-14 rounded-lg border border-slate-200 object-cover"
+                  class="h-16 w-16 rounded-xl border border-slate-200 object-cover sm:h-20 sm:w-20"
                   @error="onImageError"
                 />
                 <div class="min-w-0">
-                  <p class="text-xs font-medium text-slate-500">Furni Shop</p>
+                  <p class="text-xs font-medium text-slate-500">{{ item.store_name }}</p>
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                  <p class="mt-1 text-xs text-slate-500">Delivery: PHP {{ shippingFeePerItem.toFixed(2) }} - {{ estimatedDeliveryDate }}</p>
+                  <p class="mt-2 text-xs text-slate-500">Delivery Fee: ₱ {{ formatNumber(shippingFeePerItem, 2) }} · Estimated Delivery: {{ estimatedDeliveryDate }}</p>
                 </div>
               </div>
               <div class="text-right">
-                <p class="text-sm font-semibold text-slate-900">PHP {{ Number(item.unit_price).toFixed(2) }}</p>
-                <p class="text-xs text-slate-500">Qty {{ item.quantity }}</p>
+                <p class="text-sm font-semibold text-slate-900">₱ {{ formatNumber(item.unit_price, 2) }}</p>
+                <p class="text-xs text-slate-500">Qty {{ formatNumber(item.quantity) }}</p>
               </div>
             </div>
           </div>
         </template>
-      </Card>
+        </Card>
+      </div>
 
-      <Card class="border border-slate-200 shadow-none">
+      <Card class="h-fit border border-slate-200 shadow-none lg:sticky lg:top-4">
         <template #content>
           <div class="space-y-3 text-sm">
             <div>
+              <h2 class="text-base font-semibold text-slate-900">Order summary</h2>
+              <p class="text-xs text-slate-500">Final charges before placing your order</p>
+            </div>
+            <Divider />
+            <div>
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Method</p>
-              <p class="mt-1 text-sm font-semibold text-slate-900">{{ paymentMethodLabel(selectedPaymentMethod) }}</p>
-              <Button label="View all payment methods" size="small" link severity="warn" @click="paymentDrawerVisible = true" />
+              <button
+                type="button"
+                class="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-amber-300 hover:bg-amber-50/40"
+                @click="paymentDialogVisible = true"
+              >
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-amber-600 shadow-sm">
+                  <i :class="selectedPaymentMethodOption.icon" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-semibold text-slate-900">{{ selectedPaymentMethodOption.label }}</span>
+                  <span class="block text-xs text-slate-500">{{ selectedPaymentMethodOption.description }}</span>
+                </span>
+                <i class="pi pi-chevron-right text-xs text-slate-400" />
+              </button>
             </div>
 
             <!-- <div class="rounded-lg border border-slate-200 p-3">
@@ -110,20 +152,22 @@
             </div> -->
 
             <Divider />
-            <div class="flex justify-between"><span>Items</span><span>{{ itemsCount }}</span></div>
-            <div class="flex justify-between"><span>Subtotal</span><span>PHP {{ subtotal.toFixed(2) }}</span></div>
-            <div class="flex justify-between"><span>Shipping Fee</span><span>PHP {{ shippingFeeTotal.toFixed(2) }}</span></div>
-            <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
+            <div class="flex justify-between"><span>Items</span><span>{{ formatNumber(itemsCount) }}</span></div>
+            <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
+            <div class="flex justify-between text-slate-600"><span>VATable Sales</span><span>₱ {{ formatNumber(vatableSales, 2) }}</span></div>
+            <div class="flex justify-between text-slate-600"><span>VAT Included (12%)</span><span>₱ {{ formatNumber(vatAmount, 2) }}</span></div>
+            <div class="flex justify-between"><span>Shipping Fee</span><span>₱ {{ formatNumber(shippingFeeTotal, 2) }}</span></div>
+            <!-- <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
               <span>Bulk trip discount</span>
               <InputSwitch v-model="bulkTripEnabled" />
-            </div>
+            </div> -->
             <div v-if="shippingDistanceKm !== null" class="flex justify-between text-xs text-slate-500">
               <span>Distance to Store</span>
-              <span>{{ shippingDistanceKm.toFixed(2) }} km</span>
+              <span>{{ formatNumber(shippingDistanceKm, 2) }} km</span>
             </div>
-            <div v-if="shippingFeeNotice" class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+            <!-- <div v-if="shippingFeeNotice" class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
               {{ shippingFeeNotice }}
-            </div>
+            </div> -->
             <div v-if="shippingFeeBreakdown" class="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-700">
               <div class="flex items-center justify-between">
                 <span class="font-semibold">Shipping breakdown</span>
@@ -136,134 +180,202 @@
                 />
               </div>
               <div v-if="showBreakdown" class="mt-2 space-y-1">
-                <div class="flex justify-between"><span>Base fee</span><span>PHP {{ Number(shippingFeeBreakdown.base_fee || 0).toFixed(2) }}</span></div>
-                <div class="flex justify-between"><span>Distance fee</span><span>PHP {{ Number(shippingFeeBreakdown.distance_fee || 0).toFixed(2) }}</span></div>
-                <div class="flex justify-between"><span>Weight fee</span><span>PHP {{ Number(shippingFeeBreakdown.weight_fee || 0).toFixed(2) }}</span></div>
-                <div class="flex justify-between"><span>Distance</span><span>{{ Number(shippingFeeBreakdown.distance_km || 0).toFixed(2) }} km</span></div>
-                <div class="flex justify-between"><span>Weight</span><span>{{ Number(shippingFeeBreakdown.weight_kg || 0).toFixed(2) }} kg</span></div>
+                <div class="flex justify-between"><span>Base fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.base_fee, 2) }}</span></div>
+                <div class="flex justify-between"><span>Distance fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.distance_fee, 2) }}</span></div>
+                <div class="flex justify-between"><span>Weight fee</span><span>₱ {{ formatNumber(shippingFeeBreakdown.weight_fee, 2) }}</span></div>
+                <div class="flex justify-between"><span>Distance</span><span>{{ formatNumber(shippingFeeBreakdown.distance_km, 2) }} km</span></div>
+                <div class="flex justify-between"><span>Weight</span><span>{{ formatNumber(shippingFeeBreakdown.weight_kg, 2) }} kg</span></div>
                 <div v-if="shippingFeeBreakdown.minimum_applied" class="text-amber-600">Minimum fee applied.</div>
                 <div v-if="shippingFeeBreakdown.bulk_trip" class="flex justify-between text-emerald-600">
                   <span>Bulk trip discount</span>
-                  <span>- PHP {{ Number(shippingFeeBreakdown.bulk_discount_amount || 0).toFixed(2) }}</span>
+                  <span>- ₱ {{ formatNumber(shippingFeeBreakdown.bulk_discount_amount, 2) }}</span>
                 </div>
               </div>
             </div>
             <!-- <div class="flex justify-between" v-if="discountAmount > 0">
               <span>Voucher Discount</span>
-              <span class="text-emerald-600">- PHP {{ discountAmount.toFixed(2) }}</span>
+              <span class="text-emerald-600">- ₱ {{ discountAmount.toFixed(2) }}</span>
             </div> -->
             <Divider />
-            <div class="flex justify-between text-base font-bold"><span>Total</span><span>PHP {{ totalAmount.toFixed(2) }}</span></div>
-            <Button label="Place Order" severity="warn" class="mt-2 w-full" :loading="placing || paymongoCreating" :disabled="requiresVerification" @click="placeOrder" />
+            <div class="flex items-end justify-between">
+              <span class="font-semibold text-slate-900">Total</span>
+              <span class="text-xl font-bold text-slate-900">₱ {{ formatNumber(totalAmount, 2) }}</span>
+            </div>
+            <Button label="Place Order" class="mt-2" fluid :loading="placing || paymongoCreating" @click="placeOrder" />
+            <p class="text-center text-xs text-slate-500">Your payment information is securely processed.</p>
           </div>
         </template>
       </Card>
     </div>
 
-    <Drawer v-model:visible="addressDrawerVisible" header="Shipping Address Templates" position="right" class="w-full sm:w-[30rem] lg:!w-[30rem]">
-      <div class="space-y-3">
-        <div class="flex items-center gap-2">
-          <Button label="Add New Address" text severity="secondary" @click="showAddAddressForm = !showAddAddressForm" />
+    <Dialog
+      v-model:visible="addressDialogVisible"
+      modal
+      :header="isEditingAddress ? 'Edit Shipping Address' : (showAddAddressForm ? 'Add Shipping Address' : 'Choose Shipping Address')"
+      class="w-full max-w-3xl"
+      :draggable="false"
+      @hide="closeAddressDialog"
+    >
+      <div v-if="!showAddAddressForm" class="space-y-4">
+        <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+          <div>
+            <p class="text-sm font-semibold text-slate-900">Saved addresses</p>
+            <p class="text-xs text-slate-500">The first saved address is used as your default.</p>
+          </div>
+          <Button label="Add Address" icon="pi pi-plus" size="small" severity="warn" @click="showAddAddressForm = true" />
+        </div>
+
+        <div v-if="addressTemplates.length" class="grid max-h-[52vh] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+          <div
+            v-for="(address, index) in addressTemplates"
+            :key="address.id"
+            class="relative rounded-xl border p-4 text-left transition"
+            :class="selectedAddressId === address.id
+              ? 'border-amber-500 bg-amber-50/60 ring-1 ring-amber-500'
+              : 'border-slate-200 bg-white hover:border-amber-300'"
+            role="button"
+            tabindex="0"
+            @click="selectedAddressId = address.id"
+            @keydown.enter="selectedAddressId = address.id"
+          >
+            <div class="flex items-start gap-3">
+              <RadioButton v-model="selectedAddressId" :inputId="`address-${address.id}`" :value="address.id" />
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-semibold text-slate-900">{{ address.full_name }}</p>
+                  <Badge v-if="index === 0" value="Default" severity="success" />
+                </div>
+                <p class="mt-1 text-sm text-slate-600">{{ address.contact_number }}</p>
+                <p class="mt-2 text-sm leading-6 text-slate-600">
+                  {{ address.address_line }}, {{ address.barangay }}, {{ address.city }}, {{ address.province }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-3 flex justify-end border-t border-slate-200 pt-2">
+              <Button label="Edit" icon="pi pi-pencil" size="small" text severity="warn" @click.stop="startEditAddress(address)" />
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center">
+          <i class="pi pi-map-marker text-3xl text-slate-300" />
+          <p class="mt-3 text-sm font-semibold text-slate-700">No saved address yet</p>
+          <p class="mt-1 text-xs text-slate-500">Add an address to calculate delivery and continue checkout.</p>
+        </div>
+      </div>
+
+      <div v-else class="space-y-5">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Full name</label>
+            <InputText v-model="newAddress.full_name" fluid placeholder="Recipient's full name" />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Contact number</label>
+            <InputMask mask="+63 999-999-9999" v-model="newAddress.contact_number" fluid placeholder="+63 999-999-9999" />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Province</label>
+            <Select v-model="newAddressSelection.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value"
+              fluid placeholder="Select Province" @change="onProvinceChange" />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">City</label>
+            <Select v-model="newAddressSelection.cityId" :options="cityOptions" optionLabel="label" optionValue="value"
+              fluid placeholder="Select City" :disabled="!newAddressSelection.provinceId" @change="onCityChange" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Barangay</label>
+            <Select v-model="newAddressSelection.barangayCode" :options="barangayOptions" optionLabel="label" optionValue="value"
+              fluid placeholder="Select Barangay" :disabled="!newAddressSelection.cityId" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">Street, building, and unit</label>
+            <Textarea v-model="newAddress.address_line" rows="3" fluid placeholder="House number, street, subdivision, building, or unit" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div>
+            <p class="text-sm font-medium text-slate-800">Pin delivery location</p>
+            <p class="text-xs text-slate-500">Add map coordinates for a more accurate delivery fee.</p>
+          </div>
+          <Button label="Open Map" icon="pi pi-map-marker" severity="secondary" outlined size="small" @click="openCoordsMapDialog" />
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
-            v-if="isEditingAddress"
-            label="Cancel Edit"
+            v-if="showAddAddressForm"
+            label="Back"
+            icon="pi pi-arrow-left"
+            severity="secondary"
             text
-            severity="danger"
-            @click="resetAddressForm"
+            @click="cancelAddressForm"
           />
-        </div>
-        <div v-for="address in addressTemplates" :key="address.id" class="rounded-lg border border-slate-200 p-3">
-          <div class="flex items-start gap-2">
-            <RadioButton v-model="selectedAddressId" :inputId="`address-${address.id}`" :value="address.id" />
-            <label :for="`address-${address.id}`" class="cursor-pointer">
-              <p class="text-sm font-semibold text-slate-900">{{ address.full_name }} - {{ address.contact_number }}</p>
-              <p class="text-xs text-slate-600">{{ address.province }}, {{ address.city }}, {{ address.barangay }}, {{ address.address_line }}</p>
-            </label>
-          </div>
-          <div class="mt-2 flex justify-end">
-            <Button label="Edit" size="small" text severity="warn" @click="startEditAddress(address)" />
-          </div>
-        </div>
-
-        
-
-        <div v-if="showAddAddressForm" class="space-y-2 rounded-lg border border-slate-200 p-3">
-          <InputText v-model="newAddress.full_name" fluid placeholder="Full name" />
-          <InputMask mask="+63 999-999-9999" v-model="newAddress.contact_number" fluid placeholder="+63 999-999-9999" />
-          <Select
-            v-model="newAddressSelection.provinceId"
-            :options="provinceOptions"
-            optionLabel="label"
-            optionValue="value"
-            fluid
-            placeholder="Select Province"
-            @change="onProvinceChange"
-          />
-          <Select
-            v-model="newAddressSelection.cityId"
-            :options="cityOptions"
-            optionLabel="label"
-            optionValue="value"
-            fluid
-            placeholder="Select City"
-            :disabled="!newAddressSelection.provinceId"
-            @change="onCityChange"
-          />
-          <Select
-            v-model="newAddressSelection.barangayCode"
-            :options="barangayOptions"
-            optionLabel="label"
-            optionValue="value"
-            fluid
-            placeholder="Select Barangay"
-            :disabled="!newAddressSelection.cityId"
-          />
-          <Textarea v-model="newAddress.address_line" rows="2" fluid placeholder="Address line" />
-          <Button label="Get Coordinates" icon="pi pi-map-marker" severity="secondary" @click="openCoordsMapDialog" />
           <Button
-            :label="isEditingAddress ? 'Update Address Template' : 'Save Address Template'"
+            v-if="showAddAddressForm"
+            :label="isEditingAddress ? 'Update Address' : 'Save Address'"
+            icon="pi pi-check"
             severity="warn"
             @click="saveNewAddress"
           />
+          <Button
+            v-else
+            label="Use Selected Address"
+            icon="pi pi-check"
+            severity="warn"
+            :disabled="!selectedAddressId"
+            @click="addressDialogVisible = false"
+          />
         </div>
+      </template>
+    </Dialog>
 
-        <Button
-          v-if="addressTemplates.length && selectedAddressId"
-          label="Use Selected Address"
-          severity="warn"
-          fluid
-          @click="addressDrawerVisible = false"
-        />
-      </div>
-    </Drawer>
-
-    <Drawer v-model:visible="paymentDrawerVisible" header="All Payment Methods" position="right" class="w-full sm:w-[26rem]">
-      <div class="space-y-3">
-        <div v-for="method in allPaymentMethods" :key="method.value" class="rounded-lg border border-slate-200 p-3">
-          <div class="flex items-center gap-2">
+    <Dialog v-model:visible="paymentDialogVisible" modal header="Choose Payment Method" class="w-full max-w-xl" :draggable="false">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-500">Select how you would like to pay for this order.</p>
+        <div
+          v-for="method in allPaymentMethods"
+          :key="method.value"
+          class="rounded-xl border p-4 transition"
+          :class="[
+            selectedPaymentMethod === method.value ? 'border-amber-500 bg-amber-50/60 ring-1 ring-amber-500' : 'border-slate-200 bg-white',
+            method.value === 'cod' && codBlocked ? 'opacity-60' : 'cursor-pointer hover:border-amber-300',
+          ]"
+          @click="selectPaymentMethod(method.value)"
+        >
+          <div class="flex items-center gap-3">
+            <span
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg"
+              :class="selectedPaymentMethod === method.value ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'"
+            >
+              <i :class="method.icon" />
+            </span>
             <RadioButton
               v-model="selectedPaymentMethod"
               :inputId="`payment-${method.value}`"
               :value="method.value"
               :disabled="method.value === 'cod' && codBlocked"
+              @click.stop
             />
-            <label
-              :for="`payment-${method.value}`"
-              class="cursor-pointer text-sm"
-              :class="method.value === 'cod' && codBlocked ? 'text-slate-400' : 'text-slate-800'"
-            >
-              {{ method.label }}
-            </label>
+            <div class="min-w-0 flex-1">
+              <label :for="`payment-${method.value}`" class="cursor-pointer text-sm font-semibold text-slate-900">
+                {{ method.label }}
+              </label>
+              <p class="mt-0.5 text-xs leading-5 text-slate-500">{{ method.description }}</p>
+            </div>
           </div>
           <p v-if="method.value === 'cod' && codBlocked" class="mt-2 text-xs text-amber-600">
-            COD is not available for totals above PHP {{ COD_LIMIT.toLocaleString() }}. Use GCash or Credit Card.
+            COD is not available for totals above ₱ {{ COD_LIMIT.toLocaleString() }}. Use GCash or Credit Card.
           </p>
         </div>
-        <Button label="Use Payment Method" severity="warn" fluid @click="paymentDrawerVisible = false" />
+        <Button label="Use Payment Method" icon="pi pi-check" severity="warn" fluid @click="paymentDialogVisible = false" />
       </div>
-    </Drawer>
+    </Dialog>
 
-    <Dialog v-model:visible="coordsMap.visible" modal header="Location" class="w-full max-w-4xl" :draggable="false">
+    <Dialog v-model:visible="coordsMap.visible" modal header="Location" class="w-full max-w-4xl" :draggable="false" @show="initCoordsMap" @hide="destroyCoordsMap">
    
         <div class="space-y-4">
           <div class="space-y-2">
@@ -302,11 +414,15 @@
         <p class="text-sm text-slate-600">Confirm details for your GCash receipt before redirecting to authorization.</p>
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
-          <InputMask v-model="gcashDialog.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false" />
+          <InputMask v-model="gcashDialog.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false"
+            :class="{ 'border-red-500': gcashTouched.phone && gcashPhoneError }" @blur="gcashTouched.phone = true" />
+          <small v-if="gcashTouched.phone && gcashPhoneError" class="mt-1 block text-xs text-red-600">{{ gcashPhoneError }}</small>
         </div>
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
-          <InputText v-model="gcashDialog.email" type="email" fluid placeholder="name@example.com" />
+          <InputText v-model="gcashDialog.email" type="email" fluid placeholder="name@example.com"
+            :class="{ 'border-red-500': gcashTouched.email && gcashEmailError }" @blur="gcashTouched.email = true" />
+          <small v-if="gcashTouched.email && gcashEmailError" class="mt-1 block text-xs text-red-600">{{ gcashEmailError }}</small>
         </div>
       </div>
       <template #footer>
@@ -324,25 +440,31 @@
       :closable="!cardDialog.processing"
     >
       <div class="space-y-3">
-        <p class="text-sm text-slate-600">
-          Enter your card details to continue. This form sends card data directly to Online Payment using your public key.
-        </p>
+      
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Card Number</label>
-          <InputMask v-model="cardDialog.cardNumber" mask="0000 0000 0000 0000" fluid placeholder="4111 1111 1111 1111" />
+          <InputMask v-model="cardDialog.cardNumber" mask="9999 9999 9999 9999" fluid placeholder="4111 1111 1111 1111"
+            :class="{ 'border-red-500': cardTouched.cardNumber && cardNumberError }" @blur="cardTouched.cardNumber = true" />
+          <small v-if="cardTouched.cardNumber && cardNumberError" class="mt-1 block text-xs text-red-600">{{ cardNumberError }}</small>
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">MM</label>
-            <InputMask v-model="cardDialog.expMonth" mask="00" inputmode="numeric" fluid placeholder="01" />
+            <InputMask v-model="cardDialog.expMonth" mask="99" inputmode="numeric" fluid placeholder="01"
+              :class="{ 'border-red-500': cardTouched.expMonth && cardExpMonthError }" @blur="cardTouched.expMonth = true" />
+            <small v-if="cardTouched.expMonth && cardExpMonthError" class="mt-1 block text-xs text-red-600">{{ cardExpMonthError }}</small>
           </div>
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">YYYY</label>
-            <InputMask v-model="cardDialog.expYear" mask="0000" inputmode="numeric" fluid placeholder="2030" />
+            <InputMask v-model="cardDialog.expYear" mask="9999" inputmode="numeric" fluid placeholder="2030"
+              :class="{ 'border-red-500': cardTouched.expYear && cardExpYearError }" @blur="cardTouched.expYear = true" />
+            <small v-if="cardTouched.expYear && cardExpYearError" class="mt-1 block text-xs text-red-600">{{ cardExpYearError }}</small>
           </div>
           <div>
             <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">CVC</label>
-            <InputMask v-model="cardDialog.cvc" mask="000" inputmode="numeric" fluid placeholder="123" />
+            <InputMask v-model="cardDialog.cvc" mask="999" inputmode="numeric" fluid placeholder="123"
+              :class="{ 'border-red-500': cardTouched.cvc && cardCvcError }" @blur="cardTouched.cvc = true" />
+            <small v-if="cardTouched.cvc && cardCvcError" class="mt-1 block text-xs text-red-600">{{ cardCvcError }}</small>
           </div>
         </div>
       </div>
@@ -352,46 +474,28 @@
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="threeDsDialog.visible" modal header="Secure Authentication" class="w-full max-w-2xl" :draggable="false">
-      <div class="h-[70vh] overflow-hidden rounded-lg border border-slate-200">
-        <iframe v-if="threeDsDialog.url" :src="threeDsDialog.url" class="h-full w-full" />
-      </div>
-      <template #footer>
-        <Button
-          label="I've Completed Authentication"
-          severity="warn"
-          :loading="checkingPaymongoResult"
-          :disabled="checkingPaymongoResult"
-          @click="pendingPaymongo.orderId ? checkPaymongoResult(pendingPaymongo.orderId) : null"
-        />
-        <Button label="Close" severity="secondary" outlined @click="threeDsDialog.visible = false" />
-      </template>
-    </Dialog>
-
   </div>
 </template>
 
 <script setup lang="ts">
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import Drawer from 'primevue/drawer'
 import RadioButton from 'primevue/radiobutton'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import Dialog from 'primevue/dialog'
 import InputSwitch from 'primevue/inputswitch'
+import Badge from 'primevue/badge'
 import ecommerceService from '@/services/ecommerce.service'
 import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
 import InputMask from 'primevue/inputmask'
 import { showAlert } from '@/utils/swal'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import { forwardGeocodeMapbox, requireMapboxToken } from '@/utils/mapbox'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -425,16 +529,16 @@ const paymongoCreating = ref(false)
 const applyingVoucher = ref(false)
 const loading = ref(false)
 const checkingPaymongoResult = ref(false)
+const completedPaymongoOrderId = ref<number | null>(null)
 const checkoutItems = ref<any[]>([])
 const selectedItemIds = ref<number[]>([])
-const addressDrawerVisible = ref(false)
-const paymentDrawerVisible = ref(false)
+const addressDialogVisible = ref(false)
+const paymentDialogVisible = ref(false)
 const showAddAddressForm = ref(false)
 const isEditingAddress = ref(false)
 const editingAddressId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
-const customerVerificationStatus = ref('unverified')
 
 const cardDialog = reactive({
   visible: false,
@@ -451,10 +555,52 @@ const gcashDialog = reactive({
   phone: '',
   email: '',
 })
+const gcashTouched = reactive({ phone: false, email: false })
+const cardTouched = reactive({ cardNumber: false, expMonth: false, expYear: false, cvc: false })
 
-const threeDsDialog = reactive({
-  visible: false,
-  url: '',
+const gcashPhoneError = computed(() => {
+  const phone = cleanPhoneNumber(gcashDialog.phone)
+  if (!phone) return 'Enter your GCash mobile number.'
+  return /^09\d{9}$/.test(phone) ? '' : 'Enter a valid 11-digit number starting with 09.'
+})
+const gcashEmailError = computed(() => {
+  const email = String(gcashDialog.email || '').trim()
+  if (!email) return 'Enter an email address for your receipt.'
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? '' : 'Enter a valid email address.'
+})
+const cardNumberError = computed(() => {
+  const digits = String(cardDialog.cardNumber || '').replace(/\D/g, '')
+  if (!digits) return 'Enter your card number.'
+  return digits.length === 16 ? '' : 'Enter the complete 16-digit card number.'
+})
+const cardExpMonthError = computed(() => {
+  const month = Number(String(cardDialog.expMonth || '').replace(/\D/g, ''))
+  if (!cardDialog.expMonth || String(cardDialog.expMonth).replace(/\D/g, '').length !== 2) return 'Enter the expiry month.'
+  if (month < 1 || month > 12) return 'Enter a month from 01 to 12.'
+  const yearText = String(cardDialog.expYear || '').replace(/\D/g, '')
+  if (yearText.length === 4) {
+    const year = Number(yearText)
+    const now = new Date()
+    if (year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)) return 'This card has expired.'
+  }
+  return ''
+})
+const cardExpYearError = computed(() => {
+  const yearText = String(cardDialog.expYear || '').replace(/\D/g, '')
+  if (yearText.length !== 4) return 'Enter the 4-digit expiry year.'
+  const year = Number(yearText)
+  const now = new Date()
+  if (year < now.getFullYear()) return 'Enter a current or future expiry year.'
+  const monthText = String(cardDialog.expMonth || '').replace(/\D/g, '')
+  if (year === now.getFullYear() && monthText.length === 2 && Number(monthText) >= 1 && Number(monthText) <= 12 && Number(monthText) < now.getMonth() + 1) {
+    return 'This card has expired.'
+  }
+  return ''
+})
+const cardCvcError = computed(() => {
+  const cvc = String(cardDialog.cvc || '').replace(/\D/g, '')
+  if (!cvc) return 'Enter your card security code.'
+  return cvc.length === 3 ? '' : 'Enter the 3-digit security code.'
 })
 
 const pendingPaymongo = reactive({
@@ -477,22 +623,9 @@ const coordsMap = reactive({
   longitude: null as number | null,
 })
 
-let coordsLeafletMap: L.Map | null = null
-let coordsLeafletMarker: L.Marker | null = null
+let coordsMapInstance: mapboxgl.Map | null = null
+let coordsMarker: mapboxgl.Marker | null = null
 let coordsMapReady = false
-
-const setupLeafletDefaults = () => {
-  const icon = L.icon({
-    iconRetinaUrl: markerIcon2x,
-    iconUrl: markerIcon,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  })
-  L.Marker.prototype.options.icon = icon
-}
 
 const initCoordsMap = () => {
   const container = document.getElementById('checkout-coords-map')
@@ -504,16 +637,21 @@ const initCoordsMap = () => {
   coordsMap.longitude = Number(lng.toFixed(6))
 
   if (!coordsMapReady) {
-    setupLeafletDefaults()
-    coordsLeafletMap = L.map(container).setView([lat, lng], 14)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(coordsLeafletMap)
-
-    coordsLeafletMap.on('click', (e: any) => {
-      coordsMap.latitude = Number(e.latlng.lat.toFixed(6))
-      coordsMap.longitude = Number(e.latlng.lng.toFixed(6))
+    try {
+      coordsMapInstance = new mapboxgl.Map({
+        container,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        accessToken: requireMapboxToken(),
+        center: [lng, lat],
+        zoom: 14,
+      })
+    } catch (error) {
+      console.warn('Mapbox location picker unavailable', error)
+      return
+    }
+    coordsMapInstance.on('click', (e) => {
+      coordsMap.latitude = Number(e.lngLat.lat.toFixed(6))
+      coordsMap.longitude = Number(e.lngLat.lng.toFixed(6))
       redrawCoordsMarker()
     })
 
@@ -521,44 +659,39 @@ const initCoordsMap = () => {
   }
 
   redrawCoordsMarker()
-  setTimeout(() => coordsLeafletMap?.invalidateSize(), 150)
+  setTimeout(() => coordsMapInstance?.resize(), 150)
 }
 
 const redrawCoordsMarker = () => {
-  if (!coordsLeafletMap) return
+  if (!coordsMapInstance) return
   const lat = Number(coordsMap.latitude ?? DEFAULT_DASM_LAT) || DEFAULT_DASM_LAT
   const lng = Number(coordsMap.longitude ?? DEFAULT_DASM_LNG) || DEFAULT_DASM_LNG
 
-  if (coordsLeafletMarker) coordsLeafletMarker.remove()
-  coordsLeafletMarker = L.marker([lat, lng], { draggable: true }).addTo(coordsLeafletMap)
-  coordsLeafletMarker.on('dragend', () => {
-    const pos = coordsLeafletMarker!.getLatLng()
+  if (coordsMarker) coordsMarker.remove()
+  coordsMarker = new mapboxgl.Marker({ draggable: true }).setLngLat([lng, lat]).addTo(coordsMapInstance)
+  coordsMarker.on('dragend', () => {
+    const pos = coordsMarker!.getLngLat()
     coordsMap.latitude = Number(pos.lat.toFixed(6))
     coordsMap.longitude = Number(pos.lng.toFixed(6))
   })
 
-  coordsLeafletMap.setView([lat, lng], 14)
+  coordsMapInstance.flyTo({ center: [lng, lat], zoom: 14 })
 }
 
-const openCoordsMapDialog = async () => {
+const openCoordsMapDialog = () => {
   coordsMap.latitude = newAddress.latitude ? Number(newAddress.latitude) : DEFAULT_DASM_LAT
   coordsMap.longitude = newAddress.longitude ? Number(newAddress.longitude) : DEFAULT_DASM_LNG
   coordsMap.visible = true
-  await nextTick()
-  initCoordsMap()
 }
 
 async function searchCoordsLocation() {
   if (!coordsMap.searchQuery.trim()) return
   coordsMap.searching = true
   try {
-    const q = encodeURIComponent(coordsMap.searchQuery.trim())
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
-    const results = await res.json()
-    if (results && results.length > 0) {
-      const first = results[0]
-      coordsMap.latitude = Number(Number(first.lat).toFixed(6))
-      coordsMap.longitude = Number(Number(first.lon).toFixed(6))
+    const result = await forwardGeocodeMapbox(coordsMap.searchQuery.trim())
+    if (result) {
+      coordsMap.latitude = Number(result.latitude.toFixed(6))
+      coordsMap.longitude = Number(result.longitude.toFixed(6))
       redrawCoordsMarker()
     }
   } catch (e) {
@@ -577,23 +710,17 @@ const saveCoordsFromMap = () => {
   coordsMap.visible = false
 }
 
-watch(
-  () => coordsMap.visible,
-  async (visible) => {
-    if (visible) {
-      await nextTick()
-      initCoordsMap()
-    }
+const destroyCoordsMap = () => {
+  if (coordsMapInstance) {
+    coordsMapInstance.remove()
+    coordsMapInstance = null
   }
-)
+  coordsMarker = null
+  coordsMapReady = false
+}
 
 onBeforeUnmount(() => {
-  if (coordsLeafletMap) {
-    coordsLeafletMap.remove()
-    coordsLeafletMap = null
-    coordsLeafletMarker = null
-    coordsMapReady = false
-  }
+  destroyCoordsMap()
 })
 
 const shippingFeeTotal = ref(0)
@@ -612,6 +739,7 @@ const estimatedDeliveryDate = computed(() => {
 
 const addressTemplates = ref<AddressTemplate[]>([])
 const selectedAddressId = ref<number | null>(null)
+const defaultAddressId = computed(() => addressTemplates.value[0]?.id || null)
 const newAddress = reactive<AddressTemplate>({
   id: 0,
   full_name: '',
@@ -648,6 +776,19 @@ const resetAddressForm = () => {
   editingAddressId.value = null
 }
 
+const openAddressDialog = () => {
+  addressDialogVisible.value = true
+}
+
+const cancelAddressForm = () => {
+  showAddAddressForm.value = false
+  resetAddressForm()
+}
+
+const closeAddressDialog = () => {
+  cancelAddressForm()
+}
+
 const provinces = ref<any[]>([])
 const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
@@ -656,9 +797,24 @@ const citiesCache = ref<Record<string, any[]>>({})
 const selectedPaymentMethod = ref<'cod' | 'gcash' | 'card'>('cod')
 const COD_LIMIT = 20000
 const allPaymentMethods = [
-  { label: 'Cash on Delivery (COD)', value: 'cod' as const },
-  { label: 'GCash', value: 'gcash' as const },
-  { label: 'Credit/Debit Card', value: 'card' as const },
+  {
+    label: 'Cash on Delivery (COD)',
+    value: 'cod' as const,
+    icon: 'pi pi-truck',
+    description: 'Pay in cash when your furniture arrives.',
+  },
+  {
+    label: 'GCash',
+    value: 'gcash' as const,
+    icon: 'pi pi-mobile',
+    description: 'Pay securely using your GCash account.',
+  },
+  {
+    label: 'Credit or Debit Card',
+    value: 'card' as const,
+    icon: 'pi pi-credit-card',
+    description: 'Use Visa, Mastercard, or another supported card.',
+  },
 ]
 
 const voucherCode = ref('')
@@ -666,10 +822,6 @@ const appliedVoucher = ref<AppliedVoucher | null>(null)
 const validatedDiscountAmount = ref(0)
 
 const selectedAddress = computed(() => addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null)
-const requiresVerification = computed(() => {
-  const status = String(customerVerificationStatus.value || 'unverified').toLowerCase()
-  return !['verified', 'approved'].includes(status)
-})
 const selectedAddressSummary = computed(() =>
   selectedAddress.value
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
@@ -679,7 +831,7 @@ const voucherLabel = computed(() => {
   if (!appliedVoucher.value) return ''
   return appliedVoucher.value.discount_type === 'percent'
     ? `${appliedVoucher.value.discount_value}%`
-    : `PHP ${Number(appliedVoucher.value.discount_value).toFixed(2)}`
+    : `₱ ${formatNumber(appliedVoucher.value.discount_value, 2)}`
 })
 const provinceOptions = computed(() => provinces.value.map((p: any) => ({ label: p.name, value: p.province_id })))
 const cityOptions = computed(() => cities.value.map((c: any) => ({ label: c.name, value: c.city_id })))
@@ -692,6 +844,12 @@ const shippingFeePerItem = computed(() => {
   return shippingFeeTotal.value / checkoutItems.value.length
 })
 const discountAmount = computed(() => validatedDiscountAmount.value)
+const VAT_RATE = 12
+const vatInclusiveProductTotal = computed(() => Math.max(0, subtotal.value - discountAmount.value))
+const vatAmount = computed(() => vatInclusiveProductTotal.value > 0
+  ? vatInclusiveProductTotal.value - (vatInclusiveProductTotal.value / (1 + (VAT_RATE / 100)))
+  : 0)
+const vatableSales = computed(() => vatInclusiveProductTotal.value - vatAmount.value)
 const totalAmount = computed(() => Math.max(0, subtotal.value + shippingFeeTotal.value - discountAmount.value))
 const codBlocked = computed(() => totalAmount.value > COD_LIMIT)
 const checkoutItemIds = computed(() =>
@@ -702,6 +860,28 @@ const checkoutItemIds = computed(() =>
 
 function paymentMethodLabel(method: 'cod' | 'gcash' | 'card') {
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
+}
+
+const selectedPaymentMethodOption = computed(() =>
+  allPaymentMethods.find((method) => method.value === selectedPaymentMethod.value) || allPaymentMethods[0],
+)
+
+function selectPaymentMethod(method: 'cod' | 'gcash' | 'card') {
+  if (method === 'cod' && codBlocked.value) return
+  selectedPaymentMethod.value = method
+}
+
+function formatNumber(value: unknown, decimals = 0): string {
+  const number = Number(value || 0)
+  return Number.isFinite(number)
+    ? number.toLocaleString('en-PH', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })
+    : (0).toLocaleString('en-PH', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })
 }
 
 watch(codBlocked, (blocked) => {
@@ -732,8 +912,14 @@ watch(bulkTripEnabled, () => {
 async function loadAddressTemplates() {
   try {
     const response = await ecommerceService.getAddressTemplates()
-    addressTemplates.value = response.data?.data || []
-    selectedAddressId.value = addressTemplates.value.find((a) => a.is_default)?.id || addressTemplates.value[0]?.id || null
+    const addresses = Array.isArray(response.data?.data) ? response.data.data : []
+    addressTemplates.value = addresses
+      .map((address: AddressTemplate, index: number) => ({ address, index }))
+      .sort((a: { address: AddressTemplate; index: number }, b: { address: AddressTemplate; index: number }) =>
+        Number(Boolean(b.address.is_default)) - Number(Boolean(a.address.is_default)) || a.index - b.index,
+      )
+      .map(({ address }: { address: AddressTemplate }) => address)
+    selectedAddressId.value = addressTemplates.value[0]?.id || null
     const selected = addressTemplates.value.find((a) => a.id === selectedAddressId.value) || null
     if (selected?.latitude != null && selected?.longitude != null) {
       customerLatitude.value = Number(selected.latitude)
@@ -744,17 +930,6 @@ async function loadAddressTemplates() {
   }
 }
 
-async function loadCustomerVerificationStatus() {
-  try {
-    const response = await ecommerceService.getCustomerProfile()
-    customerVerificationStatus.value = String(
-      response?.data?.data?.customer?.verification_status || 'unverified'
-    ).toLowerCase()
-  } catch (error) {
-    console.error('Failed to load customer verification status:', error)
-    customerVerificationStatus.value = 'unverified'
-  }
-}
 
 async function saveNewAddress() {
   if (
@@ -1048,19 +1223,9 @@ async function startEditAddress(address: AddressTemplate) {
   }
 }
 
-// Coordinates are picked via the interactive map dialog (Leaflet).
+// Coordinates are picked via the interactive Mapbox dialog.
 
 async function placeOrder() {
-  if (requiresVerification.value) {
-    showAlert({
-      severity: 'warn',
-      summary: 'Verification Required',
-      detail: 'Please complete your customer verification before placing an order.',
-    })
-    goToVerificationProfile()
-    return
-  }
-
   if (!selectedAddress.value) {
     showAlert({ severity: 'warn', summary: 'Address Required', detail: 'Please select a shipping address.' })
     return
@@ -1070,7 +1235,7 @@ async function placeOrder() {
     showAlert({
       severity: 'warn',
       summary: 'COD Not Available',
-      detail: `COD is only allowed for totals up to PHP ${COD_LIMIT.toLocaleString()}. Please use GCash or Credit Card.`,
+      detail: `COD is only allowed for totals up to ₱ ${COD_LIMIT.toLocaleString()}. Please use GCash or Credit Card.`,
     })
     return
   }
@@ -1146,6 +1311,8 @@ async function placeOrder() {
       if (selectedPaymentMethod.value === 'gcash') {
         gcashDialog.phone = String(selectedAddress.value?.contact_number || '').trim()
         gcashDialog.email = (authStore.user?.email || payload.shipping_email || '').trim()
+        gcashTouched.phone = false
+        gcashTouched.email = false
         gcashDialog.visible = true
         return
       }
@@ -1155,6 +1322,10 @@ async function placeOrder() {
       cardDialog.expMonth = ''
       cardDialog.expYear = ''
       cardDialog.cvc = ''
+      cardTouched.cardNumber = false
+      cardTouched.expMonth = false
+      cardTouched.expYear = false
+      cardTouched.cvc = false
       cardDialog.visible = true
       return
     }
@@ -1162,16 +1333,7 @@ async function placeOrder() {
     showAlert({ severity: 'success', summary: 'Order Placed', detail: 'Your order was created successfully.' })
     router.push({ name: 'ecommerce.orders', query: { placed: orderId } })
   } catch (error: any) {
-    if (error?.response?.status === 403 && error?.response?.data?.code === 'CUSTOMER_NOT_VERIFIED') {
-      showAlert({
-        severity: 'warn',
-        summary: 'Verification Required',
-        detail: error?.response?.data?.message || 'Please complete customer verification before checkout.',
-      })
-      goToVerificationProfile()
-    } else {
-      showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.' })
-    }
+    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.' })
   } finally {
     placing.value = false
     paymongoCreating.value = false
@@ -1263,6 +1425,19 @@ function cleanPhoneNumber(raw: string) {
   return digits
 }
 
+function buildPaymongoCheckoutReturnUrl(orderId: number): string {
+  const resolved = router.resolve({
+    name: 'ecommerce.checkout',
+    query: {
+      paymongo_order_id: String(orderId),
+      store_id: route.query.store_id ? String(route.query.store_id) : undefined,
+      item_ids: route.query.item_ids ? String(route.query.item_ids) : undefined,
+    },
+  })
+
+  return new URL(resolved.href, window.location.origin).toString()
+}
+
 async function submitGcashPayment() {
   if (!pendingPaymongo.orderId || !pendingPaymongo.intentId) {
     showAlert({ severity: 'warn', summary: 'Missing Context', detail: 'Please place the order again.' })
@@ -1273,19 +1448,16 @@ async function submitGcashPayment() {
   const phone = cleanPhoneNumber(gcashDialog.phone)
   const email = String(gcashDialog.email || '').trim()
 
-  if (!/^09\d{9}$/.test(phone)) {
-    showAlert({ severity: 'warn', summary: 'Invalid Number', detail: 'Use an 11-digit GCash number (09XXXXXXXXX).' })
-    return
-  }
-  if (!email) {
-    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please provide an email for the receipt.' })
+  gcashTouched.phone = true
+  gcashTouched.email = true
+  if (gcashPhoneError.value || gcashEmailError.value) {
     return
   }
 
   gcashDialog.processing = true
   paymongoCreating.value = true
   try {
-    const returnUrl = `${window.location.origin}/shop/orders/${encodeURIComponent(String(pendingPaymongo.orderId))}`
+    const returnUrl = buildPaymongoCheckoutReturnUrl(pendingPaymongo.orderId)
     const walletRes = await paymongoService.startWallet(pendingPaymongo.intentId, 'gcash', { name, email, phone, return_url: returnUrl })
     const redirectUrl = walletRes?.data?.redirect_url
     if (!redirectUrl) throw new Error(walletRes?.message || 'Failed to start GCash checkout.')
@@ -1301,7 +1473,8 @@ async function submitGcashPayment() {
 
 async function attachPaymentMethodToIntent(clientKey: string, paymentMethodId: string, returnUrl: string) {
   const paymentIntentId = String(clientKey).split('_client')[0]
-  const authorization = `Basic ${base64Encode(`${clientKey}:`)}`
+  const publicKey = await getPaymongoPublicKey()
+  const authorization = `Basic ${base64Encode(`${publicKey}:`)}`
 
   const response = await fetch(`https://api.paymongo.com/v1/payment_intents/${encodeURIComponent(paymentIntentId)}/attach`, {
     method: 'POST',
@@ -1313,6 +1486,7 @@ async function attachPaymentMethodToIntent(clientKey: string, paymentMethodId: s
       data: {
         attributes: {
           payment_method: paymentMethodId,
+          client_key: clientKey,
           return_url: returnUrl,
         },
       },
@@ -1337,8 +1511,11 @@ async function submitCardPayment() {
   const expMonth = Number(String(cardDialog.expMonth || '').trim())
   const expYear = Number(String(cardDialog.expYear || '').trim())
   const cvc = String(cardDialog.cvc || '').trim()
-  if (!cardNumber || !expMonth || !expYear || !cvc) {
-    showAlert({ severity: 'warn', summary: 'Incomplete Card', detail: 'Please fill in card number, expiry, and CVC.' })
+  cardTouched.cardNumber = true
+  cardTouched.expMonth = true
+  cardTouched.expYear = true
+  cardTouched.cvc = true
+  if (cardNumberError.value || cardExpMonthError.value || cardExpYearError.value || cardCvcError.value) {
     return
   }
 
@@ -1361,7 +1538,7 @@ async function submitCardPayment() {
       billing: { name: billingName, email: billingEmail, phone: billingPhone || undefined },
     })
 
-    const returnUrl = `${window.location.origin}/shop/orders/${encodeURIComponent(String(pendingPaymongo.orderId))}`
+    const returnUrl = buildPaymongoCheckoutReturnUrl(pendingPaymongo.orderId)
     const attached = await attachPaymentMethodToIntent(pendingPaymongo.clientKey, pmId, returnUrl)
 
     const status = String(attached?.data?.attributes?.status || '').toLowerCase().trim()
@@ -1370,13 +1547,15 @@ async function submitCardPayment() {
     cardDialog.visible = false
 
     if (status === 'awaiting_next_action' && nextUrl) {
-      threeDsDialog.url = String(nextUrl)
-      threeDsDialog.visible = true
+      window.location.href = String(nextUrl).trim()
       return
     }
 
-    // If it immediately succeeded/processing, just bring user back to checkout status screen.
-    await checkPaymongoResult(pendingPaymongo.orderId)
+    // If it immediately succeeded, continue straight to the paid order.
+    const paymentStatus = await checkPaymongoResult(pendingPaymongo.orderId)
+    if (paymentStatus === 'succeeded') {
+      router.replace({ name: 'ecommerce.order-detail', params: { id: pendingPaymongo.orderId } })
+    }
   } catch (error: any) {
     showAlert({ severity: 'error', summary: 'Payment Failed', detail: error?.message || 'Unable to process card payment.' })
   } finally {
@@ -1385,7 +1564,7 @@ async function submitCardPayment() {
   }
 }
 
-async function checkPaymongoResult(orderId: number) {
+async function checkPaymongoResult(orderId: number): Promise<string> {
   checkingPaymongoResult.value = true
   try {
     const latest = await paymongoService.getLatestIntentByPayable('ecommerce_order', orderId, { sync: true })
@@ -1393,26 +1572,27 @@ async function checkPaymongoResult(orderId: number) {
 
     if (!status) {
       showAlert({ severity: 'warn', summary: 'Payment Pending', detail: 'No Online Payment status yet. Please wait a moment and refresh.' })
-      return
+      return 'pending'
     }
 
     if (status === 'succeeded') {
-      showAlert({ severity: 'success', summary: 'Payment Successful', detail: 'Your payment was confirmed.' })
+      completedPaymongoOrderId.value = orderId
       try {
         window.sessionStorage.removeItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY)
       } catch {}
-      router.replace({ name: 'ecommerce.order-detail', params: { id: orderId } })
-      return
+      return status
     }
 
     if (status === 'failed' || status === 'cancelled' || status === 'canceled') {
       showAlert({ severity: 'error', summary: 'Payment Failed', detail: 'Your payment was not completed. You can try again.' })
-      return
+      return status
     }
 
     // silent for intermediate statuses; user can refresh or close dialogs
+    return status
   } catch (error: any) {
     showAlert({ severity: 'warn', summary: 'Payment Pending', detail: 'Unable to confirm payment yet. Please refresh in a moment.' })
+    return 'unknown'
   } finally {
     checkingPaymongoResult.value = false
   }
@@ -1422,12 +1602,18 @@ function goCart() {
   router.push({ name: 'ecommerce.cart' })
 }
 
-function goToVerificationProfile() {
-  router.push({ name: 'ecommerce.profile', query: { section: 'verification' } })
+function goToCompletedOrder() {
+  if (!completedPaymongoOrderId.value) return
+  router.push({ name: 'ecommerce.order-detail', params: { id: completedPaymongoOrderId.value } })
+}
+
+function goShopping() {
+  router.push({ name: 'ecommerce.products' })
 }
 
 onMounted(async () => {
   let paymongoOrderId = Number(route.query?.paymongo_order_id || 0)
+  let paymongoResultStatus = ''
   if (!paymongoOrderId) {
     try {
       const stored = Number(window.sessionStorage.getItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY) || 0)
@@ -1437,10 +1623,17 @@ onMounted(async () => {
   if (paymongoOrderId > 0) {
     if (String(route.query?.paymongo_cancel || '') === '1') {
       showAlert({ severity: 'info', summary: 'Payment Cancelled', detail: 'You cancelled the Online Payment checkout. No payment was made.' })
+      paymongoResultStatus = 'cancelled'
     } else {
-      await checkPaymongoResult(paymongoOrderId)
+      paymongoResultStatus = await checkPaymongoResult(paymongoOrderId)
     }
-    // Remove the query so refresh doesn't keep firing the toast.
+    if (paymongoResultStatus === 'succeeded') {
+      loading.value = false
+      router.replace({ name: 'ecommerce.order-detail', params: { id: paymongoOrderId } })
+      return
+    }
+
+    // Remove the query so refresh doesn't keep firing the result alert.
     const nextQuery = { ...route.query }
     delete (nextQuery as any).paymongo_order_id
     delete (nextQuery as any).paymongo_success
@@ -1469,7 +1662,6 @@ onMounted(async () => {
     await fetchProvinces()
     await loadAddressTemplates()
     await loadCheckoutItems()
-    await loadCustomerVerificationStatus()
     await estimateShippingFee()
   } finally {
     loading.value = false

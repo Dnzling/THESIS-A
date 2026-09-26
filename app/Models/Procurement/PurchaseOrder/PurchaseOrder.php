@@ -11,6 +11,8 @@ use App\Models\Store\Store;
 use App\Models\Store\Branch;
 use App\Models\Hr\Employee;
 use App\Models\Procurement\Supplier\Supplier;
+use App\Models\Procurement\Supplier\SupplierContract;
+use App\Models\Procurement\Shipping\PurchaseOrderShipment;
 use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\RFQ\RequestForQuotation;
 use App\Models\Procurement\RFQ\SupplierQuotation;
@@ -30,11 +32,14 @@ class PurchaseOrder extends Model
         'purchase_requisition_id',
         'rfq_id',
         'supplier_quotation_id',
+        'supplier_contract_id',
         'status',
         'subtotal',
         'tax_amount',
         'shipping_cost',
         'discount_amount',
+        'contract_discount_percentage',
+        'contract_tax_rate',
         'total_amount',
         'approval_tier_level',
         'required_approvers',
@@ -45,6 +50,7 @@ class PurchaseOrder extends Model
         'payment_terms',
         'order_date',
         'expected_delivery_date',
+        'fulfillment_method',
         'actual_delivery_date',
         'payment_due_date',
         'created_by',
@@ -57,6 +63,8 @@ class PurchaseOrder extends Model
         'tax_amount' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'contract_discount_percentage' => 'decimal:2',
+        'contract_tax_rate' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'approval_tier_level' => 'integer',
         'required_approvers' => 'array',
@@ -98,6 +106,16 @@ class PurchaseOrder extends Model
     public function supplierQuotation(): BelongsTo
     {
         return $this->belongsTo(SupplierQuotation::class);
+    }
+
+    public function supplierContract(): BelongsTo
+    {
+        return $this->belongsTo(SupplierContract::class);
+    }
+
+    public function shipment()
+    {
+        return $this->hasOne(PurchaseOrderShipment::class);
     }
 
     public function stockOrderRequest(): BelongsTo
@@ -275,6 +293,25 @@ class PurchaseOrder extends Model
     public function markInTransit(): void
     {
         $this->update(['status' => 'in_transit']);
+
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered'])
+                ->update(['status' => 'in_transit']);
+        }
+    }
+
+    public function markOutForDelivery(): void
+    {
+        $this->update(['status' => 'out_for_delivery']);
+
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled', 'delivered'])
+                ->update(['status' => 'out_for_delivery']);
+        }
     }
 
     public function markDelivered(): void
@@ -283,6 +320,16 @@ class PurchaseOrder extends Model
             'status' => 'delivered',
             'actual_delivery_date' => now()->toDateString(),
         ]);
+
+        // Keep the procurement request in sync with the delivery milestone.
+        // A PR can be linked to one or more POs, but once this PO is delivered
+        // it must no longer remain in an earlier procurement status.
+        if ($this->purchase_requisition_id) {
+            PurchaseRequisition::query()
+                ->whereKey($this->purchase_requisition_id)
+                ->whereNotIn('status', ['rejected', 'cancelled'])
+                ->update(['status' => 'delivered']);
+        }
     }
 
     public function markGoodsReceived(): void

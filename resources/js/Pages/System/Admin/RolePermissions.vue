@@ -26,6 +26,10 @@
           <i class="pi pi-sitemap mr-2"></i>
           Navigation Items
         </Tab>
+        <Tab value="3">
+          <i class="pi pi-th-large mr-2"></i>
+          Modules
+        </Tab>
       </TabList>
   
       <TabPanels>
@@ -51,7 +55,10 @@
                   size="normal" />
                 <div>
                   <h3 class="font-semibold text-gray-800">{{ role.display_name }}</h3>
-                  <p class="text-xs text-gray-500">{{ role.name }}</p>
+                  <div class="flex items-center gap-2">
+                    <p class="text-xs text-gray-500">{{ role.name }}</p>
+                    <Tag v-if="isProtectedRole(role)" value="System role" severity="secondary" />
+                  </div>
                 </div>
               </div>
   
@@ -238,6 +245,35 @@
             </template>
           </Card>
         </TabPanel>
+
+        <!-- Modules Tab -->
+        <TabPanel value="3">
+          <Card class="mt-6">
+            <template #title>
+              <div class="flex items-center justify-between">
+                <span>Module Catalog</span>
+                <Button label="Add Module" icon="pi pi-plus" size="small" @click="openCreateModuleDialog" />
+              </div>
+            </template>
+            <template #content>
+              <DataTable :value="moduleRows" :loading="loadingModules" paginator :rows="15" stripedRows>
+                <Column field="key" header="Key" sortable style="min-width: 180px">
+                  <template #body="{ data }"><code class="rounded bg-gray-100 px-2 py-1">{{ data.key }}</code></template>
+                </Column>
+                <Column field="name" header="Name" sortable style="min-width: 180px" />
+                <Column field="description" header="Description" style="min-width: 260px">
+                  <template #body="{ data }">{{ data.description || '—' }}</template>
+                </Column>
+                <Column field="is_active" header="Status" sortable style="min-width: 110px">
+                  <template #body="{ data }"><Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'danger'" /></template>
+                </Column>
+                <Column header="Actions" style="min-width: 100px">
+                  <template #body="{ data }"><Button icon="pi pi-pencil" text rounded severity="warning" @click="editModule(data)" /></template>
+                </Column>
+              </DataTable>
+            </template>
+          </Card>
+        </TabPanel>
       </TabPanels>
     </Tabs>
   
@@ -307,6 +343,16 @@
         <Button label="Save Permissions" icon="pi pi-check" @click="saveRolePermissions" :loading="savingPermissions" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="moduleDialog" :style="{ width: '500px' }" :header="editingModule ? 'Edit Module' : 'Create Module'" modal>
+      <div class="space-y-4">
+        <div class="flex flex-col gap-2"><label class="text-sm font-semibold">Key *</label><InputText v-model="moduleForm.key" placeholder="e.g. warehouse" /><small class="text-gray-500">Use lowercase letters, numbers, dashes, or underscores.</small></div>
+        <div class="flex flex-col gap-2"><label class="text-sm font-semibold">Name *</label><InputText v-model="moduleForm.name" placeholder="e.g. Warehouse Operations" /></div>
+        <div class="flex flex-col gap-2"><label class="text-sm font-semibold">Description</label><Textarea v-model="moduleForm.description" rows="3" /></div>
+        <div class="flex items-center gap-2"><Checkbox v-model="moduleForm.is_active" inputId="module_active" binary /><label for="module_active">Active</label></div>
+      </div>
+      <template #footer><Button label="Cancel" text @click="moduleDialog = false" /><Button :label="editingModule ? 'Update' : 'Create'" icon="pi pi-check" :loading="savingModule" @click="saveModule" /></template>
+    </Dialog>
   
     <!-- Create/Edit Permission Dialog -->
     <Dialog v-model:visible="permissionDialog" :style="{ width: '500px' }"
@@ -364,7 +410,8 @@
              <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-gray-700">Module *</label>
             <Select v-model="navigationForm.module" :options="modules" optionLabel="label" optionValue="value"
-              placeholder="Select Module" />
+              placeholder="Select Module" :loading="loadingModules" :class="{ 'p-invalid': navigationErrors.module }" />
+            <small v-if="navigationErrors.module" class="text-red-500">{{ navigationErrors.module }}</small>
           </div>
         </div>
   
@@ -565,6 +612,8 @@ const allPermissions = ref([])
 const navigationItems = ref([])
 const loadingPermissions = ref(false)
 const loadingNavigation = ref(false)
+const loadingModules = ref(false)
+const moduleRows = ref<any[]>([])
 
 const selectedModule = ref(null)
 const permissionSearch = ref('')
@@ -579,6 +628,7 @@ const expandedModules = ref<string[]>([])
 const permissionsDialog = ref(false)
 const permissionDialog = ref(false)
 const navigationDialog = ref(false)
+const moduleDialog = ref(false)
 const deletePermissionDialog = ref(false)
 const deleteNavigationDialog = ref(false)
 const importPermissionsDialog = ref(false)
@@ -588,6 +638,7 @@ const bulkDeletePermissionsDialog = ref(false)
 const savingPermissions = ref(false)
 const savingPermission = ref(false)
 const savingNavigation = ref(false)
+const savingModule = ref(false)
 const importingPermissionsCsv = ref(false)
 const savingBulkPermissions = ref(false)
 const deletingBulkPermissions = ref(false)
@@ -719,6 +770,7 @@ const navigationForm = ref({
   permissions: [],
   is_active: true
 })
+const navigationErrors = ref<Record<string, string>>({})
 
 const selectedIcon = computed({
   get: () => normalizeIconValue(navigationForm.value.icon),
@@ -729,7 +781,9 @@ const selectedIcon = computed({
 
 // Role Menu
 const roleMenu = ref()
-const roleMenuItems = ref([
+const protectedRoleNames = ['super_admin', 'store_admin', 'driver', 'applicant', 'supplier', 'customer']
+const isProtectedRole = (role: any) => protectedRoleNames.includes(String(role?.name || '').toLowerCase())
+const roleMenuItems = computed(() => [
   {
     label: 'Edit',
     icon: 'pi pi-pencil',
@@ -747,23 +801,18 @@ const roleMenuItems = ref([
     label: 'Delete',
     icon: 'pi pi-trash',
     class: 'text-red-500',
+    disabled: isProtectedRole(selectedRole.value),
     command: () => confirmDeleteRole(selectedRole.value)
   }
 ])
 
-// Modules
-const modules = ref([
-  { label: 'Admin', value: 'admin' },
-  { label: 'Customer Service', value: 'customer_service' },
-  { label: 'Human Resources', value: 'hr' },
-  { label: 'Merchandising', value: 'merchandising' },
-  { label: 'Inventory', value: 'inventory' },
-  { label: 'Sales', value: 'sales' },
-  { label: 'Logistics', value: 'logistics' },
-  { label: 'Finance', value: 'finance' },
-  { label: 'Procurement', value: 'procurement' },
-  { label: 'Supplier', value: 'supplier' },
-])
+// Module options are sourced from the master modules table.
+const modules = computed(() => moduleRows.value.map((module: any) => ({
+  label: module.name,
+  value: module.key,
+})))
+const editingModule = ref<any>(null)
+const moduleForm = ref({ key: '', name: '', description: '', is_active: true })
 
 const statusOptions = [
   { label: 'Active', value: true },
@@ -959,6 +1008,48 @@ const loadPermissions = async () => {
   }
 }
 
+const loadModules = async () => {
+  loadingModules.value = true
+  try {
+    const response = await axios.get('/api/admin/modules')
+    moduleRows.value = response.data.data || response.data || []
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load modules', life: 3000 })
+  } finally {
+    loadingModules.value = false
+  }
+}
+
+const openCreateModuleDialog = () => {
+  editingModule.value = null
+  moduleForm.value = { key: '', name: '', description: '', is_active: true }
+  moduleDialog.value = true
+}
+
+const editModule = (module: any) => {
+  editingModule.value = module
+  moduleForm.value = { key: module.key, name: module.name, description: module.description || '', is_active: Boolean(module.is_active) }
+  moduleDialog.value = true
+}
+
+const saveModule = async () => {
+  savingModule.value = true
+  try {
+    if (editingModule.value) {
+      await axios.put(`/api/admin/modules/${editingModule.value.id}`, moduleForm.value)
+    } else {
+      await axios.post('/api/admin/modules', moduleForm.value)
+    }
+    moduleDialog.value = false
+    await loadModules()
+    toast.add({ severity: 'success', summary: 'Success', detail: `Module ${editingModule.value ? 'updated' : 'created'} successfully`, life: 3000 })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to save module', life: 3000 })
+  } finally {
+    savingModule.value = false
+  }
+}
+
 const loadNavigationItems = async () => {
   loadingNavigation.value = true
   try {
@@ -1087,8 +1178,14 @@ const openPermissionsDialog = async (role: any) => {
 const saveRolePermissions = async () => {
   savingPermissions.value = true
   try {
+    const permissionIds = Array.from(new Set(
+      (Array.isArray(selectedRolePermissions.value) ? selectedRolePermissions.value : [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ))
+
     await axios.post(`/api/admin/roles/${selectedRole.value.id}/permissions`, {
-      permissions: selectedRolePermissions.value
+      permissions: permissionIds
     })
 
     toast.add({ severity: 'success', summary: 'Success', detail: 'Permissions updated successfully', life: 3000 })
@@ -1324,6 +1421,7 @@ const openCreateNavigationDialog = () => {
     permissions: [],
     is_active: true
   }
+  navigationErrors.value = {}
   navigationDialog.value = true
 }
 
@@ -1333,15 +1431,19 @@ const editNavigation = (navigation: any) => {
     ...navigation,
     permissions: navigation.permissions?.map((p: any) => p.id) || []
   }
+  navigationErrors.value = {}
   navigationDialog.value = true
 }
 
 const saveNavigation = async () => {
+  navigationErrors.value = {}
   savingNavigation.value = true
 
   try {
     const payload = {
       ...navigationForm.value,
+      module: (navigationForm.value.module as any)?.value ?? navigationForm.value.module,
+      permissions: Array.isArray(navigationForm.value.permissions) ? navigationForm.value.permissions : [],
       display_name: buildDisplayNameFromNavigationName(navigationForm.value.name),
       route_path: buildRoutePathFromName(navigationForm.value.route_name),
       icon: normalizeIconClass(navigationForm.value.icon)
@@ -1358,7 +1460,9 @@ const saveNavigation = async () => {
     navigationDialog.value = false
     loadNavigationItems()
   } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.message || 'Failed to save navigation', life: 3000 })
+    const errors = error.response?.data?.errors || {}
+    navigationErrors.value = Object.fromEntries(Object.entries(errors).map(([key, value]: any) => [key, Array.isArray(value) ? value[0] : String(value)]))
+    toast.add({ severity: 'error', summary: 'Validation Error', detail: Object.values(navigationErrors.value)[0] || error.response?.data?.message || 'Failed to save navigation', life: 4000 })
   } finally {
     savingNavigation.value = false
   }
@@ -1444,6 +1548,10 @@ const clearPermissionFilters = () => {
 
 const confirmDeleteRole = (role: any) => {
   if (!role?.id) return
+  if (isProtectedRole(role)) {
+    toast.add({ severity: 'warn', summary: 'Protected Role', detail: 'System roles cannot be deleted.', life: 3000 })
+    return
+  }
 
   confirm.require({
     header: 'Delete Role',
@@ -1491,6 +1599,7 @@ const getModuleSeverity = (module: string) => {
     hr: 'info',
     merchandising: 'success',
     inventory: 'warning',
+    warehouse: 'contrast',
     sales: 'primary',
     accounting: 'secondary'
   }
@@ -1499,8 +1608,8 @@ const getModuleSeverity = (module: string) => {
 
 onMounted(() => {
   loadRoles()
+  loadModules()
   loadPermissions()
   loadNavigationItems()
 })
 </script>
-

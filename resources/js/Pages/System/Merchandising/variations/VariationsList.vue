@@ -4,24 +4,22 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">Product Variations</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage product variants like colors, sizes, and materials</p>
-      </div>
-      <div class="flex gap-2">
-        <Button 
-          label="Bulk Stock Update" 
-          icon="pi pi-upload" 
-          severity="secondary"
-          outlined
-          @click="openBulkUpdateDialog"
-        />
-        <Button 
-          v-if="authStore.hasPermission('merchandising.variations.create')"
-          label="Add Variation" 
-          icon="pi pi-plus" 
-          @click="router.push({ name: 'merchandising.variations.create' })"
-        />
+        <p class="text-sm text-gray-500 mt-1">Edit variant presentation or archive variants with no stock</p>
       </div>
     </div>
+
+    <Card v-if="variantRequests.length" class="border border-orange-200 bg-orange-50/40">
+      <template #title>Pending Variant Requests</template>
+      <template #content>
+        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div v-for="request in variantRequests" :key="request.id" class="rounded-2xl border border-orange-100 bg-white p-4">
+            <div class="flex items-start justify-between gap-3"><div><p class="font-semibold text-slate-900">{{ request.variant_name }}</p><p class="text-xs text-slate-500">{{ request.rfq_item?.product?.product_name }} · {{ request.supplier_portal?.supplier?.supplier_name }}</p></div><Tag value="Creation Required" severity="warn" /></div>
+            <div class="mt-3 flex flex-wrap gap-1"><Tag v-if="request.variant_color" :value="request.variant_color" severity="info" /><Tag v-if="request.variant_size" :value="request.variant_size" severity="secondary" /><Tag v-if="request.variant_material" :value="request.variant_material" severity="success" /><Tag v-if="request.variant_finish" :value="request.variant_finish" severity="warn" /></div>
+            <div class="mt-3 flex items-center justify-between"><span class="font-semibold">₱{{ formatPrice(request.quoted_price) }}</span><Button label="Create Variant" icon="pi pi-plus" size="small" @click="createFromRequest(request)" /></div>
+          </div>
+        </div>
+      </template>
+    </Card>
 
     <!-- Search & Filters -->
     <Card>
@@ -200,14 +198,15 @@
                   v-tooltip.top="'Edit'"
                   @click="router.push({ name: 'merchandising.variations.edit', params: { id: data.id } })"
                 />
-                <Button 
-                  icon="pi pi-trash" 
-                  severity="danger"
+                <Button
+                  v-if="data.is_active"
+                  icon="pi pi-box"
+                  severity="warning"
                   text 
                   rounded 
                   size="small"
-                  v-tooltip.top="'Delete'"
-                  @click="confirmDelete(data)"
+                  v-tooltip.top="'Archive'"
+                  @click="confirmArchive(data)"
                 />
               </div>
             </template>
@@ -222,66 +221,10 @@
         <div class="text-center py-12">
           <i class="pi pi-th-large text-6xl text-gray-300"></i>
           <p class="text-gray-600 mt-4 text-lg">No variations found</p>
-          <p class="text-gray-500 text-sm mt-2">Create variations to offer different options for your products</p>
-          <Button 
-            label="Create Your First Variation" 
-            icon="pi pi-plus" 
-            class="mt-4" 
-            @click="router.push({ name: 'merchandising.variations.create' })"
-          />
+          <p class="text-gray-500 text-sm mt-2">Add variants from the related product in Inventory.</p>
         </div>
       </template>
     </Card>
-
-    <!-- Bulk Stock Update Dialog -->
-    <Dialog 
-      v-model:visible="bulkUpdateDialogVisible" 
-      header="Bulk Stock Update" 
-      :modal="true" 
-      class="w-full max-w-md"
-    >
-      <div class="space-y-4 mt-4">
-        <p class="text-sm text-gray-600">Update stock quantities for multiple variations at once</p>
-        
-        <div class="flex flex-col gap-2">
-          <label for="bulk_product" class="text-sm font-semibold text-gray-700">
-            Select Product
-          </label>
-          <Select 
-            id="bulk_product"
-            v-model="bulkUpdateData.product_id" 
-            :options="products" 
-            optionLabel="product_name" 
-            optionValue="id"
-            placeholder="Choose a product" 
-            filter
-            @change="loadProductVariations"
-          />
-        </div>
-
-        <div v-if="bulkUpdateData.product_id" class="space-y-3">
-          <p class="text-sm font-semibold text-gray-700">Update Stock for Variations:</p>
-          <div v-for="variation in productVariations" :key="variation.id" class="flex items-center gap-3 p-3 bg-gray-50 rounded">
-            <div class="flex-1">
-              <p class="text-sm font-medium">{{ variation.variation_name }}</p>
-              <p class="text-xs text-gray-500">Current: {{ variation.stock_quantity }}</p>
-            </div>
-            <InputNumber 
-              v-model="bulkUpdateData.stocks[variation.id]"
-              :min="0"
-              showButtons
-              buttonLayout="horizontal"
-              class="w-32"
-            />
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="bulkUpdateDialogVisible = false" />
-        <Button label="Update Stock" icon="pi pi-check" @click="submitBulkStockUpdate" :loading="updatingStock" />
-      </template>
-    </Dialog>
 
     <!-- View Variation Dialog -->
     <Dialog 
@@ -408,18 +351,18 @@
       </template>
     </Dialog>
 
-    <!-- Delete Confirmation Dialog -->
-    <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
+    <!-- Archive Confirmation Dialog -->
+    <Dialog v-model:visible="archiveDialogVisible" header="Archive Variant" :modal="true" class="w-96">
       <div class="flex items-center gap-3">
         <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
         <div>
-          <p class="font-semibold">Are you sure you want to delete this variation?</p>
-          <p class="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
+          <p class="font-semibold">Archive this variant?</p>
+          <p class="text-sm text-gray-600 mt-1">It will be hidden from ecommerce. Variants with stock cannot be archived.</p>
         </div>
       </div>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="deleteDialogVisible = false" />
-        <Button label="Delete" severity="danger" @click="deleteVariation" :loading="deleting" />
+        <Button label="Cancel" severity="secondary" text @click="archiveDialogVisible = false" />
+        <Button label="Archive" severity="warn" @click="archiveVariation" :loading="archiving" />
       </template>
     </Dialog>
   </div>
@@ -429,13 +372,11 @@
 import { ref, reactive, onMounted } from 'vue'
 
 import { useToast } from 'primevue/usetoast'
-import { useAuthStore } from '../../../../stores/auth'
 import merchandisingService from '../../../../services/merchandising.service'
 
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -449,34 +390,24 @@ import { useRouter } from 'vue-router'
 
 const toast = useToast()
 const router = useRouter()
-const authStore = useAuthStore()
 
 // State
 const variations = ref([])
+const variantRequests = ref<any[]>([])
 const products = ref([])
 const loading = ref(false)
-const deleting = ref(false)
-const updatingStock = ref(false)
-const deleteDialogVisible = ref(false)
-const bulkUpdateDialogVisible = ref(false)
+const archiving = ref(false)
+const archiveDialogVisible = ref(false)
 const viewDialogVisible = ref(false)
 const currentVariation = ref(null)
 const searchQuery = ref('')
 const selectedVariations = ref([])
-const productVariations = ref([])
 
 const filters = reactive({
   product_id: null,
   stock_status: null,
   is_active: null
 })
-
-const bulkUpdateData = reactive({
-  product_id: null,
-  stocks: {}
-})
-
-const stockStatusOptions = ['In Stock', 'Low Stock', 'Out of Stock']
 
 const statusOptions = [
   { label: 'Active', value: true },
@@ -513,23 +444,6 @@ const loadProducts = async () => {
   }
 }
 
-const loadProductVariations = async () => {
-  if (!bulkUpdateData.product_id) return
-  
-  try {
-    const response = await merchandisingService.getVariationsByProduct(bulkUpdateData.product_id)
-    productVariations.value = response.data.variations || []
-    
-    // Initialize stock values
-    bulkUpdateData.stocks = {}
-    productVariations.value.forEach(v => {
-      bulkUpdateData.stocks[v.id] = v.stock_quantity
-    })
-  } catch (error) {
-    console.error('Failed to load product variations:', error)
-  }
-}
-
 const onSearch = () => {
   loadVariations()
 }
@@ -547,46 +461,6 @@ const viewVariation = (variation: any) => {
   viewDialogVisible.value = true
 }
 
-const openBulkUpdateDialog = () => {
-  bulkUpdateData.product_id = null
-  bulkUpdateData.stocks = {}
-  productVariations.value = []
-  bulkUpdateDialogVisible.value = true
-}
-
-const submitBulkStockUpdate = async () => {
-  if (!bulkUpdateData.product_id) return
-  
-  updatingStock.value = true
-  try {
-    const updates = Object.entries(bulkUpdateData.stocks).map(([id, stock]) => ({
-      variation_id: parseInt(id),
-      stock_quantity: stock
-    }))
-
-    await merchandisingService.bulkUpdateStock({ updates })
-    
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: 'Stock quantities updated successfully',
-      life: 3000
-    })
-    
-    bulkUpdateDialogVisible.value = false
-    loadVariations()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to update stock',
-      life: 3000
-    })
-  } finally {
-    updatingStock.value = false
-  }
-}
-
 const bulkUpdateStatus = async (isActive: boolean) => {
   if (selectedVariations.value.length === 0) return
   
@@ -594,7 +468,11 @@ const bulkUpdateStatus = async (isActive: boolean) => {
     const ids = selectedVariations.value.map((v: any) => v.id)
     
     for (const id of ids) {
-      await merchandisingService.updateVariation(id, { is_active: isActive })
+      if (isActive) {
+        await merchandisingService.updateVariation(id, { is_active: true })
+      } else {
+        await merchandisingService.archiveVariation(id)
+      }
     }
     
     toast.add({
@@ -616,32 +494,32 @@ const bulkUpdateStatus = async (isActive: boolean) => {
   }
 }
 
-const confirmDelete = (variation: any) => {
+const confirmArchive = (variation: any) => {
   currentVariation.value = variation
-  deleteDialogVisible.value = true
+  archiveDialogVisible.value = true
 }
 
-const deleteVariation = async () => {
-  deleting.value = true
+const archiveVariation = async () => {
+  archiving.value = true
   try {
-    await merchandisingService.deleteVariation(currentVariation.value.id)
+    await merchandisingService.archiveVariation(currentVariation.value.id)
     toast.add({
       severity: 'success',
       summary: 'Success',
-      detail: 'Variation deleted successfully',
+      detail: 'Variant archived successfully',
       life: 3000
     })
-    deleteDialogVisible.value = false
+    archiveDialogVisible.value = false
     loadVariations()
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to delete variation',
+      detail: error.response?.data?.message || 'Failed to archive variant',
       life: 3000
     })
   } finally {
-    deleting.value = false
+    archiving.value = false
   }
 }
 
@@ -667,8 +545,23 @@ const formatDate = (date: string) => {
   })
 }
 
+const loadVariantRequests = async () => {
+  try {
+    const response = await merchandisingService.getVariationRequests()
+    variantRequests.value = response?.data || []
+  } catch {
+    variantRequests.value = []
+  }
+}
+
+const createFromRequest = (request: any) => router.push({
+  name: 'merchandising.variations.create',
+  query: { proposal_id: String(request.id), product_id: String(request.rfq_item?.product_id || request.rfq_item?.product?.id) },
+})
+
 onMounted(() => {
   loadVariations()
   loadProducts()
+  loadVariantRequests()
 })
 </script>

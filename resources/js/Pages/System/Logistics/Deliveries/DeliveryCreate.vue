@@ -1,17 +1,16 @@
 <template>
-  <div class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl border border-slate-200/80 bg-linear-to-br from-cyan-50 via-white to-emerald-50 p-6 shadow-sm">
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-2">
-          <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
-          <div>
-            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Create Delivery Assignment</h1>
-            <p class="mt-1 text-sm text-slate-600">Assign logistics staff and set transport charges for this order.</p>
-          </div>
+  <div class="mx-auto space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">{{ source === 'return_pickup' ? 'Create Return Pickup Assignment' : 'Create Delivery Assignment' }}</h1>
+          <p class="mt-1 text-sm text-slate-600">Assign logistics staff, a vehicle, schedule, and transport charges.</p>
         </div>
       </div>
     </div>
-
+  
+  
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Order Summary</template>
       <template #content>
@@ -22,61 +21,114 @@
           <div><span class="text-slate-500">Order #:</span> <strong>{{ order.order_number }}</strong></div>
           <div><span class="text-slate-500">Customer:</span> <strong>{{ customerName }}</strong></div>
           <div><span class="text-slate-500">Contact:</span> <strong>{{ customerContact }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong></div>
-          <div><span class="text-slate-500">Order Status:</span> <Tag :value="formattedOrderStatus" severity="secondary" /></div>
-          <div><span class="text-slate-500">Total:</span> <strong>₱ {{ orderTotal }}</strong></div>
+          <div class="md:col-span-2"><span class="text-slate-500">Address:</span> <strong>{{ deliveryAddress }}</strong>
+          </div>
+          <div><span class="text-slate-500">Order Status:</span>
+            <Tag :value="formattedOrderStatus" severity="secondary" />
+          </div>
+          <div><span class="text-slate-500">Total:</span> <strong>{{ formatCurrency(order?.total_amount) }}</strong></div>
+          <div><span class="text-slate-500">Shipping Fee:</span> <strong>{{ formatCurrency(order?.shipping_fee)
+              }}</strong></div>
         </div>
       </template>
     </Card>
-
+  
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Delivery Assignment Form</template>
       <template #content>
         <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="submitAssignment">
           <div>
-            <label class="mb-1 block text-sm text-slate-600">Logistics Employee</label>
-            <Select
-              v-model="form.driver_user_id"
-              :options="employees"
-              optionLabel="name"
-              optionValue="id"
-              fluid
-              filter
-              placeholder="Select logistics employee"
-            />
+            <label class="mb-1 block text-sm text-slate-600">Driver *</label>
+            <Select v-model="form.driver_user_id" :options="drivers" optionLabel="name" optionValue="id" fluid filter placeholder="Select driver">
+              <template #option="{ option }"><div><p class="text-sm font-medium text-slate-800">{{ option.name }}</p><p class="text-xs text-slate-500">{{ option.branch }}</p></div></template>
+            </Select>
+            <small class="text-xs text-slate-500">Drivers from your branch appear first.</small>
           </div>
 
+          <div>
+            <label class="mb-1 block text-sm text-slate-600">Delivery Assistants</label>
+            <MultiSelect v-model="form.assistant_user_ids" :options="availableAssistants" optionLabel="name" optionValue="id" fluid filter display="chip" placeholder="Select employees (optional)">
+              <template #option="{ option }"><div><p class="text-sm font-medium text-slate-800">{{ option.name }}</p><p class="text-xs text-slate-500">{{ option.branch }}</p></div></template>
+            </MultiSelect>
+          </div>
+  
+          <div v-if="selectedEmployee" class="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="font-semibold text-slate-900">Driver Information</h3>
+              <Tag value="Active" severity="success" />
+            </div>
+            <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div><span class="text-slate-500">Full Name</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.name || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Employee Number</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.employee_number || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Contact</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.contact || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Email</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.email || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Department</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.department || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Position</span>
+                <p class="font-medium text-slate-900">{{ selectedEmployee.position || 'Driver' }}</p>
+              </div>
+            </div>
+          </div>
+  
           <div>
             <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
-            <Select
-              v-model="form.vehicle_id"
-              :options="vehicles"
-              optionLabel="label"
-              optionValue="id"
-              fluid
-              filter
-              placeholder="Select vehicle"
-            />
+            <Select v-model="form.vehicle_id" :options="vehicles" optionLabel="label" optionValue="id" fluid filter
+              placeholder="Select vehicle" />
           </div>
 
+          <div v-if="source === 'return_pickup'">
+            <label class="mb-1 block text-sm text-slate-600">Deliver Return To *</label>
+            <Select v-model="form.destination_branch_id" :options="branches" optionLabel="label" optionValue="id" fluid filter placeholder="Select destination branch" />
+          </div>
+  
+          <div v-if="selectedVehicle" class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="font-semibold text-slate-900">Vehicle Details</h3>
+              <Tag :value="selectedVehicle.status || 'Active'" severity="success" />
+            </div>
+            <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div><span class="text-slate-500">Vehicle Name</span>
+                <p class="font-medium text-slate-900">{{ selectedVehicle.vehicle_name || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Type</span>
+                <p class="font-medium capitalize text-slate-900">{{ selectedVehicle.vehicle_type || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Plate Number</span>
+                <p class="font-medium text-slate-900">{{ selectedVehicle.plate_number || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Brand / Model</span>
+                <p class="font-medium text-slate-900">{{ [selectedVehicle.brand,
+                  selectedVehicle.model].filter(Boolean).join(' ') || '-' }}</p>
+              </div>
+              <div><span class="text-slate-500">Capacity</span>
+                <p class="font-medium text-slate-900">{{ selectedVehicle.capacity_kg ? `${selectedVehicle.capacity_kg} kg`
+                  : '-' }}</p>
+              </div>
+            </div>
+          </div>
+  
           <div>
-            <label class="mb-1 block text-sm text-slate-600">Courier Contact Number</label>
-            <InputText v-model="form.courier_contact" fluid placeholder="09xxxxxxxxx" />
+            <label class="mb-1 block text-sm text-slate-600">{{ source === 'return_pickup' ? 'Pickup Schedule' : 'Estimated Delivery Time' }}</label>
+            <DatePicker v-model="form.estimated_delivery_at" :minDate="new Date()"  fluid showIcon/>
           </div>
-
-          <div>
-            <label class="mb-1 block text-sm text-slate-600">Estimated Delivery Time</label>
-            <DatePicker v-model="form.estimated_delivery_at" showTime hourFormat="12" fluid />
-          </div>
-
+  
           <div class="md:col-span-2">
             <label class="mb-1 block text-sm text-slate-600">Notes</label>
             <Textarea v-model="form.notes" rows="3" fluid placeholder="Optional logistics notes" />
           </div>
-
+  
           <div class="md:col-span-2 flex flex-wrap gap-2">
-            <Button type="button" outlined icon="pi pi-map-marker" label="Calculate Distance" :loading="estimating" @click="calculateDistance" />
-            <Button type="submit" icon="pi pi-check" label="Assign Delivery" :loading="submitting" :disabled="!canManageDeliveries || !canSubmit" />
+            <Button type="submit" icon="pi pi-check" :label="source === 'return_pickup' ? 'Assign Return Pickup' : 'Assign Delivery'" :loading="submitting"
+              :disabled="!canManageDeliveries || !canSubmit" />
           </div>
         </form>
       </template>
@@ -91,7 +143,7 @@ import { useToast } from 'primevue/usetoast'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
-import InputText from 'primevue/inputtext'
+import MultiSelect from 'primevue/multiselect'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
@@ -105,7 +157,10 @@ const toast = useToast()
 const authStore = useAuthStore()
 const canManageDeliveries = authStore.hasPermission('logistics.deliveries.manage')
 
-const source = computed(() => (String(route.query.source || '').toLowerCase() === 'sales' ? 'sales' : 'ecommerce'))
+const source = computed<'ecommerce' | 'sales' | 'return_pickup'>(() => {
+  const value = String(route.query.source || '').toLowerCase()
+  return value === 'sales' || value === 'return_pickup' ? value : 'ecommerce'
+})
 const orderId = computed(() => Number(route.query.order_id || 0))
 
 const loading = ref(false)
@@ -113,16 +168,22 @@ const estimating = ref(false)
 const submitting = ref(false)
 const order = ref<any>(null)
 
-const employees = ref<any[]>([])
+const drivers = ref<any[]>([])
+const assistants = ref<any[]>([])
 const vehicles = ref<any[]>([])
+const branches = ref<any[]>([])
 const zones = ref<any[]>([])
 const selectedZone = ref<any>(null)
 const selectedRate = ref<any>(null)
+const selectedEmployee = computed(() => drivers.value.find((employee: any) => Number(employee.id) === Number(form.driver_user_id)))
+const availableAssistants = computed(() => assistants.value.filter((employee: any) => Number(employee.id) !== Number(form.driver_user_id)))
+const selectedVehicle = computed(() => vehicles.value.find((vehicle: any) => Number(vehicle.id) === Number(form.vehicle_id)))
 
 const form = reactive({
   driver_user_id: null as number | null,
   vehicle_id: null as number | null,
-  courier_contact: '',
+  destination_branch_id: null as number | null,
+  assistant_user_ids: [] as number[],
   distance_km: 0,
   per_km_charge: 0,
   base_fee: 0,
@@ -135,24 +196,16 @@ const form = reactive({
   notes: '',
 })
 
-const sourceLabel = computed(() => (source.value === 'sales' ? 'Sales' : 'Ecommerce'))
-const customerName = computed(() => (source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
-const customerContact = computed(() => (source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
-const deliveryAddress = computed(() => (source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
+const sourceLabel = computed(() => source.value === 'return_pickup' ? 'Customer Return Pickup' : (source.value === 'sales' ? 'Sales' : 'Ecommerce'))
+const customerName = computed(() => source.value === 'return_pickup' ? order.value?.pickup_name : (source.value === 'sales' ? order.value?.customer_name : order.value?.shipping_name) || '-')
+const customerContact = computed(() => source.value === 'return_pickup' ? order.value?.pickup_phone : (source.value === 'sales' ? order.value?.customer_phone : order.value?.shipping_phone) || '-')
+const deliveryAddress = computed(() => source.value === 'return_pickup' ? order.value?.pickup_address : (source.value === 'sales' ? order.value?.delivery_address : order.value?.shipping_address) || '-')
 const formattedOrderStatus = computed(() => {
   const status = String(order.value?.status || '')
   if (!status) return '-'
   return status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 })
-const orderTotal = computed(() => Number(order.value?.total_amount || 0).toFixed(2))
-const estimatedFee = computed(() => {
-  const base = Number(form.base_fee || 0)
-  const distance = Number(form.distance_km || 0)
-  const perKm = Number(form.per_km_charge || 0)
-  const weight = Number(form.weight_kg || 0)
-  const perKg = Number(form.per_kg_fee || 0)
-  return (base + distance * perKm + weight * perKg).toFixed(2)
-})
+const formatCurrency = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 
 const totalWeightKg = computed(() => {
   const items = order.value?.items || []
@@ -173,7 +226,7 @@ const selectedRateLabel = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return !!form.driver_user_id && !!form.vehicle_id && !!form.courier_contact && Number(form.per_km_charge) >= 0
+  return !!form.driver_user_id && !!form.vehicle_id && (source.value !== 'return_pickup' || !!form.destination_branch_id) && Number(form.per_km_charge) >= 0
 })
 
 const loadOptions = async () => {
@@ -183,7 +236,8 @@ const loadOptions = async () => {
     logisticsService.getZones({ per_page: 200, is_active: true }),
   ])
 
-  employees.value = employeeRes?.data || []
+  drivers.value = employeeRes?.data?.drivers || []
+  assistants.value = employeeRes?.data?.assistants || []
 
   const vehicleRows = vehicleRes?.data?.data || []
   vehicles.value = vehicleRows.map((vehicle: any) => ({
@@ -192,10 +246,35 @@ const loadOptions = async () => {
   }))
 
   zones.value = zoneRes?.data?.data || []
+  if (source.value === 'return_pickup') {
+    const branchRes = await logisticsService.getReturnPickupBranches()
+    branches.value = (branchRes?.data || []).map((branch: any) => ({ ...branch, label: `${branch.name} (${branch.branch_type === 'warehouse' ? 'Warehouse' : 'Store'}) - ${branch.address || branch.city || 'No address'}` }))
+  }
 }
 
 const loadOrderDetail = async () => {
   if (!orderId.value) return
+
+  if (source.value === 'return_pickup') {
+    const response = await logisticsService.getReturnPickup(orderId.value)
+    const pickup = response?.data || null
+    const returnRequest = pickup?.return_request || null
+    const orderItem = returnRequest?.order_item || null
+    order.value = pickup ? {
+      ...pickup,
+      order_number: returnRequest?.return_number || `Return #${returnRequest?.id || pickup.id}`,
+      status: pickup.status,
+      total_amount: Number(orderItem?.unit_price || 0) * Number(returnRequest?.requested_quantity || 1),
+      shipping_fee: pickup.estimated_fee || 0,
+      items: orderItem ? [{ ...orderItem, quantity: Number(returnRequest?.requested_quantity || 1) }] : [],
+    } : null
+    form.weight_kg = Number(totalWeightKg.value.toFixed(2))
+    if (pickup && !['scheduled', 'ready_for_dispatch'].includes(String(pickup.status || '').toLowerCase())) {
+      toast.add({ severity: 'warn', summary: 'Already Assigned', detail: 'This return pickup has already been assigned.', life: 3000 })
+      router.replace({ name: 'logistics.return-pickups.detail', params: { id: orderId.value } })
+    }
+    return
+  }
 
   const response = await logisticsService.getDeliveryOrderDetail(source.value as 'ecommerce' | 'sales', orderId.value)
   order.value = response?.data?.order || null
@@ -204,7 +283,11 @@ const loadOrderDetail = async () => {
   }
 
   const existingDeliveryStatus = String(response?.data?.delivery?.status || '').toLowerCase()
-  if (response?.data?.delivery && existingDeliveryStatus !== 'pending') {
+  // An order marked Ready for Dispatch is eligible for its first logistics
+  // assignment. Only redirect when a delivery has moved beyond the unassigned
+  // states; otherwise the create page immediately bounces back to the detail.
+  const deliveryCanBeAssigned = ['pending', 'ready_for_dispatch'].includes(existingDeliveryStatus)
+  if (response?.data?.delivery && !deliveryCanBeAssigned) {
     toast.add({
       severity: 'warn',
       summary: 'Already Assigned',
@@ -221,10 +304,11 @@ const loadOrderDetail = async () => {
 }
 
 const calculateDistance = async () => {
-  const originLatitude = Number(source.value === 'sales' ? order.value?.branch?.latitude : order.value?.assigned_branch?.latitude)
-  const originLongitude = Number(source.value === 'sales' ? order.value?.branch?.longitude : order.value?.assigned_branch?.longitude)
-  const destinationLatitude = Number(source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
-  const destinationLongitude = Number(source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
+  const returnOrder = order.value?.return_request?.order
+  const originLatitude = Number(source.value === 'return_pickup' ? returnOrder?.assigned_branch?.latitude : source.value === 'sales' ? order.value?.branch?.latitude : order.value?.assigned_branch?.latitude)
+  const originLongitude = Number(source.value === 'return_pickup' ? returnOrder?.assigned_branch?.longitude : source.value === 'sales' ? order.value?.branch?.longitude : order.value?.assigned_branch?.longitude)
+  const destinationLatitude = Number(source.value === 'return_pickup' ? returnOrder?.customer_latitude : source.value === 'sales' ? order.value?.delivery_latitude : order.value?.customer_latitude)
+  const destinationLongitude = Number(source.value === 'return_pickup' ? returnOrder?.customer_longitude : source.value === 'sales' ? order.value?.delivery_longitude : order.value?.customer_longitude)
 
   if (![originLatitude, originLongitude, destinationLatitude, destinationLongitude].every(Number.isFinite)) {
     toast.add({ severity: 'warn', summary: 'Missing Coordinates', detail: 'Unable to calculate distance for this order.', life: 3000 })
@@ -310,12 +394,29 @@ const submitAssignment = async () => {
 
   submitting.value = true
   try {
+    if (source.value === 'return_pickup') {
+      const estimatedFee = Number(form.base_fee || 0) + Number(form.distance_km || 0) * Number(form.per_km_charge || 0) + Number(form.weight_kg || 0) * Number(form.per_kg_fee || 0)
+      await logisticsService.assignReturnPickupDriver(orderId.value, {
+        driver_user_id: form.driver_user_id,
+        assistant_user_ids: form.assistant_user_ids,
+        vehicle_id: form.vehicle_id,
+        destination_branch_id: form.destination_branch_id,
+        distance_km: Number(form.distance_km || 0),
+        estimated_fee: Number(estimatedFee.toFixed(2)),
+        scheduled_at: form.estimated_delivery_at ? new Date(form.estimated_delivery_at).toISOString() : null,
+        notes: form.notes || null,
+      })
+      toast.add({ severity: 'success', summary: 'Assigned', detail: 'Return pickup has been assigned successfully.', life: 2500 })
+      router.push({ name: 'logistics.return-pickups.detail', params: { id: orderId.value } })
+      return
+    }
+
     await logisticsService.assignDelivery({
       source_type: source.value,
       order_id: orderId.value,
       driver_user_id: form.driver_user_id,
+      assistant_user_ids: form.assistant_user_ids,
       vehicle_id: form.vehicle_id,
-      courier_contact: form.courier_contact,
       distance_km: Number(form.distance_km || 0),
       per_km_charge: Number(form.per_km_charge || 0),
       base_fee: Number(form.base_fee || 0),
@@ -349,6 +450,10 @@ watch(
   }
 )
 
+watch(() => form.driver_user_id, (driverId) => {
+  form.assistant_user_ids = form.assistant_user_ids.filter((id) => Number(id) !== Number(driverId))
+})
+
 onMounted(async () => {
   if (!orderId.value) {
     toast.add({ severity: 'warn', summary: 'Missing Order', detail: 'Please select an order from the list.', life: 3000 })
@@ -359,6 +464,7 @@ onMounted(async () => {
   loading.value = true
   try {
     await Promise.all([loadOptions(), loadOrderDetail()])
+    if (order.value) await calculateDistance()
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load create form.', life: 3500 })
   } finally {

@@ -15,48 +15,23 @@ import LoginForm from '@/Components/auth/LoginForm.vue'
 import { ref, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
-import { Head, router, usePage } from '@inertiajs/vue3'
+import { Head, router } from '@inertiajs/vue3'
 import { LoginFormData } from '@/Components/auth/LoginForm.vue'
 import { useAuthStore } from '@/stores/auth'
+import axios from '@/axios'
 
-const page = usePage()
 const toast = useToast()
 const authStore = useAuthStore()
 const isSubmitting = ref(false)
-
-const getFirstAvailableRoute = (): string => {
-  const normalizedRole = String(authStore.user?.role || '').toLowerCase()
-  const displayRole = String((authStore.user as any)?.display_role || '').toLowerCase()
-
-  if (normalizedRole.includes('customer') || displayRole.includes('customer')) {
-    return '/shop'
-  }
-
-  if (normalizedRole === 'super_admin') return '/admin/dashboard'
-  if (normalizedRole === 'supplier') return '/supplier-portal/dashboard'
-
-  const items = authStore.navigation
-    .filter((item: any) => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
-    .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
-  if (items.length) {
-    return items[0].route_path
-  }
-  return authStore.defaultRoute || '/store/index'
-}
 
 onMounted(async () => {
   if (authStore.isAuthenticated) {
     if (authStore.user?.role !== 'super_admin') {
       await authStore.loadPermissions() // ensure navigation is fresh
     }
-    router.visit(getFirstAvailableRoute())
+    router.visit(authStore.getFirstNavigationRoute())
   }
 })
-
-const getQueryParam = (key: string): string | null => {
-  const query = String(page.url || '').split('?')[1] || ''
-  return new URLSearchParams(query).get(key)
-}
 
 const handleLogin = async (formData: LoginFormData) => {
   if (isSubmitting.value) {
@@ -69,7 +44,8 @@ const handleLogin = async (formData: LoginFormData) => {
   try {
     // Let authStore handle the entire login process
     await authStore.login(formData.login, formData.password)
-    await authStore.fetchCurrentUser({ reloadPermissions: true })
+    // Login already loads permissions; avoid requesting the navigation endpoint twice.
+    await authStore.fetchCurrentUser()
 
     // console.log('✅ Login successful')
     // console.log('User role:', authStore.user?.role)
@@ -89,22 +65,44 @@ const handleLogin = async (formData: LoginFormData) => {
       authStore.user?.store_id ||
       (authStore.user as any)?.store?.id
     )
-    const redirectParam = getQueryParam('redirect')
     const isCustomerRole =
       String(authStore.user?.role || '').toLowerCase().includes('customer') ||
       String((authStore.user as any)?.display_role || '').toLowerCase().includes('customer')
+
+    if (isCustomerRole) {
+      router.visit('/shop')
+      return
+    }
+
+    const isSupplierRole = String(authStore.user?.role || '').toLowerCase() === 'supplier'
+    const isDriverRole = String(authStore.user?.role || '').toLowerCase() === 'driver'
+    if (isDriverRole) {
+      router.visit('/driver/deliveries')
+      return
+    }
+    if (isSupplierRole) {
+      try {
+        await axios.get('/api/supplier-portal/my-portal')
+        router.visit('/supplier-portal/dashboard')
+        return
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          router.visit('/supplier-portal/registration')
+          return
+        }
+        throw error
+      }
+    }
 
     let redirectTo = '/store/registration'
 
     if (hasStore) {
       // Users with a store continue into the system; others complete store registration first.
-      redirectTo = !isCustomerRole && redirectParam ? redirectParam : getFirstAvailableRoute()
+      redirectTo = authStore.getFirstNavigationRoute()
     }
 
-    // ✅ Single redirect with delay (for toast to show)
-    setTimeout(() => {
-      router.visit(redirectTo)
-    }, 500) // Reduced from 1500ms
+    // Navigate immediately after authentication instead of adding an artificial delay.
+    router.visit(redirectTo)
 
   } catch (error: any) {
     console.error('❌ Login error:', error)

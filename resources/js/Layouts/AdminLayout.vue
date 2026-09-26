@@ -16,7 +16,7 @@
   
           <!-- Brand Text -->
           <div>
-            <span class="portal-brand ">FURNISYNC</span>
+            <span class="portal-brand text-orange-500 text-xl">FURNISYNC</span>
           </div>
         </div>
       </div>
@@ -121,6 +121,9 @@
                     <span class="text-xs text-gray-400 whitespace-nowrap">{{ formatTimeAgo(notif.created_at) }}</span>
                   </div>
                   <p class="text-xs text-gray-600 truncate">{{ notif.message || 'Tap to view' }}</p>
+                  <p v-if="notif.data?.created_by?.name" class="mt-1 text-[11px] text-gray-400 truncate">
+                    Created by {{ notif.data.created_by.name }}
+                  </p>
                 </div>
               </button>
             </div>
@@ -165,6 +168,7 @@ const pageTitle = computed(() => String(page.props?.title || ''))
 const pageSubtitle = computed(() => String(page.props?.subtitle || ''))
 const authStore = useAuthStore()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isBooting = ref(true)
 
 type User = {
   id: number
@@ -199,8 +203,21 @@ const adminMenu = [
   },
   {
     to: "/admin/subscription",
+    name: 'AdminSubscription',
     label: "Subscriptions",
     icon: "pi pi-credit-card text-gray-500 w-5"
+  },
+  {
+    to: "/admin/home-content",
+    name: 'admin.home-content',
+    label: "Home Content",
+    icon: "pi pi-desktop text-gray-500 w-5"
+  },
+  {
+    to: "/admin/ecommerce-categories",
+    name: 'admin.ecommerce-categories',
+    label: "Ecommerce Categories",
+    icon: "pi pi-th-large text-gray-500 w-5"
   },
   {
     to: "/admin/store-validation",
@@ -214,11 +231,11 @@ const adminMenu = [
     label: "Supplier Verification",
     icon: "pi pi-building-columns text-gray-500 w-5"
   },
-  {
-    to: "/admin/customer-validation",
-    label: "Customer Verification",
-    icon: "pi pi-user text-gray-500 w-5"
-  },
+  // {
+  //   to: "/admin/customer-validation",
+  //   label: "Customer Verification",
+  //   icon: "pi pi-user text-gray-500 w-5"
+  // },
   {
     to: "/admin/stores",
     label: "Stores",
@@ -363,14 +380,22 @@ const formatTimeAgo = (iso: string) => {
 }
 
 onMounted(() => {
-  if (!isAuthenticated.value) {
+  const storedToken = localStorage.getItem('auth_token')
+  if (!storedToken) {
     router.visit('/login')
     return
   }
+
+  if (!authStore.user) {
+    authStore.fetchCurrentUser().catch(() => null)
+  }
+
   loadNotifications()
+  isBooting.value = false
 })
 
 watch(isAuthenticated, (value) => {
+  if (isBooting.value) return
   if (value) return
   notifications.value = []
   unreadCount.value = 0

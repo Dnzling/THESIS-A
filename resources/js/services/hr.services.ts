@@ -1,5 +1,6 @@
 import axios from 'axios'
-import axiosClient, { attachInterceptors } from '../axios'
+import { router } from '@inertiajs/vue3'
+import axiosClient from '../axios'
 import type { EmployeeDetails, HrApiResponse } from '../types/hr'
 
 const portalClient = axios.create({
@@ -12,8 +13,6 @@ const portalClient = axios.create({
   timeout: 30000,
 })
 
-attachInterceptors(portalClient)
-
 portalClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('job_portal_token')
   if (token) {
@@ -21,6 +20,23 @@ portalClient.interceptors.request.use((config) => {
   }
   return config
 })
+
+portalClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const path = String(error.config?.url || '')
+    const isLoginAttempt = path.endsWith('/job-portal/auth/login')
+    if (error.response?.status === 401 && !isLoginAttempt) {
+      localStorage.removeItem('job_portal_token')
+      localStorage.removeItem('job_portal_user')
+      if (window.location.pathname !== '/job-portal/login') {
+        localStorage.setItem('job_portal_redirect', window.location.pathname + window.location.search)
+        router.visit('/job-portal/login')
+      }
+    }
+    return Promise.reject(error)
+  },
+)
 
 // Deduplicate in-flight portal GETs to avoid duplicate requests (e.g., Vue dev/strict re-renders)
 const portalInFlight = new Map<string, Promise<any>>()
@@ -60,6 +76,7 @@ export interface JobPosting {
   title: string
   description: string
   department: string
+  employment_type?: 'full_time' | 'part_time' | 'contract' | 'intern'
   salary_min: number
   salary_max: number
   requirements?: string[] | string | null

@@ -12,6 +12,89 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends BaseController
 {
+    public function overview()
+    {
+        try {
+            $storeId = $this->getStoreId();
+            $products = Product::query()
+                ->where('store_id', $storeId)
+                ->where('product_type', 'finished_good');
+            $activeProducts = (clone $products)->where('is_active', true);
+            $pendingPrices = (clone $products)->where('price_approval_status', 'pending');
+            $missingMainImage = (clone $activeProducts)->whereDoesntHave('assets', fn ($query) => $query
+                ->where('asset_type', 'Image_Main'));
+
+            $thisMonth = now()->startOfMonth();
+            $previousMonth = $thisMonth->copy()->subMonth();
+            $nextMonth = $thisMonth->copy()->addMonth();
+            $createdInRange = fn ($query, $start, $end) => $query
+                ->where('created_at', '>=', $start)
+                ->where('created_at', '<', $end);
+
+            $monthlyProducts = (int) $createdInRange((clone $products), $thisMonth, $nextMonth)->count();
+            $previousMonthlyProducts = (int) $createdInRange((clone $products), $previousMonth, $thisMonth)->count();
+            $catalogTrend = [];
+            for ($offset = 5; $offset >= 0; $offset--) {
+                $start = $thisMonth->copy()->subMonths($offset);
+                $catalogTrend[] = [
+                    'label' => $start->format('M'),
+                    'value' => (int) $createdInRange((clone $products), $start, $start->copy()->addMonth())->count(),
+                ];
+            }
+
+            $mapProduct = fn (Product $product) => [
+                'id' => $product->id,
+                'sku' => $product->sku,
+                'name' => $product->product_name,
+                'category' => $product->category?->category_name,
+                'base_price' => (float) ($product->base_price ?? 0),
+                'pending_base_price' => $product->pending_base_price === null ? null : (float) $product->pending_base_price,
+                'pending_discounted_price' => $product->pending_discounted_price === null ? null : (float) $product->pending_discounted_price,
+                'created_at' => $product->created_at?->toDateString(),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'summary' => [
+                        'active_products' => (clone $activeProducts)->count(),
+                        'new_products_this_month' => $monthlyProducts,
+                        'new_products_previous_month' => $previousMonthlyProducts,
+                        'pending_price_approvals' => (clone $pendingPrices)->count(),
+                        'missing_main_images' => (clone $missingMainImage)->count(),
+                        'image_ready_products' => max(0, (clone $activeProducts)->count() - (clone $missingMainImage)->count()),
+                    ],
+                    'catalog_trend' => $catalogTrend,
+                    'pending_prices' => (clone $pendingPrices)
+                        ->with('category:id,category_name')
+                        ->oldest('price_proposed_at')
+                        ->limit(5)
+                        ->get()
+                        ->map($mapProduct),
+                    'missing_images' => (clone $missingMainImage)
+                        ->with('category:id,category_name')
+                        ->oldest('created_at')
+                        ->limit(5)
+                        ->get()
+                        ->map($mapProduct),
+                    'recent_products' => (clone $products)
+                        ->with('category:id,category_name')
+                        ->latest('created_at')
+                        ->limit(5)
+                        ->get()
+                        ->map($mapProduct),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Merchandising dashboard overview failed', ['exception' => $e]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load merchandising dashboard.',
+            ], 500);
+        }
+    }
+
     public function stats()
     {
         try {

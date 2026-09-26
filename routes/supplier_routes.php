@@ -9,7 +9,7 @@ use App\Http\Controllers\Api\Supplier\SupplierRecommendationController;
 Route::middleware(['api', 'auth:sanctum'])->prefix('suppliers')->group(function () {
     // ==================== SUPPLIER MANAGEMENT ====================
     Route::get('/', [SupplierController::class, 'index']);
-    Route::post('/', [SupplierController::class, 'store']);
+    Route::post('/', [SupplierController::class, 'store'])->middleware('subscription.capacity:suppliers');
     Route::get('/search', [SupplierController::class, 'search']);
     Route::get('/{id}', [SupplierController::class, 'show']);
     Route::put('/{id}', [SupplierController::class, 'update']);

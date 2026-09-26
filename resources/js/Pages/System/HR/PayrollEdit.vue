@@ -39,16 +39,18 @@
   
     <!-- Payroll Table -->
     <DataTable :value="filteredPayrollItems" :paginator="true" :rows="10" :rowsPerPageOptions="[10, 20, 50]"
-      tableStyle="min-width: 155rem" :loading="loading"
+      tableStyle="min-width: 175rem" :loading="loading"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
       currentPageReportTemplate="Showing {first} to {last} of {totalRecords} employees" sortMode="multiple" rowHover
       scrollable scrollHeight="calc(100vh - 300px)" v-model:selection="selectedItems" removableSort
       selectionMode="multiple">
       <!-- Selection Column -->
-      <Column selectionMode="multiple" headerStyle="width: 3rem" />
+      <Column selectionMode="multiple" frozen alignFrozen="left" style="width: 3rem; min-width: 3rem"
+        headerStyle="width: 3rem; min-width: 3rem" />
   
       <!-- Employee Columns -->
-      <Column class="text-xs" field="employeeName" header="Employee" sortable>
+      <Column class="text-xs" field="employeeName" header="Employee" sortable frozen alignFrozen="left"
+        style="width: 14rem; min-width: 14rem" headerStyle="width: 14rem; min-width: 14rem">
         <template #body="{ data }">
           <div class="font-medium">{{ data.employeeName }}</div>
           <small class="text-gray-500">{{ data.employeeId }}</small>
@@ -57,12 +59,15 @@
   
       <Column class="text-xs" field="branch" header="Branch" sortable />
       <Column class="text-xs" field="department" header="Department" sortable />
+      <Column class="text-xs" field="absentDays" header="Absent" sortable />
+      <Column class="text-xs" field="leaveDays" header="On Leave" sortable />
+      <Column class="text-xs" field="breakMinutes" header="Break (min)" sortable />
+      <Column class="text-xs" field="lateMinutes" header="Late (min)" sortable />
   
       <!-- Financial Columns -->
       <Column class="text-xs" field="baseSalary" header="Base Salary" sortable>
         <template #body="{ data }">
-          <InputNumber size="small" fluid v-model="data.baseSalary" mode="currency" currency="PHP" locale="en-PH" :min="0"
-            @blur="recalculateTotals(data)" />
+          {{ formatCurrency(data.baseSalary) }}
         </template>
       </Column>
   
@@ -75,15 +80,14 @@
       <!-- Earnings -->
       <Column class="text-xs" field="basicPay" header="Basic Pay" sortable>
         <template #body="{ data }">
-          <InputNumber size="small" fluid v-model="data.basicPay" mode="currency" currency="PHP" locale="en-PH" :min="0"
-            @blur="recalculateTotals(data)" />
+          {{ formatCurrency(data.basicPay) }}
         </template>
       </Column>
   
+      <Column class="text-xs" field="overtimeHours" header="OT Hrs" sortable />
       <Column class="text-xs" field="overtimePay" header="OT Pay" sortable>
         <template #body="{ data }">
-          <InputNumber size="small" fluid v-model="data.overtimePay" mode="currency" currency="PHP" locale="en-PH"
-            :min="0" @blur="recalculateTotals(data)" />
+          {{ formatCurrency(data.overtimePay) }}
         </template>
       </Column>
   
@@ -92,6 +96,9 @@
           <InputNumber size="small" fluid v-model="data.allowanceAmount" mode="currency" currency="PHP" locale="en-PH"
             :min="0" @blur="recalculateTotals(data)" />
         </template>
+      </Column>
+      <Column class="text-xs" field="incentiveAmount" header="Dated Incentives" sortable>
+        <template #body="{ data }">{{ formatCurrency(data.incentiveAmount) }}</template>
       </Column>
   
       <!-- Deductions -->
@@ -123,14 +130,11 @@
           <span class="font-medium">{{ formatCurrency(data.lateDeductions) }}</span>
         </template>
       </Column>
-  
-      <Column class="text-xs" field="leaveDeductions" header="Leave" sortable>
-          <template #body="{ data }">
-          <span class="font-medium">{{ formatCurrency(data.leaveDeductions) }}</span>
-        </template>
+      <Column class="text-xs" field="absenceDeduction" header="Absence Ded." sortable>
+        <template #body="{ data }">{{ formatCurrency(data.absenceDeduction) }}</template>
       </Column>
   
-      <Column class="text-xs" field="bonusPay" header="Bonus Pay" sortable>
+      <Column class="text-xs" field="bonusPay" header="Bonus / Incentive Override" sortable>
         <template #body="{ data }">
           <InputNumber size="small" fluid v-model="data.bonusPay" mode="currency" currency="PHP" locale="en-PH" :min="0"
             @blur="recalculateTotals(data)" />
@@ -193,6 +197,7 @@ import { useToast } from 'primevue/usetoast'
 import { useRoute, useRouter } from 'vue-router'
 import hrService from '@/services/hr.services'
 import { useAuthStore } from '../../../stores/auth'
+import { printPayrollPayslip } from '@/utils/payrollPayslipPrint'
 
 // ==================== INTERFACES ====================
 interface GovernmentDeductions {
@@ -215,8 +220,16 @@ interface PayrollItem {
   overtimePay: number
   allowanceAmount: number
   bonusPay: number
+  incentiveAmount: number
+  absentDays: number
+  leaveDays: number
+  breakMinutes: number
+  lateMinutes: number
+  overtimeHours: number
   governmentDeductions: GovernmentDeductions
   lateDeductions: number
+  absenceDeduction: number
+  halfDayDeduction: number
   leaveDeductions: number
   otherDeductions: number
   grossPay: number
@@ -232,6 +245,7 @@ interface PayrollItem {
 interface BatchInfo {
   id: number
   name: string
+  store_name?: string | null
   start_date: string
   end_date: string
   pay_date: string
@@ -367,18 +381,28 @@ const transformPayrollData = (apiData: any[]): PayrollItem[] => {
       branch: item.employee?.branch || 'N/A',
       department: item.employee?.department || 'N/A',
       baseSalary: parseFloat(item.base_salary) || 0,
-      salaryPerHour: item.base_salary ? parseFloat(item.base_salary) / 160 : 0,
+      salaryPerHour: Number(item.hourly_rate || 0),
       basicPay: parseFloat(item.base_salary) || 0,
       overtimePay: parseFloat(item.overtime_amount) || 0,
       allowanceAmount: parseFloat(item.allowances_total) || 0,
       bonusPay: parseFloat(item.bonuses_total) || 0,
+      incentiveAmount: Number(item.period_metrics?.incentive_total || 0),
+      absentDays: Number(item.period_metrics?.absent_days || 0),
+      leaveDays: Number(item.period_metrics?.leave_days || 0),
+      breakMinutes: Number(item.period_metrics?.break_minutes || 0),
+      lateMinutes: Number(item.period_metrics?.late_minutes || 0),
+      overtimeHours: Number(item.overtime_hours || 0),
       governmentDeductions: govDeductions,
       deductionItems: deductionItems,
       lateDeductions: parseFloat(item.late_deduction) || 0,
+      absenceDeduction: Number(item.period_metrics?.absence_deduction || 0),
+      halfDayDeduction: Number(item.period_metrics?.half_day_deduction || 0),
       leaveDeductions: parseFloat(item.leave_deduction) || 0,
-      otherDeductions: 0,
+      otherDeductions: Math.max(0, totalDeductionsValue + govDeductions.tax
+        - Object.values(govDeductions).reduce((sum, value) => sum + value, 0)
+        - (parseFloat(item.late_deduction) || 0)),
       grossPay,
-      totalDeductions: totalDeductionsValue,
+      totalDeductions: totalDeductionsValue + govDeductions.tax,
       netPay: parseFloat(item.net_salary) || 0,
       status: item.status || 'draft',
       saving: false,
@@ -456,6 +480,7 @@ const saveAllChanges = async () => {
     )
 
     if (savedCount > 0) {
+      await fetchPayrollData()
       toast.add({
         severity: 'success',
         summary: 'All Changes Saved',
@@ -481,8 +506,7 @@ const savePayrollItem = async (item: PayrollItem) => {
     })
 
     if (response.data.success) {
-      // Sync net pay from server
-      item.netPay = parseFloat(response.data.data.net_salary) || item.netPay
+      await fetchPayrollData()
       toast.add({ severity: 'success', summary: 'Saved', detail: `${item.employeeName}'s payroll saved`, life: 2000 })
     }
   } catch (error: any) {
@@ -500,9 +524,9 @@ const savePayrollItem = async (item: PayrollItem) => {
 const submitForApproval = async (item: PayrollItem) => {
   item.submitting = true
   try {
-    await hrService.api.post(`/api/payroll/${item.payroll_id}/approve`)
-    item.status = 'approved'
-    toast.add({ severity: 'success', summary: 'Approved', detail: `${item.employeeName}'s payroll approved`, life: 3000 })
+    const response = await hrService.api.post(`/api/payroll/${item.payroll_id}/submit`)
+    await fetchPayrollData()
+    toast.add({ severity: 'success', summary: 'Payroll Submitted', detail: response.data.message, life: 3000 })
   } catch (error: any) {
     toast.add({
       severity: 'error',
@@ -525,12 +549,12 @@ const submitBatchForApproval = async () => {
   bulkSubmitting.value = true
   try {
     const ids = eligibleItems.map(i => i.payroll_id)
-    const response = await hrService.api.post('/api/payroll/bulk-approve', { payroll_ids: ids })
+    const response = await hrService.api.post('/api/payroll/bulk-submit', { payroll_ids: ids })
 
     if (response.data.success) {
-      eligibleItems.forEach(item => { item.status = 'approved' })
       selectedItems.value = []
-      toast.add({ severity: 'success', summary: 'Bulk Approved', detail: response.data.message, life: 3000 })
+      await fetchPayrollData()
+      toast.add({ severity: 'success', summary: 'Bulk Submitted', detail: response.data.message, life: 3000 })
     }
   } catch (error: any) {
     toast.add({
@@ -546,78 +570,52 @@ const submitBatchForApproval = async () => {
 
 const printPayslip = (item: PayrollItem) => {
   const period = batchInfo.value
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Payslip - ${item.employeeName}</title>
-      <style>
-        body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; color: #333; }
-        h2 { text-align: center; margin-bottom: 4px; }
-        .subtitle { text-align: center; color: #666; margin-bottom: 16px; font-size: 11px; }
-        .section { margin-bottom: 12px; }
-        .section-title { font-weight: bold; background: #f0f0f0; padding: 4px 8px; border-left: 3px solid #333; margin-bottom: 6px; }
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 4px 8px; }
-        td:last-child { text-align: right; }
-        .total-row td { font-weight: bold; border-top: 2px solid #333; }
-        .net-row td { font-weight: bold; font-size: 14px; background: #e8f5e9; }
-        .header-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 11px; }
-        .label { color: #666; }
-        @media print { body { margin: 10px; } }
-      </style>
-    </head>
-    <body>
-      <h2>PAYSLIP</h2>
-      <div class="subtitle">${period?.name ?? ''} &nbsp;|&nbsp; ${period ? formatDate(period.start_date) + ' – ' + formatDate(period.end_date) : ''}</div>
-      <div class="header-grid">
-        <div><span class="label">Employee:</span> <strong>${item.employeeName}</strong></div>
-        <div><span class="label">Employee #:</span> ${item.employeeId}</div>
-        <div><span class="label">Department:</span> ${item.department}</div>
-        <div><span class="label">Branch:</span> ${item.branch}</div>
-        <div><span class="label">Pay Date:</span> ${period ? formatDate(period.pay_date) : 'N/A'}</div>
-        <div><span class="label">Status:</span> ${item.status.toUpperCase()}</div>
-      </div>
-      <div class="section">
-        <div class="section-title">EARNINGS</div>
-        <table>
-          <tr><td>Basic Salary</td><td>${formatCurrency(item.baseSalary)}</td></tr>
-          <tr><td>Overtime Pay</td><td>${formatCurrency(item.overtimePay)}</td></tr>
-          <tr><td>Bonus Pay</td><td>${formatCurrency(item.bonusPay)}</td></tr>
-          <tr><td>Allowances</td><td>${formatCurrency(item.allowanceAmount)}</td></tr>
-          <tr class="total-row"><td>Gross Pay</td><td>${formatCurrency(item.grossPay)}</td></tr>
-        </table>
-      </div>
-      <div class="section">
-        <div class="section-title">DEDUCTIONS</div>
-        <table>
-          <tr><td>Income Tax</td><td>- ${formatCurrency(item.governmentDeductions.tax)}</td></tr>
-          <tr><td>SSS</td><td>- ${formatCurrency(item.governmentDeductions.sss)}</td></tr>
-          <tr><td>PhilHealth</td><td>- ${formatCurrency(item.governmentDeductions.philhealth)}</td></tr>
-          <tr><td>Pag-IBIG</td><td>- ${formatCurrency(item.governmentDeductions.pagibig)}</td></tr>
-          <tr><td>Late Deductions</td><td>- ${formatCurrency(item.lateDeductions)}</td></tr>
-          <tr><td>Leave Deductions</td><td>- ${formatCurrency(item.leaveDeductions)}</td></tr>
-          <tr class="total-row"><td>Total Deductions</td><td>- ${formatCurrency(item.totalDeductions)}</td></tr>
-        </table>
-      </div>
-      <div class="section">
-        <table>
-          <tr class="net-row"><td>NET PAY</td><td>${formatCurrency(item.netPay)}</td></tr>
-        </table>
-      </div>
-      <div style="margin-top:40px; display:grid; grid-template-columns:1fr 1fr; gap:20px; font-size:11px;">
-        <div style="border-top:1px solid #333; padding-top:4px; text-align:center;">Prepared by</div>
-        <div style="border-top:1px solid #333; padding-top:4px; text-align:center;">Received by</div>
-      </div>
-    </body>
-    </html>
-  `
-  const win = window.open('', '_blank', 'width=700,height=900')
-  if (win) {
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 500)
+  const listedDeductions = [
+    { label: 'Income tax', amount: item.governmentDeductions.tax },
+    { label: 'SSS', amount: item.governmentDeductions.sss },
+    { label: 'PhilHealth', amount: item.governmentDeductions.philhealth },
+    { label: 'Pag-IBIG', amount: item.governmentDeductions.pagibig },
+    { label: 'Late deduction', amount: item.lateDeductions },
+    { label: 'Absence deduction', amount: item.absenceDeduction },
+    { label: 'Half-day deduction', amount: item.halfDayDeduction },
+  ]
+  const remainingDeductions = Math.max(
+    0,
+    item.totalDeductions - listedDeductions.reduce((total, line) => total + Number(line.amount || 0), 0)
+  )
+  const opened = printPayrollPayslip({
+    storeName: period?.store_name || 'Store name unavailable',
+    employeeName: item.employeeName,
+    employeeId: item.employeeId,
+    department: item.department,
+    branch: item.branch,
+    periodName: period?.name || 'Payroll period',
+    periodStart: period ? formatDate(period.start_date) : '-',
+    periodEnd: period ? formatDate(period.end_date) : '-',
+    payDate: period ? formatDate(period.pay_date) : '-',
+    payrollId: String(item.payroll_id || item.id || '-'),
+    status: item.dirty ? 'Unsaved preview' : item.status,
+    earnings: [
+      { label: 'Base salary', amount: item.baseSalary },
+      { label: 'Overtime pay', amount: item.overtimePay },
+      { label: 'Allowances', amount: item.allowanceAmount },
+      { label: 'Bonuses and incentives', amount: item.bonusPay },
+    ],
+    deductions: [
+      ...listedDeductions,
+      { label: 'Other deductions', amount: remainingDeductions },
+    ],
+    grossPay: item.grossPay,
+    totalDeductions: item.totalDeductions,
+    netPay: item.netPay,
+    absentDays: item.absentDays,
+    leaveDays: item.leaveDays,
+    lateMinutes: item.lateMinutes,
+    overtimeHours: item.overtimeHours,
+  })
+
+  if (!opened) {
+    toast.add({ severity: 'warn', summary: 'Print blocked', detail: 'Allow pop-ups to print this payslip.', life: 3000 })
   }
 }
 
@@ -666,6 +664,3 @@ onMounted(() => {
   }
 }
 </style>
-
-
-

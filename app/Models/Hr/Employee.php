@@ -36,16 +36,13 @@ class Employee extends Model
         'branch_id',
         'role_id',
         'employee_number',
-        'fname',
-        'lname',
-        'phone',
         'address',
         'province',
         'city',
         'barangay',
-        'date_of_birth',
         'gender',
         'hire_date',
+        'contract_end_date',
         'department',
         'employment_type',
         'pay_type',
@@ -60,6 +57,12 @@ class Employee extends Model
         'status',
         'termination_date',
         'termination_reason',
+        'resignation_date',
+        'last_working_day',
+        'resignation_reason',
+        'handover_status',
+        'resignation_notes',
+        'resignation_letter_path',
     ];
 
     /**
@@ -70,9 +73,12 @@ class Employee extends Model
     protected $casts = [
         'date_of_birth' => 'date',
         'hire_date' => 'date',
+        'contract_end_date' => 'date',
         'salary' => 'decimal:2',
         'hourly_rate' => 'decimal:4',
         'termination_date' => 'date',
+        'resignation_date' => 'date',
+        'last_working_day' => 'date',
         'settings' => 'array',
     ];
 
@@ -104,6 +110,27 @@ class Employee extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    // Legacy reads remain available while identity data is stored on users.
+    public function getFnameAttribute(): ?string
+    {
+        return $this->user?->fname;
+    }
+
+    public function getLnameAttribute(): ?string
+    {
+        return $this->user?->lname;
+    }
+
+    public function getPhoneAttribute(): ?string
+    {
+        return $this->user?->phone_number;
+    }
+
+    public function getDateOfBirthAttribute(): mixed
+    {
+        return $this->user?->birthday;
     }
 
     /**

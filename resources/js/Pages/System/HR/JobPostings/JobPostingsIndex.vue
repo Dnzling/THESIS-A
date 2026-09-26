@@ -5,10 +5,10 @@
   
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-2">
-        <h1 class="text-2xl font-semibold tracking-tight">Job Postings</h1>
+        <h1 class="text-lg font-semibold tracking-tight">Job Postings</h1>
       </div>
   
-      <Button v-if="hasPermission('hr.recuitment.manage')" severity="info" label="New Job Posting" icon="pi pi-plus" class="p-button-sm"
+      <Button label="New Job Posting" icon="pi pi-plus" class="p-button-sm"
         @click="openCreateModal" />
     </div>
   
@@ -79,13 +79,14 @@
                 <div class="flex flex-wrap items-center gap-2">
                   <h3 class="text-xl font-semibold text-surface-900">{{ posting.title }}</h3>
                   <Tag :value="posting.status" :severity="getStatusSeverity(posting.status)" />
-                  <Tag v-if="posting.role?.display_name || posting.role?.name" severity="info"
+                  <Tag v-if="posting.role?.display_name || posting.role?.name" 
                     :value="posting.role?.display_name || posting.role?.name" />
+                  <Tag :value="employmentTypeLabel(posting.employment_type)" severity="warn" />
                 </div>
                 <p class="text-sm font-medium text-surface-600">{{ posting.department }}</p>
               </div>
   
-              <div v-if="hasPermission('edit-recuitment')" class="flex items-center gap-2">
+              <div class="flex items-center gap-2">
                 <Button icon="pi pi-pencil" severity="secondary" text rounded @click.stop="editPosting(posting)" />
                 <Button icon="pi pi-trash" severity="danger" text rounded @click.stop="deletePosting(posting.id)" />
               </div>
@@ -154,11 +155,9 @@ import Tag from 'primevue/tag'
 import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
-import { usePermissions } from '../../../../composables/usePermissions'
 import hrService from '../../../../services/hr.services'
 import JobPostingFormModal from '@/Components/JobPostingFormModal.vue'
 
-const { hasPermission } = usePermissions()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
@@ -191,6 +190,14 @@ const filteredPostings = computed(() =>
 
 const openPostingsCount = computed(() =>
   filteredPostings.value.filter((posting) => posting.status === 'Open').length)
+
+const employmentTypeLabels: Record<string, string> = {
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  contract: 'Contract',
+  intern: 'Intern',
+}
+const employmentTypeLabel = (value?: string) => employmentTypeLabels[value || 'full_time'] || 'Full Time'
 
 const totalApplicants = computed(() =>
   filteredPostings.value.reduce((sum, posting) => sum + Number(posting.applications?.length || 0), 0))

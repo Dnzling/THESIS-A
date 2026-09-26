@@ -34,6 +34,7 @@ class Product extends Model
         'base_price',
         'cost_price',
         'discounted_price',
+        'reorder_point',
         'price_approval_status',
         'pending_base_price',
         'pending_discounted_price',
@@ -65,6 +66,7 @@ class Product extends Model
         'cost_price' => 'decimal:2',
         'initial_stock' => 'decimal:2',
         'discounted_price' => 'decimal:2',
+        'reorder_point' => 'integer',
         'pending_base_price' => 'decimal:2',
         'pending_discounted_price' => 'decimal:2',
         'price_proposed_at' => 'datetime',
@@ -146,6 +148,18 @@ class Product extends Model
     public function tags()
     {
         return $this->belongsToMany(Tag::class, 'product_tags')
+            ->withPivot('store_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * Alias used when the legacy products.tags attribute would shadow the
+     * many-to-many tags relationship during serialization.
+     */
+    public function assignedTags()
+    {
+        return $this->belongsToMany(Tag::class, 'product_tags')
+            ->withPivot('store_id')
             ->withTimestamps();
     }
 
@@ -226,7 +240,10 @@ class Product extends Model
             return null;
         }
 
-        if ($user instanceof User && $user->hasPermissionTo('finance.products.view.store', $this->store_id)) {
+        if ($user instanceof User && (
+            $user->hasPermissionTo('finance.products.view.store', $this->store_id)
+            || $user->hasPermissionTo('warehouse.stock.view', $this->store_id)
+        )) {
             return $value;
         }
 

@@ -66,6 +66,21 @@
 			</template>
 		</Card>
 
+		<Card v-if="benefitDetail" class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm">
+			<template #title>Employee benefit request</template>
+			<template #content>
+				<div class="grid gap-4 p-6 text-sm md:grid-cols-3">
+					<div><p class="text-gray-500">Employee</p><p class="font-medium">{{ benefitDetail.employee?.user?.fname }} {{ benefitDetail.employee?.user?.lname }}</p></div>
+					<div><p class="text-gray-500">Benefit</p><p class="font-medium">{{ benefitDetail.deduction_type?.name }}</p></div>
+					<div><p class="text-gray-500">Provider</p><p class="font-medium">{{ benefitDetail.provider }}</p></div>
+					<div><p class="text-gray-500">Service date</p><p class="font-medium">{{ formatDate(benefitDetail.service_date) }}</p></div>
+					<div><p class="text-gray-500">Benefit used</p><p class="font-medium">₱ {{ formatMoney(benefitDetail.used_amount) }}</p></div>
+					<div><p class="text-gray-500">Company payment</p><p class="font-medium">₱ {{ formatMoney(benefitDetail.company_payment_amount) }}</p></div>
+					<div class="md:col-span-3"><a v-if="benefitDetail.receipt_path" :href="`/storage/${benefitDetail.receipt_path}`" target="_blank" rel="noopener" class="text-blue-600 underline">View final receipt</a></div>
+				</div>
+			</template>
+		</Card>
+
 		<Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm" v-if="invoiceDetail">
 			<template #header>
 				<div class="px-6 pt-6">
@@ -131,7 +146,7 @@
 			</template>
 		</Card>
 
-		<Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm" v-else-if="expense && expense.reference_type">
+		<Card class="overflow-hidden rounded-2xl border border-gray-100 shadow-sm" v-else-if="expense && expense.reference_type && expense.reference_type !== 'employee_benefit_request'">
 			<template #content>
 				<div class="p-6 text-sm text-gray-500">
 					No expanded invoice/receipt detail is available for reference type: {{ expense.reference_type }}.
@@ -157,6 +172,7 @@ const router = useRouter()
 const loading = ref(false)
 const expense = ref<any>(null)
 const invoiceDetail = ref<any>(null)
+const benefitDetail = ref<any>(null)
 
 const formatMoney = (value: number | string) => {
 	const amount = typeof value === 'string' ? parseFloat(value) : value || 0
@@ -192,6 +208,10 @@ const loadDetail = async () => {
 		if (expense.value?.reference_type === 'invoice' && expense.value?.reference_id) {
 			const invoiceRes = await financeService.getInvoice(Number(expense.value.reference_id))
 			invoiceDetail.value = invoiceRes.data || null
+		}
+		if (expense.value?.reference_type === 'employee_benefit_request' && expense.value?.reference_id) {
+			const benefitRes = await financeService.getBenefitRequest(Number(expense.value.reference_id))
+			benefitDetail.value = benefitRes.data || null
 		}
 	} finally {
 		loading.value = false

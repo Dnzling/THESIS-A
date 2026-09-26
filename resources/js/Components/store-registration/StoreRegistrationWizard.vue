@@ -1,96 +1,62 @@
 <template>
-  <div class="min-h-screenpy-8">
+  <div class="min-h-screen py-6">
     <div class="mx-auto px-4 sm:px-6 lg:px-8">
-      <!-- Header -->
-      <div class="text-center mb-10">
-        <h1 class="text-3xl font-bold text-gray-900 mb-2">Store Registration</h1>
-        <p class="text-gray-600">
-          Complete all 3 steps to register your store
+      <div class="mb-8 rounded-3xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-6 text-center shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-[0.28em] text-orange-600">Owner verification</p>
+        <h1 class="mt-2 text-3xl font-bold text-slate-950">Verify the store owner</h1>
+        <p class="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+          Upload the store owner's primary Philippine ID, then submit the required business documents for review.
         </p>
       </div>
   
-      <!-- Progress Steps -->
-      <div class="mb-10">
-        <div class="flex justify-center items-center">
-          <div class="flex items-center w-full max-w-4xl">
-            <!-- Step 1 -->
-            <div class="flex items-center flex-1">
-              <div :class="[
-                          'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm',
-                          currentStep >= 1 ? 'bg-black' : 'bg-gray-300'
-                        ]">
-                1
-              </div>
-              <div :class="[
-                          'ml-2 text-sm font-medium',
-                          currentStep >= 1 ? 'text-black' : 'text-gray-400'
-                        ]">
-                Store Info
-              </div>
-            </div>
-  
-            <!-- Connector -->
+      <div class="mb-8 flex justify-center">
+        <div class="flex w-full max-w-4xl items-center gap-3">
+          <div class="flex items-center gap-3">
             <div :class="[
-                      'h-1 flex-1 mx-2',
-                      currentStep >= 2 ? 'bg-black' : 'bg-gray-300'
-                    ]"></div>
-  
-            <!-- Step 2 -->
-            <div class="flex items-center flex-1">
-              <div :class="[
-                          'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm',
-                          currentStep >= 2 ? 'bg-black' : 'bg-gray-300'
-                        ]">
-                2
-              </div>
-              <div :class="[
-                          'ml-2 text-sm font-medium',
-                          currentStep >= 2 ? 'text-black' : 'text-gray-400'
-                        ]">
-                Business Docs
-              </div>
+              'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold',
+              currentStep >= 1 ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-slate-200 text-slate-500',
+            ]">
+              1
             </div>
-  
-            <!-- Connector -->
+            <span :class="currentStep >= 1 ? 'font-semibold text-slate-950' : 'text-slate-400'">Owner IDs</span>
+          </div>
+          <div class="h-1 flex-1 rounded-full" :class="currentStep >= 2 ? 'bg-orange-500' : 'bg-slate-200'"></div>
+          <div class="flex items-center gap-3">
             <div :class="[
-                      'h-1 flex-1 mx-2',
-                      currentStep >= 3 ? 'bg-black' : 'bg-gray-300'
-                    ]"></div>
-  
-            <!-- Step 3 -->
-            <div class="flex items-center flex-1">
-              <div :class="[
-                          'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm',
-                          currentStep >= 3 ? 'bg-black' : 'bg-gray-300'
-                        ]">
-                3
-              </div>
-              <div :class="[
-                          'ml-2 text-sm font-medium',
-                          currentStep >= 3 ? 'text-black' : 'text-gray-400'
-                        ]">
-                Review
-              </div>
+              'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold',
+              currentStep >= 2 ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-slate-200 text-slate-500',
+            ]">
+              2
             </div>
+            <span :class="currentStep >= 2 ? 'font-semibold text-slate-950' : 'text-slate-400'">Business Docs</span>
+          </div>
+          <div class="h-1 flex-1 rounded-full" :class="currentStep >= 3 ? 'bg-orange-500' : 'bg-slate-200'"></div>
+          <div class="flex items-center gap-3">
+            <div :class="[
+              'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold',
+              currentStep >= 3 ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-slate-200 text-slate-500',
+            ]">
+              3
+            </div>
+            <span :class="currentStep >= 3 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span>
           </div>
         </div>
       </div>
-      <!-- Step Content - THIS IS WHERE COMPONENTS ARE RENDERED -->
-      <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-        <!-- Conditionally render the current step component -->
-        <KeepAlive>
-          <component :is="currentStepComponent" :formData="formData" @update:formData="handleFormUpdate"
-            @next="goToNextStep" @prev="goToPrevStep" @submit="handleSubmitSuccess" @edit-step="goToStep" />
-        </KeepAlive>
+      <div class="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div v-if="loadingStoreData" class="flex min-h-64 items-center justify-center text-sm text-slate-500">
+          Checking your store record...
+        </div>
+        <component v-else :key="currentStep" :is="currentStepComponent" :formData="formData" @update:formData="handleFormUpdate"
+          @next="goToNextStep" @prev="goToPrevStep" @verification-submitted="handleSubmitSuccess" @edit-step="goToStep" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent, nextTick } from 'vue'
+import { ref, computed, defineAsyncComponent, nextTick, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
-import { router } from '@inertiajs/vue3'
+import axiosClient from '@/axios'
 
 const toast = useToast()
 
@@ -101,45 +67,33 @@ interface Emits {
 const emit = defineEmits<Emits>()
 
 // Async components
-const StoreInfoStep = defineAsyncComponent(() => import('./steps/StoreInfoStep.vue'))
+const OwnerIdStep = defineAsyncComponent(() => import('./steps/OwnerIdStep.vue'))
 const BusinessDocsStep = defineAsyncComponent(() => import('./steps/BusinessDocsStep.vue'))
 const ReviewStep = defineAsyncComponent(() => import('./steps/ReviewStep.vue'))
 
 // Current step
 const currentStep = ref(1)
+const loadingStoreData = ref(true)
 
 // Form data
 const formData = ref({
-  // Step 1
-  storeName: '',
-  businessType: '',
-  businessNumber: '',
-  businessAddress: {
-    address: '',
-    city: '',
-    cityId: '',
-    barangay: '',
-    barangayCode: '',
-    longitude: '',
-    latitude: '',
-  },
-  contactNumber: '',
-  email: '',
-
-  // Step 2
+  storeId: null as number | null,
+  primaryIdType: '',
+  primaryIdNumber: '',
+  primaryIdFront: null as File | null,
+  primaryIdBack: null as File | null,
+  primaryIdReadMessage: '',
   registrationPermit: null as File | null,
+  businessRegistrationNumber: '',
   taxCertificate: null as File | null,
   mayorPermit: null as File | null,
   additionalNotes: '',
-
-  // Step 3
   termsAccepted: false,
   privacyAccepted: false
 })
 
-// Step components mapping
 const stepComponents = {
-  1: StoreInfoStep,
+  1: OwnerIdStep,
   2: BusinessDocsStep,
   3: ReviewStep
 }
@@ -163,7 +117,7 @@ const scrollToTop = () => {
 // Navigation with scroll
 const goToNextStep = () => {
   if (currentStep.value < 3) {
-    currentStep.value++
+    currentStep.value = Math.min(currentStep.value + 1, 3)
     nextTick(scrollToTop) // Scroll after DOM updates
   }
 }
@@ -189,6 +143,24 @@ const handleFormUpdate = (data: any) => {
 
 const handleSubmitSuccess = () => {
   emit('submitted', true)
-  router.visit('/store/settings')
 }
+
+const loadRecordedStoreData = async () => {
+  try {
+    const response = await axiosClient.get('/api/store/settings')
+    const payload = response?.data?.data || {}
+    const store = payload.store || {}
+    formData.value = {
+      ...formData.value,
+      storeId: Number(store.id || 0) || null,
+    }
+  } catch (error) {
+    console.error('Failed to load recorded store information', error)
+    toast.add({ severity: 'warn', summary: 'Store data unavailable', detail: 'Please reload or return to Store Settings.', life: 3500 })
+  } finally {
+    loadingStoreData.value = false
+  }
+}
+
+onMounted(loadRecordedStoreData)
 </script>

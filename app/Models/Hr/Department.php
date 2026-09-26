@@ -104,7 +104,10 @@ class Department extends Model
      */
     public function getEmployeeCountAttribute(): int
     {
-        return $this->employees()->count();
+        return Employee::query()
+            ->where('store_id', $this->store_id)
+            ->whereIn('role_id', $this->roles()->pluck('roles.id'))
+            ->count();
     }
 
     /**

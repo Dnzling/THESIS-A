@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
       <div class="flex justify-center">
       </div>
@@ -31,7 +31,8 @@
             </label>
             <div class="flex justify-center space-x-2 mb-6">
               <input v-for="(_, index) in otpDigits" :key="index" ref="otpInputs" v-model="otpDigits[index]"
-                type="text" maxlength="1" @input="handleOtpInput(index, $event)"
+                type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code"
+                @input="handleOtpInput(index, $event)"
                 @keydown="handleOtpKeydown(index, $event)" @paste="handlePaste"
                 class="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition"
                 :class="{ 'border-red-300': errorMessage }" />
@@ -119,10 +120,12 @@ const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
 const isProfileOtp = computed(() => otpContext.value === 'profile_email_change')
 const isSupplierOtp = computed(() => otpContext.value === 'supplier')
+const isBusinessOtp = computed(() => ['business', 'saas', 'store_admin', 'owner'].includes(otpContext.value))
 const otpContextLabel = computed(() => {
   if (isCustomerOtp.value) return 'Furnisync Shop Customer Verification'
   if (isProfileOtp.value) return 'Profile Email Change'
   if (isSupplierOtp.value) return 'Supplier Verification'
+  if (isBusinessOtp.value) return 'Furniture Store Business Verification'
   return 'Furnisync Verification'
 })
 
@@ -216,6 +219,14 @@ const verifyOtp = async () => { // Add async here
       successMessage.value = response.data.message || 'Email verified successfully!'
       isVerified.value = true
 
+      // Capture the context before clearing it. Clearing localStorage first
+      // changes the computed value to its default and used to send business
+      // registrations down the customer login branch.
+      const verifiedContext = otpContext.value
+      const verifiedCustomer = verifiedContext === 'customer'
+      const verifiedProfile = verifiedContext === 'profile_email_change'
+      const verifiedSupplier = verifiedContext === 'supplier'
+
       // Clear OTP context once verified.
       localStorage.removeItem('otp_context')
 
@@ -225,7 +236,7 @@ const verifyOtp = async () => { // Add async here
       const nextPath = String(response.data.next_path || '')
       const requiresLogin = Boolean(response.data.requires_login ?? true)
 
-      if (isCustomerOtp.value) {
+      if (verifiedCustomer) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.get('/customer/login', {
@@ -233,12 +244,12 @@ const verifyOtp = async () => { // Add async here
             email: response.data.user?.email || ''
           })
         }, 1200)
-      } else if (isProfileOtp.value) {
+      } else if (verifiedProfile) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.visit('/hr/profile')
         }, 1200)
-      } else if (isSupplierOtp.value) {
+      } else if (verifiedSupplier) {
         setTimeout(() => {
           localStorage.removeItem('register_token')
           router.visit('/login')
@@ -326,8 +337,8 @@ const resendCode = async () => {
   }
 }
 
-// Auto-focus first input on mount
-onMounted(() => {
+// The verification page owns the first OTP delivery, not registration.
+onMounted(async () => {
   setTimeout(() => {
     focusOtpInput(0)
   }, 100)
@@ -345,8 +356,20 @@ onMounted(() => {
     console.warn('No register_token found in localStorage')
   }
 
-  // Start initial 60s countdown on page load
-  startResendCooldown()
+  if (!accessToken.value) {
+    errorMessage.value = 'Your verification session has expired. Please log in again.'
+    return
+  }
+  if (isProfileOtp.value) return
+  try {
+    const response = await axios.post('/api/auth/send-otp', {}, {
+      headers: { Authorization: `Bearer ${accessToken.value}` },
+    })
+    successMessage.value = response.data.message || 'Verification code sent to your email.'
+    startResendCooldown()
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.message || 'Could not send your verification code. Please try again.'
+  }
 })
 
 onBeforeUnmount(() => {

@@ -15,6 +15,7 @@ use App\Models\Inventory\ReorderRule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ProductController extends BaseController
@@ -28,6 +29,10 @@ class ProductController extends BaseController
             $query = Product::byStore($this->getStoreId())
                            ->with(['category:id,category_name', 'subcategory:id,category_name'])
                            ->withCount(['variations', 'assets']);
+
+            if ($request->boolean('include_variations')) {
+                $query->with('variations:id,product_id,variation_name');
+            }
 
             // Filters
             if ($request->has('category_id')) {
@@ -114,18 +119,20 @@ class ProductController extends BaseController
     {
         try {
             $validated = $this->validateRequest($request, [
-                'sku' => 'required|string|max:50',
+                'sku' => 'nullable|string|max:50',
                 'product_name' => 'required|string|max:200',
                 'description' => 'nullable|string',
                 'category_id' => 'required|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
                 'unit_id' => 'nullable|exists:units,id',
+                'unit_of_measurement' => 'nullable|string|max:50',
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'nullable|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0',
+                'reorder_point' => 'nullable|integer|min:0',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
@@ -150,6 +157,10 @@ class ProductController extends BaseController
             DB::beginTransaction();
 
             try {
+                $validated['sku'] = filled($validated['sku'] ?? null)
+                    ? strtoupper(trim($validated['sku']))
+                    : $this->generateUniqueProductSku((int) $this->getStoreId());
+
                 // Check if SKU is unique for this store
                 $exists = Product::byStore($this->getStoreId())
                                 ->where('sku', $validated['sku'])
@@ -169,6 +180,9 @@ class ProductController extends BaseController
             $data['store_id'] = $this->getStoreId();
             $data['stock_status'] = 'In Stock';
             $data['product_type'] = $validated['product_type'] ?? 'finished_good';
+            // Selling prices entered by merchandising are effective immediately;
+            // do not leave newly created products waiting for finance approval.
+            $data['price_approval_status'] = 'approved';
             $data = $this->applyTypeSpecificDefaults($data);
                 
                 $product = Product::create($data);
@@ -258,6 +272,18 @@ class ProductController extends BaseController
                 $e
             );
         }
+    }
+
+    private function generateUniqueProductSku(int $storeId): string
+    {
+        do {
+            $sku = 'FG-' . Str::upper(Str::random(6)) . '-' . now()->format('YmdHis');
+        } while (Product::withTrashed()
+            ->where('store_id', $storeId)
+            ->where('sku', $sku)
+            ->exists());
+
+        return $sku;
     }
 
     /**
@@ -398,12 +424,14 @@ class ProductController extends BaseController
                 'category_id' => 'sometimes|exists:categories,id',
                 'subcategory_id' => 'nullable|exists:categories,id',
                 'unit_id' => 'nullable|exists:units,id',
+                'unit_of_measurement' => 'nullable|string|max:50',
                 'product_type' => 'nullable|in:raw_material,finished_good',
                 'brand' => 'nullable|string|max:100',
                 'collection_name' => 'nullable|string|max:100',
                 'base_price' => 'sometimes|numeric|min:0',
                 'cost_price' => 'nullable|numeric|min:0',
                 'discounted_price' => 'nullable|numeric|min:0|lt:base_price',
+                'reorder_point' => 'nullable|integer|min:0',
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
@@ -438,72 +466,41 @@ class ProductController extends BaseController
                 $data = $validated;
                 $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
                 if ($isPriceUpdateRequested) {
-                    $data = $this->removeLivePriceFields($data);
-                    $data['pending_base_price'] = array_key_exists('base_price', $validated)
-                        ? $validated['base_price']
-                        : $product->pending_base_price;
-                    $data['pending_discounted_price'] = array_key_exists('discounted_price', $validated)
-                        ? $validated['discounted_price']
-                        : $product->pending_discounted_price;
-                    $data['price_approval_status'] = 'pending';
+                    // Merchandising owns selling prices. Apply the submitted
+                    // values immediately; finance approval is not required.
+                    $data['price_approval_status'] = 'approved';
+                    $data['pending_base_price'] = null;
+                    $data['pending_discounted_price'] = null;
                     $data['price_proposed_by'] = $this->getUserId();
                     $data['price_proposed_at'] = now();
                     $data['price_approved_by'] = null;
                     $data['price_approved_at'] = null;
                     $data['price_rejected_by'] = null;
                     $data['price_rejected_at'] = null;
-                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? null;
+                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? 'Set by merchandising';
                 }
 
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
 
-                // If the acting user can approve pricing, auto-approve immediately
-                if ($this->isFinancePriceApprover()) {
-                    DB::beginTransaction();
-                    try {
-                        $oldPrice = $product->base_price;
-
-                        $product->update([
-                            'base_price' => $product->pending_base_price ?? $product->base_price,
-                            'discounted_price' => $product->pending_discounted_price,
-                            'price_approval_status' => 'approved',
-                            'price_approved_by' => $this->getUserId(),
-                            'price_approved_at' => now(),
-                            'price_rejected_by' => null,
-                            'price_rejected_at' => null,
-                            'price_approval_notes' => $data['price_approval_notes'] ?? $product->price_approval_notes,
-                            'pending_base_price' => null,
-                            'pending_discounted_price' => null,
-                        ]);
-
-                        if (!is_null($product->base_price) && $oldPrice != $product->base_price) {
-                            \App\Models\ProductCatalog\PricingHistory::create([
-                                'store_id' => $this->getStoreId(),
-                                'product_id' => $product->id,
-                                'old_price' => $oldPrice ?? 0,
-                                'new_price' => $product->base_price,
-                                'price_type' => 'Base',
-                                'reason' => $data['price_approval_notes'] ?? 'Auto-approved by finance permission',
-                                'effective_date' => now(),
-                                'created_by' => $this->getActorEmployeeId()
-                            ]);
-                        }
-
-                        DB::commit();
-                    } catch (\Exception $e) {
-                        DB::rollBack();
-                        throw $e;
-                    }
+                if ($isPriceUpdateRequested && !is_null($product->base_price) && $oldPrice != $product->base_price) {
+                    PricingHistory::create([
+                        'store_id' => $this->getStoreId(),
+                        'product_id' => $product->id,
+                        'old_price' => $oldPrice ?? 0,
+                        'new_price' => $product->base_price,
+                        'price_type' => 'Base',
+                        'reason' => $validated['price_change_reason'] ?? 'Updated by merchandising',
+                        'effective_date' => now(),
+                        'created_by' => $this->getActorEmployeeId(),
+                    ]);
                 }
 
                 DB::commit();
 
                 $fresh = $product->fresh(['category', 'subcategory']);
-                $message = $isPriceUpdateRequested
-                    ? 'Price change submitted for finance approval'
-                    : 'Product updated successfully';
+                $message = 'Product updated successfully';
 
                 return $this->successResponse(
                     $fresh,
@@ -901,9 +898,6 @@ class ProductController extends BaseController
                     'maximum_stock' => 1000,
                     'safety_stock' => 5,
                     'stock_status' => 'out_of_stock',
-                    'unit_cost' => 0,
-                    'average_cost' => 0,
-                    'total_value' => 0,
                 ]
             );
 

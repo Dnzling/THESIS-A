@@ -1,12 +1,12 @@
 <template>
-  <div class="space-y-6 p-6">
-    <div class="rounded-3xl border border-slate-200 bg-linear-to-r from-emerald-50 via-cyan-50 to-blue-50 p-6">
+  <div class="module-dashboard dashboard--finance space-y-6">
+    <div class="dashboard-hero">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 class="text-3xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
-          <p class="mt-1 text-sm text-slate-600">MVP overview of payables, operating spend, and payroll cash pressure.</p>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Finance Dashboard</h1>
+          <p class="mt-1 text-sm text-slate-500">Cash position, obligations, and financial performance at a glance.</p>
         </div>
-        <Button icon="pi pi-refresh" label="Refresh" outlined :loading="loading" @click="loadDashboard" />
+        <Button icon="pi pi-refresh" text :loading="loading" @click="loadDashboard" />
       </div>
       <div v-if="loadError" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         {{ loadError }}

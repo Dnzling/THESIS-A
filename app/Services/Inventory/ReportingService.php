@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Inventory\ReorderRule;
 use App\Models\Inventory\StockTransfer;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -14,12 +15,136 @@ class ReportingService
 {
     protected const DAYS_TO_SLOW_MOVING = 90;
 
+    public function getActionableFinishedGoods(int $storeId, int $branchId, string $report, Carbon $start, Carbon $end): array
+    {
+        if ($report === 'transactions') {
+            $transactions = InventoryTransaction::query()->with(['product:id,sku,product_name,product_type', 'variation:id,variation_name,variation_sku', 'branch:id,name'])
+                ->where('store_id', $storeId)
+                ->when($branchId > 0, fn ($query) => $query->where('branch_id', $branchId))
+                ->whereHas('product', fn ($query) => $query->where('store_id', $storeId)->where('product_type', 'finished_good'))
+                ->whereBetween('transaction_date', [$start, $end])
+                ->orderByDesc('transaction_date')->limit(200)->get()
+                ->map(fn ($tx) => [
+                    'id' => $tx->id,
+                    'product_id' => $tx->product_id,
+                    'variation_id' => $tx->variation_id,
+                    'branch' => $tx->branch?->name ?? 'Branch',
+                    'sku' => $tx->variation?->variation_sku ?: $tx->product?->sku,
+                    'product_name' => $tx->product?->product_name,
+                    'variation_name' => $tx->variation?->variation_name,
+                    'transaction_type' => $tx->transaction_type,
+                    'quantity_change' => (int) $tx->quantity_change,
+                    'transaction_date' => $tx->transaction_date,
+                    'action' => in_array($tx->transaction_type, ['adjustment', 'damage', 'loss'], true) ? 'Review movement' : 'View transaction',
+                    'severity' => in_array($tx->transaction_type, ['adjustment', 'damage', 'loss'], true) ? 'warn' : 'info',
+                ])->values()->all();
+            return ['rows' => $transactions, 'total' => count($transactions), 'limited' => count($transactions) === 200];
+        }
+
+        $stock = BranchInventory::query()
+            ->with(['product:id,store_id,sku,product_name,product_type,cost_price,created_at', 'variation:id,variation_name,variation_sku,cost_price', 'branch:id,name'])
+            ->where('store_id', $storeId)
+            ->when($branchId > 0, fn ($query) => $query->where('branch_id', $branchId))
+            ->whereHas('product', fn ($query) => $query->where('store_id', $storeId)->where('product_type', 'finished_good'))
+            ->get();
+
+        $branchIds = $stock->pluck('branch_id')->unique()->all();
+        $rules = ReorderRule::query()->whereIn('branch_id', $branchIds)->where('is_active', true)
+            ->get()->keyBy(fn ($rule) => $rule->branch_id . ':' . $rule->product_id);
+
+        $sales = InventoryTransaction::query()
+            ->where('store_id', $storeId)
+            ->whereIn('branch_id', $branchIds)
+            ->whereIn('product_id', $stock->pluck('product_id')->unique()->all())
+            ->where('transaction_type', 'sale')
+            ->where('transaction_date', '<=', $end)
+            ->selectRaw('branch_id, product_id, variation_id, SUM(CASE WHEN transaction_date BETWEEN ? AND ? THEN ABS(quantity_change) ELSE 0 END) AS units_sold, MAX(transaction_date) AS last_sale_at', [$start, $end])
+            ->groupBy('branch_id', 'product_id', 'variation_id')
+            ->get()->keyBy(fn ($row) => $row->branch_id . ':' . $row->product_id . ':' . ($row->variation_id ?? 0));
+
+        $periodDays = max(1, $start->diffInDays($end) + 1);
+        $rows = $stock->map(function (BranchInventory $item) use ($sales, $rules, $periodDays, $end) {
+            $sale = $sales->get($item->branch_id . ':' . $item->product_id . ':' . ($item->variation_id ?? 0));
+            $rule = $rules->get($item->branch_id . ':' . $item->product_id);
+            $sold = (int) ($sale?->units_sold ?? 0);
+            $available = (int) ($item->quantity_available ?? 0);
+            $reorderPoint = (int) ($rule?->reorder_point ?? $item->reorder_point ?? 0);
+            $daysCover = $sold > 0 ? (int) floor($available / ($sold / $periodDays)) : null;
+            $lastSale = $sale?->last_sale_at ? Carbon::parse($sale->last_sale_at) : null;
+            $daysSinceSale = $lastSale ? (int) $lastSale->diffInDays($end) : null;
+            $daysListed = $item->created_at && $item->created_at->lessThanOrEqualTo($end)
+                ? (int) $item->created_at->diffInDays($end) : 0;
+
+            if ($available <= 0 && $sold > 0) {
+                $action = 'Out of stock - replenish';
+                $severity = 'danger';
+            } elseif ($available <= $reorderPoint && $sold > 0) {
+                $action = 'Replenish now';
+                $severity = 'danger';
+            } elseif ($daysCover !== null && $daysCover <= 14) {
+                $action = 'Plan replenishment';
+                $severity = 'warn';
+            } elseif ($available > 0 && $sold === 0 && $daysListed >= 30) {
+                $action = 'Review price or promote';
+                $severity = 'warn';
+            } elseif ($available > 0 && $daysSinceSale !== null && $daysSinceSale >= 90) {
+                $action = 'Review aging stock';
+                $severity = 'warn';
+            } else {
+                $action = 'Monitor';
+                $severity = 'success';
+            }
+
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'variation_id' => $item->variation_id,
+                'branch' => $item->branch?->name ?? 'Branch',
+                'sku' => $item->variation?->variation_sku ?: $item->product?->sku,
+                'product_name' => $item->product?->product_name,
+                'variation_name' => $item->variation?->variation_name,
+                'available' => $available,
+                'units_sold' => $sold,
+                'days_cover' => $daysCover,
+                'last_sale_at' => $sale?->last_sale_at,
+                'days_since_sale' => $daysSinceSale,
+                'days_listed' => $daysListed,
+                'reorder_point' => $reorderPoint,
+                'stock_value' => $available * (float) ($item->variation?->cost_price ?? $item->product?->cost_price ?? 0),
+                'action' => $action,
+                'severity' => $severity,
+            ];
+        });
+
+        $rows = match ($report) {
+            'slow_movers' => $rows->filter(fn ($row) => $row['available'] > 0 && (($row['units_sold'] === 0 && $row['days_listed'] >= 30) || ($row['days_cover'] ?? 0) > 60))
+                ->map(function ($row) {
+                    $row['action'] = $row['units_sold'] === 0 ? 'Review price or promote' : 'Reduce next replenishment';
+                    $row['severity'] = 'warn';
+                    return $row;
+                })->sortByDesc('stock_value'),
+            'fast_movers' => $rows->filter(fn ($row) => $row['units_sold'] > 0)
+                ->sortByDesc('units_sold'),
+            'aging' => $rows->filter(fn ($row) => $row['available'] > 0)
+                ->map(function ($row) {
+                    $idle = $row['days_since_sale'] ?? $row['days_listed'];
+                    $row['action'] = $idle >= 90 ? 'Review markdown or transfer'
+                        : ($idle >= 30 ? 'Promote or review' : 'Monitor');
+                    $row['severity'] = $idle >= 90 ? 'danger' : ($idle >= 30 ? 'warn' : 'success');
+                    return $row;
+                })->sortByDesc(fn ($row) => $row['days_since_sale'] ?? $row['days_listed']),
+            default => collect(),
+        };
+
+        return ['rows' => $rows->values()->all(), 'total' => $rows->count(), 'period_days' => $periodDays];
+    }
+
     /**
      * Get branch inventory summary with KPIs
      */
     public function getBranchSummary(int $storeId, int $branchId, ?int $days = null, ?string $productType = null): array
     {
-        $query = BranchInventory::where('store_id', $storeId)
+        $query = BranchInventory::with('product')->where('store_id', $storeId)
             ->where('branch_id', $branchId);
 
         if ($productType) {
@@ -32,15 +157,15 @@ class ReportingService
         return [
             'branch_id' => $branchId,
             'total_items' => $items->count(),
-            'total_value' => (float) $items->sum('total_value'),
+            'total_value' => (float) $items->sum(fn ($item) => $this->inventoryValue($item)),
             'total_quantity' => $items->sum('quantity_on_hand'),
             'in_stock' => $items->where('stock_status', 'in_stock')->count(),
             'low_stock' => $items->where('stock_status', 'low_stock')->count(),
             'out_of_stock' => $items->where('stock_status', 'out_of_stock')->count(),
             'damaged_units' => $items->sum('quantity_damaged'),
             'reserved_units' => $items->sum('quantity_reserved'),
-            'average_unit_cost' => $items->count() > 0 
-                ? $items->avg('average_cost') 
+            'average_unit_cost' => $items->count() > 0
+                ? $items->avg(fn ($item) => $this->productCost($item))
                 : 0,
             'inventory_accuracy' => $this->calculateAccuracy($storeId, $branchId),
             'stock_turnover_ratio' => $this->calculateStockTurnover($storeId, $branchId, $days, $productType),
@@ -130,7 +255,7 @@ class ReportingService
      */
     public function getValueByCategory(int $storeId, int $branchId, ?string $productType = null): array
     {
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product.category')->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->with('product.category')
             ->when($productType, function ($query) use ($storeId, $productType) {
@@ -144,7 +269,7 @@ class ReportingService
             ->map(function ($categoryItems, $categoryName) {
                 return [
                     'category' => $categoryName,
-                    'total_value' => (float) $categoryItems->sum('total_value'),
+                    'total_value' => (float) $categoryItems->sum(fn ($item) => $this->inventoryValue($item)),
                     'total_items' => $categoryItems->count(),
                     'total_units' => $categoryItems->sum('quantity_on_hand'),
                     'percentage_of_total' => 0, // Calculated after
@@ -161,13 +286,14 @@ class ReportingService
         $cutoffDate = now()->subDays($days);
         $productIds = $productType ? $this->getProductIdsByType($storeId, $productType) : [];
 
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product')
+            ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
-            ->where('total_value', '>=', $minValue)
             ->when($productType, function ($query) use ($productIds) {
                 $query->whereIn('product_id', $productIds);
             })
-            ->get();
+            ->get()
+            ->filter(fn ($item) => $this->inventoryValue($item) >= $minValue);
 
         return $items->filter(function ($item) use ($cutoffDate, $storeId, $branchId) {
             $lastMovement = InventoryTransaction::where('store_id', $storeId)
@@ -232,7 +358,8 @@ class ReportingService
      */
     protected function calculateAccuracy(int $storeId, int $branchId): float
     {
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product')
+            ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->get();
 
@@ -294,16 +421,27 @@ class ReportingService
             ->sum(fn ($t) => abs((int) ($t->quantity_change ?? 0)));
 
         // Calculate average inventory value
-        $items = BranchInventory::where('store_id', $storeId)
+        $items = BranchInventory::with('product')
+            ->where('store_id', $storeId)
             ->where('branch_id', $branchId)
             ->when($productType, function ($query) use ($productIds) {
                 $query->whereIn('product_id', $productIds);
             })
             ->get();
 
-        $avgInventory = $items->avg('total_value');
+        $avgInventory = $items->avg(fn ($item) => $this->inventoryValue($item));
 
         return $avgInventory > 0 ? $sales / $avgInventory : 0;
+    }
+
+    private function productCost(BranchInventory $item): float
+    {
+        return (float) ($item->product?->getRawOriginal('cost_price') ?? 0);
+    }
+
+    private function inventoryValue(BranchInventory $item): float
+    {
+        return (float) $item->quantity_on_hand * $this->productCost($item);
     }
 
     /**
@@ -401,11 +539,36 @@ class ReportingService
         $now = now();
         $items = BranchInventory::where('store_id', $storeId)
             ->where('branch_id', $branchId)
+            ->with('product:id,sku,product_name,product_type,cost_price')
             ->when($productType, function ($query) use ($storeId, $productType) {
                 $productIds = $this->getProductIdsByType($storeId, $productType);
                 $query->whereIn('product_id', $productIds);
             })
             ->get();
+
+        $bucket = function ($item) use ($now) {
+            if (!$item->last_stock_count_date) return 'never_counted';
+            $days = $now->diffInDays($item->last_stock_count_date);
+            if ($days <= 30) return 'less_than_30_days';
+            if ($days <= 60) return 'between_30_60_days';
+            if ($days <= 90) return 'between_60_90_days';
+            return 'older_than_90_days';
+        };
+
+        $details = $items->groupBy($bucket)->map(function ($rows) use ($now) {
+            return $rows->map(function ($item) use ($now) {
+                return [
+                    'id' => $item->id,
+                    'sku' => $item->product?->sku,
+                    'product_name' => $item->product?->product_name,
+                    'product_type' => $item->product?->product_type,
+                    'quantity_on_hand' => (float) ($item->quantity_on_hand ?? 0),
+                    'cost_price' => (float) ($item->product?->getRawOriginal('cost_price') ?? 0),
+                    'last_stock_count_date' => $item->last_stock_count_date,
+                    'age_days' => $item->last_stock_count_date ? $now->diffInDays($item->last_stock_count_date) : null,
+                ];
+            })->values();
+        });
 
         return [
             'less_than_30_days' => $items->filter(function ($item) use ($now) {
@@ -423,6 +586,7 @@ class ReportingService
             'never_counted' => $items->filter(function ($item) {
                 return !$item->last_stock_count_date;
             })->count(),
+            'details' => $details,
         ];
     }
 

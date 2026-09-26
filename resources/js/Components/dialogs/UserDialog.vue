@@ -4,25 +4,14 @@
     content: { class: 'p-0' }
   }">
     <div class="flex flex-col min-w-50">
-      <!-- Menu Items -->
       <div class="py-2">
-        <!-- Profile -->
-        <!-- <button
+        <button
           @click="goProfile"
           class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-gray-100 transition-colors duration-150 text-left group"
         >
           <i class="pi pi-user text-gray-600 group-hover:text-gray-900 text-sm"></i>
-          <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Profile</span>
-        </button> -->
-
-        <!-- Settings (Optional) -->
-        <!-- <button
-          @click="goSettings"
-          class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-gray-100 transition-colors duration-150 text-left group"
-        >
-          <i class="pi pi-cog text-gray-600 group-hover:text-gray-900 text-sm"></i>
-          <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Settings</span>
-        </button> -->
+          <span class="text-sm font-medium text-gray-700 group-hover:text-gray-900">Account Profile</span>
+        </button>
       </div>
 
       <div class="border-t border-gray-200"></div>
@@ -58,7 +47,7 @@ import ProgressSpinner from "primevue/progressspinner";
 import { computed, ref } from "vue";
 import { useAuthStore } from "../../stores/auth";
 import { router } from "@inertiajs/vue3";
-import axios from "axios";
+import axios from "@/axios";
 
 const authStore = useAuthStore();
 const op = ref(null);
@@ -78,11 +67,17 @@ const hide = () => {
 };
 
 /* ACTIONS */
-const userRole = computed(() => String(authStore.user?.role || '').toLowerCase());
-const isCustomer = computed(() => userRole.value.includes('customer'));
-const isSupplier = computed(() => userRole.value.includes('supplier'));
+const userRole = computed(() => {
+  const role = authStore.user?.role as any;
+  return String(typeof role === 'string' ? role : role?.name || authStore.userRole || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+});
+const isCustomer = computed(() => userRole.value === 'customer');
+const isSupplier = computed(() => userRole.value === 'supplier');
 
-const goProfile = () => {
+const goProfile = async () => {
   hide();
   if (isCustomer.value) {
     router.visit('/shop/profile');
@@ -92,12 +87,8 @@ const goProfile = () => {
     router.visit('/supplier-portal/profile');
     return;
   }
-  router.visit('/profile');
-};
 
-const goSettings = () => {
-  hide();
-  router.visit('/system/settings');
+  router.visit('/employee-profile');
 };
 
 const handleLogout = async () => {

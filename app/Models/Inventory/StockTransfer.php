@@ -42,8 +42,15 @@ class StockTransfer extends Model
         'received_by',
         'vehicle_type',
         'driver_name',
+        'driver_user_id',
         'driver_contact',
         'tracking_number',
+        'delivery_status',
+        'out_for_delivery_at',
+        'delivered_at',
+        'current_latitude',
+        'current_longitude',
+        'current_address',
         'reason',
         'notes',
         'rejection_reason',
@@ -60,6 +67,10 @@ class StockTransfer extends Model
         'shipped_date' => 'date',
         'received_date' => 'date',
         'expected_delivery_date' => 'date',
+        'out_for_delivery_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'current_latitude' => 'decimal:7',
+        'current_longitude' => 'decimal:7',
     ];
 
     // Relationships
@@ -111,6 +122,11 @@ class StockTransfer extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(Employee::class, 'received_by');
+    }
+
+    public function driver(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Core\User::class, 'driver_user_id');
     }
 
     // Scopes

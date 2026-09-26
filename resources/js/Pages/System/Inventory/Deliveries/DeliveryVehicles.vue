@@ -1,20 +1,14 @@
 <template>
   <div class="max-w-7xl mx-auto space-y-6 py-6 px-4 sm:px-6 lg:px-8">
-    <Card class="rounded-2xl border border-gray-100 shadow-sm">
-      <template #content>
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h1 class="text-2xl font-semibold text-gray-900">Delivery Vehicles</h1>
-            <p class="text-sm text-gray-500">Register vehicles with validation to reduce delivery errors.</p>
-          </div>
-          <div class="flex gap-2">
-            <Button severity="info" outlined icon="pi pi-arrow-left" label="Back to Deliveries" @click="goBack" />
-            <Button v-if="canManageDeliveries" severity="info" icon="pi pi-plus" label="Add Vehicle" @click="openCreate" />
-          </div>
-        </div>
-      </template>
-    </Card>
-
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Delivery Vehicles</h1>
+      </div>
+      <div class="flex gap-2">
+        <Button v-if="canManageDeliveries" size=small icon="pi pi-plus" label="Add Vehicle" @click="openCreate" />
+      </div>
+    </div>
+  
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
@@ -25,53 +19,54 @@
             </IconField>
           </div>
           <div class="md:col-span-4">
-            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" showClear fluid placeholder="Filter status" />
+            <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" showClear
+              fluid placeholder="Filter status" />
           </div>
         </div>
       </template>
     </Card>
-
+  
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
-        <DataTable
-          :value="vehicles"
-          :loading="loading"
-          dataKey="id"
-          stripedRows
-          paginator
-          lazy
-          :rows="pageState.rows"
-          :first="(pageState.page - 1) * pageState.rows"
-          :totalRecords="pageState.total"
-          :rowsPerPageOptions="[10, 20, 50]"
-          @page="onPage"
-        >
+        <DataTable :value="vehicles" :loading="loading" dataKey="id" rowHover paginator lazy :rows="pageState.rows"
+          :first="(pageState.page - 1) * pageState.rows" :totalRecords="pageState.total"
+          :rowsPerPageOptions="[10, 20, 50]" @page="onPage">
           <Column field="vehicle_name" header="Vehicle" />
-          <Column field="plate_number" header="Plate Number">
+          <Column field="brand" header="Brand">
             <template #body="{ data }">
-              <Tag severity="info" :value="data.plate_number" />
+              <span class="text-gray-700">{{ data.brand || '—' }}</span>
             </template>
           </Column>
-          <Column field="vehicle_type" header="Type" />
+          <Column field="plate_number" header="Plate Number">
+            <template #body="{ data }">
+              <Tag  :value="data.plate_number" />
+            </template>
+          </Column>
+          <Column field="vehicle_type" header="Type">
+            <template #body="{ data }">
+              <Badge :value="formatStatus(data.vehicle_type)" :severity="vehicleTypeSeverity(data.vehicle_type)" />
+            </template>
+          </Column>
           <Column field="capacity_kg" header="Capacity (kg)" />
           <Column field="max_orders_per_trip" header="Max Orders/Trip" />
           <Column field="status" header="Status">
             <template #body="{ data }">
-              <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
+              <Badge :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
             </template>
           </Column>
           <Column header="Actions">
             <template #body="{ data }">
-              <Button v-if="canManageDeliveries" text severity="info" icon="pi pi-pencil" @click="openEdit(data)" />
+              <Button v-if="canManageDeliveries" text  icon="pi pi-pencil" @click="openEdit(data)" />
             </template>
           </Column>
         </DataTable>
       </template>
     </Card>
-
-    <Dialog v-model:visible="formDialog" modal :header="editingId ? 'Edit Vehicle' : 'Register Vehicle'" class="w-full max-w-2xl">
+  
+    <Dialog v-model:visible="formDialog" modal :header="editingId ? 'Edit Vehicle' : 'Register Vehicle'"
+      class="w-full max-w-2xl">
       <div class="space-y-4">
-        <Message severity="info" :closable="false">
+        <Message  :closable="false">
           Tip: Plate number is auto-uppercased and must be unique per store.
         </Message>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -81,7 +76,8 @@
           </div>
           <div>
             <label class="text-sm text-gray-600">Plate Number</label>
-            <InputText v-model="form.plate_number" fluid placeholder="e.g. ABC 1234" @input="form.plate_number = String(form.plate_number || '').toUpperCase()" />
+            <InputText v-model="form.plate_number" fluid placeholder="e.g. ABC 1234"
+              @input="form.plate_number = String(form.plate_number || '').toUpperCase()" />
           </div>
           <div>
             <label class="text-sm text-gray-600">Vehicle Type</label>
@@ -107,6 +103,9 @@
             <label class="text-sm text-gray-600">Capacity (kg)</label>
             <InputNumber v-model="form.capacity_kg" fluid :min="0" :minFractionDigits="0" :maxFractionDigits="2" />
           </div>
+          <div>
+            <label class="text-sm text-gray-600">Delivery Rate (₱ / km) *</label>
+          </div>
           <div class="md:col-span-2">
             <label class="text-sm text-gray-600">Max Orders Per Trip</label>
             <InputNumber v-model="form.max_orders_per_trip" fluid :min="1" :max="999" />
@@ -119,7 +118,8 @@
       </div>
       <template #footer>
         <Button text severity="secondary" label="Cancel" @click="formDialog = false" />
-        <Button :loading="saving" severity="info" :label="editingId ? 'Update Vehicle' : 'Save Vehicle'" @click="saveVehicle" />
+        <Button :loading="saving"  :label="editingId ? 'Update Vehicle' : 'Save Vehicle'"
+          @click="saveVehicle" />
       </template>
     </Dialog>
   </div>
@@ -135,6 +135,7 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
@@ -164,16 +165,15 @@ const statusOptions = [
   { label: 'Inactive', value: 'inactive' },
 ]
 const vehicleTypes = [
-  { label: 'Motorcycle', value: 'motorcycle' },
-  { label: 'Van', value: 'van' },
   { label: 'Truck', value: 'truck' },
-  { label: 'Car', value: 'car' },
+  { label: 'Van', value: 'van' },
+  { label: 'Closed Truck', value: 'closed_truck' },
   { label: 'Other', value: 'other' },
 ]
 
 const form = reactive<any>({
   vehicle_name: '',
-  vehicle_type: 'van',
+  vehicle_type: 'truck',
   plate_number: '',
   brand: '',
   model: '',
@@ -273,6 +273,12 @@ const onPage = (event: any) => {
 
 const formatStatus = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
 const statusSeverity = (status: string) => (status === 'active' ? 'success' : status === 'maintenance' ? 'warning' : 'secondary')
+const vehicleTypeSeverity = (type: string) => ({
+  van: 'info',
+  truck: 'warning',
+  closed_truck: 'success',
+  other: 'secondary',
+}[type] || 'secondary')
 const goBack = () => router.push({ name: 'logistics.deliveries' })
 
 watch(() => [filters.search, filters.status], () => {

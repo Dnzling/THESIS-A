@@ -4,8 +4,9 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Core\Role;
+use App\Models\Core\User;
 use App\Models\Store\Store;
-use App\Models\Store\TrialOnboardingProfile;
+use App\Services\Core\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,7 +17,8 @@ class RoleController extends Controller
 {
     private function resolveStoreId(Request $request): ?int
     {
-        $storeId = Auth::user()?->store_id;
+        $user = Auth::user();
+        $storeId = $user?->store_id ?: $user?->employee?->store_id;
 
         if (empty($storeId)) {
             $fallbackStoreId = $request->input('user_store_id');
@@ -121,12 +123,13 @@ class RoleController extends Controller
     public function index(): JsonResponse
     {
         $storeId = Auth::user()->store_id;
-        $globalAllowed = ['customer', 'store_admin', 'supplier'];
+        $globalAllowed = ['store_admin', 'driver'];
 
         $roles = DB::table('roles')
             ->select('roles.*')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
+            ->selectRaw('(SELECT COUNT(*) FROM employees WHERE role_id = roles.id AND employees.store_id = ?) as employees_count', [$storeId])
             ->where(function ($q) use ($storeId) {
                 $q->where('store_id', $storeId);
             })
@@ -143,9 +146,10 @@ class RoleController extends Controller
     public function storeSpecific(Request $request): JsonResponse
     {
         $storeId = $this->resolveStoreId($request);
+        $globalAllowed = ['store_admin', 'driver'];
 
         if (empty($storeId)) {
-            return response()->json(['data' => []]);
+            return response()->json(['data' => [], 'store_id' => null]);
         }
 
         $roles = DB::table('roles')
@@ -153,11 +157,17 @@ class RoleController extends Controller
             ->selectRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) as display_name')
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(SELECT COUNT(*) FROM users WHERE role_id = roles.id AND users.store_id = ?) as users_count', [$storeId])
-            ->where('store_id', $storeId)
+            ->selectRaw('(SELECT COUNT(*) FROM employees WHERE role_id = roles.id AND employees.store_id = ?) as employees_count', [$storeId])
+            ->where(function ($query) use ($storeId, $globalAllowed) {
+                $query->where('store_id', $storeId)
+                    ->orWhere(function ($query) use ($globalAllowed) {
+                        $query->whereNull('store_id')->whereIn('name', $globalAllowed);
+                    });
+            })
             ->orderByRaw('COALESCE(NULLIF(roles.display_name, ""), roles.name) ASC')
             ->get();
 
-        return response()->json(['data' => $roles]);
+        return response()->json(['data' => $roles, 'store_id' => $storeId]);
     }
 
     public function store(Request $request): JsonResponse
@@ -186,7 +196,7 @@ class RoleController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $code = $validated['code'] ?? strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']), 0, 5));
+        $code = $validated['code'] ?? strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
         $role = Role::create([
             'store_id' => $storeId,
@@ -253,9 +263,10 @@ class RoleController extends Controller
         $role = Role::where('store_id', $storeId)->findOrFail($id);
 
         $userCount = DB::table('users')->where('role_id', $role->id)->where('store_id', $storeId)->count();
-        if ($userCount > 0) {
+        $employeeCount = DB::table('employees')->where('role_id', $role->id)->where('store_id', $storeId)->count();
+        if ($userCount > 0 || $employeeCount > 0) {
             return response()->json([
-                'message' => 'Cannot delete role with assigned users',
+                'message' => 'Cannot delete a role with assigned employees or users. Reassign them first.',
             ], 422);
         }
 
@@ -296,7 +307,7 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $globalAllowed = ['customer', 'store_admin', 'supplier'];
+        $globalAllowed = ['store_admin', 'driver'];
         $role = Role::where(function ($q) use ($storeId) {
                 $q->whereNull('store_id')->orWhere('store_id', $storeId);
             })
@@ -327,11 +338,19 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $role = Role::where('store_id', $storeId)->findOrFail($roleId);
+        $globalAllowed = ['store_admin', 'driver'];
+        $role = Role::query()
+            ->where(function ($query) use ($storeId, $globalAllowed) {
+                $query->where('store_id', $storeId)
+                    ->orWhere(function ($query) use ($globalAllowed) {
+                        $query->whereNull('store_id')->whereIn('name', $globalAllowed);
+                    });
+            })
+            ->findOrFail($roleId);
         $enabledModules = $this->getEffectiveEnabledModules($storeId);
 
         $request->validate([
-            'permissions' => 'required|array',
+            'permissions' => 'present|array',
             'permissions.*' => 'exists:permissions,id'
         ]);
 
@@ -351,19 +370,44 @@ class RoleController extends Controller
             ], 422);
         }
 
-        DB::table('role_permissions')->where('role_id', $role->id)->delete();
+        $permissionIds = collect($request->permissions)
+            ->map(fn ($permissionId) => (int) $permissionId)
+            ->unique()
+            ->values();
 
-        $data = collect($request->permissions)->map(function ($permissionId) use ($role) {
-            return [
+        DB::transaction(function () use ($role, $permissionIds) {
+            DB::table('role_permissions')->where('role_id', $role->id)->delete();
+
+            if ($permissionIds->isEmpty()) {
+                return;
+            }
+
+            $now = now();
+            DB::table('role_permissions')->insert($permissionIds->map(fn ($permissionId) => [
                 'role_id' => $role->id,
                 'permission_id' => $permissionId,
-                'created_at' => now(),
-                'updated_at' => now()
-            ];
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->all());
         });
 
-        DB::table('role_permissions')->insert($data->toArray());
+        $permissionService = app(PermissionService::class);
+        User::query()
+            ->where('role_id', $role->id)
+            ->select(['id', 'store_id'])
+            ->chunkById(100, function ($users) use ($permissionService): void {
+                foreach ($users as $user) {
+                    $permissionService->clearUserCache($user);
+                }
+            });
 
-        return response()->json(['message' => 'Permissions updated successfully']);
+        return response()->json([
+            'message' => 'Permissions updated successfully',
+            'permissions' => DB::table('permissions')
+                ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('role_permissions.role_id', $role->id)
+                ->select('permissions.*')
+                ->get(),
+        ]);
     }
 }

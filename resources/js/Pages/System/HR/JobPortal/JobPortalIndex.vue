@@ -48,6 +48,7 @@
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center gap-2">
                   <Tag :value="posting.status || 'Open'" :severity="posting.status === 'Open' ? 'success' : 'warn'" />
+                  <Tag :value="employmentTypeLabel(posting.employment_type)" severity="warn" />
                   <span class="text-xs font-semibold uppercase tracking-wide text-surface-500">{{ storeLabel(posting)
                     }}</span>
                 </div>
@@ -149,6 +150,13 @@ const roleLabel = (posting: JobPosting) =>
   posting.role?.name ||
   posting.department ||
   'Role'
+const employmentTypeLabels: Record<string, string> = {
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  contract: 'Contract',
+  intern: 'Intern',
+}
+const employmentTypeLabel = (value?: JobPosting['employment_type']) => employmentTypeLabels[value || 'full_time'] || 'Full Time'
 
 onMounted(fetchPostings)
 </script>

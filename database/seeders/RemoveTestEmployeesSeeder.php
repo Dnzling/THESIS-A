@@ -18,7 +18,11 @@ class RemoveTestEmployeesSeeder extends Seeder
         $deleted = 0;
         foreach ($firstNames as $fn) {
             foreach ($lastNames as $ln) {
-                $deleted += DB::table('employees')->where('fname', $fn)->where('lname', $ln)->delete();
+                $deleted += DB::table('employees')
+                    ->join('users', 'users.id', '=', 'employees.user_id')
+                    ->where('users.fname', $fn)
+                    ->where('users.lname', $ln)
+                    ->delete();
             }
         }
 

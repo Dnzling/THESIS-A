@@ -13,8 +13,8 @@
           <button
             type="button"
             class="relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
-            :class="isActive(['ecommerce.products']) ? 'text-orange-600' : 'hover:text-slate-900'"
-            @click="goTo('ecommerce.products')"
+            :class="isActive(['ecommerce.home']) ? 'text-orange-600' : 'hover:text-slate-900'"
+            @click="goTo('ecommerce.home')"
           >
             <i class="pi pi-home text-lg" />
             <span>Home</span>
@@ -97,8 +97,7 @@ const authStore = useAuthStore()
 const isLoggedIn = computed(() => authStore.isAuthenticated)
 const cartCount = ref(0)
 const unreadNotificationCount = ref(0)
-let notificationPoll: ReturnType<typeof setInterval> | null = null
-const isNotificationsActive = computed(() => String(route.name || '') === 'ecommerce.profile' && String(route.query?.section || '') === 'notifications')
+const isNotificationsActive = computed(() => String(route.name || '') === 'ecommerce.notifications')
 
 function isActive(names: string[]) {
   return names.includes(String(route.name || ''))
@@ -117,12 +116,7 @@ function goAuth(name: string) {
 }
 
 function goNotifications() {
-  try {
-    localStorage.setItem('ecommerce_profile_section', 'notifications')
-  } catch {
-    // no-op
-  }
-  router.push({ name: 'ecommerce.profile', query: { section: 'notifications' } })
+  goAuth('ecommerce.notifications')
 }
 
 async function loadCartCount() {
@@ -147,6 +141,7 @@ async function loadUnreadNotificationCount() {
 
   try {
     const response = await axiosClient.get('/api/notifications/unread', {
+      params: { module: 'ecommerce' },
       headers: { 'X-Suppress-Dialog': '1' },
     })
     unreadNotificationCount.value = Number(response.data?.data?.unread_count || 0)
@@ -159,24 +154,28 @@ function handleCartUpdated() {
   loadCartCount()
 }
 
+function handleNotificationsUpdated() {
+  loadUnreadNotificationCount()
+}
+
 watch(() => route.fullPath, () => {
   loadCartCount()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 watch(isLoggedIn, () => {
   loadCartCount()
-  loadUnreadNotificationCount()
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 
 onMounted(() => {
   loadCartCount()
-  loadUnreadNotificationCount()
-  notificationPoll = setInterval(loadUnreadNotificationCount, 30000)
+  if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
+  window.addEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
 
 onUnmounted(() => {
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
-  if (notificationPoll) clearInterval(notificationPoll)
+  window.removeEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
 </script>

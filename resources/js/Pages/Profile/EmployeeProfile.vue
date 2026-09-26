@@ -14,6 +14,8 @@
             @click="openShiftSwapDialog" />
           <Button label="Overtime" icon="pi pi-clock" severity="warning" outlined class="small-pill"
             @click="openOvertimeDialog" />
+          <Button label="My Benefits" icon="pi pi-heart" severity="secondary" outlined class="small-pill"
+            @click="router.visit('/employee-benefits')" />
         </div>
       </div>
 
@@ -934,7 +936,7 @@ const saveProfile = async () => {
       fname: form.fname,
       lname: form.lname,
       birthday: formatDate(form.birthday),
-      phone: form.phone || null,
+      phone_number: String(form.phone || '').trim() || null,
       gender: form.gender || null,
       address: form.address,
       province: form.province,

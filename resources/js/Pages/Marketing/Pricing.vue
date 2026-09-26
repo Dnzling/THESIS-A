@@ -1,10 +1,10 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-white via-orange-50/20 to-slate-50 text-slate-900">
+  <div class="min-h-screen">
     <TopNav />
 
     <main>
-      <section class="relative overflow-hidden py-20 lg:py-28">
-        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(245,158,107,0.18),transparent_55%)]"></div>
+      <section class="relative overflow-hidden py-20">
+        <div class="absolute inset-0"></div>
         <div class="mx-auto max-w-7xl px-4 text-center lg:px-8">
 
           <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl">
@@ -56,13 +56,13 @@
               </div>
 
               <div class="mt-6 flex items-end gap-2">
-                <span class="text-4xl font-bold tracking-tight text-slate-900">₱{{ formatPrice(plan) }}</span>
+                <span class="text-4xl font-bold tracking-tight text-slate-900">{{ formatPrice(plan) }}</span>
                 <span class="pb-1 text-sm text-slate-500">/ {{ billingPeriod }}</span>
               </div>
 
               <p class="mt-2 text-sm text-slate-500">
                 Billed {{ isYearly ? 'yearly' : 'monthly' }}
-                <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save ₱{{ yearlySavings(plan) }}</span>
+                <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save {{ yearlySavings(plan) }}</span>
               </p>
                <button
                 type="button"
@@ -85,34 +85,6 @@
 
              
             </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="py-16">
-        <div class="mx-auto max-w-7xl px-4 lg:px-8">
-          <div class="mb-8 text-center">
-            <span class="text-sm font-semibold uppercase tracking-[0.2em] text-orange-500">Compare Plans</span>
-            <h2 class="mt-3 text-3xl font-bold sm:text-4xl">See the difference at a glance.</h2>
-          </div>
-
-          <div v-if="planComparison.length" class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div class="grid grid-cols-3 border-b border-slate-200 bg-slate-50 px-6 py-4 text-sm font-semibold text-slate-700">
-              <span>Feature</span>
-              <span v-for="plan in visiblePlans" :key="plan.id" class="text-center">{{ plan.name }}</span>
-            </div>
-
-            <div v-for="row in planComparison" :key="row.feature" class="grid grid-cols-3 border-b border-slate-100 px-6 py-4 text-sm last:border-b-0">
-              <span class="font-medium text-slate-700">{{ row.feature }}</span>
-              <span v-for="plan in visiblePlans" :key="plan.id" class="flex justify-center text-slate-600">
-                <span v-if="row.values[plan.plan_key] === true" class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                  <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-                    <path fill-rule="evenodd" d="M16.704 5.297a1 1 0 0 1 0 1.414l-7.071 7.071a1 1 0 0 1-1.414 0L3.296 8.859A1 1 0 1 1 4.71 7.445l4.213 4.213 6.364-6.364a1 1 0 0 1 1.417.003Z" clip-rule="evenodd" />
-                  </svg>
-                </span>
-                <span v-else>{{ row.values[plan.plan_key] || '-' }}</span>
-              </span>
-            </div>
           </div>
         </div>
       </section>
@@ -234,15 +206,22 @@ const loadPlans = async () => {
 
 const formatPrice = (plan: any) => {
   const price = isYearly.value ? Number(plan.yearly_price || 0) : Number(plan.monthly_price || 0)
-  return price.toFixed(2)
+  return formatMoney(price)
 }
 
 const yearlySavings = (plan: any) => {
   const monthly = Number(plan.monthly_price || 0)
   const yearly = Number(plan.yearly_price || 0)
   const savings = (monthly * 12) - yearly
-  return savings > 0 ? savings.toFixed(2) : '0.00'
+  return formatMoney(savings > 0 ? savings : 0)
 }
+
+const formatMoney = (amount: number) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+}).format(amount)
 
 const selectPlan = (plan: any) => {
   void plan

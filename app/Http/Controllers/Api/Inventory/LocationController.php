@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inventory\WarehouseLocation;
+use App\Models\Inventory\Warehouse;
+use App\Models\Store\Branch;
 use App\Http\Requests\Inventory\LocationRequest;
 use App\Services\Inventory\LocationService;
 use Illuminate\Http\Request;
@@ -28,8 +30,8 @@ class LocationController extends Controller
     {
         try {
             $user = $request->user();
-            $storeId = (int) ($user?->store_id ?? 0);
-            $branchId = (int) ($user?->branch_id ?? 0);
+            $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
+            $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
 
             $query = WarehouseLocation::with(['warehouse.store', 'warehouse.branch']);
 
@@ -69,7 +71,17 @@ class LocationController extends Controller
                 });
             }
 
-            $locations = $query->orderBy('warehouse_id')->orderBy('location_code')->paginate(15);
+            $sortField = (string) $request->input('sort_field', 'created_at');
+            $sortDirection = strtolower((string) $request->input('sort_direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSortFields = ['created_at', 'name', 'location_code', 'type', 'status', 'max_capacity_units'];
+            if (!in_array($sortField, $allowedSortFields, true)) {
+                $sortField = 'created_at';
+            }
+
+            $perPage = min(max((int) $request->input('per_page', 15), 1), 1000);
+            $locations = $query
+                ->orderBy($sortField, $sortDirection)
+                ->paginate($perPage);
 
             return response()->json([
                 'success' => true,
@@ -95,7 +107,61 @@ class LocationController extends Controller
         try {
             DB::beginTransaction();
 
-            $location = $this->locationService->createLocation($request->validated());
+            $data = $request->validated();
+            $user = $request->user();
+            $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
+            $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id ?: 0);
+
+            // The create form intentionally does not expose a warehouse selector.
+            // Resolve the facility from the user's warehouse branch. Branches are
+            // the source of truth; the warehouses row is only a compatibility
+            // projection required by warehouse_locations.warehouse_id.
+            if (empty($data['warehouse_id'])) {
+                $branchQuery = Branch::query()->where('branch_type', 'warehouse');
+                if ($branchId > 0) {
+                    $branchQuery->whereKey($branchId);
+                }
+                if ($storeId > 0) {
+                    $branchQuery->where('store_id', $storeId);
+                }
+
+                $branch = $branchQuery->orderBy('id')->first();
+                if (!$branch) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Your account is not assigned to a warehouse branch.'
+                    ], 422);
+                }
+
+                $warehouse = Warehouse::withTrashed()->firstOrCreate(
+                    ['branch_id' => $branch->id],
+                    [
+                        'store_id' => $branch->store_id,
+                        'warehouse_code' => 'WH-BR-' . $branch->id,
+                        'name' => $branch->name,
+                        'type' => 'main',
+                        'status' => 'active',
+                        'address_line_1' => $branch->address ?: 'Warehouse branch',
+                        'city' => $branch->city ?: 'N/A',
+                        'state' => $branch->province,
+                        'country' => 'Philippines',
+                        'phone' => $branch->contact_number,
+                        'email' => $branch->email,
+                    ]
+                );
+
+                if ($warehouse->trashed()) {
+                    $warehouse->restore();
+                }
+                if ($warehouse->status !== 'active') {
+                    $warehouse->update(['status' => 'active']);
+                }
+
+                $data['warehouse_id'] = $warehouse->id;
+            }
+
+            $location = $this->locationService->createLocation($data);
 
             DB::commit();
 

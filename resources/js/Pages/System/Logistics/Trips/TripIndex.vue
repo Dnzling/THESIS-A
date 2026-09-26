@@ -1,6 +1,6 @@
 <template>
   <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-    <div class="rounded-3xl border border-slate-200/80 bg-linear-to-br from-orange-50 via-white to-amber-50 p-6 shadow-sm">
+    <div class="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-6 shadow-sm">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Delivery Trips</h1>

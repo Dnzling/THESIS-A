@@ -8,9 +8,15 @@ import EmployeeProfile from './EmployeeProfile.vue'
 defineOptions({ layout: SystemLayout })
 
 const authStore = useAuthStore()
-const role = computed(() => String(authStore.user?.role || '').toLowerCase())
-const isCustomer = computed(() => role.value.includes('customer'))
-const isSupplier = computed(() => role.value.includes('supplier'))
+const role = computed(() => {
+    const userRole = authStore.user?.role as any
+    return String(typeof userRole === 'string' ? userRole : userRole?.name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+})
+const isCustomer = computed(() => role.value === 'customer')
+const isSupplier = computed(() => role.value === 'supplier')
 
 onMounted(() => {
     if (isCustomer.value) {

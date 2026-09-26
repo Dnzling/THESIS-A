@@ -67,21 +67,6 @@
 
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <span class="text-red-500 mr-1">*</span> Issue Date
-                  </label>
-                  <DatePicker 
-                    v-model="form.issue_date"  fluid
-                    dateFormat="yy-mm-dd" 
-                    :invalid="errors.issue_date !== undefined"
-                    class="w-full bg-gray-50 border-gray-200 rounded-xl"
-                    showIcon
-                    iconDisplay="input"
-                  />
-                  <small class="text-red-500" v-if="errors.issue_date">{{ errors.issue_date }}</small>
-                </div>
-
-                <div class="space-y-2">
-                  <label class="text-xs font-medium text-gray-500 uppercase tracking-wider">
                     <span class="text-red-500 mr-1">*</span> Currency
                   </label>
                   <Select 
@@ -148,12 +133,10 @@
           <template #header>
             <div class="px-6 pt-6">
               <div class="flex items-center gap-2">
-                <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                  <i class="pi pi-users text-green-600 text-sm"></i>
-                </div>
+              
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900">Supplier Selection</h3>
-                  <p class="text-sm text-gray-500 mt-0.5">Select suppliers to send RFQ to</p>
+                  <p class="text-sm text-gray-500 mt-0.5">Select suppliers with an active contract to receive this RFQ</p>
                 </div>
               </div>
             </div>
@@ -175,7 +158,7 @@
                   :disabled="splitRfqMode"
                   class="w-full bg-gray-50 border-gray-200 rounded-xl"
                 />
-                <small class="text-gray-500" v-if="!splitRfqMode">Select at least one supplier to send the RFQ</small>
+                <small class="text-gray-500" v-if="!splitRfqMode">Only suppliers with an active contract are listed.</small>
                 <small class="text-blue-600" v-else>
                   Split mode active: PR has {{ splitRfqSupplierGroups }} supplier groups. System will create one RFQ per supplier automatically.
                 </small>
@@ -203,16 +186,10 @@
 
               <!-- Selected Suppliers List -->
               <div v-if="selectedSupplierIds.length > 0" class="mt-4 pt-4 border-t border-gray-100">
-                <h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                  <i class="pi pi-check-circle text-green-500"></i>
-                  Recipients ({{ selectedSupplierIds.length }})
-                </h4>
+               
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div v-for="supplierId in selectedSupplierIds" :key="supplierId"
                     class="flex items-start gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                      <i class="pi pi-building text-blue-600 text-xs"></i>
-                    </div>
                     <div>
                       <p class="font-medium text-gray-900">{{ suppliers.find(s => s.id === supplierId)?.name }}</p>
                       <p class="text-xs text-gray-600 mt-0.5">{{ suppliers.find(s => s.id === supplierId)?.email }}</p>
@@ -223,7 +200,6 @@
 
               <div v-if="splitRfqMode" class="mt-4 pt-4 border-t border-gray-100">
                 <h4 class="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                  <i class="pi pi-sitemap text-blue-500"></i>
                   Split Preview ({{ splitRfqSupplierGroups }} groups)
                 </h4>
                 <div class="space-y-2">
@@ -283,9 +259,7 @@
                     />
                   </div>
                   <div v-else class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <i class="pi pi-box text-blue-600 text-xs"></i>
-                    </div>
+                    
                     <div>
                       <p class="font-medium text-gray-900">{{ item.product_name }}</p>
  
@@ -334,13 +308,14 @@
           label="Cancel" 
           severity="secondary" 
           text 
+          outlined
           @click="router.push({ name: 'procurement.rfqs' })"
           class="rounded-xl px-5 py-2.5"
         />
         <Button 
           :label="isEditMode ? 'Update Draft' : 'Save as Draft'" 
           icon="pi pi-save" 
-          severity="warning" 
+          outlined
           @click="saveDraft" 
           :loading="saving"
           class="rounded-xl px-5 py-2.5 bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
@@ -371,9 +346,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
             <div class="flex items-center gap-2 mb-3">
-              <div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
-                <i class="pi pi-file text-blue-600 text-xs"></i>
-              </div>
+            
               <h4 class="font-semibold text-blue-900">RFQ Details</h4>
             </div>
             <div class="space-y-2 text-sm">
@@ -386,10 +359,6 @@
                 <span class="font-medium text-gray-900">{{ getRfqTypeLabel(form.rfq_type) }}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-gray-600">Issue Date:</span>
-                <span class="font-medium text-gray-900">{{ formatDate(form.issue_date) }}</span>
-              </div>
-              <div class="flex justify-between">
                 <span class="text-gray-600">Currency:</span>
                 <span class="font-medium text-gray-900">{{ form.currency }}</span>
               </div>
@@ -398,9 +367,7 @@
 
           <div class="bg-green-50 rounded-xl p-4 border border-green-100">
             <div class="flex items-center gap-2 mb-3">
-              <div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
-                <i class="pi pi-users text-green-600 text-xs"></i>
-              </div>
+            
               <h4 class="font-semibold text-green-900">Suppliers</h4>
             </div>
             <div class="text-sm">
@@ -411,7 +378,6 @@
               <div class="max-h-32 overflow-y-auto space-y-2">
                 <div v-for="supplierId in selectedSupplierIds" :key="supplierId" 
                      class="flex items-center gap-2 p-2 bg-white rounded-lg border border-green-100">
-                  <i class="pi pi-building text-green-500 text-xs"></i>
                   <div>
                     <div class="font-medium text-gray-900 text-xs">{{ suppliers.find(s => s.id === supplierId)?.name }}</div>
                     <div class="text-xs text-gray-500">{{ suppliers.find(s => s.id === supplierId)?.email }}</div>
@@ -425,18 +391,14 @@
         <!-- Products Summary -->
         <div class="bg-orange-50 rounded-xl p-4 border border-orange-100">
           <div class="flex items-center gap-2 mb-3">
-            <div class="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center">
-              <i class="pi pi-box text-orange-600 text-xs"></i>
-            </div>
+         
             <h4 class="font-semibold text-orange-900">Requested Products</h4>
           </div>
           <div class="space-y-2">
             <div v-for="(item, index) in form.items.filter(i => i.product_id)" :key="index"
                  class="flex items-center justify-between p-3 bg-white rounded-xl border border-orange-100">
               <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                  <i class="pi pi-box text-orange-600 text-xs"></i>
-                </div>
+                
                 <div>
                   <span class="font-medium text-gray-900">{{ item.product_name }}</span>
                   <span class="text-xs text-gray-500 block mt-0.5">Qty: {{ item.quantity }}</span>
@@ -453,9 +415,7 @@
         <!-- Terms & Conditions Section -->
         <div class="bg-purple-50 rounded-xl p-4 border border-purple-100">
           <div class="flex items-center gap-2 mb-3">
-            <div class="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
-              <i class="pi pi-file-pdf text-purple-600 text-xs"></i>
-            </div>
+            
             <h4 class="font-semibold text-purple-900">Terms & Conditions</h4>
           </div>
           
@@ -1321,7 +1281,7 @@ onMounted(async () => {
         console.error('Failed to load products:', err)
         return null
       }),
-      procurementService.getSuppliers({ per_page: 1000 }).catch(err => {
+      procurementService.getSuppliers({ per_page: 1000, active_contract_only: true }).catch(err => {
         console.error('Failed to load suppliers:', err)
         return null
       })

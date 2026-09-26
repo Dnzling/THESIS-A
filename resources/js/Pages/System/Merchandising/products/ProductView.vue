@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-6 pb-6">
+  <div class="max-w-7xl mx-auto space-y-5 px-4 py-6 pb-6 sm:px-6 lg:px-8">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <Button 
           icon="pi pi-arrow-left" 
@@ -10,46 +10,85 @@
           @click="router.push({ name: 'merchandising.products' })" 
         />
         <div>
-          <h2 class="text-2xl font-bold text-gray-800">Product Details</h2>
-          <p class="text-sm text-gray-500 mt-1">View and manage product information</p>
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500">Product record</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{{ product?.product_name || 'Product Details' }}</h1>
+          <p class="mt-1 font-mono text-xs text-slate-500">{{ product?.sku || 'Loading product...' }}</p>
         </div>
       </div>
       <div class="flex gap-2">
         <Button 
           v-if="primary3DModel"
-          label="View 3D" 
-          icon="pi pi-cube" 
-          severity="info"
+          label="Preview 3D"
+          icon="pi pi-box" 
+          size="small"
+          severity="secondary"
           @click="openView3DModal" 
         />
         <Button 
-          label="Edit" 
+          label="Edit Product"
           icon="pi pi-pencil" 
-          severity="warning"
+          severity="warn"
+          size="small"
           @click="router.push({ name: 'merchandising.products.edit', params: { id: productId } })" 
         />
-        <Button 
-          label="Delete" 
-          icon="pi pi-trash" 
+        <!-- <Button 
+          label="Archive" 
+          icon="pi pi-briefcase" 
           severity="danger"
           outlined
+          size="small"
           @click="confirmDelete" 
-        />
+        /> -->
       </div>
     </div>
 
     <!-- Loading Skeleton -->
-    <div v-if="loading" class="space-y-6">
-      <Skeleton height="400px" class="rounded-lg" />
-      <Skeleton height="300px" class="rounded-lg" />
-      <Skeleton height="300px" class="rounded-lg" />
+    <div v-if="loading" class="space-y-5">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Skeleton v-for="index in 3" :key="index" height="130px" class="rounded-2xl" />
+      </div>
+      <Skeleton height="280px" class="rounded-2xl" />
+      <Skeleton height="220px" class="rounded-2xl" />
     </div>
 
     <!-- Product Content -->
-    <div v-else-if="product" class="space-y-6">
+    <div v-else-if="product" class="space-y-5">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">Catalog price</span><i class="pi pi-wallet text-slate-400" /></div>
+          <p class="text-2xl font-semibold text-slate-900">PHP {{ formatPrice(hasDiscount ? product.discounted_price : product.base_price) }}</p>
+          <p v-if="hasDiscount" class="mt-2 text-xs text-slate-500"><span class="line-through">PHP {{ formatPrice(product.base_price) }}</span><span class="ml-2 font-medium text-rose-600">{{ discountPercent }}% off</span></p>
+          <p v-else class="mt-2 text-xs text-slate-500">Current selling price</p>
+        </section>
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">Category & brand</span><i class="pi pi-tag text-slate-400" /></div>
+          <p class="text-lg font-semibold text-slate-900">{{ product.category?.category_name || 'Uncategorized' }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ product.brand || 'No brand recorded' }}</p>
+        </section>
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">Listing status</span><i class="pi pi-check-circle text-slate-400" /></div>
+          <Tag :value="product.is_active ? 'Active' : 'Inactive'" :severity="product.is_active ? 'success' : 'secondary'" />
+          <div class="mt-3 flex flex-wrap gap-1.5">
+            <Tag v-if="product.is_featured" value="Featured" severity="warn" />
+            <Tag v-if="product.is_new_arrival" value="New Arrival" severity="info" />
+            <Tag v-if="product.is_bestseller" value="Bestseller" severity="success" />
+          </div>
+          <p class="mt-2 text-xs text-slate-500">{{ variations.length }} variation{{ variations.length === 1 ? '' : 's' }}</p>
+        </section>
+      </div>
+
+      <Card v-if="product.description || product.tags?.length" class="rounded-2xl border border-slate-200 shadow-sm">
+        <template #title><span class="text-base font-semibold text-slate-900">Product Information</span></template>
+        <template #content>
+          <p v-if="product.description" class="whitespace-pre-line text-sm leading-6 text-slate-700">{{ formatDescription(product.description) }}</p>
+          <div v-if="product.tags?.length" class="mt-3 flex flex-wrap gap-1.5">
+            <Tag v-for="tag in product.tags" :key="`product-tag-${tag.id}`" :value="tag.tag_name" severity="secondary" />
+          </div>
+        </template>
+      </Card>
         
         <!-- Product Header Card -->
-        <Card>
+        <Card v-if="false">
           <template #content>
             <div class="space-y-4">
               <!-- Product Name & Status -->
@@ -63,6 +102,7 @@
                     <Tag v-if="product.is_featured" value="Featured" severity="warning" />
                     <Tag v-if="product.is_new_arrival" value="New Arrival" severity="info" />
                     <Tag v-if="product.is_bestseller" value="Bestseller" icon="pi pi-star-fill" severity="success" />
+                    <Tag v-for="tag in (product.tags || [])" :key="`product-tag-${tag.id}`" :value="tag.tag_name" severity="info" />
                   </div>
                 </div>
                 <div class="text-right">
@@ -102,42 +142,39 @@
         </Card>
 
         <!-- Specifications Card -->
-        <Card>
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
           <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-box text-purple-600"></i>
-              <span>Specifications</span>
-            </div>
+            <span class="text-base font-semibold text-slate-900">Product Specifications</span>
           </template>
           <template #content>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Length</p>
-                <p class="text-lg font-semibold text-gray-900">
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs text-slate-500">Length</p>
+                <p class="mt-1 font-semibold text-slate-900">
                   {{ product.length_cm ? `${product.length_cm} cm` : 'N/A' }}
                 </p>
               </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Width</p>
-                <p class="text-lg font-semibold text-gray-900">
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs text-slate-500">Width</p>
+                <p class="mt-1 font-semibold text-slate-900">
                   {{ product.width_cm ? `${product.width_cm} cm` : 'N/A' }}
                 </p>
               </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Height</p>
-                <p class="text-lg font-semibold text-gray-900">
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs text-slate-500">Height</p>
+                <p class="mt-1 font-semibold text-slate-900">
                   {{ product.height_cm ? `${product.height_cm} cm` : 'N/A' }}
                 </p>
               </div>
-              <div>
-                <p class="text-xs text-gray-600 mb-1">Weight</p>
-                <p class="text-lg font-semibold text-gray-900">
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs text-slate-500">Weight</p>
+                <p class="mt-1 font-semibold text-slate-900">
                   {{ product.weight_kg ? `${product.weight_kg} kg` : 'N/A' }}
                 </p>
               </div>
             </div>
 
-            <div class="mt-6 flex flex-wrap gap-3">
+            <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
               <Tag v-if="product.assembly_required" value="Assembly Required" severity="info" icon="pi pi-wrench" />
               <Tag v-else value="No Assembly" severity="success" icon="pi pi-check" />
               
@@ -147,12 +184,11 @@
         </Card>
 
         <!-- Product Variations -->
-        <Card v-if="variations && variations.length > 0">
+        <Card v-if="variations && variations.length > 0" class="rounded-2xl border border-slate-200 shadow-sm">
           <template #title>
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <i class="pi pi-th-large text-indigo-600"></i>
-                <span>Product Variations</span>
+                <span class="text-base font-semibold text-slate-900">Product Variations ({{ variations.length }})</span>
               </div>
               <Button 
                 label="Manage Variations" 
@@ -164,7 +200,7 @@
             </div>
           </template>
           <template #content>
-            <DataTable :value="variations" class="p-datatable-sm">
+            <DataTable :value="variations" size="small" rowHover class="text-xs">
               <Column field="variation_name" header="Variation">
                 <template #body="{ data }">
                   <div class="flex items-center gap-2">
@@ -203,56 +239,27 @@
           </template>
         </Card>
 
-        <!-- Additional Information -->
-        <Card>
+        <!-- Product Timestamps -->
+        <Card class="rounded-2xl border border-slate-200 shadow-sm">
           <template #title>
-            <div class="flex items-center gap-2">
-              <i class="pi pi-info-circle text-blue-600"></i>
-              <span>Additional Information</span>
-            </div>
+            <span class="text-base font-semibold text-slate-900">Product Record</span>
           </template>
           <template #content>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 class="text-sm font-semibold text-gray-700 mb-3">SEO</h4>
-                <div class="space-y-2">
-                  <div>
-                    <p class="text-xs text-gray-600">Meta Title</p>
-                    <p class="text-sm text-gray-900">{{ product.meta_title || 'Not set' }}</p>
-                  </div>
-                  <div>
-                    <p class="text-xs text-gray-600">Meta Description</p>
-                    <p class="text-sm text-gray-900">{{ product.meta_description || 'Not set' }}</p>
-                  </div>
-                  <div>
-                    <p class="text-xs text-gray-600">Keywords</p>
-                    <p class="text-sm text-gray-900">{{ product.meta_keywords || 'Not set' }}</p>
-                  </div>
-                </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Created At</p>
+                <p class="mt-1 font-medium text-slate-900">{{ formatDate(product.created_at) }}</p>
               </div>
-              <div>
-                <h4 class="text-sm font-semibold text-gray-700 mb-3">Publishing</h4>
-                <div class="space-y-2">
-                  <div>
-                    <p class="text-xs text-gray-600">Created At</p>
-                    <p class="text-sm text-gray-900">{{ formatDate(product.created_at) }}</p>
-                  </div>
-                  <div>
-                    <p class="text-xs text-gray-600">Last Updated</p>
-                    <p class="text-sm text-gray-900">{{ formatDate(product.updated_at) }}</p>
-                  </div>
-                  <div v-if="product.published_at">
-                    <p class="text-xs text-gray-600">Published At</p>
-                    <p class="text-sm text-gray-900">{{ formatDate(product.published_at) }}</p>
-                  </div>
-                </div>
+              <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Last Updated</p>
+                <p class="mt-1 font-medium text-slate-900">{{ formatDate(product.updated_at) }}</p>
               </div>
             </div>
           </template>
         </Card>
 
       <!-- Product Images Gallery -->
-      <Card v-if="productImages && productImages.length > 0">
+      <Card v-if="productImages && productImages.length > 0" class="rounded-2xl border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
             <i class="pi pi-images text-pink-600"></i>
@@ -455,6 +462,16 @@ const imagePreviewVisible = ref(false)
 const previewImage = ref<any>(null)
 
 const product = ref<any>(null)
+const hasDiscount = computed(() => {
+  const basePrice = Number(product.value?.base_price || 0)
+  const discountedPrice = Number(product.value?.discounted_price || 0)
+  return discountedPrice > 0 && basePrice > discountedPrice
+})
+const discountPercent = computed(() => {
+  const basePrice = Number(product.value?.base_price || 0)
+  const discountedPrice = Number(product.value?.discounted_price || 0)
+  return basePrice > 0 ? Math.round(((basePrice - discountedPrice) / basePrice) * 100) : 0
+})
 const variations = ref<any[]>([])
 const allAssets = ref<any[]>([])
 const primary3DModel = ref<any>(null)
@@ -672,6 +689,24 @@ const formatPrice = (price: number) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2 
   }).format(price)
+}
+
+const formatDescription = (value: unknown) => {
+  const html = String(value || '')
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*li\b[^>]*>/gi, '\n• ')
+    .replace(/<\s*\/(p|div|li|h[1-6]|ul|ol|blockquote)\s*>/gi, '\n')
+    .replace(/<\s*(script|style)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<[^>]*>/g, '')
+
+  const decoder = document.createElement('textarea')
+  decoder.innerHTML = html
+
+  return decoder.value
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 const formatFileSize = (bytes: number) => {

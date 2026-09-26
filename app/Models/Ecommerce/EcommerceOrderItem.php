@@ -2,6 +2,9 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceProductReview;
+
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Model;

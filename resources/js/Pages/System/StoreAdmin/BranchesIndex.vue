@@ -3,9 +3,8 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Branches</h1>
-        <p class="text-sm text-slate-600">Manage store branches and geofence coverage.</p>
       </div>
-      <Button label="Add Branch" icon="pi pi-plus" @click="openCreateDialog" />
+      <Button label="Add Branch" icon="pi pi-plus" size="small" severity="warn" @click="openCreateDialog" />
     </div>
 
     <Card class="rounded-2xl border border-slate-200/70 shadow-sm">
@@ -21,9 +20,9 @@
             :paginator="true"
             :rows="10"
             size="small"
-            stripedRows
+            rowHover
             dataKey="id"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-sm"
           >
             <Column field="name" header="Branch" sortable>
               <template #body="{ data }">
@@ -37,7 +36,7 @@
             <Column field="address" header="Address" />
             <Column header="Action" style="width: 110px">
               <template #body="{ data }">
-                <Button label="View" text size="small" icon="pi pi-arrow-right" @click="viewBranch(data.id)" />
+                <Button icon="pi pi-eye" text size="small"  @click="viewBranch(data.id)" />
               </template>
             </Column>
           </DataTable>
@@ -141,6 +140,7 @@ const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const branches = ref<any[]>([])
+const registeredStoreLocation = ref<any>(null)
 const search = ref('')
 const showCreateDialog = ref(false)
 const validationErrors = ref<Record<string, string>>({})
@@ -261,6 +261,7 @@ const loadBranches = async () => {
     const res = await inventoryService.getBranches()
     const payload = res?.data ?? res ?? {}
     branches.value = payload.data ?? payload ?? []
+    registeredStoreLocation.value = payload.store_location ?? null
   } finally {
     loading.value = false
   }
@@ -292,12 +293,37 @@ const openCreateDialog = async () => {
   if (form.value.provinceId) {
     await fetchCities(String(form.value.provinceId))
   }
+
+  const storeLocation = registeredStoreLocation.value
+  if (storeLocation) {
+    form.value.province = storeLocation.province || form.value.province
+
+    const matchingCity = cities.value.find(
+      (city: any) => normalize(city.name) === normalize(storeLocation.city),
+    )
+    if (matchingCity) {
+      form.value.cityId = String(matchingCity.city_id || matchingCity.id || matchingCity.code || '')
+      form.value.city = matchingCity.name || storeLocation.city || ''
+      await fetchBarangays(form.value.cityId)
+
+      const matchingBarangay = barangays.value.find(
+        (barangay: any) => normalize(barangay.name) === normalize(storeLocation.barangay),
+      )
+      if (matchingBarangay) {
+        form.value.barangayCode = String(matchingBarangay.code || matchingBarangay.id || '')
+        form.value.barangay = matchingBarangay.name || storeLocation.barangay || ''
+      } else {
+        // Keep the registered value even if the external location API is unavailable.
+        form.value.barangay = storeLocation.barangay || ''
+      }
+    }
+  }
 }
 
 const createBranch = async () => {
   validationErrors.value = {}
   form.value.city = resolveSelectedCityName()
-  form.value.barangay = resolveSelectedBarangayName()
+  form.value.barangay = resolveSelectedBarangayName() || form.value.barangay
 
   const errors: Record<string, string> = {}
   if (!form.value.name.trim()) errors.name = 'Branch name is required.'

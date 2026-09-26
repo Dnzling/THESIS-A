@@ -113,12 +113,13 @@ class DashboardController extends Controller
         $endDate = now();
 
         // Build base query
-        $inventoryQuery = BranchInventory::query();
+        $inventoryQuery = BranchInventory::query()
+            ->join('products', 'products.id', '=', 'branch_inventory.product_id');
         if ($storeId > 0) {
-            $inventoryQuery->where('store_id', $storeId);
+            $inventoryQuery->where('branch_inventory.store_id', $storeId);
         }
         if ($branchId) {
-            $inventoryQuery->where('branch_id', $branchId);
+            $inventoryQuery->where('branch_inventory.branch_id', $branchId);
         }
 
         // Get inventory stats
@@ -131,7 +132,7 @@ class DashboardController extends Controller
             SUM(quantity_available) as total_available,
             SUM(quantity_reserved) as total_reserved,
             SUM(quantity_damaged) as total_damaged,
-            SUM(total_value) as total_inventory_value
+            SUM(branch_inventory.quantity_on_hand * COALESCE(products.cost_price, 0)) as total_inventory_value
         ')->first();
 
         // Get alerts stats
@@ -235,7 +236,7 @@ class DashboardController extends Controller
         $valueByCategory = BranchInventory::join('products', 'branch_inventory.product_id', '=', 'products.id')
             ->join('categories', 'products.category_id', '=', 'categories.id')
             ->select('categories.category_name')
-            ->selectRaw('SUM(branch_inventory.total_value) as total_value')
+            ->selectRaw('SUM(branch_inventory.quantity_on_hand * COALESCE(products.cost_price, 0)) as total_value')
             ->selectRaw('SUM(branch_inventory.quantity_on_hand) as total_quantity')
             ->when($storeId > 0, fn($q) => $q->where('branch_inventory.store_id', $storeId))
             ->when($branchId, fn($q) => $q->where('branch_inventory.branch_id', $branchId))
@@ -339,12 +340,13 @@ class DashboardController extends Controller
             ]);
         }
 
-        $query = BranchInventory::query();
+        $query = BranchInventory::query()
+            ->join('products', 'products.id', '=', 'branch_inventory.product_id');
         if ($storeId > 0) {
-            $query->where('store_id', $storeId);
+            $query->where('branch_inventory.store_id', $storeId);
         }
         if ($branchId) {
-            $query->where('branch_id', $branchId);
+            $query->where('branch_inventory.branch_id', $branchId);
         }
 
         $summary = $query->selectRaw('
@@ -352,7 +354,7 @@ class DashboardController extends Controller
             SUM(CASE WHEN stock_status = "in_stock" THEN 1 ELSE 0 END) as in_stock,
             SUM(CASE WHEN stock_status = "low_stock" THEN 1 ELSE 0 END) as low_stock,
             SUM(CASE WHEN stock_status = "out_of_stock" THEN 1 ELSE 0 END) as out_of_stock,
-            SUM(total_value) as total_value
+            SUM(branch_inventory.quantity_on_hand * COALESCE(products.cost_price, 0)) as total_value
         ')->first();
 
         $activeAlerts = StockAlert::where('status', 'active')

@@ -10,6 +10,7 @@ interface User {
     last_name: string
     role: string
     email: string
+    store?: { id: number; name: string } | null
     abilities?: string[]
 }
 
@@ -27,6 +28,13 @@ interface NavigationItem {
     meta: Record<string, any> | null
     is_active: boolean
     badge_count?: number
+}
+
+interface SystemModule {
+    id: number
+    key: string
+    name: string
+    description?: string | null
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -52,7 +60,10 @@ export const useAuthStore = defineStore('auth', () => {
     // RBAC State
     const permissions = ref<string[]>(readStoredArray<string>('permissions'))
     const navigation = ref<NavigationItem[]>(readStoredArray<NavigationItem>('navigation'))
-    const permissionsLoaded = ref(permissions.value.length > 0 || navigation.value.length > 0)
+    const systemModules = ref<SystemModule[]>(readStoredArray<SystemModule>('system_modules'))
+    // Cached permissions/navigation are used as a fallback only. Always refresh
+    // them once on a new app load so role changes are reflected in the sidebar.
+    const permissionsLoaded = ref(false)
     const isLoadingPermissions = ref(false)
     let permissionsPromise: Promise<void> | null = null
 
@@ -78,21 +89,67 @@ export const useAuthStore = defineStore('auth', () => {
             return '/shop'
         }
 
-        const normalizedRole = String(user.value?.role || '').toLowerCase()
-        if (normalizedRole === 'supplier') {
+        const normalizedRole = String(user.value?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
+        if (normalizedRole.includes('supplier')) {
             return '/supplier-portal/dashboard'
         }
 
-        if (user.value?.role === 'super_admin') {
+        if (normalizedRole === 'super_admin') {
             return '/admin/dashboard'
         }
+        if (normalizedRole === 'driver') {
+            return '/driver/deliveries'
+        }
 
+        const moduleOrder = ['admin', 'store', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance', 'logistics', 'sales', 'crm']
         const activeNav = navigation.value
-            .filter(item => item.is_active && item.route_path && !item.meta?.is_group && !item.route_path.startsWith('#'))
-            .sort((a, b) => a.display_order - b.display_order)
+            .filter(item => {
+                const name = String(item.name || '').toLowerCase()
+                const path = String(item.route_path || '').trim()
+                return item.is_active
+                    && name !== 'account.profile'
+                    && !['/profile', '/shop/profile', '/supplier-portal/profile'].includes(path.toLowerCase())
+                    && path
+                    && !item.meta?.is_group
+                    && !path.startsWith('#')
+                    && (normalizedRole.includes('supplier') || String(item.module || '').toLowerCase() !== 'supplier')
+            })
+            .map(item => {
+                const name = String(item.name || '').toLowerCase()
+                const routeName = String(item.route_name || '').toLowerCase()
+                const routePath = String(item.route_path || '').toLowerCase()
+                const isCrmItem = name === 'sales.crm'
+                    || name.startsWith('crm.')
+                    || routeName === 'sales.crm'
+                    || routeName.startsWith('crm.')
+                    || routePath.startsWith('/crm')
 
-        const firstAvailable = activeNav[0]
-        return firstAvailable?.route_path || '/store/index'
+                return isCrmItem
+                    ? {
+                        ...item,
+                        module: 'crm',
+                        route_path: name === 'sales.crm' || routeName === 'sales.crm' ? '/crm/dashboard' : item.route_path,
+                    }
+                    : item
+            })
+        const availableModules = [...new Set(activeNav.map(item => String(item.module || '').toLowerCase()))]
+            .sort((a, b) => {
+                const aOrder = moduleOrder.indexOf(a)
+                const bOrder = moduleOrder.indexOf(b)
+                if (aOrder < 0 && bOrder < 0) return a.localeCompare(b)
+                if (aOrder < 0) return 1
+                if (bOrder < 0) return -1
+                return aOrder - bOrder
+            })
+
+        for (const module of availableModules) {
+            const firstAvailable = activeNav
+                .filter(item => String(item.module || '').toLowerCase() === module)
+                .sort((a, b) => a.display_order - b.display_order)[0]
+            if (firstAvailable?.route_path) return firstAvailable.route_path
+        }
+
+        return '/unauthorized'
     }
 
     // Default route: first active navigation item that matches role/permission (fallback to /system/index)
@@ -109,6 +166,7 @@ export const useAuthStore = defineStore('auth', () => {
         if (isCustomer.value || user.value?.role === 'super_admin') {
             permissions.value = []
             navigation.value = []
+            systemModules.value = []
             permissionsLoaded.value = true
             return
         }
@@ -135,11 +193,13 @@ export const useAuthStore = defineStore('auth', () => {
 
                 permissions.value = response.data.permissions || []
                 navigation.value = response.data.navigation || []
+                systemModules.value = response.data.modules || []
                 permissionsLoaded.value = true
                 const permissionsMeta = response.data.permissions_meta || null
 
                 localStorage.setItem('navigation', JSON.stringify(navigation.value))
                 localStorage.setItem('permissions', JSON.stringify(permissions.value))
+                localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
 
                 console.log('Permissions loaded:', permissions.value.length, 'permissions')
                 if (permissionsMeta) {
@@ -202,11 +262,13 @@ export const useAuthStore = defineStore('auth', () => {
             
             permissions.value = response.data.permissions || []
             navigation.value = response.data.navigation || []
+            systemModules.value = response.data.modules || []
             const permissionsMeta = response.data.permissions_meta || null
             
             // Update cache
             localStorage.setItem('navigation', JSON.stringify(navigation.value))
             localStorage.setItem('permissions', JSON.stringify(permissions.value))
+            localStorage.setItem('system_modules', JSON.stringify(systemModules.value))
             
             console.log('Navigation refreshed:', navigation.value.length, 'items')
             if (permissionsMeta) {
@@ -319,14 +381,14 @@ export const useAuthStore = defineStore('auth', () => {
     /**
      * Login user
      */
-    const login = async (login: string, password: string) => {
+    const login = async (login: string, password: string, endpoint = '/api/auth/login') => {
         loading.value = true
         error.value = null
 
         try {
             const location = await getCurrentLocation()
             // Make login request
-            const response = await axios.post('/api/auth/login', {
+            const response = await axios.post(endpoint, {
                 login,
                 password,
                 device_name: 'web_browser',
@@ -354,7 +416,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.setItem('user', JSON.stringify(userData))
 
             axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
-            document.cookie = `auth_token=${accessToken}; path=/; SameSite=Lax`
+            document.cookie = `auth_token=${encodeURIComponent(accessToken)}; path=/; SameSite=Lax`
 
             // Load RBAC navigation immediately for roles that rely on DB permissions.
             // (Fixes initial load showing only the account/profile nav until a reload.)
@@ -441,6 +503,7 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.removeItem('user')
             localStorage.removeItem('navigation')
             localStorage.removeItem('permissions')
+            localStorage.removeItem('system_modules')
 
             delete axios.defaults.headers.common['Authorization']
             document.cookie = 'auth_token=; Max-Age=0; path=/; SameSite=Lax'
@@ -473,14 +536,21 @@ export const useAuthStore = defineStore('auth', () => {
                 payload?.user ??
                 payload
 
+            const previousRole = String(user.value?.role || '')
             user.value = resolvedUser
             localStorage.setItem('user', JSON.stringify(resolvedUser))
 
-            const shouldReloadPermissions = options?.reloadPermissions === true
+            const shouldReloadPermissions = options?.reloadPermissions === true || previousRole !== String(resolvedUser?.role || '')
             if (shouldReloadPermissions) {
                 // Explicit refresh requested (rare). Use this when role/permissions might have changed.
                 permissionsLoaded.value = false
                 isLoadingPermissions.value = false
+                permissions.value = []
+                navigation.value = []
+                systemModules.value = []
+                localStorage.removeItem('permissions')
+                localStorage.removeItem('navigation')
+                localStorage.removeItem('system_modules')
                 await loadPermissions()
             } else if (!permissionsLoaded.value && !isLoadingPermissions.value) {
                 // If permissions weren't loaded yet, load once. Otherwise keep cache to avoid reloading per page.
@@ -533,6 +603,7 @@ export const useAuthStore = defineStore('auth', () => {
         error,
         permissions,
         navigation,
+        systemModules,
         permissionsLoaded,
         isLoadingPermissions,
 
@@ -563,5 +634,6 @@ export const useAuthStore = defineStore('auth', () => {
         getNavigationBySection,
         getChildNavigation,
         hasNavigationSection,
+        getFirstNavigationRoute,
     }
 })

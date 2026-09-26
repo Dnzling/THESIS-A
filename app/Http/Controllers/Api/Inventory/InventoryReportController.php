@@ -12,6 +12,35 @@ class InventoryReportController extends Controller
 {
     public function __construct(protected ReportingService $reportingService) {}
 
+    public function actionable(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'report' => 'required|in:slow_movers,fast_movers,aging,transactions',
+            'date_from' => 'required|date',
+            'date_to' => 'required|date|after_or_equal:date_from',
+        ]);
+
+        $start = \Carbon\Carbon::parse($validated['date_from'])->startOfDay();
+        $end = \Carbon\Carbon::parse($validated['date_to'])->endOfDay();
+        if ($start->diffInDays($end) > 366) {
+            return response()->json(['success' => false, 'message' => 'Choose a period of up to one year.'], 422);
+        }
+
+        $user = $request->user();
+        $storeId = (int) ($user?->store_id ?? 0);
+        $branchId = (int) ($user?->branch_id ?: $user?->employee?->branch_id ?: 0);
+        if ($storeId < 1) {
+            return response()->json(['success' => false, 'message' => 'A store is required to view inventory reports.'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->reportingService->getActionableFinishedGoods(
+                $storeId, $branchId, $validated['report'], $start, $end
+            ),
+        ]);
+    }
+
     /**
      * Get branch summary with KPIs
      */

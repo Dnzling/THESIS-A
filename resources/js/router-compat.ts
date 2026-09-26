@@ -5,7 +5,6 @@ declare const route: any;
 
 const routeNameAliases: Record<string, string> = {
     'inventory.products': 'inventory.products.index',
-    'inventory.products.create': 'inventory.products.index',
     'inventory.locations': 'inventory.locations.index',
     'inventory.serial-numbers': 'inventory.serial-numbers.index',
     'inventory.serial-numbers.detail': 'inventory.serial-numbers.show',
@@ -36,6 +35,11 @@ export const useRouter = () => {
         push: (to: any) => router.visit(resolveToUrl(to)),
         replace: (to: any) => router.visit(resolveToUrl(to), { replace: true }),
         back: () => window.history.back(),
+        resolve: (to: any) => {
+            const href = resolveToUrl(to);
+
+            return { href, fullPath: href };
+        },
     };
 };
 

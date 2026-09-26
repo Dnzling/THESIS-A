@@ -1,0 +1,31 @@
+<template>
+  <div class="space-y-5">
+    <header class="flex flex-wrap items-end justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-wider text-orange-600">Ecommerce</p><h1 class="text-2xl font-semibold text-slate-900">{{ data?.branch?.name || 'Store' }} Performance</h1><p class="mt-1 text-sm text-slate-500">Online sales and order performance assigned to this branch.</p></div><Select v-model="days" :options="periods" optionLabel="label" optionValue="value" class="w-44" @change="load" /></header>
+    <div v-if="loading && !data" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Skeleton v-for="item in 6" :key="item" height="7rem" borderRadius="14px" /></div>
+    <Message v-else-if="error" severity="error" :closable="false">{{ error }}</Message>
+    <template v-else-if="data">
+      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card v-for="metric in metrics" :key="metric.label" class="border border-slate-200 shadow-sm"><template #content><p class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ metric.label }}</p><p class="mt-2 text-2xl font-semibold text-slate-950">{{ metric.value }}</p><p class="mt-1 text-xs text-slate-500">{{ metric.caption }}</p></template></Card>
+      </section>
+      <section class="grid gap-4 xl:grid-cols-3">
+        <Card class="border border-slate-200 shadow-sm xl:col-span-2"><template #title><span class="text-base">Online Revenue Trend</span></template><template #content><Chart type="line" :data="revenueData" :options="lineOptions" class="h-72" /></template></Card>
+        <Card class="border border-slate-200 shadow-sm"><template #title><span class="text-base">Order Status</span></template><template #content><Chart type="doughnut" :data="statusData" :options="doughnutOptions" class="h-72" /></template></Card>
+      </section>
+      <section class="grid gap-4 xl:grid-cols-2">
+        <Card class="border border-slate-200 shadow-sm"><template #title><span class="text-base">Top Products</span></template><template #content><DataTable :value="data.top_products" size="small" stripedRows><template #empty><div class="py-8 text-center text-sm text-slate-500">No product sales in this period.</div></template><Column header="Product"><template #body="{ data: row }"><p class="font-medium text-slate-900">{{ row.product_name }}</p><p class="text-xs text-slate-500">{{ row.sku || 'No SKU' }}</p></template></Column><Column field="quantity" header="Qty" /><Column header="Revenue"><template #body="{ data: row }">{{ money(row.revenue) }}</template></Column></DataTable></template></Card>
+        <Card class="border border-slate-200 shadow-sm"><template #title><span class="text-base">Recent Ecommerce Orders</span></template><template #content><DataTable :value="data.recent_orders" size="small" stripedRows responsiveLayout="scroll"><template #empty><div class="py-8 text-center text-sm text-slate-500">No ecommerce orders in this period.</div></template><Column field="order_number" header="Order" /><Column field="shipping_name" header="Customer" /><Column header="Status"><template #body="{ data: row }"><Tag :value="label(row.status)" :severity="severity(row.status)" /></template></Column><Column header="Total"><template #body="{ data: row }"><span class="font-semibold">{{ money(row.total_amount) }}</span></template></Column></DataTable></template></Card>
+      </section>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import Card from 'primevue/card'; import Chart from 'primevue/chart'; import Column from 'primevue/column'; import DataTable from 'primevue/datatable'; import Message from 'primevue/message'; import Select from 'primevue/select'; import Skeleton from 'primevue/skeleton'; import Tag from 'primevue/tag'
+import { storeModuleService } from '@/services/store-module.service'
+const days = ref(30); const periods = [{ label: 'Last 7 days', value: 7 }, { label: 'Last 30 days', value: 30 }, { label: 'Last 90 days', value: 90 }]; const loading = ref(false); const error = ref(''); const data = ref<any>(null)
+const money = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0); const label = (value: any) => String(value || '—').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()); const severity = (value: any) => ['delivered', 'completed'].includes(String(value)) ? 'success' : ['cancelled', 'rejected'].includes(String(value)) ? 'danger' : ['pending', 'processing'].includes(String(value)) ? 'warn' : 'info'
+const metrics = computed(() => { const kpi = data.value?.kpis || {}; return [{ label: 'Online Revenue', value: money(kpi.revenue), caption: `Last ${data.value?.period_days || days.value} days` }, { label: 'Online Orders', value: Number(kpi.orders || 0).toLocaleString(), caption: `${kpi.completed_orders || 0} completed` }, { label: 'Average Order Value', value: money(kpi.average_order_value), caption: 'Revenue per order' }, { label: 'Pending Orders', value: Number(kpi.pending_orders || 0).toLocaleString(), caption: `${kpi.cancelled_orders || 0} cancelled` }] })
+const revenueData = computed(() => ({ labels: data.value?.revenue_trend?.labels || [], datasets: [{ label: 'Revenue', data: data.value?.revenue_trend?.values || [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35 }] })); const statusData = computed(() => ({ labels: data.value?.status_breakdown?.labels || [], datasets: [{ data: data.value?.status_breakdown?.values || [], backgroundColor: ['#22c55e', '#f97316', '#3b82f6', '#ef4444', '#94a3b8'] }] })); const lineOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }; const doughnutOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '66%' }
+const load = async () => { loading.value = true; error.value = ''; try { data.value = (await storeModuleService.getEcommercePerformance(days.value)).data } catch (err: any) { error.value = err?.response?.data?.message || 'Unable to load ecommerce performance.' } finally { loading.value = false } }; onMounted(load)
+</script>
