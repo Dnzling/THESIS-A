@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Logistics;
 
 use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderController;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,5 +20,21 @@ class SupplierPickupAssignmentController extends PurchaseOrderController
         abort_if($po->fulfillment_method === 'supplier_delivery', 422, 'Supplier delivery does not need a store pickup assignment.');
 
         return response()->json(['success' => true, 'data' => $po]);
+    }
+
+    public function pickupVehicles(Request $request, int $id): JsonResponse
+    {
+        $storeId = (int) ($request->user()?->store_id ?: $request->user()?->employee?->store_id);
+        abort_if($storeId < 1, 403);
+        PurchaseOrder::where('store_id', $storeId)->findOrFail($id);
+
+        $vehicles = EcommerceDeliveryVehicle::with('branch:id,name')
+            ->where('store_id', $storeId)
+            ->where('status', 'active')
+            ->where('is_active', true)
+            ->orderBy('vehicle_name')
+            ->get();
+
+        return response()->json(['success' => true, 'data' => $vehicles]);
     }
 }
