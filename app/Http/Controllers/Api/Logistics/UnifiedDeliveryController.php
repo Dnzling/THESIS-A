@@ -1885,25 +1885,14 @@ class UnifiedDeliveryController extends Controller
     private function nextTrackingNumber(): string
     {
         $prefix = 'LGS-' . now()->format('Ymd') . '-';
+        do {
+            $tracking = $prefix . (string) \Illuminate\Support\Str::ulid();
+        } while (
+            EcommerceOrderDelivery::query()->where('tracking_number', $tracking)->exists()
+            || SalesOrderDelivery::query()->where('tracking_number', $tracking)->exists()
+        );
 
-        $lastEcom = EcommerceOrderDelivery::query()
-            ->where('tracking_number', 'like', "{$prefix}%")
-            ->orderByDesc('id')
-            ->value('tracking_number');
-
-        $lastSales = SalesOrderDelivery::query()
-            ->where('tracking_number', 'like', "{$prefix}%")
-            ->orderByDesc('id')
-            ->value('tracking_number');
-
-        $maxSequence = 0;
-        foreach ([$lastEcom, $lastSales] as $value) {
-            if ($value && preg_match('/(\d+)$/', (string) $value, $matches)) {
-                $maxSequence = max($maxSequence, (int) $matches[1]);
-            }
-        }
-
-        return $prefix . str_pad((string) ($maxSequence + 1), 4, '0', STR_PAD_LEFT);
+        return $tracking;
     }
 
     private function composeAssignmentNotes(
