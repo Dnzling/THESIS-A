@@ -105,7 +105,7 @@
               <i class="pi pi-users text-4xl text-gray-400 mb-3"></i>
               <p class="text-gray-500 text-lg">No employees found</p>
               <p class="text-gray-400 text-sm mb-4">Try adjusting your search or filter criteria</p>
-              <Button label="Add New Employee" icon="pi pi-plus" severity="warn" @click="openAddDialog" />
+              <!-- <Button label="Add New Employee" icon="pi pi-plus" severity="warn" @click="openAddDialog" /> -->
             </div>
           </template>
         </DataTable>
