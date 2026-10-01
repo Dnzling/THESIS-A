@@ -21,6 +21,21 @@
             <Rating v-model="form.rating" :cancel="false" />
           </div>
 
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+            <h2 class="font-bold text-slate-900">Rate the product details</h2>
+            <p class="mt-1 text-xs text-slate-500">Your detailed ratings help other customers make a better choice.</p>
+            <div class="mt-5 space-y-4">
+              <div v-for="criterion in reviewCriteria" :key="criterion.key" class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <label :for="`review-${criterion.key}`" class="text-sm font-medium text-slate-700">{{ criterion.label }}</label>
+                <Rating :id="`review-${criterion.key}`" v-model="form[criterion.key]" :cancel="false" />
+              </div>
+            </div>
+            <label class="mt-6 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <input v-model="form.is_recommended" type="checkbox" class="h-5 w-5 rounded border-slate-300 text-orange-600 focus:ring-orange-500" />
+              <span class="text-sm font-semibold text-slate-700">Yes, I recommend this product</span>
+            </label>
+          </div>
+
           <div class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Review (optional)</label>
             <Textarea v-model="form.review_text" rows="4" fluid placeholder="Share your experience with this product." />
@@ -65,8 +80,23 @@ const attachment = ref<File | null>(null)
 const attachmentPreview = ref('')
 const form = reactive({
   rating: 5,
+  appearance_rating: 5,
+  assembly_rating: 5,
+  quality_rating: 5,
+  value_rating: 5,
+  expectations_rating: 5,
+  is_recommended: true,
   review_text: '',
 })
+
+type ReviewRatingKey = 'appearance_rating' | 'assembly_rating' | 'quality_rating' | 'value_rating' | 'expectations_rating'
+const reviewCriteria: Array<{ key: ReviewRatingKey; label: string }> = [
+  { key: 'appearance_rating', label: 'Appearance' },
+  { key: 'assembly_rating', label: 'Ease of assembly/installation' },
+  { key: 'quality_rating', label: 'Product quality' },
+  { key: 'value_rating', label: 'Value for money' },
+  { key: 'expectations_rating', label: 'Works as expected' },
+]
 
 const selectedItem = computed(() => {
   const itemId = Number(route.params.itemId)
@@ -120,6 +150,12 @@ async function submitReview() {
   try {
     const response = await ecommerceService.submitItemReview(selectedItem.value.id, {
       rating: Number(form.rating),
+      appearance_rating: Number(form.appearance_rating),
+      assembly_rating: Number(form.assembly_rating),
+      quality_rating: Number(form.quality_rating),
+      value_rating: Number(form.value_rating),
+      expectations_rating: Number(form.expectations_rating),
+      is_recommended: Boolean(form.is_recommended),
       review_text: form.review_text.trim() || undefined,
       attachment: attachment.value,
     })

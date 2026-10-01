@@ -23,6 +23,12 @@ class EcommerceProductReview extends Model
         'store_id',
         'user_id',
         'rating',
+        'appearance_rating',
+        'assembly_rating',
+        'quality_rating',
+        'value_rating',
+        'expectations_rating',
+        'is_recommended',
         'review_text',
         'attachment_path',
         'status',
@@ -32,6 +38,12 @@ class EcommerceProductReview extends Model
 
     protected $casts = [
         'rating' => 'integer',
+        'appearance_rating' => 'integer',
+        'assembly_rating' => 'integer',
+        'quality_rating' => 'integer',
+        'value_rating' => 'integer',
+        'expectations_rating' => 'integer',
+        'is_recommended' => 'boolean',
     ];
 
     public function getAttachmentUrlAttribute(): ?string
