@@ -18,6 +18,13 @@
               @click="confirmReadyForDispatch"
             />
             <Button
+              v-if="order && Number(order.shipping_fee || 0) <= 0"
+              size="small"
+              icon="pi pi-calendar"
+              :label="order.pickup_date ? 'Change Pickup Date' : 'Select Pickup Date'"
+              @click="openPickupDateDialog"
+            />
+            <Button
               severity="secondary" size="small" text
               icon="pi pi-print"
               label="Print Receipt"
@@ -61,6 +68,7 @@
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Delivery Address</p>
                 <p class="mt-1 font-medium leading-6 text-gray-900">{{ order?.shipping_address || '—' }}</p>
               </div>
+              <div v-if="order?.pickup_date" class="sm:col-span-2"><p class="text-xs font-medium uppercase tracking-wide text-gray-500">Pickup Date</p><p class="mt-1 font-semibold text-gray-900">{{ formatPickupDate(order.pickup_date) }}</p></div>
             </div>
 
             <Divider />
@@ -234,6 +242,16 @@
         <Button label="Reject" severity="danger" size="small" :loading="reviewingCancellation" @click="submitReject" />
       </template>
     </Dialog>
+    <Dialog v-model:visible="pickupDateDialogVisible" header="Select Pickup Date" modal class="w-full max-w-md">
+      <div class="space-y-2">
+        <label class="text-sm font-medium text-slate-700">Pickup date</label>
+        <DatePicker v-model="pickupDate" :minDate="todayDate" dateFormat="MM dd, yy" showIcon fluid placeholder="Select a date"/>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" outlined @click="pickupDateDialogVisible = false" />
+        <Button label="Save Date" icon="pi pi-check" :loading="savingPickupDate" :disabled="!pickupDate" @click="savePickupDate" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -257,6 +275,7 @@ import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Dialog from 'primevue/dialog'
+import DatePicker from 'primevue/datepicker'
 
 defineOptions({ layout: SystemLayout })
 
@@ -272,6 +291,10 @@ const sendingToLogistics = ref(false)
 const reviewingCancellation = ref(false)
 const reviewNotes = ref('')
 const rejectDialogVisible = ref(false)
+const pickupDateDialogVisible = ref(false)
+const pickupDate = ref<Date | null>(null)
+const savingPickupDate = ref(false)
+const todayDate = new Date()
 const rejectDialogAttempted = ref(false)
 const rejectDialog = ref<{ reason: string | null; notes: string }>({
   reason: null,
@@ -320,6 +343,39 @@ const loadOrder = async () => {
     toast.add({ severity: 'error', summary: 'Error', detail: error?.response?.data?.message || 'Failed to load order', life: 3000 })
   } finally {
     loading.value = false
+  }
+}
+
+const openPickupDateDialog = () => {
+  pickupDate.value = order.value?.pickup_date ? parsePickupDate(order.value.pickup_date) : null
+  pickupDateDialogVisible.value = true
+}
+
+const parsePickupDate = (value: string): Date | null => {
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+}
+
+const formatPickupDate = (value: string): string => {
+  const date = parsePickupDate(value)
+  return date ? date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'
+}
+
+const savePickupDate = async () => {
+  if (!order.value || !pickupDate.value) return
+  savingPickupDate.value = true
+  try {
+    const date = pickupDate.value
+    const pickupDateIso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    await salesService.setEcommerceOrderPickupDate(String(order.value.id), pickupDateIso)
+    toast.add({ severity: 'success', summary: 'Pickup Date Saved', detail: 'The customer can now see the pickup date.', life: 3000 })
+    pickupDateDialogVisible.value = false
+    await loadOrder()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to Save', detail: error?.response?.data?.message || 'Failed to save pickup date.', life: 3000 })
+  } finally {
+    savingPickupDate.value = false
   }
 }
 

@@ -12,7 +12,7 @@ class RoleSeeder extends Seeder
     {
         $roles = [
             ['name' => 'super_admin', 'display_name' => 'Super Administrator', 'description' => 'Platform owner with full system access', 'code' => 'ADM'],
-            ['name' => 'store_admin', 'display_name' => 'Store Administrator', 'description' => 'Manages store configuration and operations', 'code' => 'SADM'],
+            ['name' => 'owner', 'display_name' => 'Store Owner', 'description' => 'Owns and manages store configuration and operations', 'code' => 'OWN'],
             ['name' => 'driver', 'display_name' => 'Driver', 'description' => 'Handles assigned supplier pickups and customer deliveries', 'code' => 'DRV'],
             ['name' => 'applicant', 'display_name' => 'Applicant', 'description' => 'Public applicant for the job portal', 'code' => 'APP'],
             ['name' => 'supplier', 'display_name' => 'Supplier', 'description' => 'Manages supplier portal activities', 'code' => 'SUP'],

@@ -521,7 +521,7 @@ class AttendanceController extends Controller
             ], 200);
         }
 
-        if (!$user->isSuperAdmin() && !$user->isStoreAdmin()) {
+        if (!$user->isSuperAdmin() && !$user->isOwner()) {
             $geofenceBranch = $this->resolveGeofenceBranch($user, $employee);
             if ($geofenceBranch?->geofence_enabled && $geofenceBranch->latitude !== null && $geofenceBranch->longitude !== null) {
                 $lat = $request->input('latitude');

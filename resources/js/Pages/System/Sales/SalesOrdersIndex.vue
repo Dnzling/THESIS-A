@@ -37,9 +37,17 @@
         </div>
       </template>
       <template #content>
+        <div v-if="loading" class="space-y-3 p-4" aria-label="Loading orders">
+          <div class="grid grid-cols-8 gap-3">
+            <Skeleton v-for="column in 8" :key="`orders-heading-${column}`" height="1.25rem" />
+          </div>
+          <div v-for="row in 6" :key="`orders-row-${row}`" class="grid grid-cols-8 gap-3">
+            <Skeleton v-for="column in 8" :key="`orders-${row}-${column}`" height="2.5rem" />
+          </div>
+        </div>
         <DataTable
+          v-else
           :value="filteredOrders"
-          :loading="loading"
           dataKey="key"
           class="text-sm"
           rowHover
@@ -95,6 +103,14 @@
               </div>
             </template>
           </Column>
+          <template #empty>
+            <div class="flex flex-col items-center justify-center gap-2 py-12 text-center">
+              <i class="pi pi-receipt text-3xl text-slate-300" />
+              <p class="font-semibold text-slate-700">{{ hasActiveFilters ? 'No orders match these filters' : 'No orders yet' }}</p>
+              <p class="max-w-md text-sm text-slate-500">{{ hasActiveFilters ? 'Try adjusting your search or clearing some filters.' : 'In-store and ecommerce orders will appear here once customers place an order.' }}</p>
+              <Button v-if="hasActiveFilters" label="Clear Filters" icon="pi pi-filter-slash" severity="secondary" outlined size="small" class="mt-1" @click="resetFilters" />
+            </div>
+          </template>
         </DataTable>
       </template>
     </Card>
@@ -118,6 +134,7 @@ import InputText from 'primevue/inputtext'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import DatePicker from 'primevue/datepicker'
+import Skeleton from 'primevue/skeleton'
 
 type UnifiedOrder = {
   key: string
@@ -167,6 +184,7 @@ const channelOptions = [
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
   { label: 'Ready for Dispatch', value: 'ready_for_dispatch' },
+  { label: 'Ready for Pickup', value: 'ready_for_pickup' },
   { label: 'Assigned', value: 'assigned' },
   { label: 'Paid', value: 'paid' },
   { label: 'Completed', value: 'completed' },
@@ -330,6 +348,7 @@ const statusSeverity = (status: string) => {
   if (normalized === 'delivered' || normalized === 'paid' || normalized === 'completed') return 'success'
   if (normalized === 'cancelled' || normalized === 'failed') return 'danger'
   if (normalized === 'ready_for_dispatch') return 'warn'
+  if (normalized === 'ready_for_pickup') return 'success'
   if (normalized === 'pending') return 'secondary'
   return 'info'
 }

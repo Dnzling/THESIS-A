@@ -10,7 +10,7 @@ use Inertia\Inertia;
 use App\Http\Middleware\VerifyCsrfToken;
 
 
-Route::prefix('stores/{store}')->group(function () {
+Route::middleware('auth')->prefix('stores/{store}')->group(function () {
     // Store owner submits verification documents
     Route::post('/verification/submit', [StoreVerificationController::class, 'submitDocuments']);
 

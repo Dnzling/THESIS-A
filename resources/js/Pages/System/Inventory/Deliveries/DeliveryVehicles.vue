@@ -28,7 +28,15 @@
   
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
       <template #content>
-        <DataTable :value="vehicles" :loading="loading" dataKey="id" rowHover paginator lazy :rows="pageState.rows"
+        <div v-if="loading" class="space-y-3 py-2" aria-label="Loading vehicles">
+          <div class="grid grid-cols-6 gap-3">
+            <Skeleton v-for="index in 6" :key="`vehicle-heading-${index}`" height="1.25rem" />
+          </div>
+          <div v-for="row in 5" :key="`vehicle-row-${row}`" class="grid grid-cols-6 gap-3">
+            <Skeleton v-for="column in 6" :key="`vehicle-${row}-${column}`" height="2.25rem" />
+          </div>
+        </div>
+        <DataTable v-else :value="vehicles" dataKey="id" rowHover paginator lazy :rows="pageState.rows"
           :first="(pageState.page - 1) * pageState.rows" :totalRecords="pageState.total"
           :rowsPerPageOptions="[10, 20, 50]" @page="onPage">
           <Column field="vehicle_name" header="Vehicle" />
@@ -59,6 +67,14 @@
               <Button v-if="canManageDeliveries" text  icon="pi pi-pencil" @click="openEdit(data)" />
             </template>
           </Column>
+          <template #empty>
+            <div class="flex flex-col items-center justify-center gap-2 py-10 text-center">
+              <i class="pi pi-truck text-3xl text-slate-300" />
+              <p class="font-semibold text-slate-700">{{ filters.search || filters.status ? 'No vehicles match these filters' : 'No vehicles registered yet' }}</p>
+              <p class="max-w-md text-sm text-slate-500">{{ filters.search || filters.status ? 'Try clearing or changing your search and status filters.' : 'Register a delivery vehicle to make delivery available for your store.' }}</p>
+              <Button v-if="!filters.search && !filters.status && canManageDeliveries" label="Add Vehicle" icon="pi pi-plus" size="small" class="mt-1" @click="openCreate" />
+            </div>
+          </template>
         </DataTable>
       </template>
     </Card>
@@ -144,6 +160,7 @@ import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
 import Message from 'primevue/message'
+import Skeleton from 'primevue/skeleton'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()

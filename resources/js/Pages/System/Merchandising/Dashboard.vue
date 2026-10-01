@@ -39,9 +39,9 @@
           <p class="mt-2 text-xs text-slate-500">Available in your product catalog</p>
         </section>
         <section class="dashboard-panel rounded-2xl border border-orange-200 bg-white p-5">
-          <p class="text-xs font-medium text-slate-500">Price changes to review</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.pending_price_approvals || 0 }}</p>
-          <p class="mt-2 text-xs text-orange-700">Pending approval before prices update</p>
+          <p class="text-xs font-medium text-slate-500">Price updates</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-950">Immediate</p>
+          <p class="mt-2 text-xs text-orange-700">Selling price changes take effect when saved</p>
         </section>
         <section class="dashboard-panel rounded-2xl border border-amber-200 bg-white p-5">
           <p class="text-xs font-medium text-slate-500">Active products missing main image</p>
@@ -77,28 +77,6 @@
       </div>
 
       <div class="grid gap-4 xl:grid-cols-2">
-        <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
-          <div class="mb-4 flex items-start justify-between gap-3">
-            <div><h2 class="font-semibold text-slate-950">Price changes awaiting review</h2><p class="text-xs text-slate-500">Review proposed prices before they go live</p></div>
-            <Button label="View products" severity="secondary" text size="small" @click="go('merchandising.products')" />
-          </div>
-          <DataTable :value="data.pending_prices || []" size="small" rowHover class="text-xs" @row-click="openPriceReview">
-            <Column header="Product">
-              <template #body="{ data: item }"><p class="font-medium text-slate-900">{{ item.name }}</p><p class="text-[10px] text-slate-500">{{ item.sku }}</p></template>
-            </Column>
-            <Column field="category" header="Category">
-              <template #body="{ data: item }">{{ item.category || 'Uncategorized' }}</template>
-            </Column>
-            <Column field="pending_base_price" header="Proposed price">
-              <template #body="{ data: item }"><span v-if="item.pending_base_price != null" class="font-medium text-slate-800">{{ money(item.pending_base_price) }}</span><span v-else class="text-slate-400">No base price change</span></template>
-            </Column>
-            <Column header="Action" headerClass="text-right" bodyClass="text-right">
-              <template #body="{ data: item }"><Button label="Review" severity="warn" text size="small" @click.stop="openPriceReview(item)" /></template>
-            </Column>
-            <template #empty><div class="py-7 text-center text-xs text-slate-500">No price changes are waiting for review.</div></template>
-          </DataTable>
-        </section>
-
         <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
           <div class="mb-4 flex items-start justify-between gap-3">
             <div><h2 class="font-semibold text-slate-950">Products missing a main image</h2><p class="text-xs text-slate-500">Active listings that need a product photo</p></div>
@@ -161,7 +139,6 @@ type ProductRow = { id: number; [key: string]: any }
 type DashboardData = {
   summary?: Record<string, number>
   catalog_trend?: { label: string; value: number }[]
-  pending_prices?: ProductRow[]
   missing_images?: ProductRow[]
   recent_products?: ProductRow[]
 }
@@ -184,11 +161,6 @@ const openProductEditor = (event: { data: ProductRow } | ProductRow) => {
   const product = 'data' in event ? event.data : event
   go('merchandising.products.edit', product.id)
 }
-const openPriceReview = (event: { data: ProductRow } | ProductRow) => {
-  const product = 'data' in event ? event.data : event
-  router.push({ name: 'merchandising.products', query: { search: product.sku } })
-}
-
 const currentMonth = computed(() => Number(summary.value.new_products_this_month || 0))
 const previousMonth = computed(() => Number(summary.value.new_products_previous_month || 0))
 const monthChangeLabel = computed(() => {

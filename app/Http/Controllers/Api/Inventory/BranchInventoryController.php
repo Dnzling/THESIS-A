@@ -75,7 +75,14 @@ class BranchInventoryController extends Controller
             $user = auth()->user();
             $targetBranchId = (int) ($branchId ?? $context['branch_id']);
 
-            $query = BranchInventory::with(['product.suppliers', 'variation', 'branch', 'lastCountedBy'])
+            $query = BranchInventory::with([
+                'product.suppliers',
+                'product.assets',
+                'variation',
+                'branch',
+                'warehouseLocation',
+                'lastCountedBy',
+            ])
                 ->where('store_id', $context['store_id'])
                 ->where('branch_id', $targetBranchId);
 

@@ -143,7 +143,7 @@
                 <div class="flex items-center justify-between">
                   <div>
                     <span class="text-md text-green-600 font-semibold">₱{{ formatMoney(item.price) }}</span>
-                    <p class="text-[10px] text-slate-400">VAT included</p>
+                    <p class="text-[10px] text-slate-400"></p>
                   </div>
                 </div>
               </div>
@@ -182,7 +182,7 @@
                     <span class="text-xs text-slate-400 line-through">₱{{ formatMoney(product.base_price) }}</span>
                   </div>
                   <span v-else class="text-md text-green-600 font-semibold">₱{{ formatMoney(product.base_price) }}</span>
-                  <p class="text-[10px] text-slate-400">VAT included</p>
+                  <p class="text-[10px] text-slate-400"></p>
                 </div>
                 <span class="text-[10px] text-slate-400 font-medium">{{ product.rating_count || 0 }} reviews</span>
               </div>

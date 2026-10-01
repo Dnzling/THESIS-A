@@ -72,15 +72,7 @@
                   <p class="text-xs font-semibold uppercase tracking-wide text-surface-500">Store</p>
                   <p class="mt-1 text-sm font-semibold text-surface-900">{{ storeLabel }}</p>
                 </div>
-                <Message v-if="!profileReady" severity="warn" :closable="false">
-                  Complete your applicant profile and upload at least one document before applying.
-                  <button type="button" class="ml-1 font-semibold text-orange-600 hover:text-orange-700"
-                    @click="router.push({ name: 'job-portal.profile' })">
-                    Go to Profile
-                  </button>
-                </Message>
-                <Button label="Apply Job" icon="pi pi-send" severity="warn" fluid :disabled="!profileReady"
-                  @click="confirmApply" />
+                <Button label="Apply Job" icon="pi pi-send" severity="warn" fluid @click="applyVisible = true" />
               </div>
             </template>
           </Card>
@@ -89,12 +81,41 @@
     </div>
       </div>
     </div>
+    <Dialog v-model:visible="applyVisible" modal header="Apply for this job" :style="{ width: 'min(95vw, 640px)' }">
+      <form class="space-y-4 text-sm" @submit.prevent="submitApplication">
+        <p class="text-slate-500">Tell the hiring team who you are and attach your document. No account is needed.</p>
+        <div class="grid gap-3 sm:grid-cols-3">
+          <label class="space-y-1">First name *<InputText v-model.trim="form.first_name" size="small" fluid required /></label>
+          <label class="space-y-1">Middle name<InputText v-model.trim="form.middle_name" size="small" fluid /></label>
+          <label class="space-y-1">Last name *<InputText v-model.trim="form.last_name" size="small" fluid required /></label>
+        </div>
+        <label class="block space-y-1">Email *<InputText v-model.trim="form.email" type="email" size="small" fluid required /></label>
+        <label class="block space-y-1">Document type *
+          <Select v-model="form.document_type" :options="documentTypes" placeholder="Choose a document type" size="small" fluid />
+        </label>
+        <label class="block space-y-1">Attachment *
+          <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="block w-full rounded-lg border border-slate-200 p-2 text-xs" @change="selectDocument" />
+        </label>
+        <p class="text-xs text-slate-500">PDF, Word, JPG or PNG. Maximum 5 MB.</p>
+        <div v-if="documentFile" class="flex items-center gap-3 rounded-xl border border-orange-100 bg-orange-50 p-3">
+          <img v-if="documentPreview" :src="documentPreview" alt="Selected document preview" class="h-16 w-16 rounded-lg object-cover" />
+          <div v-else class="flex h-16 w-16 items-center justify-center rounded-lg bg-white text-xs font-semibold text-orange-700">{{ documentFile.name.split('.').pop()?.toUpperCase() }}</div>
+          <span class="min-w-0 flex-1 truncate text-xs">{{ documentFile.name }}</span>
+          <Button type="button" icon="pi pi-trash" severity="danger" text size="small" aria-label="Remove attachment" @click="confirmRemoveDocument" />
+        </div>
+        <Message v-if="formError" severity="error" :closable="false">{{ formError }}</Message>
+        <div class="flex justify-end gap-2 pt-2">
+          <Button type="button" label="Cancel" severity="secondary" text size="small" @click="applyVisible = false" />
+          <Button type="submit" label="Submit application" severity="warn" size="small" :loading="submitting" :disabled="!documentFile || !form.document_type" />
+        </div>
+      </form>
+    </Dialog>
   </JobPortalLayout>
 </template>
 
 <script setup lang="ts">
 import JobPortalLayout from './JobPortalLayout.vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -106,7 +127,13 @@ const confirm = useConfirm()
 const toast = useToast()
 const posting = ref<JobPosting | null>(null)
 const loading = ref(false)
-const profile = ref<any>(null)
+const applyVisible = ref(false)
+const submitting = ref(false)
+const formError = ref('')
+const form = reactive({ first_name: '', middle_name: '', last_name: '', email: '', document_type: '' })
+const documentTypes = ['Resume', 'CoverLetter', 'ID', 'Certificate', 'Portfolio', 'Other']
+const documentFile = ref<File | null>(null)
+const documentPreview = ref('')
 
 const fetchPosting = async () => {
   loading.value = true
@@ -115,15 +142,6 @@ const fetchPosting = async () => {
     posting.value = response.data
   } finally {
     loading.value = false
-  }
-}
-
-const fetchProfile = async () => {
-  try {
-    const response = await hrService.getApplicantProfile()
-    profile.value = response.data
-  } catch {
-    profile.value = null
   }
 }
 
@@ -139,35 +157,63 @@ const employmentTypeLabels: Record<string, string> = {
 const employmentTypeLabel = computed(() => employmentTypeLabels[posting.value?.employment_type || 'full_time'] || 'Full Time')
 const formatCurrency = (value: number | string | undefined) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 }).format(Number(value || 0))
 
-const profileReady = computed(() => {
-  if (!profile.value) return false
-  const required = ['first_name', 'last_name', 'email', 'phone', 'birthday', 'city', 'province', 'barangay', 'address']
-  const hasRequired = required.every((key) => Boolean(profile.value?.[key]))
-  const hasDocs = Array.isArray(profile.value?.documents) && profile.value.documents.length > 0
-  return hasRequired && hasDocs
-})
+const clearDocument = () => {
+  if (documentPreview.value) URL.revokeObjectURL(documentPreview.value)
+  documentPreview.value = ''
+  documentFile.value = null
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]')
+  if (input) input.value = ''
+}
 
-const confirmApply = () => {
-  if (!profileReady.value) return
+const selectDocument = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (documentPreview.value) URL.revokeObjectURL(documentPreview.value)
+  documentPreview.value = ''
+  documentFile.value = null
+  if (!file) return
+  if (file.size > 5 * 1024 * 1024) {
+    formError.value = 'The attachment must be 5 MB or smaller.'
+    return
+  }
+  formError.value = ''
+  documentFile.value = file
+  if (file.type.startsWith('image/')) documentPreview.value = URL.createObjectURL(file)
+}
+
+const confirmRemoveDocument = () => {
   confirm.require({
-    header: 'Submit application?',
-    message: 'We will submit your saved profile and documents to this job post.',
-    acceptProps: { label: 'Apply', severity: 'warn' },
-    rejectProps: { label: 'Cancel', severity: 'secondary', outlined: true },
-    accept: async () => {
-      try {
-        await hrService.applyToPortalJob(route.params.id as string, { use_profile: true })
-        toast.add({ severity: 'success', summary: 'Application sent', detail: 'Your profile was submitted.', life: 2500 })
-        router.push({ name: 'job-portal.dashboard' })
-      } catch (error: any) {
-        toast.add({ severity: 'error', summary: 'Unable to apply', detail: error.response?.data?.message || 'Please try again.', life: 3000 })
-      }
-    },
+    header: 'Remove attachment?',
+    message: 'You will need to choose the file again before submitting.',
+    acceptProps: { label: 'Remove', severity: 'danger' },
+    rejectProps: { label: 'Keep file', severity: 'secondary', outlined: true },
+    accept: clearDocument,
   })
 }
 
-onMounted(() => {
-  fetchPosting()
-  fetchProfile()
-})
+const submitApplication = async () => {
+  if (!documentFile.value || !form.document_type || submitting.value) return
+  submitting.value = true
+  formError.value = ''
+  const payload = new FormData()
+  payload.append('first_name', form.first_name)
+  payload.append('middle_name', form.middle_name)
+  payload.append('last_name', form.last_name)
+  payload.append('email', form.email)
+  payload.append('documents[0]', documentFile.value)
+  payload.append('document_types[0]', form.document_type)
+  try {
+    await hrService.applyToPortalJob(route.params.id as string, payload)
+    applyVisible.value = false
+    toast.add({ severity: 'success', summary: 'Application sent', detail: 'The hiring team received your application.', life: 4000 })
+    clearDocument()
+  } catch (error: any) {
+    const errors = error.response?.data?.errors
+    formError.value = errors ? Object.values(errors).flat().map(String).join(' ') : (error.response?.data?.message || 'Please try again.')
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(fetchPosting)
+onBeforeUnmount(() => { if (documentPreview.value) URL.revokeObjectURL(documentPreview.value) })
 </script>

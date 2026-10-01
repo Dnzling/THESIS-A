@@ -315,8 +315,8 @@ class AddMissingNavigationItemsSeeder extends Seeder
             ],
         ];
 
-        // ========== STORE ADMIN BRANCHES ==========
-        $storeAdminItems = [
+        // ========== STORE OWNER BRANCHES ==========
+        $storeOwnerItems = [
             [
                 'name' => 'store.branches',
                 'display_name' => 'Branches',
@@ -533,8 +533,8 @@ class AddMissingNavigationItemsSeeder extends Seeder
             }
         }
 
-        // Insert Store Admin items
-        foreach ($storeAdminItems as $item) {
+        // Insert store owner items
+        foreach ($storeOwnerItems as $item) {
             if (!DB::table('navigation_items')->where('name', $item['name'])->exists()) {
                 DB::table('navigation_items')->insert(array_merge($item, [
                     'is_active' => 1,

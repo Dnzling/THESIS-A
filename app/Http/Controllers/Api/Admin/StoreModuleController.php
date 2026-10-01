@@ -127,8 +127,8 @@ class StoreModuleController extends Controller
             );
         }
 
-        // Auto-sync store_admin role permissions for this module so nav/actions appear when enabled
-        $this->syncStoreAdminPermissions($storeId, $moduleId, $validated['allow']);
+        // Auto-sync owner role permissions for this module so nav/actions appear when enabled
+        $this->syncOwnerPermissions($storeId, $moduleId, $validated['allow']);
 
         DB::table('store_module_override_logs')->insert([
             'store_id' => $storeId,
@@ -148,13 +148,13 @@ class StoreModuleController extends Controller
 
     /**
      * When a module is forced on/off, grant or revoke all permissions of that module
-     * to the store_admin role for the store, so navigation and actions align.
+     * to the owner role for the store, so navigation and actions align.
      */
-    private function syncStoreAdminPermissions(int $storeId, int $moduleId, bool|null $allow): void
+    private function syncOwnerPermissions(int $storeId, int $moduleId, bool|null $allow): void
     {
         $roleId = DB::table('roles')
             ->where('store_id', $storeId)
-            ->where('name', 'store_admin')
+            ->where('name', 'owner')
             ->value('id');
 
         if (!$roleId) {

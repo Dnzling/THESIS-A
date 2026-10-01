@@ -29,6 +29,14 @@
     </div>
   </OverlayPanel>
 
+  <Dialog v-model:visible="confirmLogout" modal header="Log out of FurniSync?" :style="{ width: 'min(92vw, 400px)' }">
+    <p class="text-sm text-slate-600">Are you sure you want to end your current session?</p>
+    <template #footer>
+      <button class="rounded-lg px-4 py-2 text-sm text-slate-600" @click="confirmLogout = false">Cancel</button>
+      <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white" @click="performLogout">Log Out</button>
+    </template>
+  </Dialog>
+
   <!-- Enhanced Logout Dialog -->
 
    <Dialog v-model:visible="isLoggingOut" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
@@ -52,6 +60,7 @@ import axios from "@/axios";
 const authStore = useAuthStore();
 const op = ref(null);
 const isLoggingOut = ref<boolean>(false);
+const confirmLogout = ref(false);
 
 /* EXPOSED METHODS */
 const toggle = (event: Event) => {
@@ -92,6 +101,12 @@ const goProfile = async () => {
 };
 
 const handleLogout = async () => {
+  hide();
+  confirmLogout.value = true;
+};
+
+const performLogout = async () => {
+  confirmLogout.value = false;
   hide(); // Close popover immediately
   isLoggingOut.value = true;
 

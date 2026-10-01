@@ -474,7 +474,7 @@ class EmployeeController extends Controller
                 }
 
                 $deductionType = DeductionType::find($validated['deduction_type_id'] ?? null);
-                $isHrVerifiedUpload = $authUser?->hasRole('hr_manager') || $authUser?->hasRole('store_admin') || $authUser?->hasRole('super_admin');
+                $isHrVerifiedUpload = $authUser?->hasRole('hr_manager') || $authUser?->hasRole('owner') || $authUser?->hasRole('super_admin');
 
                 $governmentId = EmployeeGovernmentId::updateOrCreate(
                     [
@@ -623,7 +623,7 @@ class EmployeeController extends Controller
                 ], 401);
             }
 
-            if (!$authUser->hasAnyRole(['hr_manager', 'store_admin', 'super_admin'])) {
+            if (!$authUser->hasAnyRole(['hr_manager', 'owner', 'super_admin'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'You are not allowed to verify government IDs.',

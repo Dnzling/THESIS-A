@@ -5,6 +5,13 @@
         <h1 class="text-2xl font-semibold text-slate-900">Store Dashboard</h1>
       </div>
     </div>
+    <div v-if="dashboard?.store?.subscription_status === 'trial'" class="rounded-xl border border-orange-200 bg-orange-50 px-5 py-4 text-sm text-orange-900">
+      <span class="font-semibold">Free Trial</span> · {{ dashboard.store.trial_days_remaining }} days remaining
+    </div>
+    <div v-if="dashboard?.store && !dashboard.store.verified" class="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div><div class="font-semibold text-slate-900">Verify Your Store</div><p class="mt-1 text-sm text-slate-600">Complete business verification to establish your store’s verified status.</p></div>
+      <a href="/system/store/verification" class="inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Verify Store</a>
+    </div>
 
     <div v-if="loading" class="rounded-xl border border-slate-200 bg-white p-6">
       <div class="flex items-center gap-3">

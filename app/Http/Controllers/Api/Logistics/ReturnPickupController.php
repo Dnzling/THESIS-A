@@ -44,7 +44,7 @@ class ReturnPickupController extends Controller
             ->whereNotIn('status', ['ready_for_dispatch', 'scheduled', 'cancelled']);
 
         $branchId = $request->user()->employee?->branch_id;
-        if ($branchId && ! $request->user()->hasRole('store_admin')) $query->where('destination_branch_id', $branchId);
+        if ($branchId && ! $request->user()->hasRole('owner')) $query->where('destination_branch_id', $branchId);
         if ($request->filled('status')) $query->where('status', $request->string('status'));
         if ($request->filled('search')) {
             $term = trim($request->string('search')->toString());
@@ -71,7 +71,7 @@ class ReturnPickupController extends Controller
         }
 
         $branchId = (int) ($request->user()->employee?->branch_id ?? $request->user()->branch_id ?? 0);
-        if ($branchId > 0 && $branchId !== (int) $pickup->destination_branch_id && ! $request->user()->hasRole('store_admin')) {
+        if ($branchId > 0 && $branchId !== (int) $pickup->destination_branch_id && ! $request->user()->hasRole('owner')) {
             return response()->json(['success' => false, 'message' => 'This return belongs to another warehouse branch.'], 403);
         }
 

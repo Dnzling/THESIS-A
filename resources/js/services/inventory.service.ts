@@ -411,6 +411,39 @@ class InventoryService {
     return response.data
   }
 
+  // ==================== SUPPLIERS ====================
+  async getSuppliers(params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers`, { params })
+    return response.data
+  }
+
+  async createSupplier(data: FormData) {
+    const response = await axiosClient.post(`${this.baseUrl}/suppliers`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async updateSupplier(id: number, data: FormData) {
+    // PHP does not consistently populate multipart FormData on PUT requests.
+    // Use Laravel's method override so uploaded logo and text inputs are parsed.
+    data.set('_method', 'PUT')
+    const response = await axiosClient.post(`${this.baseUrl}/suppliers/${id}`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  }
+
+  async getSupplierForEdit(id: number) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}/edit`)
+    return response.data
+  }
+
+  async getSupplier(id: number, params?: any) {
+    const response = await axiosClient.get(`${this.baseUrl}/suppliers/${id}`, { params })
+    return response.data
+  }
+
   // ==================== PRODUCTS ====================
   async getProducts(params?: any) {
     const response = await axiosClient.get(`${this.baseUrl}/products`, { params })

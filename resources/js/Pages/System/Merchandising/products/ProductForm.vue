@@ -200,9 +200,6 @@
                 <h2 class="text-xl font-semibold text-gray-900">Pricing</h2>
                 <p class="text-sm text-gray-500 mt-1">Set the selling price and optional discount</p>
               </div>
-              <Message v-if="isEditMode && form.price_approval_status === 'pending'" severity="warn" :closable="false">
-                Price update is pending finance approval. Live selling price will stay unchanged until approved.
-              </Message>
   
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
@@ -261,7 +258,7 @@
                 <p class="text-sm text-gray-500 mt-1">Upload 3D models and product images</p>
               </div>
               <!-- 3D Model Upload -->
-              <div class="space-y-3">
+              <div v-if="canManage3d" class="space-y-3">
                 <label class="text-sm font-medium text-gray-700">3D Model</label>
   
                 <!-- Upload Area -->
@@ -321,7 +318,7 @@
               </div>
   
               <!-- Camera Settings -->
-              <div class="space-y-3 pt-4 border-t border-gray-100">
+              <div v-if="canManage3d" class="space-y-3 pt-4 border-t border-gray-100">
                 <h4 class="text-sm font-semibold text-gray-900">Camera Settings</h4>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div class="space-y-2">
@@ -338,6 +335,26 @@
                     <label class="text-xs font-medium text-gray-500">Zoom Level</label>
                     <InputNumber v-model="form.default_zoom_level" :min="0.1" :max="20" :minFractionDigits="1" showButtons
                       buttonLayout="horizontal" :step="0.1" class="w-full bg-gray-50 border-gray-200 rounded-xl" fluid />
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="!canManage3d"
+                class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5">
+                <div class="flex items-start gap-4">
+                  <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600 shadow-sm">
+                    <i class="pi pi-lock text-lg"></i>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="font-semibold text-gray-900">3D product tools are locked</p>
+                    <p v-if="upgradePlan" class="mt-1 text-sm text-gray-600">
+                      Upgrade to {{ upgradePlanName }} to upload and preview 3D product models.
+                    </p>
+                    <p v-else class="mt-1 text-sm text-gray-600">
+                      No active subscription plan currently includes 3D management. Contact your administrator or review the available plans.
+                    </p>
+                    <Button type="button" class="mt-3" size="small" severity="warn" icon="pi pi-arrow-up-right"
+                      :label="upgradePlan ? `Upgrade to ${upgradePlanName}` : 'View Subscription Plans'" @click="goToUpgrade" />
                   </div>
                 </div>
               </div>
@@ -467,7 +484,7 @@
                   <p class="text-sm text-gray-600 mt-1">Updates live as you edit the form</p>
                 </div>
                 <div class="flex items-center gap-3">
-                  <div class="flex items-center gap-2">
+                  <div v-if="canManage3d" class="flex items-center gap-2">
                     <span class="text-xs font-medium text-gray-500">3D</span>
                     <ToggleSwitch v-model="previewShow3d" />
                   </div>
@@ -481,7 +498,7 @@
               <!-- Media -->
               <div class="rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden">
                 <div class="aspect-square relative">
-                  <Model3DPreview v-if="previewShow3d && previewModelUrl" :model-url="previewModelUrl"
+                  <Model3DPreview v-if="canManage3d && previewShow3d && previewModelUrl" :model-url="previewModelUrl"
                     :model-format="previewUsesVariation3d ? (selectedVariation3dAsset?.model_format) : existingModel?.model_format"
                     :auth-token="previewAuthToken"
                     :camera-x="previewUsesVariation3d ? Number(selectedVariation3dAsset?.default_camera_angle_x ?? 0) : form.default_camera_angle_x"
@@ -523,7 +540,7 @@
                   <Button v-for="v in variations" :key="v.id" type="button" size="small" :label="v.variation_name"
                     class="rounded-full" :outlined="Number(selectedVariationId) !== Number(v.id)"
                     :severity="Number(selectedVariationId) === Number(v.id) ? 'info' : 'secondary'"
-                    @click="selectedVariationId = Number(v.id); previewShow3d = true" />
+                    @click="selectedVariationId = Number(v.id); previewShow3d = canManage3d" />
                 </div>
                 <small class="text-xs text-gray-500">Default preview shows base product images. Select a variation to
                   preview its 3D + photo.</small>
@@ -604,7 +621,7 @@
               </div>
   
               <!-- 3D Model Hint -->
-              <div v-if="form.modelFile || existingModelPreviewUrl"
+              <div v-if="canManage3d && (form.modelFile || existingModelPreviewUrl)"
                 class="rounded-xl border border-gray-200 bg-gray-50 p-3">
                 <div class="flex items-start gap-3">
                   <div class="w-9 h-9 rounded-full bg-white border border-gray-200 flex items-center justify-center">
@@ -669,6 +686,7 @@
             sku: form.sku,
             base_price: Number(form.base_price || 0)
           }"
+        :can-manage-3d="canManage3d" :upgrade-plan-name="upgradePlanName"
         :embedded-variation="editingVariationId ? (variations.find(v => Number(v.id) === Number(editingVariationId)) || { id: editingVariationId }) : null"
         @saved="handleVariationSaved" @cancel="closeVariationDialog" />
     </Dialog>
@@ -700,12 +718,37 @@ import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
 import VariationFormDialog from '../variations/VariationForm.vue'
 import merchandisingService from '../../../../services/merchandising.service'
 import inventoryService from '../../../../services/inventory.service'
+import axiosClient from '../../../../axios'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
 const authStore = useAuthStore()
+
+const canManage3d = computed(() => authStore.hasPermission('merchandising.3d.manage'))
+const upgradePlan = ref<any>(null)
+const upgradePlanName = computed(() => upgradePlan.value?.name || 'an eligible plan')
+
+const load3dUpgradePlan = async () => {
+  if (canManage3d.value) return
+  try {
+    const response = await axiosClient.get('/api/public/subscription-plans/first-for-permission', {
+      params: { permission: 'merchandising.3d.manage' }
+    })
+    upgradePlan.value = response.data?.data || null
+  } catch {
+    upgradePlan.value = null
+  }
+}
+
+const goToUpgrade = () => {
+  const storeId = (authStore.user as any)?.store_id || (authStore.user as any)?.store?.id
+  const query = new URLSearchParams()
+  if (storeId) query.set('store_id', String(storeId))
+  if (upgradePlan.value?.plan_key) query.set('plan', String(upgradePlan.value.plan_key))
+  window.location.href = `/subscription-plans${query.size ? `?${query.toString()}` : ''}`
+}
 
 const isEditMode = computed(() => !!route.params.id)
 const isRawMaterialType = computed(() => form.value.product_type === 'raw_material')
@@ -806,8 +849,6 @@ const form = ref({
   meta_description: '',
   meta_keywords: '',
   published_at: null,
-  price_change_reason: '',
-  price_approval_status: 'approved',
   // 3D Model fields
   modelFile: null,
   imageFiles: [],
@@ -1193,7 +1234,6 @@ const loadProduct = async () => {
       // Convert string date to Date object for DatePicker
       published_at: product.published_at ? new Date(product.published_at) : null,
       price_change_reason: '',
-      price_approval_status: product.price_approval_status || 'approved',
       // Keep existing 3D settings
       default_camera_angle_x: form.value.default_camera_angle_x,
       default_camera_angle_y: form.value.default_camera_angle_y,
@@ -1301,6 +1341,7 @@ const copySKU = () => {
 }
 
 const handleModelSelect = (event: any) => {
+  if (!canManage3d.value) return
   const file = event.target.files[0]
   if (!file) return
 
@@ -1318,6 +1359,7 @@ const handleModelSelect = (event: any) => {
 }
 
 const handleModelDrop = (event: DragEvent) => {
+  if (!canManage3d.value) return
   const file = event.dataTransfer?.files[0]
   if (!file) return
 
@@ -1896,9 +1938,9 @@ const handleSubmit = async () => {
     await merchandisingService.assignTagsToProduct(productId, form.value.tag_ids.slice(0, 3))
 
     // Upload 3D model if present
-    if (form.value.modelFile) {
+    if (canManage3d.value && form.value.modelFile) {
       await upload3DModel(productId)
-    } else if (existingModel.value?.id) {
+    } else if (canManage3d.value && existingModel.value?.id) {
       await updateExistingModelCameraSettings(existingModel.value.id)
     }
 
@@ -2030,7 +2072,7 @@ const uploadImages = async (productId: number) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (route.name === 'merchandising.products.raw.create') {
     toast.add({
       severity: 'info',
@@ -2042,6 +2084,8 @@ onMounted(() => {
     return
   }
   form.value.product_type = 'finished_good'
+  await authStore.loadPermissions()
+  load3dUpgradePlan()
   loadCategories()
   loadUnits()
   loadTags()

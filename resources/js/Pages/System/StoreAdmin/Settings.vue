@@ -18,7 +18,10 @@
                 <div class="mt-1 text-sm capitalize text-slate-500">{{ store.type || 'Store type not set' }}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <Badge size="large" :value="storeStatusLabel" :severity="storeStatusSeverity" />
+                <p class="flex items-center gap-1.5 font-semibold" :class="isStoreActive ? 'text-emerald-700' : ''">
+                  {{ storeStatusLabel }}
+                  <i v-if="verification.store_status === 'approved'" class="pi pi-verified text-emerald-600" aria-label="Verified" title="Verified store" />
+                </p>
                 <Button
                   v-if="shouldShowVerifyButton"
                   :label="verifyButtonLabel"
@@ -51,7 +54,7 @@
               </div>
               <div class="rounded-xl bg-slate-50 p-3">
                 <div class="text-xs uppercase tracking-wide text-slate-400">Store Code</div>
-                <div class="mt-1 font-semibold text-slate-900">{{ store.store_code || 'Not set' }}</div>
+                <div class="mt-1 flex items-center justify-between gap-2 font-semibold text-slate-900"><span>{{ store.store_code || 'Not set' }}</span><Button v-if="store.store_code" icon="pi pi-copy" text rounded size="small" aria-label="Copy store code" @click="copyStoreCode" /></div>
               </div>
               <div class="rounded-xl bg-slate-50 p-3">
                 <div class="text-xs uppercase tracking-wide text-slate-400">Billing Email</div>
@@ -323,7 +326,7 @@
       </template>
     </Dialog>
 
-    <Card>
+    <Card v-if="asd">
       <template #title>Attendance Geolocation</template>
       <template #content>
         <p class="text-sm text-slate-600 mb-4">
@@ -791,10 +794,11 @@ const storeStatusLabel = computed(() => {
   if (raw === 'deactivated') return 'Deactivated'
   return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 })
+const isStoreActive = computed(() => String(store.status || '').toLowerCase() === 'active')
 const isStoreUnverified = computed(() => String(store.status || '').toLowerCase() === 'unverified')
 const isStorePendingVerification = computed(() => String(store.status || '').toLowerCase() === 'pending')
 const isVerificationRejected = computed(() => verification.store_status === 'rejected')
-const shouldShowVerifyButton = computed(() => isStoreUnverified.value && !isStorePendingVerification.value)
+const shouldShowVerifyButton = computed(() => ['unverified', 'rejected'].includes(verification.store_status))
 const verifyButtonLabel = computed(() => isVerificationRejected.value ? '' : 'Verify')
 const verifyButtonIcon = computed(() => isVerificationRejected.value ? 'pi pi-exclamation-circle' : '')
 const verificationDocumentsDialogTitle = computed(() => isVerificationRejected.value ? 'Verification Rejected' : 'Submitted Verification Documents')
@@ -1229,11 +1233,15 @@ const handleAttendanceDialogShow = async () => {
 
 const goToStoreVerification = () => router.visit('/system/store/verification')
 const goToBilling = () => router.visit('/store/billing')
+const copyStoreCode = async () => {
+  await navigator.clipboard.writeText(String(store.store_code))
+  toast.add({ severity: 'success', summary: 'Copied', detail: 'Store code copied.', life: 2000 })
+}
 
 const saveStoreProfile = async () => {
   savingProfile.value = true
-  router.post(
-    '/store/settings/profile/prepare',
+  router.put(
+    '/store/settings/profile',
     {
       ...profileForm,
       city: profileForm.city,

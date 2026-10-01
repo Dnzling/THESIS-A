@@ -163,9 +163,9 @@ class User extends Authenticatable
         return $this->hasRole('super_admin');
     }
 
-    public function isStoreAdmin(): bool
+    public function isOwner(): bool
     {
-        return $this->hasRole('store_admin');
+        return $this->hasRole('owner');
     }
 
     public function isEmployee(): bool
@@ -209,10 +209,10 @@ class User extends Authenticatable
         });
     }
 
-    public function scopeStoreAdmins($query)
+    public function scopeOwners($query)
     {
         return $query->whereHas('role', function ($q) {
-            $q->where('name', 'store_admin');
+            $q->where('name', 'owner');
         });
     }
 

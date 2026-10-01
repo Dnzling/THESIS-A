@@ -15,11 +15,11 @@ class UserResource extends JsonResource
     public function toArray(Request $request): array
     {
         $isAdmin = $request->user() && $request->user()->hasRole('super_admin');
-        $isStoreAdmin = $request->user() && $request->user()->hasRole('store_admin');
+        $isOwner = $request->user() && $request->user()->hasRole('owner');
         $isHR = $request->user() && $request->user()->hasRole('hr');
         $isManager = $request->user() && $request->user()->hasRole('manager');
         
-        $canViewSensitive = $isAdmin || $isStoreAdmin || $isHR || $isManager;
+        $canViewSensitive = $isAdmin || $isOwner || $isHR || $isManager;
         // Users should always see their own store/branch assignment (needed by branch-scoped modules).
         $canViewOwnStoreBranch = ($request->user()?->id && $request->user()->id === $this->id);
         $canViewStoreBranch = $canViewSensitive || $canViewOwnStoreBranch;
@@ -30,6 +30,10 @@ class UserResource extends JsonResource
             'first_name' => $this->fname,
             'last_name' => $this->lname,
             'email' => $this->email,
+            'store_id' => $canViewStoreBranch ? $this->store_id : null,
+            'position_setup_required' => $canViewStoreBranch && $this->store
+                ? app(\App\Services\Store\StoreTrialService::class)->needsPositionSetup($this->store)
+                : false,
             'phone_number' => $this->when($canViewSensitive, $this->phone_number),
             'is_active' => (bool) $this->is_active,
             

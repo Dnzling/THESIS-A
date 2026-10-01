@@ -120,7 +120,7 @@ const otpContext = computed(() => localStorage.getItem('otp_context') || 'saas')
 const isCustomerOtp = computed(() => otpContext.value === 'customer')
 const isProfileOtp = computed(() => otpContext.value === 'profile_email_change')
 const isSupplierOtp = computed(() => otpContext.value === 'supplier')
-const isBusinessOtp = computed(() => ['business', 'saas', 'store_admin', 'owner'].includes(otpContext.value))
+const isBusinessOtp = computed(() => ['business', 'saas', 'owner'].includes(otpContext.value))
 const otpContextLabel = computed(() => {
   if (isCustomerOtp.value) return 'Furnisync Shop Customer Verification'
   if (isProfileOtp.value) return 'Profile Email Change'

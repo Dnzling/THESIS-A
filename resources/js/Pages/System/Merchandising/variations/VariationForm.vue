@@ -222,7 +222,7 @@
       </Card>
 
       <!-- Variant 3D Model Card -->
-      <Card v-if="!proposalId" class="h-fit border border-slate-200 shadow-sm">
+      <Card v-if="!proposalId && canUse3d" class="h-fit border border-slate-200 shadow-sm">
         <template #title>
           <div class="flex items-center gap-2">
             <span>Variant 3D Model</span>
@@ -340,6 +340,22 @@
         </template>
       </Card>
 
+      <Card v-else-if="!proposalId" class="h-fit border border-amber-200 bg-amber-50 shadow-sm">
+        <template #content>
+          <div class="flex items-start gap-3">
+            <i class="pi pi-lock mt-1 text-orange-600"></i>
+            <div>
+              <p class="font-semibold text-gray-900">Variant 3D models are locked</p>
+              <p class="mt-1 text-sm text-gray-600">
+                {{ upgradePlanName
+                  ? `Upgrade to ${upgradePlanName} to manage 3D models.`
+                  : 'No active subscription plan currently includes 3D management.' }}
+              </p>
+            </div>
+          </div>
+        </template>
+      </Card>
+
       <!-- Variant Photo Card -->
       <Card class="h-fit border border-slate-200 shadow-sm">
         <template #title>
@@ -452,11 +468,14 @@ import Skeleton from 'primevue/skeleton'
 import ColorPicker from 'primevue/colorpicker'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
+import { useAuthStore } from '../../../../stores/auth'
 
 const props = withDefaults(defineProps<{
   embedded?: boolean
   embeddedProduct?: any
   embeddedVariation?: any
+  canManage3d?: boolean
+  upgradePlanName?: string
 }>(), {
   embedded: false,
   embeddedProduct: null,
@@ -472,6 +491,8 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
+const authStore = useAuthStore()
+const canUse3d = computed(() => props.canManage3d ?? authStore.hasPermission('merchandising.3d.manage'))
 
 const embedded = computed(() => !!props.embedded)
 const embeddedProduct = computed(() => props.embeddedProduct)
@@ -618,6 +639,10 @@ const loadUnits = async () => {
 }
 
 const loadProductModels = async (productId: number) => {
+  if (!canUse3d.value) {
+    product3DModels.value = []
+    return
+  }
   if (!productId) return
 
   loadingProductModels.value = true
@@ -687,7 +712,7 @@ const loadVariation = async () => {
     })
     if (!embedded.value) {
       if (isInventoryContext.value) {
-        router.push({ name: 'inventory.products.index' })
+        router.push({ name: 'inventory.product-variations' })
       } else {
         router.push({ name: 'merchandising.variations' })
       }
@@ -702,6 +727,7 @@ const onProductChange = () => {
 }
 
 const handleVariantModelSelect = (event: Event) => {
+  if (!canUse3d.value) return
   const input = event.target as HTMLInputElement
   const file = input?.files?.[0] || null
   if (file && file.size > 100 * 1024 * 1024) {
@@ -996,7 +1022,7 @@ const goBack = () => {
     router.push({ name: 'inventory.products.detail', params: { id: form.product_id } })
     return
   }
-  router.push({ name: 'inventory.products.index' })
+  router.push({ name: 'inventory.product-variations' })
 }
 
 onMounted(() => {

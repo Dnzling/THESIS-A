@@ -119,7 +119,7 @@
         <div class="mt-5 ml-auto max-w-sm space-y-2 border-t border-gray-200 pt-4 text-sm">
           <div class="flex justify-between"><span class="text-gray-500">Subtotal</span><span>{{ money(order.subtotal) }}</span></div>
           <div class="flex justify-between"><span class="text-gray-500">VATable Sales</span><span>{{ money(vatableSales) }}</span></div>
-          <div class="flex justify-between"><span class="text-gray-500">VAT Included (12%)</span><span>{{ money(order.tax_amount) }}</span></div>
+          <div class="flex justify-between"><span class="text-gray-500"> (12%)</span><span>{{ money(order.tax_amount) }}</span></div>
           <div v-if="order.delivery_required" class="flex justify-between"><span class="text-gray-500">Shipping Fee</span><span>{{ money(order.shipping_fee) }}</span></div>
           <div v-if="Number(order.discount_amount || 0) > 0" class="flex justify-between"><span class="text-gray-500">Discount</span><span>- {{ money(order.discount_amount) }}</span></div>
           <div class="flex justify-between border-t border-gray-200 pt-2 text-base font-semibold"><span>Order Total</span><span>{{ money(order.total_amount) }}</span></div>

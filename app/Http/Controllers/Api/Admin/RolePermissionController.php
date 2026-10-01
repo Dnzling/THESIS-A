@@ -51,7 +51,7 @@ class RolePermissionController extends Controller
             ->select('roles.*')
             ->where(function ($query) {
                 $query->whereNull('roles.store_id')
-                    ->orWhere('roles.name', 'store_admin');
+                    ->orWhere('roles.name', 'owner');
             })
             ->selectRaw('(SELECT COUNT(*) FROM role_permissions WHERE role_id = roles.id) as permissions_count')
             ->selectRaw('(
@@ -79,7 +79,7 @@ class RolePermissionController extends Controller
 
         $protectedRoles = [
             'super_admin',
-            'store_admin',
+            'owner',
             'driver',
             'applicant',
             'supplier',

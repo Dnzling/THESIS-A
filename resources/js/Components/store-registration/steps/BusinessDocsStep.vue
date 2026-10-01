@@ -7,28 +7,25 @@
     </div>
   
     <form @submit.prevent="handleNext">
-      <div class="space-y-6">
-        <!-- Registration Permit -->
-        <UploadSection title="Business Registration Permit *"
-          description="Upload your DTI/SEC/CDA registration certificate" :file="localForm.registrationPermit"
-          @upload="(file) => handleFileUpload(file, 'registrationPermit')"
-          @remove="() => handleFileRemove('registrationPermit')" accept=".jpg,.jpeg,.png,.pdf" required />
-        <div>
+      <div class="grid gap-5 lg:grid-cols-3">
+        <div class="space-y-3">
+          <UploadSection title="Business Registration Permit" description="DTI/SEC/CDA registration certificate" :file="localForm.registrationPermit" @upload="(file) => handleFileUpload(file, 'registrationPermit')" @remove="() => handleFileRemove('registrationPermit')" accept=".jpg,.jpeg,.png,.pdf" required />
+          <label class="block text-xs font-medium text-slate-600">Expiration date (if applicable)<input v-model="localForm.registrationExpiresAt" type="date" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm" @change="updateField('registrationExpiresAt', localForm.registrationExpiresAt)" /></label>
+        </div>
+        <div class="space-y-3">
+          <UploadSection title="BIR Tax Certificate" description="BIR Certificate of Registration" :file="localForm.taxCertificate" @upload="(file) => handleFileUpload(file, 'taxCertificate')" @remove="() => handleFileRemove('taxCertificate')" accept=".pdf" required />
+          <label class="block text-xs font-medium text-slate-600">Expiration date (if applicable)<input v-model="localForm.taxExpiresAt" type="date" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm" @change="updateField('taxExpiresAt', localForm.taxExpiresAt)" /></label>
+        </div>
+        <div class="space-y-3">
+          <UploadSection title="Mayor's/Business Permit" description="Current Mayor's Permit" :file="localForm.mayorPermit" @upload="(file) => handleFileUpload(file, 'mayorPermit')" @remove="() => handleFileRemove('mayorPermit')" accept=".pdf" required />
+          <label class="block text-xs font-medium text-slate-600">Expiration date (if applicable)<input v-model="localForm.permitExpiresAt" type="date" class="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm" @change="updateField('permitExpiresAt', localForm.permitExpiresAt)" /></label>
+        </div>
+        <div class="lg:col-span-3">
           <label for="business-registration-number" class="mb-2 block text-sm font-medium text-slate-700">Business registration number *</label>
           <InputText id="business-registration-number" :modelValue="localForm.businessRegistrationNumber || ''"
             @update:modelValue="updateField('businessRegistrationNumber', $event)" size="small" class="w-full" placeholder="Enter or confirm the number on your certificate" />
           <p class="mt-1 text-xs text-slate-500">{{ registrationReadMessage }}</p>
         </div>
-  
-        <!-- Tax Certificate -->
-        <UploadSection title="BIR Tax Certificate *" description="Upload your BIR Certificate of Registration"
-          :file="localForm.taxCertificate" @upload="(file) => handleFileUpload(file, 'taxCertificate')"
-          @remove="() => handleFileRemove('taxCertificate')" accept=".pdf" required />
-  
-        <!-- Mayor's Permit -->
-        <UploadSection title="Mayor's/Business Permit *" description="Upload your current Mayor's Permit"
-          :file="localForm.mayorPermit" @upload="(file) => handleFileUpload(file, 'mayorPermit')"
-          @remove="() => handleFileRemove('mayorPermit')" accept=".pdf" required />
       </div>
   
       <!-- Additional Notes -->

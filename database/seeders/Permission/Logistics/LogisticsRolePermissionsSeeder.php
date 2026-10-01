@@ -26,7 +26,7 @@ class LogisticsRolePermissionsSeeder extends Seeder
 
         $assignments = [
             'super_admin' => $allLogisticsPermissions,
-            'store_admin' => $allLogisticsPermissions,
+            'owner' => $allLogisticsPermissions,
             'warehouse_manager' => collect([$deliveriesView, $deliveriesManage, $fleetView, $fleetManage, $zonesView, $zonesManage, $settingsView, $settingsManage])->filter(),
             'inventory_staff' => collect([$deliveriesView, $deliveriesManage, $fleetView])->filter(),
             'branch_manager' => collect([$deliveriesView, $deliveriesManage, $fleetView, $settingsView])->filter(),

@@ -433,7 +433,7 @@ onMounted(async () => {
       }
     }
 
-    router.visit('/store/index')
+    router.visit((authStore.currentUser as any)?.position_setup_required ? '/store/positions/setup' : '/store/index')
   }
 })
 </script>

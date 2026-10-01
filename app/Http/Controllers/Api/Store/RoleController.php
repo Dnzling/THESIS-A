@@ -20,11 +20,6 @@ class RoleController extends Controller
         $user = Auth::user();
         $storeId = $user?->store_id ?: $user?->employee?->store_id;
 
-        if (empty($storeId)) {
-            $fallbackStoreId = $request->input('user_store_id');
-            $storeId = is_numeric($fallbackStoreId) ? (int) $fallbackStoreId : null;
-        }
-
         return !empty($storeId) ? (int) $storeId : null;
     }
 
@@ -57,6 +52,7 @@ class RoleController extends Controller
             ->orderBy('module')
             ->pluck('module')
             ->toArray();
+        $availableModules = array_values(array_intersect($availableModules, $enabledModules));
 
         return response()->json([
             'data' => [
@@ -68,6 +64,7 @@ class RoleController extends Controller
 
     public function updateModules(Request $request): JsonResponse
     {
+        abort_unless($request->user()?->hasRole('owner'), 403);
         $storeId = $this->resolveStoreId($request);
         $userId = Auth::id();
 
@@ -89,6 +86,7 @@ class RoleController extends Controller
             ->distinct()
             ->pluck('module')
             ->toArray();
+        $availableModules = array_values(array_intersect($availableModules, $this->getEffectiveEnabledModules($storeId)));
 
         $validModules = array_values(array_intersect(
             array_unique($request->modules),
@@ -123,7 +121,7 @@ class RoleController extends Controller
     public function index(): JsonResponse
     {
         $storeId = Auth::user()->store_id;
-        $globalAllowed = ['store_admin', 'driver'];
+        $globalAllowed = ['owner', 'driver'];
 
         $roles = DB::table('roles')
             ->select('roles.*')
@@ -146,7 +144,7 @@ class RoleController extends Controller
     public function storeSpecific(Request $request): JsonResponse
     {
         $storeId = $this->resolveStoreId($request);
-        $globalAllowed = ['store_admin', 'driver'];
+        $globalAllowed = ['owner', 'driver'];
 
         if (empty($storeId)) {
             return response()->json(['data' => [], 'store_id' => null]);
@@ -172,6 +170,7 @@ class RoleController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        abort_unless($request->user()?->hasRole('owner'), 403);
         $storeId = $this->resolveStoreId($request);
 
         if (empty($storeId)) {
@@ -215,6 +214,7 @@ class RoleController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
+        abort_unless($request->user()?->hasRole('owner'), 403);
         $storeId = $this->resolveStoreId($request);
 
         if (empty($storeId)) {
@@ -252,6 +252,7 @@ class RoleController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $request = request();
+        abort_unless($request->user()?->hasRole('owner'), 403);
         $storeId = $this->resolveStoreId($request);
 
         if (empty($storeId)) {
@@ -286,10 +287,7 @@ class RoleController extends Controller
             ->orderBy('module')
             ->orderBy('name');
 
-        // Match admin behavior when no module filter is configured: show all active permissions.
-        if (!empty($enabledModules)) {
-            $permissionsQuery->whereIn('module', $enabledModules);
-        }
+        $permissionsQuery->whereIn('id', $this->allowedPermissionIds($storeId, $enabledModules));
 
         $permissions = $permissionsQuery->get();
 
@@ -307,7 +305,7 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $globalAllowed = ['store_admin', 'driver'];
+        $globalAllowed = ['owner', 'driver'];
         $role = Role::where(function ($q) use ($storeId) {
                 $q->whereNull('store_id')->orWhere('store_id', $storeId);
             })
@@ -322,6 +320,7 @@ class RoleController extends Controller
         $permissions = DB::table('permissions')
             ->join('role_permissions', 'permissions.id', '=', 'role_permissions.permission_id')
             ->where('role_permissions.role_id', $role->id)
+            ->whereIn('permissions.id', $this->allowedPermissionIds($storeId, $this->getEffectiveEnabledModules($storeId)))
             ->select('permissions.*')
             ->get();
 
@@ -330,6 +329,7 @@ class RoleController extends Controller
 
     public function updateRolePermissions(Request $request, int $roleId): JsonResponse
     {
+        abort_unless($request->user()?->hasRole('owner'), 403);
         $storeId = $this->resolveStoreId($request);
 
         if (empty($storeId)) {
@@ -338,15 +338,8 @@ class RoleController extends Controller
             ], 422);
         }
 
-        $globalAllowed = ['store_admin', 'driver'];
-        $role = Role::query()
-            ->where(function ($query) use ($storeId, $globalAllowed) {
-                $query->where('store_id', $storeId)
-                    ->orWhere(function ($query) use ($globalAllowed) {
-                        $query->whereNull('store_id')->whereIn('name', $globalAllowed);
-                    });
-            })
-            ->findOrFail($roleId);
+        // Global roles are shared across stores and must not be rewritten by one tenant.
+        $role = Role::query()->where('store_id', $storeId)->findOrFail($roleId);
         $enabledModules = $this->getEffectiveEnabledModules($storeId);
 
         $request->validate([
@@ -354,14 +347,8 @@ class RoleController extends Controller
             'permissions.*' => 'exists:permissions,id'
         ]);
 
-        $invalidPermissionIds = [];
-        if (!empty($enabledModules)) {
-            $invalidPermissionIds = DB::table('permissions')
-                ->whereIn('id', $request->permissions)
-                ->whereNotIn('module', $enabledModules)
-                ->pluck('id')
-                ->toArray();
-        }
+        $allowedPermissionIds = $this->allowedPermissionIds($storeId, $enabledModules);
+        $invalidPermissionIds = array_values(array_diff(array_map('intval', $request->permissions), $allowedPermissionIds));
 
         if (!empty($invalidPermissionIds)) {
             return response()->json([
@@ -409,5 +396,23 @@ class RoleController extends Controller
                 ->select('permissions.*')
                 ->get(),
         ]);
+    }
+
+    private function allowedPermissionIds(?int $storeId, array $enabledModules): array
+    {
+        if (!$storeId) {
+            return [];
+        }
+
+        return DB::table('stores')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'stores.subscription_tier')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('stores.id', $storeId)
+            ->where('plan_permissions.included', true)
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->pluck('permissions.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
     }
 }

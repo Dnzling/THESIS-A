@@ -577,7 +577,7 @@ const groupedNavigation = computed(() => {
   const grouped: Array<{ module: string; items: any[] }> = []
   const itemsByModule = groupBy(filtered, 'module')
 
-  const moduleOrder = ['admin', 'store', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','logistics','sales', 'crm']
+  const moduleOrder = ['admin', 'store', 'supplier', 'inventory', 'warehouse', 'procurement', 'merchandising', 'hr', 'finance','sales','logistics', 'crm']
 
   const catalogModules = authStore.systemModules
     .map((module: any) => String(module?.key || '').trim().toLowerCase())

@@ -87,8 +87,8 @@
               <div v-show="product.product_type === 'finished_good'">
                 <p class="text-xs text-gray-600 mb-1">Supplier</p>
                 <div class="flex items-center gap-2">
-                  <p class="text-lg font-semibold text-gray-900">{{ supplierNames || 'No Supplier' }}</p>
-                  <Button
+                  <p class="text-lg font-semibold text-gray-900">{{ supplierNames || '--' }}</p>
+                  <!-- <Button
                     v-if="!hasSupplier"
                     label="Create PR"
                     icon="pi pi-file-plus"
@@ -96,7 +96,7 @@
                     size="small"
                     outlined
                     @click="goToCreatePR"
-                  />
+                  /> -->
                 </div>
               </div>
               <div>

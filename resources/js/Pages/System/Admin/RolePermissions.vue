@@ -781,7 +781,7 @@ const selectedIcon = computed({
 
 // Role Menu
 const roleMenu = ref()
-const protectedRoleNames = ['super_admin', 'store_admin', 'driver', 'applicant', 'supplier', 'customer']
+const protectedRoleNames = ['super_admin', 'owner', 'driver', 'applicant', 'supplier', 'customer']
 const isProtectedRole = (role: any) => protectedRoleNames.includes(String(role?.name || '').toLowerCase())
 const roleMenuItems = computed(() => [
   {

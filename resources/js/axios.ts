@@ -131,10 +131,6 @@ const attachInterceptors = (client: AxiosInstance) => {
                 void redirectToLogin()
             }
             
-            if (error.response?.status === 403) {
-                void redirectToUnauthorized()
-            }
-
             const method = String(error.config?.method || '').toLowerCase()
             const suppress = isDialogSuppressed(error.config)
             if (method && method !== 'get' && method !== 'head' && !suppress) {
@@ -157,10 +153,6 @@ const attachInterceptors = (client: AxiosInstance) => {
 
 const redirectToLogin = async () => {
     router.visit('/login')
-}
-
-const redirectToUnauthorized = async () => {
-    router.visit('/unauthorized')
 }
 
 applyBaseConfig(axios)

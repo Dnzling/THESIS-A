@@ -27,7 +27,12 @@ class ProductController extends BaseController
     {
         try {
             $query = Product::byStore($this->getStoreId())
-                           ->with(['category:id,category_name', 'subcategory:id,category_name'])
+                           ->with([
+                               'category:id,category_name',
+                               'subcategory:id,category_name',
+                               'suppliers:id,supplier_code,supplier_name,company_name,logo_path',
+                               'assets:id,product_id,asset_type,file_name,file_path,is_primary,display_order,alt_text',
+                           ])
                            ->withCount(['variations', 'assets']);
 
             if ($request->boolean('include_variations')) {
@@ -446,7 +451,7 @@ class ProductController extends BaseController
                 'meta_description' => 'nullable|string',
                 'meta_keywords' => 'nullable|string',
                 'published_at' => 'nullable|date',
-                'price_change_reason' => 'required_if:base_price,changed|string|nullable'
+                'price_change_reason' => 'nullable|string|max:500'
             ]);
 
             // If category changed, verify it belongs to store
@@ -462,40 +467,22 @@ class ProductController extends BaseController
             DB::beginTransaction();
 
             try {
-                $oldPrice = $product->base_price;
                 $data = $validated;
                 $isPriceUpdateRequested = $this->isPriceUpdateRequested($product, $data);
                 if ($isPriceUpdateRequested) {
-                    // Merchandising owns selling prices. Apply the submitted
-                    // values immediately; finance approval is not required.
+                    $data['base_price'] = $validated['base_price'] ?? $product->pending_base_price ?? $product->base_price;
+                    $data['discounted_price'] = array_key_exists('discounted_price', $validated)
+                        ? $validated['discounted_price']
+                        : ($product->pending_discounted_price ?? $product->discounted_price);
+                    // Selling price changes take effect immediately; no finance approval workflow.
                     $data['price_approval_status'] = 'approved';
                     $data['pending_base_price'] = null;
                     $data['pending_discounted_price'] = null;
-                    $data['price_proposed_by'] = $this->getUserId();
-                    $data['price_proposed_at'] = now();
-                    $data['price_approved_by'] = null;
-                    $data['price_approved_at'] = null;
-                    $data['price_rejected_by'] = null;
-                    $data['price_rejected_at'] = null;
-                    $data['price_approval_notes'] = $validated['price_change_reason'] ?? 'Set by merchandising';
                 }
 
                 $data = $this->applyTypeSpecificDefaults($data, $product);
 
                 $product->update($data);
-
-                if ($isPriceUpdateRequested && !is_null($product->base_price) && $oldPrice != $product->base_price) {
-                    PricingHistory::create([
-                        'store_id' => $this->getStoreId(),
-                        'product_id' => $product->id,
-                        'old_price' => $oldPrice ?? 0,
-                        'new_price' => $product->base_price,
-                        'price_type' => 'Base',
-                        'reason' => $validated['price_change_reason'] ?? 'Updated by merchandising',
-                        'effective_date' => now(),
-                        'created_by' => $this->getActorEmployeeId(),
-                    ]);
-                }
 
                 DB::commit();
 
@@ -535,99 +522,6 @@ class ProductController extends BaseController
                 [],
                 $e
             );
-        }
-    }
-
-    public function approvePrice(Request $request, $id)
-    {
-        try {
-            if (!$this->isFinancePriceApprover()) {
-                return $this->errorResponse('You do not have permission to approve product pricing.', 403);
-            }
-
-            $validated = $this->validateRequest($request, [
-                'notes' => 'nullable|string|max:500',
-            ]);
-
-            $product = Product::byStore($this->getStoreId())->findOrFail($id);
-            if ($product->price_approval_status !== 'pending') {
-                return $this->errorResponse('No pending price request to approve.', 422);
-            }
-
-            DB::beginTransaction();
-            try {
-                $oldPrice = $product->base_price;
-
-                $product->update([
-                    'base_price' => $product->pending_base_price ?? $product->base_price,
-                    'discounted_price' => $product->pending_discounted_price,
-                    'price_approval_status' => 'approved',
-                    'price_approved_by' => $this->getUserId(),
-                    'price_approved_at' => now(),
-                    'price_rejected_by' => null,
-                    'price_rejected_at' => null,
-                    'price_approval_notes' => $validated['notes'] ?? $product->price_approval_notes,
-                    'pending_base_price' => null,
-                    'pending_discounted_price' => null,
-                ]);
-
-                if (!is_null($product->base_price) && $oldPrice != $product->base_price) {
-                    PricingHistory::create([
-                        'store_id' => $this->getStoreId(),
-                        'product_id' => $product->id,
-                        'old_price' => $oldPrice ?? 0,
-                        'new_price' => $product->base_price,
-                        'price_type' => 'Base',
-                        'reason' => $validated['notes'] ?? 'Finance approved price change',
-                        'effective_date' => now(),
-                        'created_by' => $this->getActorEmployeeId()
-                    ]);
-                }
-
-                DB::commit();
-
-                return $this->successResponse($product->fresh(), 'Price change approved');
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->errorResponse('Product not found', 404);
-        } catch (\Exception $e) {
-            return $this->errorResponse('Failed to approve price change: ' . $e->getMessage(), 500, [], $e);
-        }
-    }
-
-    public function rejectPrice(Request $request, $id)
-    {
-        try {
-            if (!$this->isFinancePriceApprover()) {
-                return $this->errorResponse('You do not have permission to reject product pricing.', 403);
-            }
-
-            $validated = $this->validateRequest($request, [
-                'reason' => 'required|string|max:500',
-            ]);
-
-            $product = Product::byStore($this->getStoreId())->findOrFail($id);
-            if ($product->price_approval_status !== 'pending') {
-                return $this->errorResponse('No pending price request to reject.', 422);
-            }
-
-            $product->update([
-                'price_approval_status' => 'rejected',
-                'price_rejected_by' => $this->getUserId(),
-                'price_rejected_at' => now(),
-                'price_approval_notes' => $validated['reason'],
-                'pending_base_price' => null,
-                'pending_discounted_price' => null,
-            ]);
-
-            return $this->successResponse($product->fresh(), 'Price change rejected');
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->errorResponse('Product not found', 404);
-        } catch (\Exception $e) {
-            return $this->errorResponse('Failed to reject price change: ' . $e->getMessage(), 500, [], $e);
         }
     }
 
@@ -828,24 +722,6 @@ class ProductController extends BaseController
         }
 
         return false;
-    }
-
-    private function removeLivePriceFields(array $data): array
-    {
-        unset($data['base_price'], $data['discounted_price'], $data['price_change_reason']);
-        return $data;
-    }
-
-    private function isFinancePriceApprover(): bool
-    {
-        return $this->userHasAnyPermission([
-            'finance.all.approve',
-            'finance.settings.approve.store',
-            'finance.settings.approve.all',
-            'finance.purchase-orders.approve',
-            'finance.pricing.approve',
-            'finance.price-approvals.approve',
-        ]);
     }
 
     /**

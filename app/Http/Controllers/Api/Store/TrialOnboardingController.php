@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Services\Modules\ModuleAccessService;
+use App\Services\ProductCatalog\DefaultFurnitureCategoryService;
 
 class TrialOnboardingController extends Controller
 {
@@ -62,13 +63,14 @@ class TrialOnboardingController extends Controller
             );
 
             $user = $request->user();
-            $storeAdminRoleId = (int) (Role::query()
-                ->where('name', 'store_admin')
+            $ownerRoleId = (int) (Role::query()
                 ->whereNull('store_id')
+                ->where('name', 'owner')
+                ->orderByRaw("CASE WHEN name = 'owner' THEN 0 ELSE 1 END")
                 ->value('id') ?? 0);
 
-            if ($storeAdminRoleId <= 0) {
-                throw new \RuntimeException('The global store_admin role is not configured.');
+            if ($ownerRoleId <= 0) {
+                throw new \RuntimeException('The global owner role is not configured.');
             }
 
             if (!$user->store_id) {
@@ -84,6 +86,7 @@ class TrialOnboardingController extends Controller
                     'status' => 'unverified',
                     'subscription_tier' => $subscriptionTier,
                 ]);
+                app(DefaultFurnitureCategoryService::class)->populateForStore((int) $store->id);
 
                 if ($setupMode === 'free') {
                     $trialFields = [
@@ -112,7 +115,7 @@ class TrialOnboardingController extends Controller
                 $user->update([
                     'store_id' => $store->id,
                     'branch_id' => $branch->id,
-                    'role_id' => $storeAdminRoleId,
+                    'role_id' => $ownerRoleId,
                 ]);
 
                 Employee::query()->updateOrCreate(
@@ -120,8 +123,8 @@ class TrialOnboardingController extends Controller
                     [
                         'store_id' => $store->id,
                         'branch_id' => $branch->id,
-                        'role_id' => $storeAdminRoleId,
-                        'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                    'role_id' => $ownerRoleId,
+                    'employee_number' => Employee::generateEmployeeNumber($ownerRoleId),
                         'fname' => (string) $user->fname,
                         'lname' => (string) $user->lname,
                         'department' => 'Management',
@@ -140,7 +143,7 @@ class TrialOnboardingController extends Controller
                     ->orderByDesc('is_main_branch')
                     ->orderBy('id')
                     ->first();
-                $user->update(['role_id' => $storeAdminRoleId]);
+                $user->update(['role_id' => $ownerRoleId]);
 
                 if ($existingBranch) {
                     Employee::query()->updateOrCreate(
@@ -148,8 +151,8 @@ class TrialOnboardingController extends Controller
                         [
                             'store_id' => $store->id,
                             'branch_id' => $existingBranch->id,
-                            'role_id' => $storeAdminRoleId,
-                            'employee_number' => Employee::generateEmployeeNumber($storeAdminRoleId),
+                            'role_id' => $ownerRoleId,
+                            'employee_number' => Employee::generateEmployeeNumber($ownerRoleId),
                             'fname' => (string) $user->fname,
                             'lname' => (string) $user->lname,
                             'department' => 'Management',

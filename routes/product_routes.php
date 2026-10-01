@@ -38,8 +38,6 @@ Route::prefix('product-catalog')->group(function () {
         ->middlewareFor('store', 'subscription.capacity:products')
         ;
     Route::get('products/{id}/3d-data', [ProductController::class, 'get3dData']);
-    Route::post('products/{id}/price/approve', [ProductController::class, 'approvePrice']);
-    Route::post('products/{id}/price/reject', [ProductController::class, 'rejectPrice']);
     Route::post('products/bulk/status', [ProductController::class, 'bulkStatus']);
     Route::post('products/bulk/delete', [ProductController::class, 'bulkDelete']);
 

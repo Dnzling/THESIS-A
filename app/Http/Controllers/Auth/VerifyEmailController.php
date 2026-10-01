@@ -22,7 +22,7 @@ class VerifyEmailController extends Controller
         return match ($roleName) {
             'customer' => '/customer/login',
             'applicant' => '/job-portal/login',
-            'store_admin' => '/login',
+            'owner' => '/login',
             default => '/login',
         };
     }

@@ -196,7 +196,7 @@
                   rounded 
                   size="small"
                   v-tooltip.top="'Edit'"
-                  @click="router.push({ name: 'merchandising.variations.edit', params: { id: data.id } })"
+                  @click="editVariation(data.id)"
                 />
                 <Button
                   v-if="data.is_active"
@@ -345,7 +345,7 @@
         <Button 
           label="Edit" 
           icon="pi pi-pencil" 
-          @click="$router.push({ name: 'merchandising.variations.edit', params: { id: currentVariation.id } })" 
+          @click="currentVariation?.id && editVariation(currentVariation.id)" 
         />
         <Button label="Close" severity="secondary" outlined @click="viewDialogVisible = false" />
       </template>
@@ -369,7 +369,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 
 import { useToast } from 'primevue/usetoast'
 import merchandisingService from '../../../../services/merchandising.service'
@@ -386,10 +386,16 @@ import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const toast = useToast()
 const router = useRouter()
+const route = useRoute()
+const isInventoryContext = computed(() => String(route.name || '').startsWith('inventory.'))
+const editVariation = (id: number) => router.push({
+  name: isInventoryContext.value ? 'inventory.product-variations.edit' : 'merchandising.variations.edit',
+  params: { id }
+})
 
 // State
 const variations = ref([])
@@ -555,7 +561,7 @@ const loadVariantRequests = async () => {
 }
 
 const createFromRequest = (request: any) => router.push({
-  name: 'merchandising.variations.create',
+  name: isInventoryContext.value ? 'inventory.product-variations.create' : 'merchandising.variations.create',
   query: { proposal_id: String(request.id), product_id: String(request.rfq_item?.product_id || request.rfq_item?.product?.id) },
 })
 

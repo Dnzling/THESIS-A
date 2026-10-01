@@ -171,7 +171,6 @@ class StoreSettingsController extends Controller
             'barangay' => 'sometimes|nullable|string|max:150',
             'province' => 'sometimes|nullable|string|max:255',
             'type' => 'sometimes|nullable|string|max:50',
-            'store_code' => 'sometimes|nullable|string|max:50',
             'contact_person' => 'sometimes|nullable|string|max:255',
         ]);
 
@@ -185,6 +184,7 @@ class StoreSettingsController extends Controller
             ], 404);
         }
 
+        abort_unless($user?->hasRole('owner'), 403);
         $store->fill(collect($validated)->except('contact_person')->toArray());
 
         $settings = is_array($store->settings) ? $store->settings : [];

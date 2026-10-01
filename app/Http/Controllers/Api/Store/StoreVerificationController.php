@@ -64,10 +64,8 @@ class StoreVerificationController extends Controller
 
     public function submitDocuments(Request $request, Store $store)
     {
+        abort_unless((int) $request->user()?->store_id === (int) $store->id && $request->user()?->hasRole('owner'), 403);
         try {
-            // Check if user owns this store
-            // First, you need to add user_id to stores table or have another way to link
-            // For now, let's assume the authenticated user can submit
 
             $idTypes = implode(',', self::ID_TYPES);
             $validated = $request->validate([
@@ -77,6 +75,9 @@ class StoreVerificationController extends Controller
                 'gov_id_back_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
                 'business_registration_number' => ['required', 'string', 'max:100'],
                 'business_registration_date' => ['required', 'date', 'before_or_equal:today'],
+                'registration_expires_at' => ['nullable', 'date', 'after:today'],
+                'tax_expires_at' => ['nullable', 'date', 'after:today'],
+                'permit_expires_at' => ['nullable', 'date', 'after:today'],
                 'business_registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
                 'tax_certificate_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
                 'business_permit_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
@@ -117,6 +118,9 @@ class StoreVerificationController extends Controller
                         'gov_id_number' => $validated['gov_id_number'],
                         'business_registration_number' => $validated['business_registration_number'] ?? null,
                         'business_registration_date' => $validated['business_registration_date'],
+                        'registration_expires_at' => $validated['registration_expires_at'] ?? null,
+                        'tax_expires_at' => $validated['tax_expires_at'] ?? null,
+                        'permit_expires_at' => $validated['permit_expires_at'] ?? null,
                         'other_documents' => null,
                         'reviewed_at' => null,
                         'reviewed_by' => null,
@@ -126,9 +130,6 @@ class StoreVerificationController extends Controller
                     $uploads
                 )
             );
-
-            // Use valid DB enum status; "pending" means submitted/under review.
-            $store->update(['status' => 'pending']);
 
             return response()->json([
                 'success' => true,
@@ -160,6 +161,7 @@ class StoreVerificationController extends Controller
 
     public function extractOwnerId(Request $request)
     {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
         $request->validate([
             'id_type' => ['nullable', 'string', 'in:' . implode(',', self::ID_TYPES)],
             'id_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
@@ -188,6 +190,7 @@ class StoreVerificationController extends Controller
 
     public function extractBusinessRegistration(Request $request)
     {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
         $request->validate([
             'registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
         ]);
@@ -223,7 +226,7 @@ class StoreVerificationController extends Controller
         try {
             $user = Auth::user();
             $isSuperAdmin = (bool) $user?->hasRole('super_admin');
-            $isStoreOwner = (int) ($user?->store_id ?? 0) === (int) $store->id;
+            $isStoreOwner = $user?->hasRole('owner') && (int) ($user?->store_id ?? 0) === (int) $store->id;
             if (!$isSuperAdmin && !$isStoreOwner) {
                 return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
             }
@@ -253,6 +256,7 @@ class StoreVerificationController extends Controller
      */
     public function getStatus(Store $store)
     {
+        abort_unless((int) request()->user()?->store_id === (int) $store->id && request()->user()?->hasRole('owner'), 403);
         try {
             // Load verification data
             $store->load(['verification' => function ($query) {
@@ -452,20 +456,20 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => null
                 ]);
 
-                // 2. Update store status using valid enum values.
+                // Verification is independent of subscription/store operational status.
                 $store = $verification->store;
-                $store->update(['status' => 'active']);
+                $store->update(['verified_at' => now(), 'verified_by' => Auth::id()]);
 
                 // 3. Find store owner user by store email and link to store.
                 $storeOwner = User::where('email', $store->email)->first();
 
                 if ($storeOwner) {
-                    $storeAdminRoleId = (int) (\App\Models\Core\Role::query()
-                        ->where('name', 'store_admin')
+                    $ownerRoleId = (int) (\App\Models\Core\Role::query()
+                        ->where('name', 'owner')
                         ->whereNull('store_id')
                         ->value('id') ?? 0);
-                    if ($storeAdminRoleId <= 0) {
-                        throw new \RuntimeException('The global store_admin role is not configured.');
+                    if ($ownerRoleId <= 0) {
+                        throw new \RuntimeException('The global owner role is not configured.');
                     }
                     $defaultBranchId = (int) (\App\Models\Store\Branch::query()
                         ->where('store_id', (int) $store->id)
@@ -475,7 +479,7 @@ class StoreVerificationController extends Controller
 
                     $storeOwner->update([
                         'store_id' => $store->id,
-                        'role_id' => $storeAdminRoleId,
+                        'role_id' => $ownerRoleId,
                         'branch_id' => $storeOwner->branch_id ?: ($defaultBranchId ?: null),
                     ]);
 
@@ -484,7 +488,7 @@ class StoreVerificationController extends Controller
 
                     if (!$existingEmployee) {
                         if ($defaultBranchId <= 0) {
-                            throw new \RuntimeException('Cannot create store admin employee profile: no branch exists for the store.');
+                            throw new \RuntimeException('Cannot create store owner employee profile: no branch exists for the store.');
                         }
 
                         // 6. Create employee record for store owner
@@ -492,8 +496,8 @@ class StoreVerificationController extends Controller
                             'user_id' => $storeOwner->id,
                             'store_id' => $store->id,
                             'branch_id' => $defaultBranchId,
-                            'role_id' => $storeAdminRoleId,
-                            'employee_number' => \App\Models\Hr\Employee::generateEmployeeNumber($storeAdminRoleId),
+                            'role_id' => $ownerRoleId,
+                            'employee_number' => \App\Models\Hr\Employee::generateEmployeeNumber($ownerRoleId),
                             'fname' => (string) $storeOwner->fname,
                             'lname' => (string) $storeOwner->lname,
                             'department' => 'Management',
@@ -515,8 +519,7 @@ class StoreVerificationController extends Controller
                     'rejection_reason' => $validated['rejection_reason']
                 ]);
 
-                // 2. Rejected submissions return the store to unverified so the owner can resubmit.
-                $verification->store->update(['status' => 'unverified']);
+                $verification->store->update(['verified_at' => null, 'verified_by' => null]);
             });
 
             $message = 'Store verification rejected';
@@ -634,7 +637,7 @@ class StoreVerificationController extends Controller
     {
         $user = Auth::user();
         $isSuperAdmin = (bool) $user?->hasRole('super_admin');
-        $isStoreOwner = (int) ($user?->store_id ?? 0) === (int) $verification->store_id;
+        $isStoreOwner = $user?->hasRole('owner') && (int) ($user?->store_id ?? 0) === (int) $verification->store_id;
         if (!$isSuperAdmin && !$isStoreOwner) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
@@ -649,7 +652,8 @@ class StoreVerificationController extends Controller
 
     public function previewDocument(Request $request, StoreVerification $verification, string $document)
     {
-        if (!Auth::user()?->hasRole('super_admin')) {
+        $user = $request->user();
+        if (!$user?->hasRole('super_admin') && !($user?->hasRole('owner') && (int) $user->store_id === (int) $verification->store_id)) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
@@ -802,6 +806,15 @@ class StoreVerificationController extends Controller
         if ($exists && $mime && !in_array($mime, $allowedMimes, true)) {
             $issues[] = 'Unexpected MIME type for this document.';
         }
+        $expiryField = [
+            'business_registration_file' => 'registration_expires_at',
+            'tax_certificate_file' => 'tax_expires_at',
+            'business_permit_file' => 'permit_expires_at',
+        ][$key] ?? null;
+        $expiresAt = $expiryField ? $verification->{$expiryField} : null;
+        if ($expiresAt && $expiresAt->isPast()) {
+            $issues[] = 'Document has expired.';
+        }
 
         return [
             'key' => $key,
@@ -813,6 +826,7 @@ class StoreVerificationController extends Controller
             'exists' => $exists,
             'size_kb' => $sizeKb,
             'mime_type' => $mime,
+            'expires_at' => $expiresAt?->toDateString(),
             'is_valid' => $submitted ? empty($issues) : !$required,
             'issues' => $issues,
             'download_url' => $submitted

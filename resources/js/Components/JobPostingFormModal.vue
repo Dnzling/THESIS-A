@@ -410,7 +410,7 @@ const loadRoles = async (department?: string) => {
       : '/api/store/roles/scoped'
     const response = await hrService.api.get(endpoint, department ? { params: { department } } : undefined)
     const items = response?.data?.data || response?.data || []
-    const excludedRoleNames = ['super_admin', 'admin', 'store_admin', 'owner', 'supplier_portal']
+    const excludedRoleNames = ['super_admin', 'admin', 'owner', 'supplier_portal']
     const excludedCodes = ['SA', 'ADM', 'OWN', 'SUPP']
 
     roleOptions.value = items

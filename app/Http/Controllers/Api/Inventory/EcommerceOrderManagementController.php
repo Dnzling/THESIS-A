@@ -26,6 +26,7 @@ class EcommerceOrderManagementController extends Controller
         'pending',
         'processing',
         'ready_for_dispatch',
+        'ready_for_pickup',
         'packed',
         'shipped',
         'in_transit',
@@ -104,6 +105,37 @@ class EcommerceOrderManagementController extends Controller
         $data['timeline'] = $this->formatOrderTimeline($order);
 
         return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    public function setPickupDate(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'pickup_date' => ['required', 'date', 'after_or_equal:today'],
+        ]);
+
+        $query = EcommerceOrder::query();
+        $this->applyStoreScope($request, $query);
+        $order = $query->findOrFail($id);
+
+        if ((float) $order->shipping_fee > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pickup date can only be set for orders with no shipping fee.',
+            ], 422);
+        }
+
+        $order->pickup_date = $validated['pickup_date'];
+        $order->fulfillment_method = 'pickup';
+        if (in_array((string) $order->status, ['pending', 'processing', 'ready_for_dispatch'], true)) {
+            $order->status = 'ready_for_pickup';
+        }
+        $order->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pickup date saved.',
+            'data' => $order->fresh(),
+        ]);
     }
 
     public function receiptPdf(Request $request, int $id)
@@ -855,9 +887,10 @@ class EcommerceOrderManagementController extends Controller
         }
 
         $flow = [
-            'pending' => ['processing', 'ready_for_dispatch', 'cancelled'],
-            'processing' => ['ready_for_dispatch', 'packed', 'cancelled'],
+            'pending' => ['processing', 'ready_for_dispatch', 'ready_for_pickup', 'cancelled'],
+            'processing' => ['ready_for_dispatch', 'ready_for_pickup', 'packed', 'cancelled'],
             'ready_for_dispatch' => ['packed', 'shipped', 'cancelled'],
+            'ready_for_pickup' => ['cancelled'],
             'packed' => ['shipped', 'cancelled'],
             'shipped' => ['in_transit', 'out_for_delivery', 'delivered', 'cancelled'],
             'in_transit' => ['out_for_delivery', 'delivered', 'cancelled'],

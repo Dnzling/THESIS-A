@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\Hr\PayrollController;
 use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
+use App\Http\Controllers\Api\Store\PositionSetupController;
 use App\Http\Controllers\Api\Store\StoreScopedRoleController;
 use App\Http\Controllers\Api\Payments\PaymongoController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
@@ -83,6 +84,7 @@ Route::prefix('ecommerce')->group(function () {
 Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
 Route::post('/payments/paymongo/webhook', [PaymongoController::class, 'webhook']);
 Route::get('/public/subscription-plans', [SubscriptionPlanController::class, 'publicIndex']);
+Route::get('/public/subscription-plans/first-for-permission', [SubscriptionPlanController::class, 'firstPlanForPermission']);
 Route::get('/public/subscription-plans/{planKey}/modules', [SubscriptionPlanController::class, 'publicModules']);
 
 // ========== PROTECTED ROUTES ==========
@@ -93,7 +95,7 @@ Route::prefix('locations')->group(function () {
     Route::get('/barangays', [\App\Http\Controllers\Api\Location\PSGCController::class, 'barangays']);
 });
 
-Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->group(function () {
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
@@ -117,7 +119,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/batch-delete', [SystemNotificationController::class, 'batchDelete']);
     });
 
-    Route::prefix('admin')->group(function () {
+    Route::middleware('role:super_admin')->prefix('admin')->group(function () {
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
         Route::get('/roles/primary', [RolePermissionController::class, 'primaryRolesAdmin']);
         Route::delete('/roles/{id}', [RolePermissionController::class, 'deleteRole']);
@@ -197,6 +199,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // ========== STORE ROLES & PERMISSIONS ==========
     Route::prefix('store')->group(function () {
+        Route::get('/position-setup', [PositionSetupController::class, 'index']);
+        Route::post('/position-setup', [PositionSetupController::class, 'store']);
         Route::get('/dashboard', [StoreDashboardController::class, 'index']);
         Route::get('/settings', [StoreSettingsController::class, 'show']);
         Route::put('/settings/profile', [StoreSettingsController::class, 'updateProfile']);

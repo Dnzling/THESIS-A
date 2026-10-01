@@ -121,6 +121,11 @@ class SalesService {
     return res.data
   }
 
+  async setEcommerceOrderPickupDate(id: number | string, pickup_date: string) {
+    const res = await axiosClient.put(`/api/sales/ecommerce-orders/${id}/pickup-date`, { pickup_date })
+    return res.data
+  }
+
   async reviewEcommerceOrderCancellation(orderId: number | string, requestId: number | string, payload: { status: 'approved' | 'rejected'; review_notes?: string }) {
     const res = await axiosClient.put(`/api/sales/ecommerce-orders/${orderId}/cancellation-requests/${requestId}/review`, payload)
     return res.data

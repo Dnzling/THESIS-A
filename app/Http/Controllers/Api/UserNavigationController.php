@@ -162,7 +162,7 @@ class UserNavigationController extends Controller
     private function getUserNavigationItems($user, array $permissions): array
     {
         $roleName = strtolower($user->role->name ?? '');
-        $allowedModules = $this->getStoreAdminAllowedModules($user);
+        $allowedModules = $this->getOwnerAllowedModules($user);
 
         // Get all active navigation items
         $navigationItems = NavigationItem::where('is_active', true)
@@ -174,8 +174,8 @@ class UserNavigationController extends Controller
         $accessibleNavigation = [];
 
         foreach ($navigationItems as $navItem) {
-            if ($roleName === 'store_admin' && !empty($allowedModules)) {
-                $whitelist = ['store_admin', 'store', 'system', 'admin'];
+            if ($roleName === 'owner' && !empty($allowedModules)) {
+                $whitelist = ['owner', 'store', 'system', 'admin'];
                 if (!in_array($navItem->module, $allowedModules, true) && !in_array($navItem->module, $whitelist, true)) {
                     continue;
                 }
@@ -204,9 +204,9 @@ class UserNavigationController extends Controller
         return $accessibleNavigation;
     }
 
-    private function getStoreAdminAllowedModules($user): array
+    private function getOwnerAllowedModules($user): array
     {
-        if (!$user || strtolower($user->role?->name ?? '') !== 'store_admin') {
+        if (!$user || strtolower($user->role?->name ?? '') !== 'owner') {
             return [];
         }
 
@@ -217,13 +217,13 @@ class UserNavigationController extends Controller
 
     private function filterPermissionsByModules($user, array $permissions): array
     {
-        $allowedModules = $this->getStoreAdminAllowedModules($user);
+        $allowedModules = $this->getOwnerAllowedModules($user);
 
         if (empty($allowedModules)) {
             return $permissions;
         }
 
-        $alwaysAllowPrefixes = ['store.', 'store_admin.', 'system.', 'profile.', 'auth.'];
+        $alwaysAllowPrefixes = ['store.', 'owner.', 'system.', 'profile.', 'auth.'];
 
         return array_values(array_filter($permissions, function ($permission) use ($allowedModules, $alwaysAllowPrefixes) {
             foreach ($alwaysAllowPrefixes as $prefix) {

@@ -659,7 +659,7 @@ class ReturnController extends Controller
     {
         abort_unless($request->user()->hasAnyPermission([
             'crm.returns.manage', 'inventory.receiving.manage', 'warehouse.receiving.view',
-        ]) || $request->user()->hasRole('store_admin'), 403);
+        ]) || $request->user()->hasRole('owner'), 403);
         $storeId = (int) (auth()->user()?->store_id ?? 0);
         if ($storeId <= 0 || (int) $return->store_id !== $storeId) {
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
@@ -698,10 +698,10 @@ class ReturnController extends Controller
         if ($branchId <= 0) {
             return response()->json(['success' => false, 'message' => 'The return pickup has no destination branch. Assign one before inspection.'], 422);
         }
-        if ($employeeBranchId !== $branchId && ! $user->hasRole('store_admin')) {
+        if ($employeeBranchId !== $branchId && ! $user->hasRole('owner')) {
             $return->loadMissing('pickup.destinationBranch:id,name');
             $destinationName = $return->pickup?->destinationBranch?->name ?? 'the selected branch';
-            return response()->json(['success' => false, 'message' => "Receive this return at {$destinationName}, or ask a store admin to complete the inspection."], 422);
+            return response()->json(['success' => false, 'message' => "Receive this return at {$destinationName}, or ask the store owner to complete the inspection."], 422);
         }
 
         $return->loadMissing([

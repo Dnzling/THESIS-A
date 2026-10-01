@@ -10,6 +10,7 @@ use App\Models\Ecommerce\EcommerceAddressTemplate;
 use App\Models\CRM\EcommerceChatMessage;
 use App\Models\CRM\EcommerceChatThread;
 use App\Models\Ecommerce\EcommerceOrder;
+use App\Models\Ecommerce\EcommerceDeliveryVehicle;
 use App\Models\Ecommerce\EcommerceOrderDelivery;
 use App\Models\Ecommerce\EcommerceOrderCancellation;
 use App\Models\CRM\EcommerceOrderReturn;
@@ -1303,6 +1304,27 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $hasDeliveryVehicle = EcommerceDeliveryVehicle::query()
+            ->where('store_id', $cart->store_id)
+            ->where('is_active', true)
+            ->where('status', 'active')
+            ->exists();
+        if (!$hasDeliveryVehicle) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'shipping_fee' => 0.0,
+                    'pickup_only' => true,
+                    'fulfillment_method' => 'pickup',
+                    'bulk_trip_allowed' => false,
+                    'fallback_used' => false,
+                    'fallback_reason' => null,
+                    'distance_km' => null,
+                    'breakdown' => null,
+                ],
+            ]);
+        }
+
         $customerLatitude = isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null;
         $customerLongitude = isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null;
 
@@ -1317,8 +1339,8 @@ class EcommerceController extends Controller
         $fulfillmentBranch = $this->resolveFulfillmentBranch(
             (int) $cart->store_id,
             $itemsForCheckout,
-            $customerLatitude,
-            $customerLongitude
+            null,
+            null
         );
 
         if (!$fulfillmentBranch) {
@@ -1380,6 +1402,8 @@ class EcommerceController extends Controller
             'success' => true,
             'data' => [
                 'shipping_fee' => (float) $finalFee,
+                'pickup_only' => false,
+                'fulfillment_method' => 'delivery',
                 'distance_km' => round($distanceKm, 2),
                 'bulk_trip_allowed' => true,
                 'fallback_used' => true,
@@ -1402,12 +1426,13 @@ class EcommerceController extends Controller
     public function checkout(Request $request)
     {
         $validated = $request->validate([
-            'shipping_name' => ['required', 'string', 'max:120'],
+            'shipping_name' => ['nullable', 'string', 'max:120'],
             'shipping_phone' => ['nullable', 'string', 'max:50'],
             'shipping_email' => ['nullable', 'email', 'max:120'],
-            'shipping_address' => ['required', 'string'],
+            'shipping_address' => ['nullable', 'string'],
             'payment_method' => ['required', Rule::in(['cod', 'bank_transfer', 'card', 'e_wallet'])],
             'shipping_fee' => ['nullable', 'numeric', 'min:0'],
+            'fulfillment_method' => ['nullable', Rule::in(['delivery', 'pickup'])],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],
             'item_ids' => ['nullable', 'array'],
@@ -1464,6 +1489,18 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $hasDeliveryVehicle = EcommerceDeliveryVehicle::query()
+            ->where('store_id', $cart->store_id)
+            ->where('is_active', true)
+            ->where('status', 'active')
+            ->exists();
+        $fulfillmentMethod = $hasDeliveryVehicle
+            ? (string) ($validated['fulfillment_method'] ?? 'delivery')
+            : 'pickup';
+        if ($fulfillmentMethod === 'delivery' && !$hasDeliveryVehicle) {
+            return response()->json(['success' => false, 'message' => 'Delivery is unavailable for this store. Please select pickup.'], 422);
+        }
+
         $invalidVariationItem = $itemsForCheckout->first(function ($item) {
             if (!is_null($item->variation_id)) {
                 return false;
@@ -1482,7 +1519,7 @@ class EcommerceController extends Controller
             ], 422);
         }
 
-        $shippingFee = (float) ($validated['shipping_fee'] ?? 0);
+        $shippingFee = $fulfillmentMethod === 'pickup' ? 0.0 : (float) ($validated['shipping_fee'] ?? 0);
         $previewSubtotal = 0;
         foreach ($itemsForCheckout as $item) {
             $previewSubtotal += (float) $item->unit_price * (int) $item->quantity;
@@ -1502,7 +1539,7 @@ class EcommerceController extends Controller
         $customerLatitude = isset($validated['customer_latitude']) ? (float) $validated['customer_latitude'] : null;
         $customerLongitude = isset($validated['customer_longitude']) ? (float) $validated['customer_longitude'] : null;
 
-        if ($customerLatitude === null || $customerLongitude === null) {
+        if ($fulfillmentMethod === 'delivery' && ($customerLatitude === null || $customerLongitude === null)) {
             [$resolvedLatitude, $resolvedLongitude] = $this->resolveCoordinatesFromAddress((string) $validated['shipping_address']);
             $customerLatitude = $customerLatitude ?? $resolvedLatitude;
             $customerLongitude = $customerLongitude ?? $resolvedLongitude;
@@ -1511,8 +1548,8 @@ class EcommerceController extends Controller
         $fulfillmentBranch = $this->resolveFulfillmentBranch(
             (int) $cart->store_id,
             $itemsForCheckout,
-            $customerLatitude,
-            $customerLongitude
+            $fulfillmentMethod === 'pickup' ? null : $customerLatitude,
+            $fulfillmentMethod === 'pickup' ? null : $customerLongitude
         );
 
         if (!$fulfillmentBranch) {
@@ -1533,7 +1570,10 @@ class EcommerceController extends Controller
         $providedShippingFee = array_key_exists('shipping_fee', $validated) ? (float) $validated['shipping_fee'] : null;
         $canLookupRates = true;
 
-        if ($customerLatitude === null || $customerLongitude === null) {
+        if ($fulfillmentMethod === 'pickup') {
+            $shippingFee = 0.0;
+            $canLookupRates = false;
+        } elseif ($customerLatitude === null || $customerLongitude === null) {
             if (!is_null($providedShippingFee)) {
                 $shippingFee = $providedShippingFee;
                 $canLookupRates = false;
@@ -1548,7 +1588,7 @@ class EcommerceController extends Controller
         $originLatitude = is_numeric($fulfillmentBranch->latitude) ? (float) $fulfillmentBranch->latitude : null;
         $originLongitude = is_numeric($fulfillmentBranch->longitude) ? (float) $fulfillmentBranch->longitude : null;
 
-        if ($canLookupRates) {
+        if ($canLookupRates && $fulfillmentMethod === 'delivery') {
             if ($originLatitude === null || $originLongitude === null) {
                 if (!is_null($providedShippingFee)) {
                     $shippingFee = $providedShippingFee;
@@ -1562,7 +1602,7 @@ class EcommerceController extends Controller
             }
         }
 
-        if ($canLookupRates) {
+        if ($canLookupRates && $fulfillmentMethod === 'delivery') {
             $distanceKm = $this->haversineKm(
                 (float) $originLatitude,
                 (float) $originLongitude,
@@ -1584,12 +1624,12 @@ class EcommerceController extends Controller
 
         $bulkTripRequested = (bool) ($validated['bulk_trip'] ?? false);
         $bulkTrip = $bulkTripRequested;
-        if ($bulkTrip) {
+        if ($bulkTrip && $fulfillmentMethod === 'delivery') {
             $bulkDiscountRate = $this->resolveBulkTripDiscountRate($cart->store_id);
             $shippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);
         }
 
-        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude) {
+        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod) {
             $subtotal = 0;
             $taxAmount = 0;
             $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
@@ -1604,10 +1644,11 @@ class EcommerceController extends Controller
                 'status' => 'pending',
                 'payment_method' => $validated['payment_method'],
                 'payment_status' => 'unpaid',
-                'shipping_name' => $validated['shipping_name'],
+                'shipping_name' => $validated['shipping_name'] ?? 'Customer',
                 'shipping_phone' => $validated['shipping_phone'] ?? null,
                 'shipping_email' => $validated['shipping_email'] ?? null,
-                'shipping_address' => $validated['shipping_address'],
+                'shipping_address' => $validated['shipping_address'] ?? '',
+                'fulfillment_method' => $fulfillmentMethod,
                 'customer_latitude' => $customerLatitude,
                 'customer_longitude' => $customerLongitude,
                 'notes' => trim((string) (($validated['notes'] ?? '') . ($appliedVoucherCode ? " Voucher: {$appliedVoucherCode}" : ''))) ?: null,
@@ -3075,6 +3116,8 @@ class EcommerceController extends Controller
             'shipping_phone' => $order->shipping_phone,
             'shipping_email' => $order->shipping_email,
             'shipping_address' => $order->shipping_address,
+            'fulfillment_method' => $order->fulfillment_method ?: 'delivery',
+            'pickup_date' => $order->pickup_date?->toDateString(),
             'customer_latitude' => $order->customer_latitude,
             'customer_longitude' => $order->customer_longitude,
             'assigned_branch' => $order->assignedBranch ? [
@@ -3846,5 +3889,3 @@ class EcommerceController extends Controller
         return preg_match($pattern, $message) === 1;
     }
 }
-
-

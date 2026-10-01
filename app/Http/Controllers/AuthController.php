@@ -141,7 +141,7 @@ class AuthController extends Controller
                 'email' => 'required|email',
                 'password' => self::STRONG_PASSWORD_RULE,
                 'role_id' => 'nullable|integer|exists:roles,id',
-                'account_type' => 'nullable|string|in:store_admin,customer',
+                'account_type' => 'nullable|string|in:owner,customer',
                 'birthday' => 'nullable|date|before_or_equal:today',
                 'store_name' => 'nullable|string|max:255',
                 'store_type' => 'nullable|string|max:100',
@@ -155,32 +155,32 @@ class AuthController extends Controller
                     ->value('name');
                 $registrationType = strtolower((string) $requestedRoleName) === 'customer'
                     ? 'customer'
-                    : 'store_admin';
+                    : 'owner';
             }
-            $registrationType ??= 'store_admin';
+            $registrationType ??= 'owner';
             $isCustomerRegistration = $registrationType === 'customer';
             $targetRole = Role::query()
                 ->where('name', $registrationType)
                 ->whereNull('store_id')
                 ->first();
 
-            if (!$targetRole && $registrationType === 'store_admin') {
+            if (!$targetRole && $registrationType === 'owner') {
                 // Older installations may only have a store-scoped default role.
                 // Registration and onboarding need a global role shared by new stores.
                 $targetRole = DB::transaction(function () {
                     $role = Role::firstOrCreate(
-                        ['name' => 'store_admin', 'store_id' => null],
+                        ['name' => 'owner', 'store_id' => null],
                         [
-                            'display_name' => 'Store Administrator',
-                            'description' => 'Manages store configuration and operations',
-                            'code' => 'SADM',
+                            'display_name' => 'Store Owner',
+                            'description' => 'Owns and manages store configuration and operations',
+                            'code' => 'OWN',
                             'is_active' => true,
                         ]
                     );
 
                     if ($role->wasRecentlyCreated) {
                         $existingRoleId = Role::query()
-                            ->where('name', 'store_admin')
+                            ->where('name', 'owner')
                             ->whereNotNull('store_id')
                             ->orderBy('id')
                             ->value('id');
@@ -663,7 +663,7 @@ class AuthController extends Controller
 
     private function passesGeofence(User $user, ?float $latitude, ?float $longitude): bool
     {
-        if ($user->isSuperAdmin() || $user->isStoreAdmin()) {
+        if ($user->isSuperAdmin() || $user->isOwner()) {
             return true;
         }
 

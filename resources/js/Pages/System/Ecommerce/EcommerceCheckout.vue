@@ -3,7 +3,7 @@
     <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">Review and place your order</h1>
-        <p class="mt-1 text-sm text-slate-500">Confirm your delivery address, items, and payment method.</p>
+        <p class="mt-1 text-sm text-slate-500">Confirm your fulfillment option, items, and payment method.</p>
       </div>
       <Button label="Back to Cart" icon="pi pi-arrow-left" severity="secondary" outlined class="w-full sm:w-auto" @click="goCart" />
     </div>
@@ -55,23 +55,26 @@
     <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div class="space-y-4 lg:col-span-2">
         <Card
-          class="cursor-pointer border border-slate-200 shadow-none transition hover:border-amber-300 hover:shadow-sm"
-          @click="openAddressDialog"
+          :class="pickupOnly ? 'border border-slate-200 shadow-none' : 'cursor-pointer border border-slate-200 shadow-none transition hover:border-amber-300 hover:shadow-sm'"
+          @click="!pickupOnly && openAddressDialog()"
         >
           <template #content>
             <div class="flex items-start justify-between gap-3">
               <div class="flex min-w-0 items-start gap-3">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Shipping Address</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ pickupOnly ? 'Pickup Order' : 'Shipping Address' }}</p>
                     <Badge v-if="selectedAddress && selectedAddress.id === defaultAddressId" value="Default"  />
                   </div>
-                  <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select a shipping address' }}</p>
-                  <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
-                  <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
+              <template v-if="!pickupOnly">
+                <p class="mt-1 text-sm font-semibold text-slate-900">{{ selectedAddress?.full_name || 'Select a shipping address' }}</p>
+                <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
+                <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
+              </template>
+              <p v-else class="mt-2 text-sm text-slate-600">No delivery vehicles are registered. This order will be collected from the store.</p>
                 </div>
               </div>
-              <Button label="Change" icon="pi pi-pencil" size="small" text severity="warn" />
+          <Button v-if="!pickupOnly" label="Change" icon="pi pi-pencil" size="small" text severity="warn" @click.stop="openAddressDialog" />
             </div>
           </template>
         </Card>
@@ -101,7 +104,7 @@
                   <p class="text-xs font-medium text-slate-500">{{ item.store_name }}</p>
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                  <p class="mt-2 text-xs text-slate-500">Delivery Fee: ₱ {{ formatNumber(shippingFeePerItem, 2) }} · Estimated Delivery: {{ estimatedDeliveryDate }}</p>
+                  <p class="mt-2 text-xs text-slate-500">{{ pickupOnly ? 'Pickup from the store' : `Delivery Fee: ₱ ${formatNumber(shippingFeePerItem, 2)} · Estimated Delivery: ${estimatedDeliveryDate}` }}</p>
                 </div>
               </div>
               <div class="text-right">
@@ -155,8 +158,8 @@
             <div class="flex justify-between"><span>Items</span><span>{{ formatNumber(itemsCount) }}</span></div>
             <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span>VATable Sales</span><span>₱ {{ formatNumber(vatableSales, 2) }}</span></div>
-            <div class="flex justify-between text-slate-600"><span>VAT Included (12%)</span><span>₱ {{ formatNumber(vatAmount, 2) }}</span></div>
-            <div class="flex justify-between"><span>Shipping Fee</span><span>₱ {{ formatNumber(shippingFeeTotal, 2) }}</span></div>
+            <div class="flex justify-between text-slate-600"><span> (12%)</span><span>₱ {{ formatNumber(vatAmount, 2) }}</span></div>
+            <div v-if="!pickupOnly" class="flex justify-between"><span>Shipping Fee</span><span>₱ {{ formatNumber(shippingFeeTotal, 2) }}</span></div>
             <!-- <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
               <span>Bulk trip discount</span>
               <InputSwitch v-model="bulkTripEnabled" />
@@ -201,7 +204,7 @@
               <span class="font-semibold text-slate-900">Total</span>
               <span class="text-xl font-bold text-slate-900">₱ {{ formatNumber(totalAmount, 2) }}</span>
             </div>
-            <Button label="Place Order" class="mt-2" fluid :loading="placing || paymongoCreating" @click="placeOrder" />
+          <Button label="Place Order" class="mt-2" fluid :disabled="!pickupOnly && !selectedAddress" :loading="placing || paymongoCreating" @click="placeOrder" />
             <p class="text-center text-xs text-slate-500">Your payment information is securely processed.</p>
           </div>
         </template>
@@ -342,7 +345,7 @@
           class="rounded-xl border p-4 transition"
           :class="[
             selectedPaymentMethod === method.value ? 'border-amber-500 bg-amber-50/60 ring-1 ring-amber-500' : 'border-slate-200 bg-white',
-            method.value === 'cod' && codBlocked ? 'opacity-60' : 'cursor-pointer hover:border-amber-300',
+            method.value === 'cod' && codBlocked && !pickupOnly ? 'opacity-60' : 'cursor-pointer hover:border-amber-300',
           ]"
           @click="selectPaymentMethod(method.value)"
         >
@@ -357,17 +360,17 @@
               v-model="selectedPaymentMethod"
               :inputId="`payment-${method.value}`"
               :value="method.value"
-              :disabled="method.value === 'cod' && codBlocked"
+              :disabled="method.value === 'cod' && codBlocked && !pickupOnly"
               @click.stop
             />
             <div class="min-w-0 flex-1">
               <label :for="`payment-${method.value}`" class="cursor-pointer text-sm font-semibold text-slate-900">
-                {{ method.label }}
+                {{ paymentMethodLabel(method.value) }}
               </label>
-              <p class="mt-0.5 text-xs leading-5 text-slate-500">{{ method.description }}</p>
+              <p class="mt-0.5 text-xs leading-5 text-slate-500">{{ paymentMethodDescription(method.value) }}</p>
             </div>
           </div>
-          <p v-if="method.value === 'cod' && codBlocked" class="mt-2 text-xs text-amber-600">
+          <p v-if="method.value === 'cod' && codBlocked && !pickupOnly" class="mt-2 text-xs text-amber-600">
             COD is not available for totals above ₱ {{ COD_LIMIT.toLocaleString() }}. Use GCash or Credit Card.
           </p>
         </div>
@@ -539,6 +542,7 @@ const isEditingAddress = ref(false)
 const editingAddressId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
+const pickupOnly = ref(false)
 
 const cardDialog = reactive({
   visible: false,
@@ -859,15 +863,25 @@ const checkoutItemIds = computed(() =>
 )
 
 function paymentMethodLabel(method: 'cod' | 'gcash' | 'card') {
+  if (method === 'cod' && pickupOnly.value) return 'Pay Upon Pickup'
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
 }
 
+function paymentMethodDescription(method: 'cod' | 'gcash' | 'card') {
+  if (method === 'cod' && pickupOnly.value) return 'Pay in cash when you collect your order from the store.'
+  return allPaymentMethods.find((m) => m.value === method)?.description || ''
+}
+
 const selectedPaymentMethodOption = computed(() =>
-  allPaymentMethods.find((method) => method.value === selectedPaymentMethod.value) || allPaymentMethods[0],
+  ({
+    ...allPaymentMethods.find((method) => method.value === selectedPaymentMethod.value) || allPaymentMethods[0],
+    label: paymentMethodLabel(selectedPaymentMethod.value),
+    description: paymentMethodDescription(selectedPaymentMethod.value),
+  }),
 )
 
 function selectPaymentMethod(method: 'cod' | 'gcash' | 'card') {
-  if (method === 'cod' && codBlocked.value) return
+  if (method === 'cod' && codBlocked.value && !pickupOnly.value) return
   selectedPaymentMethod.value = method
 }
 
@@ -885,7 +899,7 @@ function formatNumber(value: unknown, decimals = 0): string {
 }
 
 watch(codBlocked, (blocked) => {
-  if (blocked && selectedPaymentMethod.value === 'cod') {
+  if (blocked && !pickupOnly.value && selectedPaymentMethod.value === 'cod') {
     selectedPaymentMethod.value = 'gcash'
   }
 })
@@ -999,6 +1013,7 @@ async function loadCheckoutItems() {
     showAlert({ severity: 'warn', summary: 'Cart Empty', detail: 'Please select cart items first.' })
     router.push({ name: 'ecommerce.cart' })
   }
+  await estimateShippingFee()
 }
 
 async function applyVoucher() {
@@ -1039,14 +1054,6 @@ async function estimateShippingFee() {
   const address = selectedAddress.value
     ? `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`
     : ''
-  const hasCoords = customerLatitude.value !== null && customerLongitude.value !== null
-  const hasAddress = Boolean(address.trim())
-
-  if (!hasCoords && !hasAddress) {
-    shippingFeeTotal.value = 0
-    return
-  }
-
   shippingFeeLoading.value = true
   try {
     const latitude = customerLatitude.value ?? (selectedAddress.value?.latitude ?? undefined)
@@ -1059,6 +1066,7 @@ async function estimateShippingFee() {
       bulk_trip: bulkTripEnabled.value,
     })
     const fee = Number(response?.data?.data?.shipping_fee || 0)
+    pickupOnly.value = Boolean(response?.data?.data?.pickup_only)
     const fallbackUsed = Boolean(response?.data?.data?.fallback_used)
     const fallbackReason = String(response?.data?.data?.fallback_reason || '')
     const distance = Number(response?.data?.data?.distance_km ?? NaN)
@@ -1226,12 +1234,12 @@ async function startEditAddress(address: AddressTemplate) {
 // Coordinates are picked via the interactive Mapbox dialog.
 
 async function placeOrder() {
-  if (!selectedAddress.value) {
+  if (!pickupOnly.value && !selectedAddress.value) {
     showAlert({ severity: 'warn', summary: 'Address Required', detail: 'Please select a shipping address.' })
     return
   }
 
-  if (selectedPaymentMethod.value === 'cod' && codBlocked.value) {
+  if (selectedPaymentMethod.value === 'cod' && codBlocked.value && !pickupOnly.value) {
     showAlert({
       severity: 'warn',
       summary: 'COD Not Available',
@@ -1256,18 +1264,19 @@ async function placeOrder() {
     }
 
     const payload = {
-      shipping_name: selectedAddress.value.full_name,
-      shipping_phone: selectedAddress.value.contact_number,
+      shipping_name: selectedAddress.value?.full_name || authStore.user?.name || 'Customer',
+      shipping_phone: selectedAddress.value?.contact_number || undefined,
       shipping_email: authStore.user?.email || undefined,
-      shipping_address: `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
+      shipping_address: pickupOnly.value ? 'Store pickup' : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
       payment_method: toBackendPaymentMethod(selectedPaymentMethod.value) as 'cod' | 'bank_transfer' | 'card' | 'e_wallet',
       shipping_fee: shippingFeeTotal.value,
+      fulfillment_method: pickupOnly.value ? 'pickup' : 'delivery',
       discount_amount: discountAmount.value,
       voucher_code: appliedVoucher.value?.code,
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
       item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
-      customer_latitude: customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined,
-      customer_longitude: customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined,
+      customer_latitude: pickupOnly.value ? undefined : (customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined),
+      customer_longitude: pickupOnly.value ? undefined : (customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined),
       bulk_trip: bulkTripEnabled.value,
     }
 

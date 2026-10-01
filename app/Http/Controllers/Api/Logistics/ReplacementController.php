@@ -33,13 +33,13 @@ class ReplacementController extends Controller
     {
         abort_unless($request->user()->hasAnyPermission([
             'inventory.receiving.manage', 'inventory.stock.manage', 'warehouse.receiving.view', 'crm.returns.manage',
-        ]) || $request->user()->hasRole('store_admin'), 403);
+        ]) || $request->user()->hasRole('owner'), 403);
     }
 
     private function authorizeLogistics(Request $request, ?int $driverId = null): void
     {
         $allowed = $request->user()->hasPermissionTo('logistics.deliveries.manage')
-            || $request->user()->hasRole('store_admin')
+            || $request->user()->hasRole('owner')
             || ($driverId && (int) $request->user()->id === $driverId);
         abort_unless($allowed, 403);
     }

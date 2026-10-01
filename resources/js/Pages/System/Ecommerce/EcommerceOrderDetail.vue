@@ -72,13 +72,14 @@
             </div>
             <div><span class="text-slate-500">Date:</span> <span class="font-semibold">{{ formatDate(order.created_at)
                 }}</span></div>
-            <div><span class="text-slate-500">Estimated Delivery:</span> <span class="font-semibold">{{ formatEstimatedDelivery(order.delivery?.estimated_delivery_at) }}</span></div>
+            <div v-if="isPickupOrder"><span class="text-slate-500">Pickup Date:</span> <span class="font-semibold">{{ order.pickup_date ? formatPickupDate(order.pickup_date) : 'To be scheduled' }}</span></div>
+            <div v-else><span class="text-slate-500">Estimated Delivery:</span> <span class="font-semibold">{{ formatEstimatedDelivery(order.delivery?.estimated_delivery_at) }}</span></div>
             <div><span class="text-slate-500">Status:</span>
               <Badge :value="statusLabel(order.primary_status || order.status)" />
             </div>
            
-            <div class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span
-                class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
+            <div v-if="isPickupOrder" class="md:col-span-2"><span class="text-slate-500">Fulfillment:</span> <span class="font-semibold">Store pickup</span></div>
+            <div v-else class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
             <template v-if="showTransitDetails">
               <div><span class="text-slate-500">Tracking Number:</span> <span class="font-semibold">{{
                   order.delivery?.tracking_number || '-' }}</span></div>
@@ -225,8 +226,8 @@
           <div class="mt-4 ml-auto max-w-sm space-y-2 text-sm">
             <div class="flex justify-between"><span>Subtotal</span><span>{{ formatMoney(order.subtotal) }}</span></div>
             <div class="flex justify-between"><span>VATable Sales</span><span>{{ formatMoney(vatableSales) }}</span></div>
-            <div class="flex justify-between"><span>VAT Included (12%)</span><span>{{ formatMoney(order.tax_amount) }}</span></div>
-            <div class="flex justify-between"><span>Shipping</span><span>{{ formatMoney(order.shipping_fee) }}</span></div>
+            <div class="flex justify-between"><span> (12%)</span><span>{{ formatMoney(order.tax_amount) }}</span></div>
+            <div v-if="Number(order.shipping_fee || 0) > 0" class="flex justify-between"><span>Shipping</span><span>{{ formatMoney(order.shipping_fee) }}</span></div>
             <div class="flex justify-between"><span>Discount</span><span>- {{ formatMoney(order.discount_amount) }}</span></div>
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>{{ formatMoney(order.total_amount) }}</span></div>
@@ -325,6 +326,7 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const order = ref<any>(null)
+const isPickupOrder = computed(() => String(order.value?.fulfillment_method || '').toLowerCase() === 'pickup' || Boolean(order.value?.pickup_date))
 const refundDialogVisible = ref(false)
 const savingRefundMethod = ref(false)
 const activeReturnId = ref<number | null>(null)
@@ -576,6 +578,16 @@ function formatEstimatedDelivery(value: string | null) {
   return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function formatPickupDate(value: string | null) {
+  if (!value) return 'To be scheduled'
+  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value)
+  if (Number.isNaN(date.getTime())) return 'To be scheduled'
+  return date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 function formatMoney(value: number | string | null | undefined) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))
 }
@@ -709,5 +721,3 @@ onBeforeUnmount(() => {
   destinationMarker = null
 })
 </script>
-
-

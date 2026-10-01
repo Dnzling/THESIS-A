@@ -285,6 +285,32 @@ class SubscriptionPlanController extends Controller
         return response()->json(['success' => true, 'data' => $plans]);
     }
 
+    public function firstPlanForPermission(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'permission' => 'required|string|max:150',
+        ]);
+
+        $plan = SubscriptionPlan::query()
+            ->select('subscription_plans.*')
+            ->join('plan_permissions', 'plan_permissions.plan_id', '=', 'subscription_plans.id')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('permissions.name', $validated['permission'])
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->where('plan_permissions.included', true)
+            ->where('subscription_plans.is_active', true)
+            ->whereNull('subscription_plans.deleted_at')
+            ->orderBy('subscription_plans.sort_order')
+            ->orderBy('subscription_plans.id')
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => $plan,
+        ]);
+    }
+
     public function publicModules(string $planKey): JsonResponse
     {
         $planKey = strtolower(trim($planKey));

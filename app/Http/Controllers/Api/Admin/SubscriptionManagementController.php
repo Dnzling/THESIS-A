@@ -119,6 +119,7 @@ class SubscriptionManagementController extends Controller
             'subscription_tier' => $planId,
             'subscription_ends_at' => $validated['subscription_ends_at'] ?? null,
             'status' => $validated['status'] ?? $store->status,
+            'subscription_status' => strtolower((string) $validated['subscription_tier']) === 'free' ? $store->subscription_status : 'paid',
         ]);
 
         if (strtolower((string) $validated['subscription_tier']) !== 'free') {
@@ -252,7 +253,7 @@ class SubscriptionManagementController extends Controller
         $store->settings = $settings;
 
         if (!in_array((string) $store->status, ['active', 'pending'], true)) {
-            $store->status = 'unverified';
+            $store->status = 'active';
         }
 
         $this->ensureStoreHasMainBranch($store);

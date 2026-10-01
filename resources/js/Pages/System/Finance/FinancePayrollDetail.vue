@@ -294,8 +294,8 @@ const showBreakdownDialog = ref(false)
 const breakdownEmployee = ref<any | null>(null)
 
 const normalizedUserRole = computed(() => String(authStore.currentUser?.role || '').toLowerCase())
-const isHrUser = computed(() => ['hr_manager', 'store_admin', 'super_admin'].includes(normalizedUserRole.value))
-const isFinanceUser = computed(() => ['accountant', 'store_admin', 'super_admin'].includes(normalizedUserRole.value))
+const isHrUser = computed(() => ['hr_manager', 'owner', 'super_admin'].includes(normalizedUserRole.value))
+const isFinanceUser = computed(() => ['accountant', 'owner', 'super_admin'].includes(normalizedUserRole.value))
 
 const formatMoney = (value: number | string) => {
   const amount = typeof value === 'string' ? parseFloat(value) : value || 0

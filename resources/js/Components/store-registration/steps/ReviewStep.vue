@@ -22,6 +22,7 @@
         <FilePreview :file="formData.taxCertificate" label="BIR tax certificate" />
         <FilePreview :file="formData.mayorPermit" label="Mayor's/business permit" />
       </div>
+      <div class="mt-3 grid gap-3 text-xs text-slate-600 md:grid-cols-3"><span>Registration expires: {{ formData.registrationExpiresAt || 'Not applicable' }}</span><span>Tax certificate expires: {{ formData.taxExpiresAt || 'Not applicable' }}</span><span>Permit expires: {{ formData.permitExpiresAt || 'Not applicable' }}</span></div>
       <InfoItem v-if="formData.additionalNotes" label="Additional Notes" :value="formData.additionalNotes" />
     </ReviewSection>
 
@@ -173,6 +174,9 @@ const submitVerification = async () => {
     payload.append('gov_id_number', props.formData.primaryIdNumber)
     payload.append('business_registration_number', props.formData.businessRegistrationNumber || '')
     payload.append('business_registration_date', new Date().toISOString().slice(0, 10))
+    if (props.formData.registrationExpiresAt) payload.append('registration_expires_at', props.formData.registrationExpiresAt)
+    if (props.formData.taxExpiresAt) payload.append('tax_expires_at', props.formData.taxExpiresAt)
+    if (props.formData.permitExpiresAt) payload.append('permit_expires_at', props.formData.permitExpiresAt)
     appendFile(payload, 'gov_id_front_file', props.formData.primaryIdFront)
     appendFile(payload, 'gov_id_back_file', props.formData.primaryIdBack)
     appendFile(payload, 'business_registration_file', props.formData.registrationPermit)

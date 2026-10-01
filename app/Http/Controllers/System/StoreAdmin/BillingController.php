@@ -24,7 +24,10 @@ class BillingController extends Controller
         }
 
         $plan = SubscriptionPlan::query()->find((int) $store->getRawOriginal('subscription_tier'));
-        $endsAt = $store->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null;
+        app(\App\Services\Store\StoreTrialService::class)->expireIfNeeded($store);
+        $endsAt = $store->subscription_status === 'trial' || $store->subscription_status === 'expired'
+            ? $store->trial_ends_at
+            : ($store->subscription_ends_at ? Carbon::parse($store->subscription_ends_at) : null);
         $today = now()->startOfDay();
         $daysRemaining = $endsAt ? $today->diffInDays($endsAt->copy()->startOfDay(), false) : null;
         $enabledModuleRows = $plan
@@ -105,11 +108,12 @@ class BillingController extends Controller
             'subscription' => [
                 'plan_key' => $plan?->plan_key ?? 'free',
                 'plan_name' => $plan?->name ?? 'Free',
+                'status' => $store->subscription_status,
                 'monthly_price' => (float) ($plan?->monthly_price ?? 0),
                 'yearly_price' => (float) ($plan?->yearly_price ?? 0),
                 'ends_at' => $endsAt?->toDateString(),
                 'days_remaining' => $daysRemaining,
-                'is_expired' => $endsAt ? $endsAt->lt($today) : false,
+                'is_expired' => $store->subscription_status === 'expired' || ($endsAt ? $endsAt->lt($today) : false),
                 'module_count' => count($enabledModuleRows),
                 'enabled_modules' => $enabledModuleRows,
                 'plan_features' => is_array($plan?->features) ? $plan->features : [],

@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-6">
+    <Dialog :visible="subscription.status === 'expired'" modal :closable="false" :dismissableMask="false" :draggable="false" class="w-[min(92vw,480px)]">
+      <div class="py-3 text-center"><i class="pi pi-clock text-4xl text-orange-500"></i><h2 class="mt-4 text-xl font-semibold">Your Free Trial Has Ended</h2><p class="mt-2 text-sm text-slate-600">Upgrade your subscription to continue accessing your store’s management features.</p><Button label="View Plans & Upgrade" severity="warn" class="mt-5" @click="goToUpgrade" /><div><Button label="Log Out" text severity="secondary" class="mt-2" @click="logOut" /></div></div>
+    </Dialog>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-slate-900">Billing</h1>
@@ -11,24 +14,24 @@
       <Card class="border border-slate-200 shadow-sm">
         <template #title>Subscription Plan</template>
         <template #content>
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid gap-3 md:grid-cols-3">
             <div class="rounded-lg border border-slate-200 bg-white p-4">
               <div class="text-xs font-semibold uppercase text-slate-400">Current Plan</div>
-              <div class="mt-2 text-2xl font-bold text-slate-950">{{ subscription.plan_name }}</div>
+              <div class="mt-2 text-lg font-semibold text-slate-950">{{ subscription.plan_name }}</div>
               <div class="mt-1 text-sm text-slate-500">{{ subscription.module_count }} enabled module(s)</div>
             </div>
             <div class="rounded-lg border border-slate-200 bg-white p-4">
-              <div class="text-xs font-semibold uppercase text-slate-400">Ends On</div>
-              <div class="mt-2 text-xl font-bold text-slate-950">{{ endsAtLabel }}</div>
+              <div class="text-xs font-semibold uppercase text-slate-400">{{ subscription.status === 'trial' ? 'Trial Ends' : 'Ends On' }}</div>
+              <div class="mt-2 text-lg font-semibold text-slate-950">{{ endsAtLabel }}</div>
               <div class="mt-1 text-sm" :class="subscription.is_expired ? 'text-red-600' : 'text-slate-500'">
                 {{ remainingLabel }}
               </div>
             </div>
-         
+            <div class="rounded-lg border border-slate-200 bg-white p-4"><div class="text-xs font-semibold uppercase text-slate-400">Billing Amount</div><div class="mt-2 text-lg font-semibold text-slate-950">{{ formatMoney(subscription.monthly_price) }}<span class="text-sm font-normal text-slate-500"> / month</span></div><Tag :value="statusLabel(subscription.status || 'active')" :severity="subscription.is_expired ? 'danger' : 'success'" class="mt-2" /></div>
           </div>
 
           <div class="mt-5 rounded-lg border p-4" :class="subscription.is_expired ? 'border-red-100 bg-red-50 text-red-700' : 'border-green-100 bg-green-50 text-green-700'">
-            <div class="font-semibold">{{ subscription.is_expired ? 'Subscription expired' : 'Subscription active' }}</div>
+            <div class="font-semibold">{{ subscription.is_expired ? 'Subscription expired' : subscription.status === 'trial' ? 'Free Trial' : 'Subscription active' }}</div>
             <p class="mt-1 text-sm">
               {{ subscription.is_expired ? 'Renew your plan to keep paid modules available.' : 'Your store can continue using the modules included in this plan.' }}
             </p>
@@ -154,12 +157,21 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import ProgressBar from 'primevue/progressbar'
+import Dialog from 'primevue/dialog'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   store: any
   subscription: any
   billing_records: any[]
 }>()
+const authStore = useAuthStore()
+const logOut = async () => {
+  if (window.confirm('Log out of FurniSync?')) {
+    await authStore.logout({ redirect: false })
+    window.location.href = '/login'
+  }
+}
 
 const store = computed(() => props.store || {})
 const subscription = computed(() => props.subscription || {})

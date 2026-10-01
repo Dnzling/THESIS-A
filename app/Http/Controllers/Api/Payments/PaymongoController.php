@@ -918,7 +918,7 @@ class PaymongoController extends Controller
             return;
         }
 
-        $baseDate = $store->subscription_tier !== 'free' && $store->subscription_ends_at
+        $baseDate = $store->subscriptionPlan?->plan_key !== 'free' && $store->subscription_ends_at
             ? Carbon::parse($store->subscription_ends_at)
             : now();
         if ($baseDate->lt(now())) {
@@ -929,6 +929,8 @@ class PaymongoController extends Controller
         $store->update([
             'subscription_tier' => $targetPlan->id,
             'subscription_ends_at' => $newEndsAt->toDateString(),
+            'subscription_status' => 'paid',
+            'status' => $store->subscription_status === 'expired' && $store->status === 'inactive' ? 'active' : $store->status,
         ]);
         app(\App\Services\Modules\ModuleAccessService::class)->syncStoreModulesFromPlan((int) $store->id);
         app(\App\Services\Core\PermissionService::class)->clearStoreCache((int) $store->id);

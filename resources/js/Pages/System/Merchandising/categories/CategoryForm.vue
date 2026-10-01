@@ -14,7 +14,7 @@
         label="Back" 
         icon="pi pi-arrow-left" 
         text 
-        @click="router.push({ name: 'merchandising.categories' })" 
+        @click="goBack" 
       />
     </div>
 
@@ -130,7 +130,7 @@
           label="Cancel" 
           severity="secondary" 
           outlined 
-          @click="router.push({ name: 'merchandising.categories' })" 
+          @click="goBack" 
         />
         <Button 
           :label="isEditMode ? 'Update Category' : 'Create Category'" 
@@ -161,6 +161,8 @@ import Skeleton from 'primevue/skeleton'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const isInventoryContext = computed(() => String(route.name || '').startsWith('inventory.'))
+const goBack = () => router.push({ name: isInventoryContext.value ? 'inventory.product-categories' : 'merchandising.categories' })
 
 const isEditMode = computed(() => !!route.params.id)
 const submitting = ref(false)
@@ -214,7 +216,7 @@ const loadCategory = async () => {
       detail: error.response?.data?.message || 'Failed to load category',
       life: 5000
     })
-    router.push({ name: 'merchandising.categories' })
+    goBack()
   } finally {
     loadingData.value = false
   }
@@ -262,7 +264,7 @@ const handleSubmit = async () => {
       })
     }
     
-    router.push({ name: 'merchandising.categories' })
+    goBack()
   } catch (error: any) {
     console.error('Form submission error:', error)
     

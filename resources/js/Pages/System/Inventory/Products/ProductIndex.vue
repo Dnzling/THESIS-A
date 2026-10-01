@@ -3,14 +3,16 @@
     <!-- Header -->
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 ">
       <div>
-        <h1 class="text-lg font-bold text-gray-900">Items</h1>
+        <h1 class="text-lg font-bold text-gray-900">Product Catalog</h1>
+        <p class="text-xs text-gray-500">Manage product details, categories, suppliers, and purchasing costs.</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button
-          label="Create Item"
-          size="small"
-          @click="router.push({ name: 'inventory.products.create' })"
-        />
+        <Button v-if="canManageProducts" label="Import File" icon="pi pi-upload" severity="secondary" outlined
+          size="small" @click="router.push({ name: 'inventory.products.import' })" />
+        <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" @click="router.push({name: 'inventory.products.create'})"/>
+        <Button v-if="canManageProducts" icon="pi pi-ellipsis-h" outlined rounded contrast size="small" aria-label="Product actions"
+          @click="productCreateMenu?.toggle($event)" />
+        <Menu ref="productCreateMenu" :model="productCreateItems" popup />
       </div>
     </div>
   
@@ -96,10 +98,10 @@
         </div>
         <DataTable v-else v-model:selection="selectedProducts" :value="products" paginator :rows="15"
           :totalRecords="totalRecords" :lazy="true" @page="onPage" @sort="onSort" dataKey="id"
-          @row-click="onProductRowClick" :rowClass="productRowClass"
+          rowHover
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          class="p-datatable-sm text-xs" responsive-layout="scroll">
+          class="text-xs" responsive-layout="scroll">
   
           <template #empty>
             <div class="text-center py-8">
@@ -110,13 +112,7 @@
   
           <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
   
-          <Column field="sku" header="SKU" sortable>
-            <template #body="{ data }">
-              <span class="font-mono text-tiny">{{ data.sku }}</span>
-            </template>
-          </Column>
-  
-          <Column field="product_name" header="Item Name" sortable>
+          <Column field="product_name" header="Product" sortable style="min-width: 240px">
             <template #body="{ data }">
               <div class="flex items-center gap-3">
                 <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
@@ -145,48 +141,75 @@
                 </div>
                 <div>
                   <p class="font-medium text-gray-900 text-xs">{{ data.product_name }}</p>
-                  <p class="text-xs text-gray-500">{{ data.brand }}</p>
+                  <p class="font-mono text-[11px] text-gray-500">{{ data.sku }}</p>
                 </div>
               </div>
             </template>
           </Column>
+
+         
   
           <Column field="product_type" header="Type">
             <template #body="{ data }">
-              <Badge :severity="getTypeSeverity(data.product_type)" size="small">
+              <Tag :severity="getTypeSeverity(data.product_type)" size="small">
                 <span class="text-xs">{{ getTypeLabel(data.product_type) }}</span>
-              </Badge>
+              </Tag>
             </template>
           </Column>
 
-          <Column field="category.category_name" header="Category"></Column>
-  
-          <Column field="base_price" header="Cost/Unit" sortable>
+          <Column field="category.category_name" header="Category">
             <template #body="{ data }">
-              <div>
-                <p class=" text-gray-900 text-xs">₱{{ formatPrice(getUnitCost(data)) }}/<span class="font-bold">{{ data.unit_of_measurement }}</span></p>
+              <div class="text-xs">
+                <p class="text-gray-800">{{ data.category?.category_name || '-' }}</p>
+                <p v-if="data.subcategory?.category_name" class="text-gray-500">{{ data.subcategory.category_name }}</p>
               </div>
             </template>
           </Column>
 
-          <Column field="reorder_point" header="Reorder Level" sortable>
+          <Column field="brand" header="Brand">
+            <template #body="{ data }"><span class="text-xs text-gray-700">{{ data.brand || '-' }}</span></template>
+          </Column>
+  
+          <Column field="base_price" header="Selling Price" sortable>
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getReorderLevel(data) }}</span>
+              <span class="text-xs font-medium text-gray-900">₱{{ formatPrice(Number(data.base_price || 0)) }}</span>
+            </template>
+          </Column>
+
+          <Column field="inventory_cost_price" header="Cost/Unit">
+            <template #body="{ data }">
+              <div>
+                <p class="text-gray-900 text-xs">₱{{ formatPrice(getUnitCost(data)) }}/<span class="font-bold">{{ data.unit_of_measurement }}</span></p>
+              </div>
             </template>
           </Column>
 
           <Column field="supplier_name" header="Supplier">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getSupplierName(data) }}</span>
+              <div v-if="getPreferredSupplier(data)" class="flex items-center gap-2">
+                <div>
+                  <p class="text-xs text-gray-800">{{ getSupplierName(data) }}</p>
+                  <p class="text-[11px] text-gray-500">{{ getSupplierNumber(data) }}</p>
+                </div>
+              </div>
+              <span v-else class="text-xs text-gray-400">No supplier</span>
             </template>
           </Column>
-
   
           <Column field="is_active" header="Status">
             <template #body="{ data }">
               <Tag :severity="data.is_active ? 'success' : 'secondary'">
                 <span class="text-xs">{{ data.is_active ? 'Active' : 'Inactive' }}</span>
               </Tag>
+            </template>
+          </Column>
+
+          <Column header="Actions" frozen alignFrozen="right">
+            <template #body="{ data }">
+              <div class="flex gap-1">
+                <Button icon="pi pi-eye" outlined label="View" rounded size="small" aria-label="View product" @click.stop="viewProduct(data.id)" />
+          
+              </div>
             </template>
           </Column>
   
@@ -230,11 +253,22 @@ const categories = ref<any[]>([])
 const selectedProducts = ref<any[]>([])
 const loading = ref(true)
 const totalRecords = ref(0)
-const dialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
 const deleting = ref(false)
 const currentProduct = ref<any>(null)
 const showBranchOnly = ref(false)
+const productCreateMenu = ref<any>(null)
+const canManageProducts = computed(() =>
+  authStore.hasPermission('inventory.products.manage')
+)
+const productCreateItems = computed(() => [
+  { label: 'Categories', icon: 'pi pi-folder', command: () => router.push({ name: 'inventory.product-categories' }) },
+  // { label: 'Create Category', icon: 'pi pi-folder-plus', command: () => router.push({ name: 'inventory.product-categories.create' }) },
+  { label: 'Tags', icon: 'pi pi-tags', command: () => router.push({ name: 'inventory.product-tags' }) },
+  // { label: 'Create Tag', icon: 'pi pi-plus-circle', command: () => router.push({ name: 'inventory.product-tags.create' }) },
+  { label: 'Variations', icon: 'pi pi-list', command: () => router.push({ name: 'inventory.product-variations' }) },
+  // { label: 'Create Variation', icon: 'pi pi-sitemap', command: () => router.push({ name: 'inventory.product-variations.create' }) },
+])
 
 const filters = reactive({
   search: '',
@@ -347,8 +381,6 @@ const editProduct = (productId: number) => {
     params: { id: productId }
   })
 }
-
-const productRowClass = () => ({ 'cursor-pointer hover:bg-orange-50': true })
 
 const onProductRowClick = (event: any) => {
   const target = event?.originalEvent?.target as HTMLElement | null
@@ -469,6 +501,17 @@ const getSupplierName = (data: any) => {
   if (supplierNames.length > 0) return [...new Set(supplierNames.map((name: string) => String(name).trim()))].join(', ')
 
   return product?.supplier_name ? String(product.supplier_name).trim() : '-'
+}
+
+const getPreferredSupplier = (data: any) => {
+  const suppliers = Array.isArray(data?.suppliers) ? data.suppliers : []
+  return suppliers.find((supplier: any) => Boolean(supplier?.pivot?.is_preferred_supplier)) || suppliers[0] || null
+}
+
+const getSupplierNumber = (data: any) => {
+  const supplier = getPreferredSupplier(data)
+  if (!supplier) return ''
+  return supplier.supplier_code ? `${supplier.supplier_code}` : `Supplier ID #${supplier.id}`
 }
 
 const formatPrice = (price: number) => {

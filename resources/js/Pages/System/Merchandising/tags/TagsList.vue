@@ -7,7 +7,7 @@
         <p class="text-sm text-gray-500 mt-1">Manage product tags for filtering and organization</p>
       </div>
       <Button 
-        v-if="authStore.hasPermission('merchandising.tags.create')"
+        v-if="canManageTags"
         label="Add Tag" 
         icon="pi pi-plus" 
         @click="openCreateDialog"
@@ -180,9 +180,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../stores/auth'
+import { useRoute } from 'vue-router'
 import merchandisingService from '../../../../services/merchandising.service'
 import TagForm from './TagForm.vue'
 
@@ -199,6 +200,11 @@ import InputIcon from 'primevue/inputicon'
 
 const toast = useToast()
 const authStore = useAuthStore()
+const route = useRoute()
+const isInventoryContext = computed(() => String(route.name || '').startsWith('inventory.'))
+const canManageTags = computed(() => isInventoryContext.value
+  ? authStore.hasPermission('inventory.product.manage')
+  : authStore.hasPermission('merchandising.tags.create'))
 
 // State
 const tags = ref([])
@@ -338,6 +344,7 @@ const getTagTypeSeverity = (type: string) => {
 
 onMounted(() => {
   loadTags()
+  if (route.name === 'inventory.product-tags.create') openCreateDialog()
 })
 </script>
 

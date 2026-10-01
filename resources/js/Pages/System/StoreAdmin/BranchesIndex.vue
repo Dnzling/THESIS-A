@@ -15,7 +15,15 @@
             <InputText v-model="search" placeholder="Search branch name or code" size="small" @input="loadBranches" />
           </div>
 
-          <DataTable
+          <div v-if="loading" class="space-y-3 py-2" aria-label="Loading branches">
+            <div class="grid grid-cols-4 gap-3">
+              <Skeleton v-for="column in 4" :key="`branch-heading-${column}`" height="1.25rem" />
+            </div>
+            <div v-for="row in 5" :key="`branch-row-${row}`" class="grid grid-cols-4 gap-3">
+              <Skeleton v-for="column in 4" :key="`branch-${row}-${column}`" height="2.5rem" />
+            </div>
+          </div>
+          <DataTable v-else
             :value="filteredBranches"
             :paginator="true"
             :rows="10"
@@ -39,6 +47,14 @@
                 <Button icon="pi pi-eye" text size="small"  @click="viewBranch(data.id)" />
               </template>
             </Column>
+            <template #empty>
+              <div class="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <i class="pi pi-building text-3xl text-slate-300" />
+                <p class="font-semibold text-slate-700">{{ search ? 'No branches match this search' : 'No branches registered yet' }}</p>
+                <p class="max-w-md text-sm text-slate-500">{{ search ? 'Try another branch name or code.' : 'Add a branch to manage this store’s locations.' }}</p>
+                <Button v-if="!search" label="Add Branch" icon="pi pi-plus" size="small" severity="warn" class="mt-1" @click="openCreateDialog" />
+              </div>
+            </template>
           </DataTable>
         </div>
       </template>
@@ -126,6 +142,7 @@ import Card from 'primevue/card'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import Skeleton from 'primevue/skeleton'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Dropdown from 'primevue/dropdown'

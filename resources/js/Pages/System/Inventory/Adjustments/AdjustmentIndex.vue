@@ -1,114 +1,65 @@
 <template>
-  <div class="p-6 min-h-screen">
-    <div class="mb-6 flex items-center justify-between">
+  <div class="min-h-screen p-4">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-lg font-bold text-gray-800">Stock Adjustments</h1>
+        <h1 class="text-xl font-bold text-gray-800">Stock Adjustments</h1>
+        <p class="text-xs text-gray-500">Review stock corrections, physical counts, and approvals across your branches.</p>
       </div>
-      <SplitButton
-        v-if="canCreateAdjustments"
-        label="Create Adjustment"
-        icon="pi pi-plus"
-        severity="warn"
-        size="small"
-        class="text-sm"
-        :model="createAdjustmentItems"
-        @click="router.push({ name: 'inventory.adjustments.create' })"
-      />
+      <SplitButton v-if="canCreateAdjustments" label="Create Adjustment" icon="pi pi-plus" severity="warn" size="small"
+        :model="createAdjustmentItems" @click="openCreate()" />
     </div>
-  
-    <!-- Filters -->
-    <Card class="mb-6">
-      <template #content>
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
-            placeholder="All Statuses" showClear @change="() => loadAdjustments(1)" fluid class="text-sm" size="small" />
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search reference no..." fluid size="small" class="text-sm" @keyup.enter="loadAdjustments(1)" />
-          </IconField>
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-gray-700">Date Range</label>
-            <Calendar v-model="dateRange" selectionMode="range" dateFormat="yy-mm-dd" class="w-full text-sm" showIcon />
-          </div>
-          <Button icon="pi pi-filter-slash" label="Reset" severity="warn" outlined size="small" class="text-sm" @click="resetFilters" />
-        </div>
-      </template>
-    </Card>
-  
-    <!-- Adjustments Table -->
+
     <Card>
       <template #content>
-        <div v-if="loading" class="space-y-2">
-          <div class="grid grid-cols-6 gap-2 text-xs text-gray-400">
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-            <Skeleton height="24px" class="col-span-1" />
-          </div>
-          <div v-for="i in 8" :key="i" class="grid grid-cols-6 gap-2">
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
-            <Skeleton height="20px" class="col-span-1" />
+        <div class="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <IconField class="w-full">
+            <InputIcon class="pi pi-search" />
+            <InputText v-model="filters.search" placeholder="Search reference or reason" size="small" class="w-full text-sm"
+              @keyup.enter="loadAdjustments(1)" />
+          </IconField>
+          <Select v-model="filters.type" :options="typeOptions" optionLabel="label" optionValue="value"
+            placeholder="Adjustment Type" showClear size="small" class="w-full text-sm" @change="loadAdjustments(1)" />
+          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value"
+            placeholder="Status" showClear size="small" class="w-full text-sm" @change="loadAdjustments(1)" />
+          <DatePicker v-model="dateRange" selectionMode="range" dateFormat="M d, yy" :manualInput="false"
+            placeholder="Adjustment date range" showIcon size="small" class="w-full text-sm" @date-select="onDateSelect" />
+          <div class="flex gap-2">
+            <Button label="Search" icon="pi pi-search" size="small" @click="loadAdjustments(1)" />
+            <Button v-if="hasActiveFilters" label="Clear All" severity="danger" outlined size="small" @click="resetFilters" />
           </div>
         </div>
 
-        <DataTable v-else :value="adjustments" paginator :rows="pagination.per_page"
+        <div v-if="error" class="mb-4 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">{{ error }}</div>
+        <div v-if="loading" class="space-y-3">
+          <Skeleton height="1.5rem" />
+          <Skeleton v-for="row in 7" :key="row" height="2.75rem" />
+        </div>
+        <DataTable v-else :value="adjustments" dataKey="id" paginator lazy :rows="pagination.per_page"
           :totalRecords="pagination.total" :first="(pagination.current_page - 1) * pagination.per_page"
-          @page="onPageChange" dataKey="id" class="p-datatable-sm p-datatable-fluid" stripedRows
-          @row-click="onRowClick" :rowClass="rowClass" @sort="onSort" :sortField="filters.sort_field" :sortOrder="filters.sort_direction === 'asc' ? 1 : -1">
+          :rowsPerPageOptions="[15, 25, 50]" paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords}" class="p-datatable-sm text-xs"
+          rowHover :rowClass="() => 'cursor-pointer'" :sortField="sortField" :sortOrder="sortOrder"
+          @page="onPageChange" @sort="onSort" @row-click="onRowClick">
           <template #empty>
-            <div class="text-center py-8">
-              <i class="pi pi-inbox text-4xl text-gray-400"></i>
-              <p class="text-gray-600 mt-2">No adjustments found</p>
+            <div class="py-10 text-center">
+              <i class="pi pi-inbox text-4xl text-slate-300"></i>
+              <p class="mt-2 font-medium text-slate-700">No stock adjustments found</p>
+              <p class="mt-1 text-xs text-slate-500">Try changing the filters or create an adjustment.</p>
             </div>
           </template>
-  
-          <Column field="adjustment_date" header="Date" sortable style="width: 150px">
-            <template #body="{ data }">
-              <div class="text-xs">
-                <div>{{ formatDate(data.adjustment_date) }}</div>
-                <div class="text-gray-500 text-xs">{{ formatTime(data.created_at || data.adjustment_date) }}</div>
-              </div>
-            </template>
+          <Column field="adjustment_date" header="Date" sortable style="min-width: 130px">
+            <template #body="{ data }"><p class="font-medium text-slate-800">{{ formatDate(data.adjustment_date) }}</p><p class="text-[11px] text-slate-500">{{ formatTime(data.created_at) }}</p></template>
           </Column>
-
-          <Column field="reference_no" header="Reference No." style="width: 15%">
-            <template #body="{ data }">
-              <span class="font-medium">{{ data.adjustment_number }}</span>
-            </template>
+          <Column field="adjustment_number" header="Reference" sortable style="min-width: 180px">
+            <template #body="{ data }"><span class="font-mono font-semibold text-slate-900">{{ data.adjustment_number }}</span></template>
           </Column>
-
-          <Column field="reason" header="Reason" style="width: 20%">
-            <template #body="{ data }">
-              {{ capitalizeFirstLetter(data.reason || 'N/A') }}
-            </template>
-          </Column>
-  
-          <Column field="adjustment_date" header="Date" style="width: 15%">
-            <template #body="{ data }">
-              {{ formatDate(data.adjustment_date) }}
-            </template>
-          </Column>
-  
-          <Column field="status" header="Status" style="width: 15%">
-            <template #body="{ data }">
-              <Tag :value="formatStatus(data.status)" :severity="statusSeverity(data.status)" />
-            </template>
-          </Column>
-  
-          <Column header="Actions" style="width: 15%">
-            <template #body="{ data }">
-              <div class="flex gap-2">
-                <Button v-if="canViewAdjustments" icon="pi pi-eye" size="small" text severity="warn"
-                  @click="router.push({ name: 'inventory.adjustments.detail', params: { id: data.id } })"
-                  v-tooltip="'View details'" />
-              </div>
-            </template>
+          <Column header="Branch" style="min-width: 140px"><template #body="{ data }">{{ data.branch?.name || '—' }}</template></Column>
+          <Column header="Type" style="min-width: 130px"><template #body="{ data }">{{ label(data.type) }}</template></Column>
+          <Column header="Reason" style="min-width: 190px"><template #body="{ data }"><span class="block max-w-xs truncate" :title="data.reason">{{ data.reason || '—' }}</span></template></Column>
+          <Column header="Items" style="width: 80px"><template #body="{ data }">{{ data.items_count ?? 0 }}</template></Column>
+          <Column field="status" header="Status" sortable style="min-width: 130px"><template #body="{ data }"><Tag :value="label(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
+          <Column header="Actions" style="width: 75px">
+            <template #body="{ data }"><Button v-if="canViewAdjustments" icon="pi pi-eye" text rounded size="small" aria-label="View adjustment" @click.stop="openDetail(data.id)" /></template>
           </Column>
         </DataTable>
       </template>
@@ -117,200 +68,73 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive, watch } from 'vue'
-import Calendar from 'primevue/calendar'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { router } from '@inertiajs/vue3'
+import axiosClient from '@/axios'
+import { useAuthStore } from '@/stores/auth'
+import Button from 'primevue/button'
+import Card from 'primevue/card'
+import Column from 'primevue/column'
+import DataTable from 'primevue/datatable'
+import DatePicker from 'primevue/datepicker'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
 import SplitButton from 'primevue/splitbutton'
-import { useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
-import axios from 'axios'
-import { useAuthStore } from '../../../../stores/auth'
+import Tag from 'primevue/tag'
 
-interface Pagination {
-  current_page: number
-  last_page: number
-  per_page: number
-  total: number
-  from?: number
-  to?: number
-}
-
-const router = useRouter()
-const toast = useToast()
-const authStore = useAuthStore()
-const loading = ref(false)
+const auth = useAuthStore()
+const canViewAdjustments = computed(() => auth.hasPermission('inventory.adjustments.view'))
+const canCreateAdjustments = computed(() => auth.hasPermission('inventory.adjustments.create') || auth.hasPermission('inventory.adjustments.manage'))
+const loading = ref(true)
+const error = ref('')
 const adjustments = ref<any[]>([])
-
-const canViewAdjustments = authStore.hasPermission('inventory.adjustments.view')
-const canCreateAdjustments = authStore.hasPermission('inventory.adjustments.manage')
+const pagination = reactive({ current_page: 1, per_page: 15, total: 0 })
+const filters = reactive({ search: '', status: null as string | null, type: null as string | null })
+const dateRange = ref<Date[] | null>(null)
+const sortField = ref('adjustment_date')
+const sortOrder = ref(-1)
+const hasActiveFilters = computed(() => Boolean(filters.search || filters.status || filters.type || dateRange.value?.some(Boolean)))
+const typeOptions = ['physical_count', 'cycle_count', 'spot_check', 'damage', 'loss', 'found', 'correction', 'writeoff'].map(value => ({ label: label(value), value }))
+const statusOptions = ['draft', 'pending_approval', 'approved', 'applied', 'rejected', 'cancelled'].map(value => ({ label: label(value), value }))
 const createAdjustmentItems = [
-  {
-    label: 'Physical Count',
-    icon: 'pi pi-list',
-    command: () => router.push({ name: 'inventory.adjustments.create', query: { type: 'physical_count' } })
-  },
-  {
-    label: 'Correction',
-    icon: 'pi pi-pencil',
-    command: () => router.push({ name: 'inventory.adjustments.create', query: { type: 'correction' } })
-  }
+  { label: 'Physical Count', icon: 'pi pi-list', command: () => openCreate('physical_count') },
+  { label: 'Correction', icon: 'pi pi-pencil', command: () => openCreate('correction') },
 ]
 
-const pagination = reactive<Pagination>({
-  current_page: 1,
-  last_page: 1,
-  per_page: 15,
-  total: 0
-})
-
-const dateRange = ref<[Date | null, Date | null] | null>(null)
-
-const rowClass = (data: any) => ({ 'cursor-pointer hover:bg-gray-50': true })
-
-const onRowClick = (event: any) => {
-  const id = event?.data?.id
-  if (id) router.push({ name: 'inventory.adjustments.detail', params: { id } })
-}
-
-const onSort = (event: any) => {
-  filters.sort_field = event.sortField || 'adjustment_date'
-  filters.sort_direction = event.sortOrder === 1 ? 'asc' : 'desc'
-  loadAdjustments()
-}
-
-const filters = reactive({
-  status: null as string | null,
-  search: '',
-  start_date: null as Date | null
-})
-
-const statusOptions = [
-  { label: 'Draft', value: 'draft' },
-  { label: 'Pending Approval', value: 'pending_approval' },
-  { label: 'Approved', value: 'approved' },
-  { label: 'Rejected', value: 'rejected' }
-]
-
-const statusSeverity = (status: string) => {
-  const severities: Record<string, string> = {
-    draft: 'secondary',
-    pending_approval: 'warning',
-    approved: 'success',
-    rejected: 'danger'
-  }
-  return severities[status] || 'secondary'
-}
-
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  })
-}
-
-const formatTime = (date: string) => {
-  try {
-    return new Date(date).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  } catch (e) {
-    return ''
-  }
-}
-
-const capitalizeFirstLetter = (value?: string | null) => {
-  if (!value) return 'N/A'
-  return value.charAt(0).toUpperCase() + value.slice(1)
-}
-
-const formatStatus = (status?: string | null) => {
-  if (!status) return 'N/A'
-  
-  // Replace underscores with spaces and capitalize each word
-  return status.split('_')
-    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-const loadAdjustments = async (page = pagination.current_page) => {
+function label(value?: string | null) { return value ? value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : '—' }
+function statusSeverity(value: string) { return value === 'applied' || value === 'approved' ? 'success' : value === 'pending_approval' ? 'warn' : value === 'rejected' || value === 'cancelled' ? 'danger' : 'secondary' }
+function formatDate(value?: string | null) { return value ? new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' }
+function formatTime(value?: string | null) { return value ? new Date(value).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '' }
+function localDate(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}` }
+function openCreate(type?: string) { router.visit(`/inventory/adjustments/create${type ? `?type=${type}` : ''}`) }
+function openDetail(id: number) { router.visit(`/inventory/adjustments/${id}`) }
+function onRowClick(event: any) { if (canViewAdjustments.value && event.data?.id) openDetail(event.data.id) }
+function onPageChange(event: any) { pagination.per_page = event.rows; loadAdjustments(event.page + 1) }
+function onSort(event: any) { sortField.value = String(event.sortField || 'adjustment_date'); sortOrder.value = event.sortOrder || -1; loadAdjustments(1) }
+function onDateSelect() { if (dateRange.value?.length === 2 && dateRange.value[1]) loadAdjustments(1) }
+function resetFilters() { filters.search = ''; filters.status = null; filters.type = null; dateRange.value = null; loadAdjustments(1) }
+async function loadAdjustments(page = pagination.current_page) {
   loading.value = true
+  error.value = ''
   try {
-    const params: Record<string, any> = {
-      page,
-      per_page: pagination.per_page
-    }
-
+    const params: Record<string, any> = { page, per_page: pagination.per_page, sort_field: sortField.value, sort_direction: sortOrder.value === 1 ? 'asc' : 'desc' }
+    if (filters.search.trim()) params.search = filters.search.trim()
     if (filters.status) params.status = filters.status
-    if (filters.search) params.search = filters.search
-    if (filters.start_date) params.start_date = filters.start_date.toISOString().split('T')[0]
-
-    const response = await axios.get('/api/inventory/adjustments', { params })
-
-    // Handle Laravel pagination format
-    if (response.data?.success && response.data?.data) {
-      // Extract the paginated data from the nested structure
-      const paginatedData = response.data.data
-
-      // The actual adjustments array is in paginatedData.data
-      adjustments.value = paginatedData.data || []
-
-      // Update pagination metadata
-      pagination.current_page = paginatedData.current_page || page
-      pagination.last_page = paginatedData.last_page || 1
-      pagination.per_page = paginatedData.per_page || pagination.per_page
-      pagination.total = paginatedData.total || 0
-      pagination.from = paginatedData.from || 0
-      pagination.to = paginatedData.to || 0
-    }
-    // Handle direct array response (fallback)
-    else if (Array.isArray(response.data)) {
-      adjustments.value = response.data
-      pagination.total = response.data.length
-    }
-    // Handle empty response
-    else {
-      adjustments.value = []
-    }
-
-  } catch (error: any) {
-    console.error('Failed to load adjustments', error)
+    if (filters.type) params.type = filters.type
+    if (dateRange.value?.[0]) params.date_from = localDate(dateRange.value[0])
+    if (dateRange.value?.[1]) params.date_to = localDate(dateRange.value[1])
+    const response = await axiosClient.get('/api/inventory/adjustments', { params })
+    const result = response.data?.data
+    adjustments.value = result?.data || []
+    pagination.current_page = result?.current_page || page
+    pagination.total = Number(result?.total || 0)
+  } catch (cause: any) {
     adjustments.value = []
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.response?.data?.message || 'Failed to load adjustments',
-      life: 3000
-    })
-  } finally {
-    loading.value = false
-  }
+    error.value = cause?.response?.data?.message || 'Unable to load stock adjustments.'
+  } finally { loading.value = false }
 }
-
-const onPageChange = (event: any) => {
-  pagination.current_page = event.page + 1
-  pagination.per_page = event.rows
-  loadAdjustments()
-}
-
-const resetFilters = () => {
-  filters.status = null
-  filters.search = ''
-  filters.start_date = null
-  loadAdjustments(1)
-}
-
-onMounted(() => {
-  loadAdjustments()
-})
-
-watch(dateRange, (val) => {
-  if (!val || !Array.isArray(val)) {
-    filters.start_date = null
-    return
-  }
-  const [from] = val
-  filters.start_date = from
-  loadAdjustments(1)
-})
+onMounted(() => loadAdjustments(1))
 </script>

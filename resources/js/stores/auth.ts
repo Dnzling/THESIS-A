@@ -406,7 +406,7 @@ export const useAuthStore = defineStore('auth', () => {
             const normalizedRole = String(userData?.role || '')
                 .toLowerCase()
                 .replace(/[\s-]+/g, '_')
-            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'store_admin', 'applicant'].includes(normalizedRole)
+            const roleExcludedFromGeoloc = ['supplier', 'customer', 'super_admin', 'owner', 'applicant'].includes(normalizedRole)
             const customerUser = isCustomerRoleValue(userData?.role)
 
             token.value = accessToken

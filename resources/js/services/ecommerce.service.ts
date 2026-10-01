@@ -209,6 +209,7 @@ const ecommerceService = {
     bulk_trip?: boolean
     payment_method: 'cod' | 'bank_transfer' | 'card' | 'e_wallet'
     shipping_fee?: number
+    fulfillment_method?: 'delivery' | 'pickup'
     discount_amount?: number
     voucher_code?: string
     notes?: string

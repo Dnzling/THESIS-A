@@ -66,6 +66,7 @@ class StockAdjustmentController extends Controller
         }
 
         $query = StockAdjustment::with(['branch', 'createdBy', 'approvedBy'])
+            ->withCount('items')
             ->when($storeId > 0, fn($q) => $q->where('store_id', $storeId));
 
         if ($branchId > 0) {
@@ -85,8 +86,29 @@ class StockAdjustmentController extends Controller
             $query->where('type', $request->type);
         }
 
-        $adjustments = $query->orderBy('created_at', 'desc')
-            ->paginate($request->get('per_page', 15));
+        if ($request->filled('search')) {
+            $search = trim((string) $request->query('search'));
+            $query->where(function ($q) use ($search) {
+                $q->where('adjustment_number', 'like', "%{$search}%")
+                    ->orWhere('reason', 'like', "%{$search}%")
+                    ->orWhereHas('branch', fn ($branch) => $branch->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('adjustment_date', '>=', $request->query('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('adjustment_date', '<=', $request->query('date_to'));
+        }
+
+        $sortField = in_array($request->query('sort_field'), ['adjustment_date', 'adjustment_number', 'status', 'created_at'], true)
+            ? $request->query('sort_field') : 'created_at';
+        $sortDirection = $request->query('sort_direction') === 'asc' ? 'asc' : 'desc';
+        $adjustments = $query->orderBy($sortField, $sortDirection)
+            ->orderBy('id', 'desc')
+            ->paginate(min(50, max(1, $request->integer('per_page', 15))));
 
         return response()->json([
             'success' => true,

@@ -36,11 +36,32 @@ use App\Http\Controllers\Api\Inventory\Requisition\PurchaseRequisitionController
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptResolutionController;
 use App\Http\Controllers\Api\Store\BranchController;
+use App\Http\Controllers\Api\Procurement\Supplier\SupplierController as InventorySupplierController;
+use App\Http\Controllers\Api\Inventory\QuickSupplierController;
+use App\Http\Controllers\Api\Inventory\PurchaseOrderController as InventoryPurchaseOrderController;
 
 // ============================================
 // INVENTORY MANAGEMENT ROUTES
 // ============================================
 Route::prefix('inventory')->group(function () {
+
+    // Direct store purchase orders: shared PO records, without procurement-only prerequisites.
+    Route::prefix('purchase-orders')->group(function () {
+        Route::get('/', [InventoryPurchaseOrderController::class, 'index']);
+        Route::get('/options', [InventoryPurchaseOrderController::class, 'options']);
+        Route::post('/', [InventoryPurchaseOrderController::class, 'store']);
+        Route::get('/{id}', [InventoryPurchaseOrderController::class, 'show'])->whereNumber('id');
+        Route::post('/{id}/send', [InventoryPurchaseOrderController::class, 'send'])->whereNumber('id');
+    });
+
+    // Shared supplier directory exposed in the Inventory context. These are
+    // the same store-scoped supplier records used by Procurement.
+    Route::get('/suppliers', [InventorySupplierController::class, 'index']);
+    Route::post('/suppliers', [QuickSupplierController::class, 'store'])
+        ->middleware('subscription.capacity:suppliers');
+    Route::put('/suppliers/{id}', [QuickSupplierController::class, 'store'])->whereNumber('id');
+    Route::get('/suppliers/{id}/edit', [QuickSupplierController::class, 'edit'])->whereNumber('id');
+    Route::get('/suppliers/{id}', [QuickSupplierController::class, 'show'])->whereNumber('id');
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/stats', [DashboardController::class, 'getStats']);

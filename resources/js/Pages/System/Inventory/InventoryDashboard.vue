@@ -20,25 +20,49 @@
         </IconField>
       </div>
       <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
-        <section class="dashboard-panel cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-orange-200" @click="router.push({ name: 'inventory.items' })">
-          <p class="text-xs font-medium text-slate-500">Tracked items</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ dashboardData.inventory.total_items }}</p>
-          <p class="mt-1 text-xs text-slate-500">{{ Number(dashboardData.inventory.total_quantity || 0).toLocaleString() }} units on hand</p>
+        <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md" @click="router.push({ name: 'inventory.items' })">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 ring-4 ring-blue-50/50"><i class="pi pi-box text-xl"></i></div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-slate-500">Total Products</p>
+              <p class="mt-0.5 text-2xl font-bold leading-none text-slate-900">{{ Number(dashboardData.inventory.total_items || 0).toLocaleString() }}</p>
+              <p class="mt-2 flex items-center gap-1 text-xs font-medium text-emerald-600"><i class="pi pi-arrow-up text-[10px]"></i>{{ Number(dashboardData.inventory.total_quantity || 0).toLocaleString() }} units</p>
+              <p class="text-[11px] text-slate-400">currently on hand</p>
+            </div>
+          </div>
         </section>
-        <section class="dashboard-panel cursor-pointer rounded-2xl border border-orange-200 bg-white p-4 transition hover:border-orange-300" @click="router.push({ name: 'inventory.alerts' })">
-          <p class="text-xs font-medium text-slate-500">Needs replenishment</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ Number(dashboardData.inventory.low_stock || 0) + Number(dashboardData.inventory.out_of_stock || 0) }}</p>
-          <p class="mt-1 text-xs text-orange-700">{{ dashboardData.inventory.out_of_stock }} out of stock</p>
+        <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:shadow-md" @click="router.push({ name: 'inventory.items', query: { stock_status: 'low_stock' } })">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500 ring-4 ring-red-50/50"><i class="pi pi-exclamation-triangle text-xl"></i></div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-slate-500">Needs Replenishment</p>
+              <p class="mt-0.5 text-2xl font-bold leading-none text-slate-900">{{ Number(dashboardData.inventory.low_stock || 0) + Number(dashboardData.inventory.out_of_stock || 0) }}</p>
+              <p class="mt-2 text-xs font-medium text-red-600">{{ dashboardData.inventory.out_of_stock }} out of stock</p>
+              <p class="text-[11px] text-slate-400">{{ dashboardData.inventory.low_stock }} running low</p>
+            </div>
+          </div>
         </section>
-        <section class="dashboard-panel cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-orange-200" @click="router.push({ name: 'inventory.adjustments' })">
-          <p class="text-xs font-medium text-slate-500">Adjustments awaiting approval</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ dashboardData.adjustments.pending_approvals }}</p>
-          <p class="mt-1 text-xs text-slate-500">Review stock corrections</p>
+        <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md" @click="router.push({ name: 'inventory.adjustments' })">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 ring-4 ring-amber-50/50"><i class="pi pi-sliders-h text-xl"></i></div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-slate-500">Pending Adjustments</p>
+              <p class="mt-0.5 text-2xl font-bold leading-none text-slate-900">{{ Number(dashboardData.adjustments.pending_approvals || 0).toLocaleString() }}</p>
+              <p class="mt-2 text-xs font-medium text-amber-700">Awaiting approval</p>
+              <p class="text-[11px] text-slate-400">review stock corrections</p>
+            </div>
+          </div>
         </section>
-        <section class="dashboard-panel cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-orange-200" @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })">
-          <p class="text-xs font-medium text-slate-500">Transfers to follow up</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ Number(dashboardData.transfers.pending || 0) + Number(dashboardData.transfers.in_transit || 0) }}</p>
-          <p class="mt-1 text-xs text-slate-500">{{ dashboardData.transfers.pending }} requested · {{ dashboardData.transfers.in_transit }} in transit</p>
+        <section class="dashboard-panel cursor-pointer rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md" @click="router.push({ name: 'inventory.stock-movements', query: { tab: 'transfers' } })">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 ring-4 ring-violet-50/50"><i class="pi pi-truck text-xl"></i></div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-slate-500">Active Transfers</p>
+              <p class="mt-0.5 text-2xl font-bold leading-none text-slate-900">{{ Number(dashboardData.transfers.pending || 0) + Number(dashboardData.transfers.in_transit || 0) }}</p>
+              <p class="mt-2 text-xs font-medium text-violet-600">{{ dashboardData.transfers.in_transit }} in transit</p>
+              <p class="text-[11px] text-slate-400">{{ dashboardData.transfers.pending }} awaiting dispatch</p>
+            </div>
+          </div>
         </section>
 
       </div>

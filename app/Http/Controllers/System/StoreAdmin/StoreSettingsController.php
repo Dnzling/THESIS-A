@@ -218,7 +218,6 @@ class StoreSettingsController extends Controller
     public function updateProfile(Request $request)
     {
         $validated = $request->validate([
-            'otp' => 'required|string|size:6',
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|nullable|email|max:255',
             'phone' => 'sometimes|nullable|string|max:50',
@@ -227,7 +226,6 @@ class StoreSettingsController extends Controller
             'barangay' => 'sometimes|nullable|string|max:150',
             'province' => 'sometimes|nullable|string|max:255',
             'type' => 'sometimes|nullable|string|max:50',
-            'store_code' => 'sometimes|nullable|string|max:50',
             'contact_person' => 'sometimes|nullable|string|max:255',
         ]);
 
@@ -238,12 +236,7 @@ class StoreSettingsController extends Controller
             abort(404, 'Store not found for this user.');
         }
 
-        if (!$user->isValidOtp($validated['otp'])) {
-            return back()->withErrors(['otp' => 'Invalid or expired OTP code.']);
-        }
-        $user->clearOtp();
-
-        $store->fill(collect($validated)->except(['contact_person', 'otp'])->toArray());
+        $store->fill(collect($validated)->except(['contact_person'])->toArray());
 
         if (array_key_exists('barangay', $validated)) {
             $store->branches()->orderByDesc('is_main_branch')->first()?->update(['barangay' => $validated['barangay']]);
@@ -369,7 +362,6 @@ class StoreSettingsController extends Controller
             'barangay' => 'sometimes|nullable|string|max:150',
             'province' => 'sometimes|nullable|string|max:255',
             'type' => 'sometimes|nullable|string|max:50',
-            'store_code' => 'sometimes|nullable|string|max:50',
             'contact_person' => 'sometimes|nullable|string|max:255',
         ];
     }

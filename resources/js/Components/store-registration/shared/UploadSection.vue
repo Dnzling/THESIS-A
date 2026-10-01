@@ -35,9 +35,10 @@
             <img v-if="previewUrl && file.type.startsWith('image/')" :src="previewUrl" :alt="title" class="h-full w-full object-cover" />
             <iframe v-else-if="previewUrl && file.type === 'application/pdf'" :src="`${previewUrl}#toolbar=0&navpanes=0`" :title="title" tabindex="-1" class="pointer-events-none h-full w-full border-0" />
           </div>
-          <div class="text-left">
+          <div class="min-w-0 text-left">
             <p class="font-medium text-slate-800">{{ file.name }}</p>
             <p class="text-sm text-slate-500">{{ formatFileSize(file.size) }}</p>
+            <p class="text-xs font-medium text-emerald-700">Ready to submit</p>
           </div>
         </div>
       </slot>
@@ -51,7 +52,9 @@
       @change="handleFileChange"
     />
     
-    <div v-if="file" class="flex justify-end mt-3">
+    <div v-if="file" class="flex justify-end gap-4 mt-3">
+      <a :href="previewUrl" target="_blank" rel="noopener noreferrer" class="text-sm font-medium text-orange-600">Preview</a>
+      <button type="button" class="text-sm font-medium text-slate-600" @click="$refs.fileInput.click()">Replace</button>
       <button
         type="button"
         @click.stop="$emit('remove')"

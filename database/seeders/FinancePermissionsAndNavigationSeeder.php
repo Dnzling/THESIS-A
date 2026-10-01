@@ -22,7 +22,6 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'cashflow',
             'invoices',
             'purchase-orders',
-            'price-approvals',
             'refunds',
             'liquidations',
             'tax-vat',
@@ -78,7 +77,7 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             );
         }
 
-        $roleNames = ['super_admin', 'store_admin', 'owner', 'accountant'];
+        $roleNames = ['super_admin', 'owner', 'accountant'];
         $roleIds = DB::table('roles')->whereIn('name', $roleNames)->pluck('id');
         $financePermissionIds = DB::table('permissions')->where('name', 'like', 'finance.%')->pluck('id');
 
@@ -130,16 +129,6 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
                 'display_order' => 9,
             ],
             [
-                'name' => 'finance.price-approvals',
-                'display_name' => 'Price Approvals',
-                'module' => 'finance',
-                'section' => 'pricing',
-                'route_name' => 'finance.price-approvals',
-                'route_path' => '/finance/price-approvals',
-                'icon' => 'pi pi-sliders-h',
-                'display_order' => 10,
-            ],
-            [
                 'name' => 'finance.tax-vat',
                 'display_name' => 'Tax / VAT Report',
                 'module' => 'finance',
@@ -178,7 +167,6 @@ class FinancePermissionsAndNavigationSeeder extends Seeder
             'finance.budgets' => 'finance.budgets.view',
             'finance.reports' => 'finance.reports.view',
             'finance.purchase-orders' => 'finance.purchase-orders.view',
-            'finance.price-approvals' => 'finance.price-approvals.view',
             'finance.cashflow' => 'finance.cashflow.view',
             'finance.refunds' => 'finance.refunds.view',
             'finance.liquidations' => 'finance.liquidations.view',

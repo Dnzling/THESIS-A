@@ -2,7 +2,8 @@
   <div class="min-h-screen p-4">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-bold text-gray-800">Inventory</h1>
+        <h1 class="text-xl font-bold text-gray-800">Stocks Overview</h1>
+        <p class="text-xs text-gray-500">Monitor available stock, incoming quantities, and reorder levels.</p>
       </div>
       <div class="flex items-center gap-2">
         <Button
@@ -85,54 +86,46 @@
             </template>
           </Column>
 
-          <Column v-if="showBranchColumn" field="branch.name" header="Branch" style="width: 12%">
+          <Column field="product_name" header="Product" style="min-width: 230px">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getBranchName(data) }}</span>
-            </template>
-          </Column>
-  
-          <Column field="sku" header="SKU" style="width: 12%">
-            <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ data.product?.sku || 'N/A' }}</span>
-            </template>
-          </Column>
-  
-          <Column field="product_name" header="Product Name" style="width: 13%">
-            <template #body="{ data }">
-              <div class="space-y-0.5 text-xs">
-                <div class="font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</div>
-                <div v-if="data.variant_rows?.length" class="text-[11px] text-orange-600">{{ data.variant_rows.length }} variants</div>
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                  <img v-if="getProductImage(data)" :src="getProductImage(data)" :alt="data.product?.product_name" class="h-full w-full object-cover" />
+                  <i v-else class="pi pi-image text-slate-300"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-gray-900">{{ data.product?.product_name || 'N/A' }}</p>
+                  <p class="font-mono text-[11px] text-gray-500">{{ data.product?.sku || 'N/A' }}</p>
+                  <p v-if="data.variant_rows?.length" class="text-[11px] text-orange-600">{{ data.variant_rows.length }} variants</p>
+                </div>
               </div>
             </template>
           </Column>
 
-          <Column header="Supplier" style="width: 14%">
+          <Column header="Location" style="min-width: 150px">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getSupplierName(data) || '-' }}</span>
+              <div class="text-xs text-gray-700">
+                <p>{{ getBranchName(data) }}</p>
+                <p v-if="getStockLocation(data)" class="text-[11px] text-gray-500">{{ getStockLocation(data) }}</p>
+              </div>
             </template>
           </Column>
-  
-          <Column header="Cost/Unit" style="width: 10%">
-            <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatMoney(getUnitCost(data)) }}/<b>{{ data.product?.unit_of_measurement || 'unit' }}</b></span>
-            </template>
-          </Column>
-  
-          <Column header="Reorder Level" style="width: 3%">
-            <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ getReorderLevel(data) }}</span>
-            </template>
-          </Column>
-  
-          <Column header="Quantity on Hand" style="width: 8%">
+
+          <Column header="Available" sortable sortField="quantity_available">
             <template #body="{ data }">
               <span class="font-semibold text-gray-900">{{ data.quantity_available || 0 }}</span>
             </template>
           </Column>
-  
-          <Column header="Stock Value" style="width: 8%">
+
+          <Column header="Incoming">
             <template #body="{ data }">
-              <span class="text-xs font-semibold text-green-600 justify-end flex">{{ formatMoney(data.stock_value || 0) }}</span>
+              <span class="text-xs font-medium text-blue-700">{{ data.quantity_incoming || 0 }}</span>
+            </template>
+          </Column>
+
+          <Column header="Reorder Point" sortable sortField="reorder_point">
+            <template #body="{ data }">
+              <span class="text-xs text-gray-700">{{ getReorderLevel(data) }}</span>
             </template>
           </Column>
   
@@ -143,9 +136,13 @@
             </template>
           </Column>
   
-          <Column header="Order Date" style="width: 15%">
+          <Column header="Actions" style="width: 120px">
             <template #body="{ data }">
-              <span class="text-xs text-gray-700">{{ formatDate(data.created_at) }}</span>
+              <div class="flex gap-1">
+                <Button icon="pi pi-eye" text rounded size="small" aria-label="View product" @click.stop="openProduct(data)" />
+                <Button v-if="canCreateAdjustments" icon="pi pi-plus-minus" text rounded size="small" severity="warn"
+                  aria-label="Adjust stock" @click.stop="openAdjustment(data)" />
+              </div>
             </template>
           </Column>
   
@@ -186,7 +183,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const canCreateItems = computed(() => authStore.hasPermission('products.manage'))
-const canCreateAdjustments = computed(() => authStore.hasPermission('inventory.adjustments.manage'))
+const canCreateAdjustments = computed(() => authStore.hasPermission('inventory.reorder_suggestions.manage'))
 const canUpdateItems = computed(() => authStore.hasPermission('products.update') || authStore.hasPermission('inventory.products.manage'))
 const canViewWarehouseStock = computed(() => authStore.hasPermission('warehouse.view'))
 const branchCount = ref(0)
@@ -205,13 +202,17 @@ const groupedItems = computed(() => {
         variant_rows: [],
         quantity_on_hand: 0,
         quantity_available: 0,
+        quantity_incoming: 0,
         stock_value: 0,
+        source_rows: [],
       })
     }
     const group = groups.get(productId)
     group.quantity_on_hand += Number(row.quantity_on_hand || 0)
     group.quantity_available += Number(row.quantity_available || 0)
+    group.quantity_incoming += Number(row.quantity_incoming || 0)
     group.stock_value += getStockValue(row)
+    group.source_rows.push(row)
     if (row.variation) group.variant_rows.push(row)
   }
   return Array.from(groups.values())
@@ -250,10 +251,10 @@ const hasActiveFilters = computed(() => {
 })
 
 const productTypeOptions = [
+  { label: 'Finished Good', value: 'finished_good' },
   { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
-  { label: 'Others', value: 'others' },
-  { label: 'Product', value: 'finished_good' }
+  { label: 'Others', value: 'others' }
 ]
 
 const stockStatuses = [
@@ -398,6 +399,34 @@ const getSupplierName = (data: any) => {
 
 const getBranchName = (data: any) => {
   return data.branch?.name || branches.value.find((branch) => Number(branch.id) === Number(filters.branch_id))?.name || 'N/A'
+}
+
+const getProductImage = (data: any) => {
+  const assets = Array.isArray(data?.product?.assets) ? data.product.assets : []
+  const image = assets.find((asset: any) => asset.is_primary && asset.url)
+    || assets.find((asset: any) => asset.url)
+  return image?.thumbnail_url || image?.url || null
+}
+
+const getStockLocation = (data: any) => {
+  const rows = Array.isArray(data?.source_rows) ? data.source_rows : [data]
+  const locations = rows.map((row: any) =>
+    row.warehouse_location?.name
+      || row.warehouse_location?.location_code
+      || row.bin_code
+      || row.warehouse_section
+  ).filter(Boolean)
+  return [...new Set(locations)].join(', ')
+}
+
+const openProduct = (data: any) => {
+  const id = data?.product_id || data?.product?.id
+  if (id) router.push({ name: 'inventory.products.detail', params: { id } })
+}
+
+const openAdjustment = (data: any) => {
+  const id = data?.product_id || data?.product?.id
+  router.push({ name: 'inventory.adjustments.create', query: id ? { product_id: id } : undefined })
 }
 
 const itemRowClass = () => ({ 'cursor-pointer hover:bg-orange-50': true })

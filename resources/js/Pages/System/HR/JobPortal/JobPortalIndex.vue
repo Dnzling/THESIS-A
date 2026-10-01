@@ -96,10 +96,8 @@ import { onMounted, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import hrService, { type JobPosting } from '../../../../services/hr.services'
-import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
 
 const toast = useToast()
-const portalAuth = useJobPortalAuthStore()
 
 const postings = ref<JobPosting[]>([])
 const search = ref('')
@@ -131,12 +129,6 @@ const fetchPostings = async () => {
 const previewPosting = (id?: number) => {
   if (!id) return
   const targetPath = `/job-portal/postings/${id}`
-
-  if (!portalAuth.isAuthenticated) {
-    portalAuth.setPendingRedirect(targetPath)
-    router.visit('/job-portal/login')
-    return
-  }
 
   router.visit(targetPath)
 }

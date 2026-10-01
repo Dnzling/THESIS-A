@@ -114,7 +114,7 @@
                 <span v-if="productReviewCount" class="font-semibold text-slate-800">{{ averageRating }}</span>
                 <span class="text-slate-500">{{ productReviewCount ? `${productReviewCount} ${productReviewCount === 1 ? 'review' : 'reviews'}` : 'No ratings yet' }}</span>
               </div>
-              <p class="text-xs font-medium text-slate-500">VAT included</p>
+              <p class="text-xs font-medium text-slate-500"></p>
               <p class="text-sm text-slate-500">
                 {{ product.quantity_available || 0 }} stocks available
                 <span v-if="product.assembly_required" class="mx-2 text-slate-300">•</span>

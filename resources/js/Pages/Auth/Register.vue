@@ -33,7 +33,7 @@ const handleRegister = async (formData: RegisterFormData) => {
       email: formData.email,
       password: formData.password,
       // Resolve the system role by name server-side; numeric role IDs vary by DB.
-      account_type: 'store_admin',
+      account_type: 'owner',
       birthday: formData.birthday ? new Date(formData.birthday).toISOString().slice(0, 10) : null,
       device_name: 'web-browser'
     })

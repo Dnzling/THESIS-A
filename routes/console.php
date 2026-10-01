@@ -11,6 +11,17 @@ Artisan::command('inspire', function () {
 Schedule::command('inventory:reorder-suggestions:auto-run')->everyMinute();
 
 Schedule::call(function () {
+    \App\Models\Store\Store::query()
+        ->where('subscription_status', 'trial')
+        ->where('trial_ends_at', '<=', now())
+        ->chunkById(100, function ($stores) {
+            foreach ($stores as $store) {
+                app(\App\Services\Store\StoreTrialService::class)->expireIfNeeded($store);
+            }
+        });
+})->hourly();
+
+Schedule::call(function () {
     \App\Models\Hr\Employee::query()
         ->whereNotNull('resignation_date')
         ->whereDate('last_working_day', '<', now('Asia/Manila')->toDateString())

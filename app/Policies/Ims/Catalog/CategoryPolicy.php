@@ -9,22 +9,22 @@ class CategoryPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasAnyRole(['admin', 'storeAdmin', 'inventory', 'sales']);
+        return $user->hasAnyRole(['admin', 'owner', 'inventory', 'sales']);
     }
     
     public function view(User $user, Category $category): bool
     {
-        return $user->hasAnyRole(['admin', 'storeAdmin', 'inventory', 'sales']);
+        return $user->hasAnyRole(['admin', 'owner', 'inventory', 'sales']);
     }
     
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['admin', 'storeAdmin']);
+        return $user->hasAnyRole(['admin', 'owner']);
     }
     
     public function update(User $user, Category $category): bool
     {
-        return $user->hasAnyRole(['admin', 'storeAdmin']);
+        return $user->hasAnyRole(['admin', 'owner']);
     }
     
     public function delete(User $user, Category $category): bool
