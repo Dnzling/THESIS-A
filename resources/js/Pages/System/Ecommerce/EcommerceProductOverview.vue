@@ -189,7 +189,7 @@
         <button type="button"
           class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-slate-300"
           @click="goStorePage">
-          <div class="flex items-center gap-3">
+          <div class="flex min-w-0 items-center gap-3">
             <img v-if="storeInfo?.logo" :src="storeInfo.logo" :alt="storeInfo.name"
               class="h-12 w-12 rounded-xl border border-slate-200 object-cover" />
             <div v-else
@@ -197,11 +197,11 @@
               {{ (storeInfo?.name || product.store_name || 'S').slice(0, 1).toUpperCase() }}
   
             </div>
-            <div>
-              <p class="text-base font-semibold text-slate-900">{{ storeInfo?.name || product.store_name || 'Store' }}</p>
+            <div class="min-w-0">
+              <p class="truncate text-base font-semibold text-slate-900">{{ storeInfo?.name || product.store_name || 'Store' }}</p>
   
             </div>
-            <div class="text-left">
+            <div class="shrink-0 text-left">
               <p class="text-sm font-semibold text-amber-500">★ {{ storeRating.toFixed(2) }}</p>
               <p class="text-xs text-slate-500">{{ storeRatingCount }} reviews</p>
             </div>
@@ -235,58 +235,39 @@
         <p v-else class="mt-3 text-sm leading-7 text-slate-600">No description available for this product yet.</p>
       </div>
   
-      <div v-else-if="activeTab === 'reviews'" class="p-5">
-        <div class="grid grid-cols-1 gap-6 border-b border-slate-200 pb-4 lg:grid-cols-12">
-          <div class="lg:col-span-3">
-            <p class="text-sm text-slate-600">Average Rating</p>
-            <div
-              class="mt-3 inline-flex h-40 w-40 items-center justify-center rounded-full border-[12px] border-amber-400 text-center">
-              <div>
-                <i class="pi pi-star-fill text-amber-500"></i>
-                <p class="mt-1 text-4xl font-semibold text-slate-900">{{ averageRating }}</p>
-                <p class="text-sm text-slate-500">/ 5</p>
-              </div>
-            </div>
-          </div>
-          <div class="lg:col-span-9">
-            <p class="text-sm text-slate-600">Our customer satisfaction</p>
-            <div class="mt-4 space-y-2">
-              <div v-for="row in ratingBreakdown" :key="row.star" class="flex items-center gap-3">
-                <span class="w-10 text-sm text-slate-600">{{ row.star }}★</span>
-                <div class="h-2 flex-1 rounded-full bg-slate-200">
-                  <div class="h-2 rounded-full bg-amber-400" :style="{ width: `${row.percent}%` }"></div>
+      <div v-else-if="activeTab === 'reviews'" class="overflow-hidden bg-slate-50/70">
+        <div class="grid min-h-[25rem] md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_23rem]">
+          <section class="min-w-0 bg-slate-100/70 p-5 sm:p-7 lg:p-9">
+            <h3 class="mb-5 text-2xl font-black tracking-tight text-slate-950">Customer reviews</h3>
+            <div v-if="topReviews.length" class="review-scroller flex snap-x snap-mandatory gap-4 overflow-x-auto pb-5">
+              <article v-for="review in topReviews" :key="review.id"
+                class="flex min-h-[20rem] w-[90%] shrink-0 snap-start flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:w-[27rem] lg:w-[29rem]">
+                <h4 class="line-clamp-2 text-base font-bold leading-6 text-slate-950">{{ reviewHeading(review) }}</h4>
+                <div class="mt-5 flex items-center gap-3" :aria-label="`${review.rating} out of 5 stars`">
+                  <span class="flex gap-0.5 text-amber-400" aria-hidden="true"><i v-for="star in 5" :key="star" :class="star <= Number(review.rating) ? 'pi pi-star-fill' : 'pi pi-star'" /></span>
+                  <span class="text-sm font-bold text-slate-900">{{ review.rating }}</span>
                 </div>
-                <span class="w-12 text-right text-xs text-slate-500">{{ row.count }}</span>
-              </div>
+                <p class="mt-6 line-clamp-5 text-sm leading-7 text-slate-700">{{ review.review_text || 'The customer left a rating without a written review.' }}</p>
+                <div class="mt-auto pt-4">
+                  <a v-if="review.attachment_url && !brokenReviewAttachments.includes(Number(review.id))" :href="review.attachment_url" target="_blank" rel="noopener" class="inline-flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    <img :src="review.attachment_url" alt="Customer review attachment" class="h-16 w-16 object-cover transition hover:scale-105" @error="hideBrokenReviewAttachment(review.id)" />
+                  </a>
+                  <div v-if="review.store_reply" class="mt-3 rounded-xl bg-orange-50 px-3 py-2.5"><p class="text-[10px] font-bold uppercase tracking-wide text-orange-700">Store reply</p><p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{{ review.store_reply }}</p></div>
+                  <p class="mt-4 text-sm text-slate-700">{{ review.customer_name }}</p>
+                </div>
+              </article>
             </div>
-          </div>
-        </div>
-  
-        <div class="mt-4 space-y-4">
-          <div v-for="review in reviews" :key="review.id" class="rounded-xl border border-slate-200 p-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-slate-900">{{ review.customer_name }}</p>
-                <p class="text-xs text-slate-500">{{ formatDate(review.created_at) }}</p>
-              </div>
-              <div class="text-sm text-amber-500">{{ '★'.repeat(review.rating) }}</div>
+            <div v-else class="flex min-h-[15rem] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-center">
+              <i class="pi pi-comments mb-3 text-3xl text-slate-300" /><p class="font-semibold text-slate-700">No reviews yet</p><p class="mt-1 text-sm text-slate-500">Be the first to share your experience with this product.</p>
             </div>
-            <p class="mt-3 text-sm text-slate-600">{{ review.review_text || 'No review text provided.' }}</p>
-            <a v-if="review.attachment_url && !brokenReviewAttachments.includes(Number(review.id))"
-              :href="review.attachment_url" target="_blank" rel="noopener"
-              class="mt-3 inline-block overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-              <img :src="review.attachment_url" alt="Customer review attachment"
-                class="block h-24 w-24 object-cover transition hover:scale-105"
-                @error="hideBrokenReviewAttachment(review.id)" />
-            </a>
-            <div v-if="review.store_reply" class="mt-4 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3">
-              <div class="flex items-center justify-between gap-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Store Reply</p>
-                <p v-if="review.replied_at" class="text-xs text-slate-500">{{ formatDate(review.replied_at) }}</p>
-              </div>
-              <p class="mt-1 text-sm text-slate-700">{{ review.store_reply }}</p>
+          </section>
+          <aside class="flex flex-col justify-center border-t border-slate-200 bg-white p-7 md:border-l md:border-t-0 lg:p-9">
+            <div class="grid grid-cols-2 divide-x divide-slate-200 text-center">
+              <div class="px-3"><p class="text-5xl font-black tracking-tight text-slate-950">{{ averageRating }}</p><div class="mt-3 flex justify-center gap-1 text-sm text-slate-950"><i v-for="star in 5" :key="star" :class="star <= Math.round(Number(averageRating)) ? 'pi pi-star-fill' : 'pi pi-star'" /></div><p class="mt-3 text-base text-slate-700">Average rating</p></div>
+              <div class="px-3"><p class="text-5xl font-black tracking-tight text-slate-950">{{ productReviewCount }}</p><p class="mt-4 text-base text-slate-700">{{ productReviewCount === 1 ? 'Review' : 'Reviews' }}</p></div>
             </div>
-          </div>
+            <Button v-if="productReviewCount" label="Show all reviews" severity="contrast" outlined rounded class="mt-14 !w-full !border-slate-900 !py-3 !font-bold" :loading="loadingAllReviews" @click="openAllReviews" />
+          </aside>
         </div>
       </div>
   
@@ -338,6 +319,86 @@
         <Button :loading="reporting" severity="danger" label="Submit Report" @click="submitReport" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="allReviewsDialog" modal class="review-dialog w-[96vw] max-w-[94rem]" :dismissableMask="true" :showHeader="false">
+      <div class="relative max-h-[90vh] overflow-y-auto bg-white">
+        <button type="button" class="absolute right-5 top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100" aria-label="Close reviews" @click="allReviewsDialog = false"><i class="pi pi-times text-xl" /></button>
+        <div class="grid lg:grid-cols-[22rem_minmax(0,1fr)]">
+          <aside class="border-b border-slate-200 bg-slate-50/60 p-7 sm:p-9 lg:min-h-[42rem] lg:border-b-0 lg:border-r">
+            <div class="text-center">
+              <p class="text-6xl font-black tracking-tight text-slate-950">{{ averageRating }}</p>
+              <div class="mt-3 flex justify-center gap-1 text-lg text-amber-400"><i v-for="star in 5" :key="star" :class="star <= Math.round(Number(averageRating)) ? 'pi pi-star-fill' : 'pi pi-star'" /></div>
+              <p class="mt-2 text-sm text-slate-500">Based on {{ productReviewCount }} {{ productReviewCount === 1 ? 'review' : 'reviews' }}</p>
+            </div>
+            <div class="my-7 h-px bg-slate-200" />
+            <div class="space-y-4">
+              <button v-for="row in ratingBreakdown" :key="`modal-${row.star}`" type="button" class="flex w-full items-center gap-3 text-sm" @click="toggleRatingFilter(row.star)">
+                <span class="flex w-9 items-center gap-1 font-semibold text-slate-600">{{ row.star }}<i class="pi pi-star-fill text-xs text-amber-400" /></span>
+                <span class="h-2 flex-1 overflow-hidden rounded-full bg-slate-200"><span class="block h-full rounded-full bg-orange-500 transition-all" :style="{ width: `${row.percent}%` }" /></span>
+                <span class="w-7 text-right text-slate-500">{{ row.count }}</span>
+              </button>
+            </div>
+            <button v-if="selectedReviewRating" type="button" class="mt-5 w-full rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700" @click="selectedReviewRating = null">Clear {{ selectedReviewRating }}-star filter</button>
+          </aside>
+
+          <section class="min-w-0 p-6 sm:p-9 lg:p-12">
+            <h2 class="pr-12 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Customer reviews</h2>
+            <div class="mt-7 flex flex-wrap items-center gap-3">
+              <button type="button" class="review-control" :class="selectedReviewRating ? '!border-orange-300 !bg-orange-50 !text-orange-700' : ''" @click="showRatingFilters = !showRatingFilters"><i class="pi pi-sliders-h" /> Filter</button>
+              <label class="review-control cursor-pointer"><i class="pi pi-sort-alt" /> Sort by
+                <select v-model="reviewSort" class="border-0 bg-transparent p-0 pr-6 text-sm font-bold shadow-none focus:ring-0"><option value="newest">Newest</option><option value="highest">Highest rated</option><option value="lowest">Lowest rated</option></select>
+              </label>
+            </div>
+            <div v-if="showRatingFilters" class="mt-3 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <button type="button" class="review-filter-chip" :class="selectedReviewRating === null ? 'review-filter-chip-active' : ''" @click="selectedReviewRating = null">All</button>
+              <button v-for="star in [5, 4, 3, 2, 1]" :key="`filter-${star}`" type="button" class="review-filter-chip" :class="selectedReviewRating === star ? 'review-filter-chip-active' : ''" @click="selectedReviewRating = star">{{ star }} <i class="pi pi-star-fill text-xs" /></button>
+            </div>
+            <div class="mt-8 flex gap-8 border-b border-slate-200">
+              <button type="button" class="review-tab" :class="reviewView === 'all' ? 'review-tab-active' : ''" @click="reviewView = 'all'">All reviews</button>
+              <button type="button" class="review-tab" :class="reviewView === 'photos' ? 'review-tab-active' : ''" @click="reviewView = 'photos'">With photos</button>
+            </div>
+
+            <div v-if="loadingAllReviews" class="flex min-h-64 items-center justify-center"><i class="pi pi-spin pi-spinner text-3xl text-orange-500" /></div>
+            <div v-else-if="visibleAllReviews.length" class="divide-y divide-slate-200">
+              <article v-for="review in visibleAllReviews" :key="`all-${review.id}`" class="py-7">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div class="flex gap-1 text-base text-amber-400"><i v-for="star in 5" :key="star" :class="star <= Number(review.rating) ? 'pi pi-star-fill' : 'pi pi-star'" /></div>
+                  <p class="text-sm text-slate-500">{{ formatDate(review.created_at) }}</p>
+                </div>
+                <h3 class="mt-4 text-lg font-bold text-slate-900">{{ reviewHeading(review) }}</h3>
+                <p class="mt-2 text-sm leading-7 text-slate-600">{{ review.review_text || 'The customer left a rating without a written review.' }}</p>
+                <div v-if="reviewDetails(review).length" class="mt-6 max-w-xl rounded-2xl bg-slate-50 p-4 sm:p-5">
+                  <div class="space-y-3">
+                    <div v-for="detail in reviewDetails(review)" :key="detail.label" class="grid grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-3 text-sm">
+                      <span class="text-slate-600">{{ detail.label }}</span>
+                      <span class="flex h-2 items-center overflow-hidden rounded-full bg-slate-200">
+                        <span class="h-full rounded-full bg-slate-900" :style="{ width: `${detail.value * 20}%` }" />
+                      </span>
+                      <span class="font-medium text-slate-600">{{ detail.value }}</span>
+                    </div>
+                  </div>
+                  <p class="mt-6 flex items-center gap-2 text-sm font-medium" :class="isReviewRecommended(review) ? 'text-emerald-700' : 'text-slate-500'">
+                    <i :class="isReviewRecommended(review) ? 'pi pi-check-circle' : 'pi pi-times-circle'" />
+                    {{ isReviewRecommended(review) ? 'Yes, I recommend this product' : 'No, I do not recommend this product' }}
+                  </p>
+                </div>
+                <a v-if="review.attachment_url && !brokenReviewAttachments.includes(Number(review.id))" :href="review.attachment_url" target="_blank" rel="noopener" class="mt-4 inline-flex overflow-hidden rounded-xl border border-slate-200"><img :src="review.attachment_url" alt="Customer review attachment" class="h-24 w-24 object-cover transition hover:scale-105" @error="hideBrokenReviewAttachment(review.id)" /></a>
+                <div class="mt-5 flex flex-wrap items-center justify-between gap-4">
+                  <span class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800"><i class="pi pi-verified text-emerald-600" />{{ review.customer_name }}</span>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="rounded-full px-4 py-2 text-sm font-bold text-slate-500 transition hover:bg-red-50 hover:text-red-600" @click="reportReview(review)"><i class="pi pi-flag mr-2" />Report</button>
+                    <button type="button" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-orange-400 hover:text-orange-700" @click="toggleHelpful(review.id)"><i class="pi pi-thumbs-up mr-2" />Helpful{{ helpfulReviews.includes(Number(review.id)) ? ' (1)' : '' }}</button>
+                  </div>
+                </div>
+                <div v-if="review.store_reply" class="mt-5 rounded-xl border-l-4 border-orange-400 bg-orange-50 px-4 py-3"><p class="text-xs font-bold uppercase tracking-wide text-orange-700">Store reply</p><p class="mt-1 text-sm leading-6 text-slate-600">{{ review.store_reply }}</p></div>
+              </article>
+            </div>
+            <div v-else class="flex min-h-64 flex-col items-center justify-center text-center"><i class="pi pi-search mb-3 text-3xl text-slate-300" /><p class="font-semibold text-slate-700">No matching reviews</p><p class="mt-1 text-sm text-slate-500">Try changing the filter or review type.</p></div>
+            <p v-if="productReviewCount > allReviews.length" class="mt-5 text-center text-xs text-slate-500">Showing the latest {{ allReviews.length }} of {{ productReviewCount }} reviews.</p>
+          </section>
+        </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -379,6 +440,14 @@ const show3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
 const brokenImages = ref<string[]>([])
 const brokenReviewAttachments = ref<number[]>([])
+const allReviewsDialog = ref(false)
+const loadingAllReviews = ref(false)
+const allReviews = ref<any[]>([])
+const selectedReviewRating = ref<number | null>(null)
+const reviewSort = ref<'newest' | 'highest' | 'lowest'>('newest')
+const reviewView = ref<'all' | 'photos'>('all')
+const showRatingFilters = ref(false)
+const helpfulReviews = ref<number[]>([])
 const hoverZoomVisible = ref(false)
 const hoverX = ref(50)
 const hoverY = ref(50)
@@ -511,6 +580,21 @@ const primaryImage = computed(() => {
 const storeRating = computed(() => Number(storeInfo.value?.rating_avg ?? 0))
 const storeRatingCount = computed(() => Number(storeInfo.value?.rating_count ?? 0))
 const reviews = computed(() => product.value?.reviews?.data || [])
+const topReviews = computed(() => reviews.value.slice(0, 3))
+const visibleAllReviews = computed(() => {
+  let items = [...allReviews.value]
+  if (selectedReviewRating.value) {
+    items = items.filter((review: any) => Number(review.rating) === selectedReviewRating.value)
+  }
+  if (reviewView.value === 'photos') {
+    items = items.filter((review: any) => Boolean(review.attachment_url))
+  }
+  return items.sort((a: any, b: any) => {
+    if (reviewSort.value === 'highest') return Number(b.rating) - Number(a.rating)
+    if (reviewSort.value === 'lowest') return Number(a.rating) - Number(b.rating)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+})
 const productReviewCount = computed(() => Number(product.value?.reviews_summary?.total_reviews ?? product.value?.rating_count ?? 0))
 const averageRating = computed(() => {
   return Number(product.value?.reviews_summary?.average_rating || 0).toFixed(1)
@@ -520,10 +604,10 @@ const ratingBreakdown = computed(() => {
     star: Number(row.star),
     count: Number(row.count || 0),
   }))
-  const max = Math.max(...counts.map(c => c.count), 1)
+  const total = Math.max(counts.reduce((sum, row) => sum + row.count, 0), 1)
   return counts.map(c => ({
     ...c,
-    percent: Math.round((c.count / max) * 100),
+    percent: Math.round((c.count / total) * 100),
   }))
 })
 
@@ -558,6 +642,77 @@ function displayDimension(value: any, unit: 'cm' | 'kg') {
 function formatDate(value: string) {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function customerInitial(name: string) {
+  return String(name || 'C').trim().charAt(0).toUpperCase() || 'C'
+}
+
+function reviewHeading(review: any) {
+  const text = String(review?.review_text || '').trim()
+  if (!text) return `${review?.rating || 0}-star rating`
+  const sentence = text.split(/[.!?]/)[0]?.trim() || text
+  return sentence.length > 70 ? `${sentence.slice(0, 67)}...` : sentence
+}
+
+function reviewDetails(review: any) {
+  const fallback = Math.min(5, Math.max(1, Number(review?.rating) || 1))
+  return [
+    { label: 'Appearance', value: Number(review?.appearance_rating) || fallback },
+    { label: 'Ease of assembly/installation', value: Number(review?.assembly_rating) || fallback },
+    { label: 'Product quality', value: Number(review?.quality_rating) || fallback },
+    { label: 'Value for money', value: Number(review?.value_rating) || fallback },
+    { label: 'Works as expected', value: Number(review?.expectations_rating) || fallback },
+  ]
+}
+
+function isReviewRecommended(review: any) {
+  if (review?.is_recommended !== null && review?.is_recommended !== undefined) {
+    return Boolean(review.is_recommended)
+  }
+  return Number(review?.rating || 0) >= 4
+}
+
+function toggleRatingFilter(star: number) {
+  selectedReviewRating.value = selectedReviewRating.value === star ? null : star
+}
+
+function toggleHelpful(reviewId: number | string) {
+  const id = Number(reviewId)
+  helpfulReviews.value = helpfulReviews.value.includes(id)
+    ? helpfulReviews.value.filter(item => item !== id)
+    : [...helpfulReviews.value, id]
+}
+
+function reportReview(review: any) {
+  reportForm.value = {
+    reason: 'Report customer review',
+    details: `Review #${review?.id || '-'} for ${product.value?.product_name || 'this product'}: ${String(review?.review_text || 'Rating-only review').slice(0, 500)}`,
+    evidence_images: [],
+  }
+  allReviewsDialog.value = false
+  reportDialog.value = true
+}
+
+async function openAllReviews() {
+  allReviewsDialog.value = true
+  selectedReviewRating.value = null
+  reviewSort.value = 'newest'
+  reviewView.value = 'all'
+  showRatingFilters.value = false
+  allReviews.value = [...reviews.value]
+  if (productReviewCount.value <= reviews.value.length) return
+
+  loadingAllReviews.value = true
+  try {
+    const response = await ecommerceService.getProduct(String(route.params.id), { reviews_per_page: 30 })
+    const fullProduct = response.data?.data || response.data
+    allReviews.value = fullProduct?.reviews?.data || reviews.value
+  } catch {
+    allReviews.value = [...reviews.value]
+  } finally {
+    loadingAllReviews.value = false
+  }
 }
 
 function normalizeImageUrl(raw: string) {
@@ -822,6 +977,9 @@ onMounted(async () => {
 })
 watch(() => route.params.id, async () => {
   show3DViewer.value = false
+  allReviewsDialog.value = false
+  allReviews.value = []
+  selectedReviewRating.value = null
   await loadProduct()
   await loadStoreInfo()
   await loadRecommendedProducts()
@@ -833,4 +991,64 @@ watch(() => route.params.id, async () => {
   border: 1px solid #e2e8f0;
   box-shadow: none;
 }
+
+.review-scroller {
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+:deep(.review-dialog .p-dialog-content) {
+  padding: 0;
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.review-control {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background: #f1f5f9;
+  padding: 0.65rem 1.15rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #0f172a;
+  transition: 150ms ease;
+}
+
+.review-control:hover {
+  background: #e2e8f0;
+}
+
+.review-filter-chip {
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  background: white;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.review-filter-chip-active {
+  border-color: #f97316;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.review-tab {
+  border-bottom: 3px solid transparent;
+  padding: 0 0.25rem 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.review-tab-active {
+  border-color: #f97316;
+  color: #0f172a;
+}
+
 </style>

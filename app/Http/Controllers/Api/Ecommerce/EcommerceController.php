@@ -408,6 +408,12 @@ class EcommerceController extends Controller
             return [
                 'id' => $review->id,
                 'rating' => (int) $review->rating,
+                'appearance_rating' => $review->appearance_rating ? (int) $review->appearance_rating : null,
+                'assembly_rating' => $review->assembly_rating ? (int) $review->assembly_rating : null,
+                'quality_rating' => $review->quality_rating ? (int) $review->quality_rating : null,
+                'value_rating' => $review->value_rating ? (int) $review->value_rating : null,
+                'expectations_rating' => $review->expectations_rating ? (int) $review->expectations_rating : null,
+                'is_recommended' => $review->is_recommended,
                 'review_text' => $review->review_text,
                 'created_at' => $review->created_at,
                 'customer_name' => trim(($review->user?->fname ?? '') . ' ' . ($review->user?->lname ?? '')) ?: 'Customer',
@@ -784,6 +790,12 @@ class EcommerceController extends Controller
             return [
                 'id' => $review->id,
                 'rating' => (int) $review->rating,
+                'appearance_rating' => $review->appearance_rating ? (int) $review->appearance_rating : null,
+                'assembly_rating' => $review->assembly_rating ? (int) $review->assembly_rating : null,
+                'quality_rating' => $review->quality_rating ? (int) $review->quality_rating : null,
+                'value_rating' => $review->value_rating ? (int) $review->value_rating : null,
+                'expectations_rating' => $review->expectations_rating ? (int) $review->expectations_rating : null,
+                'is_recommended' => $review->is_recommended,
                 'review_text' => $review->review_text,
                 'attachment_url' => $review->attachment_path
                     ? "/api/ecommerce/reviews/{$review->id}/attachment"
@@ -2121,6 +2133,12 @@ class EcommerceController extends Controller
     {
         $validated = $request->validate([
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'appearance_rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'assembly_rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'quality_rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'value_rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'expectations_rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'is_recommended' => ['required', 'boolean'],
             'review_text' => ['nullable', 'string', 'max:2000'],
             'attachment' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
@@ -2160,6 +2178,12 @@ class EcommerceController extends Controller
             'product_id' => $orderItem->product_id,
             'store_id' => $orderItem->order->store_id,
             'rating' => (int) $validated['rating'],
+            'appearance_rating' => (int) $validated['appearance_rating'],
+            'assembly_rating' => (int) $validated['assembly_rating'],
+            'quality_rating' => (int) $validated['quality_rating'],
+            'value_rating' => (int) $validated['value_rating'],
+            'expectations_rating' => (int) $validated['expectations_rating'],
+            'is_recommended' => (bool) $validated['is_recommended'],
             'review_text' => $validated['review_text'] ?? null,
             'status' => 'published',
         ];
@@ -3846,5 +3870,3 @@ class EcommerceController extends Controller
         return preg_match($pattern, $message) === 1;
     }
 }
-
-

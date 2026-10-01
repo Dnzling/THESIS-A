@@ -56,8 +56,8 @@ const ecommerceService = {
     return ecommerceClient.get(`/api/ecommerce/categories/${categoryId}/top-stores`)
   },
 
-  getProduct(id: number | string) {
-    return ecommerceClient.get(`/api/ecommerce/products/${id}`)
+  getProduct(id: number | string, params?: any) {
+    return ecommerceClient.get(`/api/ecommerce/products/${id}`, { params })
   },
 
   getStores(params?: any) {
@@ -259,11 +259,23 @@ const ecommerceService = {
 
   submitItemReview(itemId: number | string, payload: {
     rating: number
+    appearance_rating: number
+    assembly_rating: number
+    quality_rating: number
+    value_rating: number
+    expectations_rating: number
+    is_recommended: boolean
     review_text?: string
     attachment?: File | null
   }) {
     const formData = new FormData()
     formData.append('rating', String(payload.rating))
+    formData.append('appearance_rating', String(payload.appearance_rating))
+    formData.append('assembly_rating', String(payload.assembly_rating))
+    formData.append('quality_rating', String(payload.quality_rating))
+    formData.append('value_rating', String(payload.value_rating))
+    formData.append('expectations_rating', String(payload.expectations_rating))
+    formData.append('is_recommended', payload.is_recommended ? '1' : '0')
     if (payload.review_text) formData.append('review_text', payload.review_text)
     if (payload.attachment) formData.append('attachment', payload.attachment)
 

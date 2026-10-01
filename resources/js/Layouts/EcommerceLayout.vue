@@ -78,6 +78,31 @@
     </header>
 
     <div class="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 px-3 py-2 backdrop-blur-sm md:hidden">
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <button type="button" class="min-w-0 rounded-lg text-left" aria-label="Go to shop home"
+          @click="router.push({ name: 'ecommerce.home' })">
+          <span class="portal-brand text-base text-orange-500">FURNISYNC</span>
+        </button>
+        <div class="flex shrink-0 items-center gap-1">
+          <button type="button" class="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-orange-50"
+            aria-label="Cart" @click="goCart">
+            <i class="pi pi-shopping-cart" />
+            <Badge v-if="cartCount > 0" :value="cartCount > 99 ? '99+' : String(cartCount)" severity="secondary"
+              class="header-action-badge" />
+          </button>
+          <button v-if="isLoggedIn" type="button" class="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-orange-50"
+            aria-label="Notifications" @click="goNotifications">
+            <i class="pi pi-bell" />
+            <Badge v-if="unreadNotificationCount > 0" :value="unreadNotificationCount > 99 ? '99+' : String(unreadNotificationCount)" severity="danger"
+              class="header-action-badge" />
+          </button>
+          <Button v-if="!isLoggedIn" label="Login" rounded size="small" class="!px-3 !text-xs" @click="goLogin" />
+          <button v-else type="button" class="flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-orange-50"
+            aria-label="Account" @click="toggleProfilePopover">
+            <i class="pi pi-user" />
+          </button>
+        </div>
+      </div>
       <form role="search" @submit.prevent="submitProductSearch">
         <IconField class="w-full">
           <InputIcon class="pi pi-search text-slate-400" />
