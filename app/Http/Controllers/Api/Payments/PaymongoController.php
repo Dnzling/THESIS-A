@@ -838,6 +838,8 @@ class PaymongoController extends Controller
                         ? (($product?->product_name ?? 'Product') . ' - ' . $variationName)
                         : ($product?->product_name ?? 'Product'),
                     'sku' => $variation?->variation_sku ?? $product?->sku,
+                    'customization_request' => $row['customization_request'] ?? null,
+                    'customization_status' => !empty($row['customization_request']) ? 'pending' : null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'tax_rate' => $taxRate,

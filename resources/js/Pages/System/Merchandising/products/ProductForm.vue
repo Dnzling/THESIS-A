@@ -187,6 +187,10 @@
                   <Checkbox v-model="form.assembly_required" inputId="assembly" :binary="true" />
                   <label for="assembly" class="text-sm text-gray-700 cursor-pointer">Assembly Required</label>
                 </div>
+                <div v-if="!isRawMaterialType" class="flex items-center gap-2">
+                  <Checkbox v-model="form.is_customizable" inputId="customizable" :binary="true" />
+                  <label for="customizable" class="text-sm text-gray-700 cursor-pointer">Customization Available</label>
+                </div>
                 <div class="flex items-center gap-2">
                   <Checkbox v-model="form.is_active" inputId="active" :binary="true" />
                   <label for="active" class="text-sm text-gray-700 cursor-pointer">Active</label>
@@ -841,6 +845,7 @@ const form = ref({
   height_cm: null,
   weight_kg: null,
   assembly_required: false,
+  is_customizable: false,
   is_featured: false,
   is_new_arrival: false,
   is_bestseller: false,
@@ -1224,6 +1229,7 @@ const loadProduct = async () => {
       height_cm: product.height_cm,
       weight_kg: product.weight_kg,
       assembly_required: product.assembly_required || false,
+      is_customizable: product.is_customizable || false,
       is_featured: product.is_featured || false,
       is_new_arrival: product.is_new_arrival || false,
       is_bestseller: product.is_bestseller || false,
@@ -1900,6 +1906,7 @@ const handleSubmit = async () => {
       height_cm: form.value.height_cm,
       weight_kg: form.value.weight_kg,
       assembly_required: form.value.assembly_required,
+      is_customizable: form.value.is_customizable,
       is_featured: form.value.is_featured,
       is_new_arrival: form.value.is_new_arrival,
       is_bestseller: form.value.is_bestseller,

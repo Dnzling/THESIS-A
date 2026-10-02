@@ -8,7 +8,7 @@
         </div>
         <div class="flex gap-2">
           <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadTrips" />
-          <Button v-if="canManage" icon="pi pi-plus" label="Create Trip" severity="success" @click="openCreate" />
+          <Button v-if="canManage" :loading="loadingOptions" icon="pi pi-plus" label="Create Trip" severity="success" @click="openCreate" />
         </div>
       </div>
     </div>
@@ -36,7 +36,7 @@
           </Column>
           <Column header="Orders" style="width: 8rem">
             <template #body="{ data }">
-              <span class="text-sm text-slate-700">{{ (data.ecommerce_deliveries_count || 0) + (data.sales_deliveries_count || 0) }}</span>
+              <span class="text-sm text-slate-700">{{ (data.ecommerce_deliveries_count || 0) + (data.sales_deliveries_count || 0) + (data.return_pickups_count || 0) }}</span>
             </template>
           </Column>
           <Column header="Status" style="width: 10rem">
@@ -63,10 +63,12 @@
         <div>
           <label class="mb-1 block text-sm text-slate-600">Driver</label>
           <Select v-model="form.driver_user_id" :options="employees" optionLabel="name" optionValue="id" filter fluid placeholder="Select driver" />
+          <p v-if="!loadingOptions && !employees.length" class="mt-1 text-xs text-amber-700">No active driver is available for this store.</p>
         </div>
         <div>
           <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
           <Select v-model="form.vehicle_id" :options="vehicles" optionLabel="label" optionValue="id" filter fluid placeholder="Select vehicle" />
+          <p v-if="!loadingOptions && !vehicles.length" class="mt-1 text-xs text-amber-700">No active vehicle is available for this store.</p>
         </div>
         <div class="md:col-span-2">
           <label class="mb-1 block text-sm text-slate-600">Scheduled Departure</label>
@@ -79,7 +81,7 @@
       </div>
       <template #footer>
         <Button text severity="secondary" label="Cancel" @click="tripDialog = false" />
-        <Button :loading="saving" severity="success" label="Create Trip" @click="createTrip" />
+        <Button :loading="saving" :disabled="loadingOptions || !form.driver_user_id || !form.vehicle_id" severity="success" label="Create Trip" @click="createTrip" />
       </template>
     </Dialog>
   </div>
@@ -108,6 +110,7 @@ const canManage = authStore.hasPermission('logistics.deliveries.manage')
 
 const trips = ref<any[]>([])
 const loading = ref(false)
+const loadingOptions = ref(false)
 const saving = ref(false)
 const tripDialog = ref(false)
 
@@ -122,14 +125,21 @@ const form = reactive({
 })
 
 const loadOptions = async () => {
-  const [empRes, vehicleRes] = await Promise.all([
-    logisticsService.getLogisticsEmployees(),
-    logisticsService.getVehicles({ per_page: 100 }),
-  ])
+  loadingOptions.value = true
+  try {
+    const [empRes, vehicleRes] = await Promise.all([
+      logisticsService.getLogisticsEmployees(),
+      logisticsService.getVehicles({ per_page: 100, status: 'active' }),
+    ])
 
-  employees.value = empRes?.data || []
-  const rows = vehicleRes?.data?.data || []
-  vehicles.value = rows.map((v: any) => ({ ...v, label: `${v.vehicle_name} (${v.plate_number})` }))
+    employees.value = empRes?.data?.drivers || []
+    const rows = vehicleRes?.data?.data || []
+    vehicles.value = rows.map((v: any) => ({ ...v, label: `${v.vehicle_name} (${v.plate_number})` }))
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Options Failed', detail: error?.response?.data?.message || 'Failed to load drivers and vehicles.', life: 3500 })
+  } finally {
+    loadingOptions.value = false
+  }
 }
 
 const loadTrips = async () => {
@@ -144,12 +154,13 @@ const loadTrips = async () => {
   }
 }
 
-const openCreate = () => {
+const openCreate = async () => {
   form.driver_user_id = null
   form.vehicle_id = null
   form.scheduled_departure_at = null
   form.notes = ''
   tripDialog.value = true
+  if (!employees.value.length || !vehicles.value.length) await loadOptions()
 }
 
 const createTrip = async () => {
@@ -193,4 +204,3 @@ onMounted(async () => {
   await Promise.all([loadOptions(), loadTrips()])
 })
 </script>
-

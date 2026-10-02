@@ -145,6 +145,16 @@
                 <p class="font-medium text-gray-900">{{ data.product_name || data.product?.product_name || '—' }}</p>
                 <p class="mt-1 text-xs text-gray-500">SKU: {{ data.sku || data.product?.sku || '—' }}</p>
                 <p v-if="data.branch_inventory?.variation" class="mt-1 text-xs text-orange-600">{{ data.branch_inventory.variation.variation_name }}</p>
+                <div v-if="data.customization_request" class="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-900">
+                  <div class="flex flex-wrap items-center justify-between gap-2"><p class="font-semibold"><i class="pi pi-palette mr-1" />Customer customization request</p><Tag :value="customizationStatusLabel(data.customization_status)" :severity="customizationStatusSeverity(data.customization_status)" /></div>
+                  <p class="mt-1 whitespace-pre-line">{{ data.customization_request }}</p>
+                  <p v-if="data.customization_response" class="mt-2 border-t border-orange-200 pt-2"><span class="font-semibold">Response:</span> {{ data.customization_response }}</p>
+                  <div v-if="canManageCustomization(data)" class="mt-3 flex flex-wrap gap-2">
+                    <Button label="Approve" size="small" severity="success" @click="openCustomizationDialog(data, 'approved')" />
+                    <Button label="Not Available" size="small" severity="danger" outlined @click="openCustomizationDialog(data, 'rejected')" />
+                    <Button label="Message Customer" size="small" severity="secondary" text @click="openSalesChat" />
+                  </div>
+                </div>
               </template>
             </Column>
             <Column header="Quantity / Unit" style="min-width: 145px">
@@ -252,6 +262,14 @@
         <Button label="Save Date" icon="pi pi-check" :loading="savingPickupDate" :disabled="!pickupDate" @click="savePickupDate" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="customizationDialog.visible" modal class="w-full max-w-lg" :header="customizationDialog.status === 'approved' ? 'Approve customization request' : 'Decline customization request'">
+      <div class="space-y-3">
+        <div class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><p class="font-semibold">{{ customizationDialog.item?.product_name }}</p><p class="mt-1 whitespace-pre-line">{{ customizationDialog.item?.customization_request }}</p></div>
+        <div><label class="text-sm font-medium text-slate-700">Message for customer <span class="font-normal text-slate-500">(optional)</span></label><Textarea v-model="customizationDialog.response" rows="4" autoResize class="mt-1 w-full" :placeholder="customizationDialog.status === 'approved' ? 'Confirm what will be customized...' : 'Explain why this request is unavailable...'" /></div>
+      </div>
+      <template #footer><Button label="Cancel" severity="secondary" outlined @click="customizationDialog.visible = false" /><Button :label="customizationDialog.status === 'approved' ? 'Approve request' : 'Decline request'" :severity="customizationDialog.status === 'approved' ? 'success' : 'danger'" :loading="reviewingCustomization" @click="submitCustomizationReview" /></template>
+    </Dialog>
   </div>
 </template>
 
@@ -289,6 +307,13 @@ const loading = ref(false)
 const order = ref<any>(null)
 const sendingToLogistics = ref(false)
 const reviewingCancellation = ref(false)
+const reviewingCustomization = ref(false)
+const customizationDialog = ref<{ visible: boolean; status: 'approved' | 'rejected'; item: any | null; response: string }>({
+  visible: false,
+  status: 'approved',
+  item: null,
+  response: '',
+})
 const reviewNotes = ref('')
 const rejectDialogVisible = ref(false)
 const pickupDateDialogVisible = ref(false)
@@ -333,6 +358,44 @@ const driverName = computed(() => {
 })
 
 const driverRole = computed(() => order.value?.delivery?.driver?.role?.display_name || order.value?.delivery?.driver?.role?.name || 'Driver')
+
+const customizationStatusLabel = (status: string | null | undefined) => {
+  if (status === 'approved') return 'Approved'
+  if (status === 'rejected') return 'Not available'
+  return 'Pending review'
+}
+
+const customizationStatusSeverity = (status: string | null | undefined) => {
+  if (status === 'approved') return 'success'
+  if (status === 'rejected') return 'danger'
+  return 'warn'
+}
+
+const canManageCustomization = (item: any) =>
+  authStore.hasPermission('sales.orders.manage') && Boolean(item?.customization_request) && !['approved', 'rejected'].includes(String(item?.customization_status || 'pending'))
+
+const openCustomizationDialog = (item: any, status: 'approved' | 'rejected') => {
+  customizationDialog.value = { visible: true, status, item, response: '' }
+}
+
+const submitCustomizationReview = async () => {
+  if (!order.value || !customizationDialog.value.item) return
+  reviewingCustomization.value = true
+  try {
+    await salesService.reviewEcommerceCustomizationRequest(
+      String(order.value.id),
+      String(customizationDialog.value.item.id),
+      { status: customizationDialog.value.status, response: customizationDialog.value.response.trim() || undefined },
+    )
+    customizationDialog.value.visible = false
+    toast.add({ severity: 'success', summary: 'Customization updated', detail: `Request ${customizationDialog.value.status}.`, life: 3000 })
+    await loadOrder()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Update failed', detail: error?.response?.data?.message || 'Unable to review the customization request.', life: 3000 })
+  } finally {
+    reviewingCustomization.value = false
+  }
+}
 
 const loadOrder = async () => {
   loading.value = true

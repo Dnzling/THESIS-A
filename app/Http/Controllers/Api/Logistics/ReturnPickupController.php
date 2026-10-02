@@ -278,6 +278,25 @@ class ReturnPickupController extends Controller
             }
         }
 
+        if (($validated['status'] ?? null) === 'picked_up' && $pickup->trip_id) {
+            $pickup->loadMissing([
+                'returnRequest.orderItem.product:id,weight_kg',
+                'trip.vehicle:id,capacity_kg',
+                'trip.ecommerceDeliveries.order.items.product:id,weight_kg',
+                'trip.salesDeliveries.order.items.product:id,weight_kg',
+                'trip.returnPickups.returnRequest.orderItem.product:id,weight_kg',
+            ]);
+            $capacity = (float) ($pickup->trip?->vehicle?->capacity_kg ?? 0);
+            $onboardWeight = $this->tripOnboardWeight($pickup);
+            if ($capacity > 0 && $onboardWeight > $capacity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Return cannot be picked up yet. Deliver outbound items first to free vehicle capacity.',
+                    'data' => ['required_weight_kg' => round($onboardWeight, 2), 'vehicle_capacity_kg' => round($capacity, 2)],
+                ], 422);
+            }
+        }
+
         $wasScheduledAt = $pickup->scheduled_at;
         $from = $pickup->status;
         $pickup->fill(collect($validated)->except(['latitude', 'longitude', 'location_address', 'photo'])->all());
@@ -329,6 +348,28 @@ class ReturnPickupController extends Controller
             'message' => 'Pickup updated.',
             'data' => $pickup->fresh(['driver', 'destinationBranch', 'logs.creator']),
         ]);
+    }
+
+    private function tripOnboardWeight(ReturnPickup $currentPickup): float
+    {
+        $trip = $currentPickup->trip;
+        if (!$trip) return 0.0;
+        $weight = 0.0;
+        foreach ($trip->ecommerceDeliveries as $delivery) {
+            if (in_array(strtolower((string) $delivery->status), ['delivered', 'cancelled'], true)) continue;
+            foreach ($delivery->order?->items ?? [] as $item) $weight += (float) ($item->product?->weight_kg ?? 0) * (int) ($item->quantity ?? 0);
+        }
+        foreach ($trip->salesDeliveries as $delivery) {
+            if (in_array(strtolower((string) $delivery->status), ['delivered', 'cancelled'], true)) continue;
+            foreach ($delivery->order?->items ?? [] as $item) $weight += (float) ($item->product?->weight_kg ?? 0) * (int) ($item->quantity ?? 0);
+        }
+        foreach ($trip->returnPickups as $pickup) {
+            $isCurrent = (int) $pickup->id === (int) $currentPickup->id;
+            if (!$isCurrent && !in_array(strtolower((string) $pickup->status), ['picked_up', 'out_for_delivery'], true)) continue;
+            $weight += (float) ($pickup->returnRequest?->orderItem?->product?->weight_kg ?? 0)
+                * (int) ($pickup->returnRequest?->requested_quantity ?? 0);
+        }
+        return $weight;
     }
 
     public function updateLocation(Request $request, ReturnPickup $pickup): JsonResponse

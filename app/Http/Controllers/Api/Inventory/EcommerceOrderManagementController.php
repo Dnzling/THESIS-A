@@ -82,7 +82,7 @@ class EcommerceOrderManagementController extends Controller
                 'user:id,fname,lname,email',
                 'store',
                 'assignedBranch:id,name,branch_code,city,province',
-                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,quantity,unit_price,line_subtotal,line_tax,line_total',
+                'items:id,order_id,product_id,branch_inventory_id,product_name,sku,customization_request,customization_status,customization_response,customization_reviewed_at,quantity,unit_price,line_subtotal,line_tax,line_total',
                 'items.product:id,product_name,sku,unit_of_measurement',
                 'items.branchInventory:id,branch_id,product_id,variation_id,quantity_available,stock_status',
                 'items.branchInventory.branch:id,name,branch_code,city,province',
@@ -135,6 +135,36 @@ class EcommerceOrderManagementController extends Controller
             'success' => true,
             'message' => 'Pickup date saved.',
             'data' => $order->fresh(),
+        ]);
+    }
+
+    public function reviewCustomizationRequest(Request $request, int $id, int $itemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['approved', 'rejected'])],
+            'response' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $orderQuery = EcommerceOrder::query();
+        $this->applyStoreScope($request, $orderQuery);
+        $order = $orderQuery->findOrFail($id);
+        $item = $order->items()->whereKey($itemId)->firstOrFail();
+
+        if (!$item->customization_request) {
+            return response()->json(['success' => false, 'message' => 'This item has no customization request to review.'], 422);
+        }
+
+        $item->update([
+            'customization_status' => $validated['status'],
+            'customization_response' => trim((string) ($validated['response'] ?? '')) ?: null,
+            'customization_reviewed_by' => $request->user()?->id,
+            'customization_reviewed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Customization request ' . $validated['status'] . '.',
+            'data' => $item->fresh(),
         ]);
     }
 

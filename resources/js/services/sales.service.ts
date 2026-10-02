@@ -131,6 +131,11 @@ class SalesService {
     return res.data
   }
 
+  async reviewEcommerceCustomizationRequest(orderId: number | string, itemId: number | string, payload: { status: 'approved' | 'rejected'; response?: string }) {
+    const res = await axiosClient.put(`/api/sales/ecommerce-orders/${orderId}/items/${itemId}/customization-request`, payload)
+    return res.data
+  }
+
   async assignEcommerceOrderDelivery(id: number | string, payload: any) {
     const res = await axiosClient.post(`/api/sales/ecommerce-orders/${id}/assign-delivery`, payload)
     return res.data

@@ -41,6 +41,7 @@ Route::prefix('sales')->group(function () {
         Route::put('/{id}/status', [EcommerceOrderManagementController::class, 'updateStatus'])->middleware('can:sales.orders.manage');
         Route::put('/{id}/pickup-date', [EcommerceOrderManagementController::class, 'setPickupDate'])->middleware('can:sales.orders.manage');
         Route::put('/{id}/cancellation-requests/{requestId}/review', [EcommerceOrderManagementController::class, 'reviewCancellationRequest'])->middleware('can:sales.orders.manage');
+        Route::put('/{id}/items/{itemId}/customization-request', [EcommerceOrderManagementController::class, 'reviewCustomizationRequest'])->middleware('can:sales.orders.manage');
         Route::post('/{id}/assign-delivery', [EcommerceOrderManagementController::class, 'assignDelivery'])->middleware('can:sales.orders.manage');
         Route::put('/{id}/delivery-assignment', [EcommerceOrderManagementController::class, 'updateDeliveryAssignment'])->middleware('can:sales.orders.manage');
         Route::get('/{id}/branch-candidates', [EcommerceOrderManagementController::class, 'branchTransferCandidates'])->middleware('can:sales.orders.view');

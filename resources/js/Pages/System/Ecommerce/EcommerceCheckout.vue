@@ -105,6 +105,38 @@
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
                   <p class="mt-2 text-xs text-slate-500">{{ pickupOnly ? 'Pickup from the store' : `Delivery Fee: ₱ ${formatNumber(shippingFeePerItem, 2)} · Estimated Delivery: ${estimatedDeliveryDate}` }}</p>
+                  <div v-if="item.is_customizable" class="mt-3">
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-xl border p-3 text-left transition"
+                      :class="customizationEnabled[item.id] ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/40'"
+                      @click="toggleCustomization(item.id)"
+                    >
+                      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" :class="customizationEnabled[item.id] ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'">
+                        <i class="pi pi-palette" />
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block text-xs font-bold text-slate-800">Want to customize this product?</span>
+                        <span class="mt-0.5 block text-[11px] text-slate-500">Add your preferred color, material, size, or other request.</span>
+                      </span>
+                      <span class="flex h-5 w-5 items-center justify-center rounded-full border" :class="customizationEnabled[item.id] ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-300 bg-white'">
+                        <i v-if="customizationEnabled[item.id]" class="pi pi-check text-[10px]" />
+                      </span>
+                    </button>
+                    <div v-if="customizationEnabled[item.id]" class="mt-2 rounded-xl border border-orange-200 bg-orange-50/60 p-3">
+                      <label :for="`customization-${item.id}`" class="text-xs font-semibold text-orange-900">Tell us your customization request <span class="font-normal text-orange-700">(optional)</span></label>
+                      <Textarea
+                        :id="`customization-${item.id}`"
+                        v-model="customizationRequests[item.id]"
+                        rows="2"
+                        autoResize
+                        fluid
+                        class="mt-2"
+                        placeholder="e.g. Black fabric, walnut finish, or add name engraving"
+                      />
+                      <p class="mt-1 text-[11px] text-orange-700">The store will confirm whether your request is available.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="text-right">
@@ -534,6 +566,8 @@ const loading = ref(false)
 const checkingPaymongoResult = ref(false)
 const completedPaymongoOrderId = ref<number | null>(null)
 const checkoutItems = ref<any[]>([])
+const customizationRequests = reactive<Record<number, string>>({})
+const customizationEnabled = reactive<Record<number, boolean>>({})
 const selectedItemIds = ref<number[]>([])
 const addressDialogVisible = ref(false)
 const paymentDialogVisible = ref(false)
@@ -1009,11 +1043,21 @@ async function loadCheckoutItems() {
     ? allItems.filter((item: any) => selectedItemIds.value.includes(item.id))
     : allItems
 
+  checkoutItems.value.filter((item: any) => item.is_customizable).forEach((item: any) => {
+    if (customizationRequests[item.id] === undefined) customizationRequests[item.id] = ''
+    if (customizationEnabled[item.id] === undefined) customizationEnabled[item.id] = false
+  })
+
   if (!checkoutItems.value.length) {
     showAlert({ severity: 'warn', summary: 'Cart Empty', detail: 'Please select cart items first.' })
     router.push({ name: 'ecommerce.cart' })
   }
   await estimateShippingFee()
+}
+
+function toggleCustomization(itemId: number) {
+  customizationEnabled[itemId] = !customizationEnabled[itemId]
+  if (!customizationEnabled[itemId]) customizationRequests[itemId] = ''
 }
 
 async function applyVoucher() {
@@ -1275,6 +1319,11 @@ async function placeOrder() {
       voucher_code: appliedVoucher.value?.code,
       notes: appliedVoucher.value ? `Voucher: ${appliedVoucher.value.code}` : '',
       item_ids: checkoutItemIds.value.length ? checkoutItemIds.value : undefined,
+      customization_requests: Object.fromEntries(
+        Object.entries(customizationRequests)
+          .filter(([itemId, request]) => customizationEnabled[Number(itemId)] && Boolean(String(request || '').trim()))
+          .map(([itemId, request]) => [Number(itemId), String(request).trim()]),
+      ),
       customer_latitude: pickupOnly.value ? undefined : (customerLatitude.value ?? selectedAddress.value?.latitude ?? undefined),
       customer_longitude: pickupOnly.value ? undefined : (customerLongitude.value ?? selectedAddress.value?.longitude ?? undefined),
       bulk_trip: bulkTripEnabled.value,

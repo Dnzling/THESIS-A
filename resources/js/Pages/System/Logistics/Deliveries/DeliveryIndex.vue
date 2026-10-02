@@ -4,6 +4,10 @@
       <div>
         <h1 class="text-lg font-semibold tracking-tight text-slate-900">Logistics Delivery Orders</h1>
       </div>
+      <div class="flex items-center gap-2">
+        <Button v-if="canManageDeliveries" icon="pi pi-box" label="Delivery Trips" severity="secondary" outlined
+          @click="router.push({ name: 'logistics.trips' })" />
+      </div>
     
     </div>
   

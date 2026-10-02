@@ -202,6 +202,13 @@ class LogisticsService {
     return response.data
   }
 
+  async getTripSuggestions(id: string | number, sourceType: 'ecommerce' | 'sales' | 'return_pickup') {
+    const response = await axiosClient.get(`${this.baseUrl}/trips/${id}/suggestions`, {
+      params: { source_type: sourceType },
+    })
+    return response.data
+  }
+
   async createTrip(payload: any) {
     const response = await axiosClient.post(`${this.baseUrl}/trips`, payload)
     return response.data

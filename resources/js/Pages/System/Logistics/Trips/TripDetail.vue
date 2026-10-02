@@ -90,6 +90,8 @@
           <Select v-model="availableSource" :options="sourceOptions" optionLabel="label" optionValue="value"
             class="w-40" />
           <Button :loading="loadingAvailable" label="Load Ready Orders" outlined @click="loadAvailableOrders" />
+          <Button :loading="loadingSuggestion" :disabled="!canManage" icon="pi pi-sparkles"
+            label="Suggest Batch" severity="help" outlined @click="suggestBatch" />
           <Button :disabled="!canManage || !selectedOrderIds.length || willExceedCapacity" label="Add Selected"
             severity="success" @click="addSelected" />
           <Button icon="pi pi-print" outlined label="Export Trip PDF" @click="exportTripPdf" />
@@ -102,11 +104,20 @@
           <strong>{{ capacityRemaining.toFixed(2) }}</strong> kg
           <span v-if="willExceedCapacity" class="ml-2 font-semibold text-rose-600">Over capacity</span>
         </div>
+        <div v-if="selectedOrders.length && suggestedArea" class="mb-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+          Suggested batch: {{ selectedOrders.length }} order{{ selectedOrders.length === 1 ? '' : 's' }} for <strong>{{ suggestedArea }}</strong>,
+          selected by delivery area, distance, vehicle weight, and stop limit. Review, then click <strong>Add Selected</strong>.
+        </div>
   
         <DataTable :value="availableOrders" dataKey="id" stripedRows selectionMode="multiple"
           v-model:selection="selectedOrders" paginator :rows="availablePerPage" :totalRecords="availableTotal"
           :first="(availablePage - 1) * availablePerPage" @page="handleAvailablePage">
           <Column selectionMode="multiple" headerStyle="width: 3rem" />
+          <Column header="Stop" style="width: 5rem">
+            <template #body="{ data }">
+              <span class="font-semibold text-violet-700">{{ data.stop_sequence ? `#${data.stop_sequence}` : '-' }}</span>
+            </template>
+          </Column>
           <Column field="order_number" header="Order #" />
           <Column field="customer_name" header="Customer" />
           <Column field="delivery_address" header="Address" />
@@ -210,19 +221,22 @@ const statusOptions = [
 
 const availableOrders = ref<any[]>([])
 const loadingAvailable = ref(false)
+const loadingSuggestion = ref(false)
+const suggestedArea = ref('')
 const selectedOrders = ref<any[]>([])
-const availableSource = ref<'ecommerce' | 'sales'>('ecommerce')
+const availableSource = ref<'ecommerce' | 'sales' | 'return_pickup'>('ecommerce')
 const availablePage = ref(1)
 const availablePerPage = ref(10)
 const availableTotal = ref(0)
 const detailDialog = ref(false)
 const detailLoading = ref(false)
 const detailOrder = ref<any>(null)
-const detailSource = ref<'ecommerce' | 'sales'>('ecommerce')
+const detailSource = ref<'ecommerce' | 'sales' | 'pickup'>('ecommerce')
 
 const sourceOptions = [
   { label: 'Ecommerce', value: 'ecommerce' },
   { label: 'Sales', value: 'sales' },
+  { label: 'Return Pickup', value: 'return_pickup' },
 ]
 
 const assignedOrders = computed(() => {
@@ -236,6 +250,7 @@ const assignedOrders = computed(() => {
     status: d.status,
     weight_kg: calcWeight(d.order?.items || []),
     order_id: d.order?.id,
+    is_return: false,
   }))
   const sales = (trip.value.sales_deliveries || []).map((d: any) => ({
     id: `s-${d.id}`,
@@ -246,27 +261,87 @@ const assignedOrders = computed(() => {
     status: d.status,
     weight_kg: calcWeight(d.order?.items || []),
     order_id: d.order?.id,
+    is_return: false,
   }))
-  return [...ecommerce, ...sales]
+  const returns = (trip.value.return_pickups || []).map((p: any) => ({
+    id: `r-${p.id}`,
+    source: 'Return Pickup',
+    order_number: p.return_request?.return_number || `Return #${p.id}`,
+    customer_name: p.pickup_name,
+    address: p.pickup_address,
+    status: p.status,
+    weight_kg: Number(p.return_request?.order_item?.product?.weight_kg || 0) * Number(p.return_request?.requested_quantity || 0),
+    order_id: p.id,
+    is_return: true,
+  }))
+  return [...ecommerce, ...sales, ...returns]
 })
 
 const selectedOrderIds = computed(() => selectedOrders.value.map(o => o.order_id))
 
 const driverName = computed(() => trip.value?.driver ? `${trip.value.driver.fname} ${trip.value.driver.lname}` : '-')
 const vehicleLabel = computed(() => trip.value?.vehicle ? `${trip.value.vehicle.vehicle_name} (${trip.value.vehicle.plate_number})` : '-')
-const tripTotalWeight = computed(() => assignedOrders.value.reduce((sum, row) => sum + (Number(row.weight_kg || 0)), 0))
+const tripTotalWeight = computed(() => assignedOrders.value.reduce((sum, row) => {
+  const status = String(row.status || '').toLowerCase()
+  if (['delivered', 'cancelled'].includes(status)) return sum
+  if (row.is_return && !['picked_up', 'out_for_delivery'].includes(status)) return sum
+  return sum + Number(row.weight_kg || 0)
+}, 0))
 const vehicleCapacity = computed(() => Number(trip.value?.vehicle?.capacity_kg || 0))
+const vehicleStopLimit = computed(() => Number(trip.value?.vehicle?.max_orders_per_trip || 0))
 const selectedWeightKg = computed(() => selectedOrders.value.reduce((sum, row) => sum + Number(row.weight_kg || 0), 0))
 const capacityRemaining = computed(() => {
   if (!vehicleCapacity.value) return 0
   return Math.max(0, vehicleCapacity.value - tripTotalWeight.value)
 })
-const willExceedCapacity = computed(() => vehicleCapacity.value > 0 && (selectedWeightKg.value + tripTotalWeight.value) > vehicleCapacity.value)
+const willExceedCapacity = computed(() => vehicleCapacity.value > 0 && (availableSource.value === 'return_pickup'
+  ? selectedWeightKg.value > vehicleCapacity.value
+  : (selectedWeightKg.value + tripTotalWeight.value) > vehicleCapacity.value))
 const capacityLabel = computed(() => {
   if (!vehicleCapacity.value) return `${tripTotalWeight.value.toFixed(2)} kg / No capacity set`
   return `${tripTotalWeight.value.toFixed(2)} kg / ${vehicleCapacity.value.toFixed(2)} kg`
 })
 const capacityWarning = computed(() => vehicleCapacity.value > 0 && tripTotalWeight.value > vehicleCapacity.value)
+const batchSuggestion = computed(() => {
+  const remainingWeight = vehicleCapacity.value > 0 ? Math.max(0, vehicleCapacity.value - tripTotalWeight.value) : Number.POSITIVE_INFINITY
+  const remainingStops = vehicleStopLimit.value > 0
+    ? Math.max(0, vehicleStopLimit.value - assignedOrders.value.length)
+    : Number.POSITIVE_INFINITY
+  let weight = 0
+  const picked: any[] = []
+  for (const row of [...availableOrders.value].sort((a, b) => Number(a.distance_km || 0) - Number(b.distance_km || 0))) {
+    if (picked.length >= remainingStops) break
+    const rowWeight = Number(row.weight_kg || 0)
+    if (weight + rowWeight > remainingWeight) continue
+    picked.push(row)
+    weight += rowWeight
+  }
+  return picked
+})
+
+const suggestBatch = async () => {
+  if (!trip.value) return
+  loadingSuggestion.value = true
+  try {
+    const res = await logisticsService.getTripSuggestions(trip.value.id, availableSource.value)
+    const rows = res?.data?.orders || []
+    suggestedArea.value = res?.data?.area || ''
+    availableOrders.value = rows
+    availableTotal.value = rows.length
+    availablePage.value = 1
+    selectedOrders.value = [...rows]
+    toast.add({
+      severity: rows.length ? 'info' : 'warn',
+      summary: rows.length ? 'Batch Suggested' : 'No Eligible Batch',
+      detail: rows.length ? `${rows.length} order(s) selected for ${suggestedArea.value}.` : 'No ready orders fit the same delivery area and vehicle limits.',
+      life: 3500,
+    })
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Suggestion Failed', detail: error?.response?.data?.message || 'Failed to suggest a delivery batch.', life: 3500 })
+  } finally {
+    loadingSuggestion.value = false
+  }
+}
 
 const loadTrip = async () => {
   loading.value = true
@@ -288,6 +363,7 @@ const saveStatus = async () => {
     toast.add({ severity: 'success', summary: 'Updated', detail: 'Trip status updated.', life: 2500 })
     await loadTrip()
   } catch (error: any) {
+    statusForm.value.status = trip.value?.status || 'planned'
     toast.add({ severity: 'error', summary: 'Update Failed', detail: error?.response?.data?.message || 'Failed to update status.', life: 3000 })
   }
 }
@@ -356,7 +432,7 @@ const removeOrder = async (row: any) => {
     accept: async () => {
       try {
         await logisticsService.removeOrdersFromTrip(trip.value.id, {
-          source_type: row.source === 'Sales' ? 'sales' : 'ecommerce',
+          source_type: row.source === 'Sales' ? 'sales' : (row.source === 'Return Pickup' ? 'return_pickup' : 'ecommerce'),
           order_ids: [row.order_id],
         })
         toast.add({ severity: 'success', summary: 'Removed', detail: 'Order removed from trip.', life: 2000 })
@@ -384,9 +460,9 @@ const openOrderDetail = async (row: any) => {
   if (!row?.order_id) return
   detailDialog.value = true
   detailLoading.value = true
-  detailSource.value = availableSource.value
+  detailSource.value = availableSource.value === 'return_pickup' ? 'pickup' : availableSource.value
   try {
-    const res = await logisticsService.getDeliveryOrderDetail(availableSource.value, row.order_id)
+    const res = await logisticsService.getDeliveryOrderDetail(detailSource.value, row.order_id)
     detailOrder.value = res?.data?.order || null
   } catch (error: any) {
     detailOrder.value = null
@@ -400,7 +476,7 @@ const openAssignedOrderDetail = async (row: any) => {
   if (!row?.order_id) return
   detailDialog.value = true
   detailLoading.value = true
-  detailSource.value = row.source === 'Sales' ? 'sales' : 'ecommerce'
+  detailSource.value = row.source === 'Sales' ? 'sales' : (row.source === 'Return Pickup' ? 'pickup' : 'ecommerce')
   try {
     const res = await logisticsService.getDeliveryOrderDetail(detailSource.value, row.order_id)
     detailOrder.value = res?.data?.order || null

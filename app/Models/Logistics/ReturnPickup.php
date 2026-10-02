@@ -17,6 +17,7 @@ class ReturnPickup extends Model
     protected $fillable = [
         'store_id',
         'return_id',
+        'trip_id',
         'status',
         'scheduled_at',
         'pickup_name',
@@ -51,6 +52,11 @@ class ReturnPickup extends Model
     public function returnRequest(): BelongsTo
     {
         return $this->belongsTo(EcommerceOrderReturn::class, 'return_id');
+    }
+
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryTrip::class, 'trip_id');
     }
 
     public function driver(): BelongsTo

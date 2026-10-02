@@ -214,6 +214,7 @@ const ecommerceService = {
     voucher_code?: string
     notes?: string
     item_ids?: number[]
+    customization_requests?: Record<number, string>
   }) {
     return ecommerceClient.post('/api/ecommerce/checkout', payload)
   },

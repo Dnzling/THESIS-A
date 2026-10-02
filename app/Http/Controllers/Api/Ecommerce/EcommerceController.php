@@ -1449,6 +1449,8 @@ class EcommerceController extends Controller
             'notes' => ['nullable', 'string'],
             'item_ids' => ['nullable', 'array'],
             'item_ids.*' => ['integer', 'exists:ecommerce_cart_items,id'],
+            'customization_requests' => ['nullable', 'array'],
+            'customization_requests.*' => ['nullable', 'string', 'max:1000'],
             'voucher_code' => ['nullable', 'string', 'max:40'],
             'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
@@ -1641,7 +1643,11 @@ class EcommerceController extends Controller
             $shippingFee = round($shippingFee * (1 - $bulkDiscountRate), 2);
         }
 
-        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod) {
+        $customizationRequests = collect($validated['customization_requests'] ?? [])
+            ->mapWithKeys(fn ($request, $cartItemId) => [(int) $cartItemId => trim((string) $request)])
+            ->filter(fn ($request) => $request !== '');
+
+        $order = DB::transaction(function () use ($validated, $cart, $user, $itemsForCheckout, $shippingFee, $voucherDiscount, $appliedVoucherCode, $fulfillmentBranch, $customerLatitude, $customerLongitude, $fulfillmentMethod, $customizationRequests) {
             $subtotal = 0;
             $taxAmount = 0;
             $discountAmount = max((float) ($validated['discount_amount'] ?? 0), $voucherDiscount);
@@ -1679,7 +1685,7 @@ class EcommerceController extends Controller
             // For Online Payment methods, defer order item creation and inventory reservation until payment is confirmed.
             // This prevents "products ordered" being stored/consumed when Online Payment checkout is cancelled/expired.
             if ($isPaymongo) {
-                $snapshotItems = $itemsForCheckout->map(function ($item) {
+                $snapshotItems = $itemsForCheckout->map(function ($item) use ($customizationRequests) {
                     return [
                         'cart_item_id' => (int) $item->id,
                         'product_id' => (int) $item->product_id,
@@ -1688,6 +1694,10 @@ class EcommerceController extends Controller
                         'quantity' => (int) $item->quantity,
                         'unit_price' => (float) $item->unit_price,
                         'tax_rate' => self::VAT_RATE,
+                        'customization_request' => $item->product?->is_customizable
+                            ? ($customizationRequests->get((int) $item->id) ?: null)
+                            : null,
+                        'customization_status' => $item->product?->is_customizable && $customizationRequests->get((int) $item->id) ? 'pending' : null,
                     ];
                 })->values()->all();
 
@@ -1748,6 +1758,10 @@ class EcommerceController extends Controller
                         ? (($item->product?->product_name ?? 'Product') . ' - ' . $item->variation_name)
                         : ($item->product?->product_name ?? 'Product'),
                     'sku' => $item->variation?->variation_sku ?? $item->product?->sku,
+                    'customization_request' => $item->product?->is_customizable
+                        ? ($customizationRequests->get((int) $item->id) ?: null)
+                        : null,
+                    'customization_status' => $item->product?->is_customizable && $customizationRequests->get((int) $item->id) ? 'pending' : null,
                     'quantity' => (int) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
                     'tax_rate' => self::VAT_RATE,
@@ -2937,6 +2951,7 @@ class EcommerceController extends Controller
                 'variation_id' => $item->variation_id,
                 'variation_name' => $item->variation_name ?: $item->variation?->variation_name,
                 'variation_sku' => $item->variation?->variation_sku,
+                'is_customizable' => (bool) ($item->product?->is_customizable ?? false),
                 'image' => $item->product ? $this->selectBestProductImage($item->product)?->url : null,
                 'is_favorite' => isset($favoriteMap[$productId]),
                 'quantity' => (int) $item->quantity,
@@ -3190,6 +3205,9 @@ class EcommerceController extends Controller
                     'product_id' => $item->product_id,
                     'product_name' => $item->product_name,
                     'sku' => $item->sku,
+                    'customization_request' => $item->customization_request,
+                    'customization_status' => $item->customization_request ? ($item->customization_status ?: 'pending') : null,
+                    'customization_response' => $item->customization_response,
                     'description' => $item->product?->description,
                     'unit_of_measurement' => $item->product?->unit_of_measurement,
                     'brand' => $item->product?->brand,

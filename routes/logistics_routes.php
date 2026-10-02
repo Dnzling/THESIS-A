@@ -89,6 +89,7 @@ Route::prefix('logistics')->group(function () {
     Route::prefix('trips')->group(function () {
         Route::get('/', [DeliveryTripController::class, 'index']);
         Route::post('/', [DeliveryTripController::class, 'store']);
+        Route::get('/{id}/suggestions', [DeliveryTripController::class, 'suggestions']);
         Route::get('/{id}', [DeliveryTripController::class, 'show']);
         Route::put('/{id}/status', [DeliveryTripController::class, 'updateStatus']);
         Route::post('/{id}/orders', [DeliveryTripController::class, 'addOrders']);
