@@ -226,13 +226,18 @@
               <div class="flex items-center gap-2">
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900">Requested Products</h3>
-                  <p class="text-sm text-gray-500 mt-0.5">Line items from the requisition</p>
+                  <p class="text-sm text-gray-500 mt-0.5">Compare supplier offers for materials and supplies by default.</p>
                 </div>
               </div>
             </div>
           </template>
           <template #content>
             <div class="p-6 pt-2 space-y-4">
+              <div class="space-y-2 rounded-xl border border-blue-100 bg-blue-50 p-3">
+                <label class="text-xs font-semibold uppercase tracking-wide text-blue-800">Items to source</label>
+                <Select v-model="sourcingMode" :options="sourcingOptions" optionLabel="label" optionValue="value" class="w-full" @change="loadProductOptions" />
+                <p class="text-xs text-blue-800">{{ sourcingMode === 'finished_goods' ? 'Use finished-good RFQs for new suppliers, large purchases, or custom specifications. Routine restocking belongs in Inventory.' : 'Raw materials and supplies are the default Procurement RFQ path.' }}</p>
+              </div>
               <div v-for="(item, index) in form.items" :key="index" class="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div class="flex items-start justify-between mb-3">
                   <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Item #{{ index + 1 }}</span>
@@ -709,6 +714,29 @@ const isEditMode = computed(() => editingRfqId.value !== null)
 const splitRfqMode = ref(false)
 const splitRfqSupplierGroups = ref<number>(0)
 const products = ref<Product[]>([])
+const sourcingMode = ref<'materials' | 'finished_goods'>('materials')
+const sourcingOptions = [
+  { label: 'Raw Materials & Supplies (Recommended)', value: 'materials' },
+  { label: 'Finished Goods (Special Sourcing)', value: 'finished_goods' },
+]
+const loadProductOptions = async () => {
+  try {
+    const response = await procurementService.getProcurementProducts({
+      per_page: 1000,
+      product_types: sourcingMode.value === 'materials' ? 'raw_material,supply' : 'finished_good',
+    })
+    const rows = response?.data?.data || (Array.isArray(response?.data) ? response.data : [])
+    products.value = rows.map((product: any) => ({
+      id: product.id,
+      product_name: product.product_name || 'Unknown Product',
+      sku: product.sku || '',
+      brand: product.brand || '',
+    }))
+  } catch (error: any) {
+    products.value = []
+    toast.add({ severity: 'error', summary: 'Products Unavailable', detail: error?.response?.data?.message || 'Could not load products for RFQ.', life: 3000 })
+  }
+}
 const suppliers = ref<Supplier[]>([])
 const errors = reactive<FormErrors>({})
 const splitRfqSummary = computed(() => {
@@ -830,6 +858,10 @@ const loadRfqForEdit = async (id: number) => {
     form.qualification_requirements = rfq.qualification_requirements || ''
 
     if (Array.isArray(rfq.items) && rfq.items.length > 0) {
+      if (rfq.items.some((item: any) => item.product?.product_type === 'finished_good')) {
+        sourcingMode.value = 'finished_goods'
+        await loadProductOptions()
+      }
       form.items = rfq.items.map((item: any) => ({
         product_id: item.product_id || null,
         variation_id: item.variation_id || null,
@@ -930,6 +962,10 @@ const prefillFromRequisition = (requisition: any) => {
   }
 
   if (Array.isArray(requisition.items) && requisition.items.length > 0) {
+    if (requisition.items.some((item: any) => item.product?.product_type === 'finished_good')) {
+      sourcingMode.value = 'finished_goods'
+      void loadProductOptions()
+    }
     form.items = requisition.items.map((item: any) => ({
       product_id: item.product_id || null,
       variation_id: item.variation_id || null,
@@ -1277,25 +1313,14 @@ onMounted(async () => {
   loading.value = true
   try {
     const [productsRes, suppliersRes] = await Promise.all([
-      procurementService.getProcurementProducts({ per_page: 1000 }).catch(err => {
-        console.error('Failed to load products:', err)
-        return null
-      }),
+      loadProductOptions().then(() => true).catch(() => false),
       procurementService.getSuppliers({ per_page: 1000, active_contract_only: true }).catch(err => {
         console.error('Failed to load suppliers:', err)
         return null
       })
     ])
 
-    if (productsRes?.data) {
-      const productList = productsRes.data.data || (Array.isArray(productsRes.data) ? productsRes.data : [])
-      products.value = productList.map((product: any) => ({
-        id: product.id,
-        product_name: product.product_name || 'Unknown Product',
-        sku: product.sku || '',
-        brand: product.brand || '',
-      }))
-    } else {
+    if (!productsRes) {
       toast.add({
         severity: 'warn',
         summary: 'Warning',

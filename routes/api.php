@@ -16,8 +16,10 @@ use App\Http\Controllers\Api\Store\BranchController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\StoreDashboardController;
 use App\Http\Controllers\Api\Store\StoreModuleController;
+use App\Http\Controllers\Api\Store\SimpleStaffController;
 
 use App\Http\Controllers\Api\Hr\EmployeeController;
+use App\Http\Controllers\Api\Hr\EmployeeAvatarController;
 use App\Http\Controllers\Api\Hr\PayPeriodController;
 use App\Http\Controllers\Api\Hr\DeductionTypeController;
 use App\Http\Controllers\Api\Hr\EmployeeBenefitRequestController;
@@ -41,6 +43,7 @@ use App\Http\Controllers\Api\Core\SystemNotificationController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
+use App\Http\Controllers\Api\Merchandising\Model3dRequestController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 
@@ -96,6 +99,12 @@ Route::prefix('locations')->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->group(function () {
+    Route::get('/3d-model-requests', [Model3dRequestController::class, 'index']);
+    Route::post('/3d-model-requests', [Model3dRequestController::class, 'store']);
+    Route::get('/3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
+    Route::post('/3d-model-requests/{modelRequest}/quote', [Model3dRequestController::class, 'quote']);
+    Route::post('/3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
+    Route::post('/3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
@@ -279,6 +288,16 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
 
     // =========== HR ==============
     Route::post('/employees/invite', [EmployeeController::class, 'storeInvite'])->middleware('subscription.capacity:users');
+    Route::post('/employees/{employeeId}/avatar', [EmployeeAvatarController::class, 'store']);
+    Route::middleware('role:owner')->prefix('store/simple-staff')->group(function () {
+        Route::get('employees', [SimpleStaffController::class, 'employees']);
+        Route::get('employees/{employeeId}', [SimpleStaffController::class, 'showEmployee']);
+        Route::put('employees/{employeeId}', [SimpleStaffController::class, 'updateEmployee']);
+        Route::get('attendances', [SimpleStaffController::class, 'attendances']);
+        Route::put('attendances', [SimpleStaffController::class, 'saveAttendance']);
+        Route::get('payments', [SimpleStaffController::class, 'payments']);
+        Route::post('payments', [SimpleStaffController::class, 'savePayment']);
+    });
     Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');

@@ -2,7 +2,7 @@
   <div class="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
     <ConfirmDialog />
     <div class="flex items-center justify-between gap-3">
-      <div><h1 class="text-xl font-bold text-slate-800">New Purchase Order</h1><p class="text-sm text-slate-500">Create a direct supplier order from inventory.</p></div>
+      <div><h1 class="text-xl font-bold text-slate-800">New Purchase Order</h1><p class="text-sm text-slate-500">Direct restock for finished goods from a known supplier. No RFQ is required.</p></div>
       <Button label="Back to Purchase Orders" icon="pi pi-arrow-left" text severity="secondary" @click="router.visit('/inventory/purchase-orders')" />
     </div>
     <div v-if="error" class="rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ error }}</div>
@@ -18,8 +18,9 @@
         </div>
       </template></Card>
       <Card><template #title><div class="flex items-center justify-between"><span>Products</span><Button label="Add item" icon="pi pi-plus" size="small" outlined @click="addItem" /></div></template><template #content>
+        <div class="mb-4 max-w-sm"><label class="mb-1 block text-sm font-medium">Items to restock</label><Select v-model="itemScope" :options="itemScopeOptions" optionLabel="label" optionValue="value" class="w-full" /><small class="text-slate-500">Finished goods are shown first. Other supplier items remain available when needed.</small></div>
         <div v-if="!form.supplier_id" class="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Select a supplier to see its products.</div>
-        <div v-else-if="!filteredProducts.length" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No active products are linked to this supplier. <a href="/inventory/products/create" class="underline">Add or link a product first.</a></div>
+        <div v-else-if="!filteredProducts.length" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">No matching products are linked to this supplier. Try “All supplier items,” or <a href="/inventory/products/create" class="underline">add or link a product</a>.</div>
         <div v-for="(item, index) in form.items" :key="item.key" class="mb-3 grid items-end gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-12">
           <div class="md:col-span-4"><label class="mb-1 block text-sm font-medium">Product *</label><Select v-model="item.product_id" :options="filteredProducts" optionLabel="name" optionValue="id" filter placeholder="Choose product" class="w-full" :disabled="!form.supplier_id" @change="onProductChange(item, index)" /><small v-if="fieldError(`items.${index}.product_id`)" class="text-red-600">{{ fieldError(`items.${index}.product_id`) }}</small></div>
           <div class="md:col-span-2"><label class="mb-1 block text-sm font-medium">Variation</label><Select v-model="item.variation_id" :options="productFor(item)?.variations || []" optionLabel="name" optionValue="id" showClear placeholder="No variation" class="w-full" :disabled="!productFor(item)?.variations?.length" @change="onVariationChange(item, index)" /></div>
@@ -66,12 +67,17 @@ const quantityErrors = ref<Record<number, string>>({})
 const suppliers = ref<any[]>([])
 const branches = ref<any[]>([])
 const products = ref<any[]>([])
+const itemScope = ref<'finished_goods' | 'all'>('finished_goods')
+const itemScopeOptions = [{ label: 'Finished goods (recommended)', value: 'finished_goods' }, { label: 'All supplier items', value: 'all' }]
 let nextKey = 1
 const form = reactive({ supplier_id: null as number | null, branch_id: null as number | null, expected_delivery_date: null as Date | null, payment_terms: 'cash_on_delivery', fulfillment_method: 'supplier_delivery', notes: '', items: [] as OrderItem[] })
 const paymentTerms = [{ label: 'Cash on delivery', value: 'cash_on_delivery' }, { label: 'Net 7', value: 'net_7' }, { label: 'Net 15', value: 'net_15' }, { label: 'Net 30', value: 'net_30' }, { label: 'Net 60', value: 'net_60' }, { label: 'Advance payment', value: 'advance_payment' }]
 const fulfillmentMethods = [{ label: 'Supplier delivery', value: 'supplier_delivery' }, { label: 'Store pickup', value: 'store_pickup' }]
 const selectedSupplier = computed(() => suppliers.value.find(s => s.id === form.supplier_id))
-const filteredProducts = computed(() => products.value.filter(product => product.suppliers?.some((supplier: any) => supplier.id === form.supplier_id)))
+const filteredProducts = computed(() => products.value.filter(product =>
+  product.suppliers?.some((supplier: any) => supplier.id === form.supplier_id)
+  && (itemScope.value === 'all' || product.product_type === 'finished_good')
+))
 const taxRate = computed(() => selectedSupplier.value?.is_tax_exempt ? 0 : Number(selectedSupplier.value?.default_tax_rate ?? 12))
 const subtotal = computed(() => form.items.reduce((sum, item) => sum + Number(item.quantity_ordered || 0) * Number(item.unit_cost || 0), 0))
 const tax = computed(() => subtotal.value * taxRate.value / 100)

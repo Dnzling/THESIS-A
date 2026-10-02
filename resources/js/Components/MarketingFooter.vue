@@ -4,9 +4,7 @@
       <div class="grid gap-x-8 gap-y-10 py-12 sm:py-14 md:grid-cols-2 lg:grid-cols-12 lg:gap-x-10">
         <div class="lg:col-span-4">
           <Link href="/" class="inline-flex items-center gap-3" aria-label="FurniSync home">
-            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-orange-600 shadow-sm">
-              <span class="footer-brand text-xl leading-none">F</span>
-            </span>
+
             <span class="footer-brand text-2xl leading-none tracking-wide">FURNISYNC</span>
           </Link>
           <p class="mt-5 max-w-xs text-sm leading-6 text-white/85">

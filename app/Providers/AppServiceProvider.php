@@ -59,6 +59,8 @@ class AppServiceProvider extends ServiceProvider
         // Register Inventory Observers
         \App\Models\ProductCatalog\Product::observe(\App\Observers\ProductObserver::class);
         \App\Models\Inventory\BranchInventory::observe(\App\Observers\BranchInventoryObserver::class);
+        \App\Models\Procurement\PurchaseOrder\PurchaseOrder::observe(\App\Observers\PurchaseOrderIncomingStockObserver::class);
+        \App\Models\Procurement\PurchaseOrder\PurchaseOrderItem::observe(\App\Observers\PurchaseOrderItemIncomingStockObserver::class);
 
         // Permission checks (RBAC)
         // Treat each Gate ability as a permission atom and defer to User::hasPermissionTo().

@@ -39,7 +39,7 @@
               </div>
             </div>
             <div v-else class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              Open this form from a delivered purchase order to receive its supplies.
+              Open this form from a submitted purchase order when the goods arrive.
             </div>
           </div>
 
@@ -129,12 +129,16 @@
                         v-model="item.quantity_received"
                         :min="0" fluid
                         class="w-16 text-center"
-                        @input="calculateVariance(index)"
+                        @blur="calculateVariance(index)"
                       />
+                      <p v-if="item.quantityError" class="mt-1 text-xs text-red-600">{{ item.quantityError }}</p>
                     </td>
                     <td class="p-3 text-center font-semibold" :class="getVarianceColor(item)">
-                      {{ item.variance }}
-                      <span class="text-xs">({{ item.variance_percent }}%)</span>
+                      <template v-if="item.varianceTouched">
+                        {{ item.variance }}
+                        <span class="text-xs">({{ item.variance_percent }}%)</span>
+                      </template>
+                      <span v-else class="text-gray-400">—</span>
                     </td>
                     <td class="p-3 text-center">
                       <Select
@@ -219,11 +223,13 @@
             <Button
               label="Save as Draft"
               severity="secondary"
+              type="button"
               :loading="saving"
               @click="saveDraft = true; submitForm()"
             />
             <Button
               label="Complete Receipt"
+              type="button"
               :loading="saving"
               @click="saveDraft = false; submitForm()"
             />
@@ -240,10 +246,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
 import inventoryService from '../../../../services/inventory.service'
+import axiosClient from '@/axios'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const isInventoryFlow = window.location.pathname.startsWith('/inventory/')
 
 // Form State
 const form = reactive({
@@ -259,6 +267,7 @@ const scanningBarcode = ref(false)
 const barcodeInput = ref('')
 const selectedPO = ref<any>(null)
 const receivedItems = ref<any[]>([])
+const draftId = ref<number | null>(null)
 
 const itemStatusOptions = [
   { label: 'Complete', value: 'complete' },
@@ -269,7 +278,7 @@ const itemStatusOptions = [
 
 // Computed
 const hasDiscrepancies = computed(() => {
-  return receivedItems.value.some((item) => item.status !== 'complete' || item.variance !== 0)
+  return receivedItems.value.some((item) => item.varianceTouched && (item.status !== 'complete' || item.variance !== 0))
 })
 
 const totalOrdered = computed(() => {
@@ -277,11 +286,11 @@ const totalOrdered = computed(() => {
 })
 
 const totalReceived = computed(() => {
-  return receivedItems.value.reduce((sum, item) => sum + item.quantity_received, 0)
+  return receivedItems.value.reduce((sum, item) => sum + Number(item.confirmedQuantityReceived ?? 0), 0)
 })
 
 const totalVariance = computed(() => {
-  return totalReceived.value - totalOrdered.value
+  return receivedItems.value.reduce((sum, item) => sum + (item.varianceTouched ? item.variance : 0), 0)
 })
 
 const completionPercent = computed(() => {
@@ -291,8 +300,13 @@ const completionPercent = computed(() => {
 
 // Methods
 onMounted(async () => {
+  const draftIdFromQuery = Number(new URLSearchParams(window.location.search).get('draft_id') || 0)
+  if (isInventoryFlow && draftIdFromQuery > 0) {
+    await prefillFromDraft(draftIdFromQuery)
+    return
+  }
   // If PO ID provided in query, auto-select and prefill
-  const poIdFromQuery = Number(route.query.po_id || 0)
+  const poIdFromQuery = Number(new URLSearchParams(window.location.search).get('po_id') || route.query.po_id || 0)
   if (poIdFromQuery > 0) {
     await prefillFromPurchaseOrder(poIdFromQuery)
     if (selectedPO.value) return
@@ -309,25 +323,33 @@ const hydrateReceiptFromPO = (po: any) => {
   selectedPO.value = po
   form.branch_id = po?.branch_id ?? null
   receivedItems.value = (po?.items || []).map((item: any) => ({
+    remaining: Math.max(0, Number(item.quantity_ordered || 0) - Number(item.quantity_received || 0) - Number(item.quantity_rejected || 0)),
+    ...item,
+  })).filter((item: any) => item.remaining > 0).map((item: any) => ({
     id: item.id,
     purchase_order_item_id: item.id,
     product_id: item.product_id,
     product: item.product,
     variation_id: item.variation_id,
-    quantity_ordered: item.quantity_ordered,
-    quantity_expected: item.quantity_ordered,
-    quantity_received: item.quantity_ordered,
+    quantity_ordered: item.remaining,
+    quantity_expected: item.remaining,
+    quantity_received: isInventoryFlow ? 0 : item.remaining,
+    confirmedQuantityReceived: isInventoryFlow ? 0 : item.remaining,
     quantity_damaged: 0,
-    variance: 0,
-    variance_percent: 0,
-    status: 'complete',
+    variance: isInventoryFlow ? -item.remaining : 0,
+    variance_percent: isInventoryFlow ? -100 : 0,
+    varianceTouched: false,
+    quantityError: '',
+    status: isInventoryFlow ? 'short' : 'complete',
     remarks: ''
   }))
 }
 
 const prefillFromPurchaseOrder = async (poId: number) => {
   try {
-    const response = await procurementService.getPurchaseOrder(poId)
+    const response = isInventoryFlow
+      ? await axiosClient.get(`/api/inventory/purchase-orders/${poId}`)
+      : await procurementService.getPurchaseOrder(poId)
     const payload = response?.data ?? response
     const po = payload?.data ?? payload ?? null
     if (!po?.id) return
@@ -336,6 +358,27 @@ const prefillFromPurchaseOrder = async (poId: number) => {
     hydrateReceiptFromPO(po)
   } catch (error) {
     console.error('Failed to prefill from purchase order', error)
+  }
+}
+
+const prefillFromDraft = async (id: number) => {
+  try {
+    const response = await axiosClient.get(`/api/inventory/goods-receipts/${id}`)
+    const draft = response?.data?.data
+    if (draft?.receipt_status !== 'draft' || !draft.purchase_order_id) return
+    await prefillFromPurchaseOrder(Number(draft.purchase_order_id))
+    if (!selectedPO.value) return
+    draftId.value = id
+    form.notes = draft.quality_notes || ''
+    for (const item of receivedItems.value) {
+      const saved = draft.items?.find((entry: any) => Number(entry.purchase_order_item_id) === Number(item.purchase_order_item_id))
+      if (saved) {
+        item.quantity_received = Number(saved.quantity_received || 0)
+        calculateVariance(receivedItems.value.indexOf(item))
+      }
+    }
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Draft unavailable', detail: 'Unable to load this draft receipt.', life: 3000 })
   }
 }
 
@@ -395,12 +438,15 @@ const addByBarcode = async () => {
           quantity_ordered: matchedItem.quantity_ordered,
           quantity_expected: matchedItem.quantity_ordered,
           quantity_received: 1, // Start with 1 for barcode scans
+          confirmedQuantityReceived: 1,
           quantity_damaged: 0,
           variance: 1 - matchedItem.quantity_ordered,
           variance_percent: Math.round(
             ((1 - matchedItem.quantity_ordered) / matchedItem.quantity_ordered) * 100
           ),
-          status: 'complete',
+          varianceTouched: false,
+          quantityError: '',
+          status: 'short',
           remarks: ''
         })
         toast.add({
@@ -434,10 +480,21 @@ const addByBarcode = async () => {
 
   const calculateVariance = (index: number) => {
     const item = receivedItems.value[index]
-    item.variance = item.quantity_received - item.quantity_ordered
+    if (!item) return
+    const received = Number(item.quantity_received ?? 0)
+    item.varianceTouched = true
+    item.quantityError = !Number.isInteger(received) || received < 0
+      ? 'Enter a valid quantity.'
+      : received > item.quantity_ordered
+        ? 'Received quantity cannot exceed the outstanding quantity.'
+        : ''
+    if (item.quantityError) return
+    item.confirmedQuantityReceived = received
+    item.variance = received - item.quantity_ordered
     item.variance_percent = item.quantity_ordered > 0
       ? Math.round((item.variance / item.quantity_ordered) * 100)
       : 0
+    if (item.status === 'short' || item.status === 'complete') item.status = item.variance === 0 ? 'complete' : 'short'
   }
 
 
@@ -462,9 +519,14 @@ const addByBarcode = async () => {
   }
 
 const submitForm = async () => {
+  receivedItems.value.forEach((_, index) => calculateVariance(index))
+  if (receivedItems.value.some((item) => item.quantityError)) {
+    toast.add({ severity: 'error', summary: 'Invalid Quantity', detail: 'Correct the received quantities before continuing.', life: 3000 })
+    return
+  }
   // Validation
   if (!form.purchase_order_id) {
-    toast.add({ severity: 'error', summary: 'Purchase Order Required', detail: 'Open this form from a delivered purchase order.', life: 3000 })
+    toast.add({ severity: 'error', summary: 'Purchase Order Required', detail: 'Open this form from a submitted purchase order.', life: 3000 })
     return
   }
 
@@ -492,7 +554,16 @@ const submitForm = async () => {
         status: saveDraft.value ? 'draft' : 'completed'
       }
 
-    await procurementService.createGoodsReceipt(payload as any)
+    if (isInventoryFlow && draftId.value) {
+      await axiosClient.put(`/api/inventory/goods-receipts/${draftId.value}`, payload)
+      if (!saveDraft.value) {
+        await axiosClient.post(`/api/inventory/goods-receipts/${draftId.value}/verify`)
+      }
+    } else if (isInventoryFlow) {
+      await axiosClient.post('/api/inventory/goods-receipts', payload)
+    } else {
+      await procurementService.createGoodsReceipt(payload as any)
+    }
 
     toast.add({
       severity: 'success',

@@ -25,10 +25,10 @@
           </button>
           <div>
             <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">
-              {{ isEditMode ? 'Edit Product' : 'Create Product' }}
+              Configure Product
             </h1>
             <p class="text-sm text-gray-500 mt-1">
-              {{ isEditMode ? 'Update product information' : 'Add a new product to your catalog' }}
+              Configure storefront presentation for an existing inventory product.
             </p>
           </div>
         </div>
@@ -44,12 +44,18 @@
           <div class="p-6 space-y-10">
             <!-- Product Information -->
             <section class="space-y-6">
+              <div class="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                <p class="font-semibold">Inventory product: {{ form.product_name || 'Loading...' }}</p>
+                <p class="mt-1">SKU {{ form.sku || '—' }} · {{ formatCurrencyPHP(form.base_price || 0) }} · {{ form.brand || 'No brand' }}</p>
+                <p class="mt-2 text-xs">Name, category, supplier, pricing, dimensions, and stock are managed in Inventory.</p>
+                <Button type="button" label="Edit Inventory Details" icon="pi pi-external-link" text size="small" class="mt-2" @click="router.push({ name: 'inventory.products.edit', params: { id: route.params.id } })" />
+              </div>
               <div class="pb-4 border-b border-gray-100">
-                <h2 class="text-xl font-semibold text-gray-900">Product Information</h2>
-                <p class="text-sm text-gray-500 mt-1">Basic details about your product</p>
+                <h2 class="text-xl font-semibold text-gray-900">Storefront Presentation</h2>
+                <p class="text-sm text-gray-500 mt-1">Customer-facing details for this inventory product</p>
               </div>
               <!-- Product Name -->
-              <div class="space-y-2">
+              <div v-if="showInventoryFields" class="space-y-2">
                 <label class="text-sm font-medium text-gray-700">
                   Product Name <span class="text-red-500">*</span>
                 </label>
@@ -60,7 +66,7 @@
               </div>
   
               <!-- SKU -->
-              <div class="space-y-2">
+              <div v-if="showInventoryFields" class="space-y-2">
                 <label class="text-sm font-medium text-gray-700">
                   SKU
                 </label>
@@ -76,7 +82,7 @@
               </div>
   
               <!-- Category, Subcategory & Unit -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div v-if="showInventoryFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">
                     Category <span class="text-red-500">*</span>
@@ -100,7 +106,7 @@
               </div>
   
               <!-- Brand & Collection -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div v-if="showInventoryFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-2">
                   <label class="text-sm font-medium text-gray-700">Brand</label>
                   <InputText v-model="form.brand" placeholder="e.g., IKEA, Ashley Furniture"
@@ -113,8 +119,10 @@
                 </div>
               </div>
 
+              <div class="space-y-2"><label class="text-sm font-medium text-gray-700">Collection Name</label><InputText v-model="form.collection_name" placeholder="e.g., Living Room Collection" fluid /></div>
+
               <!-- Store Tags -->
-              <div class="space-y-2">
+              <div v-if="showInventoryFields" class="space-y-2">
                 <div class="flex items-center justify-between">
                   <label class="text-sm font-medium text-gray-700">Tags</label>
                   <small class="text-xs text-gray-500">{{ form.tag_ids.length }}/3 selected</small>
@@ -146,7 +154,7 @@
               </div>
   
               <!-- Dimensions -->
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div v-if="showInventoryFields" class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-gray-500">Length (cm)</label>
                   <InputNumber v-model="form.length_cm" :minFractionDigits="2" suffix=" cm" :min="0"
@@ -183,7 +191,7 @@
                   <Checkbox v-model="form.is_bestseller" inputId="bestseller" :binary="true" />
                   <label for="bestseller" class="text-sm text-gray-700 cursor-pointer">Bestseller</label>
                 </div>
-                <div class="flex items-center gap-2">
+                <div v-if="showInventoryFields" class="flex items-center gap-2">
                   <Checkbox v-model="form.assembly_required" inputId="assembly" :binary="true" />
                   <label for="assembly" class="text-sm text-gray-700 cursor-pointer">Assembly Required</label>
                 </div>
@@ -191,7 +199,7 @@
                   <Checkbox v-model="form.is_customizable" inputId="customizable" :binary="true" />
                   <label for="customizable" class="text-sm text-gray-700 cursor-pointer">Customization Available</label>
                 </div>
-                <div class="flex items-center gap-2">
+                <div v-if="showInventoryFields" class="flex items-center gap-2">
                   <Checkbox v-model="form.is_active" inputId="active" :binary="true" />
                   <label for="active" class="text-sm text-gray-700 cursor-pointer">Active</label>
                 </div>
@@ -199,7 +207,7 @@
             </section>
   
             <!-- Pricing -->
-            <section class="space-y-6">
+            <section v-if="showInventoryFields" class="space-y-6">
               <div class="pb-4 border-b border-gray-100">
                 <h2 class="text-xl font-semibold text-gray-900">Pricing</h2>
                 <p class="text-sm text-gray-500 mt-1">Set the selling price and optional discount</p>
@@ -418,11 +426,9 @@
               <div class="flex items-center justify-between gap-3 pb-4 border-b border-gray-100">
                 <div>
                   <h2 class="text-xl font-semibold text-gray-900">Variations</h2>
-                  <p class="text-sm text-gray-500 mt-1">Manage the product options shown in inventory and ecommerce</p>
+                  <p class="text-sm text-gray-500 mt-1">Variants are defined in Inventory and shown here for storefront preview.</p>
                 </div>
-                <Button v-if="isEditMode" type="button" icon="pi pi-plus"
-                  :label="variations.length ? 'Add Another Variant' : 'Add Variant'"
-                  :loading="initializingVariant" @click="addVariant" />
+                <Button v-if="authStore.hasPermission('inventory.product.manage')" type="button" icon="pi pi-external-link" label="Manage in Inventory" outlined @click="router.push({ name: 'inventory.product-variations' })" />
               </div>
               <Message v-if="!isEditMode" severity="info" :closable="false">
                 Save the parent product first, then add variants while editing it.
@@ -462,14 +468,6 @@
                     <template #body="{ data }">
                       <Tag :value="data.is_active ? 'Active' : 'Inactive'"
                         :severity="data.is_active ? 'success' : 'secondary'" />
-                    </template>
-                  </Column>
-                  <Column header="Actions" style="width: 140px">
-                    <template #body="{ data }">
-                      <div class="flex items-center gap-1">
-                        <Button icon="pi pi-pencil" text rounded severity="warning"
-                          @click="openEditVariationDialog(data)" />
-                      </div>
                     </template>
                   </Column>
                 </DataTable>
@@ -620,7 +618,7 @@
                   </div>
                 </div>
                 <div class="mt-6 border-t border-gray-200 px-4 pt-4">
-                  <Button type="submit" :label="isEditMode ? 'Update Product' : 'Create Product'" :loading="submitting" fluid />
+                  <Button type="submit" label="Save Presentation" :loading="submitting" fluid />
                 </div>
               </div>
   
@@ -755,6 +753,8 @@ const goToUpgrade = () => {
 }
 
 const isEditMode = computed(() => !!route.params.id)
+// Core product fields are edited only in Inventory; this form configures presentation.
+const showInventoryFields = false
 const isRawMaterialType = computed(() => form.value.product_type === 'raw_material')
 const submitting = ref(false)
 const loadingData = ref(false)
@@ -1849,17 +1849,6 @@ const saveVariation = async () => {
 const validateForm = () => {
   errors.value = {}
 
-  if (!form.value.product_name) errors.value.product_name = 'Product name is required'
-  if (isEditMode.value && !form.value.sku) errors.value.sku = 'SKU is required'
-  if (!form.value.category_id) errors.value.category_id = 'Category is required'
-  if (form.value.base_price != null && form.value.base_price < 0) {
-    errors.value.base_price = 'Selling price must be 0 or greater'
-  }
-
-  if (form.value.cost_price != null && form.value.cost_price < 0) {
-    errors.value.cost_price = 'Cost price must be 0 or greater'
-  }
-
   if (isRawMaterialType.value) {
     form.value.discounted_price = null
     form.value.is_featured = false
@@ -1871,6 +1860,10 @@ const validateForm = () => {
 }
 
 const handleSubmit = async () => {
+  if (!isEditMode.value) {
+    router.push({ name: 'inventory.products.create' })
+    return
+  }
   if (!validateForm()) {
     toast.add({
       severity: 'warn',
@@ -1888,29 +1881,12 @@ const handleSubmit = async () => {
 
     // Prepare data for submission - convert Date back to ISO string
     const submitData = {
-      product_name: form.value.product_name,
-      sku: isEditMode.value ? form.value.sku : null,
-      category_id: form.value.category_id,
-      unit_id: resolveUnitId(form.value.unit_code),
-      unit_of_measurement: form.value.unit_code,
-      product_type: 'finished_good',
-      brand: form.value.brand,
       collection_name: form.value.collection_name,
-      stock_status: form.value.stock_status,
       description: form.value.description,
-      base_price: form.value.base_price,
-      cost_price: form.value.cost_price,
-      discounted_price: isRawMaterialType.value ? null : form.value.discounted_price,
-      length_cm: form.value.length_cm,
-      width_cm: form.value.width_cm,
-      height_cm: form.value.height_cm,
-      weight_kg: form.value.weight_kg,
-      assembly_required: form.value.assembly_required,
       is_customizable: form.value.is_customizable,
       is_featured: form.value.is_featured,
       is_new_arrival: form.value.is_new_arrival,
       is_bestseller: form.value.is_bestseller,
-      is_active: form.value.is_active,
       meta_title: form.value.meta_title,
       meta_description: form.value.meta_description,
       meta_keywords: form.value.meta_keywords,
@@ -1918,31 +1894,12 @@ const handleSubmit = async () => {
       published_at: form.value.published_at instanceof Date
         ? form.value.published_at.toISOString()
         : form.value.published_at,
-      price_change_reason: form.value.price_change_reason
     }
 
     // Create or update product
-    if (isEditMode.value) {
-      const response = await merchandisingService.updateProduct(Number(route.params.id), submitData)
-      productId = Number(route.params.id)
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: response?.message || 'Product updated successfully',
-        life: 3000
-      })
-    } else {
-      const response = await merchandisingService.createProduct(submitData)
-      productId = response.data?.id || response.data?.data?.id
-      toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'Product created successfully',
-        life: 3000
-      })
-    }
-
-    await merchandisingService.assignTagsToProduct(productId, form.value.tag_ids.slice(0, 3))
+    const response = await merchandisingService.updateProduct(Number(route.params.id), submitData)
+    productId = Number(route.params.id)
+    toast.add({ severity: 'success', summary: 'Success', detail: response?.message || 'Presentation updated successfully', life: 3000 })
 
     // Upload 3D model if present
     if (canManage3d.value && form.value.modelFile) {

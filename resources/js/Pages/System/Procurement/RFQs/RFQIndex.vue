@@ -4,6 +4,7 @@
     <div class="mb-6 flex justify-between items-center">
       <div>
         <h1 class="text-lg font-bold text-gray-800">Request for Quotations</h1>
+        <p class="mt-1 text-sm text-gray-500">Compare suppliers for raw materials and supplies; source finished goods here only when competitive quotes are needed.</p>
       </div>
       <Button v-if="canManageRfq" label="Create RFQ" icon="pi pi-plus"
         @click="router.push({ name: 'procurement.rfqs.create' })" size="small" />

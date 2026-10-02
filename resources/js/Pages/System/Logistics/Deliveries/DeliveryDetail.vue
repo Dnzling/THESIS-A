@@ -44,7 +44,7 @@
         <Button
           v-if="canAssignDelivery"
           icon="pi pi-send"
-          label="Assign Delivery"
+          label="Add to Trip"
           severity="warn"
           size="small"
           @click="openAssign"
@@ -181,6 +181,16 @@
                   class="col-span-2"
                 />
               </div>
+
+              <Button
+                v-if="delivery.trip_id"
+                :label="`View Trip #${delivery.trip_id}`"
+                icon="pi pi-external-link"
+                severity="secondary"
+                outlined
+                size="small"
+                @click="router.push({ name: 'logistics.trips.detail', params: { id: delivery.trip_id } })"
+              />
 
               <div
                 v-if="delivery.assistants?.length"
@@ -967,7 +977,7 @@ const openMedia = (url: string) => {
 
 const openAssign = () =>
   router.push({
-    name: 'logistics.deliveries.create',
+    name: 'logistics.trips.create',
     query: {
       source: source.value,
       order_id: String(orderId.value),

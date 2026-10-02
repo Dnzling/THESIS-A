@@ -16,6 +16,7 @@
         </div>
       </div>
       <div class="flex gap-2">
+        <Button label="Request 3D Model" icon="pi pi-box" size="small" outlined @click="router.push({ name: 'merchandising.3d-requests', query: { product_id: String(productId) } })" />
         <Button 
           v-if="primary3DModel"
           label="Preview 3D"
@@ -25,7 +26,7 @@
           @click="openView3DModal" 
         />
         <Button 
-          label="Edit Product"
+          label="Configure Presentation"
           icon="pi pi-pencil" 
           severity="warn"
           size="small"

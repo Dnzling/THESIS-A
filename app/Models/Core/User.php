@@ -47,7 +47,8 @@ class User extends Authenticatable
         'registered_by',
         'deleted_by',
         'store_id',
-        'branch_id'
+        'branch_id',
+        'avatar_path',
     ];
 
     protected $hidden = [
@@ -59,7 +60,13 @@ class User extends Authenticatable
     protected $appends = [
         'full_name',
         'role_name',
+        'avatar_url',
     ];
+
+    public function getAvatarUrlAttribute(): ?string
+    {
+        return $this->avatar_path ? asset('storage/' . ltrim($this->avatar_path, '/')) : null;
+    }
 
     protected function casts(): array
     {

@@ -29,7 +29,7 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <Button label="Change Role & Salary" icon="pi pi-id-card" @click="openEditDialog" />
-          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Resign" severity="warn" outlined @click="showResignationDialog = true" />
+          <Button v-if="!employeeInfo.employment_details?.resignation_date" label="Offboard" severity="warn" outlined @click="showResignationDialog = true" />
           <!-- <Button label="Edit" icon="pi pi-pencil" severity="info" outlined @click="openEditDialog" /> -->
           <!-- <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportData" /> -->
         </div>
@@ -39,8 +39,11 @@
       <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
         <div class="flex flex-wrap items-start gap-6">
           <div class="relative">
-            <Avatar :label="getInitials(employeeInfo.basic_info?.name)" size="xlarge"
-              class="bg-blue-100 text-blue-600 text-2xl font-semibold" />
+            <img v-if="employeeInfo.basic_info?.avatar_url" :src="employeeInfo.basic_info.avatar_url" :alt="`${employeeInfo.basic_info?.name} photo`" class="h-20 w-20 rounded-full border border-slate-200 object-cover" />
+            <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-2xl font-semibold text-blue-600">{{ getInitials(employeeInfo.basic_info?.name) }}</div>
+            <label class="absolute -bottom-1 -left-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload employee photo">
+              <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadEmployeePhoto" />
+            </label>
             <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500"></div>
           </div>
 
@@ -770,6 +773,25 @@ const detectMatchingShift = (start?: string, end?: string) => {
 }
 
 // API Functions
+const uploadingPhoto = ref(false)
+const uploadEmployeePhoto = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('avatar', file)
+  uploadingPhoto.value = true
+  try {
+    const response = await hrService.api.post(`/api/employees/${employeeId}/avatar`, body)
+    employeeInfo.value.basic_info.avatar_url = response.data.data.avatar_url
+    toast.add({ severity: 'success', summary: 'Employee photo updated', life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Photo upload failed', detail: err.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally {
+    uploadingPhoto.value = false
+    input.value = ''
+  }
+}
 const fetchEmployeeData = async () => {
   loading.value = true
   error.value = ''

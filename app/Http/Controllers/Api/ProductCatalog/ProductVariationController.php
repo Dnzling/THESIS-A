@@ -109,6 +109,10 @@ class ProductVariationController extends BaseController
             $variations = $query->orderBy('created_at', 'desc')
                                ->paginate($request->get('per_page', 15));
 
+            $variations->getCollection()->each(function (ProductVariation $variation) {
+                $variation->setAttribute('final_price', $variation->final_price);
+            });
+
             return $this->successResponse($variations, 'Variations retrieved successfully');
 
         } catch (\Exception $e) {

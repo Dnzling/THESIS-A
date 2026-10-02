@@ -8,14 +8,7 @@
           <p class="text-sm text-gray-500 mt-1">Perform physical count or stock correction</p>
         </div>
       </div>
-      <Button
-        label="Create Product"
-        icon="pi pi-plus"
-        severity="warn"
-        size="small"
-        class="text-sm"
-        @click="router.push({ name: 'inventory.products.create' })"
-      />
+
     </div>
   
     <Card>
@@ -746,7 +739,9 @@ const saveAdjustment = async () => {
     toast.add({
       severity: 'success',
       summary: 'Adjustment Created',
-      detail: `Adjustment #${adjustmentId} submitted for approval`,
+      detail: response?.data?.status === 'applied'
+        ? `Adjustment #${adjustmentId} approved and applied to stock.`
+        : `Adjustment #${adjustmentId} submitted for approval.`,
       life: 3000
     })
 
@@ -773,6 +768,7 @@ const saveAdjustment = async () => {
         detail: error.response?.data?.message || 'Failed to save adjustment',
         life: 5000
       })
+      if (error.response?.status === 422) await loadInventoryItems()
     }
   } finally {
     submitting.value = false

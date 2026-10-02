@@ -632,6 +632,14 @@ class UnifiedDeliveryController extends Controller
         ]);
     }
 
+    public function assignmentMovedToTrips(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Assign deliveries through Trip Batching. Create a single-stop trip for one-off deliveries.',
+        ], 422);
+    }
+
     public function assign(Request $request): JsonResponse
     {
         $validated = $request->validate([

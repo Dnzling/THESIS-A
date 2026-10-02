@@ -278,6 +278,10 @@ class EmployeeController extends Controller
             // Get the user's store_id
             $storeId = $user->store_id;
 
+            $simpleStaff = $markEmailVerified
+                && $request->boolean('simple_staff')
+                && strtolower((string) ($user->role?->name ?? '')) === 'owner';
+
             if (!$storeId) {
                 return response()->json([
                     'success' => false,
@@ -292,7 +296,11 @@ class EmployeeController extends Controller
                 'fname' => 'required|string|max:100',
                 'lname' => 'required|string|max:100',
                 'email' => 'required|email|unique:users,email',
-                'role_id' => 'required|exists:roles,id',
+                'role_id' => ['required', Rule::exists('roles', 'id')->where(function ($query) use ($storeId) {
+                    $query->where(function ($scoped) use ($storeId) {
+                        $scoped->whereNull('store_id')->orWhere('store_id', $storeId);
+                    });
+                })],
                 'date_of_birth' => 'nullable|date',
                 'gender' => 'nullable|in:male,female,other',
                 'hire_date' => 'required|date',
@@ -300,7 +308,7 @@ class EmployeeController extends Controller
                 'department' => 'nullable|string|max:255',
                 'employment_type' => 'required|in:full_time,part_time,contract,intern',
                 'pay_type' => 'nullable|in:monthly,hourly,hybrid',
-                'salary' => 'required|numeric|min:0',
+                'salary' => $simpleStaff ? 'nullable|numeric|min:0' : 'required|numeric|min:0',
                 'status' => 'required|in:active,on_leave,suspended,terminated'
             ]);
 
@@ -344,8 +352,8 @@ class EmployeeController extends Controller
                 'department' => $validated['department'] ?? null,
                 'employment_type' => $validated['employment_type'],
                 'pay_type' => $validated['pay_type'] ?? 'monthly',
-                'hourly_rate' => ($validated['pay_type'] ?? 'monthly') === 'hourly' ? $validated['salary'] : null,
-                'salary' => $validated['salary'],
+                'hourly_rate' => !$simpleStaff && ($validated['pay_type'] ?? 'monthly') === 'hourly' ? $validated['salary'] : null,
+                'salary' => $validated['salary'] ?? null,
                 'status' => $validated['status']
             ]);
 
@@ -816,7 +824,7 @@ class EmployeeController extends Controller
             'contract_path',
         ])
             ->with([
-                'user:id,fname,lname,email,birthday,phone_number,role_id,branch_id',
+                'user:id,fname,lname,email,birthday,phone_number,role_id,branch_id,avatar_path',
                 'branch:id,name',
                 'role:id,name,display_name'
             ])
@@ -1386,6 +1394,7 @@ class EmployeeController extends Controller
         return [
             'id' => $employee->id,
             'employee_number' => $employee->employee_number,
+            'avatar_url' => $employee->user?->avatar_url,
             'name' => $employee->fname . ' ' . $employee->lname,
             'first_name' => $employee->fname,
             'last_name' => $employee->lname,

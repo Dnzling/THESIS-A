@@ -96,5 +96,15 @@ class PurchaseOrderItem extends Model
     {
         $this->increment('quantity_received', $received);
         $this->increment('quantity_rejected', $rejected);
+
+        $order = $this->purchaseOrder;
+        if ($order) {
+            app(\App\Services\Inventory\IncomingPurchaseOrderStockService::class)->syncItem(
+                (int) $order->store_id,
+                (int) $order->branch_id,
+                (int) $this->product_id,
+                $this->variation_id
+            );
+        }
     }
 }

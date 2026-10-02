@@ -340,7 +340,7 @@
         </template>
       </Card>
 
-      <Card v-else-if="!proposalId" class="h-fit border border-amber-200 bg-amber-50 shadow-sm">
+      <!-- <Card v-else-if="!proposalId" class="h-fit border border-amber-200 bg-amber-50 shadow-sm">
         <template #content>
           <div class="flex items-start gap-3">
             <i class="pi pi-lock mt-1 text-orange-600"></i>
@@ -354,7 +354,7 @@
             </div>
           </div>
         </template>
-      </Card>
+      </Card> -->
 
       <!-- Variant Photo Card -->
       <Card class="h-fit border border-slate-200 shadow-sm">

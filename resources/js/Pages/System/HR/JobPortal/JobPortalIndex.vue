@@ -46,11 +46,14 @@
           <template #content>
             <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
               <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                  <img v-if="posting.company_logo_url" :src="posting.company_logo_url" :alt="`${storeLabel(posting)} logo`" class="h-12 w-12 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1" />
+                  <div v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="pi pi-building text-lg" /></div>
+                  <span class="text-sm font-semibold text-slate-700">{{ storeLabel(posting) }}</span>
+                </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <Tag :value="posting.status || 'Open'" :severity="posting.status === 'Open' ? 'success' : 'warn'" />
                   <Tag :value="employmentTypeLabel(posting.employment_type)" severity="warn" />
-                  <span class="text-xs font-semibold uppercase tracking-wide text-surface-500">{{ storeLabel(posting)
-                    }}</span>
                 </div>
                 <div class="space-y-1">
                   <h3 class="text-2xl font-semibold text-slate-900">{{ roleLabel(posting) }}</h3>

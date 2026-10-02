@@ -105,6 +105,14 @@ class Store extends Model
         return $this->hasMany(Branch::class, 'store_id', 'id');
     }
 
+    public function logoBranch(): HasOne
+    {
+        return $this->hasOne(Branch::class, 'store_id', 'id')
+            ->whereNotNull('logo_path')
+            ->orderByDesc('is_main_branch')
+            ->orderBy('id');
+    }
+
     public function products()
     {
         return $this->hasMany(Product::class, 'store_id', 'id');

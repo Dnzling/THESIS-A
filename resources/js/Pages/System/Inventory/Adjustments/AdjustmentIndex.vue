@@ -55,7 +55,7 @@
           </Column>
           <Column header="Branch" style="min-width: 140px"><template #body="{ data }">{{ data.branch?.name || '—' }}</template></Column>
           <Column header="Type" style="min-width: 130px"><template #body="{ data }">{{ label(data.type) }}</template></Column>
-          <Column header="Reason" style="min-width: 190px"><template #body="{ data }"><span class="block max-w-xs truncate" :title="data.reason">{{ data.reason || '—' }}</span></template></Column>
+          <Column header="Reason" style="min-width: 190px"><template #body="{ data }"><span class="block max-w-xs truncate" :title="formatReason(data.reason)">{{ formatReason(data.reason) }}</span></template></Column>
           <Column header="Items" style="width: 80px"><template #body="{ data }">{{ data.items_count ?? 0 }}</template></Column>
           <Column field="status" header="Status" sortable style="min-width: 130px"><template #body="{ data }"><Tag :value="label(data.status)" :severity="statusSeverity(data.status)" /></template></Column>
           <Column header="Actions" style="width: 75px">
@@ -105,6 +105,10 @@ const createAdjustmentItems = [
 ]
 
 function label(value?: string | null) { return value ? value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : '—' }
+function formatReason(value?: string | null) {
+  const reasons: Record<string, string> = { physical_count: 'Physical Count Correction', damaged: 'Damaged Goods', expired: 'Expired Items', theft: 'Theft/Loss', wrong_delivery: 'Wrong Delivery', quality_control: 'Quality Control', sample: 'Sample/Demo Usage', other: 'Other' }
+  return value ? reasons[value] || label(value) : '—'
+}
 function statusSeverity(value: string) { return value === 'applied' || value === 'approved' ? 'success' : value === 'pending_approval' ? 'warn' : value === 'rejected' || value === 'cancelled' ? 'danger' : 'secondary' }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' }
 function formatTime(value?: string | null) { return value ? new Date(value).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '' }

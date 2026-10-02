@@ -318,6 +318,16 @@ class AddMissingNavigationItemsSeeder extends Seeder
         // ========== STORE OWNER BRANCHES ==========
         $storeOwnerItems = [
             [
+                'name' => 'store.employees',
+                'display_name' => 'Employees',
+                'module' => 'store',
+                'section' => 'settings',
+                'route_name' => 'store.employees',
+                'route_path' => '/store/employees',
+                'icon' => 'pi pi-users',
+                'display_order' => 19,
+            ],
+            [
                 'name' => 'store.branches',
                 'display_name' => 'Branches',
                 'module' => 'store',

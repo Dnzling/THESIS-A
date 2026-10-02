@@ -13,7 +13,10 @@
           <template #content>
             <div class="space-y-6">
               <div class="flex flex-wrap items-start justify-between gap-4">
-                <div class="space-y-3">
+                <div class="flex items-start gap-3">
+                  <img v-if="posting?.company_logo_url" :src="posting.company_logo_url" :alt="`${posting.store?.name || 'Company'} logo`" class="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1" />
+                  <div v-else class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="pi pi-building text-xl" /></div>
+                  <div class="space-y-3">
                   <div class="flex flex-wrap items-center gap-2">
                     <Tag :value="posting?.status || 'N/A'" :severity="statusSeverity(posting?.status)" />
                     <Tag v-if="posting?.role?.display_name || posting?.role?.name" :value="posting?.role?.display_name || posting?.role?.name" />
@@ -23,6 +26,7 @@
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Job Posting Overview</p>
                     <h1 class="text-3xl font-semibold tracking-tight text-slate-900">{{ posting?.title }}</h1>
                     <p class="mt-1 text-sm text-slate-500">{{ posting?.department }}</p>
+                  </div>
                   </div>
                 </div>
                 <div class="rounded-3xl bg-blue-50/80 p-5">

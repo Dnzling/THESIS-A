@@ -29,6 +29,9 @@
     </div>
 
     <template v-else-if="detail">
+      <div v-if="detail.status === 'pending_approval'" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        This adjustment is awaiting approval. Stock quantities have not changed yet.
+      </div>
       <div class="grid gap-4 md:grid-cols-3">
         <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-gray-500">Reference</span><span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100"><i class="pi pi-file text-blue-600"></i></span></div>
@@ -40,10 +43,10 @@
           <p class="text-xl font-semibold text-gray-900">{{ formatDate(detail.adjustment_date) }}</p>
           <p class="mt-2 text-xs text-gray-500">{{ label(detail.type) }}</p>
         </div>
-        <div class="rounded-2xl bg-gradient-to-br from-orange-600 to-orange-700 p-5 text-white shadow-lg">
-          <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-orange-100">Value Difference</span><span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/15"><i class="pi pi-chart-line"></i></span></div>
+        <div class="rounded-2xl bg-gradient-to-br p-5 text-white shadow-lg" :class="totalValueDifference < 0 ? 'from-red-600 to-red-700' : totalValueDifference > 0 ? 'from-emerald-600 to-emerald-700' : 'from-slate-600 to-slate-700'">
+          <div class="mb-3 flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-white/80">Value Difference</span><span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/15"><i class="pi pi-chart-line"></i></span></div>
           <p class="text-2xl font-bold">{{ signedMoney(totalValueDifference) }}</p>
-          <p class="mt-2 text-xs text-orange-100">Across {{ detail.items?.length || 0 }} items</p>
+          <p class="mt-2 text-xs text-white/80">Across {{ detail.items?.length || 0 }} {{ (detail.items?.length || 0) === 1 ? 'item' : 'items' }}</p>
         </div>
       </div>
 
@@ -53,7 +56,8 @@
           <dl class="grid gap-4 text-sm sm:grid-cols-2">
             <div><dt class="mb-1 text-xs text-gray-500">Branch</dt><dd class="font-medium text-gray-900">{{ detail.branch?.name || '—' }}</dd></div>
             <div><dt class="mb-1 text-xs text-gray-500">Type</dt><dd class="font-medium text-gray-900">{{ label(detail.type) }}</dd></div>
-            <div class="sm:col-span-2"><dt class="mb-1 text-xs text-gray-500">Reason</dt><dd class="whitespace-pre-wrap font-medium text-gray-900">{{ detail.reason || '—' }}</dd></div>
+            <div><dt class="mb-1 text-xs text-gray-500">Status</dt><dd><Tag :value="label(detail.status)" :severity="statusSeverity(detail.status)" /></dd></div>
+            <div class="sm:col-span-2"><dt class="mb-1 text-xs text-gray-500">Reason</dt><dd class="whitespace-pre-wrap font-medium text-gray-900">{{ formatReason(detail.reason) }}</dd></div>
           </dl>
         </section>
         <section class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
@@ -61,8 +65,8 @@
           <dl class="grid gap-4 text-sm sm:grid-cols-2">
             <div><dt class="mb-1 text-xs text-gray-500">Created by</dt><dd class="font-medium text-gray-900">{{ employeeName(detail.created_by) }}</dd></div>
             <div><dt class="mb-1 text-xs text-gray-500">Created at</dt><dd class="font-medium text-gray-900">{{ formatDateTime(detail.created_at) }}</dd></div>
-            <div><dt class="mb-1 text-xs text-gray-500">Approved by</dt><dd class="font-medium text-gray-900">{{ employeeName(detail.approved_by) }}</dd></div>
-            <div><dt class="mb-1 text-xs text-gray-500">Approved at</dt><dd class="font-medium text-gray-900">{{ formatDateTime(detail.approved_at) }}</dd></div>
+            <div><dt class="mb-1 text-xs text-gray-500">Approved by</dt><dd class="font-medium text-gray-900">{{ detail.approved_by ? employeeName(detail.approved_by) : 'Awaiting approval' }}</dd></div>
+            <div><dt class="mb-1 text-xs text-gray-500">Approved at</dt><dd class="font-medium text-gray-900">{{ detail.approved_at ? formatDateTime(detail.approved_at) : 'Not yet approved' }}</dd></div>
             <div v-if="detail.approval_notes" class="sm:col-span-2"><dt class="mb-1 text-xs text-gray-500">Review notes</dt><dd class="whitespace-pre-wrap font-medium text-gray-900">{{ detail.approval_notes }}</dd></div>
           </dl>
         </section>
@@ -140,6 +144,10 @@ const totalDifference = computed(() => (detail.value?.items || []).reduce((sum: 
 const totalValueDifference = computed(() => (detail.value?.items || []).reduce((sum: number, item: any) => sum + Number(item.value_difference || 0), 0))
 
 function label(value?: string | null) { return value ? value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : '—' }
+function formatReason(value?: string | null) {
+  const reasons: Record<string, string> = { physical_count: 'Physical Count Correction', damaged: 'Damaged Goods', expired: 'Expired Items', theft: 'Theft/Loss', wrong_delivery: 'Wrong Delivery', quality_control: 'Quality Control', sample: 'Sample/Demo Usage', other: 'Other' }
+  return value ? reasons[value] || label(value) : '—'
+}
 function statusSeverity(value: string) { return value === 'applied' || value === 'approved' ? 'success' : value === 'pending_approval' ? 'warn' : value === 'rejected' || value === 'cancelled' ? 'danger' : 'secondary' }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' }
 function formatDateTime(value?: string | null) { return value ? new Date(value).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—' }

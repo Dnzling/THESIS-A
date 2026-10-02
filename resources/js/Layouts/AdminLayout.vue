@@ -220,6 +220,12 @@ const adminMenu = [
     icon: "pi pi-th-large text-gray-500 w-5"
   },
   {
+    to: "/admin/3d-model-requests",
+    name: 'admin.3d-model-requests',
+    label: "3D Model Requests",
+    icon: "pi pi-box text-gray-500 w-5"
+  },
+  {
     to: "/admin/store-validation",
     name: 'AdminStoreValidation',
     label: "Store Verification",

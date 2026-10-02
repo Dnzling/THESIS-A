@@ -20,10 +20,11 @@ use Illuminate\Validation\Rule;
 
 class DeliveryTripController extends Controller
 {
-    private const TRIP_STATUSES = ['planned', 'in_transit', 'completed', 'cancelled'];
+    private const TRIP_STATUSES = ['planned', 'in_transit', 'out_for_delivery', 'completed', 'cancelled'];
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorizeTripViewer($request);
         $query = DeliveryTrip::query()
             ->with([
                 'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
@@ -32,6 +33,9 @@ class DeliveryTripController extends Controller
             ->withCount(['ecommerceDeliveries', 'salesDeliveries', 'returnPickups']);
 
         $this->applyTenantScope($request, $query);
+        if ($this->isDriverOnly($request)) {
+            $query->where('driver_user_id', $request->user()->id);
+        }
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
@@ -45,6 +49,7 @@ class DeliveryTripController extends Controller
 
     public function show(Request $request, int $id): JsonResponse
     {
+        $this->authorizeTripViewer($request);
         $query = DeliveryTrip::query()
             ->with([
                 'vehicle:id,vehicle_name,plate_number,vehicle_type,capacity_kg,max_orders_per_trip',
@@ -62,6 +67,9 @@ class DeliveryTripController extends Controller
             ]);
 
         $this->applyTenantScope($request, $query);
+        if ($this->isDriverOnly($request)) {
+            $query->where('driver_user_id', $request->user()->id);
+        }
         $trip = $query->findOrFail($id);
 
         return response()->json(['success' => true, 'data' => $trip]);
@@ -69,6 +77,7 @@ class DeliveryTripController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
             'vehicle_id' => 'required|exists:ecommerce_delivery_vehicles,id',
             'driver_user_id' => 'required|exists:users,id',
@@ -97,6 +106,7 @@ class DeliveryTripController extends Controller
 
     public function updateStatus(Request $request, int $id): JsonResponse
     {
+        $this->authorizeTripViewer($request);
         $validated = $request->validate([
             'status' => ['required', Rule::in(self::TRIP_STATUSES)],
         ]);
@@ -104,6 +114,22 @@ class DeliveryTripController extends Controller
         $query = DeliveryTrip::query();
         $this->applyTenantScope($request, $query);
         $trip = $query->findOrFail($id);
+
+        if ($this->isDriverOnly($request)) {
+            abort_unless((int) $trip->driver_user_id === (int) $request->user()->id
+                && $validated['status'] === 'completed', 403);
+        } else {
+            abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
+        }
+
+        if ($validated['status'] === 'out_for_delivery' && $trip->status !== 'planned') {
+            return response()->json(['success' => false, 'message' => 'Only planned trips can be dispatched.'], 422);
+        }
+
+        if ($validated['status'] === 'out_for_delivery' && !$trip->ecommerceDeliveries()->exists()
+            && !$trip->salesDeliveries()->exists() && !$trip->returnPickups()->exists()) {
+            return response()->json(['success' => false, 'message' => 'Add an order before dispatching this trip.'], 422);
+        }
 
         if ((string) $validated['status'] === 'completed') {
             $totalDeliveries = (int) $trip->ecommerceDeliveries()->count()
@@ -140,17 +166,17 @@ class DeliveryTripController extends Controller
             $trip->updated_by = $request->user()->id;
             $trip->save();
 
-            if ((string) $validated['status'] === 'in_transit') {
+            if ((string) $validated['status'] === 'out_for_delivery') {
                 $now = now();
                 $trip->ecommerceDeliveries()
                     ->whereIn('status', ['pending', 'ready_for_dispatch', 'assigned'])
-                    ->update(['status' => 'in_transit', 'dispatched_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
+                    ->update(['status' => 'out_for_delivery', 'dispatched_at' => $now, 'out_for_delivery_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
                 $trip->salesDeliveries()
                     ->whereIn('status', ['pending', 'ready_for_dispatch', 'assigned'])
-                    ->update(['status' => 'in_transit', 'dispatched_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
+                    ->update(['status' => 'out_for_delivery', 'dispatched_at' => $now, 'out_for_delivery_at' => $now, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
                 $trip->returnPickups()
                     ->whereIn('status', ['ready_for_dispatch', 'scheduled'])
-                    ->update(['status' => 'assigned', 'driver_user_id' => $trip->driver_user_id, 'vehicle_id' => $trip->vehicle_id, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
+                    ->update(['status' => 'out_for_delivery', 'out_for_delivery_at' => $now, 'driver_user_id' => $trip->driver_user_id, 'vehicle_id' => $trip->vehicle_id, 'updated_by' => $request->user()->id, 'updated_at' => $now]);
             }
         });
 
@@ -159,6 +185,7 @@ class DeliveryTripController extends Controller
 
     public function suggestions(Request $request, int $id): JsonResponse
     {
+        abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
             'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup'])],
         ]);
@@ -279,6 +306,7 @@ class DeliveryTripController extends Controller
 
     public function addOrders(Request $request, int $id): JsonResponse
     {
+        abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
             'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup'])],
             'order_ids' => 'required|array|min:1',
@@ -288,6 +316,10 @@ class DeliveryTripController extends Controller
         $query = DeliveryTrip::query()->with(['vehicle', 'driver']);
         $this->applyTenantScope($request, $query);
         $trip = $query->findOrFail($id);
+
+        if ($trip->status !== 'planned') {
+            return response()->json(['success' => false, 'message' => 'Only planned trips can receive new orders.'], 422);
+        }
 
         $driver = $this->resolveDriver($trip->driver_user_id);
         $courierName = $driver ? trim(($driver->fname ?? '') . ' ' . ($driver->lname ?? '')) : null;
@@ -567,6 +599,7 @@ class DeliveryTripController extends Controller
 
     public function removeOrders(Request $request, int $id): JsonResponse
     {
+        abort_unless($request->user()->hasPermissionTo('logistics.deliveries.manage'), 403);
         $validated = $request->validate([
             'source_type' => ['required', Rule::in(['ecommerce', 'sales', 'return_pickup'])],
             'order_ids' => 'required|array|min:1',
@@ -673,6 +706,19 @@ class DeliveryTripController extends Controller
         if ($request->filled('store_id')) {
             $query->where('store_id', (int) $request->input('store_id'));
         }
+    }
+
+    private function isDriverOnly(Request $request): bool
+    {
+        return $request->user()->hasPermissionTo('driver.trips.view')
+            && !$request->user()->hasPermissionTo('logistics.deliveries.manage');
+    }
+
+    private function authorizeTripViewer(Request $request): void
+    {
+        abort_unless($request->user()->hasAnyPermission([
+            'driver.trips.view', 'logistics.deliveries.view', 'logistics.deliveries.manage',
+        ]) || $request->user()->hasRole('super_admin'), 403);
     }
 
     private function resolveStoreId(Request $request): ?int

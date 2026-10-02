@@ -11,6 +11,8 @@ use App\Mail\OtpVerificationMail;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use App\Services\Hr\EmployeeAvatarService;
 
 class ProfileController extends Controller
 {
@@ -180,20 +182,28 @@ class ProfileController extends Controller
         return $profile;
     }
 
-    public function updateAvatar(Request $request)
+    public function updateAvatar(Request $request, EmployeeAvatarService $avatars)
     {
+        $validated = $request->validate(['avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048']]);
+
         return response()->json([
-            'success' => false,
-            'message' => 'Avatar upload not implemented'
-        ], 501);
+            'success' => true,
+            'data' => ['avatar_url' => $avatars->save($request->user(), $validated['avatar'])],
+            'message' => 'Profile photo updated.',
+        ]);
     }
 
     public function removeAvatar(Request $request)
     {
-        return response()->json([
-            'success' => false,
-            'message' => 'Avatar removal not implemented'
-        ], 501);
+        $user = $request->user();
+        $path = $user->avatar_path;
+        $user->avatar_path = null;
+        $user->save();
+        if ($path && str_starts_with($path, 'employee-avatars/')) {
+            Storage::disk('public')->delete($path);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Profile photo removed.']);
     }
 
 }

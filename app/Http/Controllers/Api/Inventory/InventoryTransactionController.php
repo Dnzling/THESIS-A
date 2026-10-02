@@ -66,7 +66,7 @@ class InventoryTransactionController extends Controller
             'product',
             'variation',
             'relatedBranch',
-            'createdBy'
+            'createdBy.user'
         ]);
 
         if ($storeId > 0) {
@@ -144,7 +144,7 @@ class InventoryTransactionController extends Controller
             'product',
             'variation',
             'relatedBranch',
-            'createdBy'
+            'createdBy.user'
         ])->findOrFail($id);
 
         return response()->json([

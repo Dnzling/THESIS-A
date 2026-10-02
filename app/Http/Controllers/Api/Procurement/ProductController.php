@@ -35,9 +35,18 @@ class ProductController extends Controller
             $includeCost = $request->boolean('include_cost', false);
             $filterSupplierId = $request->get('supplier_id');
 
+            $allowedTypes = ['raw_material', 'supply', 'finished_good'];
+            $requestedTypes = $request->input('product_types');
+            $types = $requestedTypes
+                ? array_values(array_intersect($allowedTypes, is_array($requestedTypes) ? $requestedTypes : explode(',', (string) $requestedTypes)))
+                : ['raw_material', 'supply'];
+            if ($request->filled('product_type')) {
+                $types = in_array((string) $request->input('product_type'), $allowedTypes, true)
+                    ? [(string) $request->input('product_type')] : [];
+            }
+
             $query = Product::where('store_id', $storeId)
-                // Procurement's product catalog is limited to finished goods.
-                ->where('product_type', 'finished_good')
+                ->whereIn('product_type', $types)
                 ->with([
                     'category:id,category_name',
                     'suppliers' => function($q) {
@@ -68,10 +77,6 @@ class ProductController extends Controller
             // Filters
             if ($request->has('category_id')) {
                 $query->where('category_id', $request->category_id);
-            }
-
-            if ($request->has('product_type')) {
-                $query->where('product_type', $request->product_type);
             }
 
             if ($request->has('status')) {

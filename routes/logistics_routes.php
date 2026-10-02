@@ -39,7 +39,7 @@ Route::prefix('logistics')->group(function () {
     Route::prefix('delivery-orders')->group(function () {
         Route::get('/logistics-employees', [UnifiedDeliveryController::class, 'logisticsEmployees']);
         Route::post('/distance-estimate', [UnifiedDeliveryController::class, 'estimateDistance']);
-        Route::post('/assign', [UnifiedDeliveryController::class, 'assign']);
+        Route::post('/assign', [UnifiedDeliveryController::class, 'assignmentMovedToTrips']);
         // Drivers are authorized inside the controller and are restricted to their own assignments.
         Route::get('/', [UnifiedDeliveryController::class, 'orders']);
         Route::get('/{source}/{orderId}', [UnifiedDeliveryController::class, 'orderDetail']);

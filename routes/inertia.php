@@ -61,6 +61,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     // Admin (Super Admin only)
     Route::middleware('role:super_admin')->group(function () use ($inertia) {
         $inertia('/admin/dashboard', 'System/Admin/Dashboard', 'AdminDashboard', 'Dashboard');
+        $inertia('/admin/3d-model-requests', 'System/Admin/Model3dRequests', 'admin.3d-model-requests', '3D Model Requests');
         $inertia('/admin/roles-permissions', 'System/Admin/RolePermissions', 'admin.role-permissions', 'Role Permissions');
         $inertia('/admin/modules', 'System/Admin/StoreModules', 'admin.modules', 'Store Modules');
         $inertia('/admin/home-content', 'System/Admin/HomeContent', 'admin.home-content', 'Home Content');
@@ -112,6 +113,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');
+        $inertia('/store/employees', 'System/StoreAdmin/SimpleEmployees', 'store.employees', 'Employees');
+        $inertia('/store/employees/payments', 'System/StoreAdmin/EmployeePayments', 'store.employees.payments', 'Payment Records');
+        $inertia('/store/employees/{id}', 'System/StoreAdmin/SimpleEmployeeView', 'store.employees.view', 'Employee Details')->whereNumber('id');
     });
 
     // Store role permissions accessible by owners and HR
@@ -329,6 +333,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/logistics/stock-transfers/{id}', 'System/Logistics/StockTransfers/StockTransferDetail', 'logistics.stock-transfers.detail', 'Stock Transfer Detail');
     $inertia('/logistics/stock-transfers/{id}/assign', 'System/Logistics/StockTransfers/StockTransferAssign', 'logistics.stock-transfers.assign', 'Assign Transfer Delivery');
     $inertia('/logistics/trips', 'System/Logistics/Trips/TripIndex', 'logistics.trips', 'Trips');
+    $inertia('/logistics/trips/create', 'System/Logistics/Trips/TripAssignmentCreate', 'logistics.trips.create', 'Create Trip Assignment');
     $inertia('/logistics/trips/{id}', 'System/Logistics/Trips/TripDetail', 'logistics.trips.detail', 'Trip Detail');
     $inertia('/logistics/vehicles', 'System/Inventory/Deliveries/DeliveryVehicles', 'logistics.vehicles', 'Fleet');
     $inertia('/logistics/delivery-fees', 'System/Logistics/Settings/DeliverySettings', 'logistics.delivery-fees', 'Delivery Settings', 'Configure store delivery pricing and limits');
@@ -363,7 +368,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/dashboard', 'System/Merchandising/Dashboard', 'merchandising.dashboard', 'Product Catalog Dashboard', 'Overview of your product catalog and inventory');
     $inertia('/merchandising/products', 'System/Merchandising/products/ProductIndex', 'merchandising.products', 'All Products', 'Manage your furniture product catalog');
     $inertia('/merchandising/products/logs', 'System/Merchandising/products/ProductLogs', 'merchandising.products.logs', 'Product Logs', 'View product module activity logs');
-    $inertia('/merchandising/products/new', 'System/Merchandising/products/ProductForm', 'merchandising.products.create', 'Add New Product', 'Create a new furniture product');
+    Route::redirect('/merchandising/products/new', '/inventory/products/create')->name('merchandising.products.create');
     Route::redirect('/merchandising/products/raw/new', '/merchandising/products/new')->name('merchandising.products.raw.create');
     $inertia('/merchandising/products/{id}/edit', 'System/Merchandising/products/ProductForm', 'merchandising.products.edit', 'Edit Product', 'Update product information');
     $inertia('/merchandising/products/{id}', 'System/Merchandising/products/ProductView', 'merchandising.products.view', 'Product Details', 'View detailed product information and 3D model');
@@ -374,6 +379,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/assets/upload', 'System/Merchandising/assets/AssetUpload', 'merchandising.assets.upload', 'Upload Asset', 'Upload new 3D model or image');
     $inertia('/merchandising/3d-gallery', 'System/Merchandising/assets/Gallery3D', 'merchandising.3d-gallery', '3D Models Gallery', 'Browse all 3D models');
     $inertia('/merchandising/3d-reconstruction', 'System/Merchandising/assets/Reconstructions', 'merchandising.3d-reconstruction', '3D Reconstruction', 'Generate 3D models from photos');
+    $inertia('/merchandising/3d-requests', 'System/Merchandising/assets/Model3dRequests', 'merchandising.3d-requests', '3D Model Requests');
     $inertia('/merchandising/inventory', 'System/Merchandising/inventory/InventoryList', 'merchandising.inventory', 'Inventory Status', 'Monitor stock levels across all products');
     $inertia('/merchandising/categories', 'System/Merchandising/categories/CategoriesList', 'merchandising.categories', 'Product Categories', 'Organize your furniture catalog');
     $inertia('/merchandising/categories/new', 'System/Merchandising/categories/CategoryForm', 'merchandising.categories.create', 'Add Category', 'Create a new product category');

@@ -33,17 +33,6 @@ class NavigationItemsSeeder extends Seeder
                 'meta' => json_encode(['subtitle' => 'Manage your furniture product catalog'])
             ],
             [
-                'name' => 'merchandising.products.create',
-                'display_name' => 'Add New Product',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.products.create',
-                'route_path' => '/merchandising/products/new',
-                'icon' => 'pi pi-plus-circle',
-                'parent_id' => null,
-                'display_order' => 3,
-                'meta' => json_encode(['subtitle' => 'Create a new furniture product'])
-            ],
-            [
                 'name' => 'merchandising.inventory',
                 'display_name' => 'Inventory Status',
                 'module' => 'merchandising',
@@ -94,7 +83,6 @@ class NavigationItemsSeeder extends Seeder
         $links = [
             'merchandising.dashboard' => ['merchandising.dashboard.view'],
             'merchandising.products' => ['merchandising.products.view'],
-            'merchandising.products.create' => ['merchandising.products.create'],
             'merchandising.inventory' => ['merchandising.inventory.view'],
             'merchandising.categories' => ['merchandising.categories.view'],
             'merchandising.attributes' => ['merchandising.attributes.view'],

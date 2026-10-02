@@ -16,10 +16,14 @@
           <Card class="border border-orange-100 shadow-sm">
             <template #content>
               <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                  <img v-if="posting?.company_logo_url" :src="posting.company_logo_url" :alt="`${storeLabel} logo`" class="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1" />
+                  <div v-else class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><i class="pi pi-building text-xl" /></div>
+                  <span class="text-sm font-semibold text-slate-700">{{ storeLabel }}</span>
+                </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <Tag value="Open" severity="success" />
                   <Tag :value="employmentTypeLabel" severity="warn" />
-                  <span class="text-xs uppercase tracking-wide text-surface-500">{{ storeLabel }}</span>
                 </div>
                 <div>
                   <h1 class="text-3xl font-semibold text-surface-900">{{ roleLabel }}</h1>

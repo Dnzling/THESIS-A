@@ -434,6 +434,8 @@ Route::prefix('inventory')->group(function () {
         Route::get('/{id}/print', [GoodsReceiptController::class, 'print']);
         Route::get('/{id}', [GoodsReceiptController::class, 'show']);
         Route::post('/', [GoodsReceiptController::class, 'store']);
+        Route::put('/{id}', [GoodsReceiptController::class, 'updateDraft']);
+        Route::put('/{id}/quality-check', [GoodsReceiptController::class, 'saveQualityCheck']);
         Route::post('/{id}/verify', [GoodsReceiptController::class, 'verify']);
         Route::post('/{id}/supplier-evaluation', [GoodsReceiptController::class, 'saveSupplierEvaluation']);
         Route::get('/{id}/resolution', [GoodsReceiptResolutionController::class, 'showForReceipt']);

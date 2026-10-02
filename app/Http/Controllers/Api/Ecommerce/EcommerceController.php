@@ -1400,7 +1400,8 @@ class EcommerceController extends Controller
         foreach ($itemsForCheckout as $item) {
             $subtotal += (float) $item->unit_price * (int) $item->quantity;
         }
-        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm, $totalWeight);
+        $itemQuantity = (int) $itemsForCheckout->sum('quantity');
+        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm, $totalWeight, $itemQuantity);
         if (!($fallback['delivery_available'] ?? true)) {
             return response()->json([
                 'success' => false,
@@ -1424,6 +1425,8 @@ class EcommerceController extends Controller
                     'base_fee' => (float) ($fallback['base_fee'] ?? 0),
                     'distance_fee' => (float) ($fallback['distance_fee'] ?? 0),
                     'weight_fee' => (float) ($fallback['weight_fee'] ?? 0),
+                    'item_fee' => (float) ($fallback['item_fee'] ?? 0),
+                    'item_quantity' => $itemQuantity,
                     'distance_km' => round($distanceKm, 2),
                     'weight_kg' => round($totalWeight, 2),
                     'bulk_trip' => $bulkTrip,
@@ -1626,7 +1629,7 @@ class EcommerceController extends Controller
 
             // Always recalculate on the server when coordinates are available.
             // The client-provided amount is only a fallback when routing data is unavailable.
-            $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm, $totalWeight);
+            $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm, $totalWeight, (int) $itemsForCheckout->sum('quantity'));
             if (!($fallback['delivery_available'] ?? true)) {
                 return response()->json([
                     'success' => false,
@@ -3701,7 +3704,7 @@ class EcommerceController extends Controller
         ];
     }
 
-    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm, float $totalWeightKg = 0): array
+    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm, float $totalWeightKg = 0, int $itemQuantity = 0): array
     {
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
         if (!$setting) {
@@ -3711,6 +3714,7 @@ class EcommerceController extends Controller
                 'base_fee' => 100,
                 'per_km_fee' => 10,
                 'per_kg_fee' => 0,
+                'per_item_fee' => 0,
                 'min_delivery_fee' => 80,
                 'free_shipping_min_order' => null,
                 'bulky_item_surcharge' => 0,
@@ -3729,6 +3733,7 @@ class EcommerceController extends Controller
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
+                'item_fee' => 0.0,
                 'minimum_applied' => false,
             ];
         }
@@ -3741,6 +3746,7 @@ class EcommerceController extends Controller
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
+                'item_fee' => 0.0,
                 'minimum_applied' => false,
             ];
         }
@@ -3754,6 +3760,7 @@ class EcommerceController extends Controller
                 'base_fee' => (float) $setting->base_fee,
                 'distance_fee' => round($distanceKm * (float) $setting->per_km_fee, 2),
                 'weight_fee' => round($totalWeightKg * (float) $setting->per_kg_fee, 2),
+                'item_fee' => round($itemQuantity * (float) $setting->per_item_fee, 2),
                 'minimum_applied' => false,
             ];
         }
@@ -3761,7 +3768,8 @@ class EcommerceController extends Controller
         $base = (float) $setting->base_fee;
         $distanceFee = $distanceKm * (float) $setting->per_km_fee;
         $weightFee = $totalWeightKg * (float) $setting->per_kg_fee;
-        $raw = $base + $distanceFee + $weightFee;
+        $itemFee = $itemQuantity * (float) $setting->per_item_fee;
+        $raw = $base + $distanceFee + $weightFee + $itemFee;
         $min = (float) $setting->min_delivery_fee;
         $applied = max($raw, $min);
 
@@ -3772,6 +3780,7 @@ class EcommerceController extends Controller
             'base_fee' => round($base, 2),
             'distance_fee' => round($distanceFee, 2),
             'weight_fee' => round($weightFee, 2),
+            'item_fee' => round($itemFee, 2),
             'minimum_applied' => $applied > $raw,
         ];
     }

@@ -23,7 +23,21 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <Button
-            v-if="isProcurement && receipt.receipt_status !== 'full' && !resolution"
+            v-if="!isProcurement && receipt.receipt_status === 'draft'"
+            label="Edit Draft"
+            icon="pi pi-pencil"
+            severity="secondary"
+            @click="router.push(`/inventory/goods-receipts/create?draft_id=${receipt.id}`)"
+          />
+          <Button
+            v-if="!isProcurement && receipt.receipt_status === 'draft'"
+            label="Complete Receipt"
+            icon="pi pi-check"
+            :loading="saving"
+            @click="completeDraft"
+          />
+          <Button
+            v-if="isProcurement && !['full', 'draft'].includes(receipt.receipt_status) && !resolution"
             label="Flag Deficiency"
             icon="pi pi-flag"
             severity="danger"
@@ -262,10 +276,10 @@
                 <Column header="Quality" style="width: 12%">
                   <template #body="{ data }">
                     <Badge
-                      :value="data.quality_status || 'Pending'"
+                      :value="formatStatus(data.quality_status || 'pending')"
                       :severity="
                         data.quality_status === 'good' ? 'success' :
-                        data.quality_status === 'fair' ? 'warning' :
+                        data.quality_status === 'damaged' ? 'warning' :
                         data.quality_status === 'defective' ? 'danger' : 'secondary'
                       "
                     />
@@ -304,7 +318,7 @@
         <TabPanel value="1">
           <template #header>
             <span>Quality Check</span>
-            <Badge :value="displayQualityStatus" :severity="qualitySeverity(displayQualityStatus)" class="ml-2" />
+            <Badge :value="formatStatus(displayQualityStatus)" :severity="qualitySeverity(displayQualityStatus)" class="ml-2" />
           </template>
 
           <Card>
@@ -315,19 +329,9 @@
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
                     Overall Quality Status
                   </label>
-                  <div class="flex gap-4">
-                    <div class="flex items-center gap-2">
-                      <RadioButton v-model="receipt.quality_status" value="good" />
-                      <label>Good - All items acceptable</label>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <RadioButton v-model="receipt.quality_status" value="fair" />
-                      <label>Fair - Minor issues present</label>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <RadioButton v-model="receipt.quality_status" value="poor" />
-                      <label>Poor - Major issues</label>
-                    </div>
+                  <div class="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <Tag :value="formatStatus(displayQualityStatus)" :severity="qualitySeverity(displayQualityStatus)" />
+                    <span class="text-sm text-gray-600">Calculated from the item quality selections below.</span>
                   </div>
                 </div>
 
@@ -341,8 +345,10 @@
                         <Select
                           v-model="data.quality_status"
                           :options="qualityOptions"
+                          optionLabel="label"
+                          optionValue="value"
                           placeholder="Select quality"
-                          class="w-full"
+                          fluid
                         />
                       </template>
                     </Column>
@@ -452,6 +458,7 @@ import { onMounted, ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import procurementService from '../../../../services/procurement.service'
+import axiosClient from '@/axios'
 import InputText from 'primevue/inputtext'
 import { useAuthStore } from '@/stores/auth'
 
@@ -497,16 +504,20 @@ const ratingCriteria = [
 
 const qualityOptions = ref([
   { label: 'Good', value: 'good' },
-  { label: 'Fair', value: 'fair' },
+  { label: 'Damaged', value: 'damaged' },
   { label: 'Defective', value: 'defective' },
 ])
 
 const displayQualityStatus = computed(() => {
-  return receipt.value?.quality_status || receipt.value?.receipt_status || 'pending'
+  const items = receipt.value?.items || []
+  if (!items.length) return 'pending'
+  if (items.some((item: any) => item.quality_status === 'defective')) return 'poor'
+  if (items.some((item: any) => item.quality_status === 'damaged')) return 'fair'
+  return 'good'
 })
 
 const canRateSupplier = computed(() => Boolean(
-  receipt.value?.supplier_id && authStore.hasPermission('inventory.receiving.manage')
+  receipt.value?.supplier_id && receipt.value?.receipt_status !== 'draft' && authStore.hasPermission('inventory.receiving.manage')
 ))
 
 const overallSupplierRating = computed(() => {
@@ -528,6 +539,20 @@ const daysVariance = computed(() => {
 })
 
 // Methods
+async function completeDraft() {
+  if (!receipt.value || saving.value) return
+  saving.value = true
+  try {
+    await axiosClient.post(`/api/inventory/goods-receipts/${receipt.value.id}/verify`)
+    toast.add({ severity: 'success', summary: 'Receipt completed', detail: 'Received stock has been added to inventory.', life: 3000 })
+    await loadReceipt()
+  } catch (error: any) {
+    toast.add({ severity: 'error', summary: 'Unable to complete receipt', detail: error?.response?.data?.message || 'Please try again.', life: 4000 })
+  } finally {
+    saving.value = false
+  }
+}
+
 async function loadReceipt() {
   loading.value = true
   try {
@@ -584,22 +609,29 @@ function buildTimeline() {
 }
 
 async function saveQualityCheck() {
+  if (!receipt.value?.id) return
   saving.value = true
   try {
-    await procurementService.updateGoodsReceipt(receipt.value.id, {
-      receipt_status: 'full',
+    await axiosClient.put(`/api/${isProcurement ? 'procurement' : 'inventory'}/goods-receipts/${receipt.value.id}/quality-check`, {
+      quality_notes: receipt.value.quality_notes || null,
+      items: (receipt.value.items || []).map((item: any) => ({
+        id: item.id,
+        condition: item.quality_status,
+        notes: item.defect_notes || null,
+      })),
     })
+    await loadReceipt()
     toast.add({
       severity: 'success',
       summary: 'Success',
       detail: 'Quality check saved',
       life: 3000,
     })
-  } catch (error) {
+  } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Error',
-      detail: 'Failed to save quality check',
+      detail: error?.response?.data?.message || 'Failed to save quality check',
       life: 3000,
     })
   } finally {
@@ -673,21 +705,21 @@ function statusText(status: string): string {
 
 function qualityDot(status: string): string {
   if (status === 'good') return 'bg-emerald-500'
-  if (status === 'fair' || status === 'pending') return 'bg-amber-500'
+  if (status === 'fair' || status === 'damaged' || status === 'pending') return 'bg-amber-500'
   if (status === 'defective' || status === 'poor') return 'bg-red-500'
   return 'bg-gray-400'
 }
 
 function qualityText(status: string): string {
   if (status === 'good') return 'text-emerald-600'
-  if (status === 'fair' || status === 'pending') return 'text-amber-600'
+  if (status === 'fair' || status === 'damaged' || status === 'pending') return 'text-amber-600'
   if (status === 'defective' || status === 'poor') return 'text-red-600'
   return 'text-gray-600'
 }
 
 function qualitySeverity(status: string): string {
   if (status === 'good') return 'success'
-  if (status === 'fair' || status === 'pending') return 'warning'
+  if (status === 'fair' || status === 'damaged' || status === 'pending') return 'warning'
   if (status === 'defective' || status === 'poor') return 'danger'
   return 'secondary'
 }

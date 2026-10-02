@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\Procurement\BudgetController;
 Route::prefix('procurement')->group(function () {
     Route::get('/goods-receipts', [GoodsReceiptController::class, 'index']);
     Route::get('/goods-receipts/{id}', [GoodsReceiptController::class, 'show']);
+    Route::put('/goods-receipts/{id}/quality-check', [GoodsReceiptController::class, 'saveQualityCheck']);
     Route::get('/goods-receipts/{id}/resolution', [GoodsReceiptResolutionController::class, 'showForReceipt']);
     // Analytics
     Route::prefix('analytics')->group(function () {

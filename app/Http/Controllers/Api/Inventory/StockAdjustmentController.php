@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class StockAdjustmentController extends Controller
 {
@@ -65,7 +66,7 @@ class StockAdjustmentController extends Controller
             ]);
         }
 
-        $query = StockAdjustment::with(['branch', 'createdBy', 'approvedBy'])
+        $query = StockAdjustment::with(['branch', 'createdBy.user', 'approvedBy.user'])
             ->withCount('items')
             ->when($storeId > 0, fn($q) => $q->where('store_id', $storeId));
 
@@ -126,8 +127,8 @@ class StockAdjustmentController extends Controller
             'branch',
             'items.product',
             'items.variation',
-            'createdBy',
-            'approvedBy'
+            'createdBy.user',
+            'approvedBy.user'
         ])->findOrFail($id);
 
         return response()->json([
@@ -243,7 +244,7 @@ class StockAdjustmentController extends Controller
                 ]);
             }
 
-            $shouldAutoApprove = $this->userHasPermissions([
+            $shouldAutoApprove = $this->userHasAnyPermission([
                 'inventory.adjustments.approve',
                 // Backward-compatible aliases (some modules used a more explicit permission name)
                 'inventory.stock-adjustments.approve',
@@ -262,8 +263,6 @@ class StockAdjustmentController extends Controller
                 );
             }
 
-            DB::commit();
-
             $this->recordLog(
                 'inventory.stock_adjustment.created',
                 "Created stock adjustment {$adjustment->adjustment_number}",
@@ -271,13 +270,27 @@ class StockAdjustmentController extends Controller
                 ['status' => $adjustment->status]
             );
 
+            DB::commit();
+
             return response()->json([
                 'success' => true,
                 'message' => $shouldAutoApprove ? 'Stock adjustment created and auto-approved' : 'Stock adjustment created and submitted for approval',
                 'data' => $adjustment->load('items.product'),
             ], 201);
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Failed to create stock adjustment.', [
+                'user_id' => $request->user()?->id,
+                'store_id' => $storeId,
+                'branch_id' => $branchId,
+                'exception' => $e,
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create stock adjustment',
@@ -292,6 +305,7 @@ class StockAdjustmentController extends Controller
      */
     public function approve(Request $request, int $id): JsonResponse
     {
+        abort_unless($this->userHasAnyPermission(['inventory.adjustments.approve'], $request->user()), 403);
         $adjustment = StockAdjustment::with('items')->findOrFail($id);
 
         if ($adjustment->status !== 'pending_approval') {
@@ -339,7 +353,11 @@ class StockAdjustmentController extends Controller
      */
     public function reject(Request $request, int $id): JsonResponse
     {
+        abort_unless($this->userHasAnyPermission(['inventory.adjustments.approve'], $request->user()), 403);
         $adjustment = StockAdjustment::findOrFail($id);
+        if ($adjustment->status !== 'pending_approval') {
+            return response()->json(['success' => false, 'message' => 'Only pending adjustments can be rejected'], 422);
+        }
 
         $validated = $request->validate([
             'rejection_reason' => 'required|string',
@@ -381,10 +399,7 @@ class StockAdjustmentController extends Controller
             ], 422);
         }
 
-        $shouldAutoApprove = $this->userHasPermissions([
-            'inventory.adjustments.approve',
-            'finance.approvals.approve',
-        ]);
+        $shouldAutoApprove = $this->userHasAnyPermission(['inventory.adjustments.approve']);
 
         if ($shouldAutoApprove) {
             DB::beginTransaction();
@@ -392,7 +407,7 @@ class StockAdjustmentController extends Controller
                 $adjustment->update(['status' => 'pending_approval']);
                 $adjustment->load('items');
 
-                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory + finance permissions)', EmployeeContext::currentEmployeeId());
+                $this->applyApprovedAdjustment($adjustment, 'Auto-approved (inventory.adjustments.approve)', EmployeeContext::currentEmployeeId());
 
                 DB::commit();
 
@@ -502,43 +517,4 @@ class StockAdjustmentController extends Controller
         );
     }
 
-    protected function userHasPermissions(array $permissions, $user = null): bool
-    {
-        $user = $user ?? Auth::user();
-        if (!$user || !$user->role_id) {
-            return false;
-        }
-
-        $rolePermissions = DB::table('role_permissions')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->where('role_permissions.role_id', $user->role_id)
-            ->whereIn('permissions.name', $permissions)
-            ->where('permissions.is_active', true)
-            ->whereNull('permissions.deleted_at')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $userGrants = DB::table('user_permissions')
-            ->join('permissions', 'user_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_permissions.user_id', $user->id)
-            ->where('user_permissions.type', 'grant')
-            ->whereIn('permissions.name', $permissions)
-            ->where('permissions.is_active', true)
-            ->whereNull('permissions.deleted_at')
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $userRevokes = DB::table('user_permissions')
-            ->join('permissions', 'user_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_permissions.user_id', $user->id)
-            ->where('user_permissions.type', 'revoke')
-            ->whereIn('permissions.name', $permissions)
-            ->pluck('permissions.name')
-            ->toArray();
-
-        $allPermissions = array_merge($rolePermissions, $userGrants);
-        $finalPermissions = array_diff($allPermissions, $userRevokes);
-
-        return count(array_diff($permissions, $finalPermissions)) === 0;
-    }
 }

@@ -70,6 +70,7 @@ export interface JobPostingStage {
 }
 
 export interface JobPosting {
+  company_logo_url?: string | null
   id?: number
   store_id?: number
   role_id?: number | null

@@ -11,11 +11,27 @@
     <Card v-if="variantRequests.length" class="border border-orange-200 bg-orange-50/40">
       <template #title>Pending Variant Requests</template>
       <template #content>
-        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <div v-for="request in variantRequests" :key="request.id" class="rounded-2xl border border-orange-100 bg-white p-4">
-            <div class="flex items-start justify-between gap-3"><div><p class="font-semibold text-slate-900">{{ request.variant_name }}</p><p class="text-xs text-slate-500">{{ request.rfq_item?.product?.product_name }} · {{ request.supplier_portal?.supplier?.supplier_name }}</p></div><Tag value="Creation Required" severity="warn" /></div>
-            <div class="mt-3 flex flex-wrap gap-1"><Tag v-if="request.variant_color" :value="request.variant_color" severity="info" /><Tag v-if="request.variant_size" :value="request.variant_size" severity="secondary" /><Tag v-if="request.variant_material" :value="request.variant_material" severity="success" /><Tag v-if="request.variant_finish" :value="request.variant_finish" severity="warn" /></div>
-            <div class="mt-3 flex items-center justify-between"><span class="font-semibold">₱{{ formatPrice(request.quoted_price) }}</span><Button label="Create Variant" icon="pi pi-plus" size="small" @click="createFromRequest(request)" /></div>
+        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 text-sm">
+          <div v-for="request in variantRequests" :key="request.id"
+            class="rounded-2xl border border-orange-100 bg-white p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-semibold text-slate-900">{{ request.variant_name }}</p>
+                <p class="text-xs text-slate-500">{{ request.rfq_item?.product?.product_name }} · {{
+                  request.supplier_portal?.supplier?.supplier_name }}</p>
+              </div>
+              <Tag value="Creation Required" severity="warn" size="small" />
+            </div>
+            <div v-if="request.variant_color || request.variant_size || request.variant_material || request.variant_finish"
+              class="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 border-y border-slate-100 py-3 text-xs sm:grid-cols-4">
+              <div v-if="request.variant_color"><p class="uppercase tracking-wide text-slate-400">Color</p><p class="mt-1 font-medium text-slate-800">{{ request.variant_color }}</p></div>
+              <div v-if="request.variant_size"><p class="uppercase tracking-wide text-slate-400">Size</p><p class="mt-1 font-medium text-slate-800">{{ request.variant_size }}</p></div>
+              <div v-if="request.variant_material"><p class="uppercase tracking-wide text-slate-400">Material</p><p class="mt-1 font-medium text-slate-800">{{ request.variant_material }}</p></div>
+              <div v-if="request.variant_finish"><p class="uppercase tracking-wide text-slate-400">Finish</p><p class="mt-1 font-medium text-slate-800">{{ request.variant_finish }}</p></div>
+            </div>
+            <div class="mt-3 flex items-center justify-between"><span class="font-semibold">₱{{
+              formatPrice(request.quoted_price) }}</span><Button label="Create Variant" size="small"
+                @click="createFromRequest(request)" /></div>
           </div>
         </div>
       </template>
@@ -27,29 +43,14 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="searchQuery" placeholder="Search variations..." class="w-full" @input="onSearch" />
+            <InputText v-model="searchQuery" placeholder="Search variations..." class="w-full" @input="onSearch" size="small"/>
           </IconField>
 
-          <Select 
-            v-model="filters.product_id" 
-            :options="products" 
-            optionLabel="product_name" 
-            optionValue="id"
-            placeholder="All Products" 
-            showClear 
-            filter
-            @change="loadVariations"
-          />
+          <Select v-model="filters.product_id" :options="products" optionLabel="product_name" optionValue="id"
+            placeholder="All Products" showClear filter @change="loadVariations"  size="small"/>
 
-          <Select 
-            v-model="filters.is_active" 
-            :options="statusOptions" 
-            optionLabel="label" 
-            optionValue="value"
-            placeholder="All Status" 
-            showClear 
-            @change="loadVariations"
-          />
+          <Select v-model="filters.is_active" :options="statusOptions" optionLabel="label" optionValue="value"
+            placeholder="All Status" showClear @change="loadVariations" size="small" />
         </div>
       </template>
     </Card>
@@ -62,18 +63,9 @@
     <!-- Variations DataTable -->
     <Card v-else-if="variations.length > 0">
       <template #content>
-        <DataTable 
-          :value="variations" 
-          :paginator="true" 
-          :rows="15"
-          :rowsPerPageOptions="[15, 25, 50]"
-          dataKey="id"
-          stripedRows
-          class="p-datatable-sm"
-          v-model:selection="selectedVariations"
-          @row-select="onRowSelect"
-          @row-unselect="onRowUnselect"
-        >
+        <DataTable :value="variations" :paginator="true" :rows="15" :rowsPerPageOptions="[15, 25, 50]" dataKey="id"
+          stripedRows class="p-datatable-sm" v-model:selection="selectedVariations" @row-select="onRowSelect"
+          @row-unselect="onRowUnselect">
           <template #header>
             <div class="flex justify-between items-center">
               <span class="text-sm font-semibold text-gray-700">
@@ -83,21 +75,10 @@
                 </span>
               </span>
               <div v-if="selectedVariations.length > 0" class="flex gap-2">
-                <Button 
-                  label="Bulk Activate" 
-                  icon="pi pi-check" 
-                  severity="success"
-                  size="small"
-                  @click="bulkUpdateStatus(true)"
-                />
-                <Button 
-                  label="Bulk Deactivate" 
-                  icon="pi pi-times" 
-                  severity="danger"
-                  size="small"
-                  outlined
-                  @click="bulkUpdateStatus(false)"
-                />
+                <Button label="Bulk Activate" icon="pi pi-check" severity="success" size="small"
+                  @click="bulkUpdateStatus(true)" />
+                <Button label="Bulk Deactivate" icon="pi pi-times" severity="danger" size="small" outlined
+                  @click="bulkUpdateStatus(false)" />
               </div>
             </div>
           </template>
@@ -129,11 +110,8 @@
           <Column field="variation_name" header="Variation" sortable>
             <template #body="{ data }">
               <div class="flex items-center gap-2">
-                <div 
-                  v-if="data.color_hex" 
-                  :style="{ backgroundColor: data.color_hex }"
-                  class="w-6 h-6 rounded border-2 border-gray-300"
-                ></div>
+                <div v-if="data.color_hex" :style="{ backgroundColor: data.color_hex }"
+                  class="w-6 h-6 rounded border-2 border-gray-300"></div>
                 <span class="font-medium">{{ data.variation_name }}</span>
               </div>
             </template>
@@ -141,11 +119,12 @@
 
           <Column header="Attributes">
             <template #body="{ data }">
-              <div class="flex flex-wrap gap-1">
-                <Tag v-if="data.color" :value="data.color" severity="info" size="small" />
-                <Tag v-if="data.size" :value="data.size" severity="secondary" size="small" />
-                <Tag v-if="data.material" :value="data.material" severity="success" size="small" />
-                <Tag v-if="data.finish" :value="data.finish" severity="warning" size="small" />
+              <div class="grid gap-x-4 gap-y-1 text-xs text-slate-700 sm:grid-cols-2">
+                <span v-if="data.color"><span class="text-slate-400">Color:</span> {{ data.color }}</span>
+                <span v-if="data.size"><span class="text-slate-400">Size:</span> {{ data.size }}</span>
+                <span v-if="data.material"><span class="text-slate-400">Material:</span> {{ data.material }}</span>
+                <span v-if="data.finish"><span class="text-slate-400">Finish:</span> {{ data.finish }}</span>
+                <span v-if="!data.color && !data.size && !data.material && !data.finish" class="text-slate-400">—</span>
               </div>
             </template>
           </Column>
@@ -154,8 +133,8 @@
             <template #body="{ data }">
               <div>
                 <p class="font-semibold text-gray-900">₱{{ formatPrice(data.final_price || 0) }}</p>
-                <p v-if="data.price_adjustment !== 0" class="text-xs text-gray-600">
-                  {{ data.price_adjustment > 0 ? '+' : '' }}₱{{ formatPrice(data.price_adjustment) }}
+                <p v-if="Number(data.price_adjustment) !== 0" class="text-xs text-gray-600">
+                  {{ Number(data.price_adjustment) > 0 ? '+' : '' }}₱{{ formatPrice(Number(data.price_adjustment)) }}
                 </p>
               </div>
             </template>
@@ -170,44 +149,20 @@
 
           <Column field="is_active" header="Status">
             <template #body="{ data }">
-              <Tag 
-                :value="data.is_active ? 'Active' : 'Inactive'" 
-                :severity="data.is_active ? 'success' : 'secondary'"
-              />
+              <Tag :value="data.is_active ? 'Active' : 'Inactive'"
+                :severity="data.is_active ? 'success' : 'secondary'" />
             </template>
           </Column>
 
           <Column header="Actions" :frozen="true" alignFrozen="right">
             <template #body="{ data }">
               <div class="flex gap-1">
-                <Button 
-                  icon="pi pi-eye" 
-                  severity="info"
-                  text 
-                  rounded 
-                  size="small"
-                  v-tooltip.top="'View'"
-                  @click="viewVariation(data)"
-                />
-                <Button 
-                  icon="pi pi-pencil" 
-                  severity="warning"
-                  text 
-                  rounded 
-                  size="small"
-                  v-tooltip.top="'Edit'"
-                  @click="editVariation(data.id)"
-                />
-                <Button
-                  v-if="data.is_active"
-                  icon="pi pi-box"
-                  severity="warning"
-                  text 
-                  rounded 
-                  size="small"
-                  v-tooltip.top="'Archive'"
-                  @click="confirmArchive(data)"
-                />
+                <Button icon="pi pi-eye" severity="info" text rounded size="small" v-tooltip.top="'View'"
+                  @click="viewVariation(data)" />
+                <Button icon="pi pi-pencil" severity="warning" text rounded size="small" v-tooltip.top="'Edit'"
+                  @click="editVariation(data.id)" />
+                <Button v-if="data.is_active" icon="pi pi-box" severity="warning" text rounded size="small"
+                  v-tooltip.top="'Archive'" @click="confirmArchive(data)" />
               </div>
             </template>
           </Column>
@@ -227,12 +182,7 @@
     </Card>
 
     <!-- View Variation Dialog -->
-    <Dialog 
-      v-model:visible="viewDialogVisible" 
-      header="Variation Details" 
-      :modal="true" 
-      class="w-full max-w-2xl"
-    >
+    <Dialog v-model:visible="viewDialogVisible" header="Variation Details" :modal="true" class="w-full max-w-2xl">
       <div v-if="currentVariation" class="space-y-4 mt-4">
         <!-- Variation Info -->
         <div class="grid grid-cols-2 gap-4">
@@ -250,23 +200,19 @@
           </div>
           <div>
             <p class="text-xs text-gray-600 mb-1">Status</p>
-            <Tag 
-              :value="currentVariation.is_active ? 'Active' : 'Inactive'" 
-              :severity="currentVariation.is_active ? 'success' : 'secondary'"
-            />
+            <Tag :value="currentVariation.is_active ? 'Active' : 'Inactive'"
+              :severity="currentVariation.is_active ? 'success' : 'secondary'" />
           </div>
         </div>
 
         <!-- Attributes -->
-        <div v-if="currentVariation.color || currentVariation.size || currentVariation.material" class="border-t border-gray-200 pt-4">
+        <div v-if="currentVariation.color || currentVariation.size || currentVariation.material"
+          class="border-t border-gray-200 pt-4">
           <p class="text-sm font-semibold text-gray-700 mb-3">Attributes</p>
           <div class="flex flex-wrap gap-2">
             <div v-if="currentVariation.color" class="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded">
-              <div 
-                v-if="currentVariation.color_hex"
-                :style="{ backgroundColor: currentVariation.color_hex }"
-                class="w-5 h-5 rounded border border-gray-300"
-              ></div>
+              <div v-if="currentVariation.color_hex" :style="{ backgroundColor: currentVariation.color_hex }"
+                class="w-5 h-5 rounded border border-gray-300"></div>
               <span class="text-sm"><strong>Color:</strong> {{ currentVariation.color }}</span>
             </div>
             <div v-if="currentVariation.size" class="px-3 py-2 bg-purple-50 rounded">
@@ -287,12 +233,17 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <p class="text-xs text-gray-600 mb-1">Base Price</p>
-              <p class="text-lg font-semibold text-gray-900">₱{{ formatPrice(currentVariation.product?.base_price || 0) }}</p>
+              <p class="text-lg font-semibold text-gray-900">₱{{ formatPrice(currentVariation.product?.base_price || 0)
+                }}
+              </p>
             </div>
             <div>
               <p class="text-xs text-gray-600 mb-1">Price Adjustment</p>
-              <p class="text-lg font-semibold" :class="currentVariation.price_adjustment >= 0 ? 'text-green-600' : 'text-red-600'">
-                {{ currentVariation.price_adjustment >= 0 ? '+' : '' }}₱{{ formatPrice(currentVariation.price_adjustment || 0) }}
+              <p class="text-lg font-semibold"
+                :class="currentVariation.price_adjustment >= 0 ? 'text-green-600' : 'text-red-600'">
+                {{ currentVariation.price_adjustment >= 0 ? '+' : '' }}₱{{ formatPrice(currentVariation.price_adjustment
+                ||
+                0) }}
               </p>
             </div>
             <div class="col-span-2">
@@ -308,7 +259,8 @@
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <p class="text-xs text-gray-600 mb-1">Stock</p>
-              <Badge :value="currentVariation.stock_quantity" :severity="getStockSeverity(currentVariation.stock_quantity)" />
+              <Badge :value="currentVariation.stock_quantity"
+                :severity="getStockSeverity(currentVariation.stock_quantity)" />
             </div>
             <div>
               <p class="text-xs text-gray-600 mb-1">Weight</p>
@@ -342,11 +294,7 @@
       </div>
 
       <template #footer>
-        <Button 
-          label="Edit" 
-          icon="pi pi-pencil" 
-          @click="currentVariation?.id && editVariation(currentVariation.id)" 
-        />
+        <Button label="Edit" icon="pi pi-pencil" @click="currentVariation?.id && editVariation(currentVariation.id)" />
         <Button label="Close" severity="secondary" outlined @click="viewDialogVisible = false" />
       </template>
     </Dialog>
@@ -357,7 +305,9 @@
         <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
         <div>
           <p class="font-semibold">Archive this variant?</p>
-          <p class="text-sm text-gray-600 mt-1">It will be hidden from ecommerce. Variants with stock cannot be archived.</p>
+          <p class="text-sm text-gray-600 mt-1">It will be hidden from ecommerce. Variants with stock cannot be
+            archived.
+          </p>
         </div>
       </div>
       <template #footer>
@@ -469,10 +419,10 @@ const viewVariation = (variation: any) => {
 
 const bulkUpdateStatus = async (isActive: boolean) => {
   if (selectedVariations.value.length === 0) return
-  
+
   try {
     const ids = selectedVariations.value.map((v: any) => v.id)
-    
+
     for (const id of ids) {
       if (isActive) {
         await merchandisingService.updateVariation(id, { is_active: true })
@@ -480,14 +430,14 @@ const bulkUpdateStatus = async (isActive: boolean) => {
         await merchandisingService.archiveVariation(id)
       }
     }
-    
+
     toast.add({
       severity: 'success',
       summary: 'Success',
       detail: `${ids.length} variations ${isActive ? 'activated' : 'deactivated'}`,
       life: 3000
     })
-    
+
     selectedVariations.value = []
     loadVariations()
   } catch (error: any) {
@@ -536,9 +486,9 @@ const getStockSeverity = (stock: number) => {
 }
 
 const formatPrice = (price: number) => {
-  return new Intl.NumberFormat('en-PH', { 
+  return new Intl.NumberFormat('en-PH', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2 
+    maximumFractionDigits: 2
   }).format(price)
 }
 

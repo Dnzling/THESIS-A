@@ -22,9 +22,9 @@ class PurchaseOrderController extends Controller
         $base = PurchaseOrder::query()->where('store_id', $storeId);
         $stats = [
             'total_count' => (clone $base)->count(),
-            'sent_count' => (clone $base)->whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit', 'delivered'])->count(),
+            'pending_receipt_count' => (clone $base)->whereIn('status', ['pending_receipt', 'partially_received'])->count(),
             'total_amount' => (clone $base)->sum('total_amount'),
-            'delayed_count' => (clone $base)->whereNotNull('expected_delivery_date')->whereDate('expected_delivery_date', '<', today())->whereNotIn('status', ['delivered', 'cancelled'])->count(),
+            'delayed_count' => (clone $base)->whereNotNull('expected_delivery_date')->whereDate('expected_delivery_date', '<', today())->whereNotIn('status', ['goods_received', 'delivered', 'cancelled'])->count(),
         ];
         $orders = PurchaseOrder::query()
             ->with(['supplier:id,supplier_name,supplier_code', 'branch:id,name', 'createdBy.user:id,fname,lname'])
@@ -60,7 +60,7 @@ class PurchaseOrderController extends Controller
             ->where('is_active', true)
             ->whereHas('suppliers', fn ($query) => $query->where('suppliers.store_id', $storeId)->where('suppliers.status', 'active'))
             ->orderBy('product_name')
-            ->get(['id', 'product_name', 'sku', 'unit_of_measurement']);
+            ->get(['id', 'product_name', 'sku', 'product_type', 'unit_of_measurement']);
 
         $productIds = $products->pluck('id');
         $inventoryPoints = DB::table('branch_inventory')
@@ -79,6 +79,7 @@ class PurchaseOrderController extends Controller
                 'id' => $product->id,
                 'name' => $product->product_name,
                 'sku' => $product->sku,
+                'product_type' => $product->product_type,
                 'unit' => $product->unit_of_measurement,
                 'inventory_points' => $inventoryPoints->get($product->id, collect())->values(),
                 'reorder_rules' => $reorderRules->get($product->id, collect())->values(),
@@ -104,7 +105,7 @@ class PurchaseOrderController extends Controller
     {
         $storeId = $this->authorizeStore($request, 'view');
         $order = PurchaseOrder::query()
-            ->with(['supplier', 'branch', 'createdBy.user', 'items.product', 'items.variation'])
+            ->with(['supplier', 'branch', 'createdBy.user', 'items.product', 'items.variation', 'goodsReceipts:id,purchase_order_id,grn_number,receipt_date,receipt_status'])
             ->where('store_id', $storeId)
             ->findOrFail($id);
 
@@ -207,7 +208,7 @@ class PurchaseOrderController extends Controller
             }
 
             if ($validated['submit'] ?? false) {
-                $order->sendToSupplier();
+                $order->submitForReceipt();
             }
 
             return $order;
@@ -215,7 +216,7 @@ class PurchaseOrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => ($validated['submit'] ?? false) ? 'Purchase order submitted to supplier.' : 'Purchase order saved as draft.',
+            'message' => ($validated['submit'] ?? false) ? 'Purchase order submitted and awaiting receipt.' : 'Purchase order saved as draft.',
             'data' => $order->load(['supplier', 'branch', 'items.product', 'items.variation']),
         ], 201);
     }
@@ -225,11 +226,11 @@ class PurchaseOrderController extends Controller
         $storeId = $this->authorizeStore($request, 'manage');
         $order = PurchaseOrder::query()->where('store_id', $storeId)->findOrFail($id);
         if ($order->status !== 'draft') {
-            throw ValidationException::withMessages(['status' => 'Only draft purchase orders can be sent.']);
+            throw ValidationException::withMessages(['status' => 'Only draft purchase orders can be submitted.']);
         }
-        $order->sendToSupplier();
+        $order->submitForReceipt();
 
-        return response()->json(['success' => true, 'message' => 'Purchase order sent to supplier.', 'data' => $order->fresh()]);
+        return response()->json(['success' => true, 'message' => 'Purchase order submitted and awaiting receipt.', 'data' => $order->fresh()]);
     }
 
     private function authorizeStore(Request $request, string $action): int

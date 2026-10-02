@@ -249,6 +249,19 @@ class PurchaseOrder extends Model
         $this->supplier->incrementOrders($this->total_amount);
     }
 
+    public function submitForReceipt(): void
+    {
+        $this->update([
+            'status' => 'pending_receipt',
+            'order_date' => today(),
+        ]);
+    }
+
+    public function markPartiallyReceived(): void
+    {
+        $this->update(['status' => 'partially_received']);
+    }
+
     public function getQuantityReceivedAttribute(): int
     {
         return $this->items->sum('quantity_received');

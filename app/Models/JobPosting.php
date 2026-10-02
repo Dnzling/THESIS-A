@@ -36,6 +36,15 @@ class JobPosting extends Model
         'benefits' => 'array'
     ];
 
+    protected $appends = ['company_logo_url'];
+
+    public function getCompanyLogoUrlAttribute(): ?string
+    {
+        $path = $this->store?->logoBranch?->logo_path;
+
+        return $path ? asset('storage/' . ltrim($path, '/')) : null;
+    }
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);

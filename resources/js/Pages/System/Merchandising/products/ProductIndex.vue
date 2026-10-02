@@ -6,7 +6,7 @@
         <h1 class="text-lg font-bold text-gray-900">Products</h1>
         <p class="text-xs text-gray-500">Manage product details, ecommerce pricing, media, and variations.</p>
       </div>
-      <Button v-if="authStore.hasPermission('merchandising.products.create')" label="Create Product" size="small"
+      <Button v-if="authStore.hasPermission('inventory.product.manage')" label="Add Product in Inventory" size="small"
         @click="createProduct" />
     </div>
   
@@ -291,7 +291,7 @@ const viewProduct = (productId: number) => {
 }
 
 const createProduct = () => {
-  router.push({ name: 'merchandising.products.create' })
+  router.push({ name: 'inventory.products.create' })
 }
 
 const editProduct = (productId: number) => {
@@ -313,7 +313,7 @@ const actionMenuItems = computed(() => {
 
   if (authStore.hasPermission('merchandising.products.update')) {
     items.push({
-      label: 'Edit',
+      label: 'Configure',
       icon: 'pi pi-pencil',
       command: () => product?.id && editProduct(product.id)
     })

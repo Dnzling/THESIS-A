@@ -90,7 +90,7 @@ class LogisticsNavigationSeeder extends Seeder
     {
         $mappings = [
             'logistics.deliveries' => ['logistics.deliveries.view'],
-            'logistics.trips' => ['logistics.deliveries.view'],
+            'logistics.trips' => ['logistics.deliveries.view', 'driver.trips.view'],
             'logistics.vehicles' => ['logistics.fleet.view'],
             'logistics.zones' => ['logistics.zones.view'],
             'logistics.settings' => ['logistics.settings.view'],

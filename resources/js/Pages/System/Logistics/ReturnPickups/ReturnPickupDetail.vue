@@ -24,7 +24,7 @@
           <Button
             v-if="pickup && ['ready_for_dispatch', 'scheduled'].includes(pickup.status)"
             icon="pi pi-send"
-            label="Assign Delivery"
+            label="Add to Trip"
             severity="warn"
             size="small"
             @click="openAssignment"
@@ -300,7 +300,7 @@ const formatMoney = (value: any) => {
 }
 
 const openAssignment = () => router.push({
-  name: 'logistics.deliveries.create',
+  name: 'logistics.trips.create',
   query: { source: 'return_pickup', order_id: String(id.value) },
 })
 

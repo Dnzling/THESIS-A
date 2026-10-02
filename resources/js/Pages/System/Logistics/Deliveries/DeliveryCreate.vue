@@ -454,21 +454,10 @@ watch(() => form.driver_user_id, (driverId) => {
   form.assistant_user_ids = form.assistant_user_ids.filter((id) => Number(id) !== Number(driverId))
 })
 
-onMounted(async () => {
-  if (!orderId.value) {
-    toast.add({ severity: 'warn', summary: 'Missing Order', detail: 'Please select an order from the list.', life: 3000 })
-    router.replace({ name: 'logistics.deliveries' })
-    return
-  }
-
-  loading.value = true
-  try {
-    await Promise.all([loadOptions(), loadOrderDetail()])
-    if (order.value) await calculateDistance()
-  } catch (error: any) {
-    toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load create form.', life: 3500 })
-  } finally {
-    loading.value = false
-  }
+onMounted(() => {
+  router.replace({
+    name: 'logistics.trips.create',
+    query: orderId.value ? { source: source.value, order_id: String(orderId.value) } : {},
+  })
 })
 </script>

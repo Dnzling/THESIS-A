@@ -14,7 +14,7 @@ class JobPostingController extends Controller
 {
     public function index(): JsonResponse
     {
-        $postings = JobPosting::with(['store', 'role', 'screeningStages', 'applications'])
+        $postings = JobPosting::with(['store.logoBranch', 'role', 'screeningStages', 'applications'])
             ->where('store_id', Auth::user()->store_id)
             ->orderBy('created_at', 'desc')
             ->paginate(15);
@@ -26,7 +26,7 @@ class JobPostingController extends Controller
     {
         abort_unless($posting->store_id === Auth::user()->store_id, 404);
 
-        $posting->load(['store', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
+        $posting->load(['store.logoBranch', 'role', 'createdBy', 'screeningStages', 'applications.employee']);
 
         return response()->json($posting);
     }

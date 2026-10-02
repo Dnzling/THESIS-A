@@ -249,6 +249,10 @@ class UserNavigationController extends Controller
     {
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
 
+        if ($navItem->name === 'store.employees') {
+            return $roleName === 'owner';
+        }
+
         // Supplier portal should always be visible to supplier roles
         if ($navItem->module === 'supplier' && str_contains($roleName, 'supplier')) {
             return true;

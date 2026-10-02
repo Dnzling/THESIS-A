@@ -1,49 +1,57 @@
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
   
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <Button icon="pi pi-arrow-left" text rounded @click="goBack" />
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Trip #{{ trip?.id || '-' }}</h1>
-          <p class="mt-1 text-sm text-slate-600">Assign multiple orders to one vehicle.</p>
+          <p class="text-xs font-semibold uppercase tracking-widest text-slate-500">Trip reference ID</p>
+          <h1 class="text-2xl font-semibold tracking-tight text-slate-900">{{ tripReference }}</h1>
+          <p class="mt-1 text-sm text-slate-600">Trip assignment and delivery progress</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadTrip" />
-        <Select v-model="statusForm.status" :options="statusOptions" optionLabel="label" optionValue="value"
-          class="w-40" />
-        <Button :disabled="!canManage" icon="pi pi-save" label="Update Status" severity="success" @click="saveStatus" />
-        <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-send" label="Dispatch Trip" severity="info"
-          @click="dispatchTrip" />
+         <Button icon="pi pi-print" size="small" severity="secondary" outlined label="Export PDF" @click="exportTripPdf" />
+        <!-- <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadTrip" /> -->
+        <Tag v-if="trip" :value="formatStatus(trip.status)" :severity="statusSeverity(trip.status)" />
       </div>
     </div>
   
   
-    <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
-      <template #title>Trip Summary</template>
-      <template #content>
-        <div v-if="loading" class="text-sm text-slate-500">Loading...</div>
-        <div v-else-if="!trip" class="text-sm text-slate-500">Trip not found.</div>
-        <div v-else class="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <div><span class="text-slate-500">Driver:</span> <strong>{{ driverName }}</strong></div>
-          <div><span class="text-slate-500">Vehicle:</span> <strong>{{ vehicleLabel }}</strong></div>
-          <div><span class="text-slate-500">Status:</span>
-            <Tag :value="formatStatus(trip.status)" :severity="statusSeverity(trip.status)" />
-          </div>
-          <div><span class="text-slate-500">Scheduled:</span> <strong>{{ formatDateTime(trip.scheduled_departure_at)
-              }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Notes:</span> <strong>{{ trip.notes || '-' }}</strong>
-          </div>
-          <div class="md:col-span-2">
-            <div class="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-700">
-              Capacity: {{ capacityLabel }}
-              <span v-if="capacityWarning" class="ml-2 font-semibold">Over capacity!</span>
-            </div>
-          </div>
+    <div v-if="loading" class="rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading trip...</div>
+    <div v-else-if="!trip" class="rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Trip not found.</div>
+    <template v-else>
+      <div class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Trip reference</span><i class="pi pi-file text-blue-600"></i></div>
+          <p class="mt-4 text-xl font-semibold text-slate-900">{{ tripReference }}</p>
+          <p class="mt-2 text-sm text-slate-500">Created {{ formatDateTime(trip.created_at) }}</p>
         </div>
-      </template>
-    </Card>
+        <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div class="flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Scheduled departure</span><i class="pi pi-calendar text-violet-600"></i></div>
+          <p class="mt-4 text-xl font-semibold text-slate-900">{{ formatDateTime(trip.scheduled_departure_at) }}</p>
+          <p class="mt-2 text-sm text-slate-500">{{ assignedOrders.length }} assigned stop{{ assignedOrders.length === 1 ? '' : 's' }}</p>
+        </div>
+        <div class="rounded-3xl bg-gradient-to-br from-blue-600 to-blue-800 p-5 text-white shadow-sm">
+          <div class="flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-blue-100">Current status</span><i class="pi pi-truck"></i></div>
+          <p class="mt-4 text-xl font-semibold">{{ formatStatus(trip.status) }}</p>
+          <p class="mt-2 text-sm text-blue-100">{{ trip.status === 'planned' ? 'Ready to dispatch when orders are assigned' : trip.status === 'out_for_delivery' ? 'Driver is out for delivery' : 'Trip progress' }}</p>
+        </div>
+      </div>
+
+      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
+        <template #title>Trip Information</template>
+        <template #content>
+          <div class="grid gap-5 text-sm md:grid-cols-2 lg:grid-cols-4">
+            <div><p class="text-slate-500">Driver</p><p class="mt-1 font-semibold text-slate-900">{{ driverName }}</p></div>
+            <div><p class="text-slate-500">Vehicle</p><p class="mt-1 font-semibold text-slate-900">{{ vehicleLabel }}</p></div>
+            <div><p class="text-slate-500">Capacity</p><p class="mt-1 font-semibold text-slate-900">{{ capacityLabel }}</p><p v-if="capacityWarning" class="text-rose-600">Over capacity</p></div>
+            <div><p class="text-slate-500">Status</p><Tag class="mt-1" :value="formatStatus(trip.status)" :severity="statusSeverity(trip.status)" /></div>
+            <div class="md:col-span-2 lg:col-span-4"><p class="text-slate-500">Notes</p><p class="mt-1 font-medium text-slate-900">{{ trip.notes || 'No notes added.' }}</p></div>
+          </div>
+        </template>
+      </Card>
+    </template>
 
     <ConfirmDialog />
   
@@ -51,7 +59,16 @@
       <template #title>Assigned Orders</template>
       <template #content>
         <div v-if="!assignedOrders.length" class="text-sm text-slate-500">No orders assigned yet.</div>
-        <DataTable v-else :value="assignedOrders" dataKey="id" stripedRows>
+        <div v-else class="grid gap-3 lg:hidden">
+          <div v-for="row in assignedOrders" :key="row.id" class="rounded-2xl border border-slate-200 p-4">
+            <div class="flex items-start justify-between gap-2"><div><p class="text-xs text-slate-500">{{ row.source }}</p><p class="font-semibold text-slate-900">{{ row.order_number || `Order #${row.order_id}` }}</p></div><Tag :value="formatStatus(row.status)" :severity="statusSeverity(row.status)" /></div>
+            <p class="mt-3 text-sm text-slate-700">{{ row.customer_name || '-' }}</p>
+            <p class="mt-1 text-sm text-slate-500">{{ row.address || '-' }}</p>
+            <p class="mt-2 text-xs text-slate-500">{{ Number(row.weight_kg || 0).toFixed(2) }} kg</p>
+            <div class="mt-4 flex gap-2"><Button label="View Delivery" icon="pi pi-arrow-right" size="small" outlined @click="openAssignedOrderDetail(row)" /><Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-times" size="small" severity="danger" outlined aria-label="Remove order" @click="removeOrder(row)" /></div>
+          </div>
+        </div>
+        <DataTable v-if="assignedOrders.length" :value="assignedOrders" dataKey="id" stripedRows class="hidden lg:block">
           <Column field="source" header="Source" style="width: 8rem" />
           <Column field="order_number" header="Order #" />
           <Column field="customer_name" header="Customer" />
@@ -74,7 +91,7 @@
                 text
                 rounded
                 severity="danger"
-                :disabled="!canManage"
+                :disabled="!canManage || trip?.status !== 'planned'"
                 @click="removeOrder(data)"
               />
             </template>
@@ -83,7 +100,7 @@
       </template>
     </Card>
   
-    <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
+    <Card v-if="canManage && trip?.status === 'planned'" class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Add Orders to Trip</template>
       <template #content>
         <div class="flex flex-wrap items-center gap-2 mb-3">
@@ -94,7 +111,6 @@
             label="Suggest Batch" severity="help" outlined @click="suggestBatch" />
           <Button :disabled="!canManage || !selectedOrderIds.length || willExceedCapacity" label="Add Selected"
             severity="success" @click="addSelected" />
-          <Button icon="pi pi-print" outlined label="Export Trip PDF" @click="exportTripPdf" />
         </div>
         <div v-if="!canManage" class="mb-2 text-xs text-rose-600">
           Action disabled: requires `logistics.deliveries.manage` permission.
@@ -109,7 +125,7 @@
           selected by delivery area, distance, vehicle weight, and stop limit. Review, then click <strong>Add Selected</strong>.
         </div>
   
-        <DataTable :value="availableOrders" dataKey="id" stripedRows selectionMode="multiple"
+        <DataTable :value="availableOrders" dataKey="id" stripedRows selectionMode="multiple" class="text-sm"
           v-model:selection="selectedOrders" paginator :rows="availablePerPage" :totalRecords="availableTotal"
           :first="(availablePage - 1) * availablePerPage" @page="handleAvailablePage">
           <Column selectionMode="multiple" headerStyle="width: 3rem" />
@@ -144,6 +160,13 @@
         </DataTable>
       </template>
     </Card>
+
+    <div class="flex justify-end gap-3">
+              <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-times" label="Cancel Trip" severity="secondary" outlined :loading="savingStatus" @click="confirmCancelTrip" />
+       <Button v-if="canManage && trip?.status === 'planned'" icon="pi pi-send" label="Dispatch Trip" severity="info" :loading="savingStatus" :disabled="!assignedOrders.length" @click="dispatchTrip" />
+        <Button v-if="(canManage || canViewDriverTrips) && ['in_transit', 'out_for_delivery'].includes(trip?.status)" icon="pi pi-check" label="Complete Trip" severity="success" :loading="savingStatus" @click="changeStatus('completed')" />
+
+    </div>
   
     <Dialog v-model:visible="detailDialog" modal header="Order Details" class="w-full max-w-3xl">
       <div v-if="detailLoading" class="text-sm text-slate-500">Loading...</div>
@@ -208,16 +231,12 @@ const toast = useToast()
 const confirm = useConfirm()
 const authStore = useAuthStore()
 const canManage = authStore.hasPermission('logistics.deliveries.manage')
+const canViewDriverTrips = authStore.hasPermission('driver.trips.view')
 
 const trip = ref<any>(null)
 const loading = ref(false)
-const statusForm = ref({ status: 'planned' })
-const statusOptions = [
-  { label: 'Planned', value: 'planned' },
-  { label: 'In Transit', value: 'in_transit' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Cancelled', value: 'cancelled' },
-]
+const savingStatus = ref(false)
+const tripReference = computed(() => trip.value ? `TRIP-${new Date(trip.value.created_at || Date.now()).getFullYear()}-${String(trip.value.id).padStart(6, '0')}` : 'Trip')
 
 const availableOrders = ref<any[]>([])
 const loadingAvailable = ref(false)
@@ -348,7 +367,6 @@ const loadTrip = async () => {
   try {
     const res = await logisticsService.getTrip(String(route.params.id))
     trip.value = res?.data || null
-    statusForm.value.status = trip.value?.status || 'planned'
   } catch (error: any) {
     toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load trip.', life: 3000 })
   } finally {
@@ -356,15 +374,17 @@ const loadTrip = async () => {
   }
 }
 
-const saveStatus = async () => {
-  if (!trip.value) return
+const changeStatus = async (status: 'out_for_delivery' | 'completed' | 'cancelled') => {
+  if (!trip.value || savingStatus.value) return
+  savingStatus.value = true
   try {
-    await logisticsService.updateTripStatus(trip.value.id, { status: statusForm.value.status })
-    toast.add({ severity: 'success', summary: 'Updated', detail: 'Trip status updated.', life: 2500 })
+    await logisticsService.updateTripStatus(trip.value.id, { status })
+    toast.add({ severity: 'success', summary: 'Updated', detail: `Trip is now ${formatStatus(status)}.`, life: 2500 })
     await loadTrip()
   } catch (error: any) {
-    statusForm.value.status = trip.value?.status || 'planned'
     toast.add({ severity: 'error', summary: 'Update Failed', detail: error?.response?.data?.message || 'Failed to update status.', life: 3000 })
+  } finally {
+    savingStatus.value = false
   }
 }
 
@@ -451,10 +471,17 @@ const handleAvailablePage = (event: any) => {
 }
 
 const dispatchTrip = async () => {
-  if (!trip.value) return
-  statusForm.value.status = 'in_transit'
-  await saveStatus()
+  await changeStatus('out_for_delivery')
 }
+
+const confirmCancelTrip = () => confirm.require({
+  message: 'Cancel this planned trip?',
+  header: 'Cancel Trip',
+  icon: 'pi pi-exclamation-triangle',
+  acceptLabel: 'Cancel Trip',
+  rejectLabel: 'Keep Trip',
+  accept: () => { void changeStatus('cancelled') },
+})
 
 const openOrderDetail = async (row: any) => {
   if (!row?.order_id) return
@@ -474,18 +501,8 @@ const openOrderDetail = async (row: any) => {
 
 const openAssignedOrderDetail = async (row: any) => {
   if (!row?.order_id) return
-  detailDialog.value = true
-  detailLoading.value = true
-  detailSource.value = row.source === 'Sales' ? 'sales' : (row.source === 'Return Pickup' ? 'pickup' : 'ecommerce')
-  try {
-    const res = await logisticsService.getDeliveryOrderDetail(detailSource.value, row.order_id)
-    detailOrder.value = res?.data?.order || null
-  } catch (error: any) {
-    detailOrder.value = null
-    toast.add({ severity: 'error', summary: 'Load Failed', detail: error?.response?.data?.message || 'Failed to load order.', life: 3000 })
-  } finally {
-    detailLoading.value = false
-  }
+  const source = row.source === 'Sales' ? 'sales' : row.source === 'Return Pickup' ? 'return_pickup' : 'ecommerce'
+  router.push({ name: 'driver.deliveries.view', params: { source, orderId: row.order_id } })
 }
 
 const exportTripPdf = () => {
@@ -572,7 +589,10 @@ const calcWeight = (items: any[]) => {
   }, 0)
 }
 
-const goBack = () => router.push({ name: 'logistics.trips' })
+const goBack = () => {
+  if (window.history.state?.back) router.back()
+  else router.push({ name: 'logistics.trips' })
+}
 
 const formatStatus = (value?: string) => value ? value.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : '-'
 const formatStatusLabel = (value?: string) => formatStatus(value || 'ready_for_dispatch')
@@ -580,6 +600,7 @@ const statusSeverity = (value?: string) => {
   if (value === 'completed') return 'success'
   if (value === 'cancelled') return 'danger'
   if (value === 'in_transit') return 'info'
+  if (value === 'out_for_delivery') return 'info'
   return 'warning'
 }
 const formatDateTime = (value?: string) => value ? new Date(value).toLocaleString('en-PH') : '-'

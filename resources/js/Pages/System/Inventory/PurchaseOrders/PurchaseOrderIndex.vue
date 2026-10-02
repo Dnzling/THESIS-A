@@ -6,7 +6,7 @@
                     Purchase Orders
                 </h1>
                 <p class="mt-1 text-sm text-slate-500">
-                    Order products directly from your suppliers.
+                    Restock finished goods from a known supplier without an RFQ. Receive the goods to update on-hand stock.
                 </p>
             </div>
             <Button
@@ -225,7 +225,7 @@ const orders = ref<any[]>([]);
 const suppliers = ref<any[]>([]);
 const stats = ref<any>({
     total_count: 0,
-    sent_count: 0,
+    pending_receipt_count: 0,
     total_amount: 0,
     delayed_count: 0,
 });
@@ -242,6 +242,9 @@ const lastPage = computed(() =>
 );
 const statuses = [
     "draft",
+    "pending_receipt",
+    "partially_received",
+    "goods_received",
     "sent_to_supplier",
     "supplier_accepted",
     "in_transit",
@@ -252,9 +255,9 @@ const statuses = [
 const cards = computed(() => [
     { label: "Total POs", value: stats.value.total_count, icon: "pi pi-file" },
     {
-        label: "Sent to Supplier",
-        value: stats.value.sent_count,
-        icon: "pi pi-send",
+        label: "Awaiting Receipt",
+        value: stats.value.pending_receipt_count,
+        icon: "pi pi-box",
     },
     {
         label: "Total Amount",
@@ -274,10 +277,12 @@ function label(value: string) {
         .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 function severity(value: string) {
-    return value === "delivered"
+    return value === "delivered" || value === "goods_received"
         ? "success"
         : value === "draft"
           ? "secondary"
+          : value === "partially_received"
+            ? "warn"
           : value === "declined_supplier" || value === "cancelled"
             ? "danger"
             : "info";
