@@ -298,6 +298,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('payments', [SimpleStaffController::class, 'payments']);
         Route::post('payments', [SimpleStaffController::class, 'savePayment']);
     });
+    Route::get('/simple-staff/my-clock', [SimpleStaffController::class, 'myClockStatus']);
+    Route::post('/simple-staff/my-clock', [SimpleStaffController::class, 'stageClock']);
     Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
     Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');

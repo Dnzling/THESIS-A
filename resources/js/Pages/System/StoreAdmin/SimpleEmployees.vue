@@ -14,8 +14,8 @@
 
     <Tabs v-model:value="tab">
       <TabList>
-        <Tab value="directory">Employees</Tab>
         <Tab value="attendance">Attendance</Tab>
+          <Tab value="directory">Employees</Tab>
       </TabList>
     </Tabs>
 
@@ -46,13 +46,31 @@
 
     <Card v-else class="border border-slate-200 shadow-sm">
       <template #content>
+        <div class="mb-6 space-y-4">
+          <div><h2 class="text-lg font-semibold text-slate-900">Attendance Records</h2><p class="text-sm text-slate-500">Clocked time is recorded separately from payroll.</p></div>
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-52 flex-1"><label class="mb-1 block text-sm text-slate-600">Search employee</label><InputText v-model="attendanceSearch" placeholder="Name or employee ID" fluid @keyup.enter="loadAttendanceRows" /></div>
+            <div class="w-72"><label class="mb-1 block text-sm text-slate-600">Date range</label><DatePicker v-model="attendanceRange" selectionMode="range" dateFormat="MM d, yy" showIcon fluid @date-select="loadAttendanceRows" /></div>
+            <Button label="Apply" icon="pi pi-search" outlined @click="loadAttendanceRows" />
+          </div>
+          <DataTable :value="attendanceRows" :loading="loadingAttendanceRows" paginator :rows="10" stripedRows>
+            <Column header="Date"><template #body="{ data }">{{ formatRecordDate(data.attendance_date) }}</template></Column>
+            <Column header="Employee"><template #body="{ data }"><div class="font-medium">{{ data.fname }} {{ data.lname }}</div><small class="text-slate-500">{{ data.employee_number }}</small></template></Column>
+            <Column header="Clock In"><template #body="{ data }"><div>{{ formatClock(data.clock_in_at) }}</div><small v-if="data.late_minutes > 0" class="text-amber-600">Late {{ duration(data.late_minutes) }}</small></template></Column>
+            <Column header="Clock Out"><template #body="{ data }"><div>{{ formatClock(data.clock_out_at) }}</div><small v-if="data.overtime_minutes > 0" class="text-orange-600">Overtime {{ duration(data.overtime_minutes) }}</small></template></Column>
+            <Column header="Worked"><template #body="{ data }">{{ data.worked_minutes == null ? '—' : duration(data.worked_minutes) }}</template></Column>
+            <Column header="Status"><template #body="{ data }"><Tag :value="statusLabel(data.status)" :severity="data.status === 'present' ? 'success' : 'secondary'" /></template></Column>
+            <template #empty><div class="py-8 text-center text-slate-500">No attendance records match the filters.</div></template>
+          </DataTable>
+        </div>
+        <div class="border-t border-slate-200 pt-6">
         <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 class="text-lg font-semibold text-slate-900">Daily Attendance</h2>
-            <p class="text-sm text-slate-500">Manual status only; this does not calculate payroll.</p>
+            <h2 class="text-lg font-semibold text-slate-900">Manual Daily Attendance</h2>
+            <p class="text-sm text-slate-500">For employees who do not clock in. Clocked records cannot be overwritten here.</p>
           </div>
           <div class="w-56"><label class="mb-1 block text-sm text-slate-600">Date</label>
-            <DatePicker v-model="attendanceDate" dateFormat="MM d, yy" showIcon fluid @date-select="loadAttendance" />
+            <DatePicker v-model="attendanceDate" dateFormat="MM d, yy" showIcon fluid @date-select="loadAttendance" :maxDate="new Date()" />
           </div>
         </div>
         <DataTable :value="employees" :loading="loading || loadingAttendance" stripedRows>
@@ -68,13 +86,14 @@
             </template>
           </Column>
           <Column header="Action"><template #body="{ data }"><Button label="Save" size="small"
-                :disabled="!attendanceDraft[data.id]" :loading="savingAttendanceId === data.id"
+                :disabled="!attendanceDraft[data.id] || clockedAttendance[data.id]" :loading="savingAttendanceId === data.id"
                 @click="saveAttendance(data.id)" /></template>
           </Column>
           <template #empty>
             <div class="py-10 text-center text-slate-500">Add an employee to start recording attendance.</div>
           </template>
         </DataTable>
+        </div>
       </template>
     </Card>
 
@@ -132,7 +151,7 @@ import Tabs from 'primevue/tabs'
 
 const router = useRouter()
 const toast = useToast()
-const tab = ref<'directory' | 'attendance'>('directory')
+const tab = ref<'directory' | 'attendance'>('attendance')
 const search = ref('')
 const loading = ref(false)
 const loadingAttendance = ref(false)
@@ -143,14 +162,32 @@ const employees = ref<any[]>([])
 const roles = ref<any[]>([])
 const branches = ref<any[]>([])
 const attendanceDate = ref(new Date())
+const attendanceRange = ref<Date[]>([new Date(new Date().getFullYear(), new Date().getMonth(), 1), new Date()])
+const attendanceSearch = ref('')
+const attendanceRows = ref<any[]>([])
+const loadingAttendanceRows = ref(false)
 const attendanceDraft = reactive<Record<number, string | null>>({})
 const attendanceNotes = reactive<Record<number, string>>({})
+const clockedAttendance = reactive<Record<number, boolean>>({})
 const form = reactive({ fname: '', lname: '', email: '', role_id: null as number | null, branch_id: null as number | null, hire_date: new Date(), employment_type: 'full_time' })
 const attendanceOptions = [{ label: 'Present', value: 'present' }, { label: 'Absent', value: 'absent' }, { label: 'Day Off', value: 'day_off' }]
 const employmentTypes = [{ label: 'Full Time', value: 'full_time' }, { label: 'Part Time', value: 'part_time' }, { label: 'Contract', value: 'contract' }, { label: 'Intern', value: 'intern' }]
 const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const filteredEmployees = computed(() => employees.value.filter(employee => `${employee.name} ${employee.employee_number} ${employee.email}`.toLowerCase().includes(search.value.toLowerCase())))
 const errorText = (error: any) => Object.values(error?.response?.data?.errors || {}).flat()[0] || error?.response?.data?.message || 'Please try again.'
+const duration = (value: number) => `${Math.floor(Number(value || 0) / 60)}h ${String(Number(value || 0) % 60).padStart(2, '0')}m`
+const formatClock = (value?: string) => value ? new Date(value).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '—'
+const formatRecordDate = (value?: string) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+const statusLabel = (value: string) => ({ present: 'Present', absent: 'Absent', day_off: 'Day Off' }[value] || value)
+
+async function loadAttendanceRows() {
+  loadingAttendanceRows.value = true
+  try {
+    const [start, end] = attendanceRange.value || []
+    attendanceRows.value = (await axios.get('/api/store/simple-staff/attendances', { params: { start_date: start ? dateString(start) : undefined, end_date: end ? dateString(end) : undefined, search: attendanceSearch.value || undefined } })).data.data || []
+  } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load attendance', detail: String(errorText(error)), life: 3500 }) }
+  finally { loadingAttendanceRows.value = false }
+}
 
 async function loadEmployees() {
   loading.value = true
@@ -163,8 +200,8 @@ async function loadAttendance() {
   loadingAttendance.value = true
   try {
     const rows = (await axios.get('/api/store/simple-staff/attendances', { params: { date: dateString(attendanceDate.value) } })).data.data || []
-    for (const employee of employees.value) { attendanceDraft[employee.id] = null; attendanceNotes[employee.id] = '' }
-    for (const row of rows) { attendanceDraft[row.employee_id] = row.status; attendanceNotes[row.employee_id] = row.note || '' }
+    for (const employee of employees.value) { attendanceDraft[employee.id] = null; attendanceNotes[employee.id] = ''; clockedAttendance[employee.id] = false }
+    for (const row of rows) { attendanceDraft[row.employee_id] = row.status; attendanceNotes[row.employee_id] = row.note || ''; clockedAttendance[row.employee_id] = Boolean(row.clock_in_at) }
   } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to load attendance', detail: String(errorText(error)), life: 3500 }) }
   finally { loadingAttendance.value = false }
 }
@@ -173,6 +210,7 @@ async function saveAttendance(employeeId: number) {
   savingAttendanceId.value = employeeId
   try {
     await axios.put('/api/store/simple-staff/attendances', { employee_id: employeeId, attendance_date: dateString(attendanceDate.value), status: attendanceDraft[employeeId], note: attendanceNotes[employeeId] || null })
+    await loadAttendanceRows()
     toast.add({ severity: 'success', summary: 'Attendance saved', life: 2500 })
   } catch (error: any) { toast.add({ severity: 'error', summary: 'Unable to save', detail: String(errorText(error)), life: 3500 }) }
   finally { savingAttendanceId.value = null }
@@ -203,6 +241,7 @@ onMounted(async () => {
     toast.add({ severity: 'warn', summary: 'Employee form options unavailable', detail: 'Refresh the page before adding an employee.', life: 3500 })
   }
   await loadAttendance()
+  await loadAttendanceRows()
 })
 </script>
 

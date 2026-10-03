@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Mail\OtpVerificationMail;
 use Inertia\Inertia;
+use Illuminate\Validation\Rule;
 
 class StoreSettingsController extends Controller
 {
@@ -123,6 +124,7 @@ class StoreSettingsController extends Controller
                 ])
                 ->toArray() ?? [],
             'attendance' => $this->resolveAttendanceSettings($store?->id),
+            'operating_hours' => is_array($store?->settings) ? ($store->settings['simple_operating_hours'] ?? null) : null,
             'subscription' => [
                 'tier' => $subscriptionPlan?->plan_key ?? 'free',
                 'plan_label' => $subscriptionPlan?->name ?? 'Free',
@@ -138,6 +140,34 @@ class StoreSettingsController extends Controller
                 'tier' => $this->resolveTier($profile?->employee_range ?? ''),
             ],
         ]);
+    }
+
+    public function updateOperatingHours(Request $request)
+    {
+        $store = $this->resolveStoreForUser($request->user());
+        abort_unless($store, 404);
+        abort_unless(in_array($store->subscription_tier, ['free', 'simple'], true), 403);
+
+        $validated = $request->validate([
+            'days' => ['required', 'array', 'min:1'],
+            'days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])],
+            'opens_at' => ['required', 'date_format:H:i'],
+            'closes_at' => ['required', 'date_format:H:i'],
+        ]);
+        if ($validated['closes_at'] <= $validated['opens_at']) {
+            return back()->withErrors(['closes_at' => 'Closing time must be later than opening time.']);
+        }
+
+        $settings = is_array($store->settings) ? $store->settings : [];
+        $settings['simple_operating_hours'] = [
+            'days' => array_values(array_unique($validated['days'])),
+            'opens_at' => $validated['opens_at'],
+            'closes_at' => $validated['closes_at'],
+        ];
+        $store->settings = $settings;
+        $store->save();
+
+        return back()->with('success', 'Operating hours updated.');
     }
 
     public function updatePaymentSettings(Request $request)

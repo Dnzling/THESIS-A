@@ -110,6 +110,8 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
             ->name('store.settings.payments');
         Route::put('/store/settings/attendance', [WebStoreSettingsController::class, 'updateAttendanceSettings'])
             ->name('store.settings.attendance');
+        Route::put('/store/settings/operating-hours', [WebStoreSettingsController::class, 'updateOperatingHours'])
+            ->name('store.settings.operating-hours');
         $inertia('/store/setup-required', 'System/StoreAdmin/SetupRequired', 'store.setup-required', 'Setup Required');
         $inertia('/store/branches', 'System/StoreAdmin/BranchesIndex', 'store.branches', 'Branches');
         $inertia('/store/branches/{id}', 'System/StoreAdmin/BranchShow', 'store.branches.show', 'Branch Detail');

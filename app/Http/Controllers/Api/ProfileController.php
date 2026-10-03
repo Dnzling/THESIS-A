@@ -33,6 +33,7 @@ class ProfileController extends Controller
             'data' => [
                 'user' => $user,
                 'employee' => $employee,
+                'plan_key' => $user->store?->subscription_tier ?? 'free',
                 'customer' => $customerProfile,
                 'verification_documents' => [],
             ]
