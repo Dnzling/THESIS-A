@@ -8,21 +8,38 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $manageId = DB::table('permissions')->where('name', 'inventory.adjustments.manage')->value('id');
+        $now = now();
+        DB::table('permissions')->updateOrInsert(
+            ['name' => 'inventory.adjustments.approve'],
+            [
+                'display_name' => 'Approve Stock Adjustments',
+                'module' => 'inventory',
+                'description' => 'Approve stock adjustments.',
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now,
+                'deleted_at' => null,
+            ]
+        );
+
         $approveId = DB::table('permissions')->where('name', 'inventory.adjustments.approve')->value('id');
-        if (!$manageId || !$approveId) {
-            throw new RuntimeException('Adjustment management or approval permission is missing.');
+        $managementPermissionIds = DB::table('permissions')
+            ->whereIn('name', ['inventory.adjustments.manage', 'inventory.adjustments.create'])
+            ->pluck('id');
+        if ($managementPermissionIds->isEmpty()) {
+            return;
         }
 
         $planIds = DB::table('plan_permissions')
-            ->where('permission_id', $manageId)
+            ->whereIn('permission_id', $managementPermissionIds)
             ->where('included', true)
+            ->distinct()
             ->pluck('plan_id');
 
         foreach ($planIds as $planId) {
             DB::table('plan_permissions')->updateOrInsert(
                 ['plan_id' => $planId, 'permission_id' => $approveId],
-                ['included' => true, 'created_at' => now(), 'updated_at' => now()]
+                ['included' => true, 'created_at' => $now, 'updated_at' => $now]
             );
         }
 
