@@ -6,9 +6,9 @@
         <InputIcon>
           <i class="pi pi-search" />
         </InputIcon>
-        <InputText v-model="filters.search" placeholder="Search period" @input="debouncedFetch" />
+        <InputText v-model="filters.search" showClear placeholder="Search period" @input="debouncedFetch" size="small" />
       </IconField>
-      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear
+      <Select v-model="filters.status" :options="statusOptions" placeholder="All Status" showClear size="small"
         @change="fetchPayPeriods" />
       <DatePicker v-model="filters.dateRange" showIcon showClear selectionMode="range" :manualInput="false"
         :maxDate="new Date()" placeholder="Date Range" fluid @update:modelValue="fetchPayPeriods" />
@@ -16,10 +16,10 @@
     </div>
   
     <!-- Batches Table -->
-    <DataTable :value="filteredBatches" class="w-full text-sm" :loading="loading" paginator :rows="10" rowHover
+    <DataTable :value="filteredBatches" class="p-datatable-sm text-sm" :loading="loading" paginator :rows="10" rowHover
       :rowsPerPageOptions="[5, 10, 20, 50]"
       paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" showGridlines removableSort
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} periods" removableSort
       responsiveLayout="scroll" sortField="periodName" :sortOrder="1" tableStyle="min-width: 50rem" @sort="handleSort">
   
       <Column field="name" header="Period" class="w-40" sortable>
@@ -59,7 +59,7 @@
   
       <Column field="employees_count" header="Employees" sortable>
         <template #body="{ data }">
-          <Tag :value="data.employees_count" :severity="getEmployeeCountSeverity(data)" />
+          <badge :value="data.employees_count" :severity="getEmployeeCountSeverity(data)" />
           <div v-if="data.status === 'processing'" class="text-xs mt-1">
             <!-- <ProgressBar :value="getProcessingProgress(data)" style="height: 4px" /> -->
           </div>
@@ -75,7 +75,7 @@
   
       <Column field="status" header="Status" sortable>
         <template #body="{ data }">
-          <Tag :severity="getStatusSeverity(data.status)" :value="data.status" class="capitalize" />
+          <badge :severity="getStatusSeverity(data.status)" :value="data.status" class="capitalize" />
         </template>
       </Column>
   
@@ -172,7 +172,7 @@
           </Column>
           <Column field="payroll.status" header="Status">
             <template #body="{ data }">
-              <Tag :severity="getStatusSeverity(data.payroll.status)" :value="data.payroll.status" size="small" />
+              <badge :severity="getStatusSeverity(data.payroll.status)" :value="data.payroll.status" size="small" />
             </template>
           </Column>
         </DataTable>
@@ -258,7 +258,7 @@ const filters = ref<Filters>({
 })
 
 // Options
-const statusOptions = ref(['draft', 'processing', 'locked', 'completed'])
+const statusOptions = ref(['Draft', 'processing', 'locked', 'completed'])
 const today = new Date()
 
 // ==================== COMPUTED ====================

@@ -5,15 +5,17 @@
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">My Profile</p>
           <h1 class="text-2xl font-semibold text-slate-900">Employee Profile</h1>
-          <p class="text-sm text-slate-500">Update personal info, security, and requests.</p>
+          <p class="text-sm text-slate-500">{{ isSimplePlan ? 'Manage your profile and daily attendance.' : 'Update personal info, security, and requests.' }}</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div v-if="!isSimplePlan" class="flex flex-wrap gap-2">
           <Button label="Request Leave" icon="pi pi-calendar" severity="info" outlined class="small-pill"
             @click="showLeaveDialog = true" />
           <Button label="Shift Swap" icon="pi pi-share-alt" severity="secondary" outlined class="small-pill"
             @click="openShiftSwapDialog" />
           <Button label="Overtime" icon="pi pi-clock" severity="warning" outlined class="small-pill"
             @click="openOvertimeDialog" />
+          <Button label="My Benefits" icon="pi pi-heart" severity="secondary" outlined class="small-pill"
+            @click="router.visit('/employee-benefits')" />
         </div>
       </div>
 
@@ -22,11 +24,28 @@
       </div>
 
       <template v-else>
+        <section v-if="isSimplePlan" class="mt-6 rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div><p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Simple Attendance</p><h2 class="mt-1 text-xl font-semibold text-slate-900">Today's Clock</h2><p class="mt-1 text-sm text-slate-500">{{ clockAccessDenied ? 'Clock access is unavailable for this account.' : clockStatusText }}</p></div>
+            <Button :label="clockButtonLabel" :icon="clockOpen ? 'pi pi-sign-out' : 'pi pi-sign-in'" severity="warn" :loading="clockBusy" :disabled="clockAccessDenied || clockCompleted || manuallyRecorded || !employee" @click="stageClock" />
+          </div>
+          <div v-if="clockRecord" class="mt-5 grid gap-3 sm:grid-cols-3">
+            <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs text-slate-500">Clock In</p><p class="mt-1 font-semibold">{{ clockTime(clockRecord.clock_in_at) }}</p><p v-if="clockRecord.late_minutes > 0" class="text-xs text-amber-700">Late {{ clockDuration(clockRecord.late_minutes) }}</p></div>
+            <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs text-slate-500">Clock Out</p><p class="mt-1 font-semibold">{{ clockTime(clockRecord.clock_out_at) }}</p><p v-if="clockOvertimeMinutes > 0" class="text-xs text-orange-700">Overtime {{ clockDuration(clockOvertimeMinutes) }}</p></div>
+            <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs text-slate-500">Worked Time</p><p class="mt-1 font-semibold">{{ clockRecord.worked_minutes == null ? 'In progress' : clockDuration(clockRecord.worked_minutes) }}</p></div>
+          </div>
+        </section>
         <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1fr]">
           <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div class="flex items-start justify-between gap-4">
               <div class="flex items-center gap-4">
-                <Avatar :label="initials" size="xlarge" class="bg-emerald-50 text-emerald-600 text-2xl font-semibold" />
+                <div class="relative h-20 w-20 shrink-0">
+                  <img v-if="user?.avatar_url" :src="user.avatar_url" :alt="`${fullName} photo`" class="h-20 w-20 rounded-full border border-slate-200 object-cover" />
+                  <div v-else class="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-2xl font-semibold text-emerald-600">{{ initials }}</div>
+                  <label class="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-orange-500 text-white" title="Upload profile photo">
+                    <i class="pi pi-camera text-xs" /><input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :disabled="uploadingPhoto" @change="uploadProfilePhoto" />
+                  </label>
+                </div>
                 <div>
                   <p class="text-lg font-semibold text-slate-900">{{ fullName }}</p>
                   <p class="text-xs text-slate-500">{{ employeeSummary }}</p>
@@ -77,7 +96,7 @@
                 </div>
               </div>
 
-              <div>
+              <div v-if="!isSimplePlan">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Compensation</p>
                 <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <InfoRow label="Monthly Salary" :value="formatCurrency(employee?.salary || 0)" />
@@ -85,7 +104,7 @@
                 </div>
               </div>
 
-              <div>
+              <div v-if="!isSimplePlan">
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Government IDs</p>
                 <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <InfoRow label="TIN" :value="employee?.tax_id || '-'" />
@@ -121,7 +140,7 @@
               </div>
             </div>
 
-            <div>
+            <div v-if="!isSimplePlan">
               <p class="text-sm font-semibold text-slate-800">Requests</p>
               <p class="text-xs text-slate-500">Submit leave or shift swap requests.</p>
               <div class="mt-3 flex flex-wrap gap-2">
@@ -136,7 +155,7 @@
           </section>
         </div>
 
-        <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div v-if="!isSimplePlan" class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div class="flex items-center justify-between">
               <div>
@@ -618,7 +637,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, defineComponent, h } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, defineComponent, h } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import hrService from '../../services/hr.services'
@@ -650,9 +669,68 @@ const showLeaveDialog = ref(false)
 const showShiftSwapDialog = ref(false)
 const showOvertimeDialog = ref(false)
 const showPayslipDialog = ref(false)
+const uploadingPhoto = ref(false)
 
 const user = ref<any | null>(null)
 const employee = ref<any | null>(null)
+const planKey = ref('free')
+const isSimplePlan = computed(() => ['free', 'simple'].includes(planKey.value))
+const clockRecord = ref<any | null>(null)
+const clockOvertimeMinutes = ref(0)
+const clockBusy = ref(false)
+const clockAccessDenied = ref(false)
+let clockRefresh: ReturnType<typeof setInterval> | null = null
+const clockOpen = computed(() => Boolean(clockRecord.value?.clock_in_at && !clockRecord.value?.clock_out_at))
+const clockCompleted = computed(() => Boolean(clockRecord.value?.clock_in_at && clockRecord.value?.clock_out_at))
+const manuallyRecorded = computed(() => Boolean(clockRecord.value && !clockRecord.value.clock_in_at))
+const clockButtonLabel = computed(() => manuallyRecorded.value ? 'Already Recorded' : clockCompleted.value ? 'Completed Today' : clockOpen.value ? 'Clock Out' : 'Clock In')
+const clockStatusText = computed(() => manuallyRecorded.value ? 'The store owner recorded your attendance today.' : clockCompleted.value ? 'Your working time has been recorded.' : clockOpen.value ? 'You are clocked in.' : 'Tap once when you start work, then again when you finish.')
+const clockDuration = (value: number) => `${Math.floor(Number(value || 0) / 60)}h ${String(Number(value || 0) % 60).padStart(2, '0')}m`
+const clockTime = (value?: string) => value ? new Date(value).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '—'
+const loadClock = async () => {
+  if (!isSimplePlan.value || !employee.value?.id || clockAccessDenied.value) return
+  try {
+    const response = await hrService.api.get('/api/simple-staff/my-clock')
+    clockRecord.value = response.data.data.attendance
+    clockOvertimeMinutes.value = Number(response.data.data.overtime_minutes_now || clockRecord.value?.overtime_minutes || 0)
+  } catch (err: any) {
+    if (err.response?.status === 403) {
+      clockAccessDenied.value = true
+      if (clockRefresh) clearInterval(clockRefresh)
+      clockRefresh = null
+    }
+    if (!clockRecord.value) toast.add({ severity: 'warn', summary: 'Clock status unavailable', detail: err.response?.data?.message || 'Please refresh.', life: 3000 })
+  }
+}
+const stageClock = async () => {
+  clockBusy.value = true
+  try {
+    await hrService.api.post('/api/simple-staff/my-clock')
+    await loadClock()
+    toast.add({ severity: 'success', summary: clockOpen.value ? 'Clocked in' : 'Clocked out', life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Unable to update clock', detail: err.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally { clockBusy.value = false }
+}
+
+const uploadProfilePhoto = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('avatar', file)
+  uploadingPhoto.value = true
+  try {
+    const response = await hrService.api.post('/api/profile/avatar', body)
+    if (user.value) user.value.avatar_url = response.data.data.avatar_url
+    toast.add({ severity: 'success', summary: 'Profile photo updated', life: 2500 })
+  } catch (err: any) {
+    toast.add({ severity: 'error', summary: 'Photo upload failed', detail: err.response?.data?.message || 'Please try again.', life: 3500 })
+  } finally {
+    uploadingPhoto.value = false
+    input.value = ''
+  }
+}
 
 const form = reactive({
   fname: '',
@@ -847,6 +925,7 @@ const loadProfile = async () => {
   try {
     const response = await hrService.api.get('/api/profile')
     const data = response?.data?.data || {}
+    planKey.value = String(data.plan_key || 'free').toLowerCase()
     user.value = data.user || null
     employee.value = data.employee || null
 
@@ -934,7 +1013,7 @@ const saveProfile = async () => {
       fname: form.fname,
       lname: form.lname,
       birthday: formatDate(form.birthday),
-      phone: form.phone || null,
+      phone_number: String(form.phone || '').trim() || null,
       gender: form.gender || null,
       address: form.address,
       province: form.province,
@@ -1526,8 +1605,14 @@ onMounted(async () => {
   await fetchProvinces()
   await syncLocationSelection()
   isInitializing.value = false
-  await Promise.all([loadShifts(), loadAttendance(), loadLeaves(), loadSwaps(), loadPayslips(), loadOvertime()])
+  if (isSimplePlan.value) {
+    await loadClock()
+    clockRefresh = setInterval(loadClock, 60000)
+  } else {
+    await Promise.all([loadShifts(), loadAttendance(), loadLeaves(), loadSwaps(), loadPayslips(), loadOvertime()])
+  }
 })
+onUnmounted(() => { if (clockRefresh) clearInterval(clockRefresh) })
 
 watch(() => locationSelection.provinceId, async (value) => {
   if (!value) {

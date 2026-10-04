@@ -130,16 +130,12 @@
         <template #content>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <p class="text-xs text-gray-500">Unit Cost</p>
-              <p class="text-lg font-semibold text-gray-900">{{ formatCurrency(item.unit_cost) }}</p>
+              <p class="text-xs text-gray-500">Product Cost</p>
+              <p class="text-lg font-semibold text-gray-900">{{ formatCurrency(item.product?.cost_price ?? item.product?.inventory_cost_price) }}</p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">Average Cost</p>
-              <p class="text-lg font-semibold text-gray-900">{{ formatCurrency(item.average_cost) }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-gray-500">Total Value</p>
-              <p class="text-lg font-semibold text-gray-900">{{ formatCurrency(item.total_value) }}</p>
+              <p class="text-xs text-gray-500">Stock Value</p>
+              <p class="text-lg font-semibold text-gray-900">{{ formatCurrency((item.quantity_on_hand ?? 0) * Number(item.product?.cost_price ?? item.product?.inventory_cost_price ?? 0)) }}</p>
             </div>
           </div>
         </template>

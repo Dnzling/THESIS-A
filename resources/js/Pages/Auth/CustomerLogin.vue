@@ -8,6 +8,10 @@
             <div class="portal-title text-orange-500 text-2xl font-bold">Furnisync Shop</div>
             <p class="text-sm text-slate-500 sm:mt-2 sm:text-lg">Log in to continue shopping in 3D</p>
           </div>
+
+          <Message v-if="status" severity="success" :closable="false" class="mb-5">
+            {{ status }}
+          </Message>
   
           <form class="space-y-5 sm:space-y-6" @submit.prevent="submitLogin">
             <div class="space-y-2">
@@ -28,7 +32,7 @@
                 <Checkbox v-model="rememberMe" inputId="rememberCustomer" :binary="true" />
                 <label for="rememberCustomer">Remember me</label>
               </div>
-              <Link href="/forgot-password" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
+              <Link href="/customer/forgot-password" class="text-sm font-medium text-orange-600 hover:text-orange-700 hover:underline">
               Forgot password?
               </Link>
             </div>
@@ -52,6 +56,14 @@
       </div>
     </div>
   </div>
+
+  <Dialog v-model:visible="isSubmitting" modal :closable="false" :showHeader="false" :style="{ width: '350px' }">
+    <div class="flex flex-col items-center justify-center p-6">
+      <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" fill="transparent" animationDuration=".5s" />
+      <p class="mt-4 text-lg font-medium text-gray-700">Logging you in...</p>
+      <p class="text-gray-500">Please wait a moment</p>
+    </div>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -64,7 +76,12 @@ import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
+import Dialog from 'primevue/dialog'
+import ProgressSpinner from 'primevue/progressspinner'
+import Message from 'primevue/message'
 import CustomerAuth3DHero from '@/Components/auth/CustomerAuth3DHero.vue'
+
+defineProps<{ status?: string | null }>()
 
 const page = usePage()
 const toast = useToast()

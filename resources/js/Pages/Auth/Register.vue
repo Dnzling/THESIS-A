@@ -1,6 +1,6 @@
 <template>
   <Toast />
-  <RegisterForm :is-submitting="isSubmitting" @submit="handleRegister" @error="handleFormError" />
+  <RegisterForm :is-submitting="isSubmitting" :server-errors="serverErrors" @submit="handleRegister" @error="handleFormError" />
 </template>
 
 <script setup lang="ts">
@@ -15,6 +15,7 @@ import RegisterForm from '@/Components/auth/RegisterForm.vue';
 const toast = useToast()
 const page = usePage()
 const isSubmitting = ref(false)
+const serverErrors = ref<Record<string, string>>({})
 const getQueryParam = (key: string): string | null => {
   const query = String(page.url || '').split('?')[1] || ''
   return new URLSearchParams(query).get(key)
@@ -24,6 +25,7 @@ const getQueryParam = (key: string): string | null => {
 const handleRegister = async (formData: RegisterFormData) => {
 
   isSubmitting.value = true
+  serverErrors.value = {}
   try {
     // await axios.get('/sanctum/csrf-cookie')
 
@@ -32,15 +34,15 @@ const handleRegister = async (formData: RegisterFormData) => {
       lname: formData.lname,
       email: formData.email,
       password: formData.password,
-      role_id: 16,
+      // Resolve the system role by name server-side; numeric role IDs vary by DB.
+      account_type: 'owner',
       birthday: formData.birthday ? new Date(formData.birthday).toISOString().slice(0, 10) : null,
       device_name: 'web-browser'
     })
 
     // Success
     localStorage.setItem('register_token', response.data.user.access_token)
-    const role = String(response.data.user?.role || '').toLowerCase()
-    localStorage.setItem('otp_context', role || 'customer')
+    localStorage.setItem('otp_context', 'business')
 
     localStorage.removeItem('selected_subscription_plan')
     localStorage.removeItem('subscription_flow')
@@ -52,19 +54,29 @@ const handleRegister = async (formData: RegisterFormData) => {
     router.visit('/verify-otp')
 
   } catch (error: any) {
-    console.error('Registration error:', error)
+    console.error('Registration error:', error.response?.data ?? error)
 
     // Handle validation errors
     if (error.response?.status === 422) {
-      const errors = error.response.data?.errors
+      const errors = error.response.data?.errors as Record<string, string[]> | undefined
 
       // Show first error in toast
       if (errors && Object.keys(errors).length > 0) {
-        const firstError = Object.values(errors)[0][0]
+        serverErrors.value = Object.fromEntries(
+          Object.entries(errors).map(([field, messages]) => [field, messages[0] ?? 'Invalid value.'])
+        )
+        const firstError = Object.values(serverErrors.value)[0]
         toast.add({
           severity: 'error',
           summary: 'Validation Error',
           detail: firstError,
+          life: 5000
+        })
+      } else {
+        toast.add({
+          severity: 'error',
+          summary: 'Registration Failed',
+          detail: error.response.data?.message || 'Please check your details and try again.',
           life: 5000
         })
       }

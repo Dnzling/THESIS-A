@@ -315,7 +315,8 @@ const statusFilterOptions = [
   { label: 'Late', value: 'late' },
   { label: 'Absent', value: 'absent' },
   { label: 'On Leave', value: 'on_leave' },
-  { label: 'Half Day', value: 'half_day' }
+  { label: 'Half Day', value: 'half_day' },
+  { label: 'Unscheduled', value: 'unscheduled' }
 ]
 
 const statusOptions = [
@@ -323,7 +324,8 @@ const statusOptions = [
   { label: 'Late', value: 'late' },
   { label: 'Absent', value: 'absent' },
   { label: 'On Leave', value: 'on_leave' },
-  { label: 'Half Day', value: 'half_day' }
+  { label: 'Half Day', value: 'half_day' },
+  { label: 'Unscheduled', value: 'unscheduled' }
 ]
 
 // Stats
@@ -387,7 +389,8 @@ const getStatusSeverity = (status: string): string => {
     'absent': 'danger',
     'on_leave': 'info',
     'half_day': 'warning',
-    'late': 'danger'
+    'late': 'danger',
+    'unscheduled': 'info'
   }
   return map[status?.toLowerCase()] || 'secondary'
 }
@@ -399,6 +402,7 @@ const formatStatus = (status: string): string => {
     'absent': 'Absent',
     'on_leave': 'On Leave',
     'half_day': 'Half Day',
+    'unscheduled': 'Unscheduled - Review Schedule',
     'holiday': 'Holiday'
   }
   return map[status] || status || 'Unknown'
@@ -488,7 +492,11 @@ const formatDayOfWeek = (dateString: string): string => {
 // Transform API data to UI format
 const transformAttendance = (item: any): any => {
   const employee = item.employee || {}
+  const employeeUser = employee.user || {}
   const shift = item.shift || {}
+  const firstName = employeeUser.fname || employee.fname || ''
+  const lastName = employeeUser.lname || employee.lname || ''
+  const employeeName = `${firstName} ${lastName}`.trim()
 
   return {
     id: item.id,
@@ -497,9 +505,7 @@ const transformAttendance = (item: any): any => {
     dayOfWeek: formatDayOfWeek(item.attendance_date),
     employee: {
       id: employee.id,
-      name: employee.fname && employee.lname
-        ? `${employee.fname} ${employee.lname}`.trim()
-        : 'Unknown',
+      name: employeeName || employeeUser.email || employee.email || 'Unknown Employee',
       department: employee.department || 'N/A'
     },
     clockIn: formatTime(item.clock_in),

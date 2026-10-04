@@ -137,6 +137,9 @@
               <div class="text-sm">
                 <div class="font-medium">{{ data.product_name || '-' }}</div>
                 <div class="text-gray-500">{{ data.product_sku || '-' }}</div>
+                <div v-if="data.variation_name" class="mt-0.5 text-xs font-medium text-orange-700">
+                  Variant: {{ data.variation_name }}
+                </div>
               </div>
             </template>
           </Column>
@@ -309,7 +312,8 @@ const extractRows = (payload: any): any[] => {
 const normalizeSuggestion = (row: any) => ({
   ...row,
   product_name: row?.product?.product_name || row?.product?.name || '-',
-  product_sku: row?.product?.sku || '-',
+  product_sku: row?.variation?.variation_sku || row?.product?.sku || '-',
+  variation_name: row?.variation?.variation_name || null,
   branch_name: row?.branch?.name || '-',
 })
 

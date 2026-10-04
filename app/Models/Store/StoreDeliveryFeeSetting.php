@@ -15,6 +15,8 @@ class StoreDeliveryFeeSetting extends Model
         'is_active',
         'base_fee',
         'per_km_fee',
+        'per_item_fee',
+        'per_kg_fee',
         'min_delivery_fee',
         'free_shipping_min_order',
         'bulky_item_surcharge',
@@ -30,6 +32,8 @@ class StoreDeliveryFeeSetting extends Model
         'is_active' => 'boolean',
         'base_fee' => 'decimal:2',
         'per_km_fee' => 'decimal:2',
+        'per_item_fee' => 'decimal:2',
+        'per_kg_fee' => 'decimal:2',
         'min_delivery_fee' => 'decimal:2',
         'free_shipping_min_order' => 'decimal:2',
         'bulky_item_surcharge' => 'decimal:2',
@@ -48,4 +52,3 @@ class StoreDeliveryFeeSetting extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 }
-

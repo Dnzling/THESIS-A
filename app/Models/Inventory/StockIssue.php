@@ -20,6 +20,7 @@ class StockIssue extends Model
         'issue_number',
         'issue_date',
         'issue_type',
+        'movement_type',
         'description',
         'remarks',
         'status',

@@ -12,6 +12,7 @@ import EcommerceLayout from '@/Layouts/EcommerceLayout.vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import PrimeVue from 'primevue/config';
 import Aura from '@primeuix/themes/aura';
+import { definePreset } from '@primeuix/themes';
 import 'primeicons/primeicons.css';
 import ToastService from 'primevue/toastservice';
 import ConfirmationService from 'primevue/confirmationservice';
@@ -91,7 +92,7 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ).then((module) => {
             const component = module.default;
-            if (!component.layout) {
+            if (!Object.prototype.hasOwnProperty.call(component, 'layout')) {
                 if (name.startsWith('System/Admin/')) {
                     component.layout = AdminLayout;
                 } else if (name.startsWith('System/Ecommerce/')) {
@@ -118,7 +119,23 @@ createInertiaApp({
         app.use(pinia);
         app.use(PrimeVue, {
             theme: {
-                preset: Aura,
+                preset: definePreset(Aura, {
+                    semantic: {
+                        primary: {
+                            50: '{orange.50}',
+                            100: '{orange.100}',
+                            200: '{orange.200}',
+                            300: '{orange.300}',
+                            400: '{orange.400}',
+                            500: '{orange.500}',
+                            600: '{orange.600}',
+                            700: '{orange.700}',
+                            800: '{orange.800}',
+                            900: '{orange.900}',
+                            950: '{orange.950}',
+                        },
+                    },
+                }),
                 options: {
                     darkModeSelector: '.my-app-dark',
                 },
@@ -195,7 +212,6 @@ createInertiaApp({
 
         const routeNameAliases = {
             'inventory.products': 'inventory.products.index',
-            'inventory.products.create': 'inventory.products.index',
             'inventory.locations': 'inventory.locations.index',
             'inventory.serial-numbers': 'inventory.serial-numbers.index',
             'inventory.serial-numbers.detail': 'inventory.serial-numbers.show',

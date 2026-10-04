@@ -100,9 +100,7 @@ const form = reactive({
   warehouse_section: '',
   aisle: '',
   rack: '',
-  shelf: '',
-  unit_cost: null as number | null,
-  average_cost: null as number | null
+  shelf: ''
 })
 
 const errors = reactive<Record<string, string>>({})
@@ -123,8 +121,6 @@ const loadItem = async () => {
     form.aisle = d.aisle ?? ''
     form.rack = d.rack ?? ''
     form.shelf = d.shelf ?? ''
-    form.unit_cost = d.unit_cost ?? null
-    form.average_cost = d.average_cost ?? null
     await loadReorderRule()
   } catch (error: any) {
     toast.add({
@@ -223,9 +219,7 @@ const submitForm = async () => {
       warehouse_section: form.warehouse_section,
       aisle: form.aisle,
       rack: form.rack,
-      shelf: form.shelf,
-      unit_cost: form.unit_cost,
-      average_cost: form.average_cost
+      shelf: form.shelf
     }
     await inventoryService.updateInventoryItem(itemId, payload)
     toast.add({

@@ -22,6 +22,18 @@ class PasswordResetLinkController extends Controller
         ]);
     }
 
+    public function createCustomer(): Response
+    {
+        return Inertia::render('Auth/CustomerForgotPassword', [
+            'status' => session('status'),
+        ]);
+    }
+
+    public function storeCustomer(Request $request): RedirectResponse
+    {
+        return $this->store($request);
+    }
+
     /**
      * Handle an incoming password reset link request.
      *

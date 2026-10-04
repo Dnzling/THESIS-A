@@ -34,6 +34,14 @@ class StoreDashboardController extends Controller
             $last30Start = $nowTz->copy()->subDays(29)->startOfDay()->setTimezone('UTC');
 
             $data = [
+                'store' => (function () use ($storeId) {
+                    $store = \App\Models\Store\Store::find($storeId);
+                    return $store ? [
+                        'verified' => $store->isVerified(),
+                        'subscription_status' => $store->subscription_status,
+                        'trial_days_remaining' => app(\App\Services\Store\StoreTrialService::class)->daysRemaining($store),
+                    ] : null;
+                })(),
                 'kpis' => [
                     'sales_today' => 0,
                     'orders_today' => 0,

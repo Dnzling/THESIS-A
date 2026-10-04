@@ -27,7 +27,7 @@
     </div>
   
     <!-- Improved KPI Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
         <div class="flex items-start justify-between">
           <div>
@@ -37,6 +37,32 @@
           </div>
           <div class="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
             <i class="pi pi-store text-blue-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs text-gray-400">Commission Revenue</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.commissionRevenue) }}</div>
+            <div class="text-sm text-indigo-500 mt-1">{{ formatCurrency(stats.monthlyCommissionRevenue) }} this month</div>
+          </div>
+          <div class="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center">
+            <i class="pi pi-percentage text-indigo-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white shadow-md rounded-2xl p-4 flex flex-col justify-between">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-xs text-gray-400">Subscription Revenue</div>
+            <div class="text-2xl font-bold text-gray-800 mt-1">{{ formatCurrency(stats.subscriptionRevenue) }}</div>
+            <div class="text-sm text-emerald-500 mt-1">{{ formatCurrency(stats.monthlySubscriptionRevenue) }} this month</div>
+          </div>
+          <div class="w-12 h-12 bg-emerald-50 rounded-lg flex items-center justify-center">
+            <i class="pi pi-wallet text-emerald-600 text-xl"></i>
           </div>
         </div>
       </div>
@@ -290,12 +316,16 @@ const stats = ref({
   pendingValidations: 0,
   monthlyRevenue: 0,
   revenueGrowth: 0,
+  commissionRevenue: 0,
+  subscriptionRevenue: 0,
+  monthlyCommissionRevenue: 0,
+  monthlySubscriptionRevenue: 0,
 })
 
 const totalPlatformRevenue = ref(0)
 const revenueSeries = ref({
-  monthly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[] },
-  yearly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[] },
+  monthly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[], commissionRevenue: [] as number[] },
+  yearly: { labels: [] as string[], platformRevenue: [] as number[], subscriptionRevenue: [] as number[], commissionRevenue: [] as number[] },
 })
 const storeGrowthSeries = ref({
   labels: [] as string[],
@@ -388,8 +418,8 @@ const initRevenueChart = () => {
       labels: data.labels,
       datasets: [
         {
-          label: 'Platform Revenue',
-          data: data.platformRevenue,
+          label: 'Commission Revenue',
+          data: data.commissionRevenue,
           borderColor: '#4f46e5',
           backgroundColor: 'rgba(79, 70, 229, 0.1)',
           borderWidth: 3,
@@ -502,6 +532,10 @@ const loadDashboard = async () => {
       stats.value.pendingValidations = d.pending_validations || 0
       stats.value.monthlyRevenue = d.monthly_revenue || 0
       stats.value.revenueGrowth = d.revenue_growth || 0
+      stats.value.commissionRevenue = d.commission_revenue || 0
+      stats.value.subscriptionRevenue = d.subscription_revenue || 0
+      stats.value.monthlyCommissionRevenue = d.monthly_commission_revenue || 0
+      stats.value.monthlySubscriptionRevenue = d.monthly_subscription_revenue || 0
       totalPlatformRevenue.value = d.total_platform_revenue || 0
 
       revenueSeries.value = d.revenue_series || revenueSeries.value

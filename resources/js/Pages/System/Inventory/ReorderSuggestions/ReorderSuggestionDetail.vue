@@ -49,6 +49,9 @@
             <p class="text-xs text-gray-500">Product</p>
             <p class="font-semibold">{{ suggestion.product_name || '-' }}</p>
             <p class="text-xs text-gray-500">{{ suggestion.product_sku || '-' }}</p>
+            <p v-if="suggestion.variation_name" class="mt-1 text-xs font-medium text-orange-700">
+              Variant: {{ suggestion.variation_name }}
+            </p>
           </template>
         </Card>
         <Card>
@@ -77,9 +80,48 @@
       </div>
 
       <Card>
-        <template #title>Reason</template>
+        <template #title>How this quantity was calculated</template>
         <template #content>
           <p class="text-sm text-gray-700">{{ suggestion.reason || 'No reason provided.' }}</p>
+          <p v-if="suggestion.calculation" class="mt-2 text-xs leading-5 text-slate-500">
+            Recent-sales formula: daily demand = units sold ÷ 30; reorder trigger = daily demand × lead time + safety stock;
+            suggested quantity targets demand across lead time and review period. When demand history or lead time is unavailable,
+            the configured reorder point and refill settings are used instead.
+          </p>
+          <div v-if="suggestion.calculation" class="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Data source</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ calculationSourceLabel }}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Units sold (30 days)</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.units_sold ?? 0 }}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Average daily demand</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.average_daily_demand ?? 0 }}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Supplier lead time</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.lead_time_days || 0 }} days</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Safety stock</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.safety_stock ?? 0 }}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Reorder trigger</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.reorder_trigger ?? 0 }}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Target stock</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.target_stock ?? 0 }}</div>
+            </div>
+            <div v-if="suggestion.calculation.review_period_days" class="rounded-lg bg-slate-50 p-3">
+              <div class="text-slate-500">Review period</div>
+              <div class="mt-1 font-semibold text-slate-800">{{ suggestion.calculation.review_period_days }} days</div>
+            </div>
+          </div>
         </template>
       </Card>
 
@@ -141,8 +183,20 @@ const suggestionId = computed(() => Number(route.params.id))
 const normalizeSuggestion = (row: any) => ({
   ...row,
   product_name: row?.product?.product_name || row?.product?.name || '-',
-  product_sku: row?.product?.sku || '-',
+  product_sku: row?.variation?.variation_sku || row?.product?.sku || '-',
+  variation_name: row?.variation?.variation_name || null,
+  calculation: row?.metadata?.calculation || null,
+  calculation_source: row?.metadata?.source || null,
   branch_name: row?.branch?.name || '-',
+})
+
+const calculationSourceLabel = computed(() => {
+  const source = suggestion.value?.calculation_source
+  if (source === 'sales_30_day') return 'Recent sales'
+  if (source === 'configured_average_demand') return 'Configured demand'
+  if (source === 'branch_inventory_reorder_point') return 'Branch reorder point'
+  if (source === 'configured_reorder_rule') return 'Reorder rule'
+  return source || 'Manual'
 })
 
 const formatDateTime = (value?: string | null) => {

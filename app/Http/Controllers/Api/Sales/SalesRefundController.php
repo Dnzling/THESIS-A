@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Sales;
 
 use App\Http\Controllers\Controller;
-use App\Models\Ecommerce\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceOrderReturn;
 use App\Models\Sales\SalesRefund;
 use App\Services\Finance\CashflowService;
 use Illuminate\Http\Request;

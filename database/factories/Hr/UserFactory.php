@@ -58,18 +58,18 @@ class UserFactory extends Factory
     }
 
     /**
-     * Indicate that the user is a store admin.
+     * Indicate that the user is a store owner.
      */
-    public function storeAdmin(): static
+    public function storeOwner(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role_id' => Role::query()->where('name', 'store_admin')->value('id')
+            'role_id' => Role::query()->where('name', 'owner')->value('id')
                 ?? Role::query()->firstOrCreate(
-                    ['name' => 'store_admin'],
+                    ['name' => 'owner'],
                     [
-                        'display_name' => 'Store Admin',
-                        'code' => 'STORE_ADMIN',
-                        'description' => 'Store administrator role for factory-generated users.',
+                        'display_name' => 'Store Owner',
+                        'code' => 'OWNER',
+                        'description' => 'Store owner role for factory-generated users.',
                         'is_active' => true,
                     ]
                 )->id,

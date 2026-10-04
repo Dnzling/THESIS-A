@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div class="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
@@ -14,9 +14,9 @@
           <Button
             v-if="canCreateDelivery"
             icon="pi pi-truck"
-            label="Create Delivery"
+            label="Assign Delivery"
             severity="success"
-            @click="deliveryDialogVisible = true"
+            @click="router.push({ name: 'logistics.stock-transfers.assign', params: { id: transferId } })"
           />
           <Button icon="pi pi-refresh" label="Refresh" outlined @click="loadDetail" />
         </div>
@@ -35,12 +35,82 @@
           <div><span class="text-slate-500">Expected Delivery:</span> <strong>{{ formatDate(detail?.expected_delivery_date) }}</strong></div>
           <div><span class="text-slate-500">Tracking Number:</span> <strong>{{ detail?.tracking_number || '-' }}</strong></div>
           <div><span class="text-slate-500">Driver:</span> <strong>{{ detail?.driver_name || '-' }}</strong></div>
-          <div><span class="text-slate-500">Delivery Fee:</span> <strong>₱0.00 (Stock Transfer)</strong></div>
+          <div><span class="text-slate-500">Additional Delivery Charge:</span> <strong>{{ formatCurrency(0) }} (none)</strong></div>
           <div class="md:col-span-2"><span class="text-slate-500">Reason:</span> <strong>{{ detail?.reason || '-' }}</strong></div>
-          <div class="md:col-span-2"><span class="text-slate-500">Notes:</span> <strong>{{ detail?.notes || '-' }}</strong></div>
+          <div class="md:col-span-2"><span class="text-slate-500">Notes:</span> <strong>{{ displayNotes || '-' }}</strong></div>
         </div>
       </template>
     </Card>
+
+    <Card v-if="transferSteps.length > 1" class="rounded-3xl border border-slate-200/80 shadow-sm">
+      <template #content>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div v-for="step in transferSteps" :key="step.key" class="flex items-start gap-3">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" :class="step.active ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'">{{ step.index }}</span>
+            <div>
+              <p class="text-sm font-semibold" :class="step.active ? 'text-slate-900' : 'text-slate-500'">{{ step.label }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ step.date || 'Not completed' }}</p>
+            </div>
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <div v-if="detail" class="grid gap-4 lg:grid-cols-2">
+      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
+        <template #title><span class="flex items-center gap-2"><i class="pi pi-arrow-up-right text-blue-600"></i>Sending Branch</span></template>
+        <template #content>
+          <p class="text-lg font-semibold text-slate-900">{{ branchName(detail?.from_branch || detail?.fromBranch) }}</p>
+          <p class="mt-2 text-sm text-slate-600">{{ branchAddress(detail?.from_branch || detail?.fromBranch) }}</p>
+          <div class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+            <p><span class="text-slate-500">Branch code:</span> {{ (detail?.from_branch || detail?.fromBranch)?.branch_code || '-' }}</p>
+            <p><span class="text-slate-500">Contact:</span> {{ (detail?.from_branch || detail?.fromBranch)?.contact_number || '-' }}</p>
+          </div>
+        </template>
+      </Card>
+      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
+        <template #title><span class="flex items-center gap-2"><i class="pi pi-map-marker text-emerald-600"></i>Receiving Branch</span></template>
+        <template #content>
+          <p class="text-lg font-semibold text-slate-900">{{ branchName(detail?.to_branch || detail?.toBranch) }}</p>
+          <p class="mt-2 text-sm text-slate-600">{{ branchAddress(detail?.to_branch || detail?.toBranch) }}</p>
+          <div class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+            <p><span class="text-slate-500">Branch code:</span> {{ (detail?.to_branch || detail?.toBranch)?.branch_code || '-' }}</p>
+            <p><span class="text-slate-500">Contact:</span> {{ (detail?.to_branch || detail?.toBranch)?.contact_number || '-' }}</p>
+          </div>
+        </template>
+      </Card>
+    </div>
+
+    <div v-if="detail" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
+        <template #title>Approvals & Transfer Details</template>
+        <template #content>
+          <div class="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Requested By</p><p class="mt-1 font-medium text-slate-900">{{ employeeName(detail?.requested_by || detail?.requestedBy) }}</p><p class="text-xs text-slate-500">{{ formatDate(detail?.requested_date) }}</p></div>
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Sender Approval</p><p class="mt-1 font-medium text-slate-900">{{ employeeName(detail?.sender_approved_by || detail?.senderApprovedBy) }}</p><p class="text-xs text-slate-500">{{ formatDate(detail?.sender_approved_date) }}</p></div>
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Receiver Acknowledgment</p><p class="mt-1 font-medium text-slate-900">{{ employeeName(detail?.receiver_acknowledged_by || detail?.receiverAcknowledgedBy) }}</p><p class="text-xs text-slate-500">{{ formatDate(detail?.receiver_acknowledged_date) }}</p></div>
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Finance Approval</p><p class="mt-1 font-medium text-slate-900">{{ employeeName(detail?.finance_approved_by || detail?.financeApprovedBy) }}</p><p class="text-xs text-slate-500">{{ formatDate(detail?.finance_approved_date) }}</p></div>
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Approval Policy</p><p class="mt-1 font-medium text-slate-900">{{ label(detail?.approval_policy_used) || '-' }}</p></div>
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Cost Method / Distance</p><p class="mt-1 font-medium text-slate-900">{{ label(detail?.cost_method) || '-' }}<span v-if="detail?.distance_km"> · {{ formatDecimal(detail.distance_km) }} km</span></p></div>
+            <div><p class="text-xs uppercase tracking-wide text-slate-500">Created</p><p class="mt-1 font-medium text-slate-900">{{ formatDate(detail?.created_at) }}</p></div>
+          </div>
+          <div v-if="detail?.rejection_reason" class="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            <p class="font-semibold">Rejection Reason</p><p class="mt-1">{{ detail.rejection_reason }}</p>
+          </div>
+        </template>
+      </Card>
+      <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
+        <template #title>Cost Summary</template>
+        <template #content>
+          <div class="space-y-3 text-sm">
+            <div class="flex justify-between gap-3"><span class="text-slate-600">Goods value</span><span class="font-medium">{{ formatCurrency(detail?.goods_value) }}</span></div>
+            <div class="flex justify-between gap-3"><span class="text-slate-600">Shipping fee</span><span class="font-medium">{{ formatCurrency(detail?.transfer_cost) }}</span></div>
+            <div class="border-t border-slate-200 pt-3"><div class="flex justify-between gap-3 text-base"><span class="font-semibold text-slate-900">Total transfer value</span><span class="font-semibold text-slate-900">{{ formatCurrency(Number(detail?.goods_value || 0) + Number(detail?.transfer_cost || 0)) }}</span></div></div>
+          </div>
+          <p v-if="detail?.cost_calculation_notes" class="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{{ detail.cost_calculation_notes }}</p>
+        </template>
+      </Card>
+    </div>
 
     <Card v-if="showShipmentOverview" class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>
@@ -72,6 +142,10 @@
             <span>Truck/Van: {{ detail?.vehicle_type || '-' }}</span>
             <span>Tracking #: {{ detail?.tracking_number || '-' }}</span>
             <span>Contact: {{ detail?.driver_contact || '-' }}</span>
+          </div>
+          <div class="mb-3 grid gap-2 sm:grid-cols-2">
+            <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs"><span class="text-slate-500">Shipped by:</span> {{ employeeName(detail?.shipped_by || detail?.shippedBy) }} · {{ formatDate(detail?.shipped_date) }}</p>
+            <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs"><span class="text-slate-500">Received by:</span> {{ employeeName(detail?.received_by || detail?.receivedBy) }} · {{ formatDate(detail?.received_date) }}</p>
           </div>
           <div v-if="proofImages.length" class="mb-3 rounded-xl border border-slate-200 px-4 py-3">
             <div class="mb-2 text-sm font-semibold text-slate-800">Proof of Delivery</div>
@@ -118,99 +192,53 @@
     <Card class="rounded-3xl border border-slate-200/80 shadow-sm">
       <template #title>Line Items</template>
       <template #content>
-        <DataTable :value="detail?.items || []" dataKey="id" stripedRows>
+        <DataTable :value="detail?.items || []" dataKey="id" stripedRows responsiveLayout="scroll">
           <template #empty>
             <div class="py-8 text-center text-slate-500">No transfer items found.</div>
           </template>
 
           <Column header="Product">
             <template #body="{ data }">
-              {{ data.product?.product_name || '-' }}
+              <p class="font-medium text-slate-900">{{ data.product?.product_name || data.product?.name || '-' }}</p>
+              <p class="mt-1 text-xs text-slate-500">SKU: {{ data.product?.sku || '-' }}</p>
             </template>
+          </Column>
+          <Column header="Variation">
+            <template #body="{ data }">{{ data.variation?.name || data.variation?.variation_name || '-' }}</template>
+          </Column>
+          <Column header="Unit Value" class="text-right">
+            <template #body="{ data }">{{ formatCurrency(data.unit_value) }}</template>
           </Column>
           <Column header="Requested Qty">
             <template #body="{ data }">
-              {{ data.requested_quantity ?? 0 }}
+              {{ formatQuantity(data.requested_quantity) }}
             </template>
           </Column>
           <Column header="Approved Qty">
             <template #body="{ data }">
-              {{ data.approved_quantity ?? '-' }}
+              {{ formatQuantity(data.approved_quantity) }}
             </template>
           </Column>
           <Column header="Shipped Qty">
             <template #body="{ data }">
-              {{ data.shipped_quantity ?? '-' }}
+              {{ formatQuantity(data.shipped_quantity) }}
             </template>
           </Column>
           <Column header="Received Qty">
             <template #body="{ data }">
-              {{ data.received_quantity ?? '-' }}
+              {{ formatQuantity(data.received_quantity) }}
             </template>
+          </Column>
+          <Column header="Damaged Qty">
+            <template #body="{ data }"><span :class="Number(data.damaged_quantity || 0) > 0 ? 'font-semibold text-rose-600' : ''">{{ formatQuantity(data.damaged_quantity) }}</span></template>
+          </Column>
+          <Column header="Line Value" class="text-right">
+            <template #body="{ data }">{{ formatCurrency(Number(data.unit_value || 0) * Number(data.shipped_quantity ?? data.approved_quantity ?? data.requested_quantity ?? 0)) }}</template>
           </Column>
           <Column field="notes" header="Notes" />
         </DataTable>
       </template>
     </Card>
-
-    <Dialog v-model:visible="deliveryDialogVisible" modal header="Delivery Assignment Form" class="w-full max-w-3xl">
-      <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="submitDelivery">
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Logistics Employee</label>
-          <Select
-            v-model="deliveryForm.driver_user_id"
-            :options="employees"
-            optionLabel="name"
-            optionValue="id"
-            fluid
-            filter
-            placeholder="Select logistics employee"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Vehicle</label>
-          <Select
-            v-model="deliveryForm.vehicle_id"
-            :options="vehicles"
-            optionLabel="label"
-            optionValue="id"
-            fluid
-            filter
-            placeholder="Select truck/van"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Courier Contact Number</label>
-          <InputText v-model="deliveryForm.courier_contact" fluid placeholder="09xxxxxxxxx" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Estimated Delivery Time</label>
-          <DatePicker v-model="deliveryForm.estimated_delivery_at" showTime hourFormat="12" fluid />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-600">Tracking Number (Optional)</label>
-          <InputText v-model="deliveryForm.tracking_number" fluid placeholder="TRK-..." />
-        </div>
-        <div class="md:col-span-2">
-          <label class="mb-1 block text-sm text-slate-600">Notes (Optional)</label>
-          <Textarea v-model="deliveryForm.notes" rows="3" fluid placeholder="Delivery assignment notes" />
-        </div>
-        <div class="md:col-span-2">
-          <Message severity="info" :closable="false">No delivery fee will be charged for stock transfer logistics.</Message>
-        </div>
-      </form>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined @click="deliveryDialogVisible = false" />
-        <Button
-          label="Create Delivery"
-          icon="pi pi-check-circle"
-          severity="success"
-          :loading="submittingDelivery"
-          :disabled="!canSubmitDelivery"
-          @click="submitDelivery"
-        />
-      </template>
-    </Dialog>
 
     <Dialog v-model:visible="recordLogDialogVisible" modal header="Record Delivery Log" class="w-full max-w-xl">
       <div class="space-y-3">
@@ -304,7 +332,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
@@ -315,11 +343,7 @@ import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
-import Message from 'primevue/message'
-import Select from 'primevue/select'
-import DatePicker from 'primevue/datepicker'
 import inventoryService from '../../../../services/inventory.service'
-import logisticsService from '../../../../services/logistics.service'
 
 const route = useRoute()
 const router = useRouter()
@@ -328,8 +352,6 @@ const toast = useToast()
 const loading = ref(false)
 const detail = ref<any>(null)
 const transferId = computed(() => Number(route.params.id || 0))
-const deliveryDialogVisible = ref(false)
-const submittingDelivery = ref(false)
 const recordLogDialogVisible = ref(false)
 const recordLogEvent = ref<string | null>(null)
 const recordLogNotes = ref('')
@@ -349,16 +371,6 @@ const recordLogEventOptions = [
   { label: 'Received by Branch', value: 'received_by_branch' },
   { label: 'Custom Note', value: 'custom_note' },
 ]
-const employees = ref<any[]>([])
-const vehicles = ref<any[]>([])
-const deliveryForm = reactive({
-  driver_user_id: null as number | null,
-  vehicle_id: null as number | null,
-  courier_contact: '',
-  estimated_delivery_at: null as Date | null,
-  tracking_number: '',
-  notes: '',
-})
 
 const loadDetail = async () => {
   if (!transferId.value) return
@@ -391,31 +403,91 @@ const canCreateDelivery = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   const notes = String(detail.value?.notes || '').toLowerCase()
   const logisticsProcessing = status === 'in_transit' && notes.includes('sent to logistics')
-  return logisticsProcessing && !detail.value?.driver_name
+  return (detail.value?.delivery_status === 'ready_for_dispatch' || logisticsProcessing) && !detail.value?.driver_name && !detail.value?.driver_user_id
 })
 
 const showShipmentOverview = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
-  return ['in_transit', 'received'].includes(status)
+  return ['in_transit', 'out_for_delivery', 'received'].includes(status)
+    || (status === 'sender_approved' && !!detail.value?.driver_name)
 })
 const canRecordShipmentLog = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
-  return ['in_transit', 'received'].includes(status)
+  return ['in_transit', 'out_for_delivery', 'received'].includes(status)
 })
 const isReceived = computed(() => String(detail.value?.status || '').toLowerCase() === 'received')
 
 const shipmentSteps = computed(() => {
   const status = String(detail.value?.status || '').toLowerCase()
   const created = !!detail.value?.driver_name || !!detail.value?.vehicle_type
-  const inTransit = status === 'in_transit' || status === 'received'
-  const delivered = status === 'received'
+  const inTransit = ['in_transit', 'out_for_delivery', 'received'].includes(status)
+  const outForDelivery = status === 'out_for_delivery' || detail.value?.delivery_status === 'out_for_delivery' || detail.value?.delivery_status === 'delivered'
+  const delivered = detail.value?.delivery_status === 'delivered'
+  const received = status === 'received'
 
   return [
     { key: 'created', label: 'Delivery Created', index: 1, active: created },
     { key: 'transit', label: 'In Transit', index: 2, active: inTransit },
-    { key: 'delivered', label: 'Delivered', index: 3, active: delivered },
+    { key: 'out_for_delivery', label: 'Out for Delivery', index: 3, active: outForDelivery },
+    { key: 'delivered', label: 'Driver Delivered', index: 4, active: delivered, date: formatDate(detail.value?.delivered_at) },
+    { key: 'received', label: 'Received by Branch', index: 5, active: received, date: formatDate(detail.value?.received_date) },
   ]
 })
+
+const transferSteps = computed(() => {
+  const transfer = detail.value
+  if (!transfer) return []
+  const status = String(transfer.status || '').toLowerCase()
+  const senderApproved = !!transfer.sender_approved_date || !!transfer.sender_approved_by || !!transfer.senderApprovedBy
+    || ['sender_approved', 'receiver_acknowledged', 'receiver_acknowledge', 'pending_finance_approval', 'finance_approved', 'approved', 'in_transit', 'out_for_delivery', 'received'].includes(status)
+  const receiverAcknowledged = !!transfer.receiver_acknowledged_date || !!transfer.receiver_acknowledged_by || !!transfer.receiverAcknowledgedBy
+    || ['receiver_acknowledged', 'receiver_acknowledge', 'pending_finance_approval', 'finance_approved', 'approved', 'in_transit', 'out_for_delivery', 'received'].includes(status)
+  const financeApproved = !!transfer.finance_approved_date || !!transfer.finance_approved_by || !!transfer.financeApprovedBy
+    || ['finance_approved', 'approved', 'in_transit', 'out_for_delivery', 'received'].includes(status)
+  const shipped = !!transfer.shipped_date || ['in_transit', 'out_for_delivery', 'received'].includes(status)
+  const received = !!transfer.received_date || status === 'received'
+
+  return [
+    { key: 'requested', label: 'Requested', index: 1, active: status !== 'draft', date: formatDate(transfer.requested_date || transfer.created_at) },
+    { key: 'sender-approved', label: 'Sender Approved', index: 2, active: senderApproved, date: formatDate(transfer.sender_approved_date) },
+    { key: 'receiver-acknowledged', label: 'Receiver Acknowledged', index: 3, active: receiverAcknowledged, date: formatDate(transfer.receiver_acknowledged_date) },
+    { key: 'finance-approved', label: 'Finance Approved', index: 4, active: financeApproved, date: formatDate(transfer.finance_approved_date) },
+    { key: 'shipped', label: 'In Transit', index: 5, active: shipped, date: formatDate(transfer.shipped_date) },
+    { key: 'out-for-delivery', label: 'Out for Delivery', index: 6, active: status === 'out_for_delivery' || transfer.delivery_status === 'out_for_delivery' || transfer.delivery_status === 'delivered', date: formatDate(transfer.out_for_delivery_at) },
+    { key: 'received', label: 'Received', index: 7, active: received, date: formatDate(transfer.received_date) },
+  ]
+})
+
+const displayNotes = computed(() => String(detail.value?.notes || '')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line && !/^(LOG2?\||POD\|)/.test(line))
+  .join('\n'))
+
+const branchName = (branch: any) => branch?.name || branch?.branch_name || '-'
+const branchAddress = (branch: any) => [branch?.address, branch?.barangay, branch?.city, branch?.province]
+  .filter((part, index, parts) => !!part && parts.indexOf(part) === index)
+  .join(', ') || 'No address provided'
+const employeeName = (employee: any) => {
+  if (!employee) return '-'
+  const user = employee.user || employee.employee?.user || employee
+  const name = [user.fname || user.first_name, user.lname || user.last_name].filter(Boolean).join(' ').trim()
+  return name || employee.name || employee.full_name || '-'
+}
+const label = (value?: string | null) => String(value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+const formatCurrency = (value?: number | string | null) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+}).format(Number(value || 0))
+const formatQuantity = (value?: number | string | null) => value === null || value === undefined || value === ''
+  ? '-'
+  : new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 }).format(Number(value))
+const formatDecimal = (value?: number | string | null) => value === null || value === undefined || value === ''
+  ? '-'
+  : new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 }).format(Number(value))
 
 const parsedDeliveryLogs = computed(() => {
   const logs: Array<{ label: string; time: string; by?: string; eventKey?: string }> = []
@@ -432,9 +504,9 @@ const parsedDeliveryLogs = computed(() => {
     logs.unshift({
       label: 'Delivered',
       time: formatDate(detail.value.received_date),
-      by: detail.value?.receivedBy?.fname
-        ? `${detail.value.receivedBy.fname} ${detail.value.receivedBy.lname || ''}`.trim()
-        : 'Receiver',
+      by: employeeName(detail.value?.received_by || detail.value?.receivedBy) === '-'
+        ? 'Receiver'
+        : employeeName(detail.value?.received_by || detail.value?.receivedBy),
     })
   }
 
@@ -514,53 +586,6 @@ const proofImages = computed(() => {
     })
     .filter((entry) => !!entry.url)
 })
-
-const canSubmitDelivery = computed(() =>
-  !!deliveryForm.driver_user_id && !!deliveryForm.vehicle_id && !!deliveryForm.courier_contact.trim()
-)
-
-const submitDelivery = async () => {
-  if (!canSubmitDelivery.value) return
-  submittingDelivery.value = true
-  try {
-    const selectedEmployee = employees.value.find((e: any) => Number(e.id) === Number(deliveryForm.driver_user_id))
-    const selectedVehicle = vehicles.value.find((v: any) => Number(v.id) === Number(deliveryForm.vehicle_id))
-
-    const driverName = selectedEmployee?.name || selectedEmployee?.full_name || 'Assigned Driver'
-    const driverContact =
-      deliveryForm.courier_contact.trim() ||
-      selectedEmployee?.contact_number ||
-      selectedEmployee?.phone ||
-      selectedEmployee?.mobile ||
-      ''
-    const vehicleType = selectedVehicle?.vehicle_name || selectedVehicle?.label || 'Assigned Vehicle'
-
-    await inventoryService.createTransferDelivery(transferId.value, {
-      vehicle_type: vehicleType,
-      driver_name: String(driverName).trim(),
-      driver_contact: String(driverContact).trim(),
-      tracking_number: deliveryForm.tracking_number.trim() || undefined,
-      notes: deliveryForm.notes.trim() || undefined,
-    })
-    toast.add({
-      severity: 'success',
-      summary: 'Delivery Created',
-      detail: 'Stock transfer delivery created with no charge.',
-      life: 2500,
-    })
-    deliveryDialogVisible.value = false
-    await loadDetail()
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Create Failed',
-      detail: error?.response?.data?.message || 'Failed to create delivery.',
-      life: 3000,
-    })
-  } finally {
-    submittingDelivery.value = false
-  }
-}
 
 const saveShipmentLog = async () => {
   if (!recordLogEvent.value) return
@@ -693,48 +718,11 @@ const markAsDelivered = async () => {
   }
 }
 
-const loadOptions = async () => {
-  try {
-    const [employeeRes, vehicleRes] = await Promise.all([
-      logisticsService.getLogisticsEmployees(),
-      logisticsService.getVehicles({ per_page: 100 }),
-    ])
-
-    employees.value = employeeRes?.data || []
-    const vehicleRows = vehicleRes?.data?.data || []
-    vehicles.value = vehicleRows.map((vehicle: any) => ({
-      ...vehicle,
-      label: `${vehicle.vehicle_name} (${vehicle.plate_number})`,
-    }))
-  } catch (error: any) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Options Incomplete',
-      detail: error?.response?.data?.message || 'Failed to load drivers/vehicles.',
-      life: 2500,
-    })
-  }
-}
-
-watch(
-  () => deliveryForm.driver_user_id,
-  (id) => {
-    if (!id) return
-    const selectedEmployee = employees.value.find((e: any) => Number(e.id) === Number(id))
-    if (!deliveryForm.courier_contact && selectedEmployee) {
-      deliveryForm.courier_contact =
-        selectedEmployee.contact_number ||
-        selectedEmployee.phone ||
-        selectedEmployee.mobile ||
-        ''
-    }
-  }
-)
-
 const statusSeverity = (status?: string) => {
   const s = String(status || '').toLowerCase()
   if (s === 'received') return 'success'
   if (s === 'in_transit') return 'info'
+  if (s === 'out_for_delivery') return 'warn'
   if (s === 'receiver_acknowledged' || s === 'receiver_acknowledge') return 'warning'
   if (s === 'cancelled') return 'danger'
   return 'secondary'
@@ -754,6 +742,6 @@ const formatDate = (value?: string) => {
 const goBack = () => router.push({ name: 'logistics.stock-transfers' })
 
 onMounted(async () => {
-  await Promise.all([loadDetail(), loadOptions()])
+  await loadDetail()
 })
 </script>

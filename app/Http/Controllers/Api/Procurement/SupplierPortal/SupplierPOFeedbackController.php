@@ -83,9 +83,19 @@ class SupplierPOFeedbackController extends Controller
 
             $pos = $query->paginate($request->get('per_page', 10));
 
+            // Fetch feedback for every PO on this page in one query. This avoids the
+            // supplier portal issuing one HTTP request per table row.
+            $feedbackByPurchaseOrder = $portal->poFeedbacks()
+                ->whereIn('purchase_order_id', $pos->getCollection()->pluck('id'))
+                ->orderByDesc('submitted_at')
+                ->get()
+                ->unique('purchase_order_id')
+                ->keyBy('purchase_order_id');
+
             // add trimmed store info
-            $pos->getCollection()->transform(function ($po) {
+            $pos->getCollection()->transform(function ($po) use ($feedbackByPurchaseOrder) {
                 $arr = $po->toArray();
+                $arr['supplier_feedback'] = $feedbackByPurchaseOrder->get($po->id)?->toArray();
                 if ($po->relationLoaded('store') && $po->store) {
                     $arr['store'] = [
                         'id' => $po->store->id ?? null,
@@ -140,7 +150,7 @@ class SupplierPOFeedbackController extends Controller
                 ], 409);
             }
 
-            $po = PurchaseOrder::with(['items.product', 'supplier', 'branch', 'store'])
+            $po = PurchaseOrder::with(['items.product', 'items.variation', 'supplier', 'branch', 'store', 'supplierContract'])
                 ->findOrFail($id);
 
             if ($po->supplier_id !== $portal->supplier_id) {
@@ -155,7 +165,15 @@ class SupplierPOFeedbackController extends Controller
                 ->where('purchase_order_id', $id)
                 ->first();
 
-            $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with(['branch', 'supplier'])
+            $shipment = \App\Models\Procurement\Shipping\PurchaseOrderShipment::with([
+                'branch',
+                'supplier',
+                'driverEmployee.user',
+                'driverEmployee.branch',
+                'driverEmployee.role',
+                'driverUser',
+                'vehicle',
+            ])
                 ->where('purchase_order_id', $id)
                 ->first();
 
@@ -174,8 +192,8 @@ class SupplierPOFeedbackController extends Controller
                 ->active()
                 ->orderBy('end_date', 'desc')
                 ->first();
-            $contractTaxRate = ($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0;
-            $contractDiscountPercent = $contract?->discount_percentage ?? 0;
+            $contractTaxRate = $po->contract_tax_rate ?? (($contract && !$contract->is_tax_exempt) ? ($contract->tax_rate ?? 0) : 0);
+            $contractDiscountPercent = $po->contract_discount_percentage ?? ($contract?->discount_percentage ?? 0);
 
             $rejectionReason = $po->rejection_details['reason'] ?? null;
             if (!$rejectionReason && $feedback?->rejection_reason) {
@@ -240,6 +258,13 @@ class SupplierPOFeedbackController extends Controller
 
             $po = PurchaseOrder::findOrFail($request->purchase_order_id);
 
+            if ((int) $po->supplier_id !== (int) $portal->supplier_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to this purchase order.',
+                ], 403);
+            }
+
             // Create or update feedback
             $feedback = SupplierPOFeedback::updateOrCreate(
                 [
@@ -248,6 +273,7 @@ class SupplierPOFeedbackController extends Controller
                 ],
                 [
                     'response' => $request->response,
+                    'fulfillment_method' => $request->response === 'accepted' ? 'store_pickup' : null,
                     'rejection_reason' => $request->get('rejection_reason'),
                     'expected_delivery_date' => $request->get('expected_delivery_date'),
                     'delivery_quantity' => $request->get('delivery_quantity'),
@@ -257,12 +283,18 @@ class SupplierPOFeedbackController extends Controller
             );
 
             if ($request->response === 'accepted') {
+                $po->fulfillment_method = 'store_pickup';
+                $po->save();
                 $po->markSupplierAccepted();
 
                 ActivityLog::record(
                     'po_supplier_accepted',
                     "PO {$po->po_number} accepted by supplier.",
-                    ['po_number' => $po->po_number, 'supplier_id' => $portal->supplier_id],
+                    [
+                        'po_number' => $po->po_number,
+                        'supplier_id' => $portal->supplier_id,
+                        'fulfillment_method' => 'store_pickup',
+                    ],
                     'purchase_order',
                     $po->id
                 );

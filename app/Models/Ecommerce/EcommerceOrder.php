@@ -2,6 +2,8 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\CRM\EcommerceOrderReturn;
+
 use App\Models\Core\User;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
@@ -27,10 +29,16 @@ class EcommerceOrder extends Model
         'shipping_phone',
         'shipping_email',
         'shipping_address',
+        'fulfillment_method',
+        'pickup_date',
         'customer_latitude',
         'customer_longitude',
         'subtotal',
         'tax_amount',
+        'commission_percentage',
+        'commission_base_amount',
+        'commission_amount',
+        'store_net_amount',
         'shipping_fee',
         'discount_amount',
         'total_amount',
@@ -42,10 +50,15 @@ class EcommerceOrder extends Model
     protected $casts = [
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
+        'commission_percentage' => 'decimal:2',
+        'commission_base_amount' => 'decimal:2',
+        'commission_amount' => 'decimal:2',
+        'store_net_amount' => 'decimal:2',
         'shipping_fee' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'placed_at' => 'datetime',
+        'pickup_date' => 'date',
         'customer_latitude' => 'decimal:7',
         'customer_longitude' => 'decimal:7',
         'pending_snapshot' => 'array',

@@ -4,17 +4,9 @@
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="-mx-1 flex w-full overflow-x-auto px-1 sm:w-auto">
           <div class="flex flex-nowrap gap-2">
-            <Button
-              v-for="tab in tabs"
-              :key="tab.value"
-              :label="tab.label"
-              :outlined="activeTab !== tab.value"
-              :severity="activeTab === tab.value ? 'warn' : 'secondary'"
-              rounded
-              size="small"
-              class="shrink-0"
-              @click="activeTab = tab.value"
-            />
+            <Button v-for="tab in tabs" :key="tab.value" :label="tab.label" :outlined="activeTab !== tab.value"
+              :severity="activeTab === tab.value ? 'warn' : 'secondary'" rounded size="small" class="shrink-0"
+              @click="activeTab = tab.value" />
           </div>
         </div>
 
@@ -37,6 +29,10 @@
                   <div class="min-w-0">
                     <p class="text-sm font-semibold text-slate-800">Order No: {{ group.order_number }}</p>
                     <p class="text-xs text-slate-500 truncate">Store: {{ group.store_name }}</p>
+                    <p class="text-xs text-slate-500">Est. delivery: <span class="font-medium text-slate-700">{{
+                      formatEstimatedDelivery(group.estimated_delivery_at) }}</span></p>
+                    <p class="text-sm font-semibold text-slate-900">Order total: {{ formatMoney(group.total_amount) }}
+                    </p>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
                     <Tag :value="statusLabel(group.status)" :class="statusTagClass(group.status)" />
@@ -45,11 +41,8 @@
                 </div>
               </div>
 
-              <div
-                v-for="item in group.items"
-                :key="`${item.order_id}-${item.item_id}`"
-                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3"
-              >
+              <div v-for="item in group.items" :key="`${item.order_id}-${item.item_id}`"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3">
                 <div class="flex min-w-0 items-center gap-3">
                   <img :src="normalizeImageUrl(item.image) || '/F.svg'" alt="Product"
                     class="h-14 w-14 rounded-xl border border-slate-200 object-cover" @error="onImageError" />
@@ -59,9 +52,9 @@
                   </div>
                 </div>
 
-                <div class="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:items-center sm:gap-4 md:gap-5">
+                <div
+                  class="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:items-center sm:gap-4 md:gap-5">
                   <p class="text-xs sm:text-sm text-slate-600">{{ formatDate(item.created_at) }}</p>
-                  <p class="text-sm sm:text-lg font-semibold text-slate-900">PHP {{ Number(item.unit_price || 0).toFixed(2) }}</p>
                   <p class="text-xs sm:text-sm font-semibold text-slate-700">Qty {{ item.quantity }}</p>
                 </div>
               </div>
@@ -95,6 +88,8 @@ type OrderItemRow = {
   order_number: string
   status: string
   delivery_status: string
+  estimated_delivery_at: string | null
+  total_amount: number
   created_at: string
   product_name: string
   sku: string | null
@@ -134,6 +129,8 @@ const flattenedItems = computed<OrderItemRow[]>(() => {
       order_number: String(order.order_number || ''),
       status: effectiveStatus,
       delivery_status: deliveryStatus,
+      estimated_delivery_at: order.delivery?.estimated_delivery_at || null,
+      total_amount: Number(order.total_amount || 0),
       created_at: String(order.created_at || ''),
       product_name: String(item.product_name || ''),
       sku: item.sku || null,
@@ -170,6 +167,8 @@ type OrderGroup = {
   store_name: string
   status: string
   delivery_status: string
+  estimated_delivery_at: string | null
+  total_amount: number
   created_at: string
   items: OrderItemRow[]
 }
@@ -186,6 +185,8 @@ const groupedOrders = computed<OrderGroup[]>(() => {
         store_name: item.store_name,
         status: item.status,
         delivery_status: item.delivery_status,
+        estimated_delivery_at: item.estimated_delivery_at,
+        total_amount: item.total_amount,
         created_at: item.created_at,
         items: [],
       })
@@ -216,6 +217,8 @@ function statusLabel(status: string) {
     if (value === 'return_pending') return 'Return Pending'
     if (value === 'return_approved') return 'Return Approved'
     if (value === 'return_received') return 'Return Received'
+    if (value === 'return_rejected') return 'Return Rejected'
+    if (value === 'return_processing') return 'Return Processing'
     if (value === 'refunded') return 'Refunded'
     return 'Return'
   }
@@ -253,6 +256,17 @@ function goOrderDetail(orderId: number) {
 function formatDate(value: string) {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function formatEstimatedDelivery(value: string | null) {
+  if (!value) return 'Not scheduled'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Not scheduled'
+  return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))
 }
 
 function normalizeImageUrl(raw: string) {

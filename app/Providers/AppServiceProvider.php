@@ -59,10 +59,11 @@ class AppServiceProvider extends ServiceProvider
         // Register Inventory Observers
         \App\Models\ProductCatalog\Product::observe(\App\Observers\ProductObserver::class);
         \App\Models\Inventory\BranchInventory::observe(\App\Observers\BranchInventoryObserver::class);
+        \App\Models\Procurement\PurchaseOrder\PurchaseOrder::observe(\App\Observers\PurchaseOrderIncomingStockObserver::class);
+        \App\Models\Procurement\PurchaseOrder\PurchaseOrderItem::observe(\App\Observers\PurchaseOrderItemIncomingStockObserver::class);
 
         // Permission checks (RBAC)
-        // `can:<permission>` route middleware relies on Gate abilities.
-        // We treat the ability name as a permission atom and defer to User::hasPermissionTo().
+        // Treat each Gate ability as a permission atom and defer to User::hasPermissionTo().
         // Set RBAC_BYPASS=true only for local/dev troubleshooting.
         Gate::before(function ($user, string $ability) {
             if (config('app.rbac_bypass', false)) {

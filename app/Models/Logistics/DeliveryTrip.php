@@ -54,5 +54,9 @@ class DeliveryTrip extends Model
     {
         return $this->hasMany(SalesOrderDelivery::class, 'trip_id');
     }
-}
 
+    public function returnPickups(): HasMany
+    {
+        return $this->hasMany(ReturnPickup::class, 'trip_id');
+    }
+}

@@ -3,21 +3,15 @@
     <!-- iOS-style Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900 tracking-tight">Purchase Orders</h1>
+        <h1 class="text-xl font-semibold text-gray-900 tracking-tight">Purchase Orders</h1>
       </div>
     </div>
 
-    <!-- iOS-style Filters Card -->
+    <!-- POs Table Card -->
     <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <template #header>
         <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-          </div>
-        </div>
-      </template>
-      
-      <template #content>
-        <div class="p-6 pt-2">
+<div class="p-6 pt-2">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- Search Input -->
             <div class="md:col-span-2 space-y-2">
@@ -61,19 +55,6 @@
             </div>
           </div>
         </div>
-      </template>
-    </Card>
-
-    <!-- POs Table Card -->
-    <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <template #header>
-        <div class="px-6 pt-6">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <i class="pi pi-list text-blue-600 text-sm"></i>
-            </div>
-            <h2 class="text-lg font-semibold text-gray-900">Purchase Orders</h2>
-          </div>
         </div>
       </template>
 
@@ -124,9 +105,7 @@
             <Column header="PO" style="min-width: 140px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                    <i class="pi pi-file text-blue-600 text-xs"></i>
-                  </div>
+              
                   <div>
                     <div class="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer" @click="viewDetail(data.id, getPurchaseOrderStatus(data))">
                       #{{ getPONumber(data) }}
@@ -164,7 +143,7 @@
             <Column header="Expected Delivery" style="min-width: 120px">
               <template #body="{ data }">
                 <div class="flex items-center gap-2">
-                  <i class="pi pi-calendar text-gray-400 text-xs"></i>
+  
                   <span class="text-gray-700">{{ formatDate(getExpectedDelivery(data)) }}</span>
                 </div>
               </template>
@@ -214,15 +193,6 @@
                   
                   
                   
-                  <button
-                    v-if="getPurchaseOrderStatus(data) === 'supplier_accepted'"
-                    @click.stop="goToDeliveryForm(data.id)"
-                    class="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                    v-tooltip="'Record Delivery'"
-                  >
-                    <i class="pi pi-truck text-xs"></i>
-                    <span>Deliver</span>
-                  </button>
                 </div>
               </template>
             </Column>
@@ -268,8 +238,6 @@ const rows = ref(10)
 const totalRecords = ref(0)
 const sortField = ref('created_at')
 const sortOrder = ref(-1)
-const poFeedback = ref<Record<number, any>>({})
-const lastDeliveryPoId = ref<number | null>(null)
 const invoiceCreatingId = ref<number | null>(null)
 
 const statusOptions = [
@@ -290,9 +258,9 @@ const statusOptions = [
 // Computed stats
 const stats = computed(() => {
   const total = pos.value.length
-  const accepted = pos.value.filter(p => p.response === 'accepted').length
+  const accepted = pos.value.filter(p => p.supplier_feedback?.response === 'accepted').length
   const inTransit = pos.value.filter(p => getPurchaseOrderStatus(p) === 'in_transit').length
-  const goodsReceived = pos.value.filter(p => p.receipt_status === 'confirmed').length
+  const goodsReceived = pos.value.filter(p => p.supplier_feedback?.receipt_status === 'confirmed').length
   
   return { total, accepted, inTransit, goodsReceived }
 })
@@ -319,7 +287,7 @@ const getPurchaseOrderStatus = (row: any): string => {
 }
 
 const getGoodsReceivedStatus = (row: any): string => {
-  return row?.receipt_status || 'pending'
+  return row?.supplier_feedback?.receipt_status || 'pending'
 }
 
 const getInvoiceStatusForPO = (row: any): string => {
@@ -483,19 +451,6 @@ const loadPOs = async () => {
       totalRecords.value = 0
     }
 
-    // Load feedback for each PO
-    for (const po of pos.value) {
-      try {
-        const feedbackRes = await supplierService.getMyPOFeedbacks({ purchase_order_id: po.id })
-        const feedbackPayload = feedbackRes.data || feedbackRes
-        const feedbackList = feedbackPayload?.data?.data || feedbackPayload?.data || []
-        if (feedbackList.length > 0) {
-          poFeedback.value[po.id] = feedbackList[0]
-        }
-      } catch (error) {
-        console.error('Error loading PO feedback:', error)
-      }
-    }
   } catch (error: any) {
     console.error('Failed to load POs:', error)
     toast.add({
@@ -547,15 +502,7 @@ const viewDetail = (id: number, status?: string) => {
   router.push(`/supplier-portal/pos/${id}`)
 }
 
-const goToDeliveryForm = (id: number) => {
-  localStorage.setItem('last_delivery_form_po_id', String(id))
-  lastDeliveryPoId.value = id
-  router.push(`/supplier-portal/pos/${id}/delivery-template`)
-}
-
 onMounted(() => {
-  const stored = localStorage.getItem('last_delivery_form_po_id')
-  lastDeliveryPoId.value = stored ? Number(stored) : null
   loadPOs()
 })
 </script>

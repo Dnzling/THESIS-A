@@ -70,59 +70,9 @@ class SupplierController extends Controller
             });
         }
 
-        $store = Auth::user()->store;
-        $isFreePlan = strtolower((string) ($store?->subscription_tier ?? '')) === 'free';
-
         $rows = $query->limit($limit)->get()->map(function (SupplierPortal $portal) use ($linkedEmails, $linkedSupplierIdsByEmail) {
             return $this->mapVerifiedPortal($portal, $linkedEmails, $linkedSupplierIdsByEmail);
         })->values();
-
-        // For free-plan stores, hide marketplace suppliers and return two ready-made placeholders
-        if ($isFreePlan) {
-            $placeholders = [
-                [
-                    'supplier_portal_id' => null,
-                    'supplier_id' => null,
-                    'linked_supplier_id' => null,
-                    'supplier_name' => 'Starter Supplier A',
-                    'company_name' => 'Starter Supplier A Co.',
-                    'contact_person' => 'Supplier Rep A',
-                    'email' => 'starter-a@example.com',
-                    'phone' => '',
-                    'address' => null,
-                    'city' => null,
-                    'province' => null,
-                    'country' => 'Philippines',
-                    'payment_terms' => 'net_30',
-                    'supplier_type' => 'verified_placeholder',
-                    'verified_at' => now()->toDateTimeString(),
-                    'already_linked' => false,
-                ],
-                [
-                    'supplier_portal_id' => null,
-                    'supplier_id' => null,
-                    'linked_supplier_id' => null,
-                    'supplier_name' => 'Starter Supplier B',
-                    'company_name' => 'Starter Supplier B Co.',
-                    'contact_person' => 'Supplier Rep B',
-                    'email' => 'starter-b@example.com',
-                    'phone' => '',
-                    'address' => null,
-                    'city' => null,
-                    'province' => null,
-                    'country' => 'Philippines',
-                    'payment_terms' => 'net_30',
-                    'supplier_type' => 'verified_placeholder',
-                    'verified_at' => now()->toDateTimeString(),
-                    'already_linked' => false,
-                ],
-            ];
-
-            return response()->json([
-                'success' => true,
-                'data' => collect($placeholders)->take($limit)->values(),
-            ]);
-        }
 
         if ($request->boolean('available_only', true)) {
             $rows = $rows->where('already_linked', false)->values();
@@ -189,7 +139,42 @@ class SupplierController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::where('store_id', Auth::user()->store_id);
+        $contractStatusQuery = $this->contractStatusQuery();
+        $query = Supplier::where('store_id', Auth::user()->store_id)
+            ->select('suppliers.*')
+            ->selectSub($contractStatusQuery, 'contract_status');
+
+        if ($request->filled('contract_status')) {
+            $status = $request->input('contract_status');
+            $query->whereRaw(
+                'COALESCE((' . $this->contractStatusQuery()->toSql() . "), 'no_contract') = ?",
+                [...$this->contractStatusQuery()->getBindings(), $status]
+            );
+        }
+
+        if ($request->boolean('active_contract_only')) {
+            $query->whereHas('contracts', function ($contractQuery) {
+                $contractQuery->active();
+            });
+        }
+
+        $productIds = $request->input('product_ids', []);
+        if (!is_array($productIds)) {
+            $productIds = explode(',', (string) $productIds);
+        }
+        $productIds = collect($productIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        // When a PO has listed products, only return suppliers linked to every
+        // product so the form cannot create a mixed-supplier PO.
+        foreach ($productIds as $productId) {
+            $query->whereHas('products', function ($productQuery) use ($productId) {
+                $productQuery->where('products.id', $productId);
+            });
+        }
 
         // Filters
         if ($request->has('status')) {
@@ -235,17 +220,33 @@ class SupplierController extends Controller
     {
         $supplier = Supplier::with([
             'store:id,name,store_code,city,province,address',
-            'contracts',
+            'contracts.rejectedBy:id,fname,lname',
             'products',
             'purchaseOrders' => function ($query) {
                 $query->latest()->limit(10);
             }
-        ])->findOrFail($id);
+        ])->select('suppliers.*')
+            ->selectSub($this->contractStatusQuery(), 'contract_status')
+            ->withCount(['contracts as active_contracts_count' => fn ($query) => $query->active()])
+            ->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => $supplier,
         ]);
+    }
+
+    private function contractStatusQuery()
+    {
+        $today = now()->toDateString();
+
+        return \Illuminate\Support\Facades\DB::table('supplier_contracts')
+            ->select('status')
+            ->whereColumn('supplier_contracts.supplier_id', 'suppliers.id')
+            ->orderByRaw("CASE WHEN status = 'active' AND start_date <= ? AND end_date >= ? THEN 0 ELSE 1 END", [$today, $today])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(1);
     }
 
     /**
@@ -386,7 +387,7 @@ class SupplierController extends Controller
 
             \Log::info('[Supplier] Attempting to create user account for contact person', [
                 'email' => $validated['email'],
-                'user_id' => $supplierCode,
+                'user_id' => User::generateUserId(),
                 'fname' => $contactFirstName,
                 'lname' => $contactLastName
             ]);
@@ -665,31 +666,58 @@ class SupplierController extends Controller
      */
     public function products(int $id, Request $request): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
         $branchId = $request->get('branch_id');
 
         $productsQuery = $supplier->products()
             ->with([
                 'category:id,category_name',
+                'variations' => fn ($query) => $query->active(),
                 'inventory' => function ($q) use ($branchId) {
                     if ($branchId) {
                         $q->where('branch_id', $branchId);
                     }
                 }
             ])
-            ->select('products.id', 'products.product_name', 'products.sku', 'products.category_id', 'products.cost_price');
+            ->select(
+                'products.id', 'products.product_name', 'products.sku',
+                'products.category_id', 'products.cost_price', 'products.unit_of_measurement'
+            );
 
-        $products = $productsQuery->get()->map(function ($product) use ($branchId) {
-            $inv = $branchId ? $product->inventory->first() : null;
-            return [
+        $products = $productsQuery->get()->flatMap(function ($product) use ($branchId) {
+            if ($product->variations->isNotEmpty()) {
+                return $product->variations->map(function ($variation) use ($product, $branchId) {
+                    $inventory = $branchId
+                        ? $product->inventory->firstWhere('variation_id', $variation->id)
+                        : null;
+
+                    return [
+                        'id' => $product->id,
+                        'product_name' => "{$product->product_name} — {$variation->variation_name}",
+                        'sku' => $variation->variation_sku ?: $product->sku,
+                        'category_id' => $product->category_id,
+                        'variation_id' => $variation->id,
+                        'variation' => $variation,
+                        'unit_of_measurement' => $variation->unit_of_measurement ?: $product->unit_of_measurement,
+                        'stock_level' => $inventory?->quantity_available ?? 0,
+                        'unit_cost' => $variation->cost_price ?? $product->getRawOriginal('cost_price'),
+                    ];
+                });
+            }
+
+            $inventory = $branchId ? $product->inventory->first() : null;
+            return [[
                 'id' => $product->id,
                 'product_name' => $product->product_name,
                 'sku' => $product->sku,
                 'category_id' => $product->category_id,
-                'stock_level' => $inv?->quantity_available ?? 0,
+                'variation_id' => null,
+                'variation' => null,
+                'unit_of_measurement' => $product->unit_of_measurement,
+                'stock_level' => $inventory?->quantity_available ?? 0,
                 'unit_cost' => $product->getRawOriginal('cost_price'),
-            ];
-        });
+            ]];
+        })->values();
 
         return response()->json([
             'success' => true,
@@ -701,9 +729,27 @@ class SupplierController extends Controller
      * Get supplier performance metrics
      * GET /api/procurement/suppliers/{id}/performance
      */
-    public function performance(int $id): JsonResponse
+    public function performance(Request $request, int $id): JsonResponse
     {
-        $supplier = Supplier::findOrFail($id);
+        $supplier = Supplier::where('store_id', $request->user()->store_id)->findOrFail($id);
+        $evaluations = $supplier->performanceEvaluations();
+        $evaluationAverages = (clone $evaluations)->selectRaw('
+            AVG(quality_score) as quality,
+            AVG(quantity_accuracy_score) as quantity_accuracy,
+            AVG(delivery_timeliness_score) as delivery_timeliness,
+            AVG(packaging_condition_score) as packaging_condition,
+            AVG(overall_rating) as overall
+        ')->first();
+
+        $recentEvaluations = (clone $evaluations)
+            ->with([
+                'goodsReceipt:id,grn_number,receipt_date',
+                'purchaseOrder:id,po_number',
+                'evaluator:id,fname,lname',
+            ])
+            ->latest()
+            ->limit(10)
+            ->get();
 
         $performance = [
             'rating' => $supplier->rating,
@@ -717,6 +763,15 @@ class SupplierController extends Controller
             'credit_limit' => $supplier->credit_limit,
             'credit_available' => $supplier->credit_limit - $supplier->current_balance,
             'active_contracts' => $supplier->contracts()->active()->count(),
+            'evaluation_count' => (clone $evaluations)->count(),
+            'evaluation_averages' => [
+                'quality' => $evaluationAverages?->quality !== null ? round((float) $evaluationAverages->quality, 2) : null,
+                'quantity_accuracy' => $evaluationAverages?->quantity_accuracy !== null ? round((float) $evaluationAverages->quantity_accuracy, 2) : null,
+                'delivery_timeliness' => $evaluationAverages?->delivery_timeliness !== null ? round((float) $evaluationAverages->delivery_timeliness, 2) : null,
+                'packaging_condition' => $evaluationAverages?->packaging_condition !== null ? round((float) $evaluationAverages->packaging_condition, 2) : null,
+                'overall' => $evaluationAverages?->overall !== null ? round((float) $evaluationAverages->overall, 2) : null,
+            ],
+            'recent_evaluations' => $recentEvaluations,
         ];
 
         return response()->json([

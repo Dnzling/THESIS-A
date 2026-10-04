@@ -3,7 +3,7 @@
 namespace App\Models\Procurement\Shipping;
 
 use App\Models\Procurement\Shipping\PurchaseOrderDeliveryLogAttachment;
-use App\Models\User;
+use App\Models\Core\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -18,6 +18,7 @@ class PurchaseOrderDeliveryLog extends Model
         'receiver_name',
         'latitude',
         'longitude',
+        'location_address',
         'logged_at',
     ];
 

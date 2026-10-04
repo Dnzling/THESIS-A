@@ -151,8 +151,12 @@ class Invoice extends Model
         }
 
         // Check quantity match between GRN and Invoice
-        if ($this->goodsReceipt) {
-            $grnQuantity = $this->goodsReceipt->items->sum('quantity_received');
+        if ($this->goodsReceipt || $this->purchase_order_id) {
+            // A deficient delivery can be completed by one or more immutable
+            // follow-up GRNs. Finance matches the cumulative accepted quantity.
+            $grnQuantity = \App\Models\Procurement\Receiving\GoodsReceiptItem::query()
+                ->whereHas('goodsReceipt', fn ($query) => $query->where('purchase_order_id', $this->purchase_order_id))
+                ->sum('quantity_received');
             if ($grnQuantity != $invoiceQuantity) {
                 $result['issues'][] = "GRN quantity mismatch: GRN={$grnQuantity}, Invoice={$invoiceQuantity}";
             } else {

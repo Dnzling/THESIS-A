@@ -39,14 +39,13 @@
                   v-else
                   label="Review Applicant"
                   icon="pi pi-user"
-                  severity="info"
                   outlined
                   @click="router.push({ name: 'hr.job-applications.review', params: { applicationId: application.id } })"
                 />
               </div>
             </div>
 
-            <Message v-if="!applicants.length" severity="info" :closable="false">
+            <Message v-if="!applicants.length" :closable="false">
               No applicants yet for this posting.
             </Message>
           </div>

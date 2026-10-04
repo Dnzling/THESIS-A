@@ -1,77 +1,107 @@
 ﻿<template>
-  <div class="p-6 min-h-screen">
+  <div class="min-h-screen p-4">
     <!-- Header -->
-    <div class="mb-6 flex justify-between items-center">
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 ">
       <div>
-        <h1 class="text-3xl font-bold text-gray-800">Products</h1>
-        <p class="text-gray-600 mt-1">Manage your product catalog</p>
+        <h1 class="text-lg font-bold text-gray-900">Product Catalog</h1>
+        <p class="text-xs text-gray-500">Manage product details, categories, suppliers, and purchasing costs.</p>
       </div>
-      <div class="flex">
-        <!-- Add Product stays as-is -->
-        <Button @click="$router.push({ name: 'inventory.products.create' })" label="Add Product" severity="success" />
-  
-        <!-- Add Item button triggers the popover -->
-        <Button icon="pi pi-angle-down" severity="info" @click="toggleAddPopover" aria-haspopup="true"
-          aria-controls="add-item-popover" />
-  
-        <Popover id="add-item-popover" ref="addPopoverRef">
-          <div class="flex flex-col gap-2 p-1 justify-start">
-            <Button @click="() => { addPopoverRef.hide(); $router.push({ name: 'inventory.raw-materials.create' }); }"
-              label="Add Raw Materials" severity="secondary" text  />
-            <Button @click="() => { addPopoverRef.hide(); $router.push({ name: 'inventory.supplies.create' }); }"
-              label="Add Supply" severity="secondary" text />
-          </div>
-        </Popover>
+      <div class="flex items-center gap-2">
+        <Button v-if="canManageProducts" label="Import File" icon="pi pi-upload" severity="secondary" outlined
+          size="small" @click="router.push({ name: 'inventory.products.import' })" />
+        <Button v-if="canManageProducts" label="Add Product" icon="pi pi-plus" size="small" @click="router.push({name: 'inventory.products.create'})"/>
+        <Button v-if="canManageProducts" icon="pi pi-ellipsis-h" outlined rounded contrast size="small" aria-label="Product actions"
+          @click="productCreateMenu?.toggle($event)" />
+        <Menu ref="productCreateMenu" :model="productCreateItems" popup />
       </div>
     </div>
   
-    <!-- Filters Card -->
-    <Card class="mb-6">
+    <Card class="border border-gray-200 shadow-sm">
       <template #content>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="filters.search" placeholder="Search products" class="w-full" @input="onFilterChange" />
-          </IconField>
-  
-          <Select v-model="filters.category_id" :options="categories" optionLabel="category_name" optionValue="id"
-            placeholder="All Categories" class="w-full" showClear @change="onFilterChange" />
-  
-          <Select v-model="filters.is_active" :options="activeStatuses" optionLabel="label" optionValue="value"
-            placeholder="Status" class="w-full" showClear @change="onFilterChange" />
-  
-          <div class="flex items-center justify-end gap-2">
-            <Button :label="showBranchOnly ? 'Branch Available' : 'All Products'"
-              :severity="showBranchOnly ? 'info' : 'secondary'" :outlined="!showBranchOnly" size="small"
-              @click="toggleBranchOnly" />
+        <!-- Filters -->
+        <div class="grid grid-cols-1 items-end gap-4 md:grid-cols-6 mb-4">
+          <div class="md:col-span-2">
+            <IconField class="w-full">
+              <InputIcon class="pi pi-search" />
+              <InputText
+                v-model="filters.search"
+                placeholder="Search by item name or SKU"
+                class="w-full text-sm"
+                size="small"
+                @input="onFilterChange"
+              />
+            </IconField>
+          </div>
+
+          <Select
+            v-model="filters.category_id"
+            :options="categories"
+            optionLabel="category_name"
+            optionValue="id"
+            placeholder="All Categories"
+            class="w-full text-sm"
+            size="small"
+            showClear
+            @change="onFilterChange"
+          />
+
+          <Select
+            v-model="filters.status"
+            :options="statusOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Status"
+            class="w-full text-sm"
+            size="small"
+            showClear
+            @change="onFilterChange"
+          />
+
+          <Select
+            v-model="filters.product_type"
+            :options="productTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Type"
+            class="w-full text-sm"
+            size="small"
+            showClear
+            @change="onFilterChange"
+          />
+
+          <div v-if="hasActiveFilters" class="flex justify-end">
+            <Button
+              @click="resetFilters"
+              label="Clear All"
+              severity="danger"
+              size="small"
+              class="text-sm"
+            />
           </div>
         </div>
-  
-        <div class="mt-4 flex flex-wrap gap-2">
-          <Button v-for="option in productTypeToggleOptions" :key="option.value ?? 'all'" :label="option.label"
-            :severity="selectedProductType === option.value ? 'info' : 'secondary'"
-            :outlined="selectedProductType !== option.value" size="small" @click="toggleProductType(option.value)" />
-        </div>
-  
-        <div class="mt-4 flex gap-2">
+
+        <div class="m-4 flex flex-wrap gap-2 border-t border-gray-100 p-4">
           <Button v-if="selectedProducts.length > 0" @click="bulkActivate" icon="pi pi-check" label="Activate"
-            severity="success" size="small" />
+            severity="warn" size="small" class="text-sm" />
           <Button v-if="selectedProducts.length > 0" @click="bulkDeactivate" icon="pi pi-times" label="Deactivate"
-            severity="warning" size="small" />
-          <Button @click="resetFilters" icon="pi pi-filter-slash" label="Reset" severity="secondary" size="small"
-            outlined />
+            severity="warn" outlined size="small" class="text-sm" />
+        
         </div>
-      </template>
-    </Card>
-  
-    <!-- Products Table -->
-    <Card>
-      <template #content>
-        <DataTable v-model:selection="selectedProducts" :value="products" :loading="loading" paginator :rows="15"
+        <!-- Products Table -->
+        <div v-if="loading" class="space-y-2">
+          <div class="grid grid-cols-6 gap-3">
+            <Skeleton v-for="i in 6" :key="i" height="22px" />
+          </div>
+          <div v-for="row in 8" :key="row" class="grid grid-cols-6 gap-3">
+            <Skeleton v-for="column in 6" :key="column" height="18px" />
+          </div>
+        </div>
+        <DataTable v-else v-model:selection="selectedProducts" :value="products" paginator :rows="15"
           :totalRecords="totalRecords" :lazy="true" @page="onPage" @sort="onSort" dataKey="id"
+          rowHover
           :rowsPerPageOptions="[15, 25, 50]" currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
           paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
-          class="p-datatable-sm" stripedRows>
+          class="text-xs" responsive-layout="scroll">
   
           <template #empty>
             <div class="text-center py-8">
@@ -82,79 +112,114 @@
   
           <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
   
-          <Column field="sku" header="SKU" sortable>
-            <template #body="{ data }">
-              <span class="font-mono text-sm">{{ data.sku }}</span>
-            </template>
-          </Column>
-  
-          <Column field="product_name" header="Product Name" sortable>
+          <Column field="product_name" header="Product" sortable style="min-width: 240px">
             <template #body="{ data }">
               <div class="flex items-center gap-3">
-                <img v-if="data.thumbnail" :src="data.thumbnail" alt="Product" class="w-12 h-12 rounded object-cover" />
-                <div v-else class="w-12 h-12 rounded bg-gray-200 flex items-center justify-center">
-                  <i class="pi pi-image text-gray-400"></i>
+                <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                  <Carousel
+                    v-if="getProductImages(data).length > 1"
+                    :value="getProductImages(data)"
+                    :numVisible="1"
+                    :numScroll="1"
+                    :showNavigators="true"
+                    :showIndicators="false"
+                    class="product-index-carousel h-full"
+                  >
+                    <template #item="{ data: image }">
+                      <img :src="image.url" :alt="image.alt_text || data.product_name" class="h-14 w-14 object-cover" />
+                    </template>
+                  </Carousel>
+                  <img
+                    v-else-if="getProductImages(data).length === 1"
+                    :src="getProductImages(data)[0].url"
+                    :alt="getProductImages(data)[0].alt_text || data.product_name"
+                    class="h-full w-full object-cover"
+                  />
+                  <div v-else class="flex h-full w-full items-center justify-center">
+                    <i class="pi pi-image text-lg text-slate-300"></i>
+                  </div>
                 </div>
                 <div>
-                  <p class="font-medium text-gray-900">{{ data.product_name }}</p>
-                  <p class="text-sm text-gray-500">{{ data.brand }}</p>
+                  <p class="font-medium text-gray-900 text-xs">{{ data.product_name }}</p>
+                  <p class="font-mono text-[11px] text-gray-500">{{ data.sku }}</p>
                 </div>
               </div>
             </template>
           </Column>
+
+         
   
-          <Column field="category.category_name" header="Category"></Column>
-  
-          <Column field="base_price" header="Price" sortable>
+          <Column field="product_type" header="Type">
             <template #body="{ data }">
-              <div>
-                <p class="font-semibold text-gray-900">₱{{ formatPrice(data.base_price) }}</p>
-                <p v-if="data.discounted_price" class="text-sm text-red-600 line-through">
-                  ₱{{ formatPrice(data.discounted_price) }}
-                </p>
+              <Tag :severity="getTypeSeverity(data.product_type)" size="small">
+                <span class="text-xs">{{ getTypeLabel(data.product_type) }}</span>
+              </Tag>
+            </template>
+          </Column>
+
+          <Column field="category.category_name" header="Category">
+            <template #body="{ data }">
+              <div class="text-xs">
+                <p class="text-gray-800">{{ data.category?.category_name || '-' }}</p>
+                <p v-if="data.subcategory?.category_name" class="text-gray-500">{{ data.subcategory.category_name }}</p>
               </div>
             </template>
           </Column>
+
+          <Column field="brand" header="Brand">
+            <template #body="{ data }"><span class="text-xs text-gray-700">{{ data.brand || '-' }}</span></template>
+          </Column>
   
-          <Column header="Branch Availability">
+          <Column field="base_price" header="Selling Price" sortable>
+            <template #body="{ data }">
+              <span class="text-xs font-medium text-gray-900">₱{{ formatPrice(Number(data.base_price || 0)) }}</span>
+            </template>
+          </Column>
+
+          <Column field="inventory_cost_price" header="Cost/Unit">
             <template #body="{ data }">
               <div>
-                <p class="font-semibold text-gray-900">{{ getBranchAvailability(data) }}</p>
-                <p class="text-xs text-gray-500">{{ getBranchAvailabilityStatus(data) }}</p>
+                <p class="text-gray-900 text-xs">₱{{ formatPrice(getUnitCost(data)) }}/<span class="font-bold">{{ data.unit_of_measurement }}</span></p>
               </div>
+            </template>
+          </Column>
+
+          <Column field="supplier_name" header="Supplier">
+            <template #body="{ data }">
+              <div v-if="getPreferredSupplier(data)" class="flex items-center gap-2">
+                <div>
+                  <p class="text-xs text-gray-800">{{ getSupplierName(data) }}</p>
+                  <p class="text-[11px] text-gray-500">{{ getSupplierNumber(data) }}</p>
+                </div>
+              </div>
+              <span v-else class="text-xs text-gray-400">No supplier</span>
             </template>
           </Column>
   
           <Column field="is_active" header="Status">
             <template #body="{ data }">
-              <Tag :value="data.is_active ? 'Active' : 'Inactive'" :severity="data.is_active ? 'success' : 'secondary'" />
+              <Tag :severity="data.is_active ? 'success' : 'secondary'">
+                <span class="text-xs">{{ data.is_active ? 'Active' : 'Inactive' }}</span>
+              </Tag>
             </template>
           </Column>
-  
-          <Column header="Variations">
+
+          <Column header="Actions" frozen alignFrozen="right">
             <template #body="{ data }">
-              <Badge :value="data.variations_count || 0" severity="info" />
-            </template>
-          </Column>
-  
-          <Column header="Actions" :frozen="true" alignFrozen="right">
-            <template #body="{ data }">
-              <div class="flex gap-2">
-                <Button icon="pi pi-eye" severity="info" text rounded v-tooltip.top="'View Details'"
-                  @click="viewProduct(data.id)" />
-                <Button v-if="authStore.hasPermission('merchandising.products.update')" icon="pi pi-pencil"
-                  severity="warning" text rounded v-tooltip.top="'Edit'" @click="editProduct(data.id)" />
-                <Button v-if="authStore.hasPermission('merchandising.products.delete')" icon="pi pi-trash"
-                  severity="danger" text rounded v-tooltip.top="'Delete'" @click="confirmDelete(data)" />
+              <div class="flex gap-1">
+                <Button icon="pi pi-eye" outlined label="View" rounded size="small" aria-label="View product" @click.stop="viewProduct(data.id)" />
+          
               </div>
             </template>
           </Column>
+  
+      
         </DataTable>
-      </template>
+        </template>
     </Card>
   
     <!-- Delete Confirmation -->
-    <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-96">
+    <Dialog v-model:visible="deleteDialogVisible" header="Confirm Delete" :modal="true" class="w-full sm:w-96">
       <div class="flex items-center gap-3">
         <i class="pi pi-exclamation-triangle text-4xl text-red-600"></i>
         <div>
@@ -171,11 +236,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
 import { useAuthStore } from '../../../../stores/auth'
 import { useRouter } from 'vue-router'
+import Carousel from 'primevue/carousel'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -185,50 +251,66 @@ const toast = useToast()
 const products = ref<any[]>([])
 const categories = ref<any[]>([])
 const selectedProducts = ref<any[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const totalRecords = ref(0)
-const dialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
 const deleting = ref(false)
 const currentProduct = ref<any>(null)
 const showBranchOnly = ref(false)
-const selectedProductType = ref<string | null>(null)
-
-const addPopoverRef = ref()
-
-function toggleAddPopover(event) {
-  addPopoverRef.value.toggle(event)
-}
+const productCreateMenu = ref<any>(null)
+const canManageProducts = computed(() =>
+  authStore.hasPermission('inventory.products.manage')
+)
+const productCreateItems = computed(() => [
+  { label: 'Categories', icon: 'pi pi-folder', command: () => router.push({ name: 'inventory.product-categories' }) },
+  // { label: 'Create Category', icon: 'pi pi-folder-plus', command: () => router.push({ name: 'inventory.product-categories.create' }) },
+  { label: 'Tags', icon: 'pi pi-tags', command: () => router.push({ name: 'inventory.product-tags' }) },
+  // { label: 'Create Tag', icon: 'pi pi-plus-circle', command: () => router.push({ name: 'inventory.product-tags.create' }) },
+  { label: 'Variations', icon: 'pi pi-list', command: () => router.push({ name: 'inventory.product-variations' }) },
+  // { label: 'Create Variation', icon: 'pi pi-sitemap', command: () => router.push({ name: 'inventory.product-variations.create' }) },
+])
 
 const filters = reactive({
   search: '',
   category_id: null,
   product_type: null,
-  is_active: null,
-  available_only: true,
+  status: null as string | null,
+  available_only: false,
   page: 1,
   per_page: 15,
   sort_by: 'created_at',
   sort_order: 'desc'
 })
-const activeStatuses = [
-  { label: 'Active', value: true },
-  { label: 'Inactive', value: false }
+const statusOptions = [
+  { label: 'Active', value: '1' },
+  { label: 'Inactive', value: '0' },
+  { label: 'No Supplier', value: 'no_supplier' }
 ]
-const productTypeToggleOptions = [
-  { label: 'All', value: null },
-  { label: 'Finished Good', value: 'finished_good' },
+const productTypeOptions = [
+  { label: 'Product', value: 'finished_good' },
+  { label: 'Supplies', value: 'supply' },
   { label: 'Raw Material', value: 'raw_material' },
-  { label: 'Supply', value: 'supply' }
+  { label: 'Others', value: 'others' }
 ]
+
+const hasActiveFilters = computed(() => {
+  return Boolean(
+    filters.search.trim() ||
+    filters.category_id ||
+    filters.product_type ||
+    filters.status ||
+    filters.available_only
+  )
+})
 
 // Methods
 const loadProducts = async () => {
   loading.value = true
   try {
     const response = await inventoryService.getProducts(filters)
-    products.value = response.data.data
-    totalRecords.value = response.data.total
+    // inventoryService returns the API body. Products are in response.data.data.
+    products.value = response?.data?.data || []
+    totalRecords.value = Number(response?.data?.total ?? products.value.length)
   } catch (error) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load products', life: 3000 })
   } finally {
@@ -238,8 +320,12 @@ const loadProducts = async () => {
 
 const loadCategories = async () => {
   try {
-    const response = await inventoryService.getCategories({ active_only: true })
-    categories.value = response.data.data
+    const storeId = authStore.user?.store_id
+    const response = await inventoryService.getCategories({
+      active_only: true,
+      store_id: storeId || undefined
+    })
+    categories.value = response?.data?.data || response?.data || []
   } catch (error) {
     console.error('Failed to load categories')
   }
@@ -269,20 +355,13 @@ const toggleBranchOnly = () => {
   onFilterChange()
 }
 
-const toggleProductType = (value: string | null) => {
-  selectedProductType.value = selectedProductType.value === value ? null : value
-  filters.product_type = selectedProductType.value
-  onFilterChange()
-}
-
 const resetFilters = () => {
   filters.search = ''
   filters.category_id = null
   filters.product_type = null
-  filters.is_active = null
+  filters.status = null
   filters.available_only = false
   showBranchOnly.value = false
-  selectedProductType.value = null
   loadProducts()
 }
 
@@ -301,6 +380,14 @@ const editProduct = (productId: number) => {
     name: 'inventory.products.edit',
     params: { id: productId }
   })
+}
+
+const onProductRowClick = (event: any) => {
+  const target = event?.originalEvent?.target as HTMLElement | null
+  if (target?.closest('button, input, a')) return
+
+  const id = event?.data?.id
+  if (id) viewProduct(id)
 }
 
 const confirmDelete = (product: any) => {
@@ -351,12 +438,80 @@ const getBranchAvailability = (product: any) => {
   return inventory ? `${inventory.quantity_available ?? 0}` : '0'
 }
 
+const getProductImages = (product: any) => {
+  const assets = Array.isArray(product?.assets) ? product.assets : []
+
+  return assets
+    .filter((asset: any) => ['Image_Main', 'Image_Gallery', 'Image_360'].includes(asset.asset_type) && asset.url)
+    .sort((a: any, b: any) => Number(b.is_primary) - Number(a.is_primary) || Number(a.display_order || 0) - Number(b.display_order || 0))
+}
+
 const getBranchAvailabilityStatus = (product: any) => {
   const inventory = Array.isArray(product.inventory) ? product.inventory[0] : null
   if (!inventory) return 'Not stocked in your branch'
   if ((inventory.quantity_available ?? 0) <= 0) return 'Out of stock'
   if ((inventory.quantity_available ?? 0) <= (inventory.reorder_point ?? 0)) return 'Low stock'
   return 'In stock'
+}
+
+const getTypeLabel = (type?: string) => {
+  const normalized = String(type || '').toLowerCase()
+  const labels: Record<string, string> = {
+    finished_good: 'Product',
+    supply: 'Supplies',
+    raw_material: 'Raw Material'
+  }
+  return labels[normalized] || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()) || 'Other'
+}
+
+const getTypeSeverity = (type?: string) => {
+  const normalized = String(type || '').toLowerCase()
+  const severities: Record<string, string> = {
+    finished_good: 'success',
+    supply: 'info',
+    raw_material: 'warn'
+  }
+  return severities[normalized] || 'secondary'
+}
+
+const getUnitCost = (product: any) => {
+  // Inventory API exposes the saved cost through inventory_cost_price because
+  // cost_price is protected on the shared Product model. Prefer that field so
+  // a serialized fallback value of 0.00 cannot mask the actual inventory cost.
+  return Number(product.inventory_cost_price ?? product.cost_price ?? product.base_price ?? 0)
+}
+
+const getReorderLevel = (product: any) => {
+  return product.inventory?.[0]?.reorder_point ?? product.reorder_point ?? 'N/A'
+}
+
+const getSupplierName = (data: any) => {
+  const product = data?.product || data
+  const linkedNames = Array.isArray(product?.supplier_names)
+    ? product.supplier_names.filter((name: any) => name && String(name).trim())
+    : []
+
+  if (linkedNames.length > 0) return [...new Set(linkedNames.map((name: string) => String(name).trim()))].join(', ')
+
+  const linkedSuppliers = Array.isArray(product?.suppliers) ? product.suppliers : []
+  const supplierNames = linkedSuppliers
+    .map((supplier: any) => supplier?.supplier_name || supplier?.company_name)
+    .filter((name: any) => name && String(name).trim())
+
+  if (supplierNames.length > 0) return [...new Set(supplierNames.map((name: string) => String(name).trim()))].join(', ')
+
+  return product?.supplier_name ? String(product.supplier_name).trim() : '-'
+}
+
+const getPreferredSupplier = (data: any) => {
+  const suppliers = Array.isArray(data?.suppliers) ? data.suppliers : []
+  return suppliers.find((supplier: any) => Boolean(supplier?.pivot?.is_preferred_supplier)) || suppliers[0] || null
+}
+
+const getSupplierNumber = (data: any) => {
+  const supplier = getPreferredSupplier(data)
+  if (!supplier) return ''
+  return supplier.supplier_code ? `${supplier.supplier_code}` : `Supplier ID #${supplier.id}`
 }
 
 const formatPrice = (price: number) => {

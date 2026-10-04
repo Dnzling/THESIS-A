@@ -23,7 +23,7 @@ class PermissionSeeder extends Seeder
                 'name' => 'store.role.permission',
                 'display_name' => 'Access Store Roles UI',
                 'module' => 'store',
-                'description' => 'Allow store admins to manage store-specific roles and permissions.',
+                'description' => 'Allow store owners to manage store-specific roles and permissions.',
             ];
 
             foreach ($permissions as $permission) {

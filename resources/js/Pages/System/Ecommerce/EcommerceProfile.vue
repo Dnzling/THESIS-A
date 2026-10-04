@@ -9,26 +9,24 @@
             <div>
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">MyAccount</p>
               <div class="space-y-1">
-                <Button label="Basic Information" text fluid :severity="activeSection === 'basic' ? 'info' : 'secondary'"
+                <Button label="Basic Information" text fluid :severity="activeSection === 'basic' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'basic'" />
-                <Button label="Address Book" text fluid :severity="activeSection === 'address' ? 'info' : 'secondary'"
+                <Button label="Address Book" text fluid :severity="activeSection === 'address' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'address'" />
-                <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'info' : 'secondary'"
+                <Button label="Payment Methods" text fluid :severity="activeSection === 'payment' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'payment'" />
-                <Button label="Verification" text fluid :severity="activeSection === 'verification' ? 'info' : 'secondary'"
+                <Button label="Verification" text fluid :severity="activeSection === 'verification' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'verification'" />
-                <Button label="Notifications" text fluid :severity="activeSection === 'notifications' ? 'info' : 'secondary'"
-                  class="justify-start" @click="openNotificationsSection" />
               </div>
             </div>
   
             <div>
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">My Orders</p>
               <div class="space-y-1">
-                <Button label="Returns" text fluid :severity="activeSection === 'returns' ? 'info' : 'secondary'"
+                <Button label="Returns" text fluid :severity="activeSection === 'returns' ? 'warn' : 'secondary'"
                   class="justify-start" @click="activeSection = 'returns'" />
                 <Button label="Cancellations" text fluid
-                  :severity="activeSection === 'cancellations' ? 'info' : 'secondary'" class="justify-start"
+                  :severity="activeSection === 'cancellations' ? 'warn' : 'secondary'" class="justify-start"
                   @click="activeSection = 'cancellations'" />
               </div>
             </div>
@@ -88,8 +86,8 @@
               </div>
   
               <div class="flex flex-wrap gap-2">
-                <Button label="Edit" severity="info" outlined @click="editDialogVisible = true" />
-                <Button label="Change Password" severity="info" outlined @click="passwordDialogVisible = true" />
+                <Button label="Edit" outlined @click="editDialogVisible = true" />
+                <Button label="Change Password" outlined @click="passwordDialogVisible = true" />
                 <Button label="Change Email (Verify)" severity="secondary" outlined @click="emailDialogVisible = true" />
                 <Button label="Change Mobile (Verify)" severity="secondary" outlined
                   @click="mobileDialogVisible = true" />
@@ -99,7 +97,7 @@
             <div v-else-if="activeSection === 'address'" class="space-y-4">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-2xl font-semibold text-slate-900">Address Book</h3>
-                <Button label="Add Address" severity="info" text @click="openAddAddressDialog" />
+                <Button label="Add Address"  text @click="openAddAddressDialog" />
               </div>
               <p v-if="!addressTemplates.length" class="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">
                 No address preset yet. Add one to speed up checkout.
@@ -112,7 +110,7 @@
                     <p class="text-xs text-slate-600">{{ template.province }}, {{ template.city }}, {{ template.barangay
                       }}, {{ template.address_line }}</p>
                   </div>
-                  <Button label="Edit" text severity="info" @click="startEditAddress(template)" />
+                  <Button label="Edit" text  @click="startEditAddress(template)" />
                 </div>
                 <div v-else class="space-y-2">
                   <InputText v-model="addressEditForm.full_name" fluid placeholder="Full name" />
@@ -129,7 +127,7 @@
                     :disabled="!editAddressSelection.cityId" />
                   <Textarea v-model="addressEditForm.address_line" fluid rows="2" placeholder="Address line" />
                   <div class="flex gap-2">
-                    <Button label="Save" size="small" severity="info" :loading="savingAddress"
+                    <Button label="Save" size="small"  :loading="savingAddress"
                       @click="saveAddressEdit(template.id)" />
                     <Button label="Cancel" size="small" severity="secondary" outlined @click="editingAddressId = null" />
                   </div>
@@ -138,13 +136,32 @@
             </div>
   
             <div v-else-if="activeSection === 'payment'" class="space-y-4">
-              <h3 class="text-2xl font-semibold text-slate-900">Payment Methods</h3>
-              <div class="rounded-xl border border-slate-200 p-4 text-sm">Cash on Delivery (COD)</div>
-              <div class="rounded-xl border border-slate-200 p-4 text-sm">GCash (Online Payment)</div>
-              <div class="rounded-xl border border-slate-200 p-4 text-sm">Credit Card</div>
+              <div>
+                <h3 class="text-2xl font-semibold text-slate-900">Available Payment Methods</h3>
+                <p class="mt-1 text-sm text-slate-500">These payment methods are available for ecommerce payments and refunds.</p>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div class="flex items-center gap-3 rounded-2xl border border-slate-200 p-4">
+                  <span class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-700"><i class="pi pi-mobile" /></span>
+                  <div>
+                    <p class="font-semibold text-slate-900">GCash</p>
+                    <p class="text-sm text-slate-500">Mobile wallet</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3 rounded-2xl border border-slate-200 p-4">
+                  <span class="flex h-11 w-11 items-center justify-center rounded-full bg-amber-50 text-amber-700"><i class="pi pi-credit-card" /></span>
+                  <div>
+                    <p class="font-semibold text-slate-900">Card</p>
+                    <p class="text-sm text-slate-500">Credit or debit card</p>
+                  </div>
+                </div>
+              </div>
+              <p class="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+                Refund account details are entered inside the related Return Order when the return is approved.
+              </p>
             </div>
 
-            <div v-else-if="activeSection === 'notifications'" class="space-y-4">
+            <div v-else-if="false" class="space-y-4">
               <div class="flex items-center justify-between">
                 <h3 class="text-2xl font-semibold text-slate-900">Notifications</h3>
                 <Button label="Mark all as read" size="small" text severity="secondary" :disabled="notificationsLoading || unreadNotificationCount === 0" @click="markAllNotificationsRead" />
@@ -178,7 +195,27 @@
             <div v-else-if="activeSection === 'verification'" class="space-y-4">
               <h3 class="text-2xl font-semibold text-slate-900">Customer Verification</h3>
 
-              <div class="rounded-xl border p-4" :class="verificationBannerClass">
+              <div v-if="isVerificationApproved" class="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6">
+                <div class="flex flex-col items-center text-center sm:flex-row sm:text-left">
+                  <span class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+                    <i class="pi pi-check-circle text-3xl" />
+                  </span>
+                  <div class="mt-4 sm:ml-5 sm:mt-0">
+                    <div class="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                      <h4 class="text-xl font-bold text-emerald-900">Verified Account</h4>
+                      <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Approved</span>
+                    </div>
+                    <p class="mt-2 text-sm leading-6 text-emerald-800">
+                      Your identity verification has been approved. You no longer need to submit another ID or selfie.
+                    </p>
+                    <p v-if="verificationApprovedAt" class="mt-2 text-xs text-emerald-700">
+                      Verified on {{ verificationApprovedAt }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="rounded-xl border p-4" :class="verificationBannerClass">
                 <p class="font-semibold">Status: {{ verificationStatusLabel }}</p>
                 <p class="text-xs mt-1">Accepted IDs: National ID, SSS, PhilHealth, Passport, Driver's License, Postal ID, UMID, Voter's ID.</p>
               </div>
@@ -205,7 +242,7 @@
               <Button
                 v-if="!isVerificationApproved"
                 label="Submit Verification"
-                severity="info"
+                
                 :loading="submittingVerification"
                 @click="submitCustomerVerification"
               />
@@ -225,21 +262,70 @@
             </div>
 
             <div v-else-if="activeSection === 'returns'" class="space-y-4">
-              <h3 class="text-2xl font-semibold text-slate-900">Returns</h3>
-              <p class="text-sm text-slate-500" v-if="!returnOrders.length">No return records.</p>
-              <div v-for="order in returnOrders" :key="order.id" class="rounded-xl border border-slate-200 p-4 text-sm">
-                <p class="font-semibold">Order {{ order.order_number }}</p>
-                <p class="text-slate-600">Status: {{ order.status }}</p>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-2xl font-semibold text-slate-900">Returns</h3>
+                  <p class="mt-1 text-sm text-slate-500">Return updates here match your order details and notifications.</p>
+                </div>
+                <span v-if="returnOrders.length" class="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
+                  {{ returnOrders.length }} order{{ returnOrders.length === 1 ? '' : 's' }}
+                </span>
+              </div>
+              <div v-if="!returnOrders.length" class="rounded-2xl border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
+                No return records yet.
+              </div>
+              <div v-for="order in returnOrders" :key="order.id" class="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div>
+                    <p class="font-semibold text-slate-900">Order #{{ order.order_number }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ order.store_name }}</p>
+                  </div>
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold capitalize" :class="orderStatusClass(order.primary_status || order.status)">
+                    {{ formatOrderStatus(order.primary_status || order.status) }}
+                  </span>
+                </div>
+                <div class="mt-3 space-y-2">
+                  <div v-for="item in getReturnedItems(order)" :key="item.id" class="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+                    <img v-if="item.image" :src="item.image" :alt="item.product_name" class="h-12 w-12 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                    <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-400"><i class="pi pi-image" /></span>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate font-semibold text-slate-800">{{ item.product_name }}</p>
+                      <p class="text-xs text-slate-500">Qty {{ item.return_request?.requested_quantity || item.quantity }}</p>
+                      <p class="mt-1 text-xs font-medium capitalize text-orange-600">{{ formatOrderStatus(item.return_request?.status) }}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3 flex justify-end">
+                  <Button label="View order" icon="pi pi-arrow-right" iconPos="right" size="small" severity="warn" outlined @click="goOrderDetail(order.id)" />
+                </div>
               </div>
             </div>
   
             <div v-else class="space-y-4">
-              <h3 class="text-2xl font-semibold text-slate-900">Cancellations</h3>
-              <p class="text-sm text-slate-500" v-if="!cancellationOrders.length">No cancellation records.</p>
-              <div v-for="order in cancellationOrders" :key="order.id"
-                class="rounded-xl border border-slate-200 p-4 text-sm">
-                <p class="font-semibold">Order {{ order.order_number }}</p>
-                <p class="text-slate-600">Status: {{ order.status }}</p>
+              <div>
+                <h3 class="text-2xl font-semibold text-slate-900">Cancellations</h3>
+                <p class="mt-1 text-sm text-slate-500">Cancellation requests and their latest decisions appear here.</p>
+              </div>
+              <div v-if="!cancellationOrders.length" class="rounded-2xl border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
+                No cancellation records yet.
+              </div>
+              <div v-for="order in cancellationOrders" :key="order.id" class="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p class="font-semibold text-slate-900">Order #{{ order.order_number }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ order.store_name }}</p>
+                    <p v-if="order.cancellation_request?.reason" class="mt-2 text-sm text-slate-600">{{ order.cancellation_request.reason }}</p>
+                  </div>
+                  <span class="rounded-full px-3 py-1 text-xs font-semibold capitalize" :class="orderStatusClass(order.cancellation_request?.status || order.primary_status || order.status)">
+                    {{ formatOrderStatus(order.cancellation_request?.status || order.primary_status || order.status) }}
+                  </span>
+                </div>
+                <p v-if="order.cancellation_request?.review_notes" class="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  Store note: {{ order.cancellation_request.review_notes }}
+                </p>
+                <div class="mt-3 flex justify-end">
+                  <Button label="View order" icon="pi pi-arrow-right" iconPos="right" size="small" severity="secondary" outlined @click="goOrderDetail(order.id)" />
+                </div>
               </div>
             </div>
           </template>
@@ -252,7 +338,7 @@
         <InputText v-model="editForm.fname" fluid placeholder="First name" />
         <InputText v-model="editForm.lname" fluid placeholder="Last name" />
         <DatePicker v-model="editForm.birthday" :maxDate="new Date()" fluid showIcon dateFormat="mm/dd/yy" />
-        <Button label="Save Changes" severity="info" :loading="savingProfile" @click="saveBasicInfo" />
+        <Button label="Save Changes"  :loading="savingProfile" @click="saveBasicInfo" />
       </div>
     </Dialog>
   
@@ -263,7 +349,7 @@
         <Password v-model="passwordForm.password" :feedback="true" fluid toggleMask placeholder="New password" />
         <Password v-model="passwordForm.password_confirmation" :feedback="false" fluid toggleMask
           placeholder="Confirm new password" />
-        <Button label="Update Password" severity="info" :loading="changingPassword" @click="changePassword" />
+        <Button label="Update Password"  :loading="changingPassword" @click="changePassword" />
       </div>
     </Dialog>
   
@@ -275,7 +361,7 @@
           <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
           <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
         </div>
-        <Button label="Verify and Change Email" severity="info" :loading="savingContactChange"
+        <Button label="Verify and Change Email"  :loading="savingContactChange"
           @click="verifyAndChangeEmail" />
       </div>
     </Dialog>
@@ -288,7 +374,7 @@
           <InputText v-model="contactChangeForm.otpCode" fluid placeholder="Enter OTP code" />
           <Button label="Send OTP" severity="secondary" outlined :loading="sendingOtp" @click="sendOtp" />
         </div>
-        <Button label="Verify and Change Mobile" severity="info" :loading="savingContactChange"
+        <Button label="Verify and Change Mobile"  :loading="savingContactChange"
           @click="verifyAndChangeMobile" />
       </div>
     </Dialog>
@@ -304,7 +390,7 @@
         <Select v-model="addAddressSelection.barangayCode" :options="barangayOptions" optionLabel="label"
           optionValue="value" filter fluid placeholder="Select Barangay" :disabled="!addAddressSelection.cityId" />
         <Textarea v-model="addAddressForm.address_line" fluid rows="2" placeholder="Address line" />
-        <Button label="Save Address" severity="info" :loading="savingNewAddress" @click="createAddressTemplate" />
+        <Button label="Save Address"  :loading="savingNewAddress" @click="createAddressTemplate" />
       </div>
     </Dialog>
 
@@ -369,7 +455,7 @@ type AddressTemplate = {
 const loading = ref(false)
 const initialProfileSection = String(new URLSearchParams(window.location.search).get('section') || '').toLowerCase()
 const activeSection = ref<'basic' | 'address' | 'payment' | 'notifications' | 'verification' | 'returns' | 'cancellations'>(
-  ['address', 'payment', 'notifications', 'verification', 'returns', 'cancellations'].includes(initialProfileSection)
+  ['address', 'payment', 'verification', 'returns', 'cancellations'].includes(initialProfileSection)
     ? initialProfileSection as any
     : 'basic',
 )
@@ -444,8 +530,16 @@ const editCities = ref<any[]>([])
 const editBarangays = ref<any[]>([])
 const citiesCache = ref<Record<string, any[]>>({})
 
-const returnOrders = computed(() => myOrders.value.filter((o) => ['returned', 'return_requested', 'refunded'].includes(String(o.status || '').toLowerCase())))
-const cancellationOrders = computed(() => myOrders.value.filter((o) => ['cancelled', 'canceled'].includes(String(o.status || '').toLowerCase())))
+const returnOrderStatuses = new Set(['return_pending', 'return_requested', 'return_approved', 'return_received', 'refund_pending', 'refunded', 'replaced', 'returned'])
+const cancellationOrderStatuses = new Set(['cancel_pending', 'cancellation_pending', 'cancelled', 'canceled'])
+const returnOrders = computed(() => myOrders.value.filter((order: any) => {
+  const status = String(order.primary_status || order.status || '').toLowerCase()
+  return returnOrderStatuses.has(status) || getReturnedItems(order).length > 0
+}))
+const cancellationOrders = computed(() => myOrders.value.filter((order: any) => {
+  const status = String(order.primary_status || order.status || '').toLowerCase()
+  return cancellationOrderStatuses.has(status) || Boolean(order.cancellation_request)
+}))
 const unreadNotificationCount = computed(() => notifications.value.filter((n: any) => !n?.is_read).length)
 const idTypeOptions = [
   { label: 'National ID', value: 'national_id' },
@@ -474,6 +568,10 @@ const verificationStatusLabel = computed(() => {
   if (status === 'pending') return 'Pending Review'
   if (status === 'rejected') return 'Rejected'
   return 'For Verification'
+})
+const verificationApprovedAt = computed(() => {
+  const value = profileCustomer.value?.verification_reviewed_at
+  return value ? formatDate(value) : ''
 })
 const needsVerificationFlag = computed(() => !isVerificationApproved.value)
 const verificationBannerClass = computed(() => {
@@ -522,6 +620,29 @@ function formatDate(value?: string | null) {
 function formatIdType(value?: string | null) {
   if (!value) return '-'
   return String(value).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function getReturnedItems(order: any) {
+  return (Array.isArray(order?.items) ? order.items : []).filter((item: any) => Boolean(item?.return_request))
+}
+
+function formatOrderStatus(value?: string | null) {
+  if (!value) return 'Pending update'
+  return String(value).replaceAll('_', ' ')
+}
+
+function orderStatusClass(value?: string | null) {
+  const status = String(value || '').toLowerCase()
+  if (['refunded', 'replaced', 'cancelled', 'canceled', 'approved'].includes(status)) {
+    return 'bg-emerald-100 text-emerald-700'
+  }
+  if (['rejected'].includes(status)) return 'bg-rose-100 text-rose-700'
+  if (status.includes('pending')) return 'bg-amber-100 text-amber-700'
+  return 'bg-sky-100 text-sky-700'
+}
+
+function goOrderDetail(orderId: number) {
+  router.push({ name: 'ecommerce.order-detail', params: { id: orderId } })
 }
 
 async function loadProfile() {
@@ -978,18 +1099,6 @@ onMounted(async () => {
   try {
     await Promise.all([loadProfile(), loadAddressTemplates(), loadOrders(), fetchProvinces()])
     const querySection = String(route.query?.section || '').toLowerCase() || getSectionFromUrl()
-    if (querySection === 'notifications') {
-      activeSection.value = 'notifications'
-      await loadNotifications()
-    } else if (!querySection) {
-      const remembered = String(localStorage.getItem('ecommerce_profile_section') || '').toLowerCase()
-      if (remembered === 'notifications') {
-        activeSection.value = 'notifications'
-        await loadNotifications()
-        router.replace({ name: 'ecommerce.profile', query: { section: 'notifications' } })
-      }
-    }
-    localStorage.removeItem('ecommerce_profile_section')
   } finally {
     loading.value = false
   }
@@ -998,11 +1107,6 @@ onMounted(async () => {
 watch(
   () => String(route.query?.section || '').toLowerCase() || getSectionFromUrl(),
   async (section) => {
-    if (section === 'notifications') {
-      activeSection.value = 'notifications'
-      await loadNotifications()
-      return
-    }
     if (section === 'verification') {
       activeSection.value = 'verification'
       return

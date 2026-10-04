@@ -84,6 +84,10 @@
               <span class="text-xs text-slate-500">Hire Date</span>
               <span class="text-sm text-slate-700">{{ formatDate(employeeInfo.employment_details?.hire_date) }}</span>
             </div>
+            <div v-if="employeeInfo.employment_details?.type === 'contract'" class="flex items-start justify-between gap-4">
+              <span class="text-xs text-slate-500">Contract End Date</span>
+              <span class="text-sm text-slate-700">{{ formatDate(employeeInfo.employment_details?.contract_end_date) }}</span>
+            </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Current Shift</span>
               <div class="text-right">
@@ -129,8 +133,8 @@
         <template #content>
           <div class="space-y-4">
             <div class="flex items-start justify-between gap-4">
-              <span class="text-xs text-slate-500">Monthly Salary</span>
-              <span class="text-base font-semibold text-blue-600">PHP {{ formatNumber(employeeInfo.employment_details?.monthly_salary || 0) }}</span>
+              <span class="text-xs text-slate-500">Salary / Rate</span>
+              <span class="text-base font-semibold text-blue-600">PHP {{ formatNumber(employeeInfo.employment_details?.monthly_salary || 0) }} / {{ employeeInfo.employment_details?.pay_type === 'hourly' ? 'hour' : 'month' }}</span>
             </div>
             <div class="flex items-start justify-between gap-4">
               <span class="text-xs text-slate-500">Pay Type</span>

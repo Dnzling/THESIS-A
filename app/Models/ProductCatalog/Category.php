@@ -21,6 +21,8 @@ class Category extends Model
         'parent_category_id',
         'level',
         'icon_path',
+        'ecommerce_icon_path',
+        'is_ecommerce_quick_select',
         'is_active',
         'display_order'
     ];
@@ -28,7 +30,8 @@ class Category extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'level' => 'integer',
-        'display_order' => 'integer'
+        'display_order' => 'integer',
+        'is_ecommerce_quick_select' => 'boolean'
     ];
 
     // Relationships

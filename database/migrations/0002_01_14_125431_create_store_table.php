@@ -25,7 +25,7 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->string('email')->nullable();
             $table->string('website')->nullable();
-            $table->enum('status', ['active', 'inactive', 'suspended', 'pending'])->default('pending');
+            $table->enum('status', ['active', 'inactive', 'suspended', 'pending', 'unverified', 'deactivated'])->default('unverified');
             $table->enum('subscription_tier', ['free', 'basic', 'premium', 'enterprise'])->default('free');
             $table->date('subscription_ends_at')->nullable();
             $table->json('settings')->nullable(); // Store specific settings

@@ -14,7 +14,7 @@ class ActivityLogPermissionsSeeder extends Seeder
             return;
         }
 
-        $roleNames = ['super_admin', 'store_admin', 'hr_manager', 'HR Manager'];
+        $roleNames = ['super_admin', 'owner', 'hr_manager', 'HR Manager'];
         $roles = DB::table('roles')->whereIn('name', $roleNames)->get();
 
         foreach ($roles as $role) {

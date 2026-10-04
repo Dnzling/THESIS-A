@@ -46,10 +46,14 @@
           <template #content>
             <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
               <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                  <img v-if="posting.company_logo_url" :src="posting.company_logo_url" :alt="`${storeLabel(posting)} logo`" class="h-12 w-12 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1" />
+                  <div v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><i class="pi pi-building text-lg" /></div>
+                  <span class="text-sm font-semibold text-slate-700">{{ storeLabel(posting) }}</span>
+                </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <Tag :value="posting.status || 'Open'" :severity="posting.status === 'Open' ? 'success' : 'warn'" />
-                  <span class="text-xs font-semibold uppercase tracking-wide text-surface-500">{{ storeLabel(posting)
-                    }}</span>
+                  <Tag :value="employmentTypeLabel(posting.employment_type)" severity="warn" />
                 </div>
                 <div class="space-y-1">
                   <h3 class="text-2xl font-semibold text-slate-900">{{ roleLabel(posting) }}</h3>
@@ -95,10 +99,8 @@ import { onMounted, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import { useToast } from 'primevue/usetoast'
 import hrService, { type JobPosting } from '../../../../services/hr.services'
-import { useJobPortalAuthStore } from '../../../../stores/jobPortalAuth'
 
 const toast = useToast()
-const portalAuth = useJobPortalAuthStore()
 
 const postings = ref<JobPosting[]>([])
 const search = ref('')
@@ -131,12 +133,6 @@ const previewPosting = (id?: number) => {
   if (!id) return
   const targetPath = `/job-portal/postings/${id}`
 
-  if (!portalAuth.isAuthenticated) {
-    portalAuth.setPendingRedirect(targetPath)
-    router.visit('/job-portal/login')
-    return
-  }
-
   router.visit(targetPath)
 }
 
@@ -149,6 +145,13 @@ const roleLabel = (posting: JobPosting) =>
   posting.role?.name ||
   posting.department ||
   'Role'
+const employmentTypeLabels: Record<string, string> = {
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  contract: 'Contract',
+  intern: 'Intern',
+}
+const employmentTypeLabel = (value?: JobPosting['employment_type']) => employmentTypeLabels[value || 'full_time'] || 'Full Time'
 
 onMounted(fetchPostings)
 </script>

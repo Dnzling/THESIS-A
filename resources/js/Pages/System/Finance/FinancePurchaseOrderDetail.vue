@@ -84,11 +84,11 @@
 
     
 
-        <div class="bg-linear-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
+        <div class="bg-gradient-to-br from-orange-600 to-orange-700 rounded-2xl p-5 shadow-lg">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-medium text-blue-100 uppercase tracking-wider">Total Amount</span>
-            <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-              <i class="pi pi-credit-card text-white text-sm"></i>
+            <div class="w-10 h-8 rounded-full flex items-center justify-center">
+              <i class="pi pi-credit-card text-white text-xl"></i>
             </div>
           </div>
           <p class="text-2xl font-bold text-white tracking-tight">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</p>
@@ -225,7 +225,7 @@
             </p>
           </div>
   
-        <div class="bg-linear-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
+        <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 shadow-lg">
           <p class="text-xs text-blue-100 font-medium uppercase tracking-wider mb-2">Total Amount</p>
           <p class="text-3xl font-bold text-white">{{ formatCurrency(parseFloat(detail?.total_amount || 0)) }}</p>
         </div>

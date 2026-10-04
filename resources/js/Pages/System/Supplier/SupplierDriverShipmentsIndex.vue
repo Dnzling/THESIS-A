@@ -59,7 +59,7 @@
         </template>
       </Card>
 
-      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-purple-500 to-purple-600 border-none">
+      <Card class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-gradient-to-br from-purple-500 to-purple-600 border-none">
         <template #content>
           <div class="p-5">
             <div class="flex items-center justify-between mb-3">

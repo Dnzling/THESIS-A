@@ -45,8 +45,6 @@ class StoreInventoryRequest extends FormRequest
             'reorder_quantity' => 'nullable|integer|min:0',
             'maximum_stock' => 'nullable|integer|min:0',
             'safety_stock' => 'nullable|integer|min:0',
-            'unit_cost' => 'nullable|numeric|min:0',
-            'average_cost' => 'nullable|numeric|min:0',
         ];
     }
 

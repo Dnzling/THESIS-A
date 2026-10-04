@@ -29,6 +29,7 @@ class BranchInventory extends Model
         'quantity_damaged',
         'quantity_incoming',
         'warehouse_section',
+        'warehouse_location_id',
         'aisle',
         'rack',
         'shelf',
@@ -38,9 +39,6 @@ class BranchInventory extends Model
         'maximum_stock',
         'safety_stock',
         'stock_status',
-        'unit_cost',
-        'average_cost',
-        'total_value',
         'last_stock_count_date',
         'last_counted_quantity',
         'last_counted_by',
@@ -56,9 +54,6 @@ class BranchInventory extends Model
         'reorder_quantity' => 'integer',
         'maximum_stock' => 'integer',
         'safety_stock' => 'integer',
-        'unit_cost' => 'decimal:2',
-        'average_cost' => 'decimal:2',
-        'total_value' => 'decimal:2',
         'last_stock_count_date' => 'date',
         'last_counted_quantity' => 'integer',
     ];
@@ -72,6 +67,11 @@ class BranchInventory extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function warehouseLocation(): BelongsTo
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
 
     public function product(): BelongsTo
@@ -152,12 +152,6 @@ class BranchInventory extends Model
         } else {
             $this->stock_status = 'in_stock';
         }
-        $this->save();
-    }
-
-    public function calculateTotalValue(): void
-    {
-        $this->total_value = $this->quantity_on_hand * $this->average_cost;
         $this->save();
     }
 

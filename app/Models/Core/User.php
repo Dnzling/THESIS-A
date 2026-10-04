@@ -9,7 +9,6 @@ use App\Models\Hr\Employee;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Store\Store;
 use App\Models\Store\TrialOnboardingProfile;
-use App\Models\Customer\CustomerVerificationDocument;
 use App\Services\Core\PermissionService;
 use App\Models\Store\Branch;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -27,6 +26,11 @@ class User extends Authenticatable
 
     protected $table = 'users';
 
+    public function trialOnboardingProfile()
+    {
+        return $this->hasOne(TrialOnboardingProfile::class, 'user_id', 'id');
+    }
+
     protected $fillable = [
         'user_id',
         'fname',
@@ -43,7 +47,8 @@ class User extends Authenticatable
         'registered_by',
         'deleted_by',
         'store_id',
-        'branch_id'
+        'branch_id',
+        'avatar_path',
     ];
 
     protected $hidden = [
@@ -55,14 +60,13 @@ class User extends Authenticatable
     protected $appends = [
         'full_name',
         'role_name',
-        'customer_verification_status',
-        'customer_verification_required',
-        'customer_verification_trigger_amount',
-        'customer_verification_triggered_at',
-        'customer_verification_rejection_reason',
-        'customer_verification_reviewed_by',
-        'customer_verification_reviewed_at',
+        'avatar_url',
     ];
+
+    public function getAvatarUrlAttribute(): ?string
+    {
+        return $this->avatar_path ? asset('storage/' . ltrim($this->avatar_path, '/')) : null;
+    }
 
     protected function casts(): array
     {
@@ -130,10 +134,6 @@ class User extends Authenticatable
         return $this->belongsTo(Store::class, 'store_id');
     }
 
-    public function trialOnboardingProfile()
-    {
-        return $this->hasOne(TrialOnboardingProfile::class, 'user_id', 'id');
-    }
 
     public function createdProducts()
     {
@@ -143,11 +143,6 @@ class User extends Authenticatable
     public function employee()
     {
         return $this->hasOne(Employee::class, 'user_id');
-    }
-
-    public function customerVerificationDocuments()
-    {
-        return $this->hasMany(CustomerVerificationDocument::class, 'user_id');
     }
 
     public function customer()
@@ -160,33 +155,24 @@ class User extends Authenticatable
         return UserFactory::new();
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (self $user): void {
+            if (blank($user->user_id)) {
+                $user->user_id = self::generateUserId();
+            }
+        });
+    }
+
     // ✅ Fixed: Role Check Methods
     public function isSuperAdmin(): bool
     {
-        // Method 1: Check role name directly
-        if ($this->relationLoaded('role') && $this->role) {
-            return $this->role->name === 'super_admin';
-        }
-
-        // Method 2: Check using role_id (assuming super_admin has ID = 1)
-        return $this->role_id === 1;
-
-        // Method 3: Use hasRole() method
-        // return $this->hasRole('super_admin');
+        return $this->hasRole('super_admin');
     }
 
-    public function isStoreAdmin(): bool
+    public function isOwner(): bool
     {
-        // Method 1: Check role name directly
-        if ($this->relationLoaded('role') && $this->role) {
-            return $this->role->name === 'store_admin';
-        }
-
-        // Method 2: Check using role_id (assuming store_admin has ID = 2)
-        return $this->role_id === 2;
-
-        // Method 3: Use hasRole() method
-        // return $this->hasRole('store_admin');
+        return $this->hasRole('owner');
     }
 
     public function isEmployee(): bool
@@ -230,10 +216,10 @@ class User extends Authenticatable
         });
     }
 
-    public function scopeStoreAdmins($query)
+    public function scopeOwners($query)
     {
         return $query->whereHas('role', function ($q) {
-            $q->where('name', 'store_admin');
+            $q->where('name', 'owner');
         });
     }
 
@@ -281,41 +267,6 @@ class User extends Authenticatable
         return (bool) $this->is_active;
     }
 
-    public function getCustomerVerificationStatusAttribute(): string
-    {
-        return (string) ($this->customer?->verification_status ?? 'unverified');
-    }
-
-    public function getCustomerVerificationRequiredAttribute(): bool
-    {
-        return (bool) ($this->customer?->verification_required ?? false);
-    }
-
-    public function getCustomerVerificationTriggerAmountAttribute()
-    {
-        return $this->customer?->verification_trigger_amount;
-    }
-
-    public function getCustomerVerificationTriggeredAtAttribute()
-    {
-        return $this->customer?->verification_triggered_at;
-    }
-
-    public function getCustomerVerificationRejectionReasonAttribute()
-    {
-        return $this->customer?->verification_rejection_reason;
-    }
-
-    public function getCustomerVerificationReviewedByAttribute()
-    {
-        return $this->customer?->verification_reviewed_by;
-    }
-
-    public function getCustomerVerificationReviewedAtAttribute()
-    {
-        return $this->customer?->verification_reviewed_at;
-    }
-
     public function getBranchInfoAttribute()
     {
         if (
@@ -359,7 +310,7 @@ class User extends Authenticatable
     public static function generateUserId()
     {
         $currentYear = date('Y');
-        $yearPrefix = $currentYear . '-';
+        $yearPrefix = 'USR-' . $currentYear . '-';
 
         $lastUserId = DB::table('users')
             ->where('user_id', 'LIKE', $yearPrefix . '%')
@@ -367,10 +318,10 @@ class User extends Authenticatable
             ->value('user_id');
 
         $newNumber = $lastUserId
-            ? ((int) substr($lastUserId, 5)) + 1
+            ? ((int) substr($lastUserId, strlen($yearPrefix))) + 1
             : 1;
 
-        $formattedNumber = str_pad($newNumber, 7, '0', STR_PAD_LEFT);
+        $formattedNumber = str_pad($newNumber, 5, '0', STR_PAD_LEFT);
         return $yearPrefix . $formattedNumber;
     }
 

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Carbon\Carbon;
+use App\Services\Hr\AttendanceClockInService;
 
 class Attendance extends Model
 {
@@ -160,32 +161,27 @@ class Attendance extends Model
             return;
         }
 
-        $shiftStart = $this->getShiftStartCarbon();
-        $clockIn = Carbon::parse($this->clock_in);
+        $employee = $this->employee;
+        $settings = is_array($employee?->store?->settings) ? $employee->store->settings : [];
+        $attendanceRules = $settings['hr_attendance_rules'] ?? [];
+        $timezone = $attendanceRules['timezone'] ?? config('app.timezone', 'UTC');
+        $date = $this->attendance_date->toDateString();
+        $scheduleMetadata = is_array($this->schedule?->metadata) ? $this->schedule->metadata : [];
+        $resolved = [
+            'is_rest_day' => (bool) $this->is_restday_work,
+            'shift' => $this->shift,
+            'start_time' => $scheduleMetadata['start_time'] ?? $this->shift->start_time,
+        ];
+        $calculated = app(AttendanceClockInService::class)->calculateStatus(
+            $resolved,
+            $this->clock_in->copy()->setTimezone($timezone),
+            $date,
+            $timezone,
+            $attendanceRules,
+        );
 
-        if ($clockIn > $shiftStart) {
-            $minutesLate = abs($shiftStart->diffInMinutes($clockIn, false));
-
-            // If employee clocks in 120+ minutes after shift start, mark as half day.
-            if ($minutesLate >= 120) {
-                $this->late_minutes = $minutesLate;
-                $this->status = 'half_day';
-                $this->save();
-                return;
-            }
-            $gracePeriod = $this->shift->grace_period_minutes ?? 15;
-
-            if ($minutesLate > $gracePeriod) {
-                $this->late_minutes = $minutesLate - $gracePeriod;
-                if ($this->status === 'present') {
-                    $this->status = 'late';
-                }
-            } else {
-                $this->late_minutes = 0;
-            }
-        } else {
-            $this->late_minutes = 0;
-        }
+        $this->late_minutes = $calculated['late_minutes'];
+        $this->status = $calculated['status'];
 
         $this->save();
     }

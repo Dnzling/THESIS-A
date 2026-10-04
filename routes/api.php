@@ -15,35 +15,42 @@ use App\Http\Controllers\Api\Store\StoreController;
 use App\Http\Controllers\Api\Store\BranchController;
 use App\Http\Controllers\Api\Store\StoreSettingsController;
 use App\Http\Controllers\Api\Store\StoreDashboardController;
+use App\Http\Controllers\Api\Store\StoreModuleController;
+use App\Http\Controllers\Api\Store\SimpleStaffController;
 
 use App\Http\Controllers\Api\Hr\EmployeeController;
+use App\Http\Controllers\Api\Hr\EmployeeAvatarController;
 use App\Http\Controllers\Api\Hr\PayPeriodController;
 use App\Http\Controllers\Api\Hr\DeductionTypeController;
+use App\Http\Controllers\Api\Hr\EmployeeBenefitRequestController;
 use App\Http\Controllers\Api\Hr\PayrollController;
 use App\Http\Controllers\Api\Hr\DepartmentController;
 use App\Http\Controllers\Api\UserNavigationController;
 use App\Http\Controllers\Api\Store\RoleController as StoreRoleController;
+use App\Http\Controllers\Api\Store\PositionSetupController;
 use App\Http\Controllers\Api\Store\StoreScopedRoleController;
 use App\Http\Controllers\Api\Payments\PaymongoController;
-use App\Http\Controllers\Api\Admin\CustomerValidationController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
+use App\Http\Controllers\Api\Admin\HomepageContentController;
+use App\Http\Controllers\Api\Admin\EcommerceCategoryController;
 use App\Http\Controllers\Api\Admin\SubscriptionManagementController;
 use App\Http\Controllers\Api\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Api\Admin\StoreManagementController;
 use App\Http\Controllers\Api\Admin\SupplierVerificationController;
 use App\Http\Controllers\Api\Admin\ViolationReportController;
-use App\Http\Controllers\Api\Customer\CustomerVerificationTriggerController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\Core\SystemNotificationController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceActiveStockProductsController;
 use App\Http\Controllers\Api\Ecommerce\EcommerceController;
 use App\Http\Controllers\Api\ProductCatalog\ProductAssetController;
+use App\Http\Controllers\Api\Merchandising\Model3dRequestController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 
 // ========== PUBLIC ROUTES ==========
 Route::prefix('auth')->group(function () {
     Route::middleware('throttle:login')->post('login', [AuthController::class, 'login']);
+    Route::middleware('throttle:login')->post('super-admin/login', [AuthController::class, 'superAdminLogin']);
     Route::middleware('throttle:login-with-clock-in')->post('login-with-clock-in', [AuthController::class, 'loginWithClockIn']);
     Route::middleware('throttle:register')->post('register', [AuthController::class, 'register']);
     Route::middleware('throttle:register')->post('supplier/register', [AuthController::class, 'registerSupplier']);
@@ -52,8 +59,11 @@ Route::prefix('auth')->group(function () {
 
     // Email Verification (public routes with temporary token)
     Route::post('verify-otp', [VerifyEmailController::class, 'verifyOtpApi']);
+    Route::middleware('throttle:6,1')->post('send-otp', [VerifyEmailController::class, 'resendOtpApi']);
     Route::post('resend-otp', [VerifyEmailController::class, 'resendOtpApi']);
 });
+
+Route::get('/public/home-content', [HomepageContentController::class, 'publicIndex']);
 
 require __DIR__ . '/job_portal_routes.php';
 
@@ -61,6 +71,9 @@ require __DIR__ . '/job_portal_routes.php';
 Route::prefix('ecommerce')->group(function () {
     Route::get('/products', [EcommerceController::class, 'products']);
     Route::get('/products/active-stock', [EcommerceActiveStockProductsController::class, 'index']);
+    Route::get('/categories/active-stock', [EcommerceActiveStockProductsController::class, 'categories']);
+    Route::get('/categories/{categoryId}/top-stores', [EcommerceActiveStockProductsController::class, 'topStores']);
+    Route::get('/reviews/{review}/attachment', [EcommerceController::class, 'reviewAttachment']);
     Route::get('/products/{id}', [EcommerceController::class, 'productShow']);
     Route::get('/stores', [EcommerceController::class, 'storeDirectory']);
     Route::get('/stores/{storeId}', [EcommerceController::class, 'storeProfile']);
@@ -74,6 +87,7 @@ Route::prefix('ecommerce')->group(function () {
 Route::get('/product-catalog/assets/{id}/serve', [ProductAssetController::class, 'serve']);
 Route::post('/payments/paymongo/webhook', [PaymongoController::class, 'webhook']);
 Route::get('/public/subscription-plans', [SubscriptionPlanController::class, 'publicIndex']);
+Route::get('/public/subscription-plans/first-for-permission', [SubscriptionPlanController::class, 'firstPlanForPermission']);
 Route::get('/public/subscription-plans/{planKey}/modules', [SubscriptionPlanController::class, 'publicModules']);
 
 // ========== PROTECTED ROUTES ==========
@@ -84,11 +98,16 @@ Route::prefix('locations')->group(function () {
     Route::get('/barangays', [\App\Http\Controllers\Api\Location\PSGCController::class, 'barangays']);
 });
 
-Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->group(function () {
+    Route::get('/3d-model-requests', [Model3dRequestController::class, 'index']);
+    Route::post('/3d-model-requests', [Model3dRequestController::class, 'store']);
+    Route::get('/3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
+    Route::post('/3d-model-requests/{modelRequest}/quote', [Model3dRequestController::class, 'quote']);
+    Route::post('/3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
+    Route::post('/3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
     Route::post('/user/check-permission', [UserNavigationController::class, 'checkPermission']);
     Route::get('/user/debug-permissions', [UserNavigationController::class, 'debugPermissions']);
-    Route::post('/customer-verification/trigger', [CustomerVerificationTriggerController::class, 'trigger']);
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
     // Add admin supplier verification endpoints
     Route::get('/admin/suppliers/pending', [SupplierVerificationController::class, 'index']);
@@ -109,7 +128,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/batch-delete', [SystemNotificationController::class, 'batchDelete']);
     });
 
-    Route::prefix('admin')->group(function () {
+    Route::middleware('role:super_admin')->prefix('admin')->group(function () {
         Route::get('/roles', [RolePermissionController::class, 'getRoles']);
         Route::get('/roles/primary', [RolePermissionController::class, 'primaryRolesAdmin']);
         Route::delete('/roles/{id}', [RolePermissionController::class, 'deleteRole']);
@@ -128,6 +147,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/permissions/export', [RolePermissionController::class, 'exportPermissions']);
         Route::post('/permissions/import', [RolePermissionController::class, 'importPermissions']);
 
+        // Master module catalog used by permissions and navigation.
+        Route::get('/modules', [RolePermissionController::class, 'getModules']);
+        Route::post('/modules', [RolePermissionController::class, 'createModule']);
+        Route::put('/modules/{id}', [RolePermissionController::class, 'updateModule']);
+
         // Navigation Items
         Route::get('/navigation-items', [RolePermissionController::class, 'getNavigationItems']);
         Route::post('/navigation-items', [RolePermissionController::class, 'createNavigationItem']);
@@ -140,17 +164,17 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::post('/store-modules/override', [\App\Http\Controllers\Api\Admin\StoreModuleController::class, 'override']);
 
         // Customer Validation
-        Route::get('/customer-validations', [CustomerValidationController::class, 'index']);
-        Route::get('/customer-validations/documents/{document}/serve', [CustomerValidationController::class, 'serveDocument']);
-        Route::get('/customer-validations/{id}', [CustomerValidationController::class, 'show']);
-        Route::post('/customer-validations/{id}/review', [CustomerValidationController::class, 'review']);
 
         // Customer Management
         Route::get('/customers', [CustomerManagementController::class, 'index']);
-        Route::post('/customers/{id}/require-verification', [CustomerManagementController::class, 'requireVerification']);
-        Route::post('/customers/require-verification-bulk', [CustomerManagementController::class, 'requireVerificationBulk']);
-
-        // Subscription Management
+        Route::get('/customers/{customer}', [CustomerManagementController::class, 'show']);
+        Route::get('/home-content', [HomepageContentController::class, 'index']);
+        Route::post('/home-content/modules', [HomepageContentController::class, 'storeModule']);
+        Route::post('/home-content/modules/{module}', [HomepageContentController::class, 'updateModule']);
+        Route::delete('/home-content/modules/{module}', [HomepageContentController::class, 'destroyModule']);
+        Route::post('/home-content/furniture/{furniture}', [HomepageContentController::class, 'updateFurniture']);
+        Route::get('/ecommerce-categories', [EcommerceCategoryController::class, 'index']);
+        Route::post('/ecommerce-categories/{category}', [EcommerceCategoryController::class, 'update']);
         Route::get('/subscriptions', [SubscriptionManagementController::class, 'index']);
         Route::get('/subscriptions/stats', [SubscriptionManagementController::class, 'stats']);
         Route::put('/subscriptions/{store}', [SubscriptionManagementController::class, 'update']);
@@ -160,6 +184,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'show']);
         Route::put('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'update']);
         Route::delete('/subscription-plans/{subscriptionPlan}', [SubscriptionPlanController::class, 'destroy']);
+
 
         // Super Admin Management
         Route::get('/super-admins', [\App\Http\Controllers\Api\Admin\SuperAdminManagementController::class, 'index']);
@@ -183,6 +208,8 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
     // ========== STORE ROLES & PERMISSIONS ==========
     Route::prefix('store')->group(function () {
+        Route::get('/position-setup', [PositionSetupController::class, 'index']);
+        Route::post('/position-setup', [PositionSetupController::class, 'store']);
         Route::get('/dashboard', [StoreDashboardController::class, 'index']);
         Route::get('/settings', [StoreSettingsController::class, 'show']);
         Route::put('/settings/profile', [StoreSettingsController::class, 'updateProfile']);
@@ -203,6 +230,14 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::put('/modules', [StoreRoleController::class, 'updateModules']);
         Route::get('/roles/{id}/permissions', [StoreRoleController::class, 'getRolePermissions']);
         Route::post('/roles/{id}/permissions', [StoreRoleController::class, 'updateRolePermissions']);
+    });
+
+    // Branch-scoped Store module
+    Route::prefix('store-module')->controller(StoreModuleController::class)->group(function () {
+        Route::get('/dashboard', 'dashboard');
+        Route::get('/settings', 'settings');
+        Route::match(['put', 'post'], '/settings', 'updateSettings');
+        Route::get('/ecommerce', 'ecommerce');
     });
 
     Route::prefix('payments')->group(function () {
@@ -241,23 +276,33 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // ========== PROFILE ==========
     Route::prefix('profile')->controller(ApiProfileController::class)->group(function () {
         Route::get('/', 'show');
-        Route::get('/verification', 'verificationStatus');
-        Route::post('/verification', 'submitVerification');
-        Route::get('/verification/documents/{document}/serve', 'serveVerificationDocument');
         Route::put('/', 'update');
         Route::post('avatar', 'updateAvatar');
         Route::delete('avatar', 'removeAvatar');
     });
 
     // ========== USER MANAGEMENT ==========
-    Route::apiResource('users', UserController::class);
+    Route::apiResource('users', UserController::class)->middlewareFor('store', 'subscription.capacity:users');
 
     Route::prefix('users')->group(function () {});
 
     // =========== HR ==============
-    Route::post('/employees/invite', [EmployeeController::class, 'storeInvite']);
-    Route::apiResource('employees', EmployeeController::class);
+    Route::post('/employees/invite', [EmployeeController::class, 'storeInvite'])->middleware('subscription.capacity:users');
+    Route::post('/employees/{employeeId}/avatar', [EmployeeAvatarController::class, 'store']);
+    Route::middleware('role:owner')->prefix('store/simple-staff')->group(function () {
+        Route::get('employees', [SimpleStaffController::class, 'employees']);
+        Route::get('employees/{employeeId}', [SimpleStaffController::class, 'showEmployee']);
+        Route::put('employees/{employeeId}', [SimpleStaffController::class, 'updateEmployee']);
+        Route::get('attendances', [SimpleStaffController::class, 'attendances']);
+        Route::put('attendances', [SimpleStaffController::class, 'saveAttendance']);
+        Route::get('payments', [SimpleStaffController::class, 'payments']);
+        Route::post('payments', [SimpleStaffController::class, 'savePayment']);
+    });
+    Route::get('/simple-staff/my-clock', [SimpleStaffController::class, 'myClockStatus']);
+    Route::post('/simple-staff/my-clock', [SimpleStaffController::class, 'stageClock']);
+    Route::post('/employees/{id}/resignation', [EmployeeController::class, 'recordResignation']);
     Route::get('/employees/me', [EmployeeController::class, 'me']);
+    Route::apiResource('employees', EmployeeController::class)->middlewareFor('store', 'subscription.capacity:users');
     Route::get('/employees/{id}/details', [EmployeeController::class, 'getEmployeeDetails']);
     Route::get('/employees/{id}/details/{year}', [EmployeeController::class, 'getEmployeeDetails']);
     Route::post('/employees/id-preview', [EmployeeController::class, 'previewGovernmentId']);
@@ -291,6 +336,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 
         // Payroll Overview
         Route::get('/overview', [PayrollController::class, 'overview']);
+        Route::get('/preview', [PayrollController::class, 'preview']);
 
         // Payroll
         Route::get('/pay-periods', [PayPeriodController::class, 'getAllPayPeriods']);
@@ -324,6 +370,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/payrolls/{id}/payslip/print', [PayrollController::class, 'printPayslip']);
 
     Route::prefix('hr/dashboard')->controller(\App\Http\Controllers\Api\Hr\DashboardController::class)->group(function () {
+        Route::get('/action-queues', 'getActionQueues');
         Route::get('/analytics-overview', 'getAnalyticsOverview');
         Route::get('/today-stats', 'getTodayStats');
         Route::get('/weekly-attendance', 'getWeeklyAttendance');
@@ -331,6 +378,16 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     });
 
     // Deductions
+    Route::prefix('hr/benefit-requests')->controller(EmployeeBenefitRequestController::class)->group(function () {
+        Route::get('/mine', 'mine');
+        Route::post('/', 'store');
+        Route::get('/', 'index');
+        Route::get('/{benefitRequest}', 'show');
+        Route::post('/{benefitRequest}/review', 'review');
+        Route::post('/{benefitRequest}/complete', 'complete');
+        Route::post('/{benefitRequest}/settle', 'settle');
+    });
+
     Route::prefix('deductions')->group(function () {
         Route::get('/deduction-types', [DeductionTypeController::class, 'index']);
         Route::post('/deduction-types', [DeductionTypeController::class, 'store']);
@@ -345,8 +402,12 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // ========== STORE MANAGEMENT ==========
     Route::get('pending-verification', [StoreVerificationController::class, 'getPendingVerifications']);
     Route::get('store-verifications', [StoreVerificationController::class, 'index']);
+    Route::get('store-verification/{verification}', [StoreVerificationController::class, 'show']);
+    Route::post('store-verification/owner-id/extract', [StoreVerificationController::class, 'extractOwnerId']);
+    Route::post('store-verification/business-registration/extract', [StoreVerificationController::class, 'extractBusinessRegistration']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
+    Route::get('store-verification/{verification}/documents/{document}/preview', [StoreVerificationController::class, 'previewDocument']);
     Route::get('store-verification/{verification}/documents/{document}/download', [StoreVerificationController::class, 'downloadDocument']);
     Route::post('store-verification/{verification}/documents/{document}/auto-validate', [StoreVerificationController::class, 'autoValidateDocument']);
     Route::post('store-verification/{verification}/documents/auto-validate-all', [StoreVerificationController::class, 'autoValidateAllDocuments']);
@@ -378,9 +439,9 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Store Branches
     Route::prefix('branches')->controller(BranchController::class)->group(function () {
         Route::get('/', 'index');
-        Route::post('/', 'store');
+        Route::post('/', 'store')->middleware('subscription.capacity:branches');
         Route::get('{branch}', 'show');
-        Route::put('{branch}', 'update');
+        Route::put('{branch}', 'update')->middleware('subscription.capacity:branch_update');
         Route::delete('{branch}', 'destroy');
     });
 
@@ -393,9 +454,11 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/supplier-portals', [\App\Http\Controllers\Api\SupplierPortalsController::class, 'index']);
     Route::get('/supplier-portals/{id}', [\App\Http\Controllers\Api\SupplierPortalsController::class, 'show']);
     require __DIR__ . '/inventory_routes.php';
+    require __DIR__ . '/warehouse_routes.php';
     require __DIR__ . '/logistics_routes.php';
     require __DIR__ . '/ecommerce_routes.php';
     require __DIR__ . '/sales_routes.php';
+    require __DIR__ . '/crm_routes.php';
     require __DIR__ . '/job_hiring_routes.php';
     require __DIR__ . '/finance_routes.php';
 

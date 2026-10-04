@@ -18,6 +18,7 @@ Route::prefix('job-portal')->group(function () {
 
     Route::get('/postings', [JobPortalController::class, 'index']);
     Route::get('/postings/{posting}', [JobPortalController::class, 'show']);
+    Route::post('/postings/{posting}/apply', [ApplicantPortalController::class, 'apply'])->middleware('throttle:5,1');
 });
 
 Route::middleware('auth:sanctum')->prefix('job-portal')->group(function () {
@@ -29,7 +30,6 @@ Route::middleware('auth:sanctum')->prefix('job-portal')->group(function () {
     Route::get('/applications', [ApplicantPortalController::class, 'index']);
     Route::get('/applications/{application}', [ApplicantPortalController::class, 'show']);
     Route::get('/applications/{application}/documents/{document}', [ApplicantPortalController::class, 'downloadDocument']);
-    Route::post('/postings/{posting}/apply', [ApplicantPortalController::class, 'apply']);
 
     Route::get('/profile', [ApplicantProfileController::class, 'show']);
     Route::put('/profile', [ApplicantProfileController::class, 'upsert']);

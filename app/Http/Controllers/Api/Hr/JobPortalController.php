@@ -12,7 +12,7 @@ class JobPortalController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = JobPosting::query()
-            ->with(['store', 'role'])
+            ->with(['store.logoBranch', 'role'])
             ->where('status', 'Open')
             ->orderByDesc('created_at');
 
@@ -36,7 +36,7 @@ class JobPortalController extends Controller
         abort_unless($posting->status === 'Open', 404);
 
         $posting->load([
-            'store',
+            'store.logoBranch',
             'role',
             'screeningStages',
         ]);

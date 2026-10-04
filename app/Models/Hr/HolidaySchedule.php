@@ -18,6 +18,9 @@ class HolidaySchedule extends Model
         'holiday_type',
         'rate_multiplier',
         'is_working_holiday',
+        'applies_to',
+        'city',
+        'branch_ids',
         'store_id',
         'description'
     ];
@@ -25,6 +28,7 @@ class HolidaySchedule extends Model
     protected $casts = [
         'holiday_date' => 'date',
         'is_working_holiday' => 'boolean',
+        'branch_ids' => 'array',
         'rate_multiplier' => 'decimal:2'
     ];
 

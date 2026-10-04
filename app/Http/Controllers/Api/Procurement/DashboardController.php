@@ -3,154 +3,130 @@
 namespace App\Http\Controllers\Api\Procurement;
 
 use App\Http\Controllers\Controller;
-use App\Models\Procurement\Supplier\Supplier;
-use App\Models\Procurement\Requisition\PurchaseRequisition;
 use App\Models\Procurement\PurchaseOrder\PurchaseOrder;
-use App\Models\Procurement\Supplier\SupplierPayment;
+use App\Models\Procurement\Requisition\PurchaseRequisition;
+use App\Models\Procurement\RFQ\RequestForQuotation;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
-    /**
-     * Get dashboard statistics
-     * GET /api/procurement/suppliers/stats
-     */
     public function getStats(Request $request)
     {
         try {
-            // ===== SUMMARY CARDS =====
-            $activeSuppliersCount = Supplier::where('status', 'active')->count();
-            $totalSuppliersCount = Supplier::count();
-        
-            $pendingPRCount = PurchaseRequisition::where('status', 'submitted')->count();
-            $pendingPOApprovalsCount = PurchaseOrder::whereIn('status', ['pending_finance_approval'])->count();
-            $totalPendingApprovals = $pendingPRCount + $pendingPOApprovalsCount;
+            $storeId = (int) ($request->user()?->store_id ?? 0);
+            $branchId = (int) ($request->user()?->branch_id ?? 0);
 
-            $activePOsCount = PurchaseOrder::whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit'])->count();
-            $activePOsValue = PurchaseOrder::whereIn('status', ['sent_to_supplier', 'supplier_accepted', 'in_transit'])->sum('total_amount') ?? 0;
-            $totalPOsValue = PurchaseOrder::sum('total_amount') ?? 0;
-
-            $pendingPaymentsCount = 0;
-            $pendingPaymentsAmount = 0;
-            try {
-                $pendingPaymentsCount = SupplierPayment::where('status', 'pending_approval')->count();
-                $pendingPaymentsAmount = SupplierPayment::where('status', 'pending_approval')->sum('payment_amount') ?? 0;
-            } catch (\Exception $e) {
-                \Log::warning('Error fetching pending payments: ' . $e->getMessage());
+            if ($storeId <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account is not assigned to a store.',
+                ], 422);
             }
 
-            // ===== TOP SUPPLIERS =====
-            $topSuppliers = Supplier::select('id', 'supplier_name', 'supplier_code', 'rating', 'total_orders', 'total_amount_purchased')
-                ->where('status', 'active')
-                ->orderByDesc('total_amount_purchased')
-                ->limit(5)
-                ->get()
-                ->map(function ($supplier) {
-                    return [
-                        'id' => $supplier->id,
-                        'name' => $supplier->supplier_name,
-                        'code' => $supplier->supplier_code,
-                        'rating' => round($supplier->rating, 1),
-                        'total_orders' => (int) $supplier->total_orders,
-                        'total_spent' => (float) $supplier->total_amount_purchased,
-                    ];
-                });
+            $orders = PurchaseOrder::query()->where('store_id', $storeId)
+                ->when($branchId > 0, fn ($query) => $query->where('branch_id', $branchId));
+            $requisitions = PurchaseRequisition::query()->where('store_id', $storeId)
+                ->when($branchId > 0, fn ($query) => $query->where('branch_id', $branchId));
+            // RFQs have a store but no branch of their own, so show the store-wide quote queue.
+            $rfqs = RequestForQuotation::query()->where('store_id', $storeId);
 
-            // ===== RECENT PURCHASE ORDERS =====
-            $recentPOs = PurchaseOrder::select('id', 'po_number', 'supplier_id', 'total_amount', 'status', 'created_at')
+            $thisMonth = now()->startOfMonth();
+            $nextMonth = $thisMonth->copy()->addMonth();
+            $lastMonth = $thisMonth->copy()->subMonth();
+            $monthlyValue = fn ($start, $end) => (float) (clone $orders)
+                ->where('created_at', '>=', $start)
+                ->where('created_at', '<', $end)
+                ->whereNotIn('status', ['draft', 'cancelled', 'rejected_finance', 'declined_supplier'])
+                ->sum('total_amount');
+
+            $currentValue = $monthlyValue($thisMonth, $nextMonth);
+            $previousValue = $monthlyValue($lastMonth, $thisMonth);
+            $trend = [];
+            for ($offset = 5; $offset >= 0; $offset--) {
+                $start = $thisMonth->copy()->subMonths($offset);
+                $trend[] = [
+                    'label' => $start->format('M'),
+                    'value' => $monthlyValue($start, $start->copy()->addMonth()),
+                ];
+            }
+
+            $pendingPrQuery = (clone $requisitions)->whereIn('status', ['pending', 'submitted', 'pending_central_review']);
+            $pendingPoQuery = (clone $orders)->whereIn('status', ['draft', 'pending_finance_approval', 'revision_requested']);
+            $quotedRfqQuery = (clone $rfqs)
+                ->whereIn('status', ['pending', 'sent', 'receiving', 'partially_approved'])
+                ->whereHas('supplierPortalFeedbacks', fn ($query) => $query->where('status', 'pending'));
+
+            $pendingPrs = (clone $pendingPrQuery)
+                ->select('id', 'pr_number', 'branch_id', 'estimated_amount', 'priority', 'status', 'submitted_at', 'created_at')
+                ->with('branch:id,name')
+                ->orderBy('priority')->orderBy('created_at')->limit(5)->get()
+                ->map(fn ($pr) => [
+                    'id' => $pr->id,
+                    'number' => $pr->pr_number,
+                    'branch' => $pr->branch?->name,
+                    'amount' => (float) ($pr->estimated_amount ?? 0),
+                    'priority' => (int) $pr->priority,
+                    'status' => $pr->status,
+                    'date' => $pr->submitted_at?->toDateString() ?? $pr->created_at?->toDateString(),
+                ]);
+
+            $pendingPos = (clone $pendingPoQuery)
+                ->select('id', 'po_number', 'supplier_id', 'total_amount', 'status', 'created_at')
                 ->with('supplier:id,supplier_name')
-                ->latest('created_at')
-                ->limit(5)
-                ->get()
-                ->map(function ($po) {
-                    return [
-                        'id' => $po->id,
-                        'number' => $po->po_number,
-                        'supplier' => $po->supplier?->supplier_name,
-                        'amount' => (float) $po->total_amount,
-                        'status' => $po->status,
-                        'date' => $po->created_at->format('Y-m-d'),
-                    ];
-                });
+                ->oldest('created_at')->limit(5)->get()
+                ->map(fn ($po) => [
+                    'id' => $po->id,
+                    'number' => $po->po_number,
+                    'supplier' => $po->supplier?->supplier_name,
+                    'amount' => (float) ($po->total_amount ?? 0),
+                    'status' => $po->status,
+                    'date' => $po->created_at?->toDateString(),
+                ]);
 
-            // ===== PO STATUS BREAKDOWN =====
-            $poStatusBreakdown = PurchaseOrder::select('status')
-                ->selectRaw('COUNT(*) as count')
-                ->selectRaw('SUM(total_amount) as total')
-                ->groupBy('status')
-                ->get()
-                ->map(function ($po) {
-                    return [
-                        'status' => $po->status,
-                        'count' => (int) $po->count,
-                        'total' => (float) ($po->total ?? 0),
-                    ];
-                });
-
-            // ===== KEY METRICS =====
-            $completedPOs = PurchaseOrder::where('status', 'delivered')->count();
-            $avgSupplierRating = Supplier::where('status', 'active')->avg('rating') ?? 0;
+            $quotedRfqs = (clone $quotedRfqQuery)
+                ->select('id', 'rfq_number', 'title', 'status', 'updated_at')
+                ->with(['supplierPortalFeedbacks' => fn ($query) => $query
+                    ->select('id', 'rfq_id', 'supplier_portal_id', 'submitted_at')
+                    ->where('status', 'pending')])
+                ->latest('updated_at')->limit(5)->get()
+                ->map(fn ($rfq) => [
+                    'id' => $rfq->id,
+                    'number' => $rfq->rfq_number,
+                    'title' => $rfq->title,
+                    'quotes' => $rfq->supplierPortalFeedbacks->pluck('supplier_portal_id')->unique()->count(),
+                    'last_quote_at' => $rfq->supplierPortalFeedbacks->max('submitted_at')?->toDateString(),
+                    'status' => $rfq->status,
+                ]);
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'summary' => [
-                        'active_suppliers' => [
-                            'count' => $activeSuppliersCount,
-                            'total' => $totalSuppliersCount,
-                            'label' => 'Active Suppliers'
-                        ],
-                        'pending_approvals' => [
-                            'pr_count' => $pendingPRCount,
-                            'po_count' => $pendingPOApprovalsCount,
-                            'total' => $totalPendingApprovals,
-                            'label' => 'Pending Approvals'
-                        ],
-                        'active_pos' => [
-                            'count' => $activePOsCount,
-                            'total_value' => (float) $activePOsValue,
-                            'label' => 'Active POs'
-                        ],
-                        'pending_payments' => [
-                            'count' => $pendingPaymentsCount,
-                            'total_amount' => (float) $pendingPaymentsAmount,
-                            'label' => 'Pending Payments'
-                        ]
+                        'po_value_this_month' => $currentValue,
+                        'po_value_previous_month' => $previousValue,
+                        'pending_prs' => (clone $pendingPrQuery)->count(),
+                        'pending_pos' => (clone $pendingPoQuery)->count(),
+                        'quoted_rfqs' => (clone $quotedRfqQuery)->count(),
                     ],
-                    'metrics' => [
-                        'total_po_value' => (float) $totalPOsValue,
-                        'completed_pos' => $completedPOs,
-                        'avg_supplier_rating' => round($avgSupplierRating, 1),
-                    ],
-                    'top_suppliers' => $topSuppliers,
-                    'recent_pos' => $recentPOs,
-                    'po_status_breakdown' => $poStatusBreakdown,
-                ]
+                    'po_trend' => $trend,
+                    'pending_prs' => $pendingPrs,
+                    'pending_pos' => $pendingPos,
+                    'quoted_rfqs' => $quotedRfqs,
+                ],
             ]);
+        } catch (\Throwable $e) {
+            Log::error('Procurement dashboard stats failed', ['exception' => $e]);
 
-        } catch (\Exception $e) {
-            Log::error('Dashboard Stats Error: ' . $e->getMessage(), [
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ]);
-            
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load dashboard statistics',
-                'error' => $e->getMessage()
+                'message' => 'Failed to load dashboard statistics.',
             ], 500);
         }
     }
 
-    /**
-     * Get summary cards data (fallback)
-     * GET /api/procurement/suppliers/summary-cards
-     */
     public function getSummaryCards(Request $request)
     {
         return $this->getStats($request);
     }
 }
-

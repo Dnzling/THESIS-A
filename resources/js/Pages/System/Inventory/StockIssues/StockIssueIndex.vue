@@ -1,82 +1,74 @@
 <template>
-  <div class="bg-gray-50 min-h-screen p-6">
-    <div class="max-w-7xl mx-auto">
-      <div class="mb-6">
+  <div class="min-h-screen p-4">
+    <div>
+      <div class="mb-4">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-3xl font-bold text-gray-800">Stock Issues</h1>
-            <p class="text-gray-600 mt-1">Manage stock issue transactions</p>
+            <h1 class="text-xl font-bold text-gray-800">Stock Issuance</h1>
           </div>
-          <Button
-            label="Issue Stock"
-            @click="createStockIssue"
-            class="bg-blue-600 hover:bg-blue-700"
-          />
+          <div class="flex items-center gap-2">
+            <Button
+              label="New Stock Issuance"
+              icon="pi pi-plus"
+              size="small"
+              class="text-sm"
+              @click="createStockIssue"
+            />
+          </div>
         </div>
       </div>
 
       <Card>
         <template #content>
           <!-- Filters -->
-          <div class="mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+          <div class="mb-5 grid grid-cols-1 items-end gap-4 md:grid-cols-4">
+              <IconField>
+                <InputIcon class="pi pi-search" />
                 <InputText
                   v-model="filters.search"
-                  placeholder="Search issues..."
-                  class="w-full"
-                  @input="onFilter"
+                  placeholder="Search issue number or description"
+                  class="w-full text-sm"
+                  size="small"
                 />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              </IconField>
                 <Select
                   v-model="filters.status"
                   :options="statusOptions"
                   optionLabel="label"
                   optionValue="value"
-                  placeholder="All Status"
-                  class="w-full"
+                  placeholder="Status"
+                  class="w-full text-sm"
+                  size="small"
                   showClear
-                  @change="onFilter"
                 />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Type</label>
                 <Select
-                  v-model="filters.type"
+                  v-model="filters.movement_type"
+                  :options="movementOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  placeholder="Movement"
+                  class="w-full text-sm"
+                  size="small"
+                  showClear
+                />
+                <Select
+                  v-model="filters.issue_type"
                   :options="typeOptions"
                   optionLabel="label"
                   optionValue="value"
-                  placeholder="All Types"
-                  class="w-full"
+                  placeholder="Reason"
+                  class="w-full text-sm"
+                  size="small"
                   showClear
-                  @change="onFilter"
                 />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Warehouse</label>
-                <Select
-                  v-model="filters.warehouse_id"
-                  :options="warehouses"
-                  optionLabel="name"
-                  optionValue="id"
-                  placeholder="All Warehouses"
-                  class="w-full"
-                  showClear
-                  @change="onFilter"
-                />
-              </div>
-              <div class="flex items-end">
+              <div v-if="hasActiveFilters">
                 <Button
-                  label="Clear Filters"
-                  severity="secondary"
+                  label="Clear All"
+                  severity="danger"
+                  size="small"
                   @click="clearFilters"
-                  class="w-full"
                 />
               </div>
-            </div>
           </div>
 
           <!-- Data Table -->
@@ -85,39 +77,45 @@
             :loading="loading"
             paginator
             :rows="filters.per_page"
-            :rowsPerPageOptions="[5, 10, 25, 50]"
+            :rowsPerPageOptions="[15, 25, 50]"
             :totalRecords="totalRecords"
             :lazy="true"
             @page="onPage"
             @sort="onSort"
             :sortField="filters.sort_field"
             :sortOrder="filters.sort_direction === 'asc' ? 1 : -1"
+            currentPageReportTemplate="Showing {first} to {last} of {totalRecords}"
+            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageSelect"
             tableStyle="min-width: 50rem"
-            class="p-datatable-sm"
+            class="p-datatable-sm text-xs"
+            rowHover
+            :rowClass="() => 'cursor-pointer hover:bg-orange-50'"
+            @row-click="onRowClick"
           >
             <Column field="issue_number" header="Issue Number" style="width: 140px" sortable />
-            <Column field="issue_type" header="Type" style="width: 120px">
+            <Column field="movement_type" header="Movement" style="width: 130px">
               <template #body="slotProps">
-                <Tag
-                  :value="slotProps.data.issue_type"
-                  :severity="getTypeSeverity(slotProps.data.issue_type)"
+                <Badge
+                  :value="slotProps.data.movement_type === 'add' ? 'Add Stock' : 'Deduct Stock'"
+                  :severity="slotProps.data.movement_type === 'add' ? 'success' : 'danger'"
                   class="capitalize"
                 />
               </template>
             </Column>
-            <Column field="description" header="Description" style="min-width: 200px">
+            <Column field="issue_type" header="Reason" style="width: 130px">
               <template #body="slotProps">
-                {{ slotProps.data.description || 'N/A' }}
+                {{ formatIssueType(slotProps.data.issue_type) }}
               </template>
             </Column>
+           
             <Column field="branch" header="Branch" style="min-width: 150px">
               <template #body="slotProps">
                 {{ slotProps.data.branch?.name || 'N/A' }}
               </template>
             </Column>
-            <Column field="requester" header="Requested By" style="min-width: 150px">
+            <Column field="creator" header="Created By" style="min-width: 150px">
               <template #body="slotProps">
-                {{ slotProps.data.requester?.full_name || 'N/A' }}
+                {{ slotProps.data.creator?.full_name || 'N/A' }}
               </template>
             </Column>
             <Column field="total_value" header="Total Value" style="width: 120px" sortable>
@@ -127,10 +125,9 @@
             </Column>
             <Column field="status" header="Status" style="width: 120px">
               <template #body="slotProps">
-                <Tag
-                  :value="slotProps.data.status"
+                <Badge
+                  :value="formatIssueType(slotProps.data.status)"
                   :severity="getStatusSeverity(slotProps.data.status)"
-                  class="capitalize"
                 />
               </template>
             </Column>
@@ -144,34 +141,20 @@
                 <div class="flex gap-2">
                   <Button
                     icon="pi pi-eye"
-                    severity="info"
-                    outlined
+                    text
+                    rounded
+                    size="small"
                     @click="viewStockIssue(slotProps.data)"
                     v-tooltip.top="'View Details'"
                   />
-                  <Button
-                    icon="pi pi-pencil"
-                    severity="warning"
-                    outlined
-                    @click="editStockIssue(slotProps.data)"
-                    v-tooltip.top="'Edit Issue'"
-                    :disabled="slotProps.data.status === 'completed' || slotProps.data.status === 'approved'"
-                  />
-                  <Button
-                    icon="pi pi-times"
-                    severity="danger"
-                    outlined
-                    @click="confirmCancel(slotProps.data)"
-                    v-tooltip.top="'Cancel Issue'"
-                    :disabled="slotProps.data.status === 'cancelled' || slotProps.data.status === 'approved' || slotProps.data.status === 'completed'"
-                  />
+              
                 </div>
               </template>
             </Column>
             <template #empty>
               <div class="text-center py-8">
                 <i class="pi pi-inbox text-4xl text-gray-300 mb-3"></i>
-                <p class="text-gray-500">No stock issues found</p>
+                <p class="text-gray-500">No stock issuance records found</p>
               </div>
             </template>
           </DataTable>
@@ -195,7 +178,7 @@
           Reference: <strong>{{ selectedStockIssue?.issue_number }}</strong>
         </p>
         <p class="text-sm text-gray-600 mt-1">
-          This will reverse the stock reduction and mark the issue as cancelled.
+          This will mark the stock issuance as cancelled.
         </p>
       </div>
     </div>
@@ -216,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import inventoryService from '../../../../services/inventory.service'
@@ -226,7 +209,6 @@ const cancelLoading = ref(false)
 const cancelDialog = ref(false)
 const selectedStockIssue = ref<any>(null)
 const stockIssues = ref<any[]>([])
-const warehouses = ref<any[]>([])
 const totalRecords = ref(0)
 const toast = useToast()
 const router = useRouter()
@@ -234,30 +216,50 @@ const router = useRouter()
 const filters = reactive({
   search: '',
   status: null as string | null,
-  type: null as string | null,
-  warehouse_id: null as number | null,
+  movement_type: null as string | null,
+  issue_type: null as string | null,
   page: 1,
-  per_page: 10,
+  per_page: 15,
   sort_field: 'issue_date',
   sort_direction: 'desc' as 'asc' | 'desc'
 })
 
 const statusOptions = [
   { label: 'Draft', value: 'draft' },
-  { label: 'Pending', value: 'pending' },
+  { label: 'Submitted', value: 'submitted' },
   { label: 'Approved', value: 'approved' },
-  { label: 'Completed', value: 'completed' },
+  { label: 'Issued', value: 'issued' },
   { label: 'Cancelled', value: 'cancelled' }
 ]
 
 const typeOptions = [
-  { label: 'Expired', value: 'expired' },
+  { label: 'Goods Received', value: 'goods_received' },
+  { label: 'Stock Return', value: 'stock_return' },
+  { label: 'Inventory Correction', value: 'inventory_correction' },
+  { label: 'Opening Balance', value: 'opening_balance' },
+  { label: 'Transfer In', value: 'transfer_in' },
+  { label: 'Used for Production', value: 'production_use' },
+  { label: 'Office Consumption', value: 'office_consumption' },
+  { label: 'Store Usage', value: 'store_usage' },
   { label: 'Damaged', value: 'damaged' },
   { label: 'Lost', value: 'lost' },
-  { label: 'Internal Use', value: 'internal_use' },
-  { label: 'Sample', value: 'sample' },
+  { label: 'Expired', value: 'expired' },
+  { label: 'Stock Correction', value: 'stock_correction' },
   { label: 'Other', value: 'other' }
 ]
+
+const movementOptions = [
+  { label: 'Add Stock', value: 'add' },
+  { label: 'Deduct Stock', value: 'deduct' },
+]
+
+const hasActiveFilters = computed(() => Boolean(
+  filters.search.trim() || filters.status || filters.movement_type || filters.issue_type
+))
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+const formatIssueType = (type: string) => String(type || 'other').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
 
 const loadStockIssues = async () => {
   loading.value = true
@@ -271,8 +273,8 @@ const loadStockIssues = async () => {
     
     if (filters.search) params.search = filters.search
     if (filters.status) params.status = filters.status
-    if (filters.type) params.type = filters.type
-    if (filters.warehouse_id) params.warehouse_id = filters.warehouse_id
+    if (filters.movement_type) params.movement_type = filters.movement_type
+    if (filters.issue_type) params.issue_type = filters.issue_type
 
     const response = await inventoryService.getStockIssues(params)
 
@@ -289,7 +291,6 @@ const loadStockIssues = async () => {
         totalRecords.value = 0
       }
       
-      console.log('Loaded stock issues:', stockIssues.value)
     } else {
       toast.add({
         severity: 'error',
@@ -313,26 +314,6 @@ const loadStockIssues = async () => {
   }
 }
 
-const loadWarehouses = async () => {
-  try {
-    const response = await inventoryService.getWarehouses()
-    if (response.success) {
-      if (response.data && Array.isArray(response.data.data)) {
-        warehouses.value = response.data.data
-      } else if (Array.isArray(response.data)) {
-        warehouses.value = response.data
-      } else {
-        warehouses.value = []
-      }
-    } else {
-      warehouses.value = []
-    }
-  } catch (error) {
-    console.error('Failed to load warehouses', error)
-    warehouses.value = []
-  }
-}
-
 const onFilter = () => {
   filters.page = 1
   loadStockIssues()
@@ -353,9 +334,10 @@ const onSort = (event: any) => {
 const clearFilters = () => {
   filters.search = ''
   filters.status = null
-  filters.type = null
-  filters.warehouse_id = null
+  filters.movement_type = null
+  filters.issue_type = null
   filters.page = 1
+  filters.per_page = 15
   loadStockIssues()
 }
 
@@ -365,6 +347,12 @@ const createStockIssue = () => {
 
 const viewStockIssue = (stockIssue: any) => {
   router.push({ name: 'inventory.stock-issues.detail', params: { id: stockIssue.id } })
+}
+
+const onRowClick = (event: any) => {
+  const target = event?.originalEvent?.target as HTMLElement | null
+  if (target?.closest('button, a, input')) return
+  viewStockIssue(event.data)
 }
 
 const editStockIssue = (stockIssue: any) => {
@@ -416,9 +404,9 @@ const cancelStockIssue = async () => {
 const getStatusSeverity = (status: string) => {
   switch (status) {
     case 'approved':
-    case 'completed': 
+    case 'issued':
       return 'success'
-    case 'pending': 
+    case 'submitted':
       return 'warning'
     case 'draft': 
       return 'info'
@@ -461,6 +449,18 @@ const formatNumber = (value: string | number | null | undefined) => {
 
 onMounted(() => {
   loadStockIssues()
-  loadWarehouses()
+})
+
+watch([() => filters.status, () => filters.movement_type, () => filters.issue_type, () => filters.per_page], () => {
+  filters.page = 1
+  loadStockIssues()
+})
+
+watch(() => filters.search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    filters.page = 1
+    loadStockIssues()
+  }, 350)
 })
 </script>

@@ -2,6 +2,9 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\CRM\EcommerceOrderReturn;
+use App\Models\CRM\EcommerceProductReview;
+
 use App\Models\Inventory\BranchInventory;
 use App\Models\ProductCatalog\Product;
 use Illuminate\Database\Eloquent\Model;
@@ -19,6 +22,11 @@ class EcommerceOrderItem extends Model
         'branch_inventory_id',
         'product_name',
         'sku',
+        'customization_request',
+        'customization_status',
+        'customization_response',
+        'customization_reviewed_by',
+        'customization_reviewed_at',
         'quantity',
         'unit_price',
         'tax_rate',
@@ -34,6 +42,7 @@ class EcommerceOrderItem extends Model
         'line_subtotal' => 'decimal:2',
         'line_tax' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'customization_reviewed_at' => 'datetime',
     ];
 
     public function order(): BelongsTo

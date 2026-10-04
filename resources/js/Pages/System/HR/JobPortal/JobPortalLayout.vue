@@ -25,13 +25,6 @@
           <Menu ref="profileMenu" :model="profileItems" popup />
         </div>
   
-        <!-- Guest User View - Hide on auth pages -->
-        <div v-else-if="!isAuthPage" class="flex flex-wrap items-center gap-2">
-          <Button label="Applicant Login" severity="warn" outlined 
-            @click="router.push({ name: 'job-portal.login' })" />
-          <Button label="Create Account" severity="warn" 
-            @click="router.push({ name: 'job-portal.register' })" />
-        </div>
       </div>
     </header>
   
@@ -61,9 +54,6 @@ const profileMenu = ref()
 const applications = ref<any[]>([])
 
 // Computed
-const isAuthPage = computed(() => 
-  ['job-portal.login', 'job-portal.register'].includes(route.name as string)
-)
 
 const hiredApplication = computed(() =>
   applications.value.find((item) => String(item.status || '').toLowerCase() === 'hired')

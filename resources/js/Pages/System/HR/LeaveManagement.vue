@@ -1,53 +1,45 @@
 <!-- views/system/LeaveManagement.vue -->
 <template>
-  <div class="p-6 max-w-7xl mx-auto">
-    <div class="flex justify-end mb-4">
-      <Button label="Leave History" icon="pi pi-history" severity="info" outlined
+  <div class="px-6 max-w-8xl mx-auto space-y-5 text-sm">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div><h1 class="text-lg font-semibold text-slate-900">Leave Management</h1></div>
+      <Button label="Leave History" icon="pi pi-history" severity="warn" outlined size="small"
         @click="router.push({ name: 'hr.leaves.history' })" />
     </div>
     <!-- Stats Row - Modern cards -->
-    <div class="grid grid-cols-3 gap-4 mb-6">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <div class="flex items-center justify-between">
           <div>
             <div class="text-sm text-gray-500 mb-1">Pending</div>
-            <div class="text-2xl font-semibold text-blue-600">{{ pendingCount }}</div>
-          </div>
-          <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-clock text-blue-500"></i>
+            <div class="text-2xl font-semibold text-orange-500">{{ pendingCount }}</div>
           </div>
         </div>
       </div>
   
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <div class="flex items-center justify-between">
           <div>
             <div class="text-sm text-gray-500 mb-1">On Leave Today</div>
-            <div class="text-2xl font-semibold text-blue-600">{{ onLeaveToday }}</div>
-          </div>
-          <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-users text-blue-500"></i>
+            <div class="text-2xl font-semibold text-orange-500">{{ onLeaveToday }}</div>
           </div>
         </div>
       </div>
   
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <div class="flex items-center justify-between">
           <div>
             <div class="text-sm text-gray-500 mb-1">Approved This Month</div>
-            <div class="text-2xl font-semibold text-blue-600">{{ approvedThisMonth }}</div>
-          </div>
-          <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-            <i class="pi pi-check-circle text-blue-500"></i>
+            <div class="text-2xl font-semibold text-orange-500">{{ approvedThisMonth }}</div>
           </div>
         </div>
       </div>
     </div>
   
     <!-- Main Content: 2 columns -->
-    <div class="grid grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
       <!-- Left Column: Pending Requests (2/3 width) -->
-      <div class="col-span-2">
+      <div>
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="p-4 border-b border-gray-100 bg-gray-50/50">
             <div class="flex items-center justify-between">
@@ -58,7 +50,10 @@
             </div>
           </div>
   
-          <div v-if="pendingRequests.length === 0" class="p-12 text-center">
+          <div v-if="loading" class="space-y-3 p-4">
+            <div v-for="n in 3" :key="n" class="h-24 animate-pulse rounded-lg bg-slate-50"></div>
+          </div>
+          <div v-else-if="pendingRequests.length === 0" class="p-12 text-center">
             <i class="pi pi-check-circle text-4xl text-gray-300 mb-2"></i>
             <p class="text-gray-400">No pending requests</p>
           </div>
@@ -89,7 +84,7 @@
               </div>
   
               <div class="ml-14">
-                <Button label="View Details" icon="pi pi-eye" size="small" severity="info" outlined
+                <Button label="View Details" icon="pi pi-eye" size="small" severity="warn" outlined
                   @click="viewRequest(req)" />
               </div>
             </div>

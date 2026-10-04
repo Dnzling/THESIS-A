@@ -8,6 +8,8 @@ use App\Models\Hr\ShiftSchedule;
 use App\Models\Hr\Attendance;
 use App\Models\Hr\Leave;
 use App\Models\Hr\OvertimeRequest;
+use App\Models\Hr\ShiftSwapRequest;
+use App\Models\JobApplication;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +17,72 @@ use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
+    public function getActionQueues(Request $request)
+    {
+        $storeId = (int) ($request->user()?->store_id ?? 0);
+        if ($storeId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Your account is not assigned to a store.'], 422);
+        }
+
+        $employeeInStore = fn ($query) => $query->where('store_id', $storeId);
+        $leaves = Leave::query()->where('status', 'pending')->whereHas('employee', $employeeInStore);
+        $overtime = OvertimeRequest::query()->where('status', 'pending')->whereHas('employee', $employeeInStore);
+        $swaps = ShiftSwapRequest::query()->where('status', 'pending')->whereHas('requestor', $employeeInStore);
+        $applications = JobApplication::query()->where('status', 'Applied')
+            ->whereHas('jobPosting', fn ($query) => $query->where('store_id', $storeId));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'summary' => [
+                    'active_employees' => Employee::where('store_id', $storeId)->where('status', 'active')->count(),
+                    'pending_leaves' => (clone $leaves)->count(),
+                    'pending_overtime' => (clone $overtime)->count(),
+                    'pending_swaps' => (clone $swaps)->count(),
+                    'new_applicants' => (clone $applications)->count(),
+                ],
+                'leaves' => (clone $leaves)->with('employee.user:id,fname,lname')
+                    ->orderBy('start_date')->limit(5)->get()
+                    ->map(fn ($leave) => [
+                        'id' => $leave->id,
+                        'employee' => trim(($leave->employee?->user?->fname ?? '') . ' ' . ($leave->employee?->user?->lname ?? '')),
+                        'type' => $leave->leave_type,
+                        'start_date' => $leave->start_date?->toDateString(),
+                        'end_date' => $leave->end_date?->toDateString(),
+                        'days' => $leave->total_days,
+                    ]),
+                'overtime' => (clone $overtime)->with('employee.user:id,fname,lname')
+                    ->orderBy('ot_start')->limit(5)->get()
+                    ->map(fn ($item) => [
+                        'id' => $item->id,
+                        'employee_id' => $item->employee_id,
+                        'employee' => trim(($item->employee?->user?->fname ?? '') . ' ' . ($item->employee?->user?->lname ?? '')),
+                        'date' => $item->ot_start?->toDateString(),
+                        'minutes' => (int) $item->ot_minutes,
+                        'reason' => $item->reason,
+                    ]),
+                'swaps' => (clone $swaps)->with(['requestor.user:id,fname,lname', 'receiver.user:id,fname,lname', 'requestorSchedule:id,schedule_date'])
+                    ->oldest('created_at')->limit(5)->get()
+                    ->map(fn ($swap) => [
+                        'id' => $swap->id,
+                        'requestor' => trim(($swap->requestor?->user?->fname ?? '') . ' ' . ($swap->requestor?->user?->lname ?? '')),
+                        'receiver' => trim(($swap->receiver?->user?->fname ?? '') . ' ' . ($swap->receiver?->user?->lname ?? '')),
+                        'date' => $swap->requestorSchedule?->schedule_date?->toDateString(),
+                        'type' => $swap->swap_type,
+                    ]),
+                'applications' => (clone $applications)->with('jobPosting:id,title')
+                    ->oldest('application_date')->limit(5)->get()
+                    ->map(fn ($application) => [
+                        'id' => $application->id,
+                        'posting_id' => $application->job_posting_id,
+                        'name' => $application->full_name,
+                        'position' => $application->jobPosting?->title,
+                        'date' => $application->application_date?->toDateString(),
+                    ]),
+            ],
+        ]);
+    }
+
     public function getAnalyticsOverview(Request $request)
     {
         $user = Auth::user();
@@ -247,7 +315,8 @@ class DashboardController extends Controller
                         ->whereColumn('shift_schedules.employee_id', 'attendances.employee_id')
                         ->where('shift_schedules.schedule_date', $today);
                 })
-                ->count(),
+                ->distinct('employee_id')
+                ->count('employee_id'),
             'absent_today' => Attendance::where('attendance_date', $today)
                 ->where('status', 'absent')
                 ->whereHas('employee', fn($q) => $q->where('store_id', $storeId))
@@ -304,8 +373,10 @@ class DashboardController extends Controller
             
             if (isset($attendance[$dateStr])) {
                 foreach ($attendance[$dateStr] as $record) {
-                    if ($record->status === 'present' || $record->status === 'late') {
+                    if ($record->status === 'present') {
                         $dayData['present'] += $record->total;
+                    } elseif ($record->status === 'late') {
+                        $dayData['late'] += $record->total;
                     } elseif ($record->status === 'absent') {
                         $dayData['absent'] += $record->total;
                     } elseif ($record->status === 'on_leave') {

@@ -68,51 +68,11 @@ class DashboardController extends Controller
             }
             $data['pending_validations'] = $pending;
 
-            // Monthly revenue (sum of payments this month) fallback to payments table
-            $monthlyRevenue = 0;
-            if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'amount')) {
-                $monthlyRevenue = DB::table('payments')
-                    ->whereRaw("MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())")
-                    ->sum('amount');
-            } elseif (Schema::hasTable('sales') && Schema::hasColumn('sales', 'total_amount')) {
-                $monthlyRevenue = DB::table('sales')
-                    ->whereRaw("MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())")
-                    ->sum('total_amount');
-            }
-            $data['monthly_revenue'] = (float) $monthlyRevenue;
-
-            // Revenue growth vs last month
-            $data['revenue_growth'] = 0;
-            if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'amount')) {
-                $currentMonth = DB::table('payments')
-                    ->whereRaw("MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())")
-                    ->sum('amount');
-                $prevMonth = DB::table('payments')
-                    ->whereRaw("MONTH(created_at) = MONTH(CURRENT_DATE() - INTERVAL 1 MONTH) AND YEAR(created_at) = YEAR(CURRENT_DATE() - INTERVAL 1 MONTH)")
-                    ->sum('amount');
-                if ($prevMonth > 0) {
-                    $data['revenue_growth'] = round((($currentMonth - $prevMonth) / $prevMonth) * 100, 2);
-                }
-            } elseif (Schema::hasTable('sales') && Schema::hasColumn('sales', 'total_amount')) {
-                $currentMonth = DB::table('sales')
-                    ->whereRaw("MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())")
-                    ->sum('total_amount');
-                $prevMonth = DB::table('sales')
-                    ->whereRaw("MONTH(created_at) = MONTH(CURRENT_DATE() - INTERVAL 1 MONTH) AND YEAR(created_at) = YEAR(CURRENT_DATE() - INTERVAL 1 MONTH)")
-                    ->sum('total_amount');
-                if ($prevMonth > 0) {
-                    $data['revenue_growth'] = round((($currentMonth - $prevMonth) / $prevMonth) * 100, 2);
-                }
-            }
-
-            // Total platform revenue
-            $totalRevenue = 0;
-            if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'amount')) {
-                $totalRevenue = DB::table('payments')->sum('amount');
-            } elseif (Schema::hasTable('sales') && Schema::hasColumn('sales', 'total_amount')) {
-                $totalRevenue = DB::table('sales')->sum('total_amount');
-            }
-            $data['total_platform_revenue'] = (float) $totalRevenue;
+            // Only the platform revenue ledger represents money earned by the
+            // platform. Store order totals and unrelated payments are not
+            // platform income. A populated paid_at marks collected revenue.
+            $revenue = $this->buildRevenueSummary();
+            $data = array_merge($data, $revenue);
 
             // Revenue series (monthly + yearly)
             $data['revenue_series'] = $this->buildRevenueSeries();
@@ -152,6 +112,7 @@ class DashboardController extends Controller
         $monthlyLabels = [];
         $monthlyPlatform = [];
         $monthlySubscription = [];
+        $monthlyCommission = [];
 
         for ($i = 11; $i >= 0; $i--) {
             $label = now()->copy()->subMonths($i)->format('M');
@@ -159,77 +120,64 @@ class DashboardController extends Controller
             $monthlyLabels[] = $label;
             $monthlyPlatform[$monthKey] = 0;
             $monthlySubscription[$monthKey] = 0;
+            $monthlyCommission[$monthKey] = 0;
         }
 
-        if (Schema::hasTable('sales') && Schema::hasColumn('sales', 'total_amount')) {
-            $rows = DB::table('sales')
-                ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym, SUM(total_amount) as total")
-                ->where('created_at', '>=', now()->copy()->subMonths(11)->startOfMonth())
-                ->groupBy('ym')
-                ->pluck('total', 'ym');
-            foreach ($rows as $ym => $total) {
-                if (array_key_exists($ym, $monthlyPlatform)) {
-                    $monthlyPlatform[$ym] = (float) $total;
+        if (Schema::hasTable('platform_revenues')) {
+            $rows = DB::table('platform_revenues')
+                ->selectRaw("DATE_FORMAT(paid_at, '%Y-%m') as ym, source, SUM(amount) as total")
+                ->whereNotNull('paid_at')
+                ->where('paid_at', '>=', now()->copy()->subMonths(11)->startOfMonth())
+                ->whereIn('source', ['subscription_upgrade', 'order_commission'])
+                ->groupBy('ym', 'source')
+                ->get();
+            foreach ($rows as $row) {
+                if (!array_key_exists($row->ym, $monthlyPlatform)) {
+                    continue;
+                }
+                $amount = (float) $row->total;
+                $monthlyPlatform[$row->ym] += $amount;
+                if ($row->source === 'subscription_upgrade') {
+                    $monthlySubscription[$row->ym] += $amount;
+                } else {
+                    $monthlyCommission[$row->ym] += $amount;
                 }
             }
-        }
-
-        if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'amount')) {
-            $rows = DB::table('payments')
-                ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym, SUM(amount) as total")
-                ->where('created_at', '>=', now()->copy()->subMonths(11)->startOfMonth())
-                ->groupBy('ym')
-                ->pluck('total', 'ym');
-            foreach ($rows as $ym => $total) {
-                if (array_key_exists($ym, $monthlySubscription)) {
-                    $monthlySubscription[$ym] = (float) $total;
-                }
-            }
-        }
-
-        // If no sales data, mirror payments to platform series
-        if (array_sum($monthlyPlatform) === 0 && array_sum($monthlySubscription) > 0) {
-            $monthlyPlatform = $monthlySubscription;
         }
 
         $yearlyLabels = [];
         $yearlyPlatform = [];
         $yearlySubscription = [];
+        $yearlyCommission = [];
         for ($i = 4; $i >= 0; $i--) {
             $year = (int) now()->copy()->subYears($i)->format('Y');
             $yearlyLabels[] = (string) $year;
             $yearlyPlatform[$year] = 0;
             $yearlySubscription[$year] = 0;
+            $yearlyCommission[$year] = 0;
         }
 
-        if (Schema::hasTable('sales') && Schema::hasColumn('sales', 'total_amount')) {
-            $rows = DB::table('sales')
-                ->selectRaw('YEAR(created_at) as yr, SUM(total_amount) as total')
-                ->where('created_at', '>=', now()->copy()->subYears(4)->startOfYear())
-                ->groupBy('yr')
-                ->pluck('total', 'yr');
-            foreach ($rows as $yr => $total) {
-                if (array_key_exists((int) $yr, $yearlyPlatform)) {
-                    $yearlyPlatform[(int) $yr] = (float) $total;
+        if (Schema::hasTable('platform_revenues')) {
+            $rows = DB::table('platform_revenues')
+                ->selectRaw('YEAR(paid_at) as yr, source, SUM(amount) as total')
+                ->whereNotNull('paid_at')
+                ->where('paid_at', '>=', now()->copy()->subYears(4)->startOfYear())
+                ->whereIn('source', ['subscription_upgrade', 'order_commission'])
+                ->groupBy('yr', 'source')
+                ->get();
+            foreach ($rows as $row) {
+                $year = (int) $row->yr;
+                if (!array_key_exists($year, $yearlyPlatform)) {
+                    continue;
+                }
+                $amount = (float) $row->total;
+                $yearlyPlatform[$year] += $amount;
+                if ($row->source === 'subscription_upgrade') {
+                    $yearlySubscription[$year] += $amount;
+                } else {
+                    $yearlyCommission[$year] += $amount;
                 }
             }
-        }
-
-        if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'amount')) {
-            $rows = DB::table('payments')
-                ->selectRaw('YEAR(created_at) as yr, SUM(amount) as total')
-                ->where('created_at', '>=', now()->copy()->subYears(4)->startOfYear())
-                ->groupBy('yr')
-                ->pluck('total', 'yr');
-            foreach ($rows as $yr => $total) {
-                if (array_key_exists((int) $yr, $yearlySubscription)) {
-                    $yearlySubscription[(int) $yr] = (float) $total;
-                }
-            }
-        }
-
-        if (array_sum($yearlyPlatform) === 0 && array_sum($yearlySubscription) > 0) {
-            $yearlyPlatform = $yearlySubscription;
         }
 
         return [
@@ -237,12 +185,66 @@ class DashboardController extends Controller
                 'labels' => $monthlyLabels,
                 'platformRevenue' => array_values($monthlyPlatform),
                 'subscriptionRevenue' => array_values($monthlySubscription),
+                'commissionRevenue' => array_values($monthlyCommission),
             ],
             'yearly' => [
                 'labels' => $yearlyLabels,
                 'platformRevenue' => array_values($yearlyPlatform),
                 'subscriptionRevenue' => array_values($yearlySubscription),
+                'commissionRevenue' => array_values($yearlyCommission),
             ],
+        ];
+    }
+
+    private function buildRevenueSummary(): array
+    {
+        $empty = [
+            'commission_revenue' => 0.0,
+            'subscription_revenue' => 0.0,
+            'monthly_commission_revenue' => 0.0,
+            'monthly_subscription_revenue' => 0.0,
+            'monthly_revenue' => 0.0,
+            'revenue_growth' => 0.0,
+            'total_platform_revenue' => 0.0,
+        ];
+
+        if (!Schema::hasTable('platform_revenues')) {
+            return $empty;
+        }
+
+        $base = DB::table('platform_revenues')
+            ->whereNotNull('paid_at')
+            ->whereIn('source', ['subscription_upgrade', 'order_commission']);
+        $monthStart = now()->startOfMonth();
+        $nextMonthStart = now()->copy()->addMonth()->startOfMonth();
+        $previousMonthStart = now()->copy()->subMonth()->startOfMonth();
+
+        $commission = (float) (clone $base)->where('source', 'order_commission')->sum('amount');
+        $subscription = (float) (clone $base)->where('source', 'subscription_upgrade')->sum('amount');
+        $monthlyCommission = (float) (clone $base)->where('source', 'order_commission')
+            ->where('paid_at', '>=', $monthStart)
+            ->where('paid_at', '<', $nextMonthStart)
+            ->sum('amount');
+        $monthlySubscription = (float) (clone $base)->where('source', 'subscription_upgrade')
+            ->where('paid_at', '>=', $monthStart)
+            ->where('paid_at', '<', $nextMonthStart)
+            ->sum('amount');
+        $monthlyTotal = $monthlyCommission + $monthlySubscription;
+        $previousMonthTotal = (float) (clone $base)
+            ->where('paid_at', '>=', $previousMonthStart)
+            ->where('paid_at', '<', $monthStart)
+            ->sum('amount');
+
+        return [
+            'commission_revenue' => $commission,
+            'subscription_revenue' => $subscription,
+            'monthly_commission_revenue' => $monthlyCommission,
+            'monthly_subscription_revenue' => $monthlySubscription,
+            'monthly_revenue' => $monthlyTotal,
+            'revenue_growth' => $previousMonthTotal > 0
+                ? round((($monthlyTotal - $previousMonthTotal) / $previousMonthTotal) * 100, 2)
+                : 0.0,
+            'total_platform_revenue' => $commission + $subscription,
         ];
     }
 

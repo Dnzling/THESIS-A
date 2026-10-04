@@ -53,13 +53,16 @@ class ReorderRuleController extends Controller
     private function resolveBranchId(Request $request): int
     {
         $context = $this->getUserContext();
+        if (!$this->hasGlobalAccess() && !empty($context['branch_id'])) {
+            return (int) $context['branch_id'];
+        }
         return (int) ($request->branch_id ?? $context['branch_id'] ?? 0);
     }
 
     private function hasGlobalAccess(): bool
     {
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
-        return in_array($roleName, ['super_admin', 'owner'], true);
+        return $roleName === 'super_admin' && empty(auth()->user()?->store_id);
     }
 
     /**
@@ -443,6 +446,13 @@ class ReorderRuleController extends Controller
                     'success' => false,
                     'message' => 'Branch is required for reorder status checks.',
                 ], 422);
+            }
+
+            if (!$this->canAccessBranchRecord($branchId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot generate reorder suggestions for another store or branch.',
+                ], 403);
             }
 
             $result = $this->reorderRuleService->checkReorderStatus(

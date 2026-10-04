@@ -230,7 +230,7 @@ class NavigationHierarchySeeder extends Seeder
 
         $this->assignParent($overview, ['inventory.dashboard']);
         $this->assignParent($catalog, ['inventory.products', 'inventory.categories', 'inventory.units']);
-        $this->assignParent($stock, ['inventory.stock-issues', 'inventory.stock-returns', 'inventory.stock-counts']);
+        $this->assignParent($stock, ['inventory.stock-issues', 'inventory.supply-issuance', 'inventory.stock-returns', 'inventory.stock-counts']);
         $this->assignParent($storage, ['inventory.warehouses', 'inventory.locations']);
         $this->assignParent($reorder, ['inventory.reorder-rules', 'inventory.reorder-suggestions']);
         $this->assignParent($tracking, ['inventory.serial-numbers', 'inventory.batches']);
