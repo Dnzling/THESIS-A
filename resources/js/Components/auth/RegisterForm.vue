@@ -18,8 +18,8 @@
                 </div>
 
                 <!-- Error Message -->
-                <Message v-if="errorMessage" severity="error" :closable="true" @close="errorMessage = ''" class="mb-6">
-                    {{ errorMessage }}
+                <Message v-if="errorMessage || Object.keys(props.serverErrors || {}).length" severity="error" class="mb-6">
+                    {{ errorMessage || Object.values(props.serverErrors || {})[0] }}
                 </Message>
     
                 <!-- Success Message (for registration redirect) -->
@@ -39,8 +39,8 @@
                                 </label>
                                 <InputText v-model="formData.fname" placeholder="Juan"
                                     :class="{ 'p-invalid': validationErrors.fname }" class="w-full mt-1" />
-                                <small v-if="validationErrors.fname" class="p-error">
-                                    {{ validationErrors.fname }}
+                                <small v-if="validationErrors.fname || props.serverErrors?.fname" class="p-error">
+                                    {{ validationErrors.fname || props.serverErrors?.fname }}
                                 </small>
                             </div>
     
@@ -51,8 +51,8 @@
                                 </label>
                                 <InputText v-model="formData.lname" placeholder="Dela Cruz"
                                     :class="{ 'p-invalid': validationErrors.lname }" class="w-full mt-1" />
-                                <small v-if="validationErrors.lname" class="p-error">
-                                    {{ validationErrors.lname }}
+                                <small v-if="validationErrors.lname || props.serverErrors?.lname" class="p-error">
+                                    {{ validationErrors.lname || props.serverErrors?.lname }}
                                 </small>
                             </div>
                         </div>
@@ -70,8 +70,8 @@
                             <InputText id="email" type="email" v-model="formData.email" placeholder="email@example.com"
                                 :class="{ 'p-invalid': validationErrors.email }" class="w-full" />
                         </div>
-                        <small v-if="validationErrors.email" class="p-error">
-                            {{ validationErrors.email }}
+                        <small v-if="validationErrors.email || props.serverErrors?.email" class="p-error">
+                            {{ validationErrors.email || props.serverErrors?.email }}
                         </small>
                     </div>
     
@@ -85,8 +85,8 @@
                             dateFormat="mm/dd/yy" :showIcon="true" iconDisplay="input" :maxDate="maxDate" :minDate="minDate"
                             showButtonBar inputClass="w-full" />
     
-                        <small v-if="validationErrors.birthday" class="p-error">
-                            {{ validationErrors.birthday }}
+                        <small v-if="validationErrors.birthday || props.serverErrors?.birthday" class="p-error">
+                            {{ validationErrors.birthday || props.serverErrors?.birthday }}
                         </small>
                     </div>
     
@@ -116,8 +116,8 @@
                                 </ul>
                             </div>
                         </Transition>
-                        <small v-if="validationErrors.password" class="p-error">
-                            {{ validationErrors.password }}
+                        <small v-if="validationErrors.password || props.serverErrors?.password" class="p-error">
+                            {{ validationErrors.password || props.serverErrors?.password }}
                         </small>
                     </div>
     
@@ -182,6 +182,7 @@ import Auth3DHero from '@/Components/auth/Auth3DHero.vue'
 
 const props = defineProps<{
   isSubmitting? :boolean
+  serverErrors?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
