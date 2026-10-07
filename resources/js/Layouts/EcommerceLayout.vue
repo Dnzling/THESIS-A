@@ -27,6 +27,12 @@
   
         <div class="hidden items-center gap-2 md:flex">
           <div class="relative flex h-10 w-10 items-center justify-center">
+            <Button icon="pi pi-heart" text rounded class="header-action-button" aria-label="Favorites"
+              v-tooltip.bottom="'Favorites'" @click="goFavorites" />
+            <Badge v-if="favoriteCount > 0" :value="favoriteCount > 99 ? '99+' : String(favoriteCount)"
+              severity="danger" class="header-action-badge" />
+          </div>
+          <div class="relative flex h-10 w-10 items-center justify-center">
             <Button
               icon="pi pi-shopping-cart"
               text
@@ -84,6 +90,12 @@
           <span class="portal-brand text-base text-orange-500">FURNISYNC</span>
         </button>
         <div class="flex shrink-0 items-center gap-1">
+          <button type="button" class="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-orange-50"
+            aria-label="Favorites" @click="goFavorites">
+            <i class="pi pi-heart" />
+            <Badge v-if="favoriteCount > 0" :value="favoriteCount > 99 ? '99+' : String(favoriteCount)" severity="danger"
+              class="header-action-badge" />
+          </button>
           <button type="button" class="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-orange-50"
             aria-label="Cart" @click="goCart">
             <i class="pi pi-shopping-cart" />
@@ -145,6 +157,9 @@
           <Button label="Orders" icon="pi pi-shopping-bag" text severity="secondary"
             class="w-full !justify-start !px-2 !py-2 text-left"
             :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goOrders" />
+          <Button label="Favorites" icon="pi pi-heart" text severity="secondary"
+            class="w-full !justify-start !px-2 !py-2 text-left"
+            :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goFavorites" />
           <Button label="Chats" icon="pi pi-comments" text severity="secondary"
             class="w-full !justify-start !px-2 !py-2 text-left"
             :pt="{ root: { class: '!justify-start' }, label: { class: '!text-left' } }" @click="goChats" />
@@ -183,6 +198,7 @@ const pageTitle = computed(() => String(page.props?.title || ''))
 const productSearch = ref('')
 
 const cartCount = ref(0)
+const favoriteCount = ref(0)
 const unreadNotificationCount = ref(0)
 const isLoggedIn = computed(() => authStore.isAuthenticated)
 const profilePopoverRef = ref()
@@ -209,8 +225,30 @@ async function loadCartCount() {
   }
 }
 
+async function loadFavoriteCount() {
+  if (!isLoggedIn.value) {
+    favoriteCount.value = 0
+    return
+  }
+  try {
+    const response = await ecommerceService.getFavorites()
+    favoriteCount.value = (response.data?.data?.product_ids || []).length
+  } catch {
+    favoriteCount.value = 0
+  }
+}
+
 function goCart() {
   router.push({ name: 'ecommerce.cart' })
+}
+
+function goFavorites() {
+  profilePopoverRef.value?.hide()
+  if (isLoggedIn.value) {
+    router.push({ name: 'ecommerce.favorites' })
+    return
+  }
+  router.push({ name: 'customer.login', query: { redirect: '/favorites' } })
 }
 
 function searchFromUrl() {
@@ -301,6 +339,10 @@ function handleCartUpdated() {
   loadCartCount()
 }
 
+function handleFavoritesUpdated() {
+  loadFavoriteCount()
+}
+
 function handleNotificationsUpdated() {
   loadUnreadNotificationCount()
 }
@@ -321,6 +363,7 @@ async function loadChatThreads() {
 
 watch(() => route.fullPath, () => {
   loadCartCount()
+  loadFavoriteCount()
   if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 watch(() => page.url, () => {
@@ -328,20 +371,24 @@ watch(() => page.url, () => {
 }, { immediate: true })
 watch(isLoggedIn, () => {
   loadCartCount()
+  loadFavoriteCount()
   loadChatThreads()
   if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 
 onMounted(() => {
   loadCartCount()
+  loadFavoriteCount()
   loadChatThreads()
   if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
+  window.addEventListener('ecommerce-favorites-updated', handleFavoritesUpdated)
   window.addEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
 
 onUnmounted(() => {
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
+  window.removeEventListener('ecommerce-favorites-updated', handleFavoritesUpdated)
   window.removeEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
 </script>

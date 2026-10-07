@@ -145,14 +145,42 @@
             </div>
   
             <div v-if="product?.variations?.length" class="space-y-2">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Variations</p>
-              <div class="flex flex-wrap gap-2">
-                <Button v-for="variation in product.variations" :key="variation.id" size="small"
-                  :severity="selectedVariationId === variation.id ? 'warn' : 'secondary'"
-                  :outlined="selectedVariationId !== variation.id" :disabled="!isVariationSelectable(variation)"
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Variations</p>
+                <span class="text-xs text-slate-400">Choose an option</span>
+              </div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button v-for="variation in product.variations" :key="variation.id" type="button"
+                  class="group flex min-w-0 items-center gap-3 rounded-xl border bg-white p-2 text-left transition duration-200"
+                  :class="[
+                    Number(selectedVariationId) === Number(variation.id)
+                      ? 'border-orange-500 ring-2 ring-orange-100 shadow-sm'
+                      : 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/40',
+                    !isVariationSelectable(variation) ? 'cursor-not-allowed opacity-55' : 'cursor-pointer',
+                  ]"
+                  :disabled="!isVariationSelectable(variation)"
+                  :aria-pressed="Number(selectedVariationId) === Number(variation.id)"
                   @click="selectVariation(variation.id)">
-                  {{ variationLabel(variation) }}
-                </Button>
+                  <span class="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                    <img :src="variationImageUrl(variation)" :alt="variationLabel(variation)"
+                      class="h-full w-full object-contain p-1 transition duration-200 group-hover:scale-105"
+                      loading="lazy" @error="onImageError" />
+                    <span v-if="Number(selectedVariationId) === Number(variation.id)"
+                      class="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-orange-500 text-white shadow">
+                      <i class="pi pi-check text-[8px]" />
+                    </span>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-semibold text-slate-900">{{ variationLabel(variation) }}</span>
+                    <span class="mt-0.5 block text-xs font-medium text-orange-600">{{ formatCurrency(variation.final_price || product.price) }}</span>
+                    <span class="mt-1 flex items-center gap-1.5 text-[11px]"
+                      :class="isVariationSelectable(variation) ? 'text-emerald-600' : 'text-rose-500'">
+                      <span class="h-1.5 w-1.5 rounded-full"
+                        :class="isVariationSelectable(variation) ? 'bg-emerald-500' : 'bg-rose-400'" />
+                      {{ isVariationSelectable(variation) ? `${variation.quantity_available || 0} available` : 'Out of stock' }}
+                    </span>
+                  </span>
+                </button>
               </div>
               <p v-if="selectedVariation" class="text-sm text-slate-600">
                 Variation Price: <span class="font-semibold">{{ formatCurrency(selectedVariation.final_price ||
@@ -750,6 +778,15 @@ function hideBrokenReviewAttachment(reviewId: number | string) {
 function variationLabel(variation: any) {
   const parts = [variation.color, variation.size, variation.material].filter(Boolean)
   return parts.length ? parts.join(' / ') : variation.variation_name
+}
+
+function variationImageUrl(variation: any): string {
+  const images = Array.isArray(variation?.images) ? variation.images : []
+  const firstImage = images[0]
+  const raw = typeof firstImage === 'string'
+    ? firstImage
+    : (firstImage?.url || firstImage?.image_url || firstImage?.src || variation?.image || product.value?.image || '')
+  return normalizeImageUrl(String(raw || product.value?.image || '')) || '/F.svg'
 }
 
 function selectVariation(variationId: number) {

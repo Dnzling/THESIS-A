@@ -124,6 +124,11 @@
               <div v-for="item in dssResults" :key="`dss-${item.id}`"
                 class="group relative cursor-pointer bg-white rounded-2xl border border-blue-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
               @click="goProduct(item.id)">
+              <label class="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-slate-600" @click.stop>
+                <Checkbox :modelValue="isCompared(item.id)" binary :disabled="comparisonFull && !isCompared(item.id)"
+                  @update:modelValue="toggleComparison(item)" />
+                Compare
+              </label>
               <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
                 <img :src="normalizeImageUrl(item.image) || '/F.svg'" :alt="item.product_name"
                   class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
@@ -132,6 +137,13 @@
                   class="absolute left-2 top-2 rounded-full bg-blue-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
                   Match {{ Math.round((item.score || 0) * 100) }}%
                 </div>
+                <button type="button"
+                  class="absolute bottom-3 right-3 grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm transition hover:scale-105 hover:border-rose-200 hover:text-rose-500"
+                  :class="isFavorite(item.id) ? '!border-rose-200 !bg-rose-50 !text-rose-500' : ''"
+                  :aria-label="isFavorite(item.id) ? 'Remove from favorites' : 'Add to favorites'"
+                  @click.stop="toggleProductFavorite(item.id)">
+                  <i :class="isFavorite(item.id) ? 'pi pi-heart-fill' : 'pi pi-heart'" class="text-lg" />
+                </button>
               </div>
   
               <div class="px-2 pb-2">
@@ -155,11 +167,23 @@
           <div v-for="product in filteredProducts" :key="product.id"
             class="group relative cursor-pointer bg-white rounded-2xl border border-slate-100 p-3 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
             @click="goProduct(product.id)">
+            <label class="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-slate-600" @click.stop>
+              <Checkbox :modelValue="isCompared(product.id)" binary :disabled="comparisonFull && !isCompared(product.id)"
+                @update:modelValue="toggleComparison(product)" />
+              Compare
+            </label>
             <div class="relative overflow-hidden rounded-xl bg-slate-100 aspect-square mb-4">
               <img :src="normalizeImageUrl(product.image) || '/F.svg'" :alt="product.product_name"
                 class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                 @error="onImageError" />
               <Badge v-if="product.has_discount" :value="`${product.discount_percentage}% OFF`" severity="danger" class="!absolute !left-2 !top-2 !text-[10px]" />
+              <button type="button"
+                class="absolute bottom-3 right-3 grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white/95 text-slate-800 shadow-sm transition hover:scale-105 hover:border-rose-200 hover:text-rose-500"
+                :class="isFavorite(product.id) ? '!border-rose-200 !bg-rose-50 !text-rose-500' : ''"
+                :aria-label="isFavorite(product.id) ? 'Remove from favorites' : 'Add to favorites'"
+                @click.stop="toggleProductFavorite(product.id)">
+                <i :class="isFavorite(product.id) ? 'pi pi-heart-fill' : 'pi pi-heart'" class="text-lg" />
+              </button>
   
             </div>
   
@@ -210,6 +234,28 @@
       </main>
     </div>
   </div>
+  <Transition name="compare-tray">
+    <div v-if="comparisonProducts.length" class="fixed inset-x-0 bottom-[73px] z-40 px-3 md:bottom-4">
+      <div class="mx-auto flex max-w-4xl items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
+        <div class="min-w-0 flex-1">
+          <div class="mb-2 flex items-center justify-between">
+            <p class="text-sm font-bold text-slate-900">Compare products <span class="text-orange-600">{{ comparisonCount }}/5</span></p>
+            <button type="button" class="text-xs font-medium text-slate-500 hover:text-rose-600" @click="clearComparison">Clear all</button>
+          </div>
+          <div class="flex gap-2 overflow-x-auto">
+            <div v-for="item in comparisonProducts" :key="item.id" class="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+              <img :src="normalizeImageUrl(String(item.image || '')) || '/F.svg'" :alt="item.product_name" class="h-full w-full object-cover" />
+              <button type="button" class="absolute right-0 top-0 grid h-5 w-5 place-items-center rounded-bl-md bg-slate-900/75 text-white" @click="removeComparison(item.id)">
+                <i class="pi pi-times text-[9px]" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <Button :label="`Compare (${comparisonCount})`" icon="pi pi-arrow-right" iconPos="right" severity="warn"
+          :disabled="comparisonCount < 2" @click="router.push({ name: 'ecommerce.compare' })" />
+      </div>
+    </div>
+  </Transition>
   <MarketingFooter />
 </template>
 
@@ -225,6 +271,11 @@ import Carousel from '@/Components/Ecommerce/carousel.vue'
 import EcommerceMobileWrapper from '@/Layouts/EcommerceMobileWrapper.vue'
 import MarketingFooter from '@/Components/MarketingFooter.vue'
 import Paginator from 'primevue/paginator'
+import { useAuthStore } from '@/stores/auth'
+import { showAlert } from '@/utils/swal'
+import { useToast } from 'primevue/usetoast'
+import Checkbox from 'primevue/checkbox'
+import { useProductComparison } from '@/composables/useProductComparison'
 
 defineOptions({
   layout: EcommerceMobileWrapper,
@@ -232,6 +283,17 @@ defineOptions({
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+const toast = useToast()
+const {
+  products: comparisonProducts,
+  count: comparisonCount,
+  isFull: comparisonFull,
+  contains: isCompared,
+  add: addComparison,
+  remove: removeComparison,
+  clear: clearComparison,
+} = useProductComparison()
 
 const loading = ref(false)
 const loadingStores = ref(false)
@@ -247,6 +309,8 @@ const selectedCategory = ref<string>('all')
 const sort = ref<'popular' | 'latest' | 'price_asc' | 'price_desc'>('popular')
 const dssLoading = ref(false)
 const dssResults = ref<any[]>([])
+const favoriteProductIds = ref<number[]>([])
+const favoriteRequests = ref<number[]>([])
 const dss = ref({
   budgetMin: 0,
   budgetMax: 50000,
@@ -275,6 +339,79 @@ function normalizeImageUrl(raw: string) {
 function onImageError(event: Event) {
   const target = event.target as HTMLImageElement | null
   if (target) target.src = '/F.svg'
+}
+
+function isFavorite(productId: number | string): boolean {
+  return favoriteProductIds.value.includes(Number(productId))
+}
+
+async function loadFavorites() {
+  if (!authStore.isAuthenticated) {
+    favoriteProductIds.value = []
+    return
+  }
+  try {
+    const response = await ecommerceService.getFavorites()
+    favoriteProductIds.value = (response.data?.data?.product_ids || []).map((id: any) => Number(id))
+  } catch {
+    favoriteProductIds.value = []
+  }
+}
+
+async function toggleProductFavorite(productId: number | string) {
+  const id = Number(productId)
+  if (!id || favoriteRequests.value.includes(id)) return
+  if (!authStore.isAuthenticated) {
+    router.push({ name: 'customer.login', query: { redirect: route.fullPath || '/shop' } })
+    return
+  }
+
+  const wasFavorite = isFavorite(id)
+  favoriteProductIds.value = wasFavorite
+    ? favoriteProductIds.value.filter((favoriteId) => favoriteId !== id)
+    : [...favoriteProductIds.value, id]
+  favoriteRequests.value = [...favoriteRequests.value, id]
+  try {
+    const response = await ecommerceService.toggleFavorite(id)
+    const saved = Boolean(response.data?.data?.is_favorite)
+    favoriteProductIds.value = saved
+      ? Array.from(new Set([...favoriteProductIds.value, id]))
+      : favoriteProductIds.value.filter((favoriteId) => favoriteId !== id)
+    toast.add({
+      severity: saved ? 'success' : 'info',
+      summary: saved ? 'Added to your favorites' : 'Removed from your favorites',
+      detail: saved ? 'You can view this product anytime in My Favorites.' : 'This product was removed from My Favorites.',
+      life: 2600,
+    })
+    window.dispatchEvent(new Event('ecommerce-favorites-updated'))
+  } catch (error: any) {
+    favoriteProductIds.value = wasFavorite
+      ? Array.from(new Set([...favoriteProductIds.value, id]))
+      : favoriteProductIds.value.filter((favoriteId) => favoriteId !== id)
+    showAlert({ severity: 'error', summary: 'Favorites', detail: error?.response?.data?.message || 'Unable to update favorites.' })
+  } finally {
+    favoriteRequests.value = favoriteRequests.value.filter((favoriteId) => favoriteId !== id)
+  }
+}
+
+function toggleComparison(product: any) {
+  if (isCompared(product.id)) {
+    removeComparison(product.id)
+    toast.add({ severity: 'info', summary: 'Removed from comparison', detail: `${product.product_name} was removed.`, life: 2200 })
+    return
+  }
+  const result = addComparison({
+    id: Number(product.id),
+    product_name: String(product.product_name || 'Product'),
+    image: product.image || null,
+    price: product.price ?? product.discounted_price ?? product.base_price,
+    category: product.category || null,
+  })
+  if (!result.added && result.reason === 'full') {
+    toast.add({ severity: 'warn', summary: 'Comparison is full', detail: 'You can compare up to 5 products only.', life: 2800 })
+    return
+  }
+  toast.add({ severity: 'success', summary: 'Added to comparison', detail: `${comparisonCount.value}/5 products selected.`, life: 2200 })
 }
 
 const categoryOptions = computed(() => {
@@ -444,6 +581,7 @@ async function loadProducts() {
 onMounted(() => {
   loadProducts()
   loadTopStores()
+  loadFavorites()
 })
 
 watch(() => route.query.search, (value) => {

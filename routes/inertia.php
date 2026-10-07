@@ -434,7 +434,7 @@ $inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Sho
 $inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
 $inertia('/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
 $inertia('/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
-$inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStoreProfile', 'ecommerce.store-profile', 'Store Profile');
+$inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStorefront', 'ecommerce.store-profile', 'Store Profile');
 $inertia('/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');
 $inertia('/stores/{storeId}/vouchers', 'System/Ecommerce/EcommerceStoreVouchers', 'ecommerce.store-vouchers', 'Store Vouchers');
 $inertia('/products/{id}', 'System/Ecommerce/EcommerceProductOverview', 'ecommerce.product', 'Product Overview');
@@ -446,6 +446,8 @@ $inertia('/legal/terms-and-conditions', 'System/Ecommerce/Legal', 'legal.terms',
 // bearer token from localStorage. The protected ecommerce API routes still enforce
 // auth:sanctum and redirect unauthenticated customers from the client interceptor.
 $inertia('/cart', 'System/Ecommerce/EcommerceCart', 'ecommerce.cart', 'My Cart');
+$inertia('/favorites', 'System/Ecommerce/EcommerceFavorites', 'ecommerce.favorites', 'My Favorites');
+$inertia('/compare', 'System/Ecommerce/EcommerceProductComparison', 'ecommerce.compare', 'Compare Products');
 $inertia('/checkout', 'System/Ecommerce/EcommerceCheckout', 'ecommerce.checkout', 'Checkout');
 $inertia('/orders', 'System/Ecommerce/EcommerceOrders', 'ecommerce.orders', 'My Orders');
 $inertia('/orders/{id}', 'System/Ecommerce/EcommerceOrderDetail', 'ecommerce.order-detail', 'Order Details');

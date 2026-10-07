@@ -9,7 +9,7 @@
       aria-label="Mobile navigation"
     >
       <div class="mx-auto w-full max-w-7xl px-4">
-        <div class="grid grid-cols-6 gap-1 py-2 text-[11px] font-medium text-slate-500">
+        <div class="grid grid-cols-7 gap-1 py-2 text-[10px] font-medium text-slate-500">
           <button
             type="button"
             class="relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
@@ -18,6 +18,17 @@
           >
             <i class="pi pi-home text-lg" />
             <span>Home</span>
+          </button>
+          <button
+            type="button"
+            class="relative flex flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors"
+            :class="isActive(['ecommerce.favorites']) ? 'text-orange-600' : 'hover:text-slate-900'"
+            @click="goAuth('ecommerce.favorites')"
+          >
+            <i class="pi pi-heart text-lg" />
+            <span>Favorites</span>
+            <Badge v-if="favoriteCount" :value="favoriteCount > 99 ? '99+' : String(favoriteCount)" severity="danger"
+              class="!absolute !-top-1 !right-2" />
           </button>
           <button
             type="button"
@@ -96,6 +107,7 @@ const authStore = useAuthStore()
 
 const isLoggedIn = computed(() => authStore.isAuthenticated)
 const cartCount = ref(0)
+const favoriteCount = ref(0)
 const unreadNotificationCount = ref(0)
 const isNotificationsActive = computed(() => String(route.name || '') === 'ecommerce.notifications')
 
@@ -133,6 +145,19 @@ async function loadCartCount() {
   }
 }
 
+async function loadFavoriteCount() {
+  if (!isLoggedIn.value) {
+    favoriteCount.value = 0
+    return
+  }
+  try {
+    const response = await ecommerceService.getFavorites()
+    favoriteCount.value = (response.data?.data?.product_ids || []).length
+  } catch {
+    favoriteCount.value = 0
+  }
+}
+
 async function loadUnreadNotificationCount() {
   if (!isLoggedIn.value) {
     unreadNotificationCount.value = 0
@@ -154,28 +179,37 @@ function handleCartUpdated() {
   loadCartCount()
 }
 
+function handleFavoritesUpdated() {
+  loadFavoriteCount()
+}
+
 function handleNotificationsUpdated() {
   loadUnreadNotificationCount()
 }
 
 watch(() => route.fullPath, () => {
   loadCartCount()
+  loadFavoriteCount()
   if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 watch(isLoggedIn, () => {
   loadCartCount()
+  loadFavoriteCount()
   if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
 })
 
 onMounted(() => {
   loadCartCount()
+  loadFavoriteCount()
   if (route.name === 'ecommerce.notifications') loadUnreadNotificationCount()
   window.addEventListener('ecommerce-cart-updated', handleCartUpdated)
+  window.addEventListener('ecommerce-favorites-updated', handleFavoritesUpdated)
   window.addEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
 
 onUnmounted(() => {
   window.removeEventListener('ecommerce-cart-updated', handleCartUpdated)
+  window.removeEventListener('ecommerce-favorites-updated', handleFavoritesUpdated)
   window.removeEventListener('ecommerce-notifications-updated', handleNotificationsUpdated)
 })
 </script>
