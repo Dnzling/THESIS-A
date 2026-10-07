@@ -1,128 +1,73 @@
 <template>
-  <div class="module-dashboard dashboard--merchandising space-y-5 pb-6 text-sm">
-    <div class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="module-dashboard dashboard--ecommerce space-y-5 pb-6 text-sm">
+    <header class="dashboard-hero flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p class="dashboard-eyebrow">Product operations</p>
-        <h1 class="mt-1 text-2xl font-semibold text-slate-950">Merchandising Dashboard</h1>
-        <p class="mt-1 text-sm text-slate-500">Keep product pricing current and customer facing listings ready to shop.</p>
+        <h1 class="text-2xl font-semibold text-slate-950">E-Commerce Dashboard</h1>
+        <p class="mt-1 text-sm text-slate-500">Online orders, product performance, and storefront readiness across your store.</p>
       </div>
-      <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadDashboard" />
-    </div>
+      <div class="flex items-center gap-2">
+        <Select v-model="days" :options="periods" optionLabel="label" optionValue="value" class="w-40" aria-label="Reporting period" @change="loadDashboard" />
+        <Button icon="pi pi-refresh" label="Refresh" severity="secondary" outlined size="small" :loading="loading" @click="loadDashboard" />
+      </div>
+    </header>
 
     <div v-if="loading" class="space-y-5">
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Skeleton v-for="index in 4" :key="index" height="118px" class="rounded-2xl" />
-      </div>
-      <div class="grid gap-4 xl:grid-cols-3">
-        <Skeleton height="285px" class="rounded-2xl xl:col-span-2" />
-        <Skeleton height="285px" class="rounded-2xl" />
-      </div>
-      <div class="grid gap-4 xl:grid-cols-2">
-        <Skeleton v-for="index in 2" :key="index" height="220px" class="rounded-2xl" />
-      </div>
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Skeleton v-for="item in 4" :key="item" height="118px" class="rounded-2xl" /></div>
+      <div class="grid gap-4 xl:grid-cols-3"><Skeleton height="290px" class="rounded-2xl xl:col-span-2" /><Skeleton height="290px" class="rounded-2xl" /></div>
+      <Skeleton v-for="item in 2" :key="item" height="190px" class="rounded-2xl" />
     </div>
-    <div v-else-if="loadError" class="dashboard-panel rounded-2xl border border-red-200 bg-white p-6">
-      <p class="font-semibold text-slate-900">The merchandising dashboard could not load.</p>
-      <p class="mt-1 text-slate-500">{{ loadError }}</p>
-      <Button label="Try again" severity="warn" size="small" class="mt-4" @click="loadDashboard" />
-    </div>
-    <template v-else>
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <section class="dashboard-panel rounded-2xl border border-pink-200 bg-white p-5">
-          <p class="text-xs font-medium text-slate-500">New catalog items this month</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.new_products_this_month || 0 }}</p>
-          <p class="mt-2 text-xs" :class="monthChangeTone">{{ monthChangeLabel }}</p>
-        </section>
-        <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
-          <p class="text-xs font-medium text-slate-500">Active finished goods</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.active_products || 0 }}</p>
-          <p class="mt-2 text-xs text-slate-500">Available in your product catalog</p>
-        </section>
-        <section class="dashboard-panel rounded-2xl border border-orange-200 bg-white p-5">
-          <p class="text-xs font-medium text-slate-500">Price updates</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">Immediate</p>
-          <p class="mt-2 text-xs text-orange-700">Selling price changes take effect when saved</p>
-        </section>
-        <section class="dashboard-panel rounded-2xl border border-amber-200 bg-white p-5">
-          <p class="text-xs font-medium text-slate-500">Active products missing main image</p>
-          <p class="mt-2 text-2xl font-semibold text-slate-950">{{ summary.missing_main_images || 0 }}</p>
-          <p class="mt-2 text-xs text-amber-700">Add a photo to improve shopping listings</p>
-        </section>
-      </div>
+    <div v-else-if="loadError" class="dashboard-panel rounded-2xl border border-red-200 bg-white p-6"><p class="font-semibold text-slate-900">The E-Commerce dashboard could not load.</p><p class="mt-1 text-slate-500">{{ loadError }}</p><Button label="Try again" severity="warn" size="small" class="mt-4" @click="loadDashboard" /></div>
+    <template v-else-if="data">
+      <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card v-for="(metric, index) in salesMetrics" :key="metric.label" class="dashboard-panel border shadow-sm" :class="index === 0 ? 'border-orange-200' : 'border-slate-200'">
+          <template #content>
+            <div class="flex items-start justify-between gap-2"><p class="text-xs font-medium text-slate-500">{{ metric.label }}</p><i :class="[metric.icon, 'text-orange-500']" /></div>
+            <p class="mt-2 text-2xl font-semibold text-slate-950">{{ metric.value }}</p>
+            <p class="mt-2 text-xs text-slate-500">{{ metric.caption }}</p>
+          </template>
+        </Card>
+      </section>
 
-      <div class="grid gap-4 xl:grid-cols-3">
-        <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5 xl:col-span-2">
-          <div class="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h2 class="font-semibold text-slate-950">Catalog additions</h2>
-              <p class="mt-1 text-xs text-slate-500">Finished goods created over the last six months</p>
-            </div>
-            <Button label="View products" severity="secondary" text size="small" @click="go('merchandising.products')" />
-          </div>
-          <Chart v-if="trendData.labels.length" type="bar" :data="trendData" :options="chartOptions" class="mt-4 h-56" />
-          <p v-else class="flex h-56 items-center justify-center text-xs text-slate-500">No catalog additions in this period.</p>
-        </section>
-        <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 class="font-semibold text-slate-950">Main image readiness</h2>
-          <p class="mt-1 text-xs text-slate-500">Active products with a primary product image</p>
-          <div v-if="summary.active_products" class="mt-3">
-            <Chart type="doughnut" :data="readinessData" :options="doughnutOptions" class="mx-auto h-44 max-w-52" />
-            <div class="mt-2 grid grid-cols-2 gap-2 text-center text-xs">
-              <span class="text-emerald-700">Image ready <strong>{{ summary.image_ready_products || 0 }}</strong></span>
-              <span class="text-amber-700">Needs image <strong>{{ summary.missing_main_images || 0 }}</strong></span>
-            </div>
-          </div>
-          <p v-else class="flex h-48 items-center justify-center text-center text-xs text-slate-500">Add finished goods to begin tracking catalog readiness.</p>
-        </section>
-      </div>
+      <section class="grid gap-4 xl:grid-cols-3">
+        <Card class="border border-slate-200 shadow-sm xl:col-span-2">
+          <template #title><div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-base font-semibold">Online order value</h2><p class="mt-1 text-xs font-normal text-slate-500">Non-cancelled online order value</p></div><Select v-model="orderValueTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Online order value period" /></div></template>
+          <template #content><Skeleton v-if="orderValueTrend.loading.value" height="16rem" class="rounded-xl" /><div v-else-if="orderValueTrend.error.value" class="flex h-64 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ orderValueTrend.error.value }}<Button text label="Try again" @click="orderValueTrend.reload" /></div><Chart v-else-if="hasSales" type="line" :data="salesChart" :options="lineOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No online sales in this period.</div></template>
+        </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><h2 class="text-base font-semibold">Order status</h2><p class="mt-1 text-xs font-normal text-slate-500">All online orders in the selected period</p></template>
+          <template #content><Chart v-if="statusRows.length" type="doughnut" :data="statusChart" :options="doughnutOptions" class="mx-auto h-64 max-w-72" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No online orders yet.</div></template>
+        </Card>
+      </section>
 
-      <div class="grid gap-4 xl:grid-cols-2">
-        <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
-          <div class="mb-4 flex items-start justify-between gap-3">
-            <div><h2 class="font-semibold text-slate-950">Products missing a main image</h2><p class="text-xs text-slate-500">Active listings that need a product photo</p></div>
-            <Button label="View products" severity="secondary" text size="small" @click="go('merchandising.products')" />
-          </div>
-          <DataTable :value="data.missing_images || []" size="small" rowHover class="text-xs" @row-click="openProductEditor">
-            <Column header="Product">
-              <template #body="{ data: item }"><p class="font-medium text-slate-900">{{ item.name }}</p><p class="text-[10px] text-slate-500">{{ item.sku }}</p></template>
-            </Column>
-            <Column field="category" header="Category">
-              <template #body="{ data: item }">{{ item.category || 'Uncategorized' }}</template>
-            </Column>
-            <Column field="created_at" header="Added">
-              <template #body="{ data: item }">{{ shortDate(item.created_at) }}</template>
-            </Column>
-            <Column header="Action" headerClass="text-right" bodyClass="text-right">
-              <template #body="{ data: item }"><Button label="Add image" severity="warn" text size="small" @click.stop="openProductEditor(item)" /></template>
-            </Column>
-            <template #empty><div class="py-7 text-center text-xs text-slate-500">Every active product has a main image.</div></template>
-          </DataTable>
-        </section>
-      </div>
+      <section class="grid gap-4 xl:grid-cols-3">
+        <Card class="border border-slate-200 shadow-sm xl:col-span-2">
+          <template #title><div class="flex items-center justify-between gap-2"><div><h2 class="text-base font-semibold">Best selling products</h2><p class="mt-1 text-xs font-normal text-slate-500">Item sales from valid online orders</p></div><Button label="Product listings" text size="small" @click="go('merchandising.products')" /></div></template>
+          <template #content><Chart v-if="topProducts.length" type="bar" :data="productChart" :options="barOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">Product performance appears after your first online order.</div></template>
+        </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><h2 class="text-base font-semibold">Daily online orders</h2><p class="mt-1 text-xs font-normal text-slate-500">Order activity over the selected period</p></template>
+          <template #content><Chart v-if="hasOrders" type="bar" :data="ordersChart" :options="ordersOptions" class="h-64" /><div v-else class="flex h-64 items-center justify-center text-sm text-slate-500">No orders in this period.</div></template>
+        </Card>
+      </section>
 
-      <section class="dashboard-panel rounded-2xl border border-slate-200 bg-white p-5">
-        <div class="mb-4 flex items-start justify-between gap-3">
-          <div><h2 class="font-semibold text-slate-950">Recently added products</h2><p class="text-xs text-slate-500">Latest catalog entries to check for completeness and pricing</p></div>
-          <Button label="View all" severity="secondary" text size="small" @click="go('merchandising.products')" />
-        </div>
-        <DataTable :value="data.recent_products || []" size="small" rowHover class="text-xs" @row-click="openProduct">
-          <Column header="Product">
-            <template #body="{ data: item }"><p class="font-medium text-slate-900">{{ item.name }}</p><p class="text-[10px] text-slate-500">{{ item.sku }}</p></template>
-          </Column>
-          <Column field="category" header="Category">
-            <template #body="{ data: item }">{{ item.category || 'Uncategorized' }}</template>
-          </Column>
-          <Column field="base_price" header="Price">
-            <template #body="{ data: item }">{{ money(item.base_price) }}</template>
-          </Column>
-          <Column field="created_at" header="Added">
-            <template #body="{ data: item }">{{ shortDate(item.created_at) }}</template>
-          </Column>
-          <Column header="Action" headerClass="text-right" bodyClass="text-right">
-            <template #body="{ data: item }"><Button label="View" severity="secondary" text size="small" @click.stop="openProduct(item)" /></template>
-          </Column>
-          <template #empty><div class="py-7 text-center text-xs text-slate-500">No products have been added yet.</div></template>
-        </DataTable>
+      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card v-for="metric in storefrontMetrics" :key="metric.label" class="border border-slate-200 shadow-sm"><template #content><div class="flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ metric.label }}</span><i :class="metric.icon" class="text-orange-500" /></div><p class="mt-2 text-2xl font-bold text-slate-950">{{ metric.value }}</p><p class="mt-1 text-xs text-slate-500">{{ metric.caption }}</p></template></Card>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-2">
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><div class="flex items-center justify-between gap-2"><h2 class="text-base font-semibold">Top product performance</h2><Button label="View all" text size="small" @click="go('merchandising.products')" /></div></template>
+          <template #content><DataTable :value="topProducts" size="small" stripedRows responsiveLayout="scroll"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="units" header="Units" /><Column header="Item sales"><template #body="{ data: item }">{{ money(item.sales) }}</template></Column><template #empty><div class="py-8 text-center text-sm text-slate-500">No product sales yet.</div></template></DataTable></template>
+        </Card>
+        <Card class="border border-slate-200 shadow-sm">
+          <template #title><h2 class="text-base font-semibold">Recent online orders</h2></template>
+          <template #content><DataTable :value="data.recent_orders || []" size="small" stripedRows responsiveLayout="scroll"><Column field="order_number" header="Order" /><Column field="shipping_name" header="Customer" /><Column header="Status"><template #body="{ data: item }"><Tag :value="statusLabel(item.status)" :severity="statusSeverity(item.status)" /></template></Column><Column header="Total"><template #body="{ data: item }">{{ money(item.total_amount) }}</template></Column><template #empty><div class="py-8 text-center text-sm text-slate-500">No online orders in this period.</div></template></DataTable></template>
+        </Card>
+      </section>
+
+      <section class="grid gap-4 xl:grid-cols-2">
+        <Card class="border border-slate-200 shadow-sm"><template #title><h2 class="text-base font-semibold">Listings needing an image</h2></template><template #content><DataTable :value="data.missing_images || []" size="small"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.edit', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="category" header="Category" /><template #empty><div class="py-7 text-center text-sm text-slate-500">All active listings have a main image.</div></template></DataTable></template></Card>
+        <Card class="border border-slate-200 shadow-sm"><template #title><h2 class="text-base font-semibold">Listings unavailable to shoppers</h2></template><template #content><DataTable :value="data.out_of_stock_products || []" size="small"><Column header="Product"><template #body="{ data: item }"><button class="text-left font-medium text-slate-900 hover:text-orange-600" @click="go('merchandising.products.view', item.id)">{{ item.name }}</button><p class="text-xs text-slate-500">{{ item.sku || 'No SKU' }}</p></template></Column><Column field="category" header="Category" /><template #empty><div class="py-7 text-center text-sm text-slate-500">All active listings have available stock.</div></template></DataTable></template></Card>
       </section>
     </template>
   </div>
@@ -132,95 +77,68 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import merchandisingService from '../../../services/merchandising.service'
-import DataTable from 'primevue/datatable'
+import Button from 'primevue/button'
+import Card from 'primevue/card'
+import Chart from 'primevue/chart'
 import Column from 'primevue/column'
+import DataTable from 'primevue/datatable'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+import Tag from 'primevue/tag'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 
-type ProductRow = { id: number; [key: string]: any }
-type DashboardData = {
-  summary?: Record<string, number>
-  catalog_trend?: { label: string; value: number }[]
-  missing_images?: ProductRow[]
-  recent_products?: ProductRow[]
-}
+type TrendPoint = { date: string; label: string; sales: number; orders: number }
+type ProductPerformance = { id: number; name: string; sku?: string | null; units: number; sales: number }
+type DashboardData = { period_days: number; summary: Record<string, number>; sales_trend: TrendPoint[]; status_breakdown: { status: string; count: number }[]; top_products: ProductPerformance[]; missing_images: any[]; out_of_stock_products: any[]; recent_orders: any[] }
 
 const router = useRouter()
-const loading = ref(true)
+const orderValueTrend = useDashboardTrend('/api/product-catalog/dashboard/trend')
+const periods = [{ label: 'Last 7 days', value: 7 }, { label: 'Last 30 days', value: 30 }, { label: 'Last 90 days', value: 90 }]
+const days = ref(30)
+const loading = ref(false)
 const loadError = ref('')
-const data = ref<DashboardData>({})
-const summary = computed(() => data.value.summary || {})
-
-const money = (value: unknown) => new Intl.NumberFormat('en-PH', {
-  style: 'currency', currency: 'PHP', maximumFractionDigits: 2,
-}).format(Number(value) || 0)
-const shortDate = (value: unknown) => value
-  ? new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(String(value).slice(0, 10) + 'T12:00:00+08:00'))
-  : '—'
+const data = ref<DashboardData | null>(null)
+const summary = computed(() => data.value?.summary || {})
+const trend = computed(() => data.value?.sales_trend || [])
+const topProducts = computed(() => data.value?.top_products || [])
+const statusRows = computed(() => data.value?.status_breakdown || [])
+const hasSales = computed(() => orderValueTrend.points.value.some((row: any) => Number(row.value) > 0))
+const hasOrders = computed(() => trend.value.some(row => Number(row.orders) > 0))
+const money = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
+const number = (value: unknown) => Number(value || 0).toLocaleString('en-PH')
+const change = (current: number, previous: number) => previous > 0 ? `${current >= previous ? '+' : ''}${(((current - previous) / previous) * 100).toFixed(1)}% vs prior period` : (current > 0 ? 'New activity this period' : 'No activity this period')
+const salesMetrics = computed(() => [
+  { label: 'Online order value', value: money(summary.value.order_value), caption: change(Number(summary.value.order_value || 0), Number(summary.value.previous_order_value || 0)), icon: 'pi pi-wallet', tone: 'bg-orange-100 text-orange-600' },
+  { label: 'Online orders', value: number(summary.value.orders), caption: change(Number(summary.value.orders || 0), Number(summary.value.previous_orders || 0)), icon: 'pi pi-shopping-bag', tone: 'bg-blue-100 text-blue-600' },
+  { label: 'Average order value', value: money(summary.value.average_order_value), caption: 'Value per online order', icon: 'pi pi-chart-bar', tone: 'bg-violet-100 text-violet-600' },
+  { label: 'Units sold', value: number(summary.value.units_sold), caption: 'From valid online orders', icon: 'pi pi-box', tone: 'bg-emerald-100 text-emerald-600' },
+])
+const storefrontMetrics = computed(() => [
+  { label: 'Active listings', value: number(summary.value.active_listings), caption: 'Finished goods visible in the catalog', icon: 'pi pi-list' },
+  { label: 'Image ready', value: number(summary.value.image_ready_products), caption: `${number(summary.value.missing_main_images)} missing a main image`, icon: 'pi pi-image' },
+  { label: '3D enabled', value: number(summary.value.products_with_3d), caption: 'Active products with a 3D model', icon: 'pi pi-cube' },
+  { label: 'Unavailable', value: number(summary.value.out_of_stock_products), caption: 'Active products without available stock', icon: 'pi pi-exclamation-circle' },
+])
+const salesChart = computed(() => ({ labels: orderValueTrend.points.value.map((row: any) => row.label), datasets: [{ label: 'Order value', data: orderValueTrend.points.value.map((row: any) => Number(row.value)), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35, pointRadius: orderValueTrend.period.value === 'month' ? 1 : 2 }] }))
+const ordersChart = computed(() => ({ labels: trend.value.map(row => row.label), datasets: [{ label: 'Orders', data: trend.value.map(row => Number(row.orders)), backgroundColor: '#60a5fa', borderRadius: 4, maxBarThickness: 20 }] }))
+const productChart = computed(() => ({ labels: topProducts.value.map(row => row.name), datasets: [{ label: 'Item sales', data: topProducts.value.map(row => Number(row.sales)), backgroundColor: '#fb923c', borderRadius: 6 }] }))
+const statusLabel = (value: unknown) => String(value || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
+const statusSeverity = (value: unknown) => ['delivered', 'completed'].includes(String(value)) ? 'success' : ['cancelled', 'rejected'].includes(String(value)) ? 'danger' : ['pending', 'processing'].includes(String(value)) ? 'warn' : 'info'
+const statusChart = computed(() => ({ labels: statusRows.value.map(row => statusLabel(row.status)), datasets: [{ data: statusRows.value.map(row => Number(row.count)), backgroundColor: ['#f97316', '#60a5fa', '#34d399', '#a78bfa', '#f87171', '#fbbf24', '#94a3b8'] }] }))
+const lineOptions = { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } } } }
+const ordersOptions = { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 7 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } }
+const barOptions = { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { callback: (value: any) => `₱${Number(value).toLocaleString('en-PH')}` } }, y: { grid: { display: false }, ticks: { callback: (value: any) => String(topProducts.value[Number(value)]?.name || '').slice(0, 20) } } } }
+const doughnutOptions = { maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } } }
 const go = (name: string, id?: number) => router.push(id ? { name, params: { id } } : { name })
-const openProduct = (event: { data: ProductRow }) => go('merchandising.products.view', event.data.id)
-const openProductEditor = (event: { data: ProductRow } | ProductRow) => {
-  const product = 'data' in event ? event.data : event
-  go('merchandising.products.edit', product.id)
-}
-const currentMonth = computed(() => Number(summary.value.new_products_this_month || 0))
-const previousMonth = computed(() => Number(summary.value.new_products_previous_month || 0))
-const monthChangeLabel = computed(() => {
-  if (!previousMonth.value) return currentMonth.value ? 'New additions compared with last month' : 'No additions this or last month'
-  const change = ((currentMonth.value - previousMonth.value) / previousMonth.value) * 100
-  return `${change >= 0 ? '+' : ''}${change.toFixed(1)}% vs previous month`
-})
-const monthChangeTone = computed(() => currentMonth.value >= previousMonth.value ? 'text-emerald-700' : 'text-orange-700')
-const trendData = computed(() => ({
-  labels: (data.value.catalog_trend || []).map(item => item.label),
-  datasets: [{
-    label: 'New products',
-    data: (data.value.catalog_trend || []).map(item => item.value),
-    backgroundColor: '#f9a8d4',
-    hoverBackgroundColor: '#db2777',
-    borderRadius: 7,
-    maxBarThickness: 44,
-  }],
-}))
-const readinessData = computed(() => ({
-  labels: ['Image ready', 'Missing image'],
-  datasets: [{
-    data: [summary.value.image_ready_products || 0, summary.value.missing_main_images || 0],
-    backgroundColor: ['#34d399', '#fbbf24'],
-    borderWidth: 0,
-  }],
-}))
-const chartOptions = {
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: { callbacks: { label: (context: any) => `${context.parsed.y} new products` } },
-  },
-  scales: {
-    x: { grid: { display: false }, ticks: { color: '#64748b' } },
-    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { color: '#64748b', precision: 0 } },
-  },
-}
-const doughnutOptions = { maintainAspectRatio: false, cutout: '74%', plugins: { legend: { display: false } } }
-
 const loadDashboard = async () => {
   loading.value = true
   loadError.value = ''
   try {
-    const response = await merchandisingService.getDashboardOverview()
-    if (response?.success === false) throw new Error(response.message || 'Please try again.')
-    data.value = response?.data || {}
-  } catch (error: any) {
-    data.value = {}
-    loadError.value = error?.response?.data?.message || error?.message || 'Please try again.'
-  } finally {
-    loading.value = false
-  }
+    const response = await merchandisingService.getDashboardOverview(days.value)
+    if (response?.success === false) throw new Error(response.message || 'Unable to load dashboard.')
+    data.value = response.data
+  } catch (error: any) { loadError.value = error?.response?.data?.message || error?.message || 'Unable to load E-Commerce performance.' }
+  finally { loading.value = false }
 }
-
 onMounted(loadDashboard)
 </script>
-
-<style scoped>
-:deep(.p-datatable-tbody > tr) {
-  cursor: pointer;
-}
-</style>

@@ -16,17 +16,17 @@
         </div>
       </div>
       <div class="flex gap-2">
-        <Button label="Request 3D Model" icon="pi pi-box" size="small" outlined @click="router.push({ name: 'merchandising.3d-requests', query: { product_id: String(productId) } })" />
+        <Button v-if="!primary3DModel" label="Request 3D Model" icon="pi pi-box" size="small" outlined @click="router.push({ name: 'merchandising.3d-requests.create', query: { product_id: String(productId) } })" />
         <Button 
           v-if="primary3DModel"
           label="Preview 3D"
           icon="pi pi-box" 
           size="small"
-          severity="secondary"
+          outlined
           @click="openView3DModal" 
         />
         <Button 
-          label="Configure Presentation"
+          label="Edit"
           icon="pi pi-pencil" 
           severity="warn"
           size="small"
@@ -332,11 +332,10 @@
               <p class="text-xs text-gray-600 mb-1">File Size</p>
               <p class="text-sm font-semibold">{{ formatFileSize(primary3DModel.file_size_kb * 1024) }}</p>
             </div>
-            <div>
-              <p class="text-xs text-gray-600 mb-1">AR Compatible</p>
-              <Tag :value="primary3DModel.is_ar_compatible ? 'Yes' : 'No'" 
-                   :severity="primary3DModel.is_ar_compatible ? 'success' : 'secondary'" />
-            </div>
+            <!-- <div>
+              <p class="text-xs text-gray-600 mb-1">Dimensions</p>
+              <p class="text-sm font-semibold">{{ primary3DModel.dimensions || 'N/A' }}</p>
+            </div> -->
             <div>
               <p class="text-xs text-gray-600 mb-1">Uploaded</p>
               <p class="text-sm font-semibold">{{ formatDate(primary3DModel.created_at) }}</p>
@@ -345,7 +344,7 @@
         </div>
 
         <template #footer>
-          <Button label="Download" icon="pi pi-download" @click="downloadModel" severity="info" />
+          <Button label="Download" icon="pi pi-download" @click="downloadModel" />
           <Button label="Close" severity="secondary" outlined @click="view3DModalVisible = false" />
         </template>
       </Dialog>

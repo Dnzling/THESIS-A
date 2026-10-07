@@ -1,6 +1,41 @@
 import axiosClient from '@/axios'
 
 class SalesService {
+  async getWholesaleQuotes(params?: any) {
+    const res = await axiosClient.get('/api/sales/wholesale-quotes', { params })
+    return res.data
+  }
+
+  async getWholesaleOptions() {
+    const res = await axiosClient.get('/api/sales/wholesale-quotes/options')
+    return res.data
+  }
+
+  async createWholesaleQuote(payload: any) {
+    const res = await axiosClient.post('/api/sales/wholesale-quotes', payload, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
+  async getWholesaleQuote(id: number) {
+    const res = await axiosClient.get(`/api/sales/wholesale-quotes/${id}`)
+    return res.data
+  }
+
+  async updateWholesaleQuoteStatus(id: number, status: string) {
+    const res = await axiosClient.put(`/api/sales/wholesale-quotes/${id}/status`, { status }, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
+  async convertWholesaleQuote(id: number) {
+    const res = await axiosClient.post(`/api/sales/wholesale-quotes/${id}/convert`, {}, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
+  async recordWholesalePayment(id: number, payload: { payment_method: string; payment_reference?: string }) {
+    const res = await axiosClient.post(`/api/sales/wholesale-quotes/${id}/record-payment`, payload, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
   async getUnifiedOrders(params?: any) {
     const res = await axiosClient.get('/api/sales/orders', { params })
     return res.data

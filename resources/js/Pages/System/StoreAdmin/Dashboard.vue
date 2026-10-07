@@ -79,11 +79,15 @@
           <template #content>
             <div class="flex items-center justify-between mb-3">
               <div>
-                <h3 class="text-base font-semibold text-slate-800">Sales Trend (Last 7 Days)</h3>
-                <p class="text-xs text-slate-500">Daily sales performance.</p>
+                <h3 class="text-base font-semibold text-slate-800">Sales Trend</h3>
+                <p class="text-xs text-slate-500">In-store sales performance.</p>
               </div>
+              <Select v-model="ownerSalesTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Sales trend period" />
             </div>
-            <Chart type="line" :data="salesTrendData" :options="lineOptions" class="h-72" />
+            <Skeleton v-if="ownerSalesTrend.loading.value" height="18rem" class="rounded-xl" />
+            <div v-else-if="ownerSalesTrend.error.value" class="flex h-72 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ ownerSalesTrend.error.value }}<Button text label="Try again" @click="ownerSalesTrend.reload" /></div>
+            <Chart v-else-if="ownerSalesTrend.points.value.some((point) => point.value)" type="line" :data="salesTrendData" :options="lineOptions" class="h-72" />
+            <p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No sales in this period.</p>
           </template>
         </Card>
         <Card>
@@ -188,10 +192,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeService } from '@/services/store.service'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+import Button from 'primevue/button'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 
 const loading = ref(true)
 const error = ref('')
 const dashboard = ref<any>(null)
+const ownerSalesTrend = useDashboardTrend('/api/store/dashboard/trend')
 
 const kpis = computed(() => dashboard.value?.kpis || {
   sales_today: 0,
@@ -205,11 +214,11 @@ const kpis = computed(() => dashboard.value?.kpis || {
 })
 
 const salesTrendData = computed(() => ({
-  labels: dashboard.value?.charts?.sales_trend?.labels || [],
+  labels: ownerSalesTrend.points.value.map((point: any) => point.label),
   datasets: [
     {
       label: 'Sales',
-      data: dashboard.value?.charts?.sales_trend?.values || [],
+      data: ownerSalesTrend.points.value.map((point: any) => Number(point.value)),
       borderColor: '#2563eb',
       backgroundColor: 'rgba(37, 99, 235, 0.15)',
       tension: 0.3,

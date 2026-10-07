@@ -4,6 +4,7 @@ namespace App\Services\Sales;
 
 use App\Models\Inventory\BranchInventory;
 use App\Models\Inventory\InventoryTransaction;
+use App\Models\Hr\Employee;
 use App\Models\Sales\SalesOrder;
 use App\Models\Sales\SalesPayment;
 use App\Models\Sales\SalesReceipt;
@@ -59,6 +60,14 @@ class SalesOrderSettlementService
                     : ($inventory->quantity_available <= $inventory->reorder_point ? 'low_stock' : 'in_stock');
                 $inventory->save();
 
+                $transactionCreatorId = str_starts_with((string) $lockedOrder->order_number, 'WHO-')
+                    ? Employee::query()->where('store_id', $lockedOrder->store_id)
+                        ->where('user_id', $lockedOrder->created_by)->value('id')
+                    : $lockedOrder->created_by;
+                if (!$transactionCreatorId) {
+                    throw new \RuntimeException('The order creator needs an employee record before payment can be settled.');
+                }
+
                 InventoryTransaction::create([
                     'transaction_number' => 'TXN-SALE-' . now()->format('YmdHis') . '-' . random_int(1000, 9999),
                     'store_id' => $lockedOrder->store_id,
@@ -76,7 +85,7 @@ class SalesOrderSettlementService
                     'total_value' => (float) $item->line_total,
                     'requires_approval' => false,
                     'approval_status' => 'auto_approved',
-                    'created_by' => $lockedOrder->created_by,
+                    'created_by' => $transactionCreatorId,
                     'transaction_date' => now(),
                 ]);
             }

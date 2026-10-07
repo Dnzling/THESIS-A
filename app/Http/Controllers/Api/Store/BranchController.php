@@ -8,6 +8,8 @@ use App\Models\Store\Store;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BranchController extends Controller
 {
@@ -52,7 +54,7 @@ class BranchController extends Controller
                 'name' => 'required|string|max:255',
                 'address' => 'required|string|max:255',
                 'city' => 'required|string|max:100',
-                'province' => 'nullable|string|max:50',
+                'province' => [Rule::requiredIf($request->input('branch_type') === 'warehouse'), 'nullable', 'string', 'max:50'],
                 'barangay' => 'nullable|string|max:150',
                 'latitude' => 'nullable|numeric|between:-90, 90',
                 'longitude' => 'nullable|numeric|between:-180, 180',
@@ -60,7 +62,7 @@ class BranchController extends Controller
                 'geofence_radius_m' => 'nullable|integer|min:0|max:5000',
                 'geofence_enabled' => 'nullable|boolean',
                 'is_main_branch' => 'nullable|boolean',
-                'branch_type' => 'nullable|in:storefront,warehouse',
+                'branch_type' => 'nullable|in:storefront,warehouse,wholesale',
             ]);
 
             $storeId = $user?->store_id;
@@ -94,12 +96,14 @@ class BranchController extends Controller
                     'status' => $branch->status,
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Adding Branch failed',
                 'error' => $e->getMessage(),
-            ]);
+            ], 500);
         }
     }
 
@@ -132,7 +136,7 @@ class BranchController extends Controller
             ->findOrFail($id);
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'branch_type' => 'sometimes|nullable|in:storefront,warehouse',
+            'branch_type' => 'sometimes|nullable|in:storefront,warehouse,wholesale',
             'address' => 'nullable|string|max:255',
             'province' => 'sometimes|nullable|string|max:50',
             'city' => 'nullable|string|max:255',

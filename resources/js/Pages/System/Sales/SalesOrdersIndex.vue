@@ -5,7 +5,10 @@
         <h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
         <p class="text-sm text-gray-500">Unified view of in-store and online orders.</p>
       </div>
-      <Button outlined icon="pi pi-refresh" text  @click="loadOrders" />
+      <div class="flex items-center gap-2">
+        <Button label="Wholesale quotations" icon="pi pi-file-edit" outlined @click="router.push({ name: 'sales.wholesale-quotes' })" />
+        <Button outlined icon="pi pi-refresh" text @click="loadOrders" />
+      </div>
     </div>
 
     <Card class="rounded-2xl border border-gray-100 shadow-sm">
@@ -71,7 +74,7 @@
           </Column>
           <Column field="channel" header="Channel" style="width: 8%;">
             <template #body="{ data }">
-              <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : 'success'" />
+              <Badge :value="data.channel" :severity="data.channel === 'Online' ? 'info' : data.channel === 'Wholesale' ? 'warn' : 'success'" />
             </template>
           </Column>
           <Column field="branch_name" header="Branch">
@@ -147,7 +150,7 @@ type UnifiedOrder = {
   status: string
   total_amount: number
   created_at: string
-  channel: 'In-Store' | 'Online'
+  channel: 'In-Store' | 'Online' | 'Wholesale'
   order_type: 'pos' | 'ecommerce'
   branch_name?: string
   items_count?: number
@@ -165,7 +168,7 @@ const orders = ref<UnifiedOrder[]>([])
 const filters = reactive({
   search: '',
   status: null as string | null,
-  channel: null as 'In-Store' | 'Online' | null,
+  channel: null as 'In-Store' | 'Online' | 'Wholesale' | null,
   payment_method: null as string | null,
   payment_status: null as string | null,
   date_range: null as [Date | null, Date | null] | null,
@@ -179,6 +182,7 @@ const hasActiveFilters = computed(() => Boolean(
 const channelOptions = [
   { label: 'In-Store', value: 'In-Store' },
   { label: 'Online', value: 'Online' },
+  { label: 'Wholesale', value: 'Wholesale' },
 ]
 
 const statusOptions = [

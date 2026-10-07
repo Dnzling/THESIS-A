@@ -10,98 +10,41 @@ class NavigationItemsSeeder extends Seeder
     public function run(): void
     {
         $items = [
-            [
-                'name' => 'merchandising.dashboard',
-                'display_name' => 'Dashboard',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.dashboard',
-                'route_path' => '/merchandising/dashboard',
-                'icon' => 'pi pi-home',
-                'parent_id' => null,
-                'display_order' => 1,
-                'meta' => json_encode(['subtitle' => 'Overview of your product catalog'])
-            ],
-            [
-                'name' => 'merchandising.products',
-                'display_name' => 'All Products',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.products',
-                'route_path' => '/merchandising/products',
-                'icon' => 'pi pi-box',
-                'parent_id' => null,
-                'display_order' => 2,
-                'meta' => json_encode(['subtitle' => 'Manage your furniture product catalog'])
-            ],
-            [
-                'name' => 'merchandising.inventory',
-                'display_name' => 'Inventory Status',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.inventory',
-                'route_path' => '/merchandising/inventory',
-                'icon' => 'pi pi-database',
-                'parent_id' => null,
-                'display_order' => 4,
-                'meta' => json_encode(['subtitle' => 'Monitor stock levels'])
-            ],
-            [
-                'name' => 'merchandising.categories',
-                'display_name' => 'Categories',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.categories',
-                'route_path' => '/merchandising/categories',
-                'icon' => 'pi pi-sitemap',
-                'parent_id' => null,
-                'display_order' => 5,
-                'meta' => json_encode(['subtitle' => 'Organize your furniture catalog'])
-            ],
-            [
-                'name' => 'merchandising.attributes',
-                'display_name' => 'Product Attributes',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.attributes',
-                'route_path' => '/merchandising/attributes',
-                'icon' => 'pi pi-tags',
-                'parent_id' => null,
-                'display_order' => 6,
-                'meta' => json_encode(['subtitle' => 'Define filterable product characteristics'])
-            ]
+            ['name' => 'merchandising.dashboard', 'display_name' => 'Dashboard', 'route_name' => 'merchandising.dashboard', 'route_path' => '/merchandising/dashboard', 'icon' => 'pi pi-home', 'display_order' => 1, 'permission' => 'merchandising.dashboard.view'],
+            ['name' => 'merchandising.products', 'display_name' => 'Product Listings', 'route_name' => 'merchandising.products', 'route_path' => '/merchandising/products', 'icon' => 'pi pi-box', 'display_order' => 2, 'permission' => 'merchandising.products.view'],
+            ['name' => 'merchandising.tags', 'display_name' => 'Collections', 'route_name' => 'merchandising.tags', 'route_path' => '/merchandising/tags', 'icon' => 'pi pi-th-large', 'display_order' => 3, 'permission' => 'merchandising.tags.view'],
+            ['name' => 'merchandising.pricing', 'display_name' => 'Promotions & Discounts', 'route_name' => 'merchandising.pricing', 'route_path' => '/merchandising/pricing', 'icon' => 'pi pi-percentage', 'display_order' => 4, 'permission' => 'merchandising.pricing.view'],
+            ['name' => 'merchandising.assets', 'display_name' => '3D Product Models', 'route_name' => 'merchandising.3d-gallery', 'route_path' => '/merchandising/3d-gallery', 'icon' => 'pi pi-box', 'display_order' => 5, 'permission' => 'merchandising.assets.view'],
+            ['name' => 'merchandising.storefront', 'display_name' => 'Storefront Settings', 'route_name' => 'store.settings', 'route_path' => '/store/settings', 'icon' => 'pi pi-cog', 'display_order' => 6, 'permission' => 'merchandising.storefront.view'],
         ];
+
+        $activeNames = array_column($items, 'name');
+        DB::table('navigation_items')->where('module', 'merchandising')->whereNotIn('name', $activeNames)->update(['is_active' => false, 'parent_id' => null, 'updated_at' => now()]);
 
         foreach ($items as $item) {
-            $item['is_active'] = true;
-            $item['created_at'] = now();
-            $item['updated_at'] = now();
-            DB::table('navigation_items')->insert($item);
-        }
-
-        // Link navigation to permissions
-        $this->linkNavigationPermissions();
-    }
-
-    private function linkNavigationPermissions(): void
-    {
-        $links = [
-            'merchandising.dashboard' => ['merchandising.dashboard.view'],
-            'merchandising.products' => ['merchandising.products.view'],
-            'merchandising.inventory' => ['merchandising.inventory.view'],
-            'merchandising.categories' => ['merchandising.categories.view'],
-            'merchandising.attributes' => ['merchandising.attributes.view'],
-        ];
-
-        foreach ($links as $navName => $permissionNames) {
-            $navItem = DB::table('navigation_items')->where('name', $navName)->first();
-            if (!$navItem) continue;
-
-            foreach ($permissionNames as $permName) {
-                $permission = DB::table('permissions')->where('name', $permName)->first();
-                if (!$permission) continue;
-
-                DB::table('navigation_permissions')->insert([
-                    'navigation_item_id' => $navItem->id,
-                    'permission_id' => $permission->id,
+            $permissionName = $item['permission'];
+            unset($item['permission']);
+            DB::table('navigation_items')->updateOrInsert(
+                ['name' => $item['name']],
+                $item + [
+                    'module' => 'merchandising',
+                    'section' => null,
+                    'parent_id' => null,
+                    'is_active' => true,
+                    'meta' => json_encode(['subtitle' => $item['display_name']]),
+                    'updated_at' => now(),
                     'created_at' => now(),
-                    'updated_at' => now()
-                ]);
+                    'deleted_at' => null,
+                ]
+            );
+
+            $navigationId = DB::table('navigation_items')->where('name', $item['name'])->value('id');
+            $permissionId = DB::table('permissions')->where('name', $permissionName)->value('id');
+            if ($navigationId && $permissionId) {
+                DB::table('navigation_permissions')->updateOrInsert(
+                    ['navigation_item_id' => $navigationId, 'permission_id' => $permissionId],
+                    ['created_at' => now(), 'updated_at' => now()]
+                );
             }
         }
     }

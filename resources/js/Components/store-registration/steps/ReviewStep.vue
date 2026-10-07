@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-6">
     <div>
-      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 3</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.24em] text-orange-600">Step 5</p>
       <h2 class="mt-1 text-2xl font-bold text-slate-950">Review and submit</h2>
       <p class="mt-2 text-sm text-slate-600">Confirm the owner ID and business documents before sending this for admin review.</p>
     </div>
@@ -15,14 +15,19 @@
       </div>
     </ReviewSection>
 
-    <ReviewSection title="Business Documents" :canEdit="true" @edit="$emit('edit-step', 2)">
+    <ReviewSection title="Business Registration" :canEdit="true" @edit="$emit('edit-step', 2)">
       <InfoItem label="Business registration number" :value="formData.businessRegistrationNumber" />
-      <div class="grid gap-4 md:grid-cols-3">
-        <FilePreview :file="formData.registrationPermit" label="Registration permit" />
-        <FilePreview :file="formData.taxCertificate" label="BIR tax certificate" />
-        <FilePreview :file="formData.mayorPermit" label="Mayor's/business permit" />
-      </div>
-      <div class="mt-3 grid gap-3 text-xs text-slate-600 md:grid-cols-3"><span>Registration expires: {{ formData.registrationExpiresAt || 'Not applicable' }}</span><span>Tax certificate expires: {{ formData.taxExpiresAt || 'Not applicable' }}</span><span>Permit expires: {{ formData.permitExpiresAt || 'Not applicable' }}</span></div>
+      <InfoItem label="Expires" :value="formData.registrationExpiresAt" />
+      <FilePreview :file="formData.registrationPermit" label="Registration permit" />
+    </ReviewSection>
+    <ReviewSection title="BIR Tax Certificate" :canEdit="true" @edit="$emit('edit-step', 3)">
+      <InfoItem label="Reference number" :value="formData.taxCertificateNumber" />
+      <FilePreview :file="formData.taxCertificate" label="BIR tax certificate" />
+    </ReviewSection>
+    <ReviewSection title="Mayor's Permit" :canEdit="true" @edit="$emit('edit-step', 4)">
+      <InfoItem label="Reference number" :value="formData.permitNumber" />
+      <InfoItem label="Expires" :value="formData.permitExpiresAt" />
+      <FilePreview :file="formData.mayorPermit" label="Mayor's permit" />
       <InfoItem v-if="formData.additionalNotes" label="Additional Notes" :value="formData.additionalNotes" />
     </ReviewSection>
 
@@ -134,6 +139,10 @@ const hasRequiredData = computed(() =>
   && props.formData.primaryIdFront instanceof File
   && props.formData.registrationPermit instanceof File
   && Boolean(String(props.formData.businessRegistrationNumber || '').trim())
+  && Boolean(String(props.formData.taxCertificateNumber || '').trim())
+  && Boolean(String(props.formData.permitNumber || '').trim())
+  && Boolean(props.formData.registrationExpiresAt)
+  && Boolean(props.formData.permitExpiresAt)
   && props.formData.taxCertificate instanceof File
   && props.formData.mayorPermit instanceof File
 )
@@ -173,6 +182,8 @@ const submitVerification = async () => {
     payload.append('gov_id_type', props.formData.primaryIdType)
     payload.append('gov_id_number', props.formData.primaryIdNumber)
     payload.append('business_registration_number', props.formData.businessRegistrationNumber || '')
+    payload.append('tax_certificate_number', props.formData.taxCertificateNumber || '')
+    payload.append('permit_number', props.formData.permitNumber || '')
     payload.append('business_registration_date', new Date().toISOString().slice(0, 10))
     if (props.formData.registrationExpiresAt) payload.append('registration_expires_at', props.formData.registrationExpiresAt)
     if (props.formData.taxExpiresAt) payload.append('tax_expires_at', props.formData.taxExpiresAt)

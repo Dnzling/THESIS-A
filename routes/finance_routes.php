@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Procurement\PurchaseOrder\PurchaseOrderPrintEmailCo
 use App\Http\Controllers\Api\Procurement\Receiving\GoodsReceiptController;
 
 Route::prefix('finance')->group(function () {
+    Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'finance']);
     Route::get('/dashboard', [FinanceDashboardController::class, 'index']);
     Route::get('/tax-vat', [FinanceTaxVatController::class, 'index'])->middleware('can:finance.tax-vat.view');
 

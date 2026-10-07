@@ -28,7 +28,7 @@
             ]">
               2
             </div>
-            <span :class="currentStep >= 2 ? 'font-semibold text-slate-950' : 'text-slate-400'">Business Docs</span>
+            <span :class="currentStep >= 2 ? 'font-semibold text-slate-950' : 'text-slate-400'">Registration</span>
           </div>
           <div class="h-1 flex-1 rounded-full" :class="currentStep >= 3 ? 'bg-orange-500' : 'bg-slate-200'"></div>
           <div class="flex items-center gap-3">
@@ -38,15 +38,19 @@
             ]">
               3
             </div>
-            <span :class="currentStep >= 3 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span>
+            <span :class="currentStep >= 3 ? 'font-semibold text-slate-950' : 'text-slate-400'">BIR</span>
           </div>
+          <div class="h-1 flex-1 rounded-full" :class="currentStep >= 4 ? 'bg-orange-500' : 'bg-slate-200'"></div>
+          <span :class="currentStep >= 4 ? 'font-semibold text-slate-950' : 'text-slate-400'">Mayor's Permit</span>
+          <div class="h-1 flex-1 rounded-full" :class="currentStep >= 5 ? 'bg-orange-500' : 'bg-slate-200'"></div>
+          <span :class="currentStep >= 5 ? 'font-semibold text-slate-950' : 'text-slate-400'">Review</span>
         </div>
       </div>
       <div class="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div v-if="loadingStoreData" class="flex min-h-64 items-center justify-center text-sm text-slate-500">
           Checking your store record...
         </div>
-        <component v-else :key="currentStep" :is="currentStepComponent" :formData="formData" @update:formData="handleFormUpdate"
+        <component v-else :key="currentStep" :is="currentStepComponent" :step="currentStep" :formData="formData" @update:formData="handleFormUpdate"
           @next="goToNextStep" @prev="goToPrevStep" @verification-submitted="handleSubmitSuccess" @edit-step="goToStep" />
       </div>
     </div>
@@ -68,7 +72,7 @@ const emit = defineEmits<Emits>()
 
 // Async components
 const OwnerIdStep = defineAsyncComponent(() => import('./steps/OwnerIdStep.vue'))
-const BusinessDocsStep = defineAsyncComponent(() => import('./steps/BusinessDocsStep.vue'))
+const BusinessDocumentStep = defineAsyncComponent(() => import('./steps/BusinessDocumentStep.vue'))
 const ReviewStep = defineAsyncComponent(() => import('./steps/ReviewStep.vue'))
 
 // Current step
@@ -83,9 +87,13 @@ const formData = ref({
   primaryIdFront: null as File | null,
   primaryIdBack: null as File | null,
   primaryIdReadMessage: '',
+  primaryIdOcrRead: false,
+  primaryIdOcrAttempted: false,
   registrationPermit: null as File | null,
   registrationExpiresAt: '',
   businessRegistrationNumber: '',
+  taxCertificateNumber: '',
+  permitNumber: '',
   taxCertificate: null as File | null,
   taxExpiresAt: '',
   mayorPermit: null as File | null,
@@ -97,8 +105,10 @@ const formData = ref({
 
 const stepComponents = {
   1: OwnerIdStep,
-  2: BusinessDocsStep,
-  3: ReviewStep
+  2: BusinessDocumentStep,
+  3: BusinessDocumentStep,
+  4: BusinessDocumentStep,
+  5: ReviewStep
 }
 
 // Get current component based on step
@@ -119,8 +129,8 @@ const scrollToTop = () => {
 
 // Navigation with scroll
 const goToNextStep = () => {
-  if (currentStep.value < 3) {
-    currentStep.value = Math.min(currentStep.value + 1, 3)
+  if (currentStep.value < 5) {
+    currentStep.value = Math.min(currentStep.value + 1, 5)
     nextTick(scrollToTop) // Scroll after DOM updates
   }
 }
@@ -133,7 +143,7 @@ const goToPrevStep = () => {
 }
 
 const goToStep = (step: number) => {
-  if (step >= 1 && step <= 3) {
+  if (step >= 1 && step <= 5) {
     currentStep.value = step
     nextTick(scrollToTop) // Scroll after DOM updates
   }

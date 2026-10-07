@@ -13,6 +13,8 @@ class StoreVerification extends Model
         'city',
         'address',
         'business_registration_number',
+        'tax_certificate_number',
+        'permit_number',
         'business_registration_date',
         'registration_expires_at',
         'tax_expires_at',

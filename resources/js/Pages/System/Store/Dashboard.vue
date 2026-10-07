@@ -7,6 +7,7 @@
         <p class="mt-1 text-sm text-slate-500">Performance of your assigned branch across in-store and ecommerce sales.</p>
       </div>
       <div class="flex items-center gap-2">
+        <a href="/store/attendance" class="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><i class="pi pi-calendar-clock" />Branch Attendance</a>
         <Tag :value="formatLabel(data?.branch?.status || 'active')" :severity="data?.branch?.status === 'active' ? 'success' : 'warn'" />
         <Button label="Refresh" icon="pi pi-refresh" size="small" outlined severity="secondary" :loading="loading" @click="load" />
       </div>
@@ -32,9 +33,9 @@
 
       <section class="grid gap-4 xl:grid-cols-3">
         <Card class="border border-slate-200 shadow-sm xl:col-span-2">
-          <template #title><span class="text-base">Combined Sales Trend</span></template>
-          <template #subtitle>In-store and ecommerce revenue for the last 14 days</template>
-          <template #content><Chart type="line" :data="trendData" :options="lineOptions" class="h-72" /></template>
+          <template #title><div class="flex flex-wrap items-center justify-between gap-2"><span class="text-base">Combined Sales Trend</span><Select v-model="combinedTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Combined sales trend period" /></div></template>
+          <template #subtitle>In-store and ecommerce revenue</template>
+          <template #content><Skeleton v-if="combinedTrend.loading.value" height="18rem" class="rounded-xl" /><div v-else-if="combinedTrend.error.value" class="flex h-72 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ combinedTrend.error.value }}<Button text label="Try again" @click="combinedTrend.reload" /></div><Chart v-else-if="combinedTrend.points.value.some((point) => point.value)" type="line" :data="trendData" :options="lineOptions" class="h-72" /><p v-else class="flex h-72 items-center justify-center text-sm text-slate-500">No sales in this period.</p></template>
         </Card>
         <Card class="border border-slate-200 shadow-sm">
           <template #title><span class="text-base">Channel Performance</span></template>
@@ -71,12 +72,15 @@ import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
 import Message from 'primevue/message'
 import Skeleton from 'primevue/skeleton'
+import Select from 'primevue/select'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 import Tag from 'primevue/tag'
 import { storeModuleService } from '@/services/store-module.service'
 
 const loading = ref(false)
 const error = ref('')
 const data = ref<any>(null)
+const combinedTrend = useDashboardTrend('/api/store-module/dashboard/trend')
 const money = (value: any) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0)
 const dateTime = (value: any) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 const formatLabel = (value: any) => String(value || '—').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
@@ -91,7 +95,7 @@ const metrics = computed(() => {
     { label: 'Inventory Alerts', value: Number(kpi.low_stock || 0) + Number(kpi.out_of_stock || 0), caption: `${kpi.low_stock || 0} low · ${kpi.out_of_stock || 0} out of stock`, icon: 'pi pi-exclamation-triangle' },
   ]
 })
-const trendData = computed(() => ({ labels: data.value?.sales_trend?.labels || [], datasets: [{ label: 'Revenue', data: data.value?.sales_trend?.values || [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35 }] }))
+const trendData = computed(() => ({ labels: combinedTrend.points.value.map((point: any) => point.label), datasets: [{ label: 'Revenue', data: combinedTrend.points.value.map((point: any) => Number(point.value)), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.12)', fill: true, tension: .35 }] }))
 const channelData = computed(() => ({ labels: ['In-store', 'Ecommerce'], datasets: [{ data: [data.value?.kpis?.pos_revenue_30d || 0, data.value?.kpis?.ecommerce_revenue_30d || 0], backgroundColor: ['#0f172a', '#f97316'] }] }))
 const lineOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
 const doughnutOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '66%' }

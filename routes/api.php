@@ -102,7 +102,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::get('/3d-model-requests', [Model3dRequestController::class, 'index']);
     Route::post('/3d-model-requests', [Model3dRequestController::class, 'store']);
     Route::get('/3d-model-requests/{modelRequest}', [Model3dRequestController::class, 'show']);
-    Route::post('/3d-model-requests/{modelRequest}/quote', [Model3dRequestController::class, 'quote']);
+    Route::get('/3d-model-requests/{modelRequest}/download', [Model3dRequestController::class, 'download']);
     Route::post('/3d-model-requests/{modelRequest}/store-action', [Model3dRequestController::class, 'storeAction']);
     Route::post('/3d-model-requests/{modelRequest}/admin-action', [Model3dRequestController::class, 'adminAction']);
     Route::get('/user/navigation', [UserNavigationController::class, 'getUserNavigation']);
@@ -211,6 +211,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
         Route::get('/position-setup', [PositionSetupController::class, 'index']);
         Route::post('/position-setup', [PositionSetupController::class, 'store']);
         Route::get('/dashboard', [StoreDashboardController::class, 'index']);
+        Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'ownerSales']);
+        Route::get('/attendance', [\App\Http\Controllers\Api\Store\BranchAttendanceController::class, 'index']);
         Route::get('/settings', [StoreSettingsController::class, 'show']);
         Route::put('/settings/profile', [StoreSettingsController::class, 'updateProfile']);
         Route::put('/settings/modules', [StoreSettingsController::class, 'updateModules']);
@@ -235,6 +237,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     // Branch-scoped Store module
     Route::prefix('store-module')->controller(StoreModuleController::class)->group(function () {
         Route::get('/dashboard', 'dashboard');
+        Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'branchSales']);
         Route::get('/settings', 'settings');
         Route::match(['put', 'post'], '/settings', 'updateSettings');
         Route::get('/ecommerce', 'ecommerce');
@@ -405,6 +408,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     Route::get('store-verification/{verification}', [StoreVerificationController::class, 'show']);
     Route::post('store-verification/owner-id/extract', [StoreVerificationController::class, 'extractOwnerId']);
     Route::post('store-verification/business-registration/extract', [StoreVerificationController::class, 'extractBusinessRegistration']);
+    Route::post('store-verification/business-document/extract', [StoreVerificationController::class, 'extractBusinessDocument']);
     Route::post('store-verification/{verification}/review', [StoreVerificationController::class, 'reviewVerification']);
     Route::get('store-verification/{verification}/documents/{document}/inspect', [StoreVerificationController::class, 'inspectDocument']);
     Route::get('store-verification/{verification}/documents/{document}/preview', [StoreVerificationController::class, 'previewDocument']);

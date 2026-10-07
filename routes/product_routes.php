@@ -16,6 +16,7 @@ Route::prefix('product-catalog')->group(function () {
 
     Route::get('dashboard/stats', [DashboardController::class, 'stats']);
     Route::get('dashboard/overview', [DashboardController::class, 'overview']);
+    Route::get('dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'ecommerce']);
     Route::get('dashboard/activity', [DashboardController::class, 'activityLog']);
 
     // Categories

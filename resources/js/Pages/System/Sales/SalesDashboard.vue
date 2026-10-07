@@ -57,9 +57,11 @@
               <h2 class="font-semibold text-slate-950">Sales trend</h2>
               <p class="mt-1 text-xs text-slate-500">Paid sales and orders across POS and ecommerce</p>
             </div>
-            <Select v-model="trendRange" :options="trendRanges" optionLabel="label" optionValue="value" size="small" class="w-36" aria-label="Sales trend period" @change="loadDashboard" />
+            <Select v-model="salesTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" size="small" class="w-36" aria-label="Sales trend period" />
           </div>
-          <Chart v-if="trendData.labels.length" type="line" :data="trendData" :options="chartOptions" class="mt-4 h-56" />
+          <Skeleton v-if="salesTrend.loading.value" height="14rem" class="mt-4 rounded-xl" />
+          <div v-else-if="salesTrend.error.value" class="flex h-56 flex-col items-center justify-center gap-2 text-xs text-red-600">{{ salesTrend.error.value }}<Button text label="Try again" @click="salesTrend.reload" /></div>
+          <Chart v-else-if="trendData.labels.length" type="line" :data="trendData" :options="chartOptions" class="mt-4 h-56" />
           <p v-else class="flex h-56 items-center justify-center text-xs text-slate-500">No paid sales in this period.</p>
         </section>
 
@@ -122,25 +124,20 @@ import Column from 'primevue/column'
 import Badge from 'primevue/badge'
 import Select from 'primevue/select'
 import Skeleton from 'primevue/skeleton'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 
 const router = useRouter()
 const loading = ref(true)
 const loadError = ref('')
-const trendRange = ref('7d')
+const salesTrend = useDashboardTrend('/api/sales/dashboard/trend')
 const stats = ref<any>({ sales_trend: [], recent_orders: [], payments_by_method: [] })
-const trendRanges = [
-  { label: 'Last 7 days', value: '7d' },
-  { label: 'Last 30 days', value: '30d' },
-  { label: 'Last 6 months', value: '6m' },
-  { label: 'Last 12 months', value: '12m' },
-]
 const paymentMethods = computed(() => (stats.value.payments_by_method || []).filter((method: any) => Number(method.total) > 0))
 const trendData = computed(() => ({
-  labels: (stats.value.sales_trend || []).map((point: any) => formatPeriod(point.period)),
+  labels: salesTrend.points.value.map((point: any) => point.label),
   datasets: [
     {
       label: 'Paid sales',
-      data: (stats.value.sales_trend || []).map((point: any) => Number(point.sales || 0)),
+      data: salesTrend.points.value.map((point: any) => Number(point.sales || 0)),
       borderColor: '#f97316',
       backgroundColor: 'rgba(249, 115, 22, 0.12)',
       fill: true,
@@ -149,7 +146,7 @@ const trendData = computed(() => ({
     },
     {
       label: 'Paid orders',
-      data: (stats.value.sales_trend || []).map((point: any) => Number(point.orders || 0)),
+      data: salesTrend.points.value.map((point: any) => Number(point.orders || 0)),
       borderColor: '#64748b',
       backgroundColor: '#64748b',
       tension: 0.3,
@@ -203,7 +200,7 @@ const loadDashboard = async () => {
   loading.value = true
   loadError.value = ''
   try {
-    const response = await salesService.getDashboard({ trend_range: trendRange.value })
+    const response = await salesService.getDashboard({ trend_range: '7d' })
     if (response?.success === false) throw new Error(response.message || 'Please try again.')
     stats.value = response?.data || {}
   } catch (error: any) {

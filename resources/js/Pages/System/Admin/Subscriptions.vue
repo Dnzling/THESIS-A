@@ -260,6 +260,11 @@
                 <InputNumber v-model="planForm.max_products" :min="1" placeholder="Unlimited" fluid />
               </div>
               <div>
+                <label class="text-sm font-medium text-slate-700">3D Model Requests per Month</label>
+                <InputNumber v-model="planForm.max_3d_model_requests_per_month" :min="0" fluid />
+                <small class="text-xs text-slate-500">Requires 3D manage permission. 0 disables requests.</small>
+              </div>
+              <div>
                 <label class="mb-1 block text-xs text-slate-600">Warehouse Branches</label>
                 <InputNumber v-model="planForm.max_warehouses" :min="1" placeholder="Unlimited" fluid />
               </div>
@@ -422,6 +427,7 @@ const planForm = reactive({
   max_user_accounts: null as number | null,
   max_branches: null as number | null,
   max_products: null as number | null,
+  max_3d_model_requests_per_month: 0,
   max_warehouses: null as number | null,
   max_trucks: null as number | null,
   max_suppliers: null as number | null,
@@ -637,6 +643,7 @@ const openPlanDialog = async (plan: any) => {
   planForm.max_user_accounts = plan.max_user_accounts == null ? null : Number(plan.max_user_accounts)
   planForm.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
   planForm.max_products = plan.max_products == null ? null : Number(plan.max_products)
+  planForm.max_3d_model_requests_per_month = Number(plan.max_3d_model_requests_per_month || 0)
   planForm.max_warehouses = plan.max_warehouses == null ? null : Number(plan.max_warehouses)
   planForm.max_trucks = plan.max_trucks == null ? null : Number(plan.max_trucks)
   planForm.max_suppliers = plan.max_suppliers == null ? null : Number(plan.max_suppliers)
@@ -669,6 +676,7 @@ const openCreatePlanDialog = () => {
   planForm.max_user_accounts = null
   planForm.max_branches = null
   planForm.max_products = null
+  planForm.max_3d_model_requests_per_month = 0
   planForm.max_warehouses = null
   planForm.max_trucks = null
   planForm.max_suppliers = null
@@ -703,6 +711,7 @@ const savePlan = async () => {
           max_user_accounts: planForm.max_user_accounts,
           max_branches: planForm.max_branches,
           max_products: planForm.max_products,
+          max_3d_model_requests_per_month: planForm.max_3d_model_requests_per_month,
           max_warehouses: planForm.max_warehouses,
           max_trucks: planForm.max_trucks,
           max_suppliers: planForm.max_suppliers,

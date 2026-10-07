@@ -42,13 +42,13 @@ class StoreVerificationController extends Controller
         'tax_certificate_file' => [
             'label' => 'BIR Tax Certificate',
             'required' => true,
-            'allowed_mimes' => ['application/pdf'],
+            'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
             'max_kb' => 10240,
         ],
         'business_permit_file' => [
             'label' => "Mayor's/Business Permit",
             'required' => true,
-            'allowed_mimes' => ['application/pdf'],
+            'allowed_mimes' => ['application/pdf', 'image/jpeg', 'image/png'],
             'max_kb' => 10240,
         ],
     ];
@@ -74,13 +74,15 @@ class StoreVerificationController extends Controller
                 'gov_id_front_file' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
                 'gov_id_back_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png', 'max:5120'],
                 'business_registration_number' => ['required', 'string', 'max:100'],
+                'tax_certificate_number' => ['required', 'string', 'max:100'],
+                'permit_number' => ['required', 'string', 'max:100'],
                 'business_registration_date' => ['required', 'date', 'before_or_equal:today'],
                 'registration_expires_at' => ['nullable', 'date', 'after:today'],
                 'tax_expires_at' => ['nullable', 'date', 'after:today'],
                 'permit_expires_at' => ['nullable', 'date', 'after:today'],
                 'business_registration_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-                'tax_certificate_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
-                'business_permit_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+                'tax_certificate_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+                'business_permit_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             ]);
 
             $legitimacyIssues = $this->validateUploadedDocuments($request);
@@ -117,6 +119,8 @@ class StoreVerificationController extends Controller
                         'gov_id_type' => $validated['gov_id_type'],
                         'gov_id_number' => $validated['gov_id_number'],
                         'business_registration_number' => $validated['business_registration_number'] ?? null,
+                        'tax_certificate_number' => $validated['tax_certificate_number'],
+                        'permit_number' => $validated['permit_number'],
                         'business_registration_date' => $validated['business_registration_date'],
                         'registration_expires_at' => $validated['registration_expires_at'] ?? null,
                         'tax_expires_at' => $validated['tax_expires_at'] ?? null,
@@ -171,7 +175,7 @@ class StoreVerificationController extends Controller
 
         try {
             $text = $this->documentAutoValidationService->extractTextFromDocument($path);
-            $idNumber = $this->documentAutoValidationService->extractLikelyIdNumber($text);
+            $idNumber = $this->documentAutoValidationService->extractLikelyIdNumber($text, $request->input('id_type'));
 
             return response()->json([
                 'success' => true,
@@ -199,23 +203,41 @@ class StoreVerificationController extends Controller
 
         try {
             $text = $this->documentAutoValidationService->extractTextFromDocument($path);
-            $number = null;
-            foreach (preg_split('/\R/', $text) ?: [] as $line) {
-                if (preg_match('/(?:registration|certificate|business|permit)\s*(?:no\.?|number|#|id)\s*[:#-]?\s*([A-Z0-9][A-Z0-9\-\/ ]{4,30})/i', $line, $matches)) {
-                    $number = trim($matches[1]);
-                    break;
-                }
-            }
+            $number = $this->documentAutoValidationService->extractDocumentReference($text, 'registration');
+            $expiresAt = $this->documentAutoValidationService->extractDocumentExpiration($text);
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'registration_number' => $number,
+                    'expires_at' => $expiresAt,
                     'message' => $number
                         ? 'Possible registration number found. Please confirm it against your certificate.'
                         : 'Could not read a registration number. Please enter it manually.',
                 ],
             ]);
+        } finally {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    public function extractBusinessDocument(Request $request)
+    {
+        abort_unless($request->user()?->store_id && $request->user()?->hasRole('owner'), 403);
+        $validated = $request->validate([
+            'document_type' => ['required', 'in:bir,mayor'],
+            'document_file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ]);
+        $path = $request->file('document_file')->store('store-verifications/tmp-documents', 'public');
+        try {
+            $text = $this->documentAutoValidationService->extractTextFromDocument($path);
+            $number = $this->documentAutoValidationService->extractDocumentReference($text, $validated['document_type']);
+            return response()->json(['success' => true, 'data' => [
+                'reference_number' => $number,
+                'expires_at' => $validated['document_type'] === 'mayor'
+                    ? $this->documentAutoValidationService->extractDocumentExpiration($text) : null,
+                'message' => $number ? 'Possible reference number found. Confirm it against the document.' : 'Reference number not found. Check the image and enter it manually.',
+            ]]);
         } finally {
             Storage::disk('public')->delete($path);
         }

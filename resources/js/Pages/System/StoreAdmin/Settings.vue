@@ -15,165 +15,90 @@
                     <template #content>
                         <div class="space-y-4">
                             <div
-                                class="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between"
-                            >
+                                class="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                    <div
-                                        class="text-2xl font-semibold text-slate-950"
-                                    >
+                                    <div class="text-2xl font-semibold text-slate-950">
                                         {{ store.name || "Store profile" }}
                                     </div>
-                                    <div
-                                        class="mt-1 text-sm capitalize text-slate-500"
-                                    >
+                                    <div class="mt-1 text-sm capitalize text-slate-500">
                                         {{ store.type || "Store type not set" }}
                                     </div>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <p
-                                        class="flex items-center gap-1.5 font-semibold"
-                                        :class="
-                                            isStoreActive
-                                                ? 'text-emerald-700'
-                                                : ''
-                                        "
-                                    >
+                                    <p class="flex items-center gap-1.5 font-semibold" :class="isStoreActive
+                                            ? 'text-emerald-700'
+                                            : ''
+                                        ">
                                         {{ storeStatusLabel }}
-                                        <i
-                                            v-if="
-                                                verification.store_status ===
-                                                'approved'
-                                            "
-                                            class="pi pi-verified text-emerald-600"
-                                            aria-label="Verified"
-                                            title="Verified store"
-                                        />
+                                        <i v-if="
+                                            verification.store_status ===
+                                            'approved'
+                                        " class="pi pi-verified text-emerald-600" aria-label="Verified"
+                                            title="Verified store" />
                                     </p>
-                                    <Button
-                                        v-if="shouldShowVerifyButton"
-                                        :label="verifyButtonLabel"
-                                        :icon="verifyButtonIcon"
-                                        size="small"
-                                        :severity="
-                                            isVerificationRejected
+                                    <Button v-if="shouldShowVerifyButton" :label="verifyButtonLabel"
+                                        :icon="verifyButtonIcon" size="small" :severity="isVerificationRejected
                                                 ? 'danger'
                                                 : 'warn'
-                                        "
-                                        outlined
-                                        :rounded="isVerificationRejected"
-                                        @click="handleStoreVerifyClick"
-                                    />
-                                    <Button
-                                        v-if="showStoreStatusInfo"
-                                        icon="pi pi-info-circle"
-                                        text
-                                        rounded
-                                        severity="secondary"
-                                        @click="storeStatusDialogVisible = true"
-                                    />
+                                            " outlined :rounded="isVerificationRejected" @click="handleStoreVerifyClick" />
+                                    <Button v-if="showStoreStatusInfo" icon="pi pi-info-circle" text rounded
+                                        severity="secondary" @click="storeStatusDialogVisible = true" />
                                 </div>
                             </div>
+                            <div class="flex justify-end">
+                           <Button class="mt-2" label="Edit" size="small" icon="pi pi-pencil" text
+                                @click="openProfileEditor" />
+                            </div>
+                          
+                            <div class="grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
 
-                            <div
-                                class="grid gap-3 text-sm text-slate-700 sm:grid-cols-2"
-                            >
                                 <div class="rounded-xl bg-slate-50 p-3">
-                                    <div
-                                        class="text-xs uppercase tracking-wide text-slate-400"
-                                    >
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">
                                         Phone
                                     </div>
-                                    <div
-                                        class="mt-1 font-semibold text-slate-900"
-                                    >
+                                    <div class="mt-1 font-semibold text-slate-900">
                                         {{ store.phone || "Not set" }}
                                     </div>
                                 </div>
                                 <div class="rounded-xl bg-slate-50 p-3">
-                                    <div
-                                        class="text-xs uppercase tracking-wide text-slate-400"
-                                    >
-                                        Location
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">
+                                        Contact Person
                                     </div>
-                                    <div
-                                        class="mt-1 font-semibold text-slate-900"
-                                    >
-                                        {{
-                                            [store.city, store.province]
-                                                .filter(Boolean)
-                                                .join(", ") || "Not set"
-                                        }}
+                                    <div class="mt-1 font-semibold text-slate-900">
+                                        {{ store.contact_person || "Not set" }}
                                     </div>
                                 </div>
-                                <div
-                                    class="rounded-xl bg-slate-50 p-3 sm:col-span-2"
-                                >
-                                    <div
-                                        class="text-xs uppercase tracking-wide text-slate-400"
-                                    >
-                                        Shop Address
-                                    </div>
-                                    <div
-                                        class="mt-1 font-semibold capitalize text-slate-900"
-                                    >
-                                        {{
-                                            [
-                                                store.address,
-                                                store.barangay,
-                                                store.city,
-                                                store.province || "Cavite",
-                                            ]
-                                                .filter(Boolean)
-                                                .join(", ") ||
-                                            "No address recorded"
-                                        }}
-                                    </div>
-                                </div>
-                                <div class="rounded-xl bg-slate-50 p-3">
-                                    <div
-                                        class="text-xs uppercase tracking-wide text-slate-400"
-                                    >
-                                        Store Code
-                                    </div>
-                                    <div
-                                        class="mt-1 flex items-center justify-between gap-2 font-semibold text-slate-900"
-                                    >
-                                        <span>{{
-                                            store.store_code || "Not set"
-                                        }}</span
-                                        ><Button
-                                            v-if="store.store_code"
-                                            icon="pi pi-copy"
-                                            text
-                                            rounded
-                                            size="small"
-                                            aria-label="Copy store code"
-                                            @click="copyStoreCode"
-                                        />
-                                    </div>
-                                </div>
-                                <div class="rounded-xl bg-slate-50 p-3">
-                                    <div
-                                        class="text-xs uppercase tracking-wide text-slate-400"
-                                    >
+                                   <div class="rounded-xl bg-slate-50 p-3">
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">
                                         Billing Email
                                     </div>
-                                    <div
-                                        class="mt-1 font-semibold text-slate-900"
-                                    >
+                                    <div class="mt-1 font-semibold text-slate-900">
                                         {{ store.email || "Not set" }}
                                     </div>
                                 </div>
+                              
+                                <div class="rounded-xl bg-slate-50 p-3">
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">City</div>
+                                    <div class="mt-1 font-semibold text-slate-900">{{ store.city || "Not set" }}</div>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 p-3">
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">Province</div>
+                                    <div class="mt-1 font-semibold text-slate-900">{{ store.province || "Not set" }}</div>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 p-3">
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">Barangay</div>
+                                    <div class="mt-1 font-semibold text-slate-900">{{ store.barangay || "Not set" }}</div>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 p-3 sm:col-span-2">
+                                    <div class="text-xs uppercase tracking-wide text-slate-400">Shop Address</div>
+                                    <div class="mt-1 font-semibold text-slate-900">
+                                        {{ store.address || "Not set" }}
+                                    </div>
+                                </div>
+                             
                             </div>
                         </div>
-                        <Button
-                            class="mt-5 w-full"
-                            label="Edit store profile"
-                            size="small"
-                            icon="pi pi-pencil"
-                            outlined
-                            @click="openProfileEditor"
-                        />
+
                     </template>
                 </Card>
 
@@ -185,47 +110,28 @@
                         <div class="space-y-4">
                             <div class="mx-auto w-full max-w-xs">
                                 <div
-                                    class="relative aspect-square overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm"
-                                >
-                                    <img
-                                        v-if="store.logo_url"
-                                        :src="store.logo_url"
+                                    class="relative aspect-square overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
+                                    <img v-if="store.logo_url" :src="store.logo_url"
                                         :alt="`${store.name || 'Store'} logo`"
-                                        class="h-full w-full object-contain p-3"
-                                    />
-                                    <div
-                                        v-else
-                                        class="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500"
-                                    >
+                                        class="h-full w-full object-contain p-3" />
+                                    <div v-else
+                                        class="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
                                         <i class="pi pi-image text-4xl"></i>
                                     </div>
-                                    <Button
-                                        label="Upload logo"
-                                        icon="pi pi-upload"
-                                        size="small"
-                                        severity="warn"
+                                    <Button label="Upload logo" icon="pi pi-upload" size="small" severity="warn"
                                         class="!absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md"
-                                        @click="openLogoDialog"
-                                    />
+                                        @click="openLogoDialog" />
                                 </div>
                             </div>
 
-                            <div
-                                class="rounded-md bg-slate-50 px-2.5 py-1.5 text-center"
-                            >
-                                <div
-                                    class="text-[10px] uppercase tracking-wide text-slate-400"
-                                >
+                            <div class="rounded-md bg-slate-50 px-2.5 py-1.5 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-slate-400">
                                     Saved logo size
                                 </div>
-                                <div
-                                    class="text-xs font-semibold text-slate-900"
-                                >
+                                <div class="text-xs font-semibold text-slate-900">
                                     {{ logoDimensionLabel }}
                                 </div>
-                                <p
-                                    class="mt-0.5 text-[10px] leading-3 text-slate-500"
-                                >
+                                <p class="mt-0.5 text-[10px] leading-3 text-slate-500">
                                     Shown on shop pages. Upload at least 512 x
                                     512 px, ideally 1024 x 1024 px.
                                 </p>
@@ -235,25 +141,13 @@
                 </Card>
             </div>
 
-            <Dialog
-                v-model:visible="planDialogVisible"
-                modal
-                header="Available Plans"
-                :style="{ width: '36rem' }"
-            >
+            <Dialog v-model:visible="planDialogVisible" modal header="Available Plans" :style="{ width: '36rem' }">
                 <div class="space-y-3">
-                    <button
-                        v-for="plan in availablePlans"
-                        :key="plan.key"
-                        type="button"
-                        class="w-full rounded-lg border p-3 text-left transition"
-                        :class="
-                            selectedPlan.key === plan.key
+                    <button v-for="plan in availablePlans" :key="plan.key" type="button"
+                        class="w-full rounded-lg border p-3 text-left transition" :class="selectedPlan.key === plan.key
                                 ? 'border-blue-500 bg-blue-50'
                                 : 'border-slate-200 hover:border-slate-300'
-                        "
-                        @click="selectPlan(plan.key)"
-                    >
+                            " @click="selectPlan(plan.key)">
                         <div class="flex items-center justify-between">
                             <div class="font-semibold text-slate-900">
                                 {{ plan.label }}
@@ -268,65 +162,30 @@
                     </button>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Cancel"
-                        severity="secondary"
-                        text
-                        @click="planDialogVisible = false"
-                    />
-                    <Button
-                        label="Continue"
-                        @click="openPaymentMethodDialogForSelectedPlan"
-                    />
+                    <Button label="Cancel" severity="secondary" text @click="planDialogVisible = false" />
+                    <Button label="Continue" @click="openPaymentMethodDialogForSelectedPlan" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="gcashDialogVisible"
-                modal
-                header="Payment Details"
-                :style="{ width: '28rem' }"
-            >
+            <Dialog v-model:visible="gcashDialogVisible" modal header="Payment Details" :style="{ width: '28rem' }">
                 <div class="space-y-4">
                     <div>
-                        <label
-                            class="text-sm font-medium text-slate-700 block mb-1"
-                            >Payment Method</label
-                        >
-                        <Select
-                            v-model="selectedWalletType"
-                            :options="walletTypeOptions"
-                            optionLabel="label"
-                            optionValue="value"
-                            class="w-full"
-                        />
+                        <label class="text-sm font-medium text-slate-700 block mb-1">Payment Method</label>
+                        <Select v-model="selectedWalletType" :options="walletTypeOptions" optionLabel="label"
+                            optionValue="value" class="w-full" />
                         <p class="mt-1 text-xs text-slate-500">
                             This selection affects the wallet you will be
                             redirected to.
                         </p>
                     </div>
                     <div>
-                        <label
-                            class="text-sm font-medium text-slate-700 block mb-1"
-                            >Account Name</label
-                        >
-                        <InputText
-                            v-model="gcashForm.name"
-                            class="w-full"
-                            placeholder="Juan Dela Cruz"
-                        />
+                        <label class="text-sm font-medium text-slate-700 block mb-1">Account Name</label>
+                        <InputText v-model="gcashForm.name" class="w-full" placeholder="Juan Dela Cruz" />
                     </div>
                     <div>
-                        <label
-                            class="text-sm font-medium text-slate-700 block mb-1"
-                            >Mobile Number</label
-                        >
-                        <InputMask
-                            v-model="gcashForm.phone"
-                            class="w-full"
-                            mask="0999 999 9999"
-                            placeholder="09__ ___ ____"
-                        />
+                        <label class="text-sm font-medium text-slate-700 block mb-1">Mobile Number</label>
+                        <InputMask v-model="gcashForm.phone" class="w-full" mask="0999 999 9999"
+                            placeholder="09__ ___ ____" />
                         <p class="mt-1 text-xs text-slate-500">
                             Use your active Philippine mobile number linked to
                             the selected wallet.
@@ -334,26 +193,14 @@
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Cancel"
-                        severity="secondary"
-                        text
-                        @click="gcashDialogVisible = false"
-                    />
-                    <Button
-                        :label="`Continue to ${selectedWalletLabel}`"
-                        :loading="upgrading"
-                        @click="submitUpgradeCheckout"
-                    />
+                    <Button label="Cancel" severity="secondary" text @click="gcashDialogVisible = false" />
+                    <Button :label="`Continue to ${selectedWalletLabel}`" :loading="upgrading"
+                        @click="submitUpgradeCheckout" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="paymentMethodDialogVisible"
-                modal
-                header="Choose Payment Method"
-                :style="{ width: '28rem' }"
-            >
+            <Dialog v-model:visible="paymentMethodDialogVisible" modal header="Choose Payment Method"
+                :style="{ width: '28rem' }">
                 <div class="space-y-3">
                     <p class="text-sm text-slate-600">
                         Select which payment method you'd like to use for this
@@ -361,47 +208,25 @@
                     </p>
                     <div class="grid gap-3">
                         <label class="flex items-center gap-3">
-                            <input
-                                type="radio"
-                                v-model="selectedPaymentMethod"
-                                value="card"
-                            />
+                            <input type="radio" v-model="selectedPaymentMethod" value="card" />
                             <span>Credit / Debit Card</span>
                         </label>
                         <label class="flex items-center gap-3">
-                            <input
-                                type="radio"
-                                v-model="selectedPaymentMethod"
-                                value="gcash"
-                            />
+                            <input type="radio" v-model="selectedPaymentMethod" value="gcash" />
                             <span>GCash / E-Wallet</span>
                         </label>
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Cancel"
-                        severity="secondary"
-                        text
-                        @click="paymentMethodDialogVisible = false"
-                    />
-                    <Button
-                        :disabled="!selectedPaymentMethod"
-                        @click="continueToPaymentCredentials"
-                    />
+                    <Button label="Cancel" severity="secondary" text @click="paymentMethodDialogVisible = false" />
+                    <Button :disabled="!selectedPaymentMethod" @click="continueToPaymentCredentials" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="storeStatusDialogVisible"
-                modal
-                header="Store Status Details"
-                :style="{ width: '34rem' }"
-            >
+            <Dialog v-model:visible="storeStatusDialogVisible" modal header="Store Status Details"
+                :style="{ width: '34rem' }">
                 <div class="space-y-3 text-sm">
-                    <div
-                        class="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                    >
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div class="font-semibold text-slate-900">
                             {{ store.name || "Store" }}
                         </div>
@@ -411,15 +236,9 @@
                     </div>
                     <div class="flex items-center justify-between">
                         <span class="text-slate-600">Current Status</span>
-                        <Tag
-                            :value="storeStatusLabel"
-                            :severity="storeStatusSeverity"
-                        />
+                        <Tag :value="storeStatusLabel" :severity="storeStatusSeverity" />
                     </div>
-                    <div
-                        v-if="store.status === 'suspended'"
-                        class="flex items-center justify-between"
-                    >
+                    <div v-if="store.status === 'suspended'" class="flex items-center justify-between">
                         <span class="text-slate-600">Suspension Remaining</span>
                         <span class="font-semibold text-amber-600">{{
                             formatRemainingDays(
@@ -427,20 +246,15 @@
                             )
                         }}</span>
                     </div>
-                    <div
-                        v-if="store.status_details?.actioned_at"
-                        class="flex items-center justify-between"
-                    >
+                    <div v-if="store.status_details?.actioned_at" class="flex items-center justify-between">
                         <span class="text-slate-600">Action Date</span>
                         <span class="font-semibold text-slate-800">{{
                             formatDateTime(store.status_details.actioned_at)
-                        }}</span>
+                            }}</span>
                     </div>
                     <div>
                         <div class="text-slate-600 mb-1">Reason</div>
-                        <div
-                            class="rounded-lg border border-slate-200 p-3 text-slate-800 whitespace-pre-wrap"
-                        >
+                        <div class="rounded-lg border border-slate-200 p-3 text-slate-800 whitespace-pre-wrap">
                             {{
                                 store.status_details?.action_reason ||
                                 "No reason was recorded."
@@ -449,25 +263,15 @@
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Close"
-                        text
-                        @click="storeStatusDialogVisible = false"
-                    />
+                    <Button label="Close" text @click="storeStatusDialogVisible = false" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="verificationDocumentsDialogVisible"
-                modal
-                :header="verificationDocumentsDialogTitle"
-                :style="{ width: '48rem' }"
-            >
+            <Dialog v-model:visible="verificationDocumentsDialogVisible" modal
+                :header="verificationDocumentsDialogTitle" :style="{ width: '48rem' }">
                 <div class="space-y-3">
-                    <div
-                        v-if="isVerificationRejected"
-                        class="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800"
-                    >
+                    <div v-if="isVerificationRejected"
+                        class="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">
                         <div class="font-semibold">Rejected Reason</div>
                         <div class="mt-1 whitespace-pre-wrap">
                             {{
@@ -484,31 +288,21 @@
                         }}
                     </div>
 
-                    <DataTable
-                        :value="verificationDocuments"
-                        responsiveLayout="scroll"
-                        class="text-sm"
-                        stripedRows
-                    >
+                    <DataTable :value="verificationDocuments" responsiveLayout="scroll" class="text-sm" stripedRows>
                         <Column field="label" header="Document"></Column>
                         <Column header="Status">
                             <template #body="slotProps">
-                                <Tag
-                                    :value="
-                                        slotProps.data.submitted
-                                            ? slotProps.data.is_valid
-                                                ? 'Submitted'
-                                                : 'Needs Review'
-                                            : 'Missing'
-                                    "
-                                    :severity="
-                                        slotProps.data.submitted
+                                <Tag :value="slotProps.data.submitted
+                                        ? slotProps.data.is_valid
+                                            ? 'Submitted'
+                                            : 'Needs Review'
+                                        : 'Missing'
+                                    " :severity="slotProps.data.submitted
                                             ? slotProps.data.is_valid
                                                 ? 'success'
                                                 : 'warn'
                                             : 'secondary'
-                                    "
-                                />
+                                        " />
                             </template>
                         </Column>
                         <Column field="size_kb" header="Size (KB)">
@@ -518,262 +312,131 @@
                         </Column>
                         <Column header="Action">
                             <template #body="slotProps">
-                                <Button
-                                    v-if="
-                                        slotProps.data.path ||
-                                        slotProps.data.download_url ||
-                                        slotProps.data.inspect_url
-                                    "
-                                    label="View"
-                                    icon="pi pi-external-link"
-                                    size="small"
-                                    outlined
-                                    @click="openDocumentDialog(slotProps.data)"
-                                />
+                                <Button v-if="
+                                    slotProps.data.path ||
+                                    slotProps.data.download_url ||
+                                    slotProps.data.inspect_url
+                                " label="View" icon="pi pi-external-link" size="small" outlined
+                                    @click="openDocumentDialog(slotProps.data)" />
                                 <span v-else class="text-slate-400">—</span>
                             </template>
                         </Column>
                     </DataTable>
 
-                    <div
-                        v-if="verificationDocuments.length === 0"
-                        class="text-sm text-slate-500"
-                    >
+                    <div v-if="verificationDocuments.length === 0" class="text-sm text-slate-500">
                         No verification attachments found.
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Close"
-                        severity="secondary"
-                        outlined
-                        @click="verificationDocumentsDialogVisible = false"
-                    />
-                    <Button
-                        v-if="isVerificationRejected"
-                        label="Resubmit"
-                        severity="warn"
-                        icon="pi pi-refresh"
-                        @click="resubmitVerification"
-                    />
+                    <Button label="Close" severity="secondary" outlined
+                        @click="verificationDocumentsDialogVisible = false" />
+                    <Button v-if="isVerificationRejected" label="Resubmit" severity="warn" icon="pi pi-refresh"
+                        @click="resubmitVerification" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="documentPreviewDialogVisible"
-                modal
-                :header="documentPreviewTitle"
-                :style="{ width: 'min(92vw, 56rem)' }"
-            >
-                <div
-                    class="min-h-[22rem] overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                >
-                    <img
-                        v-if="documentPreviewKind === 'image'"
-                        :src="documentPreviewUrl"
-                        :alt="documentPreviewTitle"
-                        class="max-h-[70vh] w-full object-contain"
-                    />
-                    <iframe
-                        v-else
-                        :src="documentPreviewUrl"
-                        class="h-[70vh] w-full border-0"
-                        title="Verification document preview"
-                    ></iframe>
+            <Dialog v-model:visible="documentPreviewDialogVisible" modal :header="documentPreviewTitle"
+                :style="{ width: 'min(92vw, 56rem)' }">
+                <div class="min-h-[22rem] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    <img v-if="documentPreviewKind === 'image'" :src="documentPreviewUrl" :alt="documentPreviewTitle"
+                        class="max-h-[70vh] w-full object-contain" />
+                    <iframe v-else :src="documentPreviewUrl" class="h-[70vh] w-full border-0"
+                        title="Verification document preview"></iframe>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Close"
-                        severity="secondary"
-                        outlined
-                        @click="documentPreviewDialogVisible = false"
-                    />
+                    <Button label="Close" severity="secondary" outlined @click="documentPreviewDialogVisible = false" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="profileEditorVisible"
-                modal
-                header="Edit Store Profile"
-                :style="{ width: '36rem' }"
-            >
+            <Dialog v-model:visible="profileEditorVisible" modal header="Edit Store Profile"
+                :style="{ width: '36rem' }">
                 <div class="space-y-4">
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="sm:col-span-2">
-                            <label class="mb-1 block text-sm font-medium cap"
-                                >Store Name</label
-                            ><InputText
-                                :modelValue="store.name"
-                                class="capitalize w-full bg-slate-100"
-                                disabled
-                            />
+                            <label class="mb-1 block text-sm font-medium cap">Store Name</label>
+                            <InputText :modelValue="store.name" class="capitalize w-full bg-slate-100" disabled />
                         </div>
                         <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Contact Person</label
-                            ><InputText
-                                v-model="profileForm.contact_person"
-                                class="w-full"
-                                disabled
-                            />
+                            <label class="mb-1 block text-sm font-medium">Contact Person</label>
+                            <InputText v-model="profileForm.contact_person" class="w-full" disabled />
                         </div>
                         <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Phone</label
-                            ><InputMask
-                                v-model="profileForm.phone"
-                                class="w-full"
-                                mask="0999 999 9999"
-                                placeholder="09__ ___ ____"
-                            />
+                            <label class="mb-1 block text-sm font-medium">Store Type</label><Select
+                                v-model="profileForm.type" :options="businessTypeOptions" optionLabel="label"
+                                optionValue="value" class="w-full" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium">Phone</label>
+                            <InputMask v-model="profileForm.phone" class="w-full" mask="+63 999 999 9999"
+                                placeholder="+63 ___ ___ ____" />
+                        </div>
+
+                        <div>
+                            <label class="mb-1 block text-sm font-medium">City</label><Select
+                                v-model="profileForm.city_id" :options="profileCityOptions" optionLabel="label"
+                                optionValue="value" class="w-full" filter :loading="profileCitiesLoading"
+                                :disabled="profileCitiesLoading" placeholder="Select city"
+                                @change="onProfileCityChange" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium">Province</label>
+                            <InputText v-model="profileForm.province" class="w-full" readonly />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm font-medium">Barangay</label><Select
+                                v-model="profileForm.barangay" :options="profileBarangayOptions" optionLabel="label"
+                                optionValue="value" class="w-full" filter :loading="profileBarangaysLoading" :disabled="!profileForm.city_id ||
+                                    profileBarangaysLoading
+                                    " placeholder="Select barangay" />
                         </div>
                         <div class="sm:col-span-2">
-                            <label class="mb-1 block text-sm font-medium"
-                                >Address</label
-                            ><Textarea
-                                v-model="profileForm.address"
-                                rows="3"
-                                class="w-full"
-                            />
+                            <label class="mb-1 block text-sm font-medium">Address</label><Textarea
+                                v-model="profileForm.address" rows="3" class="w-full" />
                         </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >City</label
-                            ><Select
-                                v-model="profileForm.city_id"
-                                :options="profileCityOptions"
-                                optionLabel="label"
-                                optionValue="value"
-                                class="w-full"
-                                filter
-                                :loading="profileCitiesLoading"
-                                :disabled="profileCitiesLoading"
-                                placeholder="Select city"
-                                @change="onProfileCityChange"
-                            />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Province</label
-                            ><InputText
-                                v-model="profileForm.province"
-                                class="w-full"
-                                readonly
-                            />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Barangay</label
-                            ><Select
-                                v-model="profileForm.barangay"
-                                :options="profileBarangayOptions"
-                                optionLabel="label"
-                                optionValue="value"
-                                class="w-full"
-                                filter
-                                :loading="profileBarangaysLoading"
-                                :disabled="
-                                    !profileForm.city_id ||
-                                    profileBarangaysLoading
-                                "
-                                placeholder="Select barangay"
-                            />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-sm font-medium"
-                                >Store Type</label
-                            ><Select
-                                v-model="profileForm.type"
-                                :options="businessTypeOptions"
-                                optionLabel="label"
-                                optionValue="value"
-                                class="w-full"
-                            />
-                        </div>
+
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Cancel"
-                        severity="secondary"
-                        text
-                        @click="profileEditorVisible = false"
-                    />
-                    <Button
-                        label="Save"
-                        :loading="savingProfile"
-                        @click="saveStoreProfile"
-                    />
+                    <Button label="Cancel" severity="secondary" text @click="profileEditorVisible = false" />
+                    <Button label="Save" :loading="savingProfile" @click="saveStoreProfile" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="profileSuccessVisible"
-                modal
-                header="Profile Updated"
-                :style="{ width: '28rem' }"
-            >
+            <Dialog v-model:visible="profileResponseVisible" modal
+                :header="profileResponseSuccess ? 'Profile Updated' : 'Unable to Save Profile'"
+                :style="{ width: '28rem' }">
                 <div class="py-3 text-center">
-                    <i class="pi pi-check-circle text-5xl text-green-500"></i>
-                    <p class="mt-3 text-slate-700">
-                        Your store profile was updated successfully.
-                    </p>
+                    <i :class="profileResponseSuccess ? 'pi pi-check-circle text-green-500' : 'pi pi-exclamation-circle text-red-500'"
+                        class="text-5xl"></i>
+                    <p class="mt-3 text-slate-700">{{ profileResponseMessage }}</p>
                 </div>
-                <template #footer
-                    ><Button
-                        label="Close"
-                        @click="profileSuccessVisible = false"
-                /></template>
+                <template #footer><Button label="Close" @click="profileResponseVisible = false" /></template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="logoDialogVisible"
-                modal
-                header="Shop Logo"
-                :style="{ width: '34rem' }"
-            >
+            <Dialog v-model:visible="logoDialogVisible" modal header="Shop Logo" :style="{ width: '34rem' }">
                 <div class="space-y-4">
-                    <div
-                        class="rounded-xl border border-orange-100 bg-orange-50 p-4 text-sm text-slate-700"
-                    >
+                    <div class="rounded-xl border border-orange-100 bg-orange-50 p-4 text-sm text-slate-700">
                         Upload any JPG, PNG, or WebP logo. We will center-crop
                         it into a square before saving so it looks clean on the
                         shop page.
                     </div>
 
                     <div class="grid gap-4 sm:grid-cols-[10rem_1fr]">
-                        <div
-                            class="aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
-                        >
-                            <img
-                                v-if="logoPreviewUrl"
-                                :src="logoPreviewUrl"
-                                alt="Logo preview"
-                                class="h-full w-full object-cover"
-                            />
-                            <div
-                                v-else
-                                class="flex h-full w-full items-center justify-center text-slate-400"
-                            >
+                        <div class="aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                            <img v-if="logoPreviewUrl" :src="logoPreviewUrl" alt="Logo preview"
+                                class="h-full w-full object-cover" />
+                            <div v-else class="flex h-full w-full items-center justify-center text-slate-400">
                                 <i class="pi pi-image text-3xl"></i>
                             </div>
                         </div>
                         <div class="space-y-3">
                             <label class="block">
-                                <span
-                                    class="mb-1 block text-sm font-medium text-slate-700"
-                                    >Upload logo</span
-                                >
-                                <input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/webp"
+                                <span class="mb-1 block text-sm font-medium text-slate-700">Upload logo</span>
+                                <input type="file" accept="image/png,image/jpeg,image/webp"
                                     class="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-orange-700 hover:file:bg-orange-200"
-                                    @change="handleLogoFileChange"
-                                />
+                                    @change="handleLogoFileChange" />
                             </label>
-                            <div
-                                class="rounded-lg border border-slate-200 p-3 text-xs text-slate-600"
-                            >
+                            <div class="rounded-lg border border-slate-200 p-3 text-xs text-slate-600">
                                 <div>
                                     <b>Original:</b>
                                     {{ logoOriginalDimensionLabel }}
@@ -788,31 +451,17 @@
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Cancel"
-                        severity="secondary"
-                        text
-                        @click="closeLogoDialog"
-                    />
-                    <Button
-                        label="Save Logo"
-                        icon="pi pi-check"
-                        severity="warn"
-                        :disabled="!logoSquareBlob"
-                        :loading="savingLogo"
-                        @click="saveLogo"
-                    />
+                    <Button label="Cancel" severity="secondary" text @click="closeLogoDialog" />
+                    <Button label="Save Logo" icon="pi pi-check" severity="warn" :disabled="!logoSquareBlob"
+                        :loading="savingLogo" @click="saveLogo" />
                 </template>
             </Dialog>
 
-            <Card
-                v-if="
-                    ['free', 'simple'].includes(
-                        String(subscription.tier).toLowerCase(),
-                    )
-                "
-                class="border border-slate-200 shadow-sm"
-            >
+            <Card v-if="
+                ['free', 'simple'].includes(
+                    String(subscription.tier).toLowerCase(),
+                )
+            " class="border border-slate-200 shadow-sm">
                 <template #title>Store Operating Hours</template>
                 <template #content>
                     <p class="mb-4 text-sm text-slate-500">
@@ -821,38 +470,18 @@
                     </p>
                     <div class="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
                         <div>
-                            <label
-                                class="mb-1 block text-sm font-medium text-slate-700"
-                                >Operating days</label
-                            ><MultiSelect
-                                v-model="operatingHours.days"
-                                :options="operatingDayOptions"
-                                optionLabel="label"
-                                optionValue="value"
-                                placeholder="Select days"
-                                display="chip"
-                                fluid
-                            />
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Operating days</label>
+                            <MultiSelect v-model="operatingHours.days" :options="operatingDayOptions"
+                                optionLabel="label" optionValue="value" placeholder="Select days" display="chip"
+                                fluid />
                         </div>
                         <div>
-                            <label
-                                class="mb-1 block text-sm font-medium text-slate-700"
-                                >Opens at</label
-                            ><DatePicker
-                                :v-model="operatingHours.opens_at"
-                                timeOnly hourFormat="12"
-                                fluid
-                            />
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Opens at</label>
+                            <DatePicker :v-model="operatingHours.opens_at" timeOnly hourFormat="12" fluid />
                         </div>
                         <div>
-                            <label
-                                class="mb-1 block text-sm font-medium text-slate-700"
-                                >Closes at</label
-                            ><DatePicker
-                                :v-model="operatingHours.closes_at"
-                                timeOnly hourFormat="12"
-                                fluid
-                            />
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Closes at</label>
+                            <DatePicker :v-model="operatingHours.closes_at" timeOnly hourFormat="12" fluid />
                         </div>
                     </div>
                     <p class="mt-2 text-xs text-slate-500">
@@ -860,17 +489,13 @@
                         hours are not supported in Simple attendance.
                     </p>
                     <div class="mt-4 flex justify-end">
-                        <Button
-                            label="Save Operating Hours"
-                            icon="pi pi-check"
-                            :loading="savingOperatingHours"
-                            @click="saveOperatingHours"
-                        />
+                        <Button label="Save Operating Hours" icon="pi pi-check" :loading="savingOperatingHours"
+                            @click="saveOperatingHours" />
                     </div>
                 </template>
             </Card>
 
-            <Card v-if="asd">
+            <Card v-if="attendance_geolocation_available">
                 <template #title>Attendance Geolocation</template>
                 <template #content>
                     <p class="text-sm text-slate-600 mb-4">
@@ -888,13 +513,9 @@
                                     {{ attendance.address || "Not set" }}
                                 </div>
                             </div>
-                            <div
-                                class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2"
-                            >
+                            <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                                 <div>
-                                    <div
-                                        class="text-xs uppercase text-slate-400"
-                                    >
+                                    <div class="text-xs uppercase text-slate-400">
                                         Geofence
                                     </div>
                                     <div class="text-sm font-semibold">
@@ -905,24 +526,17 @@
                                         }}
                                     </div>
                                 </div>
-                                <Tag
-                                    :value="
-                                        attendance.geofence_enabled
-                                            ? 'Enabled'
-                                            : 'Disabled'
-                                    "
-                                    :severity="
-                                        attendance.geofence_enabled
+                                <Tag :value="attendance.geofence_enabled
+                                        ? 'Enabled'
+                                        : 'Disabled'
+                                    " :severity="attendance.geofence_enabled
                                             ? 'success'
                                             : 'secondary'
-                                    "
-                                />
+                                        " />
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <div
-                                        class="text-xs uppercase text-slate-400"
-                                    >
+                                    <div class="text-xs uppercase text-slate-400">
                                         Barangay
                                     </div>
                                     <div class="font-semibold">
@@ -930,9 +544,7 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <div
-                                        class="text-xs uppercase text-slate-400"
-                                    >
+                                    <div class="text-xs uppercase text-slate-400">
                                         City
                                     </div>
                                     <div class="font-semibold">
@@ -940,9 +552,7 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <div
-                                        class="text-xs uppercase text-slate-400"
-                                    >
+                                    <div class="text-xs uppercase text-slate-400">
                                         Province
                                     </div>
                                     <div class="font-semibold">
@@ -950,9 +560,7 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <div
-                                        class="text-xs uppercase text-slate-400"
-                                    >
+                                    <div class="text-xs uppercase text-slate-400">
                                         Radius (meters)
                                     </div>
                                     <div class="font-semibold">
@@ -964,9 +572,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div
-                            class="rounded-lg border border-slate-200 bg-slate-50 p-4"
-                        >
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                             <div class="text-xs uppercase text-slate-400">
                                 Attendance location
                             </div>
@@ -977,44 +583,23 @@
                                 Set the address, geofence, and radius used for
                                 employee attendance.
                             </p>
-                            <Button
-                                class="mt-4 w-full"
-                                label="Edit Attendance Location"
-                                icon="pi pi-map-marker"
-                                outlined
-                                @click="openAttendanceEditor"
-                            />
+                            <Button class="mt-4 w-full" label="Edit Attendance Location" icon="pi pi-map-marker"
+                                outlined @click="openAttendanceEditor" />
                         </div>
                     </div>
                 </template>
             </Card>
 
-            <Dialog
-                v-model:visible="attendanceEditorVisible"
-                modal
-                header="Edit Attendance Geolocation"
-                :style="{ width: '52rem' }"
-                @show="handleAttendanceDialogShow"
-            >
+            <Dialog v-model:visible="attendanceEditorVisible" modal header="Edit Attendance Geolocation"
+                :style="{ width: '52rem' }" @show="handleAttendanceDialogShow">
                 <div class="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                     <div>
                         <div class="mb-3 flex flex-wrap items-center gap-2">
-                            <InputText
-                                v-model="searchQuery"
-                                class="flex-1 min-w-[220px]"
-                                placeholder="Search address..."
-                            />
-                            <Button
-                                label="Search"
-                                icon="pi pi-search"
-                                severity="secondary"
-                                @click="searchAddress"
-                            />
+                            <InputText v-model="searchQuery" class="flex-1 min-w-[220px]"
+                                placeholder="Search address..." />
+                            <Button label="Search" icon="pi pi-search" severity="secondary" @click="searchAddress" />
                         </div>
-                        <div
-                            ref="mapEl"
-                            class="h-72 w-full rounded-xl border border-slate-200"
-                        ></div>
+                        <div ref="mapEl" class="h-72 w-full rounded-xl border border-slate-200"></div>
                         <p v-if="mapError" class="mt-2 text-xs text-red-600">
                             {{ mapError }}
                         </p>
@@ -1025,9 +610,7 @@
                     </div>
 
                     <div class="space-y-4">
-                        <div
-                            class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2"
-                        >
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                             <div>
                                 <div class="text-xs uppercase text-slate-400">
                                     Geofence
@@ -1040,97 +623,47 @@
                                     }}
                                 </div>
                             </div>
-                            <InputSwitch
-                                v-model="attendanceDraft.geofence_enabled"
-                            />
+                            <InputSwitch v-model="attendanceDraft.geofence_enabled" />
                         </div>
 
                         <div>
-                            <label
-                                class="mb-1 block text-sm font-medium text-slate-700"
-                                >Address</label
-                            >
-                            <Textarea
-                                v-model="attendanceDraft.address"
-                                rows="4"
-                                class="w-full"
-                                placeholder="Attendance address"
-                            />
+                            <label class="mb-1 block text-sm font-medium text-slate-700">Address</label>
+                            <Textarea v-model="attendanceDraft.address" rows="4" class="w-full"
+                                placeholder="Attendance address" />
                         </div>
 
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                                <label
-                                    class="mb-1 block text-sm font-medium text-slate-700"
-                                    >City</label
-                                >
-                                <Select
-                                    v-model="attendanceDraft.city_id"
-                                    :options="attendanceCityOptions"
-                                    optionLabel="label"
-                                    optionValue="value"
-                                    class="w-full"
-                                    filter
-                                    :loading="attendanceCitiesLoading"
-                                    :disabled="attendanceCitiesLoading"
-                                    placeholder="Select city"
-                                    @change="onAttendanceCityChange"
-                                />
+                                <label class="mb-1 block text-sm font-medium text-slate-700">City</label>
+                                <Select v-model="attendanceDraft.city_id" :options="attendanceCityOptions"
+                                    optionLabel="label" optionValue="value" class="w-full" filter
+                                    :loading="attendanceCitiesLoading" :disabled="attendanceCitiesLoading"
+                                    placeholder="Select city" @change="onAttendanceCityChange" />
                             </div>
                             <div>
-                                <label
-                                    class="mb-1 block text-sm font-medium text-slate-700"
-                                    >Province</label
-                                >
-                                <InputText
-                                    v-model="attendanceDraft.province"
-                                    class="w-full"
-                                    readonly
-                                />
+                                <label class="mb-1 block text-sm font-medium text-slate-700">Province</label>
+                                <InputText v-model="attendanceDraft.province" class="w-full" readonly />
                             </div>
                             <div class="sm:col-span-2">
-                                <label
-                                    class="mb-1 block text-sm font-medium text-slate-700"
-                                    >Barangay</label
-                                >
-                                <Select
-                                    v-model="attendanceDraft.barangay"
-                                    :options="attendanceBarangayOptions"
-                                    optionLabel="label"
-                                    optionValue="value"
-                                    class="w-full"
-                                    filter
-                                    :loading="attendanceBarangaysLoading"
-                                    :disabled="
-                                        !attendanceDraft.city_id ||
+                                <label class="mb-1 block text-sm font-medium text-slate-700">Barangay</label>
+                                <Select v-model="attendanceDraft.barangay" :options="attendanceBarangayOptions"
+                                    optionLabel="label" optionValue="value" class="w-full" filter
+                                    :loading="attendanceBarangaysLoading" :disabled="!attendanceDraft.city_id ||
                                         attendanceBarangaysLoading
-                                    "
-                                    placeholder="Select barangay"
-                                />
+                                        " placeholder="Select barangay" />
                             </div>
                         </div>
 
                         <div>
                             <div class="mb-2 flex items-center justify-between">
-                                <label
-                                    class="block text-sm font-medium text-slate-700"
-                                    >Allowed Radius</label
-                                >
-                                <span
-                                    class="text-sm font-semibold text-slate-900"
-                                    >{{
-                                        attendanceDraft.geofence_radius_m
-                                    }}
-                                    meters</span
-                                >
+                                <label class="block text-sm font-medium text-slate-700">Allowed Radius</label>
+                                <span class="text-sm font-semibold text-slate-900">{{
+                                    attendanceDraft.geofence_radius_m
+                                }}
+                                    meters</span>
                             </div>
-                            <Slider
-                                v-model="attendanceDraft.geofence_radius_m"
-                                :min="0"
-                                :max="100"
-                                :step="1"
-                                class="w-full"
-                            />
+                            <Slider v-model="attendanceDraft.geofence_radius_m" :min="0" :max="100" :step="1"
+                                class="w-full" />
                         </div>
 
                         <div class="grid grid-cols-2 gap-3 text-sm">
@@ -1171,27 +704,14 @@
                     </div>
                 </div>
                 <template #footer>
-                    <Button
-                        label="Cancel"
-                        severity="secondary"
-                        text
-                        @click="attendanceEditorVisible = false"
-                    />
-                    <Button
-                        label="Save Attendance Location"
-                        icon="pi pi-check"
-                        :loading="savingAttendance"
-                        @click="saveAttendance"
-                    />
+                    <Button label="Cancel" severity="secondary" text @click="attendanceEditorVisible = false" />
+                    <Button label="Save Attendance Location" icon="pi pi-check" :loading="savingAttendance"
+                        @click="saveAttendance" />
                 </template>
             </Dialog>
 
-            <Dialog
-                v-model:visible="attendanceSuccessVisible"
-                modal
-                header="Attendance Updated"
-                :style="{ width: '28rem' }"
-            >
+            <Dialog v-model:visible="attendanceSuccessVisible" modal header="Attendance Updated"
+                :style="{ width: '28rem' }">
                 <div class="py-3 text-center">
                     <i class="pi pi-check-circle text-5xl text-green-500"></i>
                     <p class="mt-3 text-slate-700">
@@ -1199,11 +719,7 @@
                         successfully.
                     </p>
                 </div>
-                <template #footer
-                    ><Button
-                        label="Close"
-                        @click="attendanceSuccessVisible = false"
-                /></template>
+                <template #footer><Button label="Close" @click="attendanceSuccessVisible = false" /></template>
             </Dialog>
         </div>
     </div>
@@ -1256,6 +772,7 @@ const props = defineProps<{
     payments: any;
     branches: any[];
     attendance: any;
+    attendance_geolocation_available: boolean;
     operating_hours?: {
         days?: string[];
         opens_at?: string;
@@ -1325,7 +842,14 @@ const saveOperatingHours = () => {
 const savingProfile = ref(false);
 const savingLogo = ref(false);
 const profileEditorVisible = ref(false);
-const profileSuccessVisible = ref(false);
+const profileResponseVisible = ref(false);
+const profileResponseSuccess = ref(false);
+const profileResponseMessage = ref("");
+const showProfileResponse = (success: boolean, message: string) => {
+    profileResponseSuccess.value = success;
+    profileResponseMessage.value = message;
+    profileResponseVisible.value = true;
+};
 const logoDialogVisible = ref(false);
 const attendanceEditorVisible = ref(false);
 const attendanceSuccessVisible = ref(false);
@@ -1401,14 +925,14 @@ const fallbackPlans: UpgradePlan[] = [
 const availablePlans = ref<UpgradePlan[]>(
     Array.isArray(props.available_plans) && props.available_plans.length
         ? props.available_plans.map((plan: any) => ({
-              key: String(plan?.key || ""),
-              label: String(plan?.label || ""),
-              amountPhp: Number(plan?.amount_php ?? plan?.amountPhp ?? 0),
-              months: Number(plan?.months ?? 1),
-              tier: String(plan?.tier || plan?.key || ""),
-              description: String(plan?.description || ""),
-              isFeatured: Boolean(plan?.is_featured ?? plan?.isFeatured),
-          }))
+            key: String(plan?.key || ""),
+            label: String(plan?.label || ""),
+            amountPhp: Number(plan?.amount_php ?? plan?.amountPhp ?? 0),
+            months: Number(plan?.months ?? 1),
+            tier: String(plan?.tier || plan?.key || ""),
+            description: String(plan?.description || ""),
+            isFeatured: Boolean(plan?.is_featured ?? plan?.isFeatured),
+        }))
         : [...fallbackPlans],
 );
 
@@ -1970,10 +1494,16 @@ const onProfileCityChange = async () => {
     }
 };
 
+const formatStorePhone = (value: string) => {
+    const digits = String(value || "").replace(/\D/g, "");
+    const local = digits.startsWith("63") ? digits.slice(2) : digits.startsWith("0") ? digits.slice(1) : digits;
+    return local.length === 10 ? `+63 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}` : String(value || "");
+};
+
 const openProfileEditor = async () => {
     Object.assign(profileForm, {
         contact_person: store.contact_person,
-        phone: store.phone,
+        phone: formatStorePhone(store.phone),
         address: store.address,
         city: store.city,
         barangay: store.barangay,
@@ -1989,13 +1519,13 @@ const openLogoDialog = () => {
     logoSquareBlob.value = null;
     logoOriginalDimensions.width = Number(
         store.logo_dimensions?.original_width ||
-            store.logo_dimensions?.width ||
-            0,
+        store.logo_dimensions?.width ||
+        0,
     );
     logoOriginalDimensions.height = Number(
         store.logo_dimensions?.original_height ||
-            store.logo_dimensions?.height ||
-            0,
+        store.logo_dimensions?.height ||
+        0,
     );
     logoDialogVisible.value = true;
 };
@@ -2291,29 +1821,39 @@ const copyStoreCode = async () => {
 };
 
 const saveStoreProfile = async () => {
+    const phoneDigits = String(profileForm.phone || "").replace(/\D/g, "");
+    if (phoneDigits && !/^63\d{10}$/.test(phoneDigits)) {
+        showProfileResponse(false, "Enter +63 followed by 10 digits.");
+        return;
+    }
+    const submittedProfile = {
+        phone: phoneDigits ? `+${phoneDigits}` : null,
+        type: profileForm.type,
+        address: profileForm.address,
+        city: profileForm.city,
+        province: profileForm.province,
+        barangay: profileBarangayOptions.value.find(
+            (item) => item.value === profileForm.barangay,
+        )?.label || profileForm.barangay,
+        contact_person: profileForm.contact_person,
+    };
     savingProfile.value = true;
     router.put(
         "/store/settings/profile",
-        {
-            ...profileForm,
-            city: profileForm.city,
-            barangay:
-                profileBarangayOptions.value.find(
-                    (item) => item.value === profileForm.barangay,
-                )?.label || profileForm.barangay,
-        },
+        submittedProfile,
         {
             preserveScroll: true,
+            headers: { "X-Suppress-Dialog": "1" },
+            onSuccess: () => {
+                Object.assign(store, submittedProfile);
+                profileEditorVisible.value = false;
+                showProfileResponse(true, "Your store profile was updated successfully.");
+            },
             onError: (errors) => {
-                toast.add({
-                    severity: "error",
-                    summary: "Unable to continue",
-                    detail:
-                        errors?.email ||
-                        errors?.profile ||
-                        "Please check the store profile details.",
-                    life: 3500,
-                });
+                showProfileResponse(false, String(
+                    Object.values(errors || {}).find(Boolean) ||
+                    "Please check the store profile details.",
+                ));
             },
             onFinish: () => {
                 savingProfile.value = false;
@@ -2348,18 +1888,18 @@ const getAttendanceGeofence = () => {
         const bearing = (step / 64) * Math.PI * 2;
         const pointLatitude = Math.asin(
             Math.sin(latitudeRadians) * Math.cos(angularDistance) +
-                Math.cos(latitudeRadians) *
-                    Math.sin(angularDistance) *
-                    Math.cos(bearing),
+            Math.cos(latitudeRadians) *
+            Math.sin(angularDistance) *
+            Math.cos(bearing),
         );
         const pointLongitude =
             longitudeRadians +
             Math.atan2(
                 Math.sin(bearing) *
-                    Math.sin(angularDistance) *
-                    Math.cos(latitudeRadians),
+                Math.sin(angularDistance) *
+                Math.cos(latitudeRadians),
                 Math.cos(angularDistance) -
-                    Math.sin(latitudeRadians) * Math.sin(pointLatitude),
+                Math.sin(latitudeRadians) * Math.sin(pointLatitude),
             );
         ring.push([
             (pointLongitude * 180) / Math.PI,
@@ -2813,7 +2353,7 @@ const handleUpgradePrompt = () => {
 onMounted(async () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("profile_updated") === "1") {
-        profileSuccessVisible.value = true;
+        showProfileResponse(true, "Your store profile was updated successfully.");
         params.delete("profile_updated");
         const query = params.toString();
         window.history.replaceState(

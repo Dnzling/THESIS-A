@@ -9,6 +9,10 @@ use App\Http\Controllers\Api\CRM\VoucherController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('crm')->group(function () {
+    Route::get('/dashboard/activity', [CrmDashboardController::class, 'activity'])
+        ->middleware('can:crm.crm.view');
+    Route::get('/dashboard/overview', [CrmDashboardController::class, 'overview'])
+        ->middleware('can:crm.crm.view');
     Route::get('/dashboard/payment-analytics', [CrmDashboardController::class, 'paymentAnalytics'])
         ->middleware('can:crm.crm.view');
 

@@ -250,7 +250,11 @@ class UserNavigationController extends Controller
         $roleName = strtolower(auth()->user()?->role?->name ?? '');
 
         if ($navItem->name === 'store.employees') {
-            return $roleName === 'owner';
+            // This owner-only page must still respect its navigation permission.
+            // An unlinked item must not bypass a disabled or removed permission.
+            if ($roleName !== 'owner' || $navItem->permissions->isEmpty()) {
+                return false;
+            }
         }
 
         // Supplier portal should always be visible to supplier roles

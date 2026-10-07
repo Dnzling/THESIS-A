@@ -629,7 +629,7 @@ const formatModuleName = (module: string): string => {
   if (catalogName) return catalogName
   if (module === 'warehouse') return 'Warehouse'
   if (module == 'hr') return 'Human Resources'
-  if (module === 'merchandising') return 'Merchandise'
+  if (module === 'merchandising') return 'E-Commerce'
 
   return module
     .replace(/_/g, ' ')

@@ -29,6 +29,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
 
     // Store module (the signed-in user's assigned branch)
     $inertia('/store/dashboard', 'System/Store/Dashboard', 'store.dashboard', 'Store Dashboard');
+    $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
     $inertia('/store/branch-settings', 'System/Store/Settings', 'store.branch-settings', 'Store Settings');
     $inertia('/store/ecommerce', 'System/Store/Ecommerce', 'store.ecommerce', 'Store Ecommerce Performance');
 
@@ -185,9 +186,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/inventory/product-categories', 'System/Merchandising/categories/CategoriesList', 'inventory.product-categories', 'Product Categories');
     $inertia('/inventory/product-categories/create', 'System/Merchandising/categories/CategoryForm', 'inventory.product-categories.create', 'Add Product Category');
     $inertia('/inventory/product-categories/{id}', 'System/Inventory/Categories/CategoryDetail', 'inventory.product-categories.view', 'Product Category');
-    $inertia('/inventory/product-tags', 'System/Merchandising/tags/TagsList', 'inventory.product-tags', 'Product Tags');
-    $inertia('/inventory/product-tags/create', 'System/Merchandising/tags/TagsList', 'inventory.product-tags.create', 'Add Product Tag');
-    $inertia('/inventory/product-tags/{id}', 'System/Merchandising/tags/TagsList', 'inventory.product-tags.view', 'Product Tag');
+    Route::redirect('/inventory/product-tags', '/merchandising/tags')->name('inventory.product-tags');
+    Route::redirect('/inventory/product-tags/create', '/merchandising/tags')->name('inventory.product-tags.create');
+    Route::redirect('/inventory/product-tags/{id}', '/merchandising/tags')->name('inventory.product-tags.view');
     $inertia('/inventory/product-variations', 'System/Merchandising/variations/VariationsList', 'inventory.product-variations', 'Product Variations');
     $inertia('/inventory/product-variations/create', 'System/Merchandising/variations/VariationForm', 'inventory.product-variations.create', 'Add Product Variation');
     $inertia('/inventory/product-variations/{id}', 'System/Merchandising/variations/VariationForm', 'inventory.product-variations.view', 'Product Variation');
@@ -345,6 +346,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     Route::redirect('/sales', '/sales/dashboard')->name('sales');
     $inertia('/sales/dashboard', 'System/Sales/SalesDashboard', 'sales.dashboard', 'Sales Dashboard');
     $inertia('/sales/orders', 'System/Sales/SalesOrdersIndex', 'sales.orders', 'Orders');
+    $inertia('/sales/wholesale-quotes', 'System/Sales/WholesaleQuotes', 'sales.wholesale-quotes', 'Wholesale Quotations');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
     // $inertia('/sales/ecommerce-orders', 'System/Sales/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
@@ -354,7 +356,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     // CRM
     Route::redirect('/crm', '/crm/dashboard')->name('CRM');
     $inertia('/crm/dashboard', 'System/CRM/Dashboard', 'crm.dashboard', 'CRM Dashboard');
-    $inertia('/crm/leads', 'System/CRM/Dashboard', 'crm.leads', 'CRM Leads');
+    $inertia('/crm/leads', 'System/CRM/Leads', 'crm.leads', 'CRM Leads');
     $inertia('/crm/chats', 'System/CRM/Chats/Chats', 'crm.chats', 'Customer Chats');
     $inertia('/crm/reviews', 'System/CRM/Review/ReviewIndex', 'crm.reviews', 'Reviews');
     $inertia('/crm/reviews/{id}', 'System/CRM/Review/ReviewView', 'crm.reviews.view', 'Review Detail');
@@ -382,13 +384,14 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/3d-gallery', 'System/Merchandising/assets/Gallery3D', 'merchandising.3d-gallery', '3D Models Gallery', 'Browse all 3D models');
     $inertia('/merchandising/3d-reconstruction', 'System/Merchandising/assets/Reconstructions', 'merchandising.3d-reconstruction', '3D Reconstruction', 'Generate 3D models from photos');
     $inertia('/merchandising/3d-requests', 'System/Merchandising/assets/Model3dRequests', 'merchandising.3d-requests', '3D Model Requests');
+    $inertia('/merchandising/3d-requests/create', 'System/Merchandising/assets/Model3dRequestCreate', 'merchandising.3d-requests.create', 'Request 3D Model');
     $inertia('/merchandising/inventory', 'System/Merchandising/inventory/InventoryList', 'merchandising.inventory', 'Inventory Status', 'Monitor stock levels across all products');
     $inertia('/merchandising/categories', 'System/Merchandising/categories/CategoriesList', 'merchandising.categories', 'Product Categories', 'Organize your furniture catalog');
     $inertia('/merchandising/categories/new', 'System/Merchandising/categories/CategoryForm', 'merchandising.categories.create', 'Add Category', 'Create a new product category');
     $inertia('/merchandising/categories/{id}/edit', 'System/Merchandising/categories/CategoryForm', 'merchandising.categories.edit', 'Edit Category', 'Update category information');
     $inertia('/merchandising/attributes', 'System/Merchandising/attributes/AttributesList', 'merchandising.attributes', 'Product Attributes', 'Define filterable product characteristics');
     $inertia('/merchandising/attributes/new', 'System/Merchandising/attributes/AttributeForm', 'merchandising.attributes.create', 'Add Attribute', 'Create a new product attribute');
-    $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Tags & Collections', 'Manage product tags and collections');
+    $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Collections', 'Manage product tags and collections');
     $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Pricing Rules', 'Set discounts and pricing strategies');
     $inertia('/merchandising/pricing/bulk-update', 'System/Merchandising/pricing/BulkPricing', 'merchandising.pricing.bulk', 'Bulk Price Update', 'Update multiple product prices at once');
     $inertia('/merchandising/reports', 'System/Merchandising/reports/SalesReports', 'merchandising.reports', 'Sales Reports', 'Analyze product performance');

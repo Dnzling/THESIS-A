@@ -264,8 +264,6 @@ const canManageProducts = computed(() =>
 const productCreateItems = computed(() => [
   { label: 'Categories', icon: 'pi pi-folder', command: () => router.push({ name: 'inventory.product-categories' }) },
   // { label: 'Create Category', icon: 'pi pi-folder-plus', command: () => router.push({ name: 'inventory.product-categories.create' }) },
-  { label: 'Tags', icon: 'pi pi-tags', command: () => router.push({ name: 'inventory.product-tags' }) },
-  // { label: 'Create Tag', icon: 'pi pi-plus-circle', command: () => router.push({ name: 'inventory.product-tags.create' }) },
   { label: 'Variations', icon: 'pi pi-list', command: () => router.push({ name: 'inventory.product-variations' }) },
   // { label: 'Create Variation', icon: 'pi pi-sitemap', command: () => router.push({ name: 'inventory.product-variations.create' }) },
 ])

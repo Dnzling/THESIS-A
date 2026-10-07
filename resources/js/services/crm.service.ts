@@ -1,6 +1,16 @@
 import axiosClient from '@/axios'
 
 class CrmService {
+  async getDashboardOverview(params?: { days?: number }) {
+    const res = await axiosClient.get('/api/crm/dashboard/overview', { params })
+    return res.data
+  }
+
+  async getDashboardActivity(period: 'week' | 'month' | 'year') {
+    const res = await axiosClient.get('/api/crm/dashboard/activity', { params: { period } })
+    return res.data
+  }
+
   async getPaymentAnalytics(params?: any) {
     const res = await axiosClient.get('/api/crm/dashboard/payment-analytics', { params })
     return res.data

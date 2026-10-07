@@ -134,34 +134,6 @@ class NavigationHierarchySeeder extends Seeder
                 'display_order' => 6,
             ],
 
-            // Merchandising groups
-            [
-                'name' => 'merchandising.group.overview',
-                'display_name' => 'Overview',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.group.overview',
-                'route_path' => '#merchandising-overview',
-                'icon' => 'pi pi-home',
-                'display_order' => 1,
-            ],
-            [
-                'name' => 'merchandising.group.catalog',
-                'display_name' => 'Catalog',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.group.catalog',
-                'route_path' => '#merchandising-catalog',
-                'icon' => 'pi pi-tags',
-                'display_order' => 2,
-            ],
-            [
-                'name' => 'merchandising.group.inventory',
-                'display_name' => 'Inventory',
-                'module' => 'merchandising',
-                'route_name' => 'merchandising.group.inventory',
-                'route_path' => '#merchandising-inventory',
-                'icon' => 'pi pi-database',
-                'display_order' => 3,
-            ],
         ];
 
         foreach ($groups as $group) {
@@ -181,7 +153,6 @@ class NavigationHierarchySeeder extends Seeder
         $this->updateDisplayNames();
         $this->assignHrParents();
         $this->assignInventoryParents();
-        $this->assignMerchandisingParents();
 
         $this->command?->info('? Navigation hierarchy seeded successfully.');
     }
@@ -190,7 +161,7 @@ class NavigationHierarchySeeder extends Seeder
     {
         DB::table('navigation_items')->where('name', 'hr.dashboard')->update(['display_name' => 'Overview']);
         DB::table('navigation_items')->where('name', 'inventory.dashboard')->update(['display_name' => 'Overview']);
-        DB::table('navigation_items')->where('name', 'merchandising.dashboard')->update(['display_name' => 'Overview']);
+        DB::table('navigation_items')->where('name', 'merchandising.dashboard')->update(['display_name' => 'Dashboard']);
     }
 
     private function assignHrParents(): void

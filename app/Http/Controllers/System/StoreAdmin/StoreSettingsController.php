@@ -124,6 +124,7 @@ class StoreSettingsController extends Controller
                 ])
                 ->toArray() ?? [],
             'attendance' => $this->resolveAttendanceSettings($store?->id),
+            'attendance_geolocation_available' => $store && $this->planIncludesAttendanceRecording($store),
             'operating_hours' => is_array($store?->settings) ? ($store->settings['simple_operating_hours'] ?? null) : null,
             'subscription' => [
                 'tier' => $subscriptionPlan?->plan_key ?? 'free',
@@ -250,7 +251,7 @@ class StoreSettingsController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|nullable|email|max:255',
-            'phone' => 'sometimes|nullable|string|max:50',
+            'phone' => ['sometimes', 'nullable', 'regex:/^\+63\d{10}$/'],
             'address' => 'sometimes|nullable|string|max:255',
             'city' => 'sometimes|nullable|string|max:255',
             'barangay' => 'sometimes|nullable|string|max:150',
@@ -386,7 +387,7 @@ class StoreSettingsController extends Controller
         return [
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|nullable|email|max:255',
-            'phone' => 'sometimes|nullable|string|max:50',
+            'phone' => ['sometimes', 'nullable', 'regex:/^\+63\d{10}$/'],
             'address' => 'sometimes|nullable|string|max:255',
             'city' => 'sometimes|nullable|string|max:255',
             'barangay' => 'sometimes|nullable|string|max:150',
@@ -414,18 +415,31 @@ class StoreSettingsController extends Controller
 
     public function updateAttendanceSettings(Request $request)
     {
-        $validated = $request->validate($this->attendanceUpdateRules());
-
         $user = $request->user();
         $store = $this->resolveStoreForUser($user);
 
         if (!$store) {
             abort(404, 'Store not found for this user.');
         }
+        abort_unless($this->planIncludesAttendanceRecording($store), 403);
+
+        $validated = $request->validate($this->attendanceUpdateRules());
 
         $this->applyAttendanceUpdate($store, $validated);
 
         return back()->with('success', 'Attendance location updated.');
+    }
+
+    private function planIncludesAttendanceRecording(Store $store): bool
+    {
+        return DB::table('plan_permissions')
+            ->join('permissions', 'permissions.id', '=', 'plan_permissions.permission_id')
+            ->where('plan_permissions.plan_id', $store->getRawOriginal('subscription_tier'))
+            ->where('plan_permissions.included', true)
+            ->where('permissions.name', 'hr.attendance.record')
+            ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
+            ->exists();
     }
 
     private function attendanceUpdateRules(): array

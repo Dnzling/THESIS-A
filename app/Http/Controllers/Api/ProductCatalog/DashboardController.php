@@ -12,75 +12,135 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends BaseController
 {
-    public function overview()
+    public function overview(Request $request)
     {
         try {
             $storeId = $this->getStoreId();
-            $products = Product::query()
-                ->where('store_id', $storeId)
-                ->where('product_type', 'finished_good');
-            $activeProducts = (clone $products)->where('is_active', true);
-            $missingMainImage = (clone $activeProducts)->whereDoesntHave('assets', fn ($query) => $query
-                ->where('asset_type', 'Image_Main'));
+            $days = in_array((int) $request->integer('days', 30), [7, 30, 90], true)
+                ? (int) $request->integer('days', 30) : 30;
+            $start = now()->subDays($days - 1)->startOfDay();
+            $previousStart = $start->copy()->subDays($days);
+            $validOrder = fn ($query) => $query->whereNotIn('status', ['cancelled', 'rejected']);
+            $orders = DB::table('ecommerce_orders')->where('store_id', $storeId);
+            $currentOrders = (clone $orders)->where('created_at', '>=', $start);
+            $previousOrders = (clone $orders)->where('created_at', '>=', $previousStart)->where('created_at', '<', $start);
+            $orderCount = (int) (clone $currentOrders)->count();
+            $validOrderCount = (int) $validOrder(clone $currentOrders)->count();
+            $sales = (float) $validOrder(clone $currentOrders)->sum('total_amount');
+            $previousSales = (float) $validOrder(clone $previousOrders)->sum('total_amount');
+            $previousOrderCount = (int) (clone $previousOrders)->count();
 
-            $thisMonth = now()->startOfMonth();
-            $previousMonth = $thisMonth->copy()->subMonth();
-            $nextMonth = $thisMonth->copy()->addMonth();
-            $createdInRange = fn ($query, $start, $end) => $query
-                ->where('created_at', '>=', $start)
-                ->where('created_at', '<', $end);
-
-            $monthlyProducts = (int) $createdInRange((clone $products), $thisMonth, $nextMonth)->count();
-            $previousMonthlyProducts = (int) $createdInRange((clone $products), $previousMonth, $thisMonth)->count();
-            $catalogTrend = [];
-            for ($offset = 5; $offset >= 0; $offset--) {
-                $start = $thisMonth->copy()->subMonths($offset);
-                $catalogTrend[] = [
-                    'label' => $start->format('M'),
-                    'value' => (int) $createdInRange((clone $products), $start, $start->copy()->addMonth())->count(),
+            $daily = (clone $currentOrders)
+                ->selectRaw("DATE(created_at) as day, COUNT(*) as orders, SUM(CASE WHEN status NOT IN ('cancelled', 'rejected') THEN total_amount ELSE 0 END) as sales")
+                ->groupByRaw('DATE(created_at)')
+                ->get()
+                ->keyBy('day');
+            $salesTrend = [];
+            for ($offset = 0; $offset < $days; $offset++) {
+                $date = $start->copy()->addDays($offset);
+                $row = $daily->get($date->toDateString());
+                $salesTrend[] = [
+                    'date' => $date->toDateString(),
+                    'label' => $date->format('M j'),
+                    'sales' => (float) ($row->sales ?? 0),
+                    'orders' => (int) ($row->orders ?? 0),
                 ];
             }
 
+            $statusBreakdown = (clone $currentOrders)
+                ->selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->orderByDesc('total')
+                ->get()
+                ->map(fn ($row) => ['status' => (string) $row->status, 'count' => (int) $row->total]);
+
+            $topProducts = DB::table('ecommerce_order_items as items')
+                ->join('ecommerce_orders as orders', 'orders.id', '=', 'items.order_id')
+                ->where('orders.store_id', $storeId)
+                ->where('orders.created_at', '>=', $start)
+                ->whereNotIn('orders.status', ['cancelled', 'rejected'])
+                ->selectRaw('items.product_id, items.product_name, items.sku, SUM(items.quantity) as units, SUM(items.line_total) as sales')
+                ->groupBy('items.product_id', 'items.product_name', 'items.sku')
+                ->orderByDesc('sales')
+                ->limit(8)
+                ->get()
+                ->map(fn ($row) => [
+                    'id' => (int) $row->product_id,
+                    'name' => (string) $row->product_name,
+                    'sku' => $row->sku,
+                    'units' => (int) $row->units,
+                    'sales' => (float) $row->sales,
+                ]);
+
+            $unitsSold = (int) DB::table('ecommerce_order_items as items')
+                ->join('ecommerce_orders as orders', 'orders.id', '=', 'items.order_id')
+                ->where('orders.store_id', $storeId)
+                ->where('orders.created_at', '>=', $start)
+                ->whereNotIn('orders.status', ['cancelled', 'rejected'])
+                ->sum('items.quantity');
+
+            $activeProducts = Product::query()->where('store_id', $storeId)
+                ->where('product_type', 'finished_good')->where('is_active', true);
+            $listedProducts = (int) (clone $activeProducts)->count();
+            $missingImage = (clone $activeProducts)->whereDoesntHave('assets', fn ($q) => $q->where('asset_type', 'Image_Main'));
+            $missingImageCount = (int) (clone $missingImage)->count();
+            $with3d = (int) (clone $activeProducts)->whereHas('assets', fn ($q) => $q->where('asset_type', '3D_Model'))->count();
+            $outOfStock = (clone $activeProducts)->whereDoesntHave('inventory', fn ($q) => $q
+                ->where('quantity_available', '>', 0)->where('stock_status', '!=', 'out_of_stock'));
+            $outOfStockCount = (int) (clone $outOfStock)->count();
+
             $mapProduct = fn (Product $product) => [
                 'id' => $product->id,
-                'sku' => $product->sku,
                 'name' => $product->product_name,
+                'sku' => $product->sku,
                 'category' => $product->category?->category_name,
                 'base_price' => (float) ($product->base_price ?? 0),
-                'created_at' => $product->created_at?->toDateString(),
             ];
 
             return response()->json([
                 'success' => true,
                 'data' => [
+                    'period_days' => $days,
                     'summary' => [
-                        'active_products' => (clone $activeProducts)->count(),
-                        'new_products_this_month' => $monthlyProducts,
-                        'new_products_previous_month' => $previousMonthlyProducts,
-                        'missing_main_images' => (clone $missingMainImage)->count(),
-                        'image_ready_products' => max(0, (clone $activeProducts)->count() - (clone $missingMainImage)->count()),
+                        'order_value' => $sales,
+                        'orders' => $orderCount,
+                        'average_order_value' => $validOrderCount ? round($sales / $validOrderCount, 2) : 0,
+                        'units_sold' => $unitsSold,
+                        'previous_order_value' => $previousSales,
+                        'previous_orders' => $previousOrderCount,
+                        'active_listings' => $listedProducts,
+                        'image_ready_products' => max(0, $listedProducts - $missingImageCount),
+                        'missing_main_images' => $missingImageCount,
+                        'products_with_3d' => $with3d,
+                        'out_of_stock_products' => $outOfStockCount,
                     ],
-                    'catalog_trend' => $catalogTrend,
-                    'missing_images' => (clone $missingMainImage)
+                    'sales_trend' => $salesTrend,
+                    'status_breakdown' => $statusBreakdown,
+                    'top_products' => $topProducts,
+                    'missing_images' => (clone $missingImage)
                         ->with('category:id,category_name')
                         ->oldest('created_at')
                         ->limit(5)
                         ->get()
                         ->map($mapProduct),
-                    'recent_products' => (clone $products)
+                    'out_of_stock_products' => (clone $outOfStock)
                         ->with('category:id,category_name')
-                        ->latest('created_at')
+                        ->orderBy('product_name')
                         ->limit(5)
                         ->get()
                         ->map($mapProduct),
+                    'recent_orders' => (clone $currentOrders)
+                        ->latest('created_at')
+                        ->limit(6)
+                        ->get(['id', 'order_number', 'shipping_name', 'status', 'payment_status', 'total_amount', 'created_at']),
                 ],
             ]);
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Merchandising dashboard overview failed', ['exception' => $e]);
+            \Illuminate\Support\Facades\Log::error('E-Commerce dashboard overview failed', ['exception' => $e]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load merchandising dashboard.',
+                'message' => 'Failed to load E-Commerce dashboard.',
             ], 500);
         }
     }

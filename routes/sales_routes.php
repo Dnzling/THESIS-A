@@ -4,12 +4,24 @@ use App\Http\Controllers\Api\Sales\SalesPosController;
 use App\Http\Controllers\Api\Sales\SalesOrderDeliveryController;
 use App\Http\Controllers\Api\Sales\SalesRefundController;
 use App\Http\Controllers\Api\Sales\SalesReportsController;
+use App\Http\Controllers\Api\Sales\WholesaleQuoteController;
 use App\Http\Controllers\Api\Inventory\EcommerceOrderManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('sales')->group(function () {
+    Route::get('/dashboard/trend', [\App\Http\Controllers\Api\DashboardTrendController::class, 'sales'])->middleware('can:sales.dashboard.view');
     Route::get('/dashboard', [SalesPosController::class, 'dashboard'])->middleware('can:sales.dashboard.view');
     Route::get('/orders', [SalesPosController::class, 'unifiedOrders']);
+
+    Route::prefix('wholesale-quotes')->group(function () {
+        Route::get('/', [WholesaleQuoteController::class, 'index'])->middleware('can:sales.orders.view');
+        Route::get('/options', [WholesaleQuoteController::class, 'options'])->middleware('can:sales.orders.view');
+        Route::post('/', [WholesaleQuoteController::class, 'store'])->middleware('can:sales.orders.manage');
+        Route::get('/{id}', [WholesaleQuoteController::class, 'show'])->middleware('can:sales.orders.view');
+        Route::put('/{id}/status', [WholesaleQuoteController::class, 'updateStatus'])->middleware('can:sales.orders.manage');
+        Route::post('/{id}/convert', [WholesaleQuoteController::class, 'convert'])->middleware('can:sales.orders.manage');
+        Route::post('/{id}/record-payment', [WholesaleQuoteController::class, 'recordPayment'])->middleware('can:sales.orders.manage');
+    });
 
     Route::prefix('pos')->group(function () {
         Route::get('/products', [SalesPosController::class, 'products'])->middleware('can:sales.pos.view');

@@ -29,6 +29,7 @@
 	.dashboard--merchandising { --dashboard-accent: 219 39 119; --dashboard-accent-soft: 253 242 248; }
 	.dashboard--sales { --dashboard-accent: 234 88 12; --dashboard-accent-soft: 255 247 237; }
 	.dashboard--inventory { --dashboard-accent: 22 163 74; --dashboard-accent-soft: 240 253 244; }
+	.dashboard--ecommerce { --dashboard-accent: 234 88 12; --dashboard-accent-soft: 255 247 237; }
 	.dashboard--crm { --dashboard-accent: 217 119 6; --dashboard-accent-soft: 255 251 235; }
 
 	.module-dashboard .dashboard-hero {

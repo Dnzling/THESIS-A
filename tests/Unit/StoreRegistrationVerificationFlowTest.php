@@ -135,10 +135,12 @@ it('registers an owner and store, then verifies the store through super admin re
             'gov_id_number' => 'TEST-123456789',
             'gov_id_front_file' => UploadedFile::fake()->createWithContent('owner-id-front.png', $pngContent),
             'business_registration_number' => 'REG-TEST-001',
+            'tax_certificate_number' => 'TIN-123-456-789',
+            'permit_number' => 'PERMIT-TEST-001',
             'business_registration_date' => now()->subYear()->toDateString(),
             'business_registration_file' => UploadedFile::fake()->createWithContent('business-registration.pdf', $pdfContent),
-            'tax_certificate_file' => UploadedFile::fake()->createWithContent('tax-certificate.pdf', $pdfContent),
-            'business_permit_file' => UploadedFile::fake()->createWithContent('business-permit.pdf', $pdfContent),
+            'tax_certificate_file' => UploadedFile::fake()->createWithContent('tax-certificate.png', $pngContent),
+            'business_permit_file' => UploadedFile::fake()->createWithContent('business-permit.png', $pngContent),
         ])
         ->assertCreated()
         ->assertJsonPath('success', true);

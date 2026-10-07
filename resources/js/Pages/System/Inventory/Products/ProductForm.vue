@@ -94,12 +94,6 @@
                   <small v-if="errors.base_price" class="text-red-500">{{ errors.base_price }}</small>
                 </div>
                 <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">Discounted Price <span class="text-gray-400">(optional)</span></label>
-                  <InputNumber v-model="form.discounted_price" mode="currency" currency="PHP" locale="en-PH" :min="0"
-                    :max="form.base_price ?? undefined" class="w-full text-sm" fluid size="small" placeholder="No discount" />
-                  <small v-if="errors.discounted_price" class="text-red-500">{{ errors.discounted_price }}</small>
-                </div>
-                <div>
                   <label class="mb-1 block text-sm font-medium text-gray-700">Category <span
                       class="text-red-500">*</span></label>
                   <Select v-model="form.category_id" :options="parentCategories" optionLabel="category_name"
@@ -119,13 +113,6 @@
                     :disabled="!form.category_id" showClear filter size="small" />
                   <small v-if="errors.subcategory_id" class="text-red-500">{{ errors.subcategory_id }}</small>
                 </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-gray-700">Tags <span class="text-gray-400">(up to 3)</span></label>
-                  <MultiSelect v-model="form.tag_ids" :options="tags" optionLabel="tag_name" optionValue="id"
-                    class="w-full text-sm" placeholder="Select up to 3 tags" display="chip" filter
-                    :maxSelectedLabels="3" :selectionLimit="3" :loading="loadingTags" size="small" />
-                  <small v-if="errors.tag_ids" class="text-red-500">{{ errors.tag_ids }}</small>
-                </div>
                 <div class="md:col-span-2">
                   <p class="mb-2 text-sm font-medium text-gray-700">Dimensions (cm)</p>
                   <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -134,13 +121,6 @@
                     <InputNumber v-model="form.height_cm" class="w-full text-sm" fluid size="small" :min="0" placeholder="Height" suffix=" cm" />
                   </div>
                   <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
-                </div>
-                <div class="md:col-span-2 flex items-center justify-between rounded-xl border border-gray-200 px-3 py-3">
-                  <div>
-                    <p class="text-sm font-medium text-gray-700">Assembly required</p>
-                    <p class="text-xs text-gray-500">Turn on if the customer needs to assemble this product.</p>
-                  </div>
-                  <ToggleSwitch v-model="form.assembly_required" />
                 </div>
               </template>
 
@@ -218,11 +198,6 @@
                   class="w-full text-sm" fluid size="small" placeholder="₱0.00" />
               </div>
 
-              <div class="md:col-span-2">
-                <label class="mb-1 block text-sm font-medium text-gray-700">Description</label>
-                <Textarea v-model="form.description" rows="4" class="w-full text-sm" placeholder="Optional notes" />
-              </div>
-
               <div class="md:col-span-2 flex items-center gap-2">
                 <Checkbox v-model="form.is_active" :binary="true" inputId="product_active" />
                 <label for="product_active" class="text-sm text-gray-700">Active</label>
@@ -247,10 +222,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import inventoryService from '../../../../services/inventory.service'
-import merchandisingService from '../../../../services/merchandising.service'
 import { useAuthStore } from '../../../../stores/auth'
-import MultiSelect from 'primevue/multiselect'
-import ToggleSwitch from 'primevue/toggleswitch'
 import Chip from 'primevue/chip'
 import Popover from 'primevue/popover'
 
@@ -296,7 +268,6 @@ const unitMeasureOptions = [
 
 const form = reactive({
   product_name: '',
-  description: '',
   product_type: 'finished_good',
   custom_product_type: '',
   brand: '',
@@ -305,12 +276,9 @@ const form = reactive({
   supplier_id: null as number | null,
   cost_price: null as number | null,
   base_price: null as number | null,
-  discounted_price: null as number | null,
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
-  assembly_required: false,
-  tag_ids: [] as number[],
   unit_of_measurement: '',
   initial_stock: null as number | null,
   reorder_point: 10 as number | null,
@@ -334,9 +302,6 @@ type SupplierOption = {
 }
 
 const categories = ref<ProductCategory[]>([])
-type ProductTag = { id: number; tag_name: string }
-const tags = ref<ProductTag[]>([])
-const loadingTags = ref(false)
 const canManageFinishedGoods = computed(() => authStore.hasPermission('merchandising.products.manage'))
 const showFinishedGoodFields = computed(() => form.product_type === 'finished_good' && canManageFinishedGoods.value)
 const suppliers = ref<SupplierOption[]>([])
@@ -379,26 +344,11 @@ const loadSuppliers = async () => {
   }
 }
 
-const loadTags = async () => {
-  if (!canManageFinishedGoods.value) return
-  loadingTags.value = true
-  try {
-    const response = await merchandisingService.getTags({ active_only: true, per_page: 100 })
-    const result = response.data
-    tags.value = Array.isArray(result) ? result : (result?.data || [])
-  } catch {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load product tags', life: 3000 })
-  } finally {
-    loadingTags.value = false
-  }
-}
-
 const loadProduct = async (id: number) => {
   try {
     const response = await inventoryService.getProduct(id)
     const product = response.data
     form.product_name = product.product_name || ''
-    form.description = product.description || ''
     const knownTypes = ['finished_good', 'supply', 'raw_material']
     form.product_type = knownTypes.includes(product.product_type) ? product.product_type : 'others'
     form.custom_product_type = knownTypes.includes(product.product_type) ? '' : (product.product_type || '')
@@ -411,12 +361,9 @@ const loadProduct = async (id: number) => {
     form.supplier_id = preferredSupplier ? Number(preferredSupplier.id) : null
     form.cost_price = product.inventory_cost_price ?? product.cost_price ?? null
     form.base_price = product.base_price != null ? Number(product.base_price) : null
-    form.discounted_price = product.discounted_price != null ? Number(product.discounted_price) : null
     form.length_cm = product.length_cm != null ? Number(product.length_cm) : null
     form.width_cm = product.width_cm != null ? Number(product.width_cm) : null
     form.height_cm = product.height_cm != null ? Number(product.height_cm) : null
-    form.assembly_required = Boolean(product.assembly_required)
-    form.tag_ids = Array.isArray(product.tags) ? product.tags.slice(0, 3).map((tag: ProductTag) => Number(tag.id)) : []
     form.unit_of_measurement = product.unit_of_measurement || ''
     form.reorder_point = product.reorder_point ?? 10
     form.is_active = product.is_active !== false
@@ -487,9 +434,6 @@ const validate = () => {
       ? 'Create a category before adding a finished good'
       : 'Category is required for a finished good'
   }
-  if (showFinishedGoodFields.value && form.discounted_price != null && form.base_price != null && form.discounted_price > form.base_price) {
-    errors.value.discounted_price = 'Discounted price cannot be greater than the selling price'
-  }
   if (!form.unit_of_measurement) errors.value.unit_of_measurement = 'Unit measure is required'
   return Object.keys(errors.value).length === 0
 }
@@ -501,7 +445,6 @@ const handleSubmit = async () => {
   try {
     const payload = new FormData()
     payload.append('product_name', form.product_name)
-    if (form.description) payload.append('description', form.description)
     payload.append('product_type', form.product_type === 'others' ? form.custom_product_type.trim() : form.product_type)
     if (showFinishedGoodFields.value) payload.append('brand', form.brand.trim())
     if (showFinishedGoodFields.value) {
@@ -511,12 +454,9 @@ const handleSubmit = async () => {
     if (form.cost_price != null) payload.append('cost_price', String(form.cost_price))
     if (showFinishedGoodFields.value) {
       if (form.base_price != null) payload.append('base_price', String(form.base_price))
-      payload.append('discounted_price', form.discounted_price != null ? String(form.discounted_price) : '')
       if (form.length_cm != null) payload.append('length_cm', String(form.length_cm))
       if (form.width_cm != null) payload.append('width_cm', String(form.width_cm))
       if (form.height_cm != null) payload.append('height_cm', String(form.height_cm))
-      payload.append('assembly_required', form.assembly_required ? '1' : '0')
-      form.tag_ids.slice(0, 3).forEach(id => payload.append('tag_ids[]', String(id)))
     }
     payload.append('supplier_id', form.supplier_id != null ? String(form.supplier_id) : '')
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)
@@ -568,7 +508,7 @@ const handleSubmit = async () => {
 const goBack = () => router.push({ name: 'inventory.items' })
 
 onMounted(async () => {
-  await Promise.all([loadCategories(), loadSuppliers(), loadTags()])
+  await Promise.all([loadCategories(), loadSuppliers()])
   if (isEditMode.value) {
     await loadProduct(Number(route.params.id))
   }

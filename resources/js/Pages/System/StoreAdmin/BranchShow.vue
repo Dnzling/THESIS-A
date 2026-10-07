@@ -88,7 +88,7 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="space-y-2">
             <label class="text-xs font-semibold text-slate-600">Province</label>
-            <Select v-model="form.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select province" :loading="isProvincesLoading" @change="onProvinceChange" disable />
+            <Select v-model="form.provinceId" :options="provinceOptions" optionLabel="label" optionValue="value" class="w-full" placeholder="Select province" filter :loading="isProvincesLoading" :disabled="form.branch_type !== 'warehouse'" @change="onProvinceChange" />
           </div>
           <div class="space-y-2">
             <label class="text-xs font-semibold text-slate-600">City *</label>
@@ -176,6 +176,7 @@ const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
 const branchTypeOptions = [
   { label: 'Storefront', value: 'storefront' },
+  { label: 'Wholesale', value: 'wholesale' },
   { label: 'Warehouse', value: 'warehouse' },
 ]
 const form = ref({
@@ -330,6 +331,19 @@ const onProvinceChange = async () => {
   barangays.value = []
   await fetchCities(form.value.provinceId)
 }
+
+watch(() => form.value.branch_type, (type, previous) => {
+  if (!showEdit.value || type === previous || type === 'warehouse') return
+  const cavite = provinces.value.find((item: any) => normalize(item.name || item.province_name) === 'cavite')
+  form.value.provinceId = String(cavite?.province_id || cavite?.code || cavite?.id || '')
+  form.value.province = cavite?.name || cavite?.province_name || 'Cavite'
+  form.value.cityId = ''
+  form.value.city = ''
+  form.value.barangay = ''
+  cities.value = []
+  barangays.value = []
+  if (form.value.provinceId) void fetchCities(form.value.provinceId)
+})
 
 const onCityChange = async () => {
   const city = cities.value.find((item: any) => String(item.city_id || item.code || item.id) === String(form.value.cityId))

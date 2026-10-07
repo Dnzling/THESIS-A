@@ -36,6 +36,7 @@ class CrmLeadController extends Controller
             $search = trim((string) $request->input('search'));
             $query->where(function ($q) use ($search) {
                 $q->where('full_name', 'like', "%{$search}%")
+                    ->orWhere('company_name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('lead_code', 'like', "%{$search}%");
@@ -50,8 +51,11 @@ class CrmLeadController extends Controller
     {
         $validated = $request->validate([
             'full_name' => 'required|string|max:150',
+            'customer_type' => ['sometimes', Rule::in(['individual', 'business'])],
+            'company_name' => 'nullable|required_if:customer_type,business|string|max:150',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:255',
             'source' => 'nullable|string|max:80',
             'estimated_value' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:2000',
@@ -69,8 +73,11 @@ class CrmLeadController extends Controller
             'branch_id' => $user->branch_id,
             'lead_code' => $this->nextLeadCode(),
             'full_name' => $validated['full_name'],
+            'customer_type' => $validated['customer_type'] ?? 'individual',
+            'company_name' => $validated['company_name'] ?? null,
             'email' => $validated['email'] ?? null,
             'phone' => $validated['phone'] ?? null,
+            'address' => $validated['address'] ?? null,
             'source' => $validated['source'] ?? 'walk_in',
             'stage' => 'new',
             'estimated_value' => $validated['estimated_value'] ?? 0,
@@ -97,8 +104,11 @@ class CrmLeadController extends Controller
         $lead = $this->resolveLead($request, $id);
         $validated = $request->validate([
             'full_name' => 'required|string|max:150',
+            'customer_type' => ['sometimes', Rule::in(['individual', 'business'])],
+            'company_name' => 'nullable|required_if:customer_type,business|string|max:150',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:255',
             'source' => 'nullable|string|max:80',
             'estimated_value' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:2000',

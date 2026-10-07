@@ -79,12 +79,15 @@
       <Card class="rounded-2xl border border-slate-200 shadow-sm xl:col-span-2">
         <template #title>
           <div class="flex items-center justify-between">
-            <span class="text-base font-semibold text-slate-800">6-Month Outflow Trend</span>
-            <Tag value="Chart.js" severity="info" />
+            <span class="text-base font-semibold text-slate-800">Outflow Trend</span>
+            <Select v-model="outflowTrend.period.value" :options="trendPeriods" optionLabel="label" optionValue="value" class="w-36" aria-label="Outflow trend period" />
           </div>
         </template>
         <template #content>
-          <Chart type="line" :data="outflowTrendData" :options="lineOptions" class="h-80" />
+          <Skeleton v-if="outflowTrend.loading.value" height="20rem" class="rounded-xl" />
+          <div v-else-if="outflowTrend.error.value" class="flex h-80 flex-col items-center justify-center gap-2 text-sm text-red-600">{{ outflowTrend.error.value }}<Button text label="Try again" @click="outflowTrend.reload" /></div>
+          <Chart v-else-if="outflowTrend.points.value.some((point) => point.invoices || point.expenses || point.payroll)" type="line" :data="outflowTrendData" :options="lineOptions" class="h-80" />
+          <p v-else class="flex h-80 items-center justify-center text-sm text-slate-500">No outflow in this period.</p>
         </template>
       </Card>
   
@@ -188,9 +191,13 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Chart from 'primevue/chart'
 import Tag from 'primevue/tag'
+import Select from 'primevue/select'
+import Skeleton from 'primevue/skeleton'
+import { trendPeriods, useDashboardTrend } from '@/composables/useDashboardTrend'
 import financeService from '../../../services/finance.service'
 
 const router = useRouter()
+const outflowTrend = useDashboardTrend('/api/finance/dashboard/trend')
 
 const loading = ref(false)
 const loadError = ref('')
@@ -245,81 +252,14 @@ const formatDate = (value: unknown) => {
   return dt.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: '2-digit' })
 }
 
-const monthBuckets = computed(() => {
-  const now = new Date()
-  const months: { key: string; label: string }[] = []
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const label = d.toLocaleString('en-PH', { month: 'short' })
-    months.push({ key, label })
-  }
-  return months
-})
-
-const outflowTrendData = computed(() => {
-  const labels = monthBuckets.value.map((m) => m.label)
-  const invoiceMap: Record<string, number> = {}
-  const expenseMap: Record<string, number> = {}
-  const payrollMap: Record<string, number> = {}
-
-  monthBuckets.value.forEach((m) => {
-    invoiceMap[m.key] = 0
-    expenseMap[m.key] = 0
-    payrollMap[m.key] = 0
-  })
-
-  invoices.value.forEach((row) => {
-    const dt = parseDate(row?.due_date || row?.created_at)
-    if (!dt) return
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-    if (key in invoiceMap) invoiceMap[key] = (invoiceMap[key] || 0) + toAmount(row?.amount || row?.payment_amount)
-  })
-
-  expenses.value.forEach((row) => {
-    const dt = parseDate(row?.created_at)
-    if (!dt) return
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-    if (key in expenseMap) expenseMap[key] = (expenseMap[key] || 0) + toAmount(row?.amount)
-  })
-
-  payrolls.value.forEach((row) => {
-    const dt = parseDate(row?.created_at)
-    if (!dt) return
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-    if (key in payrollMap) payrollMap[key] = (payrollMap[key] || 0) + toAmount(row?.net_salary)
-  })
-
-  return {
-    labels,
-    datasets: [
-      {
-        label: 'Invoices',
-        data: monthBuckets.value.map((m) => invoiceMap[m.key]),
-        borderColor: '#1d4ed8',
-        backgroundColor: 'rgba(29, 78, 216, 0.15)',
-        fill: true,
-        tension: 0.35,
-      },
-      {
-        label: 'Expenses',
-        data: monthBuckets.value.map((m) => expenseMap[m.key]),
-        borderColor: '#d97706',
-        backgroundColor: 'rgba(217, 119, 6, 0.15)',
-        fill: true,
-        tension: 0.35,
-      },
-      {
-        label: 'Payroll',
-        data: monthBuckets.value.map((m) => payrollMap[m.key]),
-        borderColor: '#be123c',
-        backgroundColor: 'rgba(190, 18, 60, 0.15)',
-        fill: true,
-        tension: 0.35,
-      },
-    ],
-  }
-})
+const outflowTrendData = computed(() => ({
+  labels: outflowTrend.points.value.map((point: any) => point.label),
+  datasets: [
+    { label: 'Invoices', data: outflowTrend.points.value.map((point: any) => Number(point.invoices)), borderColor: '#1d4ed8', backgroundColor: 'rgba(29, 78, 216, 0.15)', fill: true, tension: 0.35 },
+    { label: 'Expenses', data: outflowTrend.points.value.map((point: any) => Number(point.expenses)), borderColor: '#d97706', backgroundColor: 'rgba(217, 119, 6, 0.15)', fill: true, tension: 0.35 },
+    { label: 'Payroll', data: outflowTrend.points.value.map((point: any) => Number(point.payroll)), borderColor: '#be123c', backgroundColor: 'rgba(190, 18, 60, 0.15)', fill: true, tension: 0.35 },
+  ],
+}))
 
 const overdueInvoices = computed(() => {
   const today = new Date()

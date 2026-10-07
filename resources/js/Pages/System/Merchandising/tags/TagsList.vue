@@ -3,12 +3,12 @@
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h2 class="text-2xl font-bold text-gray-800">Tags & Collections</h2>
-        <p class="text-sm text-gray-500 mt-1">Manage product tags for filtering and organization</p>
+        <h2 class="text-2xl font-bold text-gray-800">Collections</h2>
+        <p class="text-sm text-gray-500 mt-1">Group and organize products for your storefront</p>
       </div>
       <Button 
         v-if="canManageTags"
-        label="Add Tag" 
+        label="Add Collection"
         icon="pi pi-plus" 
         @click="openCreateDialog"
       />
@@ -64,7 +64,7 @@
                 <h3 class="text-lg font-bold text-gray-900">{{ tag.tag_name }}</h3>
                 <Tag :value="tag.tag_type" :severity="getTagTypeSeverity(tag.tag_type)" size="small" class="mt-2" />
               </div>
-              <div class="flex gap-1">
+              <div v-if="canManageTags" class="flex gap-1">
                 <Button 
                   icon="pi pi-pencil" 
                   severity="warning"
@@ -118,10 +118,10 @@
       <template #content>
         <div class="text-center py-12">
           <i class="pi pi-tags text-6xl text-gray-300"></i>
-          <p class="text-gray-600 mt-4 text-lg">No tags found</p>
-          <p class="text-gray-500 text-sm mt-2">Create tags to organize and filter your products</p>
-          <Button 
-            label="Create Your First Tag" 
+              <p class="text-gray-600 mt-4 text-lg">No collections found</p>
+              <p class="text-gray-500 text-sm mt-2">Create collections to organize products on your storefront.</p>
+          <Button v-if="canManageTags"
+            label="Create Your First Collection"
             icon="pi pi-plus" 
             class="mt-4" 
             @click="openCreateDialog"
@@ -142,7 +142,7 @@
     <!-- Create/Edit Tag Dialog -->
     <Dialog 
       v-model:visible="formDialogVisible" 
-      :header="editMode ? 'Edit Tag' : 'Create Tag'" 
+    :header="editMode ? 'Edit Collection' : 'Create Collection'"
       :modal="true" 
       class="w-full max-w-lg"
     >
@@ -183,7 +183,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '../../../../stores/auth'
-import { useRoute } from 'vue-router'
 import merchandisingService from '../../../../services/merchandising.service'
 import TagForm from './TagForm.vue'
 
@@ -200,11 +199,7 @@ import InputIcon from 'primevue/inputicon'
 
 const toast = useToast()
 const authStore = useAuthStore()
-const route = useRoute()
-const isInventoryContext = computed(() => String(route.name || '').startsWith('inventory.'))
-const canManageTags = computed(() => isInventoryContext.value
-  ? authStore.hasPermission('inventory.product.manage')
-  : authStore.hasPermission('merchandising.tags.create'))
+const canManageTags = computed(() => authStore.hasPermission('merchandising.tags.manage'))
 
 // State
 const tags = ref([])
@@ -344,7 +339,6 @@ const getTagTypeSeverity = (type: string) => {
 
 onMounted(() => {
   loadTags()
-  if (route.name === 'inventory.product-tags.create') openCreateDialog()
 })
 </script>
 
