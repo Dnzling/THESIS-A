@@ -39,6 +39,10 @@ Route::get('/subscription-checkout', function () {
     return Inertia::render('Auth/SubscriptionCheckout');
 })->name('subscription.checkout');
 
+Route::get('/wholesale-payment/return', function () {
+    return Inertia::render('Marketing/WholesalePaymentReturn');
+})->name('wholesale.payment.return');
+
 Route::get('/business/pricing', function () {
     return Inertia::render('Marketing/Pricing');
 })->name('pricing');

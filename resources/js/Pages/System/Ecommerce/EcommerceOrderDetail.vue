@@ -79,7 +79,9 @@
             </div>
            
             <div v-if="isPickupOrder" class="md:col-span-2"><span class="text-slate-500">Fulfillment:</span> <span class="font-semibold">Store pickup</span></div>
+            <div v-if="isPickupOrder" class="md:col-span-2"><span class="text-slate-500">Pickup at:</span> <span class="font-semibold">{{ order.assigned_branch?.name || 'Store branch' }}</span><span class="ml-1">{{ [order.assigned_branch?.address, order.assigned_branch?.barangay, order.assigned_branch?.city, order.assigned_branch?.province].filter(Boolean).join(', ') || 'Contact the store for the address.' }}</span></div>
             <div v-else class="md:col-span-2"><span class="text-slate-500">Shipping Address:</span> <span class="font-semibold">{{ order.shipping_address || '-' }}</span></div>
+            <div v-if="order.billing_address" class="md:col-span-2"><span class="text-slate-500">Billing Address:</span> <span class="font-semibold">{{ order.billing_name ? `${order.billing_name} - ` : '' }}{{ order.billing_address }}</span></div>
             <template v-if="showTransitDetails">
               <div><span class="text-slate-500">Tracking Number:</span> <span class="font-semibold">{{
                   order.delivery?.tracking_number || '-' }}</span></div>
@@ -232,7 +234,7 @@
             <div class="flex justify-between"><span>Subtotal</span><span>{{ formatMoney(order.subtotal) }}</span></div>
             <div class="flex justify-between"><span>VATable Sales</span><span>{{ formatMoney(vatableSales) }}</span></div>
             <div class="flex justify-between"><span> (12%)</span><span>{{ formatMoney(order.tax_amount) }}</span></div>
-            <div v-if="Number(order.shipping_fee || 0) > 0" class="flex justify-between"><span>Shipping</span><span>{{ formatMoney(order.shipping_fee) }}</span></div>
+            <div class="flex justify-between"><span>{{ isPickupOrder ? 'Pickup fee' : 'Shipping' }}</span><span>{{ Number(order.shipping_fee || 0) <= 0 ? 'Free' : formatMoney(order.shipping_fee) }}</span></div>
             <div class="flex justify-between"><span>Discount</span><span>- {{ formatMoney(order.discount_amount) }}</span></div>
             <Divider />
             <div class="flex justify-between text-base font-bold"><span>Total</span><span>{{ formatMoney(order.total_amount) }}</span></div>

@@ -12,7 +12,7 @@ class WholesaleQuote extends Model
 
     protected $fillable = [
         'store_id', 'branch_id', 'crm_lead_id', 'quote_number', 'status', 'items',
-        'subtotal', 'valid_until', 'payment_terms', 'notes', 'sales_order_id', 'created_by',
+        'subtotal', 'valid_until', 'payment_terms', 'notes', 'sales_order_id', 'invoice_number', 'created_by',
     ];
 
     protected $casts = ['items' => 'array', 'subtotal' => 'decimal:2', 'valid_until' => 'date'];

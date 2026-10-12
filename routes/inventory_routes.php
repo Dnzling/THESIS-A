@@ -57,8 +57,7 @@ Route::prefix('inventory')->group(function () {
     // Shared supplier directory exposed in the Inventory context. These are
     // the same store-scoped supplier records used by Procurement.
     Route::get('/suppliers', [InventorySupplierController::class, 'index']);
-    Route::post('/suppliers', [QuickSupplierController::class, 'store'])
-        ->middleware('subscription.capacity:suppliers');
+    Route::post('/suppliers', [QuickSupplierController::class, 'store']);
     Route::put('/suppliers/{id}', [QuickSupplierController::class, 'store'])->whereNumber('id');
     Route::get('/suppliers/{id}/edit', [QuickSupplierController::class, 'edit'])->whereNumber('id');
     Route::get('/suppliers/{id}', [QuickSupplierController::class, 'show'])->whereNumber('id');
@@ -296,7 +295,7 @@ Route::prefix('inventory')->group(function () {
     // Warehouses Management
     Route::prefix('warehouses')->group(function () {
         Route::get('/', [WarehouseController::class, 'index']);
-        Route::post('/', [WarehouseController::class, 'store'])->middleware('subscription.capacity:warehouse_registration');
+        Route::post('/', [WarehouseController::class, 'store']);
         Route::get('/{warehouse}', [WarehouseController::class, 'show']);
         Route::put('/{warehouse}', [WarehouseController::class, 'update']);
         Route::delete('/{warehouse}', [WarehouseController::class, 'destroy']);
@@ -422,7 +421,7 @@ Route::prefix('inventory')->group(function () {
     // Delivery Vehicles
     Route::prefix('delivery-vehicles')->group(function () {
         Route::get('/', [EcommerceDeliveryVehicleController::class, 'index']);
-        Route::post('/', [EcommerceDeliveryVehicleController::class, 'store'])->middleware('subscription.capacity:vehicles');
+        Route::post('/', [EcommerceDeliveryVehicleController::class, 'store']);
         Route::get('/{id}', [EcommerceDeliveryVehicleController::class, 'show']);
         Route::put('/{id}', [EcommerceDeliveryVehicleController::class, 'update']);
     });

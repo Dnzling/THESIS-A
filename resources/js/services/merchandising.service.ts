@@ -104,6 +104,42 @@ class MerchandisingService {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/overview`, { params: { days } })
         return response.data
     }
+
+    // ==================== PROMOTIONS ====================
+    async getPromotions(params?: any) {
+        const response = await axiosClient.get(`${this.baseUrl}/promotions`, { params })
+        return response.data
+    }
+
+    async getPromotionOptions() {
+        const response = await axiosClient.get(`${this.baseUrl}/promotions/options`)
+        return response.data
+    }
+
+    async createPromotion(data: any) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions`, data)
+        return response.data
+    }
+
+    async updatePromotion(id: number, data: any) {
+        const response = await axiosClient.put(`${this.baseUrl}/promotions/${id}`, data)
+        return response.data
+    }
+
+    async togglePromotion(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions/${id}/toggle`)
+        return response.data
+    }
+
+    async duplicatePromotion(id: number) {
+        const response = await axiosClient.post(`${this.baseUrl}/promotions/${id}/duplicate`)
+        return response.data
+    }
+
+    async deletePromotion(id: number) {
+        const response = await axiosClient.delete(`${this.baseUrl}/promotions/${id}`)
+        return response.data
+    }
     async getActivityLog(params: any) {
         const response = await axiosClient.get(`${this.baseUrl}/dashboard/activity`, { params })
         return response.data

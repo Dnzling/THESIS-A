@@ -46,7 +46,7 @@
           <template #title>
             <div>
               <h2 class="text-base font-semibold text-slate-900">Pricing components</h2>
-              <p class="mt-1 text-sm font-normal text-slate-500">Shipping fee = base fee + distance fee + quantity fee + weight fee + applicable surcharges.</p>
+              <p class="mt-1 text-sm font-normal text-slate-500">Shipping fee = one base fee per order + distance fee + weight fee + bulky handling and applicable surcharges.</p>
             </div>
           </template>
           <template #content>
@@ -70,11 +70,6 @@
                 <label for="per-kg-fee">Rate per kilogram <span class="text-red-500">*</span></label>
                 <InputNumber id="per-kg-fee" v-model="form.per_kg_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
                 <small>Multiplied by the total recorded product weight.</small>
-              </div>
-              <div class="field-group">
-                <label for="per-item-fee">Rate per furniture item <span class="text-red-500">*</span></label>
-                <InputNumber id="per-item-fee" v-model="form.per_item_fee" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
-                <small>Multiplied by the total quantity of items in the order.</small>
               </div>
             </div>
           </template>
@@ -120,7 +115,11 @@
               <div class="field-group">
                 <label for="bulky-surcharge">Bulky item surcharge</label>
                 <InputNumber id="bulky-surcharge" v-model="form.bulky_item_surcharge" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
+                <small>Charged for each bulky unit, not every furniture item.</small>
               </div>
+              <div class="field-group"><label for="bulky-weight">Bulky weight threshold</label><InputNumber id="bulky-weight" v-model="form.bulky_weight_threshold_kg" fluid suffix=" kg" :min="0.01" /><small>Optional. A product at or above this weight is bulky.</small></div>
+              <div class="field-group"><label for="bulky-side">Bulky longest-side threshold</label><InputNumber id="bulky-side" v-model="form.bulky_longest_side_threshold_cm" fluid suffix=" cm" :min="0.01" /><small>Optional. Uses the largest recorded dimension.</small></div>
+              <div class="field-group"><label for="bulky-volume">Bulky volume threshold</label><InputNumber id="bulky-volume" v-model="form.bulky_volume_threshold_cbm" fluid suffix=" m³" :min="0.001" :maxFractionDigits="3" /><small>Optional. Uses recorded length × width × height.</small></div>
               <div class="field-group">
                 <label for="remote-surcharge">Remote area surcharge</label>
                 <InputNumber id="remote-surcharge" v-model="form.remote_area_surcharge" fluid mode="currency" currency="PHP" locale="en-PH" :min="0" />
@@ -160,16 +159,9 @@
                 <label for="estimate-weight">Weight</label>
                 <InputNumber id="estimate-weight" v-model="estimateForm.total_weight_kg" fluid suffix=" kg" :min="0" :max-fraction-digits="2" />
               </div>
-              <div class="field-group">
-                <label for="estimate-quantity">Furniture quantity</label>
-                <InputNumber id="estimate-quantity" v-model="estimateForm.item_quantity" fluid :min="0" :min-fraction-digits="0" :max-fraction-digits="0" />
-              </div>
+              <div class="field-group"><label for="estimate-bulky-quantity">Bulky units</label><InputNumber id="estimate-bulky-quantity" v-model="estimateForm.bulky_quantity" fluid :min="0" :maxFractionDigits="0" /></div>
             </div>
             <div class="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div class="flex items-center justify-between gap-3">
-                <label for="estimate-bulky" class="text-sm text-slate-700">Bulky items</label>
-                <InputSwitch id="estimate-bulky" v-model="estimateForm.has_bulky_items" />
-              </div>
               <div class="flex items-center justify-between gap-3">
                 <label for="estimate-remote" class="text-sm text-slate-700">Remote area</label>
                 <InputSwitch id="estimate-remote" v-model="estimateForm.is_remote_area" />
@@ -185,8 +177,7 @@
                 <div class="fee-row"><span>Base fee</span><span>{{ money(estimateResult.breakdown.base_fee) }}</span></div>
                 <div class="fee-row"><span>Distance fee</span><span>{{ money(estimateResult.breakdown.distance_fee) }}</span></div>
                 <div class="fee-row"><span>Weight fee</span><span>{{ money(estimateResult.breakdown.weight_fee) }}</span></div>
-                <div class="fee-row"><span>Quantity fee</span><span>{{ money(estimateResult.breakdown.item_fee) }}</span></div>
-                <div v-if="estimateResult.breakdown.bulky_item_surcharge" class="fee-row"><span>Bulky surcharge</span><span>{{ money(estimateResult.breakdown.bulky_item_surcharge) }}</span></div>
+                <div v-if="estimateResult.breakdown.bulky_item_surcharge" class="fee-row"><span>Bulky handling ({{ estimateResult.breakdown.bulky_quantity }} units)</span><span>{{ money(estimateResult.breakdown.bulky_item_surcharge) }}</span></div>
                 <div v-if="estimateResult.breakdown.remote_area_surcharge" class="fee-row"><span>Remote surcharge</span><span>{{ money(estimateResult.breakdown.remote_area_surcharge) }}</span></div>
                 <div v-if="estimateResult.breakdown.free_shipping_applied" class="mt-3 rounded-lg bg-emerald-500/15 px-3 py-2 text-emerald-300">Free shipping threshold applied.</div>
                 <div v-else-if="estimateResult.breakdown.minimum_applied" class="mt-3 rounded-lg bg-amber-500/15 px-3 py-2 text-amber-200">Minimum delivery fee applied.</div>
@@ -224,10 +215,12 @@ interface DeliverySettingsForm {
   base_fee: number
   per_km_fee: number
   per_kg_fee: number
-  per_item_fee: number
   min_delivery_fee: number
   free_shipping_min_order: number | null
   bulky_item_surcharge: number
+  bulky_weight_threshold_kg: number | null
+  bulky_longest_side_threshold_cm: number | null
+  bulky_volume_threshold_cbm: number | null
   remote_area_surcharge: number
   max_delivery_distance_km: number | null
   bulk_discount_rate: number | null
@@ -246,10 +239,12 @@ const form = reactive<DeliverySettingsForm>({
   base_fee: 100,
   per_km_fee: 10,
   per_kg_fee: 0,
-  per_item_fee: 0,
   min_delivery_fee: 80,
   free_shipping_min_order: null,
   bulky_item_surcharge: 0,
+  bulky_weight_threshold_kg: null,
+  bulky_longest_side_threshold_cm: null,
+  bulky_volume_threshold_cbm: null,
   remote_area_surcharge: 0,
   max_delivery_distance_km: null,
   bulk_discount_rate: 10,
@@ -260,8 +255,7 @@ const estimateForm = reactive({
   subtotal: 0,
   distance_km: 0,
   total_weight_kg: 0,
-  item_quantity: 1,
-  has_bulky_items: false,
+  bulky_quantity: 0,
   is_remote_area: false,
 })
 

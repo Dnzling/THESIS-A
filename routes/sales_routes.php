@@ -21,6 +21,7 @@ Route::prefix('sales')->group(function () {
         Route::put('/{id}/status', [WholesaleQuoteController::class, 'updateStatus'])->middleware('can:sales.orders.manage');
         Route::post('/{id}/convert', [WholesaleQuoteController::class, 'convert'])->middleware('can:sales.orders.manage');
         Route::post('/{id}/record-payment', [WholesaleQuoteController::class, 'recordPayment'])->middleware('can:sales.orders.manage');
+        Route::post('/{id}/payment-link', [WholesaleQuoteController::class, 'createPaymentLink'])->middleware('can:sales.orders.manage');
     });
 
     Route::prefix('pos')->group(function () {

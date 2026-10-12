@@ -463,6 +463,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'account.operational'])->grou
     require __DIR__ . '/ecommerce_routes.php';
     require __DIR__ . '/sales_routes.php';
     require __DIR__ . '/crm_routes.php';
+    require __DIR__ . '/staff_chat_routes.php';
     require __DIR__ . '/job_hiring_routes.php';
     require __DIR__ . '/finance_routes.php';
 

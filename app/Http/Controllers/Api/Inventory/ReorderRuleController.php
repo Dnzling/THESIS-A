@@ -183,6 +183,10 @@ class ReorderRuleController extends Controller
             DB::beginTransaction();
 
             $payload = $request->validated();
+            if (($payload['basis_type'] ?? null) === 'demand_lead_time' && !app(\App\Services\Inventory\ForecastPlanService::class)->allowsForecast((int) ($request->user()?->store_id ?: $request->user()?->employee?->store_id))) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => 'Forecast-based reorder rules require Growth or Enterprise.'], 422);
+            }
             if (empty($payload['branch_id'])) {
                 $payload['branch_id'] = $this->resolveBranchId($request);
             }
@@ -255,6 +259,10 @@ class ReorderRuleController extends Controller
             DB::beginTransaction();
 
             $payload = $request->validated();
+            if (($payload['basis_type'] ?? null) === 'demand_lead_time' && !app(\App\Services\Inventory\ForecastPlanService::class)->allowsForecast((int) ($request->user()?->store_id ?: $request->user()?->employee?->store_id))) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => 'Forecast-based reorder rules require Growth or Enterprise.'], 422);
+            }
             if (empty($payload['branch_id'])) {
                 $payload['branch_id'] = (int) $reorderRule->branch_id;
             }

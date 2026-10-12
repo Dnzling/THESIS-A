@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ProductCatalog\AttributeController;
 use App\Http\Controllers\Api\ProductCatalog\DashboardController;
 use App\Http\Controllers\Api\ProductCatalog\DeliveryFeeSettingController;
 use App\Http\Controllers\Api\ProductCatalog\Product3DReconstructionController;
+use App\Http\Controllers\Api\ProductCatalog\PromotionController;
 
 // Product Catalog Routes
 Route::prefix('product-catalog')->group(function () {
@@ -88,6 +89,12 @@ Route::prefix('product-catalog')->group(function () {
     Route::apiResource('tags', TagController::class);
     Route::post('tags/assign-to-product', [TagController::class, 'assignToProduct']);
     Route::post('tags/bulk/delete', [TagController::class, 'bulkDelete']);
+
+    // Store-scoped promotions
+    Route::get('promotions/options', [PromotionController::class, 'options']);
+    Route::post('promotions/{id}/toggle', [PromotionController::class, 'toggle']);
+    Route::post('promotions/{id}/duplicate', [PromotionController::class, 'duplicate']);
+    Route::apiResource('promotions', PromotionController::class)->except(['show']);
 
     // Delivery Fee Settings (hybrid: fixed + distance + surcharges)
     Route::get('delivery-fee-settings', [DeliveryFeeSettingController::class, 'show']);

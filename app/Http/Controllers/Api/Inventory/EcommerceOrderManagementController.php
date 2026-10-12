@@ -233,6 +233,12 @@ class EcommerceOrderManagementController extends Controller
 
         DB::transaction(function () use ($request, $order, $validated, $targetStatus) {
             $previousOrderStatus = (string) $order->status;
+            $reservation = app(\App\Services\Ecommerce\EcommerceStockReservationService::class);
+            if ($targetStatus === 'cancelled') {
+                $reservation->release($order);
+            } elseif (in_array($targetStatus, ['ready_for_dispatch', 'ready_for_pickup'], true)) {
+                $reservation->consume($order);
+            }
             $order->status = $targetStatus;
 
             if (!empty($validated['notes'])) {
@@ -386,6 +392,7 @@ class EcommerceOrderManagementController extends Controller
             ]);
 
             if ($newStatus === 'approved') {
+                app(\App\Services\Ecommerce\EcommerceStockReservationService::class)->release($order);
                 $previousOrderStatus = (string) $order->status;
                 $order->status = 'cancelled';
                 $order->save();

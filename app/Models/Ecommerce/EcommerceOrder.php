@@ -29,6 +29,8 @@ class EcommerceOrder extends Model
         'shipping_phone',
         'shipping_email',
         'shipping_address',
+        'billing_name',
+        'billing_address',
         'fulfillment_method',
         'pickup_date',
         'customer_latitude',

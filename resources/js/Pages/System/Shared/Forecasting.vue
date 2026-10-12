@@ -38,6 +38,19 @@
       </DataTable>
       <Paginator v-if="total > 15" :rows="15" :first="(page - 1) * 15" :totalRecords="total" @page="page = $event.page + 1; load()" />
     </template></Card>
+    <Card v-if="consolidatedEnabled" class="border border-slate-200 shadow-sm"><template #content>
+      <h2 class="text-sm font-semibold text-slate-900">Storefront demand and warehouse supply</h2>
+      <p class="mb-4 mt-1 text-slate-500">Store-wide stock outflow is compared with pooled warehouse availability. This does not assign a specific warehouse to a storefront.</p>
+      <DataTable :value="consolidated" :loading="loading" rowHover size="small" paginator :rows="10">
+        <template #empty><div class="py-8 text-center text-slate-500">No storefront demand in this period.</div></template>
+        <Column field="product_name" header="Product" />
+        <Column field="sku" header="SKU" />
+        <Column field="storefront_units" header="Storefront units" />
+        <Column field="forecast_30_days" header="30-day forecast" />
+        <Column field="warehouse_available" header="Warehouse available" />
+        <Column header="Supply gap"><template #body="{ data }"><Badge :value="number(data.gap)" :severity="data.gap > 0 ? 'warn' : 'success'" /></template></Column>
+      </DataTable>
+    </template></Card>
   </div>
 </template>
 
@@ -74,6 +87,8 @@ const error = ref('')
 const rows = ref<any[]>([])
 const branches = ref<any[]>([])
 const trend = ref<any[]>([])
+const consolidated = ref<any[]>([])
+const consolidatedEnabled = ref(false)
 const summary = ref<any>({ products: 0, reorder_now: 0, forecast_units: 0, recommended_units: 0 })
 const number = (value: any) => new Intl.NumberFormat('en-PH', { maximumFractionDigits: 1 }).format(Number(value) || 0)
 const cards = computed(() => [
@@ -98,6 +113,8 @@ async function load() {
     total.value = data.total || 0
     branches.value = data.branches || []
     trend.value = data.trend || []
+    consolidated.value = data.consolidated || []
+    consolidatedEnabled.value = !!data.plan_features?.consolidated
     summary.value = data.summary || {}
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Could not load the forecast.'

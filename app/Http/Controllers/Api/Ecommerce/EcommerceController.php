@@ -31,6 +31,7 @@ use App\Models\Logistics\DeliveryZone;
 use App\Models\Logistics\DeliveryZoneRate;
 use App\Models\CRM\SalesReview;
 use App\Services\Sales\OrderCommissionService;
+use App\Services\Ecommerce\PromotionPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -45,7 +46,8 @@ class EcommerceController extends Controller
     private const VAT_RATE = 12.0;
 
     public function __construct(
-        private readonly OrderCommissionService $commissionService
+        private readonly OrderCommissionService $commissionService,
+        private readonly PromotionPricingService $promotionPricing
     ) {
     }
 
@@ -60,6 +62,7 @@ class EcommerceController extends Controller
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('inventory', function ($inventoryQuery) {
+                        $inventoryQuery->sellableInEcommerce();
                         $inventoryQuery->where('quantity_available', '>', 0)
                             ->where('stock_status', '!=', 'out_of_stock');
                     });
@@ -123,7 +126,7 @@ class EcommerceController extends Controller
     public function storeProfile(Request $request, int $storeId)
     {
         $store = Store::query()
-            ->select(['id', 'name', 'phone as contact_number', 'city', 'address', 'status', 'created_at', 'settings'])
+            ->select(['id', 'name', 'type', 'phone as contact_number', 'email', 'province', 'city', 'barangay', 'address', 'status', 'created_at', 'settings'])
             ->whereIn('status', ['active', 'verified'])
             ->findOrFail($storeId);
 
@@ -144,6 +147,7 @@ class EcommerceController extends Controller
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                        $inventoryQuery->sellableInEcommerce();
                         $inventoryQuery->where('store_id', $storeId)
                             ->where('quantity_available', '>', 0)
                             ->where('stock_status', '!=', 'out_of_stock');
@@ -203,7 +207,11 @@ class EcommerceController extends Controller
                 'name' => $store->name,
                 'contact_person' => null,
                 'contact_number' => $store->contact_number,
+                'email' => $store->email,
+                'type' => $store->type,
+                'province' => $store->province,
                 'city' => $store->city,
+                'barangay' => $store->barangay,
                 'address' => $store->address,
                 'store_logo' => $this->toAssetUrl($storeLogo),
                 'status' => $store->status,
@@ -239,6 +247,7 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                $inventoryQuery->sellableInEcommerce();
                 $inventoryQuery->where('store_id', $storeId)
                     ->where('quantity_available', '>', 0)
                     ->where('stock_status', '!=', 'out_of_stock');
@@ -280,6 +289,7 @@ class EcommerceController extends Controller
 
         $products->getCollection()->transform(function (Product $product) use ($storeId, $hasReviewsTable) {
             $inventory = BranchInventory::query()
+                ->sellableInEcommerce()
                 ->where('store_id', $storeId)
                 ->where('product_id', $product->id)
                 ->orderByDesc('quantity_available')
@@ -307,7 +317,7 @@ class EcommerceController extends Controller
                 'description' => $product->description,
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
-                'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
+                'price' => $this->promotionPricing->price($product)['price'],
                 'tax_rate' => self::VAT_RATE,
                 // Prefer served asset URL (avoids relying on public /storage symlink in production).
                 'image' => $this->selectBestProductImage($product)?->url,
@@ -327,6 +337,7 @@ class EcommerceController extends Controller
                     ->where('is_active', true)
                     ->whereNull('deleted_at')
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                        $inventoryQuery->sellableInEcommerce();
                         $inventoryQuery->where('store_id', $storeId)
                             ->where('quantity_available', '>', 0)
                             ->where('stock_status', '!=', 'out_of_stock');
@@ -441,6 +452,7 @@ class EcommerceController extends Controller
                 'products.product_name',
                 'products.description',
                 'products.category_id',
+                'products.subcategory_id',
                 'products.base_price',
                 'products.discounted_price',
                 'products.store_id'
@@ -464,6 +476,12 @@ class EcommerceController extends Controller
                 ->whereColumn('branch_inventory.product_id', 'products.id')
                 ->where('branch_inventory.store_id', $storeId)
                 ->where('branch_inventory.quantity_available', '>', 0)
+                ->whereExists(function ($branchQuery) {
+                    $branchQuery->selectRaw('1')->from('branches')
+                        ->whereColumn('branches.id', 'branch_inventory.branch_id')
+                        ->where('branches.branch_type', 'storefront')
+                        ->where('branches.status', 'active');
+                })
                 ->where('branch_inventory.stock_status', '!=', 'out_of_stock');
         });
 
@@ -484,7 +502,7 @@ class EcommerceController extends Controller
         $products->getCollection()->transform(function (Product $product) use ($storeId, $inventories, $productImages, $product3dModels, $productRatings) {
             $inventory = $inventories[$product->id] ?? null;
             $rating = $productRatings[$product->id] ?? ['rating_avg' => 0.0, 'rating_count' => 0];
-            $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
+            $price = $this->promotionPricing->price($product)['price'];
 
             return [
                 'id' => $product->id,
@@ -494,10 +512,10 @@ class EcommerceController extends Controller
                 'category_id' => $product->category_id,
                 'category' => $product->category?->category_name,
                 'base_price' => round((float) ($product->base_price ?? 0), 2),
-                'discounted_price' => $product->discounted_price !== null ? round((float) $product->discounted_price, 2) : null,
+                'discounted_price' => $price < (float) ($product->base_price ?? 0) ? $price : null,
                 'price' => round($price, 2),
                 'base_price' => round((float) ($product->base_price ?? 0), 2),
-                'discounted_price' => $product->discounted_price !== null ? round((float) $product->discounted_price, 2) : null,
+                'discounted_price' => $price < (float) ($product->base_price ?? 0) ? $price : null,
                 'image' => $this->toAssetUrl($productImages[$product->id] ?? null),
                 'has_3d_model' => isset($product3dModels[$product->id]),
                 'rating_avg' => $rating['rating_avg'],
@@ -567,6 +585,7 @@ class EcommerceController extends Controller
 
         // DB-portable approach (no window functions): order by qty desc and pick first per product in PHP.
         $inventories = BranchInventory::query()
+            ->sellableInEcommerce()
             ->select(['product_id', 'quantity_available', 'stock_status'])
             ->where('store_id', $storeId)
             ->whereIn('product_id', $productIds)
@@ -692,6 +711,7 @@ class EcommerceController extends Controller
                 $query->where('store_id', (int) $request->input('store_id'));
             })
             ->whereHas('inventory', function ($inventoryQuery) {
+                $inventoryQuery->sellableInEcommerce();
                 $inventoryQuery
                     ->where('quantity_available', '>', 0)
                     ->whereIn('stock_status', ['in_stock', 'low_stock']);
@@ -701,6 +721,7 @@ class EcommerceController extends Controller
         $storeId = (int) $product->store_id;
 
         $inventory = BranchInventory::query()
+            ->sellableInEcommerce()
             ->where('store_id', $storeId)
             ->where('product_id', $product->id)
             ->where('quantity_available', '>', 0)
@@ -708,10 +729,11 @@ class EcommerceController extends Controller
             ->orderByDesc('quantity_available')
             ->first();
 
-        $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
+        $price = $this->promotionPricing->price($product)['price'];
 
         // Variation-level availability across branches (best available row per variation).
         $variationInventories = BranchInventory::query()
+            ->sellableInEcommerce()
             ->select(['variation_id', 'quantity_available', 'stock_status'])
             ->where('store_id', $storeId)
             ->where('product_id', $product->id)
@@ -826,6 +848,8 @@ class EcommerceController extends Controller
                 'store_logo' => $this->toAssetUrl($storeLogo),
                 'category' => $product->category?->category_name,
                 'price' => round($price, 2),
+                'base_price' => round((float) ($product->base_price ?? 0), 2),
+                'discounted_price' => $price < (float) ($product->base_price ?? 0) ? $price : null,
                 'tax_rate' => self::VAT_RATE,
                 'assembly_required' => (bool) ($product->assembly_required ?? false),
                 'is_featured' => (bool) ($product->is_featured ?? false),
@@ -854,7 +878,7 @@ class EcommerceController extends Controller
                         'zoom' => (float) ($model3d->default_zoom_level ?? 3),
                     ],
                 ] : null,
-                'variations' => $product->variations->map(function ($variation) use ($price, $variationInventoryMap) {
+                'variations' => $product->variations->map(function ($variation) use ($product, $variationInventoryMap) {
                     $variationModel = $variation->custom3dModel;
                     $variationImage = $variation->customImage;
                     $variationInventory = $variationInventoryMap[(int) $variation->id] ?? [
@@ -863,9 +887,7 @@ class EcommerceController extends Controller
                     ];
                     $isSelectable = ((int) $variationInventory['quantity_available']) > 0
                         && ((string) $variationInventory['stock_status']) !== 'out_of_stock';
-                    $variationPrice = (float) ($variation->discounted_price
-                        ?? $variation->base_price
-                        ?? ($price + (float) ($variation->price_adjustment ?? 0)));
+                    $variationPrice = $this->promotionPricing->price($product, $variation)['price'];
 
                     return [
                         'id' => (int) $variation->id,
@@ -875,8 +897,8 @@ class EcommerceController extends Controller
                         'size' => $variation->size,
                         'material' => $variation->material,
                         'price_adjustment' => (float) ($variation->price_adjustment ?? 0),
-                        'base_price' => round((float) ($variation->base_price ?? $variationPrice), 2),
-                        'discounted_price' => $variation->discounted_price !== null ? round((float) $variation->discounted_price, 2) : null,
+                        'base_price' => $this->promotionPricing->price($product, $variation)['regular_price'],
+                        'discounted_price' => $variationPrice < $this->promotionPricing->price($product, $variation)['regular_price'] ? $variationPrice : null,
                         'final_price' => round($variationPrice, 2),
                         'quantity_available' => (int) ($variationInventory['quantity_available'] ?? 0),
                         'stock_status' => (string) ($variationInventory['stock_status'] ?? 'out_of_stock'),
@@ -1091,6 +1113,7 @@ class EcommerceController extends Controller
         }
 
         $inventory = BranchInventory::query()
+            ->sellableInEcommerce()
             ->where('store_id', $storeId)
             ->where('product_id', $product->id)
             ->when($variation, fn($q) => $q->where('variation_id', $variation->id))
@@ -1104,12 +1127,7 @@ class EcommerceController extends Controller
             ], 422);
         }
 
-        $basePrice = (float) ($product->discounted_price ?? $product->base_price ?? 0);
-        $price = $variation
-            ? round((float) ($variation->discounted_price
-                ?? $variation->base_price
-                ?? ($basePrice + (float) ($variation->price_adjustment ?? 0))), 2)
-            : $basePrice;
+        $price = $this->promotionPricing->price($product, $variation)['price'];
         $variationName = $variation
             ? ($variation->variation_name ?: trim(collect([$variation->color, $variation->size, $variation->material])->filter()->join(' / ')))
             : null;
@@ -1184,6 +1202,7 @@ class EcommerceController extends Controller
         $cart = $item->cart;
 
         $inventory = BranchInventory::query()
+            ->sellableInEcommerce()
             ->where('store_id', $cart->store_id)
             ->where('product_id', $item->product_id)
             ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
@@ -1316,18 +1335,37 @@ class EcommerceController extends Controller
             ], 422);
         }
 
+        $this->applyCurrentCartPrices($itemsForCheckout);
+
         $hasDeliveryVehicle = EcommerceDeliveryVehicle::query()
             ->where('store_id', $cart->store_id)
             ->where('is_active', true)
             ->where('status', 'active')
             ->exists();
         if (!$hasDeliveryVehicle) {
+            $pickupBranch = $this->resolveFulfillmentBranch((int) $cart->store_id, $itemsForCheckout);
+            if (!$pickupBranch) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No storefront branch can fulfill this pickup order right now.',
+                ], 422);
+            }
+            $pickupBranch->loadMissing('store');
             return response()->json([
                 'success' => true,
                 'data' => [
                     'shipping_fee' => 0.0,
                     'pickup_only' => true,
                     'fulfillment_method' => 'pickup',
+                    'pickup_branch' => [
+                        'id' => $pickupBranch->id,
+                        'name' => $pickupBranch->name,
+                        'address' => $pickupBranch->address ?: $pickupBranch->store?->address,
+                        'barangay' => $pickupBranch->barangay ?: $pickupBranch->store?->barangay,
+                        'city' => $pickupBranch->city ?: $pickupBranch->store?->city,
+                        'province' => $pickupBranch->province ?: $pickupBranch->store?->province,
+                        'contact_number' => $pickupBranch->contact_number ?: $pickupBranch->store?->phone,
+                    ],
                     'bulk_trip_allowed' => false,
                     'fallback_used' => false,
                     'fallback_reason' => null,
@@ -1401,7 +1439,8 @@ class EcommerceController extends Controller
             $subtotal += (float) $item->unit_price * (int) $item->quantity;
         }
         $itemQuantity = (int) $itemsForCheckout->sum('quantity');
-        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm, $totalWeight, $itemQuantity);
+        $bulkyQuantity = $this->countBulkyUnits($cart->store_id, $itemsForCheckout);
+        $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $subtotal, $distanceKm, $totalWeight, $bulkyQuantity);
         if (!($fallback['delivery_available'] ?? true)) {
             return response()->json([
                 'success' => false,
@@ -1425,7 +1464,8 @@ class EcommerceController extends Controller
                     'base_fee' => (float) ($fallback['base_fee'] ?? 0),
                     'distance_fee' => (float) ($fallback['distance_fee'] ?? 0),
                     'weight_fee' => (float) ($fallback['weight_fee'] ?? 0),
-                    'item_fee' => (float) ($fallback['item_fee'] ?? 0),
+                    'bulky_item_surcharge' => (float) ($fallback['bulky_item_surcharge'] ?? 0),
+                    'bulky_quantity' => $bulkyQuantity,
                     'item_quantity' => $itemQuantity,
                     'distance_km' => round($distanceKm, 2),
                     'weight_kg' => round($totalWeight, 2),
@@ -1445,6 +1485,8 @@ class EcommerceController extends Controller
             'shipping_phone' => ['nullable', 'string', 'max:50'],
             'shipping_email' => ['nullable', 'email', 'max:120'],
             'shipping_address' => ['nullable', 'string'],
+            'billing_name' => ['nullable', 'string', 'max:120'],
+            'billing_address' => ['nullable', 'string', 'max:1000'],
             'payment_method' => ['required', Rule::in(['cod', 'bank_transfer', 'card', 'e_wallet'])],
             'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'fulfillment_method' => ['nullable', Rule::in(['delivery', 'pickup'])],
@@ -1505,6 +1547,8 @@ class EcommerceController extends Controller
                 'message' => 'Cart is empty.',
             ], 422);
         }
+
+        $this->applyCurrentCartPrices($itemsForCheckout);
 
         $hasDeliveryVehicle = EcommerceDeliveryVehicle::query()
             ->where('store_id', $cart->store_id)
@@ -1629,7 +1673,7 @@ class EcommerceController extends Controller
 
             // Always recalculate on the server when coordinates are available.
             // The client-provided amount is only a fallback when routing data is unavailable.
-            $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm, $totalWeight, (int) $itemsForCheckout->sum('quantity'));
+            $fallback = $this->computeStoreDeliveryFeeFallback($cart->store_id, $previewSubtotal, $distanceKm, $totalWeight, $this->countBulkyUnits($cart->store_id, $itemsForCheckout));
             if (!($fallback['delivery_available'] ?? true)) {
                 return response()->json([
                     'success' => false,
@@ -1669,6 +1713,8 @@ class EcommerceController extends Controller
                 'shipping_phone' => $validated['shipping_phone'] ?? null,
                 'shipping_email' => $validated['shipping_email'] ?? null,
                 'shipping_address' => $validated['shipping_address'] ?? '',
+                'billing_name' => $validated['billing_name'] ?? null,
+                'billing_address' => $validated['billing_address'] ?? null,
                 'fulfillment_method' => $fulfillmentMethod,
                 'customer_latitude' => $customerLatitude,
                 'customer_longitude' => $customerLongitude,
@@ -1685,12 +1731,29 @@ class EcommerceController extends Controller
                 'updated_by' => $user->id,
             ]);
 
-            // For Online Payment methods, defer order item creation and inventory reservation until payment is confirmed.
-            // This prevents "products ordered" being stored/consumed when Online Payment checkout is cancelled/expired.
+            // Online payments keep their item snapshot, but reserve storefront stock immediately.
             if ($isPaymongo) {
-                $snapshotItems = $itemsForCheckout->map(function ($item) use ($customizationRequests) {
-                    return [
+                $snapshotItems = [];
+                foreach ($itemsForCheckout as $item) {
+                    $inventory = BranchInventory::query()
+                        ->sellableInEcommerce()
+                        ->where('store_id', $cart->store_id)
+                        ->where('branch_id', $fulfillmentBranch->id)
+                        ->where('product_id', $item->product_id)
+                        ->when($item->variation_id, fn ($q) => $q->where('variation_id', $item->variation_id), fn ($q) => $q->whereNull('variation_id'))
+                        ->where('quantity_available', '>=', $item->quantity)
+                        ->orderByDesc('quantity_available')
+                        ->lockForUpdate()
+                        ->first();
+                    if (!$inventory) {
+                        throw new \RuntimeException("Insufficient stock for {$item->product?->product_name}");
+                    }
+                    $inventory->quantity_available -= (int) $item->quantity;
+                    $inventory->quantity_reserved += (int) $item->quantity;
+                    $inventory->updateStockStatus();
+                    $snapshotItems[] = [
                         'cart_item_id' => (int) $item->id,
+                        'branch_inventory_id' => (int) $inventory->id,
                         'product_id' => (int) $item->product_id,
                         'variation_id' => $item->variation_id ? (int) $item->variation_id : null,
                         'variation_name' => $item->variation_name ? (string) $item->variation_name : null,
@@ -1702,7 +1765,7 @@ class EcommerceController extends Controller
                             : null,
                         'customization_status' => $item->product?->is_customizable && $customizationRequests->get((int) $item->id) ? 'pending' : null,
                     ];
-                })->values()->all();
+                }
 
                 foreach ($itemsForCheckout as $item) {
                     $subtotal += (float) $item->unit_price * (int) $item->quantity;
@@ -1724,6 +1787,7 @@ class EcommerceController extends Controller
                     'total_amount' => $totalAmount,
                     'pending_snapshot' => [
                         'items' => $snapshotItems,
+                        'stock_reserved' => true,
                     ],
                 ], $commission));
 
@@ -1732,10 +1796,11 @@ class EcommerceController extends Controller
 
             foreach ($itemsForCheckout as $item) {
                 $inventory = BranchInventory::query()
+                    ->sellableInEcommerce()
                     ->where('store_id', $cart->store_id)
                     ->where('branch_id', $fulfillmentBranch->id)
                     ->where('product_id', $item->product_id)
-                    ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id))
+                    ->when($item->variation_id, fn($q) => $q->where('variation_id', $item->variation_id), fn($q) => $q->whereNull('variation_id'))
                     ->where('quantity_available', '>=', $item->quantity)
                     ->orderByDesc('quantity_available')
                     ->lockForUpdate()
@@ -1773,11 +1838,12 @@ class EcommerceController extends Controller
                     'line_total' => round($lineTotal, 2),
                 ]);
 
-                $inventory->quantity_reserved = max(0, (int) $inventory->quantity_reserved - (int) $item->quantity);
-                $inventory->quantity_on_hand = max(0, (int) $inventory->quantity_on_hand - (int) $item->quantity);
-                $inventory->quantity_available = max(0, (int) $inventory->quantity_available - (int) $item->quantity);
+                $inventory->quantity_reserved += (int) $item->quantity;
+                $inventory->quantity_available -= (int) $item->quantity;
                 $inventory->updateStockStatus();
             }
+
+            $order->pending_snapshot = ['stock_reserved' => true];
 
             $taxAmount = $this->extractIncludedVat(max(0, $subtotal - $discountAmount));
             $totalAmount = round($subtotal + $shippingFee - $discountAmount, 2);
@@ -2347,6 +2413,7 @@ class EcommerceController extends Controller
                 $storeQuery->whereIn('status', ['active', 'verified']);
             })
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                $inventoryQuery->sellableInEcommerce();
                 $inventoryQuery->where('store_id', $storeId)
                     ->where('quantity_available', '>', 0)
                     ->where('stock_status', '!=', 'out_of_stock');
@@ -2362,6 +2429,9 @@ class EcommerceController extends Controller
             $fallbackStoreId = Product::query()
                 ->select('products.store_id')
                 ->join('branch_inventory', 'branch_inventory.product_id', '=', 'products.id')
+                ->join('branches as sellable_branches', 'sellable_branches.id', '=', 'branch_inventory.branch_id')
+                ->where('sellable_branches.branch_type', 'storefront')
+                ->where('sellable_branches.status', 'active')
                 ->where('products.product_type', 'finished_good')
                 ->where('products.is_active', true)
                 ->whereNull('products.deleted_at')
@@ -2382,6 +2452,7 @@ class EcommerceController extends Controller
                         $storeQuery->whereIn('status', ['active', 'verified']);
                     })
                     ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                        $inventoryQuery->sellableInEcommerce();
                         $inventoryQuery->where('store_id', $storeId)
                             ->where('quantity_available', '>', 0)
                             ->where('stock_status', '!=', 'out_of_stock');
@@ -2396,7 +2467,7 @@ class EcommerceController extends Controller
         }
 
         $scored = $products->map(function (Product $product) use ($budgetMin, $budgetMax, $targetDimensions, $storeId) {
-            $price = (float) ($product->discounted_price ?? $product->base_price ?? 0);
+            $price = $this->promotionPricing->price($product)['price'];
             $budgetScore = $this->calculateBudgetScore($price, $budgetMin, $budgetMax);
             $dimensionScore = $this->calculateDimensionScore($product, $targetDimensions);
             $categoryScore = 1.0; // category filter is exact when provided.
@@ -2404,6 +2475,7 @@ class EcommerceController extends Controller
             $weightedScore = round(($budgetScore * 0.45) + ($dimensionScore * 0.40) + ($categoryScore * 0.15), 4);
 
             $inventory = BranchInventory::query()
+                ->sellableInEcommerce()
                 ->where('store_id', $storeId)
                 ->where('product_id', $product->id)
                 ->orderByDesc('quantity_available')
@@ -2463,6 +2535,7 @@ class EcommerceController extends Controller
                 $storeQuery->whereIn('status', ['active', 'verified']);
             })
             ->whereHas('inventory', function ($inventoryQuery) use ($storeId) {
+                $inventoryQuery->sellableInEcommerce();
                 $inventoryQuery->where('store_id', $storeId)
                     ->where('quantity_available', '>', 0)
                     ->where('stock_status', '!=', 'out_of_stock');
@@ -2508,6 +2581,7 @@ class EcommerceController extends Controller
 
         $scored = $products->map(function (Product $product) use ($storeId) {
             $inventory = BranchInventory::query()
+                ->sellableInEcommerce()
                 ->where('store_id', $storeId)
                 ->where('product_id', $product->id)
                 ->orderByDesc('quantity_available')
@@ -2532,7 +2606,7 @@ class EcommerceController extends Controller
                 'sku' => $product->sku,
                 'product_name' => $product->product_name,
                 'category' => $product->category?->category_name,
-                'price' => round((float) ($product->discounted_price ?? $product->base_price ?? 0), 2),
+                'price' => $this->promotionPricing->price($product)['price'],
                 'image' => $this->selectBestProductImage($product)?->url,
                 'quantity_available' => (int) ($inventory?->quantity_available ?? 0),
                 'movement_score' => $movementScore,
@@ -2935,6 +3009,7 @@ class EcommerceController extends Controller
 
     private function formatCart(EcommerceCart $cart, array $favoriteMap = []): array
     {
+        $this->applyCurrentCartPrices($cart->items);
         $items = $cart->items->map(function (EcommerceCartItem $item) use ($favoriteMap) {
             $lineSubtotal = (float) $item->unit_price * (int) $item->quantity;
             // Unit price is VAT-inclusive, so expose the included VAT without
@@ -2980,6 +3055,24 @@ class EcommerceController extends Controller
                 'items_count' => (int) $items->sum('quantity'),
             ],
         ];
+    }
+
+    private function applyCurrentCartPrices($items): void
+    {
+        $regularSubtotal = $items->sum(function (EcommerceCartItem $item) {
+            if (!$item->product) {
+                return 0;
+            }
+            $regular = $this->promotionPricing->price($item->product, $item->variation)['regular_price'];
+            return $regular * (int) $item->quantity;
+        });
+
+        foreach ($items as $item) {
+            if ($item->product) {
+                $item->unit_price = $this->promotionPricing
+                    ->price($item->product, $item->variation, (float) $regularSubtotal)['price'];
+            }
+        }
     }
 
     private function extractIncludedVat(float $vatInclusiveAmount): float
@@ -3158,6 +3251,8 @@ class EcommerceController extends Controller
             'shipping_phone' => $order->shipping_phone,
             'shipping_email' => $order->shipping_email,
             'shipping_address' => $order->shipping_address,
+            'billing_name' => $order->billing_name,
+            'billing_address' => $order->billing_address,
             'fulfillment_method' => $order->fulfillment_method ?: 'delivery',
             'pickup_date' => $order->pickup_date?->toDateString(),
             'customer_latitude' => $order->customer_latitude,
@@ -3168,6 +3263,9 @@ class EcommerceController extends Controller
                 'branch_code' => $order->assignedBranch->branch_code,
                 'city' => $order->assignedBranch->city,
                 'province' => $order->assignedBranch->province,
+                'barangay' => $order->assignedBranch->barangay,
+                'address' => $order->assignedBranch->address,
+                'contact_number' => $order->assignedBranch->contact_number,
                 'latitude' => $order->assignedBranch->latitude,
                 'longitude' => $order->assignedBranch->longitude,
             ] : null,
@@ -3444,6 +3542,7 @@ class EcommerceController extends Controller
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->whereHas('inventory', function ($query) {
+                $query->sellableInEcommerce();
                 $query->where('quantity_available', '>', 0)
                     ->where('stock_status', '!=', 'out_of_stock');
             })
@@ -3529,6 +3628,7 @@ class EcommerceController extends Controller
         $candidateBranches = Branch::query()
             ->where('store_id', $storeId)
             ->where('status', 'active')
+            ->where('branch_type', 'storefront')
             ->get(['id', 'name', 'city', 'province', 'latitude', 'longitude']);
 
         if ($candidateBranches->isEmpty()) {
@@ -3542,6 +3642,7 @@ class EcommerceController extends Controller
 
             foreach ($itemsForCheckout as $item) {
                 $inventory = BranchInventory::query()
+                    ->sellableInEcommerce()
                     ->where('store_id', $storeId)
                     ->where('branch_id', $branch->id)
                     ->where('product_id', $item->product_id)
@@ -3704,7 +3805,14 @@ class EcommerceController extends Controller
         ];
     }
 
-    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm, float $totalWeightKg = 0, int $itemQuantity = 0): array
+    private function countBulkyUnits(int $storeId, $items): int
+    {
+        $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first() ?? new StoreDeliveryFeeSetting();
+        $classifier = app(\App\Services\Logistics\BulkyProductService::class);
+        return (int) $items->sum(fn ($item) => $classifier->isBulky($item->product, $setting) ? (int) $item->quantity : 0);
+    }
+
+    private function computeStoreDeliveryFeeFallback(int $storeId, float $subtotal, float $distanceKm, float $totalWeightKg = 0, int $bulkyQuantity = 0): array
     {
         $setting = StoreDeliveryFeeSetting::query()->where('store_id', $storeId)->first();
         if (!$setting) {
@@ -3714,7 +3822,6 @@ class EcommerceController extends Controller
                 'base_fee' => 100,
                 'per_km_fee' => 10,
                 'per_kg_fee' => 0,
-                'per_item_fee' => 0,
                 'min_delivery_fee' => 80,
                 'free_shipping_min_order' => null,
                 'bulky_item_surcharge' => 0,
@@ -3733,7 +3840,7 @@ class EcommerceController extends Controller
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
-                'item_fee' => 0.0,
+                'bulky_item_surcharge' => 0.0,
                 'minimum_applied' => false,
             ];
         }
@@ -3746,7 +3853,7 @@ class EcommerceController extends Controller
                 'base_fee' => 0.0,
                 'distance_fee' => 0.0,
                 'weight_fee' => 0.0,
-                'item_fee' => 0.0,
+                'bulky_item_surcharge' => 0.0,
                 'minimum_applied' => false,
             ];
         }
@@ -3760,7 +3867,7 @@ class EcommerceController extends Controller
                 'base_fee' => (float) $setting->base_fee,
                 'distance_fee' => round($distanceKm * (float) $setting->per_km_fee, 2),
                 'weight_fee' => round($totalWeightKg * (float) $setting->per_kg_fee, 2),
-                'item_fee' => round($itemQuantity * (float) $setting->per_item_fee, 2),
+                'bulky_item_surcharge' => round($bulkyQuantity * (float) $setting->bulky_item_surcharge, 2),
                 'minimum_applied' => false,
             ];
         }
@@ -3768,8 +3875,8 @@ class EcommerceController extends Controller
         $base = (float) $setting->base_fee;
         $distanceFee = $distanceKm * (float) $setting->per_km_fee;
         $weightFee = $totalWeightKg * (float) $setting->per_kg_fee;
-        $itemFee = $itemQuantity * (float) $setting->per_item_fee;
-        $raw = $base + $distanceFee + $weightFee + $itemFee;
+        $bulkyFee = $bulkyQuantity * (float) $setting->bulky_item_surcharge;
+        $raw = $base + $distanceFee + $weightFee + $bulkyFee;
         $min = (float) $setting->min_delivery_fee;
         $applied = max($raw, $min);
 
@@ -3780,7 +3887,7 @@ class EcommerceController extends Controller
             'base_fee' => round($base, 2),
             'distance_fee' => round($distanceFee, 2),
             'weight_fee' => round($weightFee, 2),
-            'item_fee' => round($itemFee, 2),
+            'bulky_item_surcharge' => round($bulkyFee, 2),
             'minimum_applied' => $applied > $raw,
         ];
     }

@@ -264,18 +264,6 @@
                 <InputNumber v-model="planForm.max_3d_model_requests_per_month" :min="0" fluid />
                 <small class="text-xs text-slate-500">Requires 3D manage permission. 0 disables requests.</small>
               </div>
-              <div>
-                <label class="mb-1 block text-xs text-slate-600">Warehouse Branches</label>
-                <InputNumber v-model="planForm.max_warehouses" :min="1" placeholder="Unlimited" fluid />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs text-slate-600">Delivery Vehicles</label>
-                <InputNumber v-model="planForm.max_trucks" :min="1" placeholder="Unlimited" fluid />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs text-slate-600">Suppliers</label>
-                <InputNumber v-model="planForm.max_suppliers" :min="1" placeholder="Unlimited" fluid />
-              </div>
             </div>
           </div>
           <div class="md:col-span-2">
@@ -428,9 +416,6 @@ const planForm = reactive({
   max_branches: null as number | null,
   max_products: null as number | null,
   max_3d_model_requests_per_month: 0,
-  max_warehouses: null as number | null,
-  max_trucks: null as number | null,
-  max_suppliers: null as number | null,
   features: '',
   is_featured: false,
   is_active: true,
@@ -644,9 +629,6 @@ const openPlanDialog = async (plan: any) => {
   planForm.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
   planForm.max_products = plan.max_products == null ? null : Number(plan.max_products)
   planForm.max_3d_model_requests_per_month = Number(plan.max_3d_model_requests_per_month || 0)
-  planForm.max_warehouses = plan.max_warehouses == null ? null : Number(plan.max_warehouses)
-  planForm.max_trucks = plan.max_trucks == null ? null : Number(plan.max_trucks)
-  planForm.max_suppliers = plan.max_suppliers == null ? null : Number(plan.max_suppliers)
   planForm.features = Array.isArray(plan.features) ? plan.features.join('\n') : ''
   planForm.is_featured = !!plan.is_featured
   planForm.is_active = plan.is_active !== false
@@ -677,9 +659,6 @@ const openCreatePlanDialog = () => {
   planForm.max_branches = null
   planForm.max_products = null
   planForm.max_3d_model_requests_per_month = 0
-  planForm.max_warehouses = null
-  planForm.max_trucks = null
-  planForm.max_suppliers = null
   planForm.features = ''
   planForm.is_featured = false
   planForm.is_active = true
@@ -712,9 +691,6 @@ const savePlan = async () => {
           max_branches: planForm.max_branches,
           max_products: planForm.max_products,
           max_3d_model_requests_per_month: planForm.max_3d_model_requests_per_month,
-          max_warehouses: planForm.max_warehouses,
-          max_trucks: planForm.max_trucks,
-          max_suppliers: planForm.max_suppliers,
           features,
           is_featured: planForm.is_featured,
           is_active: planForm.is_active,

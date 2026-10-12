@@ -41,7 +41,7 @@ class PaymongoService
         }
 
         $this->client = new Client([
-            'base_uri' => config('paymongo.endpoint'),
+            'base_uri' => rtrim((string) config('paymongo.endpoint'), '/') . '/',
             'auth' => [config('paymongo.secret'), ''],
             'http_errors' => false,
             'verify' => $verify,
@@ -60,7 +60,7 @@ class PaymongoService
     public function createIntent(array $payload): array
     {
         try {
-            $response = $this->client->post('/payment_intents', [
+            $response = $this->client->post('payment_intents', [
                 'json' => $payload,
             ]);
 
@@ -78,7 +78,7 @@ class PaymongoService
     public function retrieveIntent(string $intentId): array
     {
         try {
-            $response = $this->client->get("/payment_intents/{$intentId}");
+            $response = $this->client->get("payment_intents/{$intentId}");
             return json_decode($response->getBody()->getContents(), true);
         } catch (\Throwable $e) {
             Log::warning('PaymongoService: retrieveIntent exception', [
@@ -97,7 +97,7 @@ class PaymongoService
     public function createRefund(string $paymentId, int $amount, string $reason = 'requested_by_customer'): array
     {
         try {
-            $response = $this->client->post('/refunds', [
+            $response = $this->client->post('refunds', [
                 'json' => ['data' => ['attributes' => [
                     'amount' => $amount,
                     'currency' => 'PHP',
@@ -118,7 +118,7 @@ class PaymongoService
     public function createPaymentMethod(array $payload): array
     {
         try {
-            $response = $this->client->post('/payment_methods', [
+            $response = $this->client->post('payment_methods', [
                 'json' => $payload,
             ]);
 
@@ -136,7 +136,7 @@ class PaymongoService
     public function attachIntent(string $intentId, array $payload): array
     {
         try {
-            $response = $this->client->post("/payment_intents/{$intentId}/attach", [
+            $response = $this->client->post("payment_intents/{$intentId}/attach", [
                 'json' => $payload,
             ]);
 
@@ -158,7 +158,7 @@ class PaymongoService
     public function createCheckoutSession(array $payload): array
     {
         try {
-            $response = $this->client->post('/checkout_sessions', [
+            $response = $this->client->post('checkout_sessions', [
                 'json' => $payload,
             ]);
 
@@ -192,7 +192,7 @@ class PaymongoService
     public function retrieveCheckoutSession(string $sessionId): array
     {
         try {
-            $response = $this->client->get("/checkout_sessions/{$sessionId}");
+            $response = $this->client->get("checkout_sessions/{$sessionId}");
             $status = (int) $response->getStatusCode();
             $body = (string) $response->getBody()->getContents();
             $decoded = json_decode($body, true);
@@ -218,6 +218,30 @@ class PaymongoService
                     'detail' => 'Unable to connect to Online Payment. Please try again later.',
                 ]],
             ];
+        }
+    }
+
+    public function activePaymentMethods(): array
+    {
+        try {
+            $response = $this->client->get('merchants/capabilities/payment_methods');
+            if ($response->getStatusCode() >= 400) {
+                Log::warning('PaymongoService: payment capabilities unavailable', ['http_status' => $response->getStatusCode()]);
+                return [];
+            }
+
+            $payload = json_decode((string) $response->getBody(), true);
+            $methods = data_get($payload, 'data.attributes.payment_methods')
+                ?? data_get($payload, 'data.payment_methods')
+                ?? data_get($payload, 'payment_methods')
+                ?? data_get($payload, 'data')
+                ?? $payload;
+            return is_array($methods)
+                ? array_values(array_filter($methods, fn ($method) => is_string($method) && $method !== ''))
+                : [];
+        } catch (\Throwable $e) {
+            Log::warning('PaymongoService: payment capabilities request failed', ['error' => $e->getMessage()]);
+            return [];
         }
     }
 

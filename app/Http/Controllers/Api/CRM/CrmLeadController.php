@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\CRM;
 use App\Http\Controllers\Controller;
 use App\Models\CRM\CrmActivity;
 use App\Models\CRM\CrmLead;
+use App\Models\Sales\SalesOrder;
+use App\Models\Sales\WholesaleQuote;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -31,6 +33,9 @@ class CrmLeadController extends Controller
 
         if ($request->filled('stage')) {
             $query->where('stage', (string) $request->input('stage'));
+        }
+        if ($request->filled('customer_type')) {
+            $query->where('customer_type', (string) $request->input('customer_type'));
         }
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -97,6 +102,52 @@ class CrmLeadController extends Controller
         ]);
 
         return response()->json(['success' => true, 'message' => 'Lead created.', 'data' => $lead], 201);
+    }
+
+    public function showCustomer(Request $request, int $id): JsonResponse
+    {
+        $customer = $this->resolveLead($request, $id);
+        $customer->load([
+            'assignee:id,fname,lname,email',
+            'branch:id,name',
+            'activities' => fn ($query) => $query->with('creator:id,fname,lname')->latest('activity_at')->limit(20),
+        ]);
+
+        $quotes = WholesaleQuote::query()
+            ->where('store_id', $customer->store_id)
+            ->where('crm_lead_id', $customer->id)
+            ->latest()
+            ->get(['id', 'quote_number', 'status', 'subtotal', 'valid_until', 'sales_order_id', 'created_at']);
+
+        $orderIds = $quotes->pluck('sales_order_id')->filter()->values();
+        $orders = SalesOrder::query()
+            ->where('store_id', $customer->store_id)
+            ->where(function ($query) use ($customer, $orderIds) {
+                $query->whereIn('id', $orderIds)
+                    ->orWhere(function ($match) use ($customer) {
+                        $match->where('customer_name', $customer->full_name);
+                        if ($customer->phone) {
+                            $match->orWhere('customer_phone', $customer->phone);
+                        }
+                    });
+            })
+            ->latest()
+            ->limit(50)
+            ->get(['id', 'order_number', 'status', 'payment_status', 'total_amount', 'created_at']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'customer' => $customer,
+                'quotes' => $quotes,
+                'orders' => $orders,
+                'summary' => [
+                    'quotes' => $quotes->count(),
+                    'orders' => $orders->count(),
+                    'lifetime_value' => (float) $orders->where('status', '!=', 'voided')->sum('total_amount'),
+                ],
+            ],
+        ]);
     }
 
     public function updateLead(Request $request, int $id): JsonResponse

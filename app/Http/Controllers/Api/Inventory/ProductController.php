@@ -103,6 +103,7 @@ class ProductController extends Controller
             'length_cm' => $data['length_cm'] ?? null,
             'width_cm' => $data['width_cm'] ?? null,
             'height_cm' => $data['height_cm'] ?? null,
+            'is_bulky' => $data['is_bulky'] ?? null,
             'assembly_required' => $data['assembly_required'] ?? false,
             'discounted_price' => $productType === 'finished_good' && $discountedPrice !== '' && $discountedPrice !== null
                 ? (float) $discountedPrice
@@ -453,6 +454,7 @@ class ProductController extends Controller
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'is_bulky' => 'nullable|boolean',
                 'assembly_required' => 'nullable|boolean',
                 'tag_ids' => 'nullable|array|max:3',
                 'tag_ids.*' => 'integer|distinct|exists:tags,id',
@@ -651,6 +653,7 @@ class ProductController extends Controller
                 'length_cm' => 'nullable|numeric|min:0',
                 'width_cm' => 'nullable|numeric|min:0',
                 'height_cm' => 'nullable|numeric|min:0',
+                'is_bulky' => 'nullable|boolean',
                 'assembly_required' => 'nullable|boolean',
                 'tag_ids' => 'sometimes|array|max:3',
                 'tag_ids.*' => 'integer|distinct|exists:tags,id',
@@ -699,6 +702,7 @@ class ProductController extends Controller
                 'length_cm' => $validated['length_cm'] ?? $product->length_cm,
                 'width_cm' => $validated['width_cm'] ?? $product->width_cm,
                 'height_cm' => $validated['height_cm'] ?? $product->height_cm,
+                'is_bulky' => array_key_exists('is_bulky', $validated) ? $validated['is_bulky'] : $product->is_bulky,
                 'assembly_required' => $validated['assembly_required'] ?? $product->assembly_required,
                 'cost_price' => $validated['cost_price'] ?? $validated['unit_cost'] ?? $product->cost_price,
                 'is_active' => $validated['is_active'] ?? $product->is_active,

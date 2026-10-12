@@ -1,7 +1,7 @@
 <template>
   <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-4 md:py-8">
   
-    <Carousel />
+    <!-- <Carousel /> -->
   
   
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-8">
@@ -13,13 +13,13 @@
               :class="[selectedCategory === 'all' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-600 hover:bg-orange-50']"
               class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
               <span>All Collection</span>
-              <Badge :value="products.length" :severity="selectedCategory === 'all' ? 'info' : 'secondary'" />
+              <Badge :value="products.length" :severity="selectedCategory === 'all' ? 'secondary' : 'secondary'" />
             </button>
             <button v-for="category in categoryOptions" :key="category" @click="setCategory(category)"
               :class="[selectedCategory === category ? 'bg-orange-500 text-white shadow-md' : 'text-slate-600 hover:bg-orange-50']"
               class="shrink-0 flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl transition-all duration-200 text-xs md:text-sm font-medium">
               <span class="capitalize">{{ category }}</span>
-              <Badge :value="categoryCount(category)" :severity="selectedCategory === category ? 'info' : 'secondary'" />
+              <Badge :value="categoryCount(category)" :severity="selectedCategory === category ? 'secondary' : 'secondary'" />
             </button>
           </nav>
         </div>
@@ -62,7 +62,6 @@
       <main class="lg:col-span-9">
         <section v-if="activeCategoryId" class="mb-8">
           <div class="mb-4">
-            <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-600">Recommended sellers</p>
             <h2 class="mt-1 text-xl font-bold text-slate-900">Top shops for {{ activeCategoryName || 'this category' }}</h2>
             <p class="mt-1 text-xs text-slate-500">Ranked by monthly sales and available products in this category.</p>
           </div>
@@ -86,16 +85,14 @@
 
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 mb-5 md:mb-8">
           <div>
-            <h2 class="text-xl md:text-2xl font-bold text-slate-900">{{ activeCategoryId ? `${activeCategoryName || 'Category'} products` : 'Featured Products' }}</h2>
-            <p class="text-slate-500 text-sm">{{ activeCategoryId ? `${totalProducts} available items` : `Showing ${filteredProducts.length} items` }}</p>
+            <h2 class="text-xl md:text-2xl font-bold text-slate-900">{{ activeCategoryId ? `${activeCategoryName || 'Category'} products` : pageHeading }}</h2>
+            <p class="text-slate-500 text-sm">{{ activeCategoryId ? `${totalProducts} available items` : pageDescription }}</p>
           </div>
-          <Button
-            label="View Trending"
-            icon="pi pi-chart-line"
-            severity="warning"
-            outlined
-            @click="goTrending"
-          />
+          <div class="flex items-center gap-1">
+            <Button label="Shop" severity="secondary" text size="small" @click="router.push({ name: 'ecommerce.products' })" />
+            <Button label="New Products" severity="warning" text size="small" @click="router.push({ name: 'ecommerce.new-products' })" />
+            <Button label="Trending" severity="warning" text size="small" @click="goTrending" />
+          </div>
         </div>
 
         <div class="mt-3 mb-4 rounded-2xl border border-slate-200 bg-white/95 backdrop-blur p-3 shadow-sm">
@@ -304,9 +301,12 @@ const currentPage = ref(1)
 const perPage = 12
 const totalProducts = ref(0)
 const activeCategoryId = computed(() => Number(route.query.category_id || 0))
+const pageMode = computed(() => route.name === 'ecommerce.new-products' ? 'new' : route.name === 'ecommerce.trending.view' ? 'trending' : 'shop')
+const pageHeading = computed(() => pageMode.value === 'new' ? 'New Products This Month' : pageMode.value === 'trending' ? 'Trending Products' : 'Featured Products')
+const pageDescription = computed(() => pageMode.value === 'new' ? `${filteredProducts.value.length} products added this month` : pageMode.value === 'trending' ? 'Popular products ranked by monthly sales' : `Showing ${filteredProducts.value.length} items`)
 const search = ref(String(route.query.search || ''))
 const selectedCategory = ref<string>('all')
-const sort = ref<'popular' | 'latest' | 'price_asc' | 'price_desc'>('popular')
+const sort = ref<'popular' | 'latest' | 'price_asc' | 'price_desc'>(route.name === 'ecommerce.new-products' ? 'latest' : 'popular')
 const dssLoading = ref(false)
 const dssResults = ref<any[]>([])
 const favoriteProductIds = ref<number[]>([])
@@ -566,6 +566,7 @@ async function loadProducts() {
       sort: sort.value,
       category_id: route.query.category_id || undefined,
       discounted_only: route.query.deals ? true : undefined,
+      new_this_month: pageMode.value === 'new' ? true : undefined,
     })
     const rows = response.data?.data?.data || response.data?.data || []
     products.value = Array.isArray(rows)
@@ -602,6 +603,13 @@ watch(() => route.query.category_id, () => {
 
 watch(() => route.query.deals, () => {
   currentPage.value = 1
+  loadProducts()
+})
+
+watch(() => route.name, () => {
+  currentPage.value = 1
+  selectedCategory.value = 'all'
+  sort.value = pageMode.value === 'new' ? 'latest' : 'popular'
   loadProducts()
 })
 </script>

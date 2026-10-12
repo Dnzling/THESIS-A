@@ -535,7 +535,6 @@ const paymongoInvoiceIntentId = ref<string | null>(null)
 const paymongoInvoiceStatus = ref('idle')
 const paymongoInvoiceLoading = ref(false)
 const paymongoInvoicePolling = ref<ReturnType<typeof setInterval> | null>(null)
-const invoiceMarkedPaidByPaymongo = ref(false)
 const confirmPaymentDestination = ref(false)
 
 const isFinanceRoute = computed(() => String(route.name || '').startsWith('finance.'))
@@ -549,8 +548,7 @@ const effectivePaymentStatus = computed(() => {
 
 const paymongoInvoiceActionLabel = computed(() => {
   if (invoice.value?.payment_status === 'paid') return 'Invoice Paid'
-  if (!paymongoInvoiceIntentId.value) return 'Pay with Online Payment'
-  return 'Open Online Payment Checkout'
+  return 'Pay securely with PayMongo'
 })
 
 const paymentDestination = computed(() => {
@@ -781,53 +779,28 @@ async function createInvoicePaymongoIntent() {
   if (!invoice.value?.id || !invoice.value?.store_id) return
   paymongoInvoiceLoading.value = true
   try {
-    const intentResponse = await paymongoService.createIntent({
+    const returnUrl = new URL(window.location.href)
+    returnUrl.searchParams.set('paymongo_return', '1')
+    const cancelUrl = new URL(window.location.href)
+    cancelUrl.searchParams.delete('paymongo_return')
+    const sessionResponse = await paymongoService.createCheckoutSession({
       amount: Math.max(Math.round(Number(invoice.value?.net_amount || invoice.value?.invoice_amount || 0) * 100), 1),
-      payment_method_allowed: ['gcash'],
+      currency: 'PHP',
+      description: `Invoice ${invoice.value?.invoice_number || invoice.value.id}`,
       store_id: Number(invoice.value.store_id),
       payable_type: 'invoice',
       payable_id: Number(invoice.value.id),
+      success_url: returnUrl.toString(),
+      cancel_url: cancelUrl.toString(),
     })
-    paymongoInvoiceIntentId.value = intentResponse?.data?.data?.id || null
-    paymongoInvoiceStatus.value = intentResponse?.data?.data?.attributes?.status || 'awaiting_payment_method'
-    invoiceMarkedPaidByPaymongo.value = false
-
-    if (!paymongoInvoiceIntentId.value) {
-      throw new Error(intentResponse?.message || 'Online Payment intent was created without an ID.')
-    }
-
-    startInvoicePaymongoPolling()
+    const checkoutUrl = String(sessionResponse?.data?.checkout_url || '')
+    if (!checkoutUrl.startsWith('https://checkout.paymongo.com/')) throw new Error('PayMongo did not return a valid checkout page.')
+    window.location.assign(checkoutUrl)
   } catch (error: any) {
     toast.add({
       severity: 'error',
       summary: 'Online Payment',
-      detail: error?.response?.data?.message || error?.message || 'Failed to create Online Payment intent for invoice.',
-      life: 3500,
-    })
-  } finally {
-    paymongoInvoiceLoading.value = false
-  }
-}
-
-async function openInvoicePaymongoCheckout() {
-  if (!paymongoInvoiceIntentId.value) return
-  paymongoInvoiceLoading.value = true
-  try {
-    const response = await paymongoService.startGcash(paymongoInvoiceIntentId.value, {
-      name: invoice.value?.supplier?.contact_person || invoice.value?.supplier?.supplier_name || 'Supplier',
-      email: invoice.value?.supplier?.email || 'supplier@example.com',
-      phone: invoice.value?.supplier?.phone || invoice.value?.supplier?.contact_number || '09170000000',
-      return_url: window.location.href,
-    })
-
-    const redirectUrl = response?.data?.redirect_url
-    if (!redirectUrl) throw new Error('Online Payment checkout URL is missing.')
-    window.open(redirectUrl, '_blank')
-  } catch (error: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Online Payment',
-      detail: error?.response?.data?.message || 'Unable to open Online Payment checkout.',
+      detail: error?.response?.data?.message || error?.message || 'Failed to create checkout for invoice.',
       life: 3500,
     })
   } finally {
@@ -845,39 +818,21 @@ async function handleInvoicePaymongoAction() {
     return
   }
   if (invoice.value?.payment_status === 'paid') return
-  if (!paymongoInvoiceIntentId.value) {
-    await createInvoicePaymongoIntent()
-    await openInvoicePaymongoCheckout()
-    return
-  }
-  await openInvoicePaymongoCheckout()
+  await createInvoicePaymongoIntent()
 }
 
 async function pollInvoicePaymongoStatus() {
-  if (!paymongoInvoiceIntentId.value || paymongoInvoiceLoading.value) return
+  if (!invoice.value?.id || paymongoInvoiceLoading.value) return
   paymongoInvoiceLoading.value = true
   try {
-    const response = await paymongoService.getIntent(paymongoInvoiceIntentId.value)
-    paymongoInvoiceStatus.value = response?.data?.attributes?.status || paymongoInvoiceStatus.value
+    const response = await paymongoService.getLatestIntentByPayable('invoice', Number(invoice.value.id), { sync: true })
+    paymongoInvoiceStatus.value = response?.data?.status || paymongoInvoiceStatus.value
 
     if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase())) {
       await loadInvoice()
     }
 
-    if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase()) && invoice.value?.payment_status !== 'paid' && !invoiceMarkedPaidByPaymongo.value) {
-      invoiceMarkedPaidByPaymongo.value = true
-      const payload = {
-        payment_method: 'paymongo_gcash',
-        payment_amount: Number(invoice.value?.net_amount || invoice.value?.invoice_amount || 0),
-      }
-
-      if (isFinanceRoute.value) {
-        await financeService.markInvoicePaid(Number(invoice.value.id), payload)
-      } else {
-        await procurementService.markInvoiceAsPaid(Number(invoice.value.id), payload)
-      }
-
-      await loadInvoice()
+    if (['succeeded', 'paid'].includes(String(paymongoInvoiceStatus.value).toLowerCase()) && invoice.value?.payment_status === 'paid') {
       toast.add({
         severity: 'success',
         summary: 'Online Payment',
@@ -1154,4 +1109,3 @@ onBeforeUnmount(() => {
   background: #a1a1a1;
 }
 </style>
-

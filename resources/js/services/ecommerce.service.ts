@@ -204,6 +204,8 @@ const ecommerceService = {
     shipping_phone?: string
     shipping_email?: string
     shipping_address: string
+    billing_name?: string
+    billing_address?: string
     customer_latitude?: number
     customer_longitude?: number
     bulk_trip?: boolean

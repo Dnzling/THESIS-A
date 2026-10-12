@@ -122,6 +122,11 @@
                   </div>
                   <small v-if="errors.dimensions" class="text-red-500">{{ errors.dimensions }}</small>
                 </div>
+                <div class="md:col-span-2">
+                  <label class="mb-1 block text-sm font-medium text-gray-700">Bulky delivery handling</label>
+                  <Select v-model="form.is_bulky" :options="bulkyOptions" optionLabel="label" optionValue="value" class="w-full text-sm" size="small" />
+                  <small class="text-gray-500">Auto uses the store's delivery size and weight thresholds. Override when special handling is needed.</small>
+                </div>
               </template>
 
               <div class="md:col-span-2">
@@ -279,11 +284,13 @@ const form = reactive({
   length_cm: null as number | null,
   width_cm: null as number | null,
   height_cm: null as number | null,
+  is_bulky: null as boolean | null,
   unit_of_measurement: '',
   initial_stock: null as number | null,
   reorder_point: 10 as number | null,
   is_active: false,
 })
+const bulkyOptions = [{ label: 'Auto-detect', value: null }, { label: 'Bulky — special handling', value: true }, { label: 'Not bulky', value: false }]
 
 type ProductCategory = {
   id: number
@@ -364,6 +371,7 @@ const loadProduct = async (id: number) => {
     form.length_cm = product.length_cm != null ? Number(product.length_cm) : null
     form.width_cm = product.width_cm != null ? Number(product.width_cm) : null
     form.height_cm = product.height_cm != null ? Number(product.height_cm) : null
+    form.is_bulky = product.is_bulky == null ? null : Boolean(product.is_bulky)
     form.unit_of_measurement = product.unit_of_measurement || ''
     form.reorder_point = product.reorder_point ?? 10
     form.is_active = product.is_active !== false
@@ -457,6 +465,7 @@ const handleSubmit = async () => {
       if (form.length_cm != null) payload.append('length_cm', String(form.length_cm))
       if (form.width_cm != null) payload.append('width_cm', String(form.width_cm))
       if (form.height_cm != null) payload.append('height_cm', String(form.height_cm))
+      payload.append('is_bulky', form.is_bulky === null ? '' : form.is_bulky ? '1' : '0')
     }
     payload.append('supplier_id', form.supplier_id != null ? String(form.supplier_id) : '')
     if (form.unit_of_measurement) payload.append('unit_of_measurement', form.unit_of_measurement)

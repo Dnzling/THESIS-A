@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Services\Inventory\ForecastPlanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,8 @@ class ForecastController extends Controller
         $storeId = (int) ($user?->store_id ?: $user?->employee?->store_id);
         $assignedBranch = (int) ($user?->branch_id ?: $user?->employee?->branch_id);
         abort_if($storeId < 1, 403);
+        $plan = app(ForecastPlanService::class);
+        abort_unless($plan->allowsForecast($storeId), 403, 'Forecasting requires Growth or Enterprise. Use manual reorder points on this plan.');
 
         $days = (int) $request->integer('days', 30);
         abort_unless(in_array($days, [30, 60, 90], true), 422);
@@ -86,8 +89,37 @@ class ForecastController extends Controller
             $rows = $rows->where('status', $request->status)->values();
         }
         $page = max(1, (int) $request->integer('page', 1));
+        $consolidated = [];
+        if ($plan->allowsConsolidated($storeId)) {
+            $allBranches = DB::table('branches')->where('store_id', $storeId)->get(['id', 'name', 'branch_type']);
+            $storefrontIds = $allBranches->where('branch_type', '!=', 'warehouse')->pluck('id')->all();
+            $warehouseIds = $allBranches->where('branch_type', 'warehouse')->pluck('id')->all();
+            $demand = DB::table('inventory_transactions as t')
+                ->join('products as p', 'p.id', '=', 't.product_id')
+                ->where('t.store_id', $storeId)->whereIn('t.branch_id', $storefrontIds)
+                ->where('p.product_type', 'finished_good')->where('t.quantity_change', '<', 0)
+                ->where('t.transaction_date', '>=', $since)
+                ->selectRaw('t.product_id, t.variation_id, SUM(ABS(t.quantity_change)) as units')
+                ->groupBy('t.product_id', 't.variation_id')->get();
+            $warehouseStock = DB::table('branch_inventory')
+                ->where('store_id', $storeId)->whereIn('branch_id', $warehouseIds)->whereNull('deleted_at')
+                ->selectRaw('product_id, variation_id, SUM(quantity_available) as available')
+                ->groupBy('product_id', 'variation_id')->get()
+                ->keyBy(fn ($item) => $item->product_id.':'.($item->variation_id ?? 0));
+            $products = DB::table('products')->whereIn('id', $demand->pluck('product_id')->unique())->get(['id', 'product_name', 'sku'])->keyBy('id');
+            $consolidated = $demand->map(function ($item) use ($days, $warehouseStock, $products) {
+                $available = (float) ($warehouseStock->get($item->product_id.':'.($item->variation_id ?? 0))?->available ?? 0);
+                $forecast = (int) ceil((float) $item->units / $days * 30);
+                return ['product_id' => $item->product_id, 'variation_id' => $item->variation_id,
+                    'product_name' => $products->get($item->product_id)?->product_name, 'sku' => $products->get($item->product_id)?->sku,
+                    'storefront_units' => (float) $item->units, 'forecast_30_days' => $forecast,
+                    'warehouse_available' => $available, 'gap' => max(0, $forecast - $available)];
+            })->sortByDesc('gap')->values();
+        }
+
         return response()->json(['data' => [
             'branches' => $branches, 'trend' => $trend,
+            'consolidated' => $consolidated, 'plan_features' => ['consolidated' => $plan->allowsConsolidated($storeId)],
             'summary' => ['products' => $rows->count(), 'reorder_now' => $rows->whereIn('status', ['Out of stock', 'Reorder now'])->count(), 'forecast_units' => round($rows->sum('forecast_30_days')), 'recommended_units' => $rows->sum('recommended')],
             'rows' => $rows->forPage($page, 15)->values(), 'total' => $rows->count(),
         ]]);

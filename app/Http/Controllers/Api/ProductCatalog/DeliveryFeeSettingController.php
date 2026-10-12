@@ -25,11 +25,13 @@ class DeliveryFeeSettingController extends Controller
             'is_active' => 'required|boolean',
             'base_fee' => 'required|numeric|min:0',
             'per_km_fee' => 'required|numeric|min:0',
-            'per_item_fee' => 'required|numeric|min:0',
             'per_kg_fee' => 'required|numeric|min:0',
             'min_delivery_fee' => 'required|numeric|min:0',
             'free_shipping_min_order' => 'nullable|numeric|min:0',
             'bulky_item_surcharge' => 'required|numeric|min:0',
+            'bulky_weight_threshold_kg' => 'nullable|numeric|gt:0',
+            'bulky_longest_side_threshold_cm' => 'nullable|numeric|gt:0',
+            'bulky_volume_threshold_cbm' => 'nullable|numeric|gt:0',
             'remote_area_surcharge' => 'required|numeric|min:0',
             'max_delivery_distance_km' => 'nullable|numeric|min:0',
             'bulk_discount_rate' => 'nullable|numeric|min:5|max:25',
@@ -58,6 +60,7 @@ class DeliveryFeeSettingController extends Controller
             'distance_km' => 'nullable|numeric|min:0',
             'total_weight_kg' => 'nullable|numeric|min:0',
             'item_quantity' => 'nullable|integer|min:0',
+            'bulky_quantity' => 'nullable|integer|min:0',
             'has_bulky_items' => 'nullable|boolean',
             'is_remote_area' => 'nullable|boolean',
         ]);
@@ -69,7 +72,7 @@ class DeliveryFeeSettingController extends Controller
             (float) ($validated['distance_km'] ?? 0),
             (float) ($validated['total_weight_kg'] ?? 0),
             (int) ($validated['item_quantity'] ?? 0),
-            (bool) ($validated['has_bulky_items'] ?? false),
+            (int) ($validated['bulky_quantity'] ?? ((bool) ($validated['has_bulky_items'] ?? false) ? 1 : 0)),
             (bool) ($validated['is_remote_area'] ?? false)
         );
 
@@ -105,7 +108,6 @@ class DeliveryFeeSettingController extends Controller
             'is_active' => true,
             'base_fee' => 100,
             'per_km_fee' => 10,
-            'per_item_fee' => 0,
             'per_kg_fee' => 0,
             'min_delivery_fee' => 80,
             'free_shipping_min_order' => null,
@@ -123,11 +125,13 @@ class DeliveryFeeSettingController extends Controller
             'is_active' => (bool) $setting->is_active,
             'base_fee' => (float) $setting->base_fee,
             'per_km_fee' => (float) $setting->per_km_fee,
-            'per_item_fee' => (float) $setting->per_item_fee,
             'per_kg_fee' => (float) $setting->per_kg_fee,
             'min_delivery_fee' => (float) $setting->min_delivery_fee,
             'free_shipping_min_order' => is_null($setting->free_shipping_min_order) ? null : (float) $setting->free_shipping_min_order,
             'bulky_item_surcharge' => (float) $setting->bulky_item_surcharge,
+            'bulky_weight_threshold_kg' => $setting->bulky_weight_threshold_kg !== null ? (float) $setting->bulky_weight_threshold_kg : null,
+            'bulky_longest_side_threshold_cm' => $setting->bulky_longest_side_threshold_cm !== null ? (float) $setting->bulky_longest_side_threshold_cm : null,
+            'bulky_volume_threshold_cbm' => $setting->bulky_volume_threshold_cbm !== null ? (float) $setting->bulky_volume_threshold_cbm : null,
             'remote_area_surcharge' => (float) $setting->remote_area_surcharge,
             'max_delivery_distance_km' => is_null($setting->max_delivery_distance_km) ? null : (float) $setting->max_delivery_distance_km,
             'bulk_discount_rate' => is_null($setting->bulk_discount_rate) ? null : (float) $setting->bulk_discount_rate,
@@ -135,7 +139,7 @@ class DeliveryFeeSettingController extends Controller
         ];
     }
 
-    private function computeFee(StoreDeliveryFeeSetting $setting, float $subtotal, float $distanceKm, float $totalWeightKg, int $itemQuantity, bool $hasBulkyItems, bool $isRemoteArea): array
+    private function computeFee(StoreDeliveryFeeSetting $setting, float $subtotal, float $distanceKm, float $totalWeightKg, int $itemQuantity, int $bulkyQuantity, bool $isRemoteArea): array
     {
         if (!(bool) $setting->is_active) {
             return [
@@ -145,7 +149,7 @@ class DeliveryFeeSettingController extends Controller
                     'base_fee' => 0.0,
                     'distance_fee' => 0.0,
                     'weight_fee' => 0.0,
-                    'item_fee' => 0.0,
+                    'bulky_quantity' => $bulkyQuantity,
                     'bulky_item_surcharge' => 0.0,
                     'remote_area_surcharge' => 0.0,
                     'minimum_applied' => false,
@@ -167,7 +171,7 @@ class DeliveryFeeSettingController extends Controller
                     'base_fee' => 0.0,
                     'distance_fee' => 0.0,
                     'weight_fee' => 0.0,
-                    'item_fee' => 0.0,
+                    'bulky_quantity' => $bulkyQuantity,
                     'bulky_item_surcharge' => 0.0,
                     'remote_area_surcharge' => 0.0,
                     'minimum_applied' => false,
@@ -188,8 +192,8 @@ class DeliveryFeeSettingController extends Controller
                     'base_fee' => (float) $setting->base_fee,
                     'distance_fee' => $distanceKm * (float) $setting->per_km_fee,
                     'weight_fee' => $totalWeightKg * (float) $setting->per_kg_fee,
-                    'item_fee' => $itemQuantity * (float) $setting->per_item_fee,
-                    'bulky_item_surcharge' => $hasBulkyItems ? (float) $setting->bulky_item_surcharge : 0.0,
+                    'bulky_quantity' => $bulkyQuantity,
+                    'bulky_item_surcharge' => $bulkyQuantity * (float) $setting->bulky_item_surcharge,
                     'remote_area_surcharge' => $isRemoteArea ? (float) $setting->remote_area_surcharge : 0.0,
                     'minimum_applied' => false,
                     'free_shipping_applied' => true,
@@ -203,10 +207,9 @@ class DeliveryFeeSettingController extends Controller
         $base = (float) $setting->base_fee;
         $distanceFee = $distanceKm * (float) $setting->per_km_fee;
         $weightFee = $totalWeightKg * (float) $setting->per_kg_fee;
-        $itemFee = $itemQuantity * (float) $setting->per_item_fee;
-        $bulky = $hasBulkyItems ? (float) $setting->bulky_item_surcharge : 0.0;
+        $bulky = $bulkyQuantity * (float) $setting->bulky_item_surcharge;
         $remote = $isRemoteArea ? (float) $setting->remote_area_surcharge : 0.0;
-        $raw = $base + $distanceFee + $weightFee + $itemFee + $bulky + $remote;
+        $raw = $base + $distanceFee + $weightFee + $bulky + $remote;
         $min = (float) $setting->min_delivery_fee;
         $applied = max($raw, $min);
 
@@ -217,7 +220,7 @@ class DeliveryFeeSettingController extends Controller
                 'base_fee' => round($base, 2),
                 'distance_fee' => round($distanceFee, 2),
                 'weight_fee' => round($weightFee, 2),
-                'item_fee' => round($itemFee, 2),
+                'bulky_quantity' => $bulkyQuantity,
                 'bulky_item_surcharge' => round($bulky, 2),
                 'remote_area_surcharge' => round($remote, 2),
                 'minimum_applied' => $applied > $raw,

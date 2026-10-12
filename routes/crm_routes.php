@@ -25,6 +25,12 @@ Route::prefix('crm')->group(function () {
         Route::post('/{id}/activities', [CrmLeadController::class, 'addActivity'])->middleware('can:crm.leads.manage');
     });
 
+    Route::prefix('customers')->group(function () {
+        Route::get('/', [CrmLeadController::class, 'leads'])->middleware('can:crm.leads.view');
+        Route::post('/', [CrmLeadController::class, 'storeLead'])->middleware('can:crm.crm.manage');
+        Route::get('/{id}', [CrmLeadController::class, 'showCustomer'])->middleware('can:crm.leads.view');
+    });
+
     Route::prefix('chats')->group(function () {
         Route::get('/threads', [ChatController::class, 'threads'])->middleware('can:crm.chats.view');
         Route::get('/threads/{id}/messages', [ChatController::class, 'messages'])->middleware('can:crm.chats.view');

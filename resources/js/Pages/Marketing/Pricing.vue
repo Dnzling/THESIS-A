@@ -39,7 +39,7 @@
             <p class="mt-2 text-slate-600">Please wait while we fetch the latest offers.</p>
           </div>
 
-          <div class="grid gap-6 lg:grid-cols-3">
+          <div class="grid gap-6 lg:grid-cols-4">
             <article
               v-for="plan in visiblePlans"
               :key="plan.id"
@@ -64,13 +64,11 @@
                 Billed {{ isYearly ? 'yearly' : 'monthly' }}
                 <span v-if="isYearly" class="ml-2 font-semibold text-orange-700">Save {{ yearlySavings(plan) }}</span>
               </p>
-               <button
-                type="button"
-                class="mt-8 inline-flex w-full items-center justify-center rounded-full bg-orange-500 px-5 py-3 font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600"
-                @click="selectPlan(plan)"
-              >
-                Choose Plan
-              </button>
+               <Button
+                class="mt-8 inline-flex w-full items-center justify-center " rounded raised 
+                @click="selectPlan(plan)" label="Choose Plan"
+              />
+    
 
               <div class="mt-6 space-y-3">
                 <div v-for="feature in plan.features || []" :key="feature" class="flex items-start gap-3 text-sm text-slate-700">

@@ -31,8 +31,13 @@ class SalesService {
     return res.data
   }
 
-  async recordWholesalePayment(id: number, payload: { payment_method: string; payment_reference?: string }) {
+  async recordWholesalePayment(id: number, payload: { payment_method: string; payment_reference: string; confirmed_received: boolean }) {
     const res = await axiosClient.post(`/api/sales/wholesale-quotes/${id}/record-payment`, payload, { headers: { 'X-Suppress-Dialog': '1' } })
+    return res.data
+  }
+
+  async createWholesalePaymentLink(id: number) {
+    const res = await axiosClient.post(`/api/sales/wholesale-quotes/${id}/payment-link`, {}, { headers: { 'X-Suppress-Dialog': '1' } })
     return res.data
   }
 

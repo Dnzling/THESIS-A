@@ -9,6 +9,7 @@ use App\Models\ProductCatalog\Category;
 use App\Models\ProductCatalog\Product;
 use App\Models\Store\Branch;
 use App\Models\Store\Store;
+use App\Services\Ecommerce\PromotionPricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Storage;
 class EcommerceActiveStockProductsController extends Controller
 {
     private static ?bool $hasProductTaxRateColumn = null;
+
+    public function __construct(private readonly PromotionPricingService $promotionPricing)
+    {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -31,6 +36,7 @@ class EcommerceActiveStockProductsController extends Controller
             'products.product_type',
             'products.description',
             'products.category_id',
+            'products.subcategory_id',
             'products.base_price',
             'products.discounted_price',
             'products.created_at',
@@ -66,6 +72,7 @@ class EcommerceActiveStockProductsController extends Controller
                 $storeQuery->whereIn('status', ['active', 'verified']);
             })
             ->whereHas('inventory', function ($inventoryQuery) {
+                $inventoryQuery->sellableInEcommerce();
                 $inventoryQuery
                     ->where('quantity_available', '>', 0)
                     ->whereIn('stock_status', ['in_stock', 'low_stock']);
@@ -90,10 +97,36 @@ class EcommerceActiveStockProductsController extends Controller
         }
 
         if ($request->boolean('discounted_only')) {
-            $query
-                ->whereNotNull('products.discounted_price')
-                ->where('products.discounted_price', '>', 0)
-                ->whereColumn('products.discounted_price', '<', 'products.base_price');
+            $query->where(function ($discountQuery) {
+                $discountQuery->where(function ($individual) {
+                    $individual->whereNotNull('products.discounted_price')
+                        ->where('products.discounted_price', '>', 0)
+                        ->whereColumn('products.discounted_price', '<', 'products.base_price');
+                })->orWhereExists(function ($promotionQuery) {
+                    $promotionQuery->selectRaw('1')->from('promotions')
+                        ->whereColumn('promotions.store_id', 'products.store_id')
+                        ->where('promotions.is_active', true)
+                        ->whereNull('promotions.deleted_at')
+                        ->where('promotions.minimum_order_amount', '<=', 0)
+                        ->where(fn ($q) => $q->whereNull('promotions.starts_at')->orWhere('promotions.starts_at', '<=', now()))
+                        ->where(fn ($q) => $q->whereNull('promotions.ends_at')->orWhere('promotions.ends_at', '>', now()))
+                        ->where(function ($target) {
+                            $target->where('promotions.target_type', 'all')
+                                ->orWhereExists(fn ($q) => $q->selectRaw('1')->from('promotion_products')
+                                    ->whereColumn('promotion_products.promotion_id', 'promotions.id')
+                                    ->whereColumn('promotion_products.product_id', 'products.id'))
+                                ->orWhereExists(fn ($q) => $q->selectRaw('1')->from('promotion_categories')
+                                    ->whereColumn('promotion_categories.promotion_id', 'promotions.id')
+                                    ->where(fn ($category) => $category
+                                        ->whereColumn('promotion_categories.category_id', 'products.category_id')
+                                        ->orWhereColumn('promotion_categories.category_id', 'products.subcategory_id')));
+                        });
+                });
+            });
+        }
+
+        if ($request->boolean('new_this_month')) {
+            $query->whereBetween('products.created_at', [now()->startOfMonth(), now()->endOfMonth()]);
         }
 
         $sort = (string) $request->input('sort', 'latest');
@@ -113,6 +146,7 @@ class EcommerceActiveStockProductsController extends Controller
         $productIds = $products->getCollection()->pluck('id')->values();
 
         $inventoryMap = BranchInventory::query()
+            ->sellableInEcommerce()
             ->select(['product_id', 'quantity_available', 'stock_status'])
             ->whereIn('product_id', $productIds)
             ->where('quantity_available', '>', 0)
@@ -135,9 +169,8 @@ class EcommerceActiveStockProductsController extends Controller
             $rating = $ratingMap->get($product->id);
             $imageAsset = $this->selectBestImage($product);
             $basePrice = round((float) ($product->base_price ?? 0), 2);
-            $discountedPrice = is_null($product->discounted_price)
-                ? null
-                : round((float) $product->discounted_price, 2);
+            $effectivePrice = $this->promotionPricing->price($product)['price'];
+            $discountedPrice = $effectivePrice < $basePrice ? $effectivePrice : null;
             $hasDiscount = $basePrice > 0 && !is_null($discountedPrice) && $discountedPrice > 0 && $discountedPrice < $basePrice;
             $discountPercentage = $hasDiscount
                 ? (int) round((($basePrice - $discountedPrice) / $basePrice) * 100)
@@ -195,6 +228,7 @@ class EcommerceActiveStockProductsController extends Controller
                         $storeQuery->whereIn('status', ['active', 'verified']);
                     })
                     ->whereHas('inventory', function ($inventoryQuery) {
+                        $inventoryQuery->sellableInEcommerce();
                         $inventoryQuery
                             ->where('quantity_available', '>', 0)
                             ->whereIn('stock_status', ['in_stock', 'low_stock']);
@@ -209,6 +243,7 @@ class EcommerceActiveStockProductsController extends Controller
                         $storeQuery->whereIn('status', ['active', 'verified']);
                     })
                     ->whereHas('inventory', function ($inventoryQuery) {
+                        $inventoryQuery->sellableInEcommerce();
                         $inventoryQuery
                             ->where('quantity_available', '>', 0)
                             ->whereIn('stock_status', ['in_stock', 'low_stock']);
@@ -282,6 +317,7 @@ class EcommerceActiveStockProductsController extends Controller
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->whereHas('inventory', function ($inventoryQuery) {
+                $inventoryQuery->sellableInEcommerce();
                 $inventoryQuery
                     ->where('quantity_available', '>', 0)
                     ->whereIn('stock_status', ['in_stock', 'low_stock']);

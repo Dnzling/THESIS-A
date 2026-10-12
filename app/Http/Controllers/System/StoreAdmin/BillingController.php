@@ -131,26 +131,6 @@ class BillingController extends Controller
                         'used' => $store->branches()->where('branch_type', 'storefront')->count(),
                     ],
                     [
-                        'key' => 'warehouses',
-                        'label' => 'Warehouse Branches',
-                        'limit' => $plan?->max_warehouses,
-                        'used' => DB::table('branches')->where('store_id', $store->id)->where('branch_type', 'warehouse')->count(),
-                    ],
-                    [
-                        'key' => 'vehicles',
-                        'label' => 'Delivery Vehicles',
-                        'limit' => $plan?->max_trucks,
-                        'used' => DB::table('ecommerce_delivery_vehicles')
-                            ->where('store_id', $store->id)
-                            ->count(),
-                    ],
-                    [
-                        'key' => 'suppliers',
-                        'label' => 'Suppliers',
-                        'limit' => $plan?->max_suppliers,
-                        'used' => DB::table('suppliers')->where('store_id', $store->id)->whereNull('deleted_at')->count(),
-                    ],
-                    [
                         'key' => 'products',
                         'label' => 'Products',
                         'limit' => $plan?->max_products,

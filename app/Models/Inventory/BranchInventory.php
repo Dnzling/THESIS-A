@@ -69,6 +69,13 @@ class BranchInventory extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function scopeSellableInEcommerce($query)
+    {
+        return $query->whereHas('branch', fn ($branch) => $branch
+            ->where('branch_type', 'storefront')
+            ->where('status', 'active'));
+    }
+
     public function warehouseLocation(): BelongsTo
     {
         return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');

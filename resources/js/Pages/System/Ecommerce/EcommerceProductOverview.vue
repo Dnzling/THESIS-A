@@ -10,10 +10,7 @@
           <Skeleton width="95%" height="18px" />
           <Skeleton width="45%" height="40px" />
           <Skeleton width="40%" height="20px" />
-          <div class="flex gap-3 pt-2">
-            <Skeleton width="180px" height="42px" />
-            <Skeleton width="160px" height="42px" />
-          </div>
+          <Skeleton width="100%" height="42px" class="mt-2" />
         </div>
       </div>
 
@@ -203,9 +200,8 @@
                   class="!h-10 !w-10 !rounded-none !border-0 !p-0 !text-slate-500 hover:!bg-orange-50 hover:!text-orange-600"
                   aria-label="Increase quantity" :disabled="quantity >= maxPurchasableQty" @click="changeProductQuantity(1)" />
               </div>
-              <Button label="Add to Cart" severity="warn" outlined fluid class="flex-1" :disabled="!canPurchase"
-                @click="addToCart" />
-              <Button label="Buy Now" fluid class="flex-1" :disabled="!canPurchase" @click="buyNow" />
+              <Button label="Add to Cart" icon="pi pi-shopping-cart" severity="warn" fluid class="flex-1"
+                :disabled="!canPurchase" :loading="addingToCart" @click="addToCart" />
             </div>
           </div>
         </div>
@@ -323,6 +319,51 @@
       Product not found.
     </div>
   
+    <Drawer v-model:visible="cartDrawerVisible" position="right" header="Your cart" class="!w-full sm:!w-[30rem]">
+      <div v-if="addedItem" class="flex h-full flex-col gap-6 text-sm">
+        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800">
+          <i class="pi pi-check-circle mr-2" />Added to cart
+        </div>
+        <div class="flex gap-4 border-b border-slate-200 pb-6">
+          <img v-if="addedItem.image" :src="addedItem.image" :alt="addedItem.name"
+            class="h-28 w-28 shrink-0 rounded-xl border border-slate-200 object-cover" />
+          <div v-else class="flex h-28 w-28 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+            <i class="pi pi-image" />
+          </div>
+          <div class="min-w-0 space-y-1">
+            <p class="font-semibold text-slate-900">{{ addedItem.name }}</p>
+            <p v-if="addedItem.description" class="line-clamp-2 text-xs leading-5 text-slate-500">{{ addedItem.description }}</p>
+            <p class="text-xs text-slate-500">Quantity: {{ addedItem.quantity }}</p>
+            <p class="font-bold text-orange-600">{{ formatCurrency(addedItem.price) }}</p>
+          </div>
+        </div>
+        <section class="min-h-0 flex-1 overflow-y-auto">
+          <h3 class="mb-1 text-base font-semibold text-slate-900">Complement your order</h3>
+          <p class="mb-4 text-xs text-slate-500">Popular in-stock picks, starting with this store.</p>
+          <div v-if="complementaryProducts.length" class="space-y-2">
+            <button v-for="item in complementaryProducts" :key="item.id" type="button"
+              class="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-2 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
+              @click="cartDrawerVisible = false; goToRecommended(item.id)">
+              <img v-if="item.image" :src="normalizeImageUrl(item.image)" :alt="item.product_name"
+                class="h-16 w-16 shrink-0 rounded-lg object-cover" />
+              <div v-else class="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><i class="pi pi-image" /></div>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate font-medium text-slate-900">{{ item.product_name }}</span>
+                <span class="block text-xs text-slate-500">{{ Number(item.store_id) === Number(addedItem.storeId) ? 'From this store' : 'From another store' }}</span>
+                <span class="block font-semibold text-orange-600">{{ formatCurrency(item.price) }}</span>
+              </span>
+              <i class="pi pi-chevron-right text-xs text-slate-400" />
+            </button>
+          </div>
+          <p v-else class="rounded-xl bg-slate-50 p-4 text-xs text-slate-500">No other in-stock suggestions right now.</p>
+        </section>
+        <div class="border-t border-slate-200 pt-4">
+          <Button label="View Cart" severity="warn" fluid @click="cartDrawerVisible = false; router.push({ name: 'ecommerce.cart' })" />
+          <Button label="Continue shopping" severity="secondary" text fluid class="mt-2" @click="cartDrawerVisible = false" />
+        </div>
+      </div>
+    </Drawer>
+
     <Dialog v-model:visible="reportDialog" modal header="Report Store" class="w-full max-w-xl">
       <div class="space-y-3">
         <div>
@@ -443,10 +484,11 @@ import InputNumber from 'primevue/inputnumber'
 import Skeleton from 'primevue/skeleton'
 import Carousel from 'primevue/carousel'
 import Dialog from 'primevue/dialog'
+import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Model3DPreview from '@/Components/merchandising/Model3DPreview.vue'
-import { showAlert, confirmAlert } from '@/utils/swal'
+import { showAlert } from '@/utils/swal'
 defineOptions({
   layout: EcommerceMobileWrapper,
 })
@@ -463,6 +505,10 @@ const activeTab = ref<'description' | 'reviews' | 'recommended'>(
   String(route.query.tab) === 'reviews' ? 'reviews' : (String(route.query.tab) === 'recommended' ? 'recommended' : 'description'),
 )
 const recommendedProducts = ref<any[]>([])
+const complementaryProducts = ref<any[]>([])
+const cartDrawerVisible = ref(false)
+const addingToCart = ref(false)
+const addedItem = ref<{ name: string; description: string; image: string | null; price: number; quantity: number; storeId: number } | null>(null)
 const storeInfo = ref<{ id: number; name: string; logo: string | null; rating_avg: number; rating_count: number } | null>(null)
 const show3DViewer = ref(false)
 const selectedImage = ref<string | null>(null)
@@ -823,11 +869,27 @@ async function loadProduct() {
 
 async function loadRecommendedProducts() {
   try {
-    const response = await ecommerceService.getActiveStockProducts({ per_page: 8, search: '' })
-    const all = response.data?.data?.data || []
+    const storeId = Number(product.value?.store_id || 0)
+    const currentId = Number(product.value?.id || 0)
+    const categoryId = Number(product.value?.category_id || 0)
+    const [storeResponse, catalogResponse] = await Promise.all([
+      ecommerceService.getActiveStockProducts({ per_page: 50, store_id: storeId, sort: 'popular' }),
+      ecommerceService.getActiveStockProducts({ per_page: 50, sort: 'popular' }),
+    ])
+    const sameStore = storeResponse.data?.data?.data || []
+    const catalog = catalogResponse.data?.data?.data || []
+    const unique = new Map<number, any>()
+    for (const item of [...sameStore.filter((p: any) => Number(p.category_id) !== categoryId),
+      ...catalog.filter((p: any) => Number(p.store_id) !== storeId)]) {
+      if (Number(item.id) !== currentId && !unique.has(Number(item.id))) unique.set(Number(item.id), item)
+      if (unique.size === 5) break
+    }
+    complementaryProducts.value = [...unique.values()]
+    const all = catalog
     recommendedProducts.value = all.filter((p: any) => Number(p.id) !== Number(product.value?.id)).slice(0, 4)
   } catch {
     recommendedProducts.value = []
+    complementaryProducts.value = []
   }
 }
 
@@ -869,7 +931,16 @@ async function addToCart() {
     return
   }
   if (!requireCustomerLogin()) return
+  addingToCart.value = true
   try {
+    const item = {
+      name: String(product.value.product_name || 'Product'),
+      description: String(product.value.short_description || product.value.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150),
+      image: primaryImage.value ? String(primaryImage.value) : null,
+      price: Number(displaySellingPrice.value || 0),
+      quantity: Number(quantity.value || 1),
+      storeId: Number(product.value.store_id || 0),
+    }
     await ecommerceService.addToCart({
       product_id: Number(product.value.id),
       variation_id: selectedVariationId.value ? Number(selectedVariationId.value) : null,
@@ -877,49 +948,13 @@ async function addToCart() {
       store_id: product.value?.store_id ? Number(product.value.store_id) : null,
     })
     window.dispatchEvent(new Event('ecommerce-cart-updated'))
-    showAlert({ severity: 'success', summary: 'Added to cart', detail: `${product.value.product_name}` })
+    addedItem.value = item
+    cartDrawerVisible.value = true
   } catch (error: any) {
     if (Number(error?.response?.status) === 401) return
     showAlert({ severity: 'error', summary: 'Error', detail: 'Could not add to cart.' })
-  }
-}
-
-async function buyNow() {
-  if (!product.value?.id) return
-  if (productHasVariations.value && !selectedVariationId.value) {
-    showAlert({ severity: 'warn', summary: 'Variation required', detail: 'Please select a variation first.' })
-    return
-  }
-  if (!canPurchase.value) {
-    showAlert({ severity: 'warn', summary: 'Out of stock', detail: 'This item is out of stock.' })
-    return
-  }
-  if (!requireCustomerLogin()) return
-  try {
-    const confirmed = await confirmAlert({
-      title: 'Proceed to checkout?',
-      text: 'Are you sure you want to buy this item now? This will add it to your cart and take you to checkout.',
-      cancelText: 'No, go back to shop',
-      confirmText: 'Yes, buy now',
-      reverseButtons: true,
-    })
-
-    if (!confirmed) {
-      goStorePage()
-      return
-    }
-
-    await ecommerceService.addToCart({
-      product_id: Number(product.value.id),
-      variation_id: selectedVariationId.value ? Number(selectedVariationId.value) : null,
-      quantity: Number(quantity.value || 1),
-      store_id: product.value?.store_id ? Number(product.value.store_id) : null,
-    })
-    window.dispatchEvent(new Event('ecommerce-cart-updated'))
-    router.push({ name: 'ecommerce.checkout' })
-  } catch (error: any) {
-    if (Number(error?.response?.status) === 401) return
-    showAlert({ severity: 'error', summary: 'Error', detail: 'Could not process Buy Now.' })
+  } finally {
+    addingToCart.value = false
   }
 }
 

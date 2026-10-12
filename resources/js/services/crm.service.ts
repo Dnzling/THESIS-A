@@ -21,6 +21,21 @@ class CrmService {
     return res.data
   }
 
+  async getCustomers(params?: any) {
+    const res = await axiosClient.get('/api/crm/customers', { params })
+    return res.data
+  }
+
+  async getCustomer(id: number | string) {
+    const res = await axiosClient.get(`/api/crm/customers/${id}`)
+    return res.data
+  }
+
+  async createCustomer(payload: any) {
+    const res = await axiosClient.post('/api/crm/customers', payload)
+    return res.data
+  }
+
   async createLead(payload: any) {
     const res = await axiosClient.post('/api/crm/leads', payload)
     return res.data

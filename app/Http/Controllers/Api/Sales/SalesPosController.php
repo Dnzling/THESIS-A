@@ -911,7 +911,8 @@ class SalesPosController extends Controller
         $this->applyStoreScope($request, $query);
         $order = $query->findOrFail($id);
 
-        $payment = $order->payment;
+        $payment = SalesPayment::query()->where('sales_order_id', $order->id)
+            ->where('payment_provider', 'paymongo')->latest('id')->first();
         if (!$payment || $payment->payment_provider !== 'paymongo' || !$payment->provider_reference) {
             return response()->json([
                 'success' => false,
@@ -919,8 +920,15 @@ class SalesPosController extends Controller
             ], 422);
         }
 
-        $payload = $this->paymongoService->retrieveIntent((string) $payment->provider_reference);
-        $status = (string) data_get($payload, 'data.attributes.status', '');
+        $reference = (string) $payment->provider_reference;
+        $isCheckoutSession = str_starts_with($reference, 'cs_');
+        $payload = $isCheckoutSession
+            ? $this->paymongoService->retrieveCheckoutSession($reference)
+            : $this->paymongoService->retrieveIntent($reference);
+        $status = $isCheckoutSession
+            ? (collect((array) data_get($payload, 'data.attributes.payments', []))
+                ->contains(fn ($row) => strtolower((string) data_get($row, 'attributes.status', '')) === 'paid') ? 'succeeded' : '')
+            : (string) data_get($payload, 'data.attributes.status', '');
 
         $statusMap = [
             'awaiting_payment_method' => 'awaiting_payment_method',

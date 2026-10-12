@@ -67,7 +67,7 @@ Route::prefix('logistics')->group(function () {
     // Fleet Management (in-house)
     Route::prefix('vehicles')->group(function () {
         Route::get('/', [VehicleController::class, 'index']);
-        Route::post('/', [VehicleController::class, 'store'])->middleware('subscription.capacity:vehicles');
+        Route::post('/', [VehicleController::class, 'store']);
         Route::get('/{id}', [VehicleController::class, 'show']);
         Route::put('/{id}', [VehicleController::class, 'update']);
     });

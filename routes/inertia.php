@@ -32,6 +32,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/store/attendance', 'System/Store/Attendance', 'store.attendance', 'Branch Attendance');
     $inertia('/store/branch-settings', 'System/Store/Settings', 'store.branch-settings', 'Store Settings');
     $inertia('/store/ecommerce', 'System/Store/Ecommerce', 'store.ecommerce', 'Store Ecommerce Performance');
+    $inertia('/staff-chats', 'System/StaffChats/Index', 'staff.chats', 'Staff Chats');
 
     // Warehouse Operations
     Route::redirect('/warehouse', '/warehouse/dashboard')->name('warehouse');
@@ -347,6 +348,10 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/sales/dashboard', 'System/Sales/SalesDashboard', 'sales.dashboard', 'Sales Dashboard');
     $inertia('/sales/orders', 'System/Sales/SalesOrdersIndex', 'sales.orders', 'Orders');
     $inertia('/sales/wholesale-quotes', 'System/Sales/WholesaleQuotes', 'sales.wholesale-quotes', 'Wholesale Quotations');
+    $inertia('/sales/wholesale-quotes/create', 'System/Sales/WholesaleQuoteCreate', 'sales.wholesale-quotes.create', 'Create Wholesale Quotation');
+    $inertia('/sales/wholesale-quotes/{id}', 'System/Sales/WholesaleQuoteShow', 'sales.wholesale-quotes.show', 'Wholesale Quotation');
+    $inertia('/sales/transactions', 'System/Sales/Transactions', 'sales.transactions', 'Sales Transactions');
+    $inertia('/sales/transactions/{type}/{id}', 'System/Sales/TransactionShow', 'sales.transactions.show', 'Transaction Details');
     $inertia('/sales/pos', 'System/Sales/SalesPOS', 'sales.pos', 'POS');
     $inertia('/sales/pos/orders/{id}', 'System/Sales/SalesPOSOrderDetail', 'sales.pos.order-detail', 'POS Order Detail');
     // $inertia('/sales/ecommerce-orders', 'System/Sales/EcommerceOrderIndex', 'sales.ecommerce-orders', 'Ecommerce Orders');
@@ -356,6 +361,9 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     // CRM
     Route::redirect('/crm', '/crm/dashboard')->name('CRM');
     $inertia('/crm/dashboard', 'System/CRM/Dashboard', 'crm.dashboard', 'CRM Dashboard');
+    $inertia('/crm/customers', 'System/CRM/Customers/CustomerIndex', 'crm.customers', 'Customers');
+    $inertia('/crm/customers/create', 'System/CRM/Customers/CustomerCreate', 'crm.customers.create', 'Create Customer');
+    $inertia('/crm/customers/{id}', 'System/CRM/Customers/CustomerView', 'crm.customers.view', 'Customer Details');
     $inertia('/crm/leads', 'System/CRM/Leads', 'crm.leads', 'CRM Leads');
     $inertia('/crm/chats', 'System/CRM/Chats/Chats', 'crm.chats', 'Customer Chats');
     $inertia('/crm/reviews', 'System/CRM/Review/ReviewIndex', 'crm.reviews', 'Reviews');
@@ -392,7 +400,7 @@ Route::middleware(['auth:sanctum', 'trial.setup', 'account.operational'])->group
     $inertia('/merchandising/attributes', 'System/Merchandising/attributes/AttributesList', 'merchandising.attributes', 'Product Attributes', 'Define filterable product characteristics');
     $inertia('/merchandising/attributes/new', 'System/Merchandising/attributes/AttributeForm', 'merchandising.attributes.create', 'Add Attribute', 'Create a new product attribute');
     $inertia('/merchandising/tags', 'System/Merchandising/tags/TagsList', 'merchandising.tags', 'Collections', 'Manage product tags and collections');
-    $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Pricing Rules', 'Set discounts and pricing strategies');
+    $inertia('/merchandising/pricing', 'System/Merchandising/pricing/PricingRules', 'merchandising.pricing', 'Promotions & Discounts', 'Create store promotions for products and categories');
     $inertia('/merchandising/pricing/bulk-update', 'System/Merchandising/pricing/BulkPricing', 'merchandising.pricing.bulk', 'Bulk Price Update', 'Update multiple product prices at once');
     $inertia('/merchandising/reports', 'System/Merchandising/reports/SalesReports', 'merchandising.reports', 'Sales Reports', 'Analyze product performance');
     $inertia('/merchandising/pricing-history', 'System/Merchandising/reports/PricingHistory', 'merchandising.pricing-history', 'Pricing History', 'Track price changes over time');
@@ -432,7 +440,8 @@ $inertia('/job-portal/profile', 'System/HR/Applicant/ApplicantProfile', 'job-por
 // Ecommerce storefront
 $inertia('/', 'System/Ecommerce/EcommerceHome', 'ecommerce.home', 'Furniture Shopping');
 $inertia('/shop', 'System/Ecommerce/EcommerceProducts', 'ecommerce.products', 'Shop Products');
-$inertia('/trending', 'System/Ecommerce/EcommerceTrending', 'ecommerce.trending.view', 'Trending Products');
+$inertia('/new-products', 'System/Ecommerce/EcommerceProducts', 'ecommerce.new-products', 'New Products');
+$inertia('/trending', 'System/Ecommerce/EcommerceProducts', 'ecommerce.trending.view', 'Trending Products');
 $inertia('/stores', 'System/Ecommerce/EcommerceStoreDirectory', 'ecommerce.stores', 'Stores');
 $inertia('/stores/{storeId}', 'System/Ecommerce/EcommerceStorefront', 'ecommerce.store-profile', 'Store Profile');
 $inertia('/stores/{storeId}/products', 'System/Ecommerce/EcommerceStoreProducts', 'ecommerce.store-products', 'Store Products');

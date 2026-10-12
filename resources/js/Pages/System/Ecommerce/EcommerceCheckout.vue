@@ -71,10 +71,54 @@
                 <p class="text-sm text-slate-600">{{ selectedAddress?.contact_number || '-' }}</p>
                 <p class="mt-1 text-sm leading-6 text-slate-600">{{ selectedAddressSummary }}</p>
               </template>
-              <p v-else class="mt-2 text-sm text-slate-600">No delivery vehicles are registered. This order will be collected from the store.</p>
+              <div v-else class="mt-2 space-y-1 text-sm text-slate-600">
+                <p class="font-semibold text-slate-900">{{ pickupBranch?.name || 'Finding your pickup branch...' }}</p>
+                <p>{{ pickupBranchAddress }}</p>
+                <p v-if="pickupBranch?.contact_number" class="text-xs">Contact: {{ pickupBranch.contact_number }}</p>
+                <p class="text-xs text-slate-500">Pickup branch is confirmed when your order is placed.</p>
+              </div>
                 </div>
               </div>
           <Button v-if="!pickupOnly" label="Change" icon="pi pi-pencil" size="small" text severity="warn" @click.stop="openAddressDialog" />
+            </div>
+          </template>
+        </Card>
+
+        <Card v-if="selectedPaymentMethod === 'online'" class="border border-slate-200 shadow-none">
+          <template #content>
+            <h2 class="text-base font-semibold text-slate-900">Billing address</h2>
+            <p class="mt-1 text-xs text-slate-500">Used for your payment receipt, not for delivery.</p>
+            <label class="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
+              <input v-model="useDifferentBillingAddress" type="checkbox" class="h-4 w-4 accent-orange-500" />
+              {{ pickupOnly ? 'Add a billing address for my receipt' : 'Use a different billing address' }}
+            </label>
+            <p v-if="!useDifferentBillingAddress && !pickupOnly" class="mt-3 text-xs text-slate-500">Same as shipping address: {{ selectedAddressSummary }}</p>
+            <div v-if="useDifferentBillingAddress" class="mt-4 grid gap-3 sm:grid-cols-2">
+              <div class="sm:col-span-2">
+                <label class="mb-1 block text-xs font-medium text-slate-600">Billing name *</label>
+                <InputText v-model.trim="billingForm.name" fluid size="small" placeholder="Full name or business name" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="mb-1 block text-xs font-medium text-slate-600">Street, building, and unit *</label>
+                <InputText v-model.trim="billingForm.street" fluid size="small" placeholder="House number and street" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-600">Barangay</label>
+                <InputText v-model.trim="billingForm.barangay" fluid size="small" placeholder="Barangay" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-600">City *</label>
+                <InputText v-model.trim="billingForm.city" fluid size="small" placeholder="City or municipality" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-600">Province *</label>
+                <InputText v-model.trim="billingForm.province" fluid size="small" placeholder="Province" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-600">Postal code</label>
+                <InputText v-model.trim="billingForm.postalCode" fluid size="small" placeholder="Postal code" />
+              </div>
+              <p v-if="billingAddressIncomplete" class="text-xs text-amber-700 sm:col-span-2">Complete the required billing fields before placing your order.</p>
             </div>
           </template>
         </Card>
@@ -104,7 +148,7 @@
                   <p class="text-xs font-medium text-slate-500">{{ item.store_name }}</p>
                   <p class="truncate text-sm font-semibold text-slate-900">{{ item.product_name }}</p>
                   <p class="truncate text-xs text-slate-500">Variant: {{ item.sku || 'Standard' }}</p>
-                  <p class="mt-2 text-xs text-slate-500">{{ pickupOnly ? 'Pickup from the store' : `Delivery Fee: ₱ ${formatNumber(shippingFeePerItem, 2)} · Estimated Delivery: ${estimatedDeliveryDate}` }}</p>
+                  <p class="mt-2 text-xs text-slate-500">{{ pickupOnly ? 'Pickup from the store' : `Delivery Fee: ${shippingFeePerItem <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeePerItem, 2)}`} · Estimated Delivery: ${estimatedDeliveryDate}` }}</p>
                   <div v-if="item.is_customizable" class="mt-3">
                     <button
                       type="button"
@@ -191,7 +235,7 @@
             <div class="flex justify-between"><span>Subtotal</span><span>₱ {{ formatNumber(subtotal, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span>VATable Sales</span><span>₱ {{ formatNumber(vatableSales, 2) }}</span></div>
             <div class="flex justify-between text-slate-600"><span> (12%)</span><span>₱ {{ formatNumber(vatAmount, 2) }}</span></div>
-            <div v-if="!pickupOnly" class="flex justify-between"><span>Shipping Fee</span><span>₱ {{ formatNumber(shippingFeeTotal, 2) }}</span></div>
+            <div class="flex justify-between"><span>{{ pickupOnly ? 'Pickup fee' : 'Shipping Fee' }}</span><span>{{ shippingFeeTotal <= 0 ? 'Free' : `₱ ${formatNumber(shippingFeeTotal, 2)}` }}</span></div>
             <!-- <div v-if="bulkTripAllowed" class="flex items-center justify-between text-xs text-slate-600">
               <span>Bulk trip discount</span>
               <InputSwitch v-model="bulkTripEnabled" />
@@ -403,7 +447,7 @@
             </div>
           </div>
           <p v-if="method.value === 'cod' && codBlocked && !pickupOnly" class="mt-2 text-xs text-amber-600">
-            COD is not available for totals above ₱ {{ COD_LIMIT.toLocaleString() }}. Use GCash or Credit Card.
+            COD is not available for totals above ₱ {{ COD_LIMIT.toLocaleString() }}. Use Online Payment.
           </p>
         </div>
         <Button label="Use Payment Method" icon="pi pi-check" severity="warn" fluid @click="paymentDialogVisible = false" />
@@ -434,78 +478,6 @@
 
       <template #footer>
         <Button label="Save" fluid severity="warn" @click="saveCoordsFromMap" />
-      </template>
-    </Dialog>
-
-    <Dialog
-      v-model:visible="gcashDialog.visible"
-      modal
-      header="GCash Payment"
-      class="w-full max-w-md"
-      :draggable="false"
-      :closable="!gcashDialog.processing"
-    >
-      <div class="space-y-3">
-        <p class="text-sm text-slate-600">Confirm details for your GCash receipt before redirecting to authorization.</p>
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
-          <InputMask v-model="gcashDialog.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false"
-            :class="{ 'border-red-500': gcashTouched.phone && gcashPhoneError }" @blur="gcashTouched.phone = true" />
-          <small v-if="gcashTouched.phone && gcashPhoneError" class="mt-1 block text-xs text-red-600">{{ gcashPhoneError }}</small>
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
-          <InputText v-model="gcashDialog.email" type="email" fluid placeholder="name@example.com"
-            :class="{ 'border-red-500': gcashTouched.email && gcashEmailError }" @blur="gcashTouched.email = true" />
-          <small v-if="gcashTouched.email && gcashEmailError" class="mt-1 block text-xs text-red-600">{{ gcashEmailError }}</small>
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined :disabled="gcashDialog.processing" @click="gcashDialog.visible = false" />
-        <Button label="Continue" severity="warn" :loading="gcashDialog.processing" :disabled="gcashDialog.processing" @click="submitGcashPayment" />
-      </template>
-    </Dialog>
-
-    <Dialog
-      v-model:visible="cardDialog.visible"
-      modal
-      header="Card Payment"
-      class="w-full max-w-md"
-      :draggable="false"
-      :closable="!cardDialog.processing"
-    >
-      <div class="space-y-3">
-      
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Card Number</label>
-          <InputMask v-model="cardDialog.cardNumber" mask="9999 9999 9999 9999" fluid placeholder="4111 1111 1111 1111"
-            :class="{ 'border-red-500': cardTouched.cardNumber && cardNumberError }" @blur="cardTouched.cardNumber = true" />
-          <small v-if="cardTouched.cardNumber && cardNumberError" class="mt-1 block text-xs text-red-600">{{ cardNumberError }}</small>
-        </div>
-        <div class="grid grid-cols-3 gap-2">
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">MM</label>
-            <InputMask v-model="cardDialog.expMonth" mask="99" inputmode="numeric" fluid placeholder="01"
-              :class="{ 'border-red-500': cardTouched.expMonth && cardExpMonthError }" @blur="cardTouched.expMonth = true" />
-            <small v-if="cardTouched.expMonth && cardExpMonthError" class="mt-1 block text-xs text-red-600">{{ cardExpMonthError }}</small>
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">YYYY</label>
-            <InputMask v-model="cardDialog.expYear" mask="9999" inputmode="numeric" fluid placeholder="2030"
-              :class="{ 'border-red-500': cardTouched.expYear && cardExpYearError }" @blur="cardTouched.expYear = true" />
-            <small v-if="cardTouched.expYear && cardExpYearError" class="mt-1 block text-xs text-red-600">{{ cardExpYearError }}</small>
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">CVC</label>
-            <InputMask v-model="cardDialog.cvc" mask="999" inputmode="numeric" fluid placeholder="123"
-              :class="{ 'border-red-500': cardTouched.cvc && cardCvcError }" @blur="cardTouched.cvc = true" />
-            <small v-if="cardTouched.cvc && cardCvcError" class="mt-1 block text-xs text-red-600">{{ cardCvcError }}</small>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined :disabled="cardDialog.processing" @click="cardDialog.visible = false" />
-        <Button label="Continue" severity="warn" :loading="cardDialog.processing" :disabled="cardDialog.processing" @click="submitCardPayment" />
       </template>
     </Dialog>
 
@@ -577,78 +549,17 @@ const editingAddressId = ref<number | null>(null)
 const customerLatitude = ref<number | null>(null)
 const customerLongitude = ref<number | null>(null)
 const pickupOnly = ref(false)
+const pickupBranch = ref<any | null>(null)
+const pickupBranchAddress = computed(() => {
+  if (!pickupBranch.value) return 'Pickup address is not available yet.'
+  const branch = pickupBranch.value
+  return [branch.address, branch.barangay, branch.city, branch.province].filter(Boolean).join(', ') || 'Contact the store for pickup directions.'
+})
+const useDifferentBillingAddress = ref(false)
+const billingForm = reactive({ name: '', street: '', barangay: '', city: '', province: '', postalCode: '' })
+const billingAddressIncomplete = computed(() => useDifferentBillingAddress.value &&
+  ![billingForm.name, billingForm.street, billingForm.city, billingForm.province].every((value) => value.trim().length > 0))
 
-const cardDialog = reactive({
-  visible: false,
-  processing: false,
-  cardNumber: '',
-  expMonth: '',
-  expYear: '',
-  cvc: '',
-})
-
-const gcashDialog = reactive({
-  visible: false,
-  processing: false,
-  phone: '',
-  email: '',
-})
-const gcashTouched = reactive({ phone: false, email: false })
-const cardTouched = reactive({ cardNumber: false, expMonth: false, expYear: false, cvc: false })
-
-const gcashPhoneError = computed(() => {
-  const phone = cleanPhoneNumber(gcashDialog.phone)
-  if (!phone) return 'Enter your GCash mobile number.'
-  return /^09\d{9}$/.test(phone) ? '' : 'Enter a valid 11-digit number starting with 09.'
-})
-const gcashEmailError = computed(() => {
-  const email = String(gcashDialog.email || '').trim()
-  if (!email) return 'Enter an email address for your receipt.'
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? '' : 'Enter a valid email address.'
-})
-const cardNumberError = computed(() => {
-  const digits = String(cardDialog.cardNumber || '').replace(/\D/g, '')
-  if (!digits) return 'Enter your card number.'
-  return digits.length === 16 ? '' : 'Enter the complete 16-digit card number.'
-})
-const cardExpMonthError = computed(() => {
-  const month = Number(String(cardDialog.expMonth || '').replace(/\D/g, ''))
-  if (!cardDialog.expMonth || String(cardDialog.expMonth).replace(/\D/g, '').length !== 2) return 'Enter the expiry month.'
-  if (month < 1 || month > 12) return 'Enter a month from 01 to 12.'
-  const yearText = String(cardDialog.expYear || '').replace(/\D/g, '')
-  if (yearText.length === 4) {
-    const year = Number(yearText)
-    const now = new Date()
-    if (year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1)) return 'This card has expired.'
-  }
-  return ''
-})
-const cardExpYearError = computed(() => {
-  const yearText = String(cardDialog.expYear || '').replace(/\D/g, '')
-  if (yearText.length !== 4) return 'Enter the 4-digit expiry year.'
-  const year = Number(yearText)
-  const now = new Date()
-  if (year < now.getFullYear()) return 'Enter a current or future expiry year.'
-  const monthText = String(cardDialog.expMonth || '').replace(/\D/g, '')
-  if (year === now.getFullYear() && monthText.length === 2 && Number(monthText) >= 1 && Number(monthText) <= 12 && Number(monthText) < now.getMonth() + 1) {
-    return 'This card has expired.'
-  }
-  return ''
-})
-const cardCvcError = computed(() => {
-  const cvc = String(cardDialog.cvc || '').replace(/\D/g, '')
-  if (!cvc) return 'Enter your card security code.'
-  return cvc.length === 3 ? '' : 'Enter the 3-digit security code.'
-})
-
-const pendingPaymongo = reactive({
-  orderId: 0,
-  storeId: 0,
-  intentId: '',
-  clientKey: '',
-})
-
-let cachedPaymongoPublicKey: string | null = null
 const PAYMONGO_PENDING_ORDER_STORAGE_KEY = 'paymongo_pending_order_id'
 const DEFAULT_DASM_LAT = 14.3294
 const DEFAULT_DASM_LNG = 120.9367
@@ -832,7 +743,7 @@ const cities = ref<any[]>([])
 const barangays = ref<any[]>([])
 const citiesCache = ref<Record<string, any[]>>({})
 
-const selectedPaymentMethod = ref<'cod' | 'gcash' | 'card'>('cod')
+const selectedPaymentMethod = ref<'cod' | 'online'>('cod')
 const COD_LIMIT = 20000
 const allPaymentMethods = [
   {
@@ -842,16 +753,10 @@ const allPaymentMethods = [
     description: 'Pay in cash when your furniture arrives.',
   },
   {
-    label: 'GCash',
-    value: 'gcash' as const,
-    icon: 'pi pi-mobile',
-    description: 'Pay securely using your GCash account.',
-  },
-  {
-    label: 'Credit or Debit Card',
-    value: 'card' as const,
+    label: 'Online Payment',
+    value: 'online' as const,
     icon: 'pi pi-credit-card',
-    description: 'Use Visa, Mastercard, or another supported card.',
+    description: 'Choose an available wallet, card, QR, or bank option securely on PayMongo.',
   },
 ]
 
@@ -896,12 +801,12 @@ const checkoutItemIds = computed(() =>
     .filter((id: number) => Number.isInteger(id) && id > 0),
 )
 
-function paymentMethodLabel(method: 'cod' | 'gcash' | 'card') {
+function paymentMethodLabel(method: 'cod' | 'online') {
   if (method === 'cod' && pickupOnly.value) return 'Pay Upon Pickup'
   return allPaymentMethods.find((m) => m.value === method)?.label || 'Cash on Delivery (COD)'
 }
 
-function paymentMethodDescription(method: 'cod' | 'gcash' | 'card') {
+function paymentMethodDescription(method: 'cod' | 'online') {
   if (method === 'cod' && pickupOnly.value) return 'Pay in cash when you collect your order from the store.'
   return allPaymentMethods.find((m) => m.value === method)?.description || ''
 }
@@ -914,7 +819,7 @@ const selectedPaymentMethodOption = computed(() =>
   }),
 )
 
-function selectPaymentMethod(method: 'cod' | 'gcash' | 'card') {
+function selectPaymentMethod(method: 'cod' | 'online') {
   if (method === 'cod' && codBlocked.value && !pickupOnly.value) return
   selectedPaymentMethod.value = method
 }
@@ -934,7 +839,7 @@ function formatNumber(value: unknown, decimals = 0): string {
 
 watch(codBlocked, (blocked) => {
   if (blocked && !pickupOnly.value && selectedPaymentMethod.value === 'cod') {
-    selectedPaymentMethod.value = 'gcash'
+    selectedPaymentMethod.value = 'online'
   }
 })
 
@@ -1111,6 +1016,7 @@ async function estimateShippingFee() {
     })
     const fee = Number(response?.data?.data?.shipping_fee || 0)
     pickupOnly.value = Boolean(response?.data?.data?.pickup_only)
+    pickupBranch.value = pickupOnly.value ? (response?.data?.data?.pickup_branch || null) : null
     const fallbackUsed = Boolean(response?.data?.data?.fallback_used)
     const fallbackReason = String(response?.data?.data?.fallback_reason || '')
     const distance = Number(response?.data?.data?.distance_km ?? NaN)
@@ -1127,6 +1033,7 @@ async function estimateShippingFee() {
       ? (fallbackReason || 'Using default delivery fee settings for this address.')
       : null
   } catch (error: any) {
+    pickupBranch.value = null
     shippingFeeTotal.value = 0
     shippingDistanceKm.value = null
     shippingFeeNotice.value = null
@@ -1138,9 +1045,8 @@ async function estimateShippingFee() {
   }
 }
 
-function toBackendPaymentMethod(method: 'cod' | 'gcash' | 'card') {
-  if (method === 'gcash') return 'e_wallet'
-  if (method === 'card') return 'card'
+function toBackendPaymentMethod(method: 'cod' | 'online') {
+  if (method === 'online') return 'card'
   return 'cod'
 }
 
@@ -1287,8 +1193,13 @@ async function placeOrder() {
     showAlert({
       severity: 'warn',
       summary: 'COD Not Available',
-      detail: `COD is only allowed for totals up to ₱ ${COD_LIMIT.toLocaleString()}. Please use GCash or Credit Card.`,
+      detail: `COD is only allowed for totals up to ₱ ${COD_LIMIT.toLocaleString()}. Please use Online Payment.`,
     })
+    return
+  }
+
+  if (selectedPaymentMethod.value === 'online' && billingAddressIncomplete.value) {
+    showAlert({ severity: 'warn', summary: 'Billing Address', detail: 'Complete the required billing address fields.' })
     return
   }
 
@@ -1312,6 +1223,11 @@ async function placeOrder() {
       shipping_phone: selectedAddress.value?.contact_number || undefined,
       shipping_email: authStore.user?.email || undefined,
       shipping_address: pickupOnly.value ? 'Store pickup' : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`,
+      billing_name: selectedPaymentMethod.value === 'online' && useDifferentBillingAddress.value
+        ? billingForm.name.trim() : (pickupOnly.value ? undefined : selectedAddress.value?.full_name),
+      billing_address: selectedPaymentMethod.value === 'online' && useDifferentBillingAddress.value
+        ? [billingForm.street, billingForm.barangay, billingForm.city, billingForm.province, billingForm.postalCode].map((part) => part.trim()).filter(Boolean).join(', ')
+        : (pickupOnly.value ? undefined : `${selectedAddress.value.province}, ${selectedAddress.value.city}, ${selectedAddress.value.barangay}, ${selectedAddress.value.address_line}`),
       payment_method: toBackendPaymentMethod(selectedPaymentMethod.value) as 'cod' | 'bank_transfer' | 'card' | 'e_wallet',
       shipping_fee: shippingFeeTotal.value,
       fulfillment_method: pickupOnly.value ? 'pickup' : 'delivery',
@@ -1333,65 +1249,41 @@ async function placeOrder() {
     const orderId = response.data?.data?.id
     const orderStoreId = Number(response.data?.data?.store_id || checkoutItems.value?.[0]?.store_id || 0)
 
-    if (selectedPaymentMethod.value === 'gcash' || selectedPaymentMethod.value === 'card') {
+    if (selectedPaymentMethod.value === 'online') {
       if (!orderId || !orderStoreId) {
         throw new Error('Order ID or store ID is missing for Online Payment checkout.')
       }
 
       paymongoCreating.value = true
 
-      const intentResponse = await paymongoService.createIntent({
+      const successUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_success: '1' } }).href, window.location.origin).toString()
+      const cancelUrl = new URL(router.resolve({ name: 'ecommerce.checkout', query: { paymongo_order_id: orderId, paymongo_cancel: '1' } }).href, window.location.origin).toString()
+      const sessionResponse = await paymongoService.createCheckoutSession({
         amount: Math.max(Math.round(totalAmount.value * 100), 1),
         currency: 'PHP',
         description: `Order #${orderId}`,
-        statement_descriptor: 'Ecommerce Order',
-        payment_method_allowed: [selectedPaymentMethod.value === 'gcash' ? 'gcash' : 'card'],
         store_id: orderStoreId,
         payable_type: 'ecommerce_order',
         payable_id: Number(orderId),
         metadata: { order_id: orderId },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       })
-
-      const intentId = String(intentResponse?.data?.data?.id || '')
-      const clientKey = String(intentResponse?.data?.data?.attributes?.client_key || '')
-      if (!intentId || !clientKey) {
-        throw new Error(intentResponse?.message || 'Failed to initialize Online Payment payment intent.')
+      const checkoutUrl = String(sessionResponse?.data?.checkout_url || '')
+      if (!checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
+        throw new Error('PayMongo did not return a valid checkout page.')
       }
-
-      pendingPaymongo.orderId = Number(orderId)
-      pendingPaymongo.storeId = Number(orderStoreId)
-      pendingPaymongo.intentId = intentId
-      pendingPaymongo.clientKey = clientKey
       try {
         window.sessionStorage.setItem(PAYMONGO_PENDING_ORDER_STORAGE_KEY, String(orderId))
       } catch {}
-
-      if (selectedPaymentMethod.value === 'gcash') {
-        gcashDialog.phone = String(selectedAddress.value?.contact_number || '').trim()
-        gcashDialog.email = (authStore.user?.email || payload.shipping_email || '').trim()
-        gcashTouched.phone = false
-        gcashTouched.email = false
-        gcashDialog.visible = true
-        return
-      }
-
-      // Card: open local form. Card details will be sent directly to Online Payment via public key + client_key attach.
-      cardDialog.cardNumber = ''
-      cardDialog.expMonth = ''
-      cardDialog.expYear = ''
-      cardDialog.cvc = ''
-      cardTouched.cardNumber = false
-      cardTouched.expMonth = false
-      cardTouched.expYear = false
-      cardTouched.cvc = false
-      cardDialog.visible = true
+      window.location.assign(checkoutUrl)
       return
     }
 
     showAlert({ severity: 'success', summary: 'Order Placed', detail: 'Your order was created successfully.' })
     router.push({ name: 'ecommerce.orders', query: { placed: orderId } })
   } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || 'Please try again.' })
+    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || error?.message || 'Please try again.' })
   } finally {
     placing.value = false
     paymongoCreating.value = false
@@ -1409,217 +1301,6 @@ function normalizeImageUrl(raw: string) {
 function onImageError(event: Event) {
   const target = event.target as HTMLImageElement | null
   if (target) target.src = '/F.svg'
-}
-
-function base64Encode(value: string) {
-  try {
-    return btoa(value)
-  } catch {
-    return btoa(unescape(encodeURIComponent(value)))
-  }
-}
-
-async function getPaymongoPublicKey(): Promise<string> {
-  if (cachedPaymongoPublicKey) return cachedPaymongoPublicKey
-  const res = await paymongoService.getPublicKey()
-  const key = String(res?.data?.public_key || '').trim()
-  if (!key) throw new Error('Missing Online Payment public key.')
-  cachedPaymongoPublicKey = key
-  return key
-}
-
-async function createPaymongoCardPaymentMethod(args: {
-  cardNumber: string
-  expMonth: number
-  expYear: number
-  cvc: string
-  billing: { name: string; email: string; phone?: string }
-}) {
-  const publicKey = await getPaymongoPublicKey()
-  const authorization = `Basic ${base64Encode(`${publicKey}:`)}`
-
-  const response = await fetch('https://api.paymongo.com/v1/payment_methods', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authorization,
-    },
-    body: JSON.stringify({
-      data: {
-        attributes: {
-          type: 'card',
-          details: {
-            card_number: args.cardNumber.replace(/\s+/g, ''),
-            exp_month: args.expMonth,
-            exp_year: args.expYear,
-            cvc: args.cvc,
-          },
-          billing: args.billing,
-        },
-      },
-    }),
-  })
-
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) {
-    const detail = payload?.errors?.[0]?.detail || 'Unable to create Online Payment card payment method.'
-    throw new Error(detail)
-  }
-
-  const paymentMethodId = String(payload?.data?.id || '')
-  if (!paymentMethodId) throw new Error('Online Payment did not return a payment_method id.')
-  return paymentMethodId
-}
-
-function cleanPhoneNumber(raw: string) {
-  const digits = String(raw || '').replace(/\D/g, '')
-  if (!digits) return ''
-  if (digits.startsWith('63') && digits.length >= 12) {
-    return `0${digits.slice(2, 12)}`
-  }
-  if (digits.length > 11) {
-    return digits.slice(digits.length - 11)
-  }
-  return digits
-}
-
-function buildPaymongoCheckoutReturnUrl(orderId: number): string {
-  const resolved = router.resolve({
-    name: 'ecommerce.checkout',
-    query: {
-      paymongo_order_id: String(orderId),
-      store_id: route.query.store_id ? String(route.query.store_id) : undefined,
-      item_ids: route.query.item_ids ? String(route.query.item_ids) : undefined,
-    },
-  })
-
-  return new URL(resolved.href, window.location.origin).toString()
-}
-
-async function submitGcashPayment() {
-  if (!pendingPaymongo.orderId || !pendingPaymongo.intentId) {
-    showAlert({ severity: 'warn', summary: 'Missing Context', detail: 'Please place the order again.' })
-    return
-  }
-
-  const name = selectedAddress.value?.full_name || 'Customer'
-  const phone = cleanPhoneNumber(gcashDialog.phone)
-  const email = String(gcashDialog.email || '').trim()
-
-  gcashTouched.phone = true
-  gcashTouched.email = true
-  if (gcashPhoneError.value || gcashEmailError.value) {
-    return
-  }
-
-  gcashDialog.processing = true
-  paymongoCreating.value = true
-  try {
-    const returnUrl = buildPaymongoCheckoutReturnUrl(pendingPaymongo.orderId)
-    const walletRes = await paymongoService.startWallet(pendingPaymongo.intentId, 'gcash', { name, email, phone, return_url: returnUrl })
-    const redirectUrl = walletRes?.data?.redirect_url
-    if (!redirectUrl) throw new Error(walletRes?.message || 'Failed to start GCash checkout.')
-    gcashDialog.visible = false
-    window.location.href = String(redirectUrl).trim()
-  } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Checkout Failed', detail: error?.response?.data?.message || error?.message || 'Unable to start GCash checkout.' })
-  } finally {
-    gcashDialog.processing = false
-    paymongoCreating.value = false
-  }
-}
-
-async function attachPaymentMethodToIntent(clientKey: string, paymentMethodId: string, returnUrl: string) {
-  const paymentIntentId = String(clientKey).split('_client')[0]
-  const publicKey = await getPaymongoPublicKey()
-  const authorization = `Basic ${base64Encode(`${publicKey}:`)}`
-
-  const response = await fetch(`https://api.paymongo.com/v1/payment_intents/${encodeURIComponent(paymentIntentId)}/attach`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authorization,
-    },
-    body: JSON.stringify({
-      data: {
-        attributes: {
-          payment_method: paymentMethodId,
-          client_key: clientKey,
-          return_url: returnUrl,
-        },
-      },
-    }),
-  })
-
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) {
-    const detail = payload?.errors?.[0]?.detail || 'Unable to attach payment method to intent.'
-    throw new Error(detail)
-  }
-  return payload
-}
-
-async function submitCardPayment() {
-  if (!pendingPaymongo.orderId || !pendingPaymongo.clientKey) {
-    showAlert({ severity: 'warn', summary: 'Missing Context', detail: 'Please place the order again.' })
-    return
-  }
-
-  const cardNumber = String(cardDialog.cardNumber || '').trim()
-  const expMonth = Number(String(cardDialog.expMonth || '').trim())
-  const expYear = Number(String(cardDialog.expYear || '').trim())
-  const cvc = String(cardDialog.cvc || '').trim()
-  cardTouched.cardNumber = true
-  cardTouched.expMonth = true
-  cardTouched.expYear = true
-  cardTouched.cvc = true
-  if (cardNumberError.value || cardExpMonthError.value || cardExpYearError.value || cardCvcError.value) {
-    return
-  }
-
-  const billingName = selectedAddress.value?.full_name || 'Customer'
-  const billingPhone = String(selectedAddress.value?.contact_number || '').trim()
-  const billingEmail = (authStore.user?.email || '').trim()
-  if (!billingEmail) {
-    showAlert({ severity: 'warn', summary: 'Email Required', detail: 'Please login so we can use your email for the receipt.' })
-    return
-  }
-
-  cardDialog.processing = true
-  paymongoCreating.value = true
-  try {
-    const pmId = await createPaymongoCardPaymentMethod({
-      cardNumber,
-      expMonth,
-      expYear,
-      cvc,
-      billing: { name: billingName, email: billingEmail, phone: billingPhone || undefined },
-    })
-
-    const returnUrl = buildPaymongoCheckoutReturnUrl(pendingPaymongo.orderId)
-    const attached = await attachPaymentMethodToIntent(pendingPaymongo.clientKey, pmId, returnUrl)
-
-    const status = String(attached?.data?.attributes?.status || '').toLowerCase().trim()
-    const nextUrl = attached?.data?.attributes?.next_action?.redirect?.url
-
-    cardDialog.visible = false
-
-    if (status === 'awaiting_next_action' && nextUrl) {
-      window.location.href = String(nextUrl).trim()
-      return
-    }
-
-    // If it immediately succeeded, continue straight to the paid order.
-    const paymentStatus = await checkPaymongoResult(pendingPaymongo.orderId)
-    if (paymentStatus === 'succeeded') {
-      router.replace({ name: 'ecommerce.order-detail', params: { id: pendingPaymongo.orderId } })
-    }
-  } catch (error: any) {
-    showAlert({ severity: 'error', summary: 'Payment Failed', detail: error?.message || 'Unable to process card payment.' })
-  } finally {
-    cardDialog.processing = false
-    paymongoCreating.value = false
-  }
 }
 
 async function checkPaymongoResult(orderId: number): Promise<string> {

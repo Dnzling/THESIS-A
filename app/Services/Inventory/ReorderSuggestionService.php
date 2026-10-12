@@ -215,6 +215,7 @@ class ReorderSuggestionService
     public function generateSuggestions(int $storeId, ?int $branchId = null): array
     {
         $this->salesCache = [];
+        $allowsForecast = app(ForecastPlanService::class)->allowsForecast($storeId);
         $rules = ReorderRule::query()
             ->with(['product', 'branch'])
             ->where('is_active', true)
@@ -243,7 +244,7 @@ class ReorderSuggestionService
 
             $rule = $rulesByProductBranch["{$item->branch_id}:{$item->product_id}"] ?? null;
             try {
-                $suggestion = $this->generateSuggestionForInventoryItem($item, $rule);
+                $suggestion = $this->generateSuggestionForInventoryItem($item, $rule, $allowsForecast);
                 if ($suggestion) {
                     $suggestions[] = $suggestion;
                 }
@@ -271,24 +272,24 @@ class ReorderSuggestionService
         return implode(':', [(int) $item->branch_id, (int) $item->product_id, (int) ($item->variation_id ?? 0)]);
     }
 
-    private function generateSuggestionForInventoryItem(BranchInventory $item, ?ReorderRule $rule): ?ReorderSuggestion
+    private function generateSuggestionForInventoryItem(BranchInventory $item, ?ReorderRule $rule, bool $allowsForecast): ?ReorderSuggestion
     {
         $currentStock = (float) ($item->quantity_available ?? 0);
         $sales = $this->getRecentSales($item);
-        $configuredPoint = (float) ($rule?->reorder_point ?? $item->reorder_point ?? 0);
+        $configuredPoint = (float) (($allowsForecast || $rule?->basis_type !== 'demand_lead_time') ? ($rule?->reorder_point ?? $item->reorder_point ?? 0) : ($item->reorder_point ?? 0));
         $safetyStock = (float) ($rule?->safety_stock ?? $item->safety_stock ?? 0);
-        $leadTime = (int) ($rule?->lead_time_days ?? 0);
+        $leadTime = (int) ($rule?->lead_time_days ?? 7);
         $reviewDays = (int) ($rule?->review_period_days ?? 7);
         $configuredAverage = (float) ($rule?->avg_daily_demand ?? 0);
         $averageDemand = $sales['units'] > 0 ? $sales['units'] / 30 : $configuredAverage;
-        $demandMode = $rule && $rule->basis_type === 'demand_lead_time' && $leadTime > 0 && $averageDemand > 0;
+        $demandMode = $allowsForecast && (!$rule || $rule->basis_type === 'demand_lead_time') && $leadTime > 0 && $averageDemand > 0;
 
         if ($demandMode) {
             $trigger = ($averageDemand * $leadTime) + $safetyStock;
             $target = ($averageDemand * ($leadTime + max(0, $reviewDays))) + $safetyStock;
             $source = $sales['units'] > 0 ? 'sales_30_day' : 'configured_average_demand';
         } else {
-            $triggerType = $rule?->trigger_type ?? 'reorder_point';
+            $triggerType = $allowsForecast ? ($rule?->trigger_type ?? 'reorder_point') : 'reorder_point';
             $trigger = match ($triggerType) {
                 'safety_stock' => $safetyStock,
                 'seasonal' => $configuredPoint * (float) ($rule?->getSeasonalAdjustment() ?? 1),

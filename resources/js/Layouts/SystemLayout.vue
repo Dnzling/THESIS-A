@@ -106,6 +106,26 @@
   
         <!-- Header Actions -->
         <div class="flex items-center space-x-4">
+          <template v-if="canManageStaffChats">
+            <Button icon="pi pi-comments" severity="secondary" text rounded
+              :badge="staffChatUnread > 0 ? staffChatUnread.toString() : undefined" badgeSeverity="warn"
+              aria-label="Staff chats" @click="toggleStaffChats" />
+            <Popover ref="staffChatPanel" class="w-[min(380px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-0 rounded-2xl shadow-xl border border-orange-100">
+              <div class="flex items-center justify-between border-b border-orange-100 px-4 py-3">
+                <div><p class="font-semibold text-slate-900">Staff Chats</p><p class="text-xs text-slate-500">Messages from your store team</p></div>
+                <Button label="View all" size="small" text class="!text-orange-600" @click="openAllStaffChats" />
+              </div>
+              <div class="max-h-[390px] overflow-y-auto p-2">
+                <div v-if="staffChatsLoading" class="space-y-2 p-2"><Skeleton v-for="n in 3" :key="n" height="58px" class="rounded-xl" /></div>
+                <p v-else-if="!staffChatConversations.length" class="p-7 text-center text-sm text-slate-500">No staff messages yet.</p>
+                <button v-for="chat in staffChatConversations.slice(0, 8)" :key="chat.id" class="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-orange-50" @click="openStaffChat(chat.id)">
+                  <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700">{{ staffInitials(chat.staff) }}</div>
+                  <div class="min-w-0 flex-1"><div class="flex items-center justify-between gap-2"><p class="truncate text-sm font-semibold text-slate-900">{{ staffName(chat.staff) }}</p><span class="shrink-0 text-[11px] text-slate-400">{{ formatTimeAgo(chat.last_message_at) }}</span></div><p class="truncate text-xs text-slate-500">{{ chat.last_message }}</p></div>
+                  <Badge v-if="chat.unread_count" :value="chat.unread_count" severity="warn" />
+                </button>
+              </div>
+            </Popover>
+          </template>
           <!-- Notifications -->
           <Button icon="pi pi-bell" severity="secondary" text rounded
             :badge="unreadCount > 0 ? unreadCount.toString() : undefined" badgeSeverity="danger"
@@ -188,7 +208,7 @@
       </header>
   
       <!-- Main Content Area -->
-      <main class="flex-1 overflow-y-auto p-6 bg-transparent" :class="{ 'merchandising-hide-delete': isMerchandising }">
+      <main class="flex-1 overflow-y-auto p-6 bg-transparent">
         <slot />
       </main>
     </div>
@@ -272,10 +292,15 @@ const loadingNavigation = ref(false)
 const enabledModules = ref<string[] | null>(null)
 const sidebarOpen = ref(true)
 const notificationPanel = ref()
+const staffChatPanel = ref()
+const staffChatConversations = ref<any[]>([])
+const staffChatsLoading = ref(false)
 const notifications = ref<any[]>([])
 const notificationsLoading = ref(false)
 const unreadCount = ref(0)
 const activeNotifTab = ref<'inbox' | 'general' | 'archived'>('inbox')
+const canManageStaffChats = computed(() => authStore.hasPermission('admin.chats.manage'))
+const staffChatUnread = computed(() => staffChatConversations.value.reduce((sum, chat) => sum + Number(chat.unread_count || 0), 0))
 const notificationPoller = ref<number | null>(null)
 const responseDialog = ref({
   visible: false,
@@ -357,6 +382,7 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeyboardShortcut)
   document.addEventListener('visibilitychange', refreshNavigationWhenVisible)
   loadNotifications()
+  if (canManageStaffChats.value) loadStaffChats()
   if (!notificationPoller.value) {
     notificationPoller.value = window.setInterval(() => {
       loadNotifications()
@@ -400,6 +426,29 @@ const refreshNavigationWhenVisible = () => {
 const toggleModule = (module: string) => {
   expandedModules.value[module] = !expandedModules.value[module]
 }
+
+const loadStaffChats = async () => {
+  staffChatsLoading.value = true
+  try {
+    const response = await axiosClient.get('/api/staff-chats/conversations')
+    const payload = response.data?.data
+    staffChatConversations.value = Array.isArray(payload) ? payload : (payload?.data || [])
+  } catch (error) {
+    console.warn('Failed to load staff chat preview', error)
+  } finally {
+    staffChatsLoading.value = false
+  }
+}
+
+const toggleStaffChats = (event: Event) => {
+  if (notificationPanel.value) notificationPanel.value.hide()
+  staffChatPanel.value?.toggle(event)
+  void loadStaffChats()
+}
+const openStaffChat = (id: number) => { staffChatPanel.value?.hide(); router.visit(`/staff-chats?conversation=${id}`) }
+const openAllStaffChats = () => { staffChatPanel.value?.hide(); router.visit('/staff-chats') }
+const staffName = (staff: any) => `${staff?.fname || ''} ${staff?.lname || ''}`.trim() || 'Staff'
+const staffInitials = (staff: any) => `${staff?.fname?.[0] || ''}${staff?.lname?.[0] || ''}`.toUpperCase() || 'S'
 
 watch(currentPath, () => {
   if (window.innerWidth < 1024) {

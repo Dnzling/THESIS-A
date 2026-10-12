@@ -3,7 +3,7 @@
     <div class="relative overflow-hidden py-14">
       <div class="mx-auto max-w-7xl px-4 text-center lg:px-8">
         <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl">Simple plans for modern furniture teams.</h1>
-        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Pick the unlimited-duration Free plan, or choose a paid plan and enter your payment details to continue.</p>
+        <p class="mx-auto mt-5 max-w-2xl text-lg text-slate-600">Pick the unlimited-duration Free plan, or choose a paid plan and complete payment securely on PayMongo.</p>
 
         <div class="mt-8 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <span class="text-sm font-medium" :class="!isYearly ? 'text-slate-900' : 'text-orange-500'">Monthly</span>
@@ -52,78 +52,27 @@
 
     <Dialog v-model:visible="confirmVisible" modal header="Confirm Subscription" class="w-full max-w-lg">
       <div class="space-y-4">
-        <p class="text-sm text-slate-600">You selected <strong>{{ selectedPlan?.name }}</strong>. Continue to payment details?</p>
+        <p class="text-sm text-slate-600">You selected <strong>{{ selectedPlan?.name }}</strong>. You will choose your payment method on PayMongo's secure checkout page.</p>
         <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
           <p><span class="font-semibold">Plan:</span> {{ selectedPlan?.name }}</p>
           <p><span class="font-semibold">Amount:</span> {{ selectedPlan ? formatPrice(selectedPlan) : formatMoney(0) }}</p>
         </div>
         <div class="flex justify-end gap-3">
           <Button label="Cancel" severity="secondary" outlined @click="confirmVisible = false" />
-          <Button label="Continue" severity="warning" :loading="paymentInitializing" @click="openPaymentDialog" />
+          <Button label="Continue to PayMongo" severity="warning" :loading="paymentInitializing" @click="openPaymentDialog" />
         </div>
       </div>
     </Dialog>
 
-    <Dialog v-model:visible="paymentDialogVisible" modal header="Enter Payment Details" class="w-full max-w-lg">
-      <div class="space-y-4">
-        <div class="grid gap-3">
-          <label class="text-sm font-semibold text-slate-700">Payment Method</label>
-          <Select v-model="selectedPaymentMethod" :options="paymentMethodOptions" optionLabel="label" optionValue="value" class="w-full" />
-        </div>
-
-        <div v-if="selectedPaymentMethod === 'card'" class="space-y-3">
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Card Number</label>
-            <InputMask v-model="cardForm.cardNumber" mask="0000 0000 0000 0000" fluid placeholder="4111 1111 1111 1111" />
-          </div>
-          <div class="grid grid-cols-3 gap-2">
-            <div>
-              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">MM</label>
-              <InputMask v-model="cardForm.expMonth" mask="00" inputmode="numeric" fluid placeholder="01" />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">YYYY</label>
-              <InputMask v-model="cardForm.expYear" mask="0000" inputmode="numeric" fluid placeholder="2030" />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">CVC</label>
-              <InputMask v-model="cardForm.cvc" mask="000" inputmode="numeric" fluid placeholder="123" />
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="space-y-3">
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Name</label>
-            <InputText v-model="gcashForm.name" fluid placeholder="Full name" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">GCash Number</label>
-            <InputMask v-model="gcashForm.phone" mask="09999999999" fluid placeholder="09XXXXXXXXX" :autoClear="false" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
-            <InputText v-model="gcashForm.email" type="email" fluid placeholder="name@example.com" />
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Cancel" severity="secondary" outlined :disabled="paymentProcessing" @click="paymentDialogVisible = false" />
-        <Button label="Submit Payment" severity="warn" :loading="paymentProcessing" @click="submitPayment" />
-      </template>
-    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
-import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
-import InputText from 'primevue/inputtext'
-import InputMask from 'primevue/inputmask'
 import axiosClient from '@/axios'
 import paymongoService from '@/services/paymongo.service'
 import { useAuthStore } from '@/stores/auth'
@@ -133,22 +82,9 @@ const plans = ref<any[]>([])
 const loadingPlans = ref(false)
 const isYearly = ref(false)
 const confirmVisible = ref(false)
-const paymentDialogVisible = ref(false)
 const paymentInitializing = ref(false)
-const paymentProcessing = ref(false)
 const selectedPlan = ref<any | null>(null)
-const selectedPaymentMethod = ref<'card' | 'gcash'>('card')
-const paymentIntentId = ref('')
-const paymentClientKey = ref('')
 const storeIdFromQuery = ref<string>(new URLSearchParams(window.location.search).get('store_id') || '')
-
-const cardForm = reactive({ cardNumber: '', expMonth: '', expYear: '', cvc: '' })
-const gcashForm = reactive({ name: '', phone: '', email: '' })
-
-const paymentMethodOptions = [
-  { label: 'Card', value: 'card' },
-  { label: 'GCash', value: 'gcash' },
-]
 
 const billingPeriod = computed(() => (isYearly.value ? 'year' : 'month'))
 
@@ -237,24 +173,17 @@ const openPaymentDialog = async () => {
     return
   }
 
-  localStorage.setItem('pending_subscription_plan', JSON.stringify({
-    plan_key: selectedPlan.value.plan_key,
-    name: selectedPlan.value.name,
-    monthly_price: selectedPlan.value.monthly_price,
-    yearly_price: selectedPlan.value.yearly_price,
-    billing_cycle: selectedBillingCycle.value,
-    months: getPlanMonths(),
-  }))
-
   paymentInitializing.value = true
   try {
     const planAmount = getPlanAmount(selectedPlan.value)
-    const intentResponse = await paymongoService.createIntent({
+    const successUrl = new URL('/subscription-checkout', window.location.origin)
+    successUrl.searchParams.set('payment', 'success')
+    successUrl.searchParams.set('store_id', String(storeId))
+    const cancelUrl = new URL(window.location.href)
+    const response = await paymongoService.createCheckoutSession({
       amount: Math.max(Math.round(planAmount * 100), 1),
       currency: 'PHP',
       description: `${isYearly.value ? 'Yearly' : 'Monthly'} subscription for ${selectedPlan.value.name}`,
-      statement_descriptor: 'Furniture Store SaaS',
-      payment_method_allowed: [selectedPaymentMethod.value],
       metadata: {
         plan_key: selectedPlan.value.plan_key,
         subscription_tier: selectedPlan.value.plan_key,
@@ -267,127 +196,23 @@ const openPaymentDialog = async () => {
       store_id: storeId,
       payable_type: 'subscription_upgrade',
       payable_id: storeId,
+      success_url: successUrl.toString(),
+      cancel_url: cancelUrl.toString(),
     })
-
-    paymentIntentId.value = String(intentResponse?.data?.data?.id || '')
-    paymentClientKey.value = String(intentResponse?.data?.data?.attributes?.client_key || '')
-    if (!paymentIntentId.value || !paymentClientKey.value) {
-      throw new Error(intentResponse?.message || 'Failed to initialize payment.')
+    const checkoutUrl = String(response?.data?.checkout_url || '')
+    if (!checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
+      throw new Error('PayMongo did not return a valid checkout page.')
     }
-
+    localStorage.setItem('pending_subscription_plan', JSON.stringify({
+      plan_key: selectedPlan.value.plan_key,
+      billing_cycle: selectedBillingCycle.value,
+    }))
     confirmVisible.value = false
-    paymentDialogVisible.value = true
+    window.location.assign(checkoutUrl)
   } catch (error: any) {
     alert(error?.response?.data?.message || error?.message || 'Unable to start payment.')
   } finally {
     paymentInitializing.value = false
-  }
-}
-
-const base64Encode = (value: string) => {
-  try {
-    return btoa(value)
-  } catch {
-    return btoa(unescape(encodeURIComponent(value)))
-  }
-}
-
-const getPublicKey = async () => {
-  const res = await paymongoService.getPublicKey()
-  const key = String(res?.data?.public_key || '').trim()
-  if (!key) throw new Error('Missing Online Payment public key.')
-  return key
-}
-
-const createCardPaymentMethod = async () => {
-  const publicKey = await getPublicKey()
-  const response = await fetch('https://api.paymongo.com/v1/payment_methods', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Basic ${base64Encode(`${publicKey}:`)}`,
-    },
-    body: JSON.stringify({
-      data: {
-        attributes: {
-          type: 'card',
-          details: {
-            card_number: String(cardForm.cardNumber || '').replace(/\s+/g, ''),
-            exp_month: Number(cardForm.expMonth),
-            exp_year: Number(cardForm.expYear),
-            cvc: String(cardForm.cvc || ''),
-          },
-          billing: {
-            name: (authStore.currentUser as any)?.name || 'Customer',
-            email: (authStore.currentUser as any)?.email || '',
-          },
-        },
-      },
-    }),
-  })
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(payload?.errors?.[0]?.detail || 'Unable to create card payment method.')
-  return String(payload?.data?.id || '')
-}
-
-const submitPayment = async () => {
-  if (paymentProcessing.value || !selectedPlan.value || !paymentIntentId.value) return
-  const storeId = Number(storeIdFromQuery.value || (authStore.currentUser as any)?.store_id || 0)
-  if (!storeId) {
-    router.visit('/store/registration')
-    return
-  }
-
-  paymentProcessing.value = true
-  try {
-    if (selectedPaymentMethod.value === 'gcash') {
-      if (!gcashForm.name || !gcashForm.phone || !gcashForm.email) throw new Error('Please complete the GCash details.')
-      const response = await paymongoService.startGcash(paymentIntentId.value, {
-        name: gcashForm.name,
-        email: gcashForm.email,
-        phone: gcashForm.phone,
-        return_url: `${window.location.origin}/subscription-checkout?payment=success&store_id=${encodeURIComponent(String(storeId))}`,
-      })
-      const redirectUrl = response?.data?.redirect_url
-      if (!redirectUrl) throw new Error(response?.message || 'Unable to start GCash payment.')
-      paymentDialogVisible.value = false
-      window.location.href = String(redirectUrl)
-      return
-    }
-
-    if (!cardForm.cardNumber || !cardForm.expMonth || !cardForm.expYear || !cardForm.cvc) {
-      throw new Error('Please complete the card details.')
-    }
-
-    const paymentMethodId = await createCardPaymentMethod()
-    const attachResponse = await fetch(`https://api.paymongo.com/v1/payment_intents/${encodeURIComponent(paymentIntentId.value)}/attach`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${base64Encode(`${paymentClientKey.value}:`)}`,
-      },
-      body: JSON.stringify({
-        data: {
-          attributes: {
-            payment_method: paymentMethodId,
-            return_url: `${window.location.origin}/subscription-checkout?payment=success&store_id=${encodeURIComponent(String(storeId))}`,
-          },
-        },
-      }),
-    })
-    const attachPayload = await attachResponse.json().catch(() => null)
-    if (!attachResponse.ok) throw new Error(attachPayload?.errors?.[0]?.detail || 'Unable to attach payment method.')
-    const nextUrl = attachPayload?.data?.attributes?.next_action?.redirect?.url
-    paymentDialogVisible.value = false
-    if (nextUrl) {
-      window.location.href = String(nextUrl)
-    } else {
-      router.visit('/store/index')
-    }
-  } catch (error: any) {
-    alert(error?.response?.data?.message || error?.message || 'Unable to process payment.')
-  } finally {
-    paymentProcessing.value = false
   }
 }
 

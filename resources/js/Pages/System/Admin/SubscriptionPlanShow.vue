@@ -59,18 +59,6 @@
                 <small class="text-xs text-slate-500">Requires 3D manage permission. Set 0 to disable requests.</small>
               </div>
               <div>
-                <label class="text-sm font-medium text-slate-700">Warehouses</label>
-                <InputNumber v-model="form.max_warehouses" :min="1" placeholder="Unlimited" fluid />
-              </div>
-              <div>
-                <label class="text-sm font-medium text-slate-700">Trucks</label>
-                <InputNumber v-model="form.max_trucks" :min="1" placeholder="Unlimited" fluid />
-              </div>
-              <div>
-                <label class="text-sm font-medium text-slate-700">Suppliers</label>
-                <InputNumber v-model="form.max_suppliers" :min="1" placeholder="Unlimited" fluid />
-              </div>
-              <div>
                 <label class="text-sm font-medium text-slate-700">Sort Order</label>
                 <InputNumber v-model="form.sort_order" :min="0" :max="999" fluid />
               </div>
@@ -197,9 +185,6 @@ const form = reactive({
   max_branches: null as number | null,
   max_products: null as number | null,
   max_3d_model_requests_per_month: 0,
-  max_warehouses: null as number | null,
-  max_trucks: null as number | null,
-  max_suppliers: null as number | null,
   is_featured: false,
   is_active: true,
   sort_order: 0,
@@ -213,8 +198,6 @@ const permissionsByModule = computed(() => {
   permissions.value.forEach((p) => {
     const parts = (p.name || '').split('.')
     const module = parts[0] || p.module || 'general'
-    // Hide supplier module permissions (legacy/unused)
-    if (module === 'supplier') return
     const subKey = parts[1] || 'general'
     if (!grouped[module]) grouped[module] = {}
     if (!grouped[module][subKey]) grouped[module][subKey] = []
@@ -340,9 +323,6 @@ const loadData = async () => {
     form.max_branches = plan.max_branches == null ? null : Number(plan.max_branches)
     form.max_products = plan.max_products == null ? null : Number(plan.max_products)
     form.max_3d_model_requests_per_month = Number(plan.max_3d_model_requests_per_month || 0)
-    form.max_warehouses = plan.max_warehouses == null ? null : Number(plan.max_warehouses)
-    form.max_trucks = plan.max_trucks == null ? null : Number(plan.max_trucks)
-    form.max_suppliers = plan.max_suppliers == null ? null : Number(plan.max_suppliers)
     form.is_featured = !!plan.is_featured
     form.is_active = plan.is_active !== false
     form.sort_order = Number(plan.sort_order || 0)
@@ -398,9 +378,6 @@ const save = async () => {
       max_branches: form.max_branches,
       max_products: form.max_products,
       max_3d_model_requests_per_month: form.max_3d_model_requests_per_month,
-      max_warehouses: form.max_warehouses,
-      max_trucks: form.max_trucks,
-      max_suppliers: form.max_suppliers,
       features,
       is_featured: form.is_featured,
       is_active: form.is_active,

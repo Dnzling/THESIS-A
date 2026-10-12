@@ -67,9 +67,12 @@ class SubscriptionPlanController extends Controller
                 'permissions.module',
                 'permissions.display_name',
                 'permissions.description',
+                'permissions.is_active',
+                'permissions.deleted_at',
                 DB::raw('COALESCE(plan_permissions.included, 0) as included')
             )
             ->where('permissions.is_active', true)
+            ->whereNull('permissions.deleted_at')
             ->orderBy('permissions.module')
             ->orderBy('permissions.display_name')
             ->get()
@@ -106,9 +109,6 @@ class SubscriptionPlanController extends Controller
             'max_branches' => 'nullable|integer|min:1',
             'max_products' => 'nullable|integer|min:1',
             'max_3d_model_requests_per_month' => 'nullable|integer|min:0',
-            'max_warehouses' => 'nullable|integer|min:1',
-            'max_trucks' => 'nullable|integer|min:1',
-            'max_suppliers' => 'nullable|integer|min:1',
             'features' => 'nullable|array',
             'features.*' => 'string|max:200',
             'is_featured' => 'nullable|boolean',
@@ -128,9 +128,6 @@ class SubscriptionPlanController extends Controller
             'max_branches' => $validated['max_branches'] ?? null,
             'max_products' => $validated['max_products'] ?? null,
             'max_3d_model_requests_per_month' => $validated['max_3d_model_requests_per_month'] ?? 0,
-            'max_warehouses' => $validated['max_warehouses'] ?? null,
-            'max_trucks' => $validated['max_trucks'] ?? null,
-            'max_suppliers' => $validated['max_suppliers'] ?? null,
             'features' => $validated['features'] ?? [],
             'is_featured' => (bool) ($validated['is_featured'] ?? false),
             'is_active' => (bool) ($validated['is_active'] ?? true),
@@ -161,9 +158,6 @@ class SubscriptionPlanController extends Controller
             'max_branches' => 'nullable|integer|min:1',
             'max_products' => 'nullable|integer|min:1',
             'max_3d_model_requests_per_month' => 'nullable|integer|min:0',
-            'max_warehouses' => 'nullable|integer|min:1',
-            'max_trucks' => 'nullable|integer|min:1',
-            'max_suppliers' => 'nullable|integer|min:1',
             'features' => 'nullable|array',
             'features.*' => 'string|max:200',
             'is_featured' => 'nullable|boolean',
@@ -190,9 +184,6 @@ class SubscriptionPlanController extends Controller
             'max_branches' => $validated['max_branches'] ?? null,
             'max_products' => $validated['max_products'] ?? null,
             'max_3d_model_requests_per_month' => $validated['max_3d_model_requests_per_month'] ?? 0,
-            'max_warehouses' => $validated['max_warehouses'] ?? null,
-            'max_trucks' => $validated['max_trucks'] ?? null,
-            'max_suppliers' => $validated['max_suppliers'] ?? null,
             'features' => $validated['features'] ?? [],
             'is_featured' => (bool) ($validated['is_featured'] ?? $subscriptionPlan->is_featured),
             'is_active' => (bool) ($validated['is_active'] ?? $subscriptionPlan->is_active),
